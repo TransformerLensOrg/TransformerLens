@@ -25,6 +25,7 @@ from transformer_lens.pretrained.weight_conversions import (
     convert_bert_weights,
     convert_bloom_weights,
     convert_coder_weights,
+    convert_gemma3_weights,
     convert_gemma_weights,
     convert_gpt2_weights,
     convert_gptj_weights,
@@ -247,6 +248,14 @@ OFFICIAL_MODEL_NAMES = [
     "google/gemma-2-9b-it",
     "google/gemma-2-27b",
     "google/gemma-2-27b-it",
+    "google/gemma-3-1b-pt",
+    "google/gemma-3-1b-it",
+    "google/gemma-3-4b-pt",
+    "google/gemma-3-4b-it",
+    "google/gemma-3-12b-pt",
+    "google/gemma-3-12b-it",
+    "google/gemma-3-27b-pt",
+    "google/gemma-3-27b-it",
     "01-ai/Yi-6B",
     "01-ai/Yi-34B",
     "01-ai/Yi-6B-Chat",
@@ -634,6 +643,7 @@ MODEL_ALIASES = {
     ],
     "mistralai/Mistral-7B-v0.1": ["mistral-7b"],
     "mistralai/Mistral-7B-Instruct-v0.1": ["mistral-7b-instruct"],
+    "mistralai/Mistral-Small-24B-Base-2501": ["mistral-nemo-base-2407"],
     "mistralai/Mistral-Nemo-Base-2407": ["mistral-nemo-base-2407"],
     "mistralai/Mixtral-8x7B-v0.1": ["mixtral", "mixtral-8x7b"],
     "mistralai/Mixtral-8x7B-Instruct-v0.1": [
@@ -662,6 +672,27 @@ MODEL_ALIASES = {
     "Qwen/Qwen1.5-7B-Chat": ["qwen1.5-7b-chat"],
     "Qwen/Qwen1.5-14B": ["qwen1.5-14b"],
     "Qwen/Qwen1.5-14B-Chat": ["qwen1.5-14b-chat"],
+    "Qwen/Qwen2-0.5B": ["qwen2-0.5b"],
+    "Qwen/Qwen2-0.5B-Instruct": ["qwen2-0.5b-instruct"],
+    "Qwen/Qwen2-1.5B": ["qwen2-1.5b"],
+    "Qwen/Qwen2-1.5B-Instruct": ["qwen2-1.5b-instruct"],
+    "Qwen/Qwen2-7B": ["qwen2-7b"],
+    "Qwen/Qwen2-7B-Instruct": ["qwen2-7b-instruct"],
+    "Qwen/Qwen2.5-0.5B": ["qwen2.5-0.5b"],
+    "Qwen/Qwen2.5-0.5B-Instruct": ["qwen2.5-0.5b-instruct"],
+    "Qwen/Qwen2.5-1.5B": ["qwen2.5-1.5b"],
+    "Qwen/Qwen2.5-1.5B-Instruct": ["qwen2.5-1.5b-instruct"],
+    "Qwen/Qwen2.5-3B": ["qwen2.5-3b"],
+    "Qwen/Qwen2.5-3B-Instruct": ["qwen2.5-3b-instruct"],
+    "Qwen/Qwen2.5-7B": ["qwen2.5-7b"],
+    "Qwen/Qwen2.5-7B-Instruct": ["qwen2.5-7b-instruct"],
+    "Qwen/Qwen2.5-14B": ["qwen2.5-14b"],
+    "Qwen/Qwen2.5-14B-Instruct": ["qwen2.5-14b-instruct"],
+    "Qwen/Qwen2.5-32B": ["qwen2.5-32b"],
+    "Qwen/Qwen2.5-32B-Instruct": ["qwen2.5-32b-instruct"],
+    "Qwen/Qwen2.5-72B": ["qwen2.5-72b"],
+    "Qwen/Qwen2.5-72B-Instruct": ["qwen2.5-72b-instruct"],
+    "Qwen/QwQ-32B-Preview": ["qwen-32b-preview"],
     "microsoft/phi-1": ["phi-1"],
     "microsoft/phi-1_5": ["phi-1_5"],
     "microsoft/phi-2": ["phi-2"],
@@ -672,11 +703,15 @@ MODEL_ALIASES = {
     "google/gemma-2b-it": ["gemma-2b-it"],
     "google/gemma-7b-it": ["gemma-7b-it"],
     "google/gemma-2-2b": ["gemma-2-2b"],
-    "google/gemma-2-9b": ["gemma-2-9b"],
-    "google/gemma-2-27b": ["gemma-2-27b"],
     "google/gemma-2-2b-it": ["gemma-2-2b-it"],
+    "google/gemma-2-9b": ["gemma-2-9b"],
     "google/gemma-2-9b-it": ["gemma-2-9b-it"],
+    "google/gemma-2-27b": ["gemma-2-27b"],
     "google/gemma-2-27b-it": ["gemma-2-27b-it"],
+    "google/gemma-3-1b-pt": ["gemma-3-1b", "gemma-3-1b-pt"],
+    "google/gemma-3-1b-it": ["gemma-3-1b-it"],
+    "google/gemma-3-4b-pt": ["gemma-3-4b", "gemma-3-4b-pt"],
+    "google/gemma-3-4b-it": ["gemma-3-4b-it"],
     "01-ai/Yi-6B": ["yi-6b", "Yi-6B"],
     "01-ai/Yi-34B": ["yi-34b", "Yi-34B"],
     "01-ai/Yi-6B-Chat": ["yi-6b-chat", "Yi-6B-Chat"],
@@ -755,6 +790,8 @@ def convert_hf_model_config(model_name: str, **kwargs):
     # Load HuggingFace model config
     if "llama" in official_model_name.lower():
         architecture = "LlamaForCausalLM"
+    elif "gemma-3" in official_model_name.lower():
+        architecture = "Gemma3ForCausalLM"
     elif "gemma-2" in official_model_name.lower():
         architecture = "Gemma2ForCausalLM"
     elif "gemma" in official_model_name.lower():
@@ -1482,6 +1519,113 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "final_rms": True,
             "use_normalization_before_and_after": True,
         }
+    elif official_model_name.startswith("google/gemma-3-1b"):
+        cfg_dict = {
+            "d_model": 1152,
+            "d_head": 256,
+            "n_heads": 4,
+            "d_mlp": 6912,
+            "n_layers": 26,
+            "n_ctx": 32768,
+            "eps": 1e-06,
+            "d_vocab": 262144,  # Gemma 3 has a larger vocabulary
+            "act_fn": "gelu_pytorch_tanh",
+            "initializer_range": 0.02,
+            "normalization_type": "RMS",
+            "rotary_dim": 256,
+            "attention_dir": "casual",
+            "rotary_base": 1000000.0,  # Using the global attention base frequency
+            "rope_local_base_freq": 10000.0,
+            "positional_embedding_type": "rotary",
+            "use_attn_scale": True,
+            "attn_scale": (256 ** 0.5),  # query_pre_attn_scalar
+            "n_key_value_heads": 1,
+            "attn_scores_soft_cap": 0,
+            "window_size": 512,
+            "use_local_attn": True,
+            "dtype": torch.bfloat16,
+            "attn_types": (["local"] * 5 + ["global"]) * 4 + ["local", "local"],  # 5:1 pattern as specified by sliding_window_pattern
+            "gated_mlp": True,
+            "final_rms": True,
+            "use_split_qkv_input": True,
+            "use_normalization_before_and_after": True,
+            "rotary_adjacent_pairs": True,
+            "tokenizer_prepends_bos": True,
+            "default_prepend_bos": True,
+            "trust_remote_code": True,
+            "use_hook_mlp_in": True,
+            "use_attn_result": True,
+            "use_NTK_by_parts_rope": False,
+            "scale_attn_by_inverse_layer_idx": False,
+        }
+    elif official_model_name.startswith("google/gemma-3-4b"):
+        cfg_dict = {
+            "d_model": 2048,
+            "d_head": 256,
+            "n_heads": 8,
+            "d_mlp": 16384,
+            "n_layers": 18,
+            "n_ctx": 8192,
+            "eps": 1e-06,
+            "d_vocab": 256000,
+            "act_fn": "gelu",
+            "initializer_range": 0.02,
+            "normalization_type": "RMS",
+            "rotary_base": 1000000.0,
+            "rope_local_base_freq": 10000.0,
+            "positional_embedding_type": "rotary",
+            "use_attn_scale": True,
+            "attn_scale": 1.0 / (256 ** 0.5),
+            "n_key_value_heads": 1,
+            "window_size": 512,
+            "use_local_attn": True,
+            "attn_types": (["local"] * 5 + ["global"]) * 3 + ["local", "local"],
+            "gated_mlp": True,
+            "final_rms": True,
+            "use_split_qkv_input": True,
+            "use_normalization_before_and_after": True,
+            "attn_scores_soft_cap": 3.5,
+            "output_logits_soft_cap": 3.5,
+            "dtype": torch.bfloat16,
+            "rotary_adjacent_pairs": True,
+            "tokenizer_prepends_bos": True,
+            "default_prepend_bos": True,
+            "trust_remote_code": True,
+        }
+    elif official_model_name.startswith("google/gemma-3-12b"):
+        cfg_dict = {
+            "d_model": 3072,
+            "d_head": 256,
+            "n_heads": 16,
+            "d_mlp": 24576,
+            "n_layers": 28,
+            "n_ctx": 8192,
+            "eps": 1e-06,
+            "d_vocab": 256000,
+            "act_fn": "gelu",
+            "initializer_range": 0.02,
+            "normalization_type": "RMS",
+            "rotary_base": 1000000.0,
+            "rope_local_base_freq": 10000.0,
+            "positional_embedding_type": "rotary",
+            "use_attn_scale": True,
+            "attn_scale": 1.0 / (256 ** 0.5),
+            "n_key_value_heads": 1,
+            "window_size": 512,
+            "use_local_attn": True,
+            "attn_types": (["local"] * 5 + ["global"]) * 4 + ["local", "local"],
+            "gated_mlp": True,
+            "final_rms": True,
+            "use_split_qkv_input": True,
+            "use_normalization_before_and_after": True,
+            "attn_scores_soft_cap": 3.5,
+            "output_logits_soft_cap": 3.5,
+            "dtype": torch.bfloat16,
+            "rotary_adjacent_pairs": True,
+            "tokenizer_prepends_bos": True,
+            "default_prepend_bos": True,
+            "trust_remote_code": True,
+        }
     elif architecture == "T5ForConditionalGeneration":
         cfg_dict = {
             "d_model": hf_config.d_model,
@@ -1901,6 +2045,8 @@ def get_pretrained_state_dict(
             state_dict = convert_gemma_weights(hf_model, cfg)
         elif cfg.original_architecture == "Gemma2ForCausalLM":
             state_dict = convert_gemma_weights(hf_model, cfg)
+        elif cfg.original_architecture == "Gemma3ForCausalLM":
+            state_dict = convert_gemma3_weights(hf_model, cfg)
         else:
             raise ValueError(
                 f"Loading weights from the architecture is not currently supported: {cfg.original_architecture}, generated from model name {cfg.model_name}. Feel free to open an issue on GitHub to request this feature."

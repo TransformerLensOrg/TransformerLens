@@ -23,10 +23,10 @@ class GatedMLP(CanBeUsedAsMLP):
     The equation of a gated MLP:
     pre = x @ W_gate
     pre_linear = x @ W_in
-    post = Gelu(pre) * (pre_linear) + b_in
-    mlp_out = post @ W_out + b_out
+    post = Gelu(pre) * (pre_linear)
+    mlp_out = post @ W_out
 
-    In one equation, mlp_out = (Gelu(x @ W_gate) * (x @ W_in) + b_in) @ W_out + b_out
+    In one equation, mlp_out = (Gelu(x @ W_gate) * (x @ W_in)) @ W_out
     """
 
     def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
@@ -35,15 +35,12 @@ class GatedMLP(CanBeUsedAsMLP):
         self.W_in = nn.Parameter(torch.empty(self.cfg.d_model, self.d_mlp, dtype=self.cfg.dtype))
         self.W_out = nn.Parameter(torch.empty(self.d_mlp, self.cfg.d_model, dtype=self.cfg.dtype))
         self.W_gate = nn.Parameter(torch.empty(self.cfg.d_model, self.d_mlp, dtype=self.cfg.dtype))
-
-        self.b_in = nn.Parameter(torch.zeros(self.d_mlp, dtype=self.cfg.dtype))
-        self.b_out = nn.Parameter(torch.zeros(self.cfg.d_model, dtype=self.cfg.dtype))
-
+        
         # hook on gate output but before act_fn
         self.hook_pre = HookPoint()  # [batch, pos, d_mlp]
         # hook on the linear component of the input
         self.hook_pre_linear = HookPoint()  # [batch, pos, d_mlp]
-        # hook on act_fn(gate_output) * W_in(x) + b_in
+        # hook on act_fn(gate_output) * W_in(x)
         self.hook_post = HookPoint()  # [batch, pos, d_mlp]
 
     def forward(
@@ -69,7 +66,7 @@ class GatedMLP(CanBeUsedAsMLP):
             )
 
             post_act = self.hook_post(
-                (self.act_fn(pre_act) * pre_linear) + self.b_in
+                self.act_fn(pre_act) * pre_linear
             )  # [batch, pos, d_mlp]
 
-        return batch_addmm(self.b_out, self.W_out, post_act)
+        return torch.matmul(post_act, self.W_out)

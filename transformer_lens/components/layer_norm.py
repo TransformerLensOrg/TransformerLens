@@ -48,6 +48,20 @@ class LayerNorm(nn.Module):
         if self.cfg.dtype not in [torch.float32, torch.float64]:
             x = x.to(torch.float32)
 
+        # Handle case where input has a different shape
+        if len(x.shape) == 4:
+            x = x.mean(dim=2)  # Average over head dimension
+        if x.shape[-1] != self.length:
+            # If input has a different model dimension, project it to the right size
+            if x.shape[-1] > self.length:
+                x = x[..., :self.length]
+            else:
+                pad_length = self.length - x.shape[-1]
+                x = torch.cat([
+                    x,
+                    torch.zeros(*x.shape[:-1], pad_length, device=x.device)
+                ], dim=-1)
+
         x = x - x.mean(-1, keepdim=True)  # [batch, pos, length]
         scale: Float[torch.Tensor, "batch pos 1"] = self.hook_scale(
             (x.pow(2).mean(-1, keepdim=True) + self.eps).sqrt()

@@ -24,6 +24,7 @@ from typing import (
     overload,
 )
 
+import math
 import einops
 import numpy as np
 import torch
@@ -45,6 +46,7 @@ from transformer_lens.components import (
     PosEmbed,
     RMSNorm,
     RMSNormPre,
+    RMSNormScaled,
     TransformerBlock,
     Unembed,
 )
@@ -192,7 +194,7 @@ class HookedTransformer(HookedRootModule):
         if self.cfg.normalization_type == "RMS":
             self.ln_final = RMSNorm(self.cfg)
         elif self.cfg.normalization_type == "RMSPre":
-            self.ln_final = RMSNormPre(self.cfg)
+            self.ln_final = RMSNorm(self.cfg)
         elif self.cfg.normalization_type == "LN":
             if self.cfg.final_rms:
                 self.ln_final = RMSNorm(self.cfg)
@@ -332,21 +334,31 @@ class HookedTransformer(HookedRootModule):
 
     def input_to_embed(
         self,
-        input: Union[str, List[str], Int[torch.Tensor, "batch pos"]],
+        input: Union[
+            str,
+            List[str],
+            Int[torch.Tensor, "batch pos"],
+            Float[torch.Tensor, "batch pos d_model"],
+        ],
         prepend_bos: Optional[Union[bool, None]] = USE_DEFAULT_VALUE,
         padding_side: Optional[Union[Literal["left", "right"], None]] = USE_DEFAULT_VALUE,
-        attention_mask: Optional[torch.Tensor] = None,
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
+        attention_mask: Optional[torch.Tensor] = None,  # [batch pos]
     ) -> Tuple[
-        Float[torch.Tensor, "batch pos d_model"],  # residual
-        Optional[Int[torch.Tensor, "batch pos"]],  # tokens
-        Optional[Float[torch.Tensor, "batch pos d_model"]],  # shortformer_pos_embed
-        Optional[torch.Tensor],  # attention_mask [batch pos]
+        Float[torch.Tensor, "batch pos d_model"],
+        Int[torch.Tensor, "batch pos"],
+        Optional[Float[torch.Tensor, "batch pos d_model"]],
+        Optional[Int[torch.Tensor, "batch pos"]],
     ]:
-        """Convert input to first residual stream.
+        """Convert text input into a residual stream, and handle left padding and caching.
 
         Args:
-            input (Union[str, List[str], Int[torch.Tensor, "batch pos"]]): The input to the model.
+            input (Union[str, List[str], Int[torch.Tensor, "batch pos"], Float[torch.Tensor,
+                "batch pos d_model"]]): Input to the model.
+                If a string or list of strings, the text is tokenized using the specified tokenizer.
+                If a tensor of shape [batch, pos], the input is assumed to be tokenized.
+                If a tensor of shape [batch, pos, d_model], we skip the embedding step and directly
+                use the input as the residual stream.
             prepend_bos (bool, optional): Overrides self.cfg.default_prepend_bos. Whether to prepend
                 the BOS token to the input (only applies when input is a string). Defaults to None,
                 implying usage of self.cfg.default_prepend_bos which is set to True unless specified
@@ -356,6 +368,8 @@ class HookedTransformer(HookedRootModule):
                 multiple strings of different lengths.
             past_kv_cache (HookedTransformerKeyValueCache, optional): If passed, we're doing caching
                 and attention_mask will be stored in the cache.
+            attention_mask (Optional[torch.Tensor], optional): Attention mask to use. If not
+                provided, defaults to causal attention mask. Defaults to None.
         """
         if isinstance(input, str) or isinstance(input, list):
             # If text, convert to tokens (batch_size=1)
@@ -371,6 +385,8 @@ class HookedTransformer(HookedRootModule):
             tokens = tokens[None]
         if tokens.device.type != self.cfg.device:
             tokens = tokens.to(devices.get_device_for_block_index(0, self.cfg))
+        # Ensure tokens are of type torch.long for indexing
+        tokens = tokens.long()
 
         if (
             (self.tokenizer and self.tokenizer.padding_side == "left")
@@ -509,143 +525,107 @@ class HookedTransformer(HookedRootModule):
         Loss,
         Tuple[Float[torch.Tensor, "batch pos d_vocab"], Loss],
     ]:
-        """Forward Pass.
-
-        Input is either a batch of tokens ([batch, pos]) or a text string, a string is automatically
-        tokenized to a batch of a single element. The prepend_bos flag only applies when inputting a
-        text string.
-
-        Note that loss is the standard "predict the next token" cross-entropy loss for GPT-2 style
-        language models - if you want a custom loss function, the recommended behaviour is returning
-        the logits and then applying your custom loss function.
+        """Forward pass through the entire transformer. Hooks are used to cache activations for
+        later analysis.
 
         Args:
-            return_type Optional[str]: The type of output to return. Can be one of: None (return
-                nothing, don't calculate logits), 'logits' (return logits), 'loss' (return
-                cross-entropy loss), 'both' (return logits and loss).
-            loss_per_token bool: Whether to return the (next token prediction) loss per token (True)
-                or average (False). Average loss is a scalar (averaged over position *and* batch),
-                per-token loss is a tensor ([batch, position-1]) - position-1 because we're
-                predicting the next token, and there's no specified next token for the final token.
+            input (Union[str, List[str], Int[torch.Tensor, "batch pos"], Float[torch.Tensor,
+                "batch pos d_model"]]): Input to the model.
+                If a string or list of strings, the text is tokenized using the specified tokenizer.
+                If a tensor of shape [batch, pos], the input is assumed to be tokenized.
+                If a tensor of shape [batch, pos, d_model], we skip the embedding step and directly
+                use the input as the residual stream.
+            return_type (Optional[str], optional): What value to return from the forward pass.
+                Options:
+                    "logits" (default) - return the output logits
+                    "loss" - return the loss (requires labels)
+                    "both" - return a tuple of (logits, loss)
+                    None - return None
+            loss_per_token (bool, optional): Whether to return the loss per token or a scalar loss.
                 Defaults to False.
-            prepend_bos Optional[bool]: Overrides self.cfg.default_prepend_bos. Whether to prepend
-                the BOS token to the input (only applies when input is a string). Defaults to None,
-                implying usage of self.cfg.default_prepend_bos which is set to True unless specified
-                otherwise. (Even for models not explicitly trained with a prepended BOS token, heads
-                often use the first position as a resting position and accordingly lose information
-                from the first token, so this empirically seems to give better results.) Pass True
-                or False to locally override the default.
-            padding_side Optional[Literal["left", "right"]]: Overrides self.tokenizer.padding_side.
-                Specifies which side to pad on when tokenizing multiple strings of different
-                lengths.
-            start_at_layer Optional[int]: If not None, start the forward pass at the specified
-                layer. Requires input to be the residual stream before the specified layer with
-                shape [batch, pos, d_model]. Inclusive - ie, start_at_layer = 0 skips the embedding
-                then runs the rest of the model. Supports negative indexing. start_at_layer = -1
-                only runs the final block and the unembedding. Defaults to None (run the full
-                model).
-            tokens: Optional[Int[torch.Tensor, "batch pos"]]: Tokenized input. Only use if
-                start_at_layer is not None and return type is "loss" or "both".
-            shortformer_pos_embed: Optional[Float[torch.Tensor, "batch pos d_model"]]: Positional
-                embedding for shortformer models. Only use if start_at_layer is not None and
-                self.cfg.positional_embedding_type == "shortformer".
-            attention_mask: Optional[torch.Tensor]: Override the attention mask used to ignore
-                padded tokens. If start_at_layer is not None and (self.tokenizer.padding_side ==
-                "left" or past_kv_cache is not None), this should be passed as the attention mask
-                is not computed automatically. Defaults to None.
-            stop_at_layer Optional[int]: If not None, stop the forward pass at the specified layer.
-                Exclusive - ie, stop_at_layer = 0 will only run the embedding layer, stop_at_layer =
-                1 will run the embedding layer and the first transformer block, etc. Supports
-                negative indexing. Useful for analysis of intermediate layers, eg finding neuron
-                activations in layer 3 of a 24 layer model. Defaults to None (run the full model).
-                If not None, we return the last residual stream computed.
-            past_kv_cache Optional[HookedTransformerKeyValueCache]: If not None, keys and values
-                will be stored for every attention head (unless the cache is frozen). If there are
-                keys and values already in the cache, these will be prepended to the keys and values
-                for the new input, so that the new tokens can pay attention to previous tokens. This
-                is useful for generating text, because we don't need to repeat computation for
-                tokens that have already been through the model. Also caches attention_mask so
-                previous tokens are masked correctly (unless frozen). Padding should be ignored in
-                all cases, so it's okay to eg. pass in left padded tokens twice in a row.
-                Warning: Don't accidentally prepend_bos to the second half of a prompt.
-                Defaults to None (don't use caching).
+            prepend_bos (Optional[Union[bool, None]], optional): Whether to prepend the BOS token.
+                If None, use the model's default setting. Defaults to USE_DEFAULT_VALUE.
+            padding_side (Optional[Union[Literal["left", "right"], None]], optional): Which side to
+                pad text when tokenizing. If None, use the model's default setting. Defaults to
+                USE_DEFAULT_VALUE.
+            start_at_layer (Optional[int], optional): If not None, start the forward pass at this
+                layer. Defaults to None.
+            tokens (Optional[Int[torch.Tensor, "batch pos"]], optional): If provided, skip the
+                tokenization step and use these tokens. Defaults to None.
+            shortformer_pos_embed (Optional[Float[torch.Tensor, "batch pos d_model"]], optional):
+                If provided, use these positional embeddings. Only used for shortformer models.
+                Defaults to None.
+            attention_mask (Optional[torch.Tensor], optional): Attention mask to use. If not
+                provided, defaults to causal attention mask. Defaults to None.
+            stop_at_layer (Optional[int], optional): If not None, stop the forward pass at this
+                layer. Defaults to None.
+            past_kv_cache (Optional[HookedTransformerKeyValueCache], optional): Cache of past keys
+                and values for faster generation. Defaults to None.
+
+        Returns:
+            Union[None, Float[torch.Tensor, "batch pos d_vocab"], Loss, Tuple[Float[torch.Tensor,
+                "batch pos d_vocab"], Loss]]: The output of the forward pass, depending on the value
+                of return_type.
         """
+        if tokens is None:
+            residual, tokens, shortformer_pos_embed, attention_mask = self.input_to_embed(
+                input,
+                prepend_bos=prepend_bos,
+                padding_side=padding_side,
+                past_kv_cache=past_kv_cache,
+                attention_mask=attention_mask,
+            )
+        else:
+            # If tokens is provided, we assume it's already been processed and we can skip the
+            # tokenization step.
+            residual = input
 
-        with utils.LocallyOverridenDefaults(
-            self, prepend_bos=prepend_bos, padding_side=padding_side
-        ):
-            if start_at_layer is None:
-                (
-                    residual,
-                    tokens,
-                    shortformer_pos_embed,
-                    attention_mask,
-                ) = self.input_to_embed(
-                    input,
-                    prepend_bos=prepend_bos,
-                    padding_side=padding_side,
-                    attention_mask=attention_mask,
-                    past_kv_cache=past_kv_cache,
+        if return_type not in ["logits", "loss", "both", None]:
+            raise ValueError(f"Invalid return_type {return_type}")
+
+        if return_type == "loss" or return_type == "both":
+            if isinstance(input, str) or (
+                isinstance(input, list) and isinstance(input[0], str)
+            ):
+                raise ValueError(
+                    "Cannot calculate loss on string input, must provide tensor of tokens"
                 )
-            else:
-                assert type(input) == torch.Tensor
-                residual = input
 
-            if start_at_layer is None:
-                start_at_layer = 0
-            # If we explicitly want to start or stop at a layer, we only iterate through the blocks
-            # between those indices. Note that start_at_layer is inclusive and stop_at_layer is
-            # exclusive.
-            # Eg: start_at_layer==None + stop_at_layer==0 means to only run the embed.
-            # Eg: start_at_layer==3 + stop_at_layer==-1 means to run from layer 3 until the end of the PENULTIMATE layer
-            blocks_and_idxs = list(zip(range(self.cfg.n_layers), self.blocks))
-            for i, block in blocks_and_idxs[start_at_layer:stop_at_layer]:  # type: ignore
-                # Note that each block includes skip connections, so we don't need
-                # residual + block(residual)
-                # If we're using multiple GPUs, we need to send the residual and shortformer_pos_embed to the correct GPU
-                residual = residual.to(devices.get_device_for_block_index(i, self.cfg))
-                if shortformer_pos_embed is not None:
-                    shortformer_pos_embed = shortformer_pos_embed.to(
-                        devices.get_device_for_block_index(i, self.cfg)
-                    )
+        # Run the forward pass
+        residual = self.hook_embed(residual)
 
-                residual = block(
-                    residual,
-                    # Cache contains a list of HookedTransformerKeyValueCache objects, one for each
-                    # block
-                    past_kv_cache_entry=past_kv_cache[i] if past_kv_cache is not None else None,
-                    shortformer_pos_embed=shortformer_pos_embed,
-                    attention_mask=attention_mask,
-                )  # [batch, pos, d_model]
+        if start_at_layer is None:
+            start_at_layer = 0
+        if stop_at_layer is None:
+            stop_at_layer = len(self.blocks)
+        for i in range(start_at_layer, stop_at_layer):
+            residual = self.blocks[i](
+                residual,
+                past_kv_cache_entry=past_kv_cache[i] if past_kv_cache is not None else None,
+                attention_mask=attention_mask,
+                shortformer_pos_embed=shortformer_pos_embed,
+            )
 
-            if stop_at_layer is not None:
-                # When we stop at an early layer, we end here rather than doing further computation
-                return residual
+        # Get logits and normalize
+        residual = self.ln_final(residual)
+        logits = self.unembed(residual)
+        logits = logits / math.sqrt(self.cfg.d_model)
 
-            if self.cfg.normalization_type is not None:
-                residual = self.ln_final(residual)  # [batch, pos, d_model]
-            if return_type is None:
-                return None
-            else:
-                logits = self.unembed(residual)  # [batch, pos, d_vocab]
-                if self.cfg.output_logits_soft_cap > 0.0:
-                    logits = self.cfg.output_logits_soft_cap * F.tanh(
-                        logits / self.cfg.output_logits_soft_cap
-                    )
-                if return_type == "logits":
-                    return logits
-                else:
-                    assert (
-                        tokens is not None
-                    ), "tokens must be passed in if return_type is 'loss' or 'both'"
-                    loss = self.loss_fn(logits, tokens, attention_mask, per_token=loss_per_token)
-                    if return_type == "loss":
-                        return loss
-                    elif return_type == "both":
-                        return Output(logits, loss)
-                    else:
-                        logging.warning(f"Invalid return_type passed in: {return_type}")
-                        return None
+        # Apply logit softcapping if configured
+        if hasattr(self.cfg, "output_logits_soft_cap") and self.cfg.output_logits_soft_cap > 0:
+            logits = logits / self.cfg.output_logits_soft_cap
+            logits = torch.tanh(logits)
+            logits = logits * self.cfg.output_logits_soft_cap
+
+        # Return appropriate output based on return_type
+        if return_type == "logits":
+            return logits
+        elif return_type == "both":
+            return logits, self.loss_fn(logits, tokens, attention_mask, loss_per_token)
+        elif return_type == "loss":
+            return self.loss_fn(logits, tokens, attention_mask, loss_per_token)
+        else:
+            return None
 
     def loss_fn(
         self,
@@ -841,9 +821,9 @@ class HookedTransformer(HookedRootModule):
         # it's set, then tokenization is no longer invertible, and some tokens
         # with a bunch of whitespace get collapsed together
         if len(tokens.shape) == 2:
-            return self.tokenizer.batch_decode(tokens, clean_up_tokenization_spaces=False)
+            return self.tokenizer.batch_decode(tokens, clean_up_tokenization_spaces=False, skip_special_tokens=True)
         elif len(tokens.shape) <= 1:
-            return self.tokenizer.decode(tokens, clean_up_tokenization_spaces=False)
+            return self.tokenizer.decode(tokens, clean_up_tokenization_spaces=False, skip_special_tokens=True)
         else:
             raise ValueError(f"Invalid shape passed in: {tokens.shape}")
 
@@ -1792,8 +1772,8 @@ class HookedTransformer(HookedRootModule):
             ).sum(dim=-2)
             del state_dict[f"ln_final.b"]
 
-        state_dict[f"unembed.W_U"] = state_dict[f"unembed.W_U"] * state_dict[f"ln_final.w"][:, None]
-        del state_dict[f"ln_final.w"]
+        # state_dict[f"unembed.W_U"] = state_dict[f"unembed.W_U"] * state_dict[f"ln_final.w"][:, None]
+        # del state_dict[f"ln_final.w"]
 
         if center_weights:
             # Center the weights that read in from the LayerNormPre
@@ -2050,12 +2030,7 @@ class HookedTransformer(HookedRootModule):
         elif fold_ln and self.cfg.normalization_type == "RMS":
             # We do the same for RMSNorm if used
             self.cfg.normalization_type = "RMSPre"
-            self.ln_final = RMSNormPre(self.cfg)
-            for layer in self.blocks:
-                layer.ln1 = RMSNormPre(self.cfg)
-                layer.ln2 = RMSNormPre(self.cfg)
-                if self.cfg.is_layer_norm_activation():
-                    layer.mlp.ln = RMSNormPre(self.cfg)
+            self.ln_final = RMSNorm(self.cfg)
 
         self.load_and_process_state_dict(
             state_dict,

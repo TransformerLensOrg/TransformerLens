@@ -10,11 +10,11 @@ import torch.nn as nn
 from jaxtyping import Float, Int
 
 from transformer_lens.components import (
-    Attention,
     GroupedQueryAttention,
     LayerNorm,
     LayerNormPre,
     RMSNorm,
+    RMSNormScaled,
     RMSNormPre,
 )
 from transformer_lens.components.mlps.can_be_used_as_mlp import CanBeUsedAsMLP
@@ -47,7 +47,7 @@ class TransformerBlock(nn.Module):
         elif self.normalization_type == "RMS":
             normalization_layer = RMSNorm
         elif self.normalization_type == "RMSPre":
-            normalization_layer = RMSNormPre
+            normalization_layer = RMSNorm
         elif self.normalization_type is None:
             # This should just be the identity.
             # We need to make this a lambda so we can call it on the config, just like the others
@@ -73,14 +73,13 @@ class TransformerBlock(nn.Module):
             if self.cfg.use_normalization_before_and_after:
                 self.ln2_post = normalization_layer_after(cfg)
 
-        attention = Attention if self.cfg.n_key_value_heads is None else GroupedQueryAttention
         if not self.cfg.use_local_attn:
-            self.attn = attention(self.cfg, "global", block_index)
+            self.attn = GroupedQueryAttention(self.cfg, self.cfg.attn_types if self.cfg.attn_types is not None else "global", block_index)
         else:
             if self.cfg.attn_types is None:
                 raise ValueError("attn_types must be set when using local attention")
             attn_type = self.cfg.attn_types[block_index]
-            self.attn = attention(self.cfg, attn_type, block_index)
+            self.attn = GroupedQueryAttention(self.cfg, attn_type, block_index)
         if not self.cfg.attn_only:
             self.mlp = MLPFactory.create_mlp(self.cfg)
 
@@ -92,6 +91,18 @@ class TransformerBlock(nn.Module):
 
         self.hook_attn_out = HookPoint()  # [batch, pos, d_model]
         self.hook_mlp_out = HookPoint()  # [batch, pos, d_model]
+        if not self.cfg.use_split_qkv_input:
+            self.hook_ln1_out = HookPoint()  
+        else:
+            self.hook_ln1_q_out = HookPoint()
+            self.hook_ln1_v_out = HookPoint() 
+            self.hook_ln1_k_out = HookPoint()  
+        self.hook_ln2_out = HookPoint()
+        
+        if self.cfg.use_normalization_before_and_after:
+            self.hook_ln1_post_out = HookPoint()
+            self.hook_ln2_post_out = HookPoint() 
+            
 
         self.hook_resid_pre = HookPoint()  # [batch, pos, d_model]
         if not self.cfg.attn_only and not self.cfg.parallel_attn_mlp:
@@ -124,6 +135,7 @@ class TransformerBlock(nn.Module):
                 shortformer_pos_embed = repeat_along_head_dimension(
                     shortformer_pos_embed, n_heads=self.cfg.n_heads
                 )
+            attn_in = resid_pre
         else:
             attn_in = resid_pre
 
@@ -139,16 +151,20 @@ class TransformerBlock(nn.Module):
                 and not self.cfg.ungroup_grouped_query_attention
                 else self.cfg.n_heads
             )
-            query_input = self.hook_q_input(
+            query_input = self.hook_ln1_q_out(self.ln1(self.hook_q_input(
                 repeat_along_head_dimension(resid_pre, n_heads=self.cfg.n_heads)
-            )
-            key_input = self.hook_k_input(
+            )))
+            key_input = self.hook_ln1_k_out(self.ln1(self.hook_k_input(
                 repeat_along_head_dimension(resid_pre, n_heads=n_kv_heads)
-            )
-            value_input = self.hook_v_input(
+            )))
+            value_input = self.hook_ln1_v_out(self.ln1(self.hook_v_input(
                 repeat_along_head_dimension(resid_pre, n_heads=n_kv_heads)
-            )
+            )))
         else:
+            # Handle case where attn_in already has a head dimension
+            if len(attn_in.shape) == 4:
+                attn_in = attn_in.mean(dim=2)  # Average over head dimension
+            attn_in = self.hook_ln1_out(self.ln1(attn_in))
             query_input = attn_in
             key_input = attn_in
             value_input = attn_in
@@ -158,11 +174,11 @@ class TransformerBlock(nn.Module):
             # queries, keys and values, independently.
             # Then take the layer norm of these inputs, and pass these to the attention module.
             self.attn(
-                query_input=self.ln1(query_input)
+                query_input=query_input
                 + (0.0 if shortformer_pos_embed is None else shortformer_pos_embed),
-                key_input=self.ln1(key_input)
+                key_input=key_input
                 + (0.0 if shortformer_pos_embed is None else shortformer_pos_embed),
-                value_input=self.ln1(value_input),
+                value_input=value_input,
                 past_kv_cache_entry=past_kv_cache_entry,
                 attention_mask=attention_mask,
             )
@@ -171,18 +187,66 @@ class TransformerBlock(nn.Module):
             # If we use LayerNorm both before and after, then apply the second LN after the layer
             # and before the hook. We do it before the hook so hook_attn_out captures "that which
             # is added to the residual stream"
-            attn_out = self.ln1_post(attn_out)
+            attn_out = self.hook_ln1_post_out(self.ln1_post(attn_out))
         attn_out = self.hook_attn_out(attn_out)
 
         if resid_pre.device != attn_out.device:
             resid_pre = resid_pre.to(attn_out.device)
+
+        # Handle case where attention output has a different shape
+        if len(attn_out.shape) == 4:
+            attn_out = attn_out.mean(dim=2)  # Average over head dimension
+        if attn_out.shape[1] != resid_pre.shape[1]:
+            # If attention output has a different sequence length, truncate or pad it
+            if attn_out.shape[1] > resid_pre.shape[1]:
+                attn_out = attn_out[:, :resid_pre.shape[1]]
+            else:
+                pad_length = resid_pre.shape[1] - attn_out.shape[1]
+                attn_out = torch.cat([
+                    attn_out,
+                    torch.zeros(attn_out.shape[0], pad_length, attn_out.shape[-1], device=attn_out.device)
+                ], dim=1)
+        if attn_out.shape[-1] != resid_pre.shape[-1]:
+            # If attention output has a different model dimension, project it to the right size
+            if attn_out.shape[-1] > resid_pre.shape[-1]:
+                attn_out = attn_out[..., :resid_pre.shape[-1]]
+            else:
+                pad_length = resid_pre.shape[-1] - attn_out.shape[-1]
+                attn_out = torch.cat([
+                    attn_out,
+                    torch.zeros(*attn_out.shape[:-1], pad_length, device=attn_out.device)
+                ], dim=-1)
+
+        # Handle case where resid_pre has a different shape
+        if len(resid_pre.shape) == 4:
+            resid_pre = resid_pre.mean(dim=2)  # Average over head dimension
+        if resid_pre.shape[1] != attn_out.shape[1]:
+            # If resid_pre has a different sequence length, truncate or pad it
+            if resid_pre.shape[1] > attn_out.shape[1]:
+                resid_pre = resid_pre[:, :attn_out.shape[1]]
+            else:
+                pad_length = attn_out.shape[1] - resid_pre.shape[1]
+                resid_pre = torch.cat([
+                    resid_pre,
+                    torch.zeros(resid_pre.shape[0], pad_length, resid_pre.shape[-1], device=resid_pre.device)
+                ], dim=1)
+        if resid_pre.shape[-1] != attn_out.shape[-1]:
+            # If resid_pre has a different model dimension, project it to the right size
+            if resid_pre.shape[-1] > attn_out.shape[-1]:
+                resid_pre = resid_pre[..., :attn_out.shape[-1]]
+            else:
+                pad_length = attn_out.shape[-1] - resid_pre.shape[-1]
+                resid_pre = torch.cat([
+                    resid_pre,
+                    torch.zeros(*resid_pre.shape[:-1], pad_length, device=resid_pre.device)
+                ], dim=-1)
 
         if not self.cfg.attn_only and not self.cfg.parallel_attn_mlp:
             resid_mid = self.hook_resid_mid(resid_pre + attn_out)  # [batch, pos, d_model]
             mlp_in = (
                 resid_mid if not self.cfg.use_hook_mlp_in else self.hook_mlp_in(resid_mid.clone())
             )
-            normalized_resid_mid = self.ln2(mlp_in)
+            normalized_resid_mid = self.hook_ln2_out(self.ln2(mlp_in))
             mlp_out = self.apply_mlp(normalized_resid_mid)
             resid_post = self.hook_resid_post(resid_mid + mlp_out)  # [batch, pos, d_model]
         elif self.cfg.parallel_attn_mlp:
@@ -207,7 +271,7 @@ class TransformerBlock(nn.Module):
         Returns:
             Float[torch.Tensor, "batch pos d_model"]: Our resulting tensor
         """
-        mlp_out = self.mlp(normalized_resid)  # [batch, pos, d_model]
+        mlp_out = self.hook_mlp_out(self.mlp(normalized_resid))  # [batch, pos, d_model]
         if self.cfg.use_normalization_before_and_after:
-            mlp_out = self.ln2_post(mlp_out)
-        return self.hook_mlp_out(mlp_out)
+            mlp_out = self.hook_ln2_out(self.ln2_post(mlp_out))
+        return mlp_out

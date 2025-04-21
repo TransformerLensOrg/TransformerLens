@@ -12,6 +12,7 @@ from .layer_norm_pre import LayerNormPre
 from .pos_embed import PosEmbed
 from .rms_norm import RMSNorm
 from .rms_norm_pre import RMSNormPre
+from .rms_norm_scaled import RMSNormScaled
 from .token_typed_embed import TokenTypeEmbed
 from .unembed import Unembed
 

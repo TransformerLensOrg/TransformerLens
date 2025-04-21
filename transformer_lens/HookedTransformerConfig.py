@@ -192,6 +192,9 @@ class HookedTransformerConfig:
         NTK_by_parts_factor (float): The overall factor used in the "NTK-by-parts" method that
             affects the rate of change between low and high-frequency interpolation strategies.
             Defaults to 8.0.
+        rope_local_base_freq (float): The base frequency for rotary positional embeddings in local attention layers.
+            Used in hybrid RoPE configurations where different base frequencies are used for local and global attention.
+            Defaults to 10000.0, which is the standard RoPE base frequency.
 
 
     """
@@ -221,6 +224,7 @@ class HookedTransformerConfig:
     checkpoint_value: Optional[int] = None
     tokenizer_name: Optional[str] = None
     window_size: Optional[int] = None
+    sliding_window_pattern: Optional[int] = None
     attn_types: Optional[List] = None
     init_mode: str = "gpt2"
     normalization_type: Optional[str] = "LN"
@@ -262,6 +266,7 @@ class HookedTransformerConfig:
     NTK_by_parts_low_freq_factor: float = 1.0
     NTK_by_parts_high_freq_factor: float = 4.0
     NTK_by_parts_factor: float = 8.0
+    rope_local_base_freq: float = 10000.0
 
     def __post_init__(self):
         if self.n_heads == -1:

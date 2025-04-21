@@ -23,12 +23,15 @@ class Embed(nn.Module):
         # Some models (e.g. Bloom) need post embedding layer norm
         if self.cfg.post_embedding_ln:
             self.ln = LayerNorm(self.cfg)
+        self.embed_scale = self.cfg.d_model ** 0.5
 
     def forward(
         self, tokens: Int[torch.Tensor, "batch pos"]
     ) -> Float[torch.Tensor, "batch pos d_model"]:
         # If A has shape [a, b] and B has shape [c, d], then A[:, B] has shape [a, c, d]
         # B acts as a tensor of indices into the second dimension (so >=0 and <b)
+        embed = self.W_E[tokens, :]
+        # embed = embed * (self.cfg.d_model ** 0.5)
         if self.cfg.post_embedding_ln:
-            return self.ln(self.W_E[tokens, :])
-        return self.W_E[tokens, :]
+            embed = self.ln(embed)
+        return embed * self.embed_scale
