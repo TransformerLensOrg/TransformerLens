@@ -91,6 +91,18 @@ class TransformerBlock(nn.Module):
 
         self.hook_attn_out = HookPoint()  # [batch, pos, d_model]
         self.hook_mlp_out = HookPoint()  # [batch, pos, d_model]
+        if not self.cfg.use_split_qkv_input:
+            self.hook_ln1_out = HookPoint()  
+        else:
+            self.hook_ln1_q_out = HookPoint()
+            self.hook_ln1_v_out = HookPoint() 
+            self.hook_ln1_k_out = HookPoint()  
+        self.hook_ln2_out = HookPoint()
+        
+        if self.cfg.use_normalization_before_and_after:
+            self.hook_ln1_post_out = HookPoint()
+            self.hook_ln2_post_out = HookPoint() 
+            
 
         self.hook_resid_pre = HookPoint()  # [batch, pos, d_model]
         if not self.cfg.attn_only and not self.cfg.parallel_attn_mlp:
@@ -139,20 +151,20 @@ class TransformerBlock(nn.Module):
                 and not self.cfg.ungroup_grouped_query_attention
                 else self.cfg.n_heads
             )
-            query_input = self.ln1(self.hook_q_input(
+            query_input = self.hook_ln1_q_out(self.ln1(self.hook_q_input(
                 repeat_along_head_dimension(resid_pre, n_heads=self.cfg.n_heads)
-            ))
-            key_input = self.ln1(self.hook_k_input(
+            )))
+            key_input = self.hook_ln1_k_out(self.ln1(self.hook_k_input(
                 repeat_along_head_dimension(resid_pre, n_heads=n_kv_heads)
-            ))
-            value_input = self.ln1(self.hook_v_input(
+            )))
+            value_input = self.hook_ln1_v_out(self.ln1(self.hook_v_input(
                 repeat_along_head_dimension(resid_pre, n_heads=n_kv_heads)
-            ))
+            )))
         else:
             # Handle case where attn_in already has a head dimension
             if len(attn_in.shape) == 4:
                 attn_in = attn_in.mean(dim=2)  # Average over head dimension
-            attn_in = self.ln1(attn_in)
+            attn_in = self.hook_ln1_out(self.ln1(attn_in))
             query_input = attn_in
             key_input = attn_in
             value_input = attn_in
@@ -175,7 +187,7 @@ class TransformerBlock(nn.Module):
             # If we use LayerNorm both before and after, then apply the second LN after the layer
             # and before the hook. We do it before the hook so hook_attn_out captures "that which
             # is added to the residual stream"
-            attn_out = self.ln1_post(attn_out)
+            attn_out = self.hook_ln1_post_out(self.ln1_post(attn_out))
         attn_out = self.hook_attn_out(attn_out)
 
         if resid_pre.device != attn_out.device:
@@ -234,7 +246,7 @@ class TransformerBlock(nn.Module):
             mlp_in = (
                 resid_mid if not self.cfg.use_hook_mlp_in else self.hook_mlp_in(resid_mid.clone())
             )
-            normalized_resid_mid = self.ln2(mlp_in)
+            normalized_resid_mid = self.hook_ln2_out(self.ln2(mlp_in))
             mlp_out = self.apply_mlp(normalized_resid_mid)
             resid_post = self.hook_resid_post(resid_mid + mlp_out)  # [batch, pos, d_model]
         elif self.cfg.parallel_attn_mlp:
@@ -259,7 +271,7 @@ class TransformerBlock(nn.Module):
         Returns:
             Float[torch.Tensor, "batch pos d_model"]: Our resulting tensor
         """
-        mlp_out = self.mlp(normalized_resid)  # [batch, pos, d_model]
+        mlp_out = self.hook_mlp_out(self.mlp(normalized_resid))  # [batch, pos, d_model]
         if self.cfg.use_normalization_before_and_after:
-            mlp_out = self.ln2_post(mlp_out)
-        return self.hook_mlp_out(mlp_out)
+            mlp_out = self.hook_ln2_out(self.ln2_post(mlp_out))
+        return mlp_out

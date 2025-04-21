@@ -2030,7 +2030,7 @@ class HookedTransformer(HookedRootModule):
         elif fold_ln and self.cfg.normalization_type == "RMS":
             # We do the same for RMSNorm if used
             self.cfg.normalization_type = "RMSPre"
-            self.ln_final = RMSNormScaled(self.cfg)
+            self.ln_final = RMSNorm(self.cfg)
 
         self.load_and_process_state_dict(
             state_dict,

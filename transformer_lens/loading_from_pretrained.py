@@ -1543,6 +1543,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "attn_scores_soft_cap": 0,
             "window_size": 512,
             "use_local_attn": True,
+            "dtype": torch.bfloat16,
             "attn_types": (["local"] * 5 + ["global"]) * 4 + ["local", "local"],  # 5:1 pattern as specified by sliding_window_pattern
             "gated_mlp": True,
             "final_rms": True,
