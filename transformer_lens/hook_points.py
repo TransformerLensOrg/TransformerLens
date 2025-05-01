@@ -108,17 +108,19 @@ class HookPoint(nn.Module):
                 module_output = module_output[0]
             return hook(module_output, hook=self)
 
-        full_hook.__name__ = (
-            hook.__repr__()
-        )  # annotate the `full_hook` with the string representation of the `hook` function
+        # annotate the `full_hook` with the string representation of the `hook` function
+        if isinstance(hook, partial):
+            # partial.__repr__() can be extremely slow if arguments contain large objects, which
+            # is common when caching tensors.
+            full_hook.__name__ = f"partial({hook.func.__repr__()},...)"
+        else:
+            full_hook.__name__ = hook.__repr__()
 
         if dir == "fwd":
-            pt_handle = self.register_forward_hook(full_hook)
-            _internal_hooks = self._forward_hooks
+            pt_handle = self.register_forward_hook(full_hook, prepend=prepend)
             visible_hooks = self.fwd_hooks
         elif dir == "bwd":
-            pt_handle = self.register_full_backward_hook(full_hook)
-            _internal_hooks = self._backward_hooks
+            pt_handle = self.register_full_backward_hook(full_hook, prepend=prepend)
             visible_hooks = self.bwd_hooks
         else:
             raise ValueError(f"Invalid direction {dir}")
@@ -127,7 +129,6 @@ class HookPoint(nn.Module):
 
         if prepend:
             # we could just pass this as an argument in PyTorch 2.0, but for now we manually do this...
-            _internal_hooks.move_to_end(handle.hook.id, last=False)  # type: ignore # TODO: this type error could signify a bug
             visible_hooks.insert(0, handle)
 
         else:

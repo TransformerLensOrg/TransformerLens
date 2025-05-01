@@ -279,6 +279,12 @@ class AbstractAttention(ABC, nn.Module):
                 w = einops.rearrange(
                     self.W_O, "head_index d_head d_model -> d_model (head_index d_head)"
                 )
+
+                if self.b_O.device != w.device:
+                    w = w.to(self.b_O.device)
+                if self.b_O.device != z.device:
+                    z = z.to(self.b_O.device)
+
                 out = F.linear(
                     z.reshape(z.shape[0], z.shape[1], self.cfg.d_head * self.cfg.n_heads),
                     w,
@@ -498,7 +504,7 @@ class AbstractAttention(ABC, nn.Module):
             factor = self.cfg.NTK_by_parts_factor
             low_freq_factor = self.cfg.NTK_by_parts_low_freq_factor
             high_freq_factor = self.cfg.NTK_by_parts_high_freq_factor
-            old_context_len = n_ctx
+            old_context_len = self.cfg.NTK_original_ctx_len
 
             low_freq_wavelen = old_context_len / low_freq_factor
             high_freq_wavelen = old_context_len / high_freq_factor
@@ -552,6 +558,10 @@ class AbstractAttention(ABC, nn.Module):
         attention_mask: Optional[Int[torch.Tensor, "batch offset_pos"]] = None,
     ) -> Float[torch.Tensor, "batch pos head_index d_head"]:
         # Only apply rotary to first rotary_dim dimensions (eg, if rotary_dim=64 and d_head=256, only apply to first 1/4 of dimensions)
+
+        if x.device != self.rotary_sin.device:
+            x = x.to(self.rotary_sin.device)
+
         x_pos = x.size(1)
         x_rot = x[..., : self.cfg.rotary_dim]
         x_pass = x[..., self.cfg.rotary_dim :]
