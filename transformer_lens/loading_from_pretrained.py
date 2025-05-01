@@ -161,7 +161,10 @@ OFFICIAL_MODEL_NAMES = [
     "meta-llama/Llama-3.2-3B-Instruct",
     "meta-llama/Llama-3.3-70B-Instruct",
     "Baidicoot/Othello-GPT-Transformer-Lens",
-    "bert-base-cased",
+    "google-bert/bert-base-cased",
+    "google-bert/bert-base-uncased",
+    "google-bert/bert-large-cased",
+    "google-bert/bert-large-uncased",
     "roneneldan/TinyStories-1M",
     "roneneldan/TinyStories-3M",
     "roneneldan/TinyStories-8M",
@@ -182,6 +185,7 @@ OFFICIAL_MODEL_NAMES = [
     "stabilityai/stablelm-tuned-alpha-7b",
     "mistralai/Mistral-7B-v0.1",
     "mistralai/Mistral-7B-Instruct-v0.1",
+    "mistralai/Mistral-Small-24B-Base-2501",
     "mistralai/Mistral-Nemo-Base-2407",
     "mistralai/Mixtral-8x7B-v0.1",
     "mistralai/Mixtral-8x7B-Instruct-v0.1",
@@ -594,6 +598,10 @@ MODEL_ALIASES = {
         "codellama/CodeLlama-7b-Instruct-hf",
     ],
     "Baidicoot/Othello-GPT-Transformer-Lens": ["othello-gpt"],
+    "google-bert/bert-base-cased": ["bert-base-cased"],
+    "google-bert/bert-base-uncased": ["bert-base-uncased"],
+    "google-bert/bert-large-cased": ["bert-large-cased"],
+    "google-bert/bert-large-uncased": ["bert-large-uncased"],
     "roneneldan/TinyStories-1M": ["tiny-stories-1M"],
     "roneneldan/TinyStories-3M": ["tiny-stories-3M"],
     "roneneldan/TinyStories-8M": ["tiny-stories-8M"],
@@ -939,6 +947,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "NTK_by_parts_low_freq_factor": 1.0,
             "NTK_by_parts_high_freq_factor": 4.0,
             "NTK_by_parts_factor": 32.0,
+            "NTK_original_ctx_len": 8192,
         }
     elif "Llama-3.2-3B" in official_model_name:
         cfg_dict = {
@@ -963,6 +972,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "NTK_by_parts_low_freq_factor": 1.0,
             "NTK_by_parts_high_freq_factor": 4.0,
             "NTK_by_parts_factor": 32.0,
+            "NTK_original_ctx_len": 8192,
         }
     elif "Llama-3.3-70B" in official_model_name:
         cfg_dict = {
@@ -979,7 +989,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "normalization_type": "RMS",
             "positional_embedding_type": "rotary",
             "rotary_adjacent_pairs": False,
-            "rotary_dim": 32,
+            "rotary_dim": 128,
             "final_rms": True,
             "gated_mlp": True,
             "rotary_base": 500000.0,
@@ -987,6 +997,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "NTK_by_parts_low_freq_factor": 1.0,
             "NTK_by_parts_high_freq_factor": 4.0,
             "NTK_by_parts_factor": 8.0,
+            "NTK_original_ctx_len": 8192,
         }
     elif "Llama-3.1-8B" in official_model_name:
         cfg_dict = {
@@ -1011,6 +1022,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "NTK_by_parts_low_freq_factor": 1.0,
             "NTK_by_parts_high_freq_factor": 4.0,
             "NTK_by_parts_factor": 8.0,
+            "NTK_original_ctx_len": 8192,
         }
     elif "Llama-3.1-70B" in official_model_name:
         cfg_dict = {
@@ -1035,6 +1047,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "NTK_by_parts_low_freq_factor": 1.0,
             "NTK_by_parts_high_freq_factor": 4.0,
             "NTK_by_parts_factor": 8.0,
+            "NTK_original_ctx_len": 8192,
         }
     elif architecture == "GPTNeoForCausalLM":
         cfg_dict = {
@@ -1128,6 +1141,8 @@ def convert_hf_model_config(model_name: str, **kwargs):
         rotary_pct = hf_config.rotary_pct
         cfg_dict["rotary_dim"] = round(rotary_pct * cfg_dict["d_head"])
     elif architecture == "BertForMaskedLM":
+        # All supported Bert architectures have the same config,
+        # so we can use the BertForMaskedLM config for all of them
         cfg_dict = {
             "d_model": hf_config.hidden_size,
             "d_head": hf_config.hidden_size // hf_config.num_attention_heads,

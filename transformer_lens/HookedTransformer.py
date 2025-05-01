@@ -781,7 +781,8 @@ class HookedTransformer(HookedRootModule):
                 self.tokenizer.padding_side. Specifies which side to pad when tokenizing
                 multiple strings of different lengths.
             move_to_device (bool): Whether to move the output tensor of tokens to the device the
-                model lives on. Defaults to True truncate (bool): If the output tokens are too long,
+                model lives on. Defaults to True
+            truncate (bool): If the output tokens are too long,
                 whether to truncate the output tokens to the model's max context window. Does nothing
                 for shorter inputs. Defaults to True.
         """
@@ -1091,17 +1092,17 @@ class HookedTransformer(HookedRootModule):
         return self.to("mps")
 
     def move_model_modules_to_device(self):
-        self.embed.to(devices.get_device_for_block_index(0, self.cfg))
-        self.hook_embed.to(devices.get_device_for_block_index(0, self.cfg))
+        self.embed.to(devices.get_best_available_device(self.cfg))
+        self.hook_embed.to(devices.get_best_available_device(self.cfg))
         if self.cfg.positional_embedding_type != "rotary":
-            self.pos_embed.to(devices.get_device_for_block_index(0, self.cfg))
-            self.hook_pos_embed.to(devices.get_device_for_block_index(0, self.cfg))
+            self.pos_embed.to(devices.get_best_available_device(self.cfg))
+            self.hook_pos_embed.to(devices.get_best_available_device(self.cfg))
 
         if hasattr(self, "ln_final"):
-            self.ln_final.to(devices.get_device_for_block_index(self.cfg.n_layers - 1, self.cfg))
-        self.unembed.to(devices.get_device_for_block_index(self.cfg.n_layers - 1, self.cfg))
+            self.ln_final.to(devices.get_best_available_device(self.cfg))
+        self.unembed.to(devices.get_best_available_device(self.cfg))
         for i, block in enumerate(self.blocks):
-            block.to(devices.get_device_for_block_index(i, self.cfg))
+            block.to(devices.get_best_available_device(self.cfg))
 
     @classmethod
     def from_pretrained(
