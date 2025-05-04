@@ -5,6 +5,7 @@ from .gptj import convert_gptj_weights
 from .neox import convert_neox_weights
 from .llama import convert_llama_weights
 from .bert import convert_bert_weights
+from .distilbertForSequenceClassification import convert_distilbertForSequenceClassification_weights
 from .mistral import convert_mistral_weights
 from .mixtral import convert_mixtral_weights
 from .bloom import convert_bloom_weights

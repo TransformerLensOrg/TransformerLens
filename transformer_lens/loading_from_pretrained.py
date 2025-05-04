@@ -16,6 +16,7 @@ from transformers import (
     AutoConfig,
     AutoModelForCausalLM,
     BertForPreTraining,
+    DistilBertForSequenceClassification,
     T5ForConditionalGeneration,
 )
 
@@ -25,6 +26,7 @@ from transformer_lens.pretrained.weight_conversions import (
     convert_bert_weights,
     convert_bloom_weights,
     convert_coder_weights,
+    convert_distilbertForSequenceClassification_weights,
     convert_gemma_weights,
     convert_gpt2_weights,
     convert_gptj_weights,
@@ -1838,6 +1840,13 @@ def get_pretrained_state_dict(
             huggingface_token = os.environ.get("HF_TOKEN", "")
             if official_model_name in NON_HF_HOSTED_MODEL_NAMES:
                 raise NotImplementedError("Model not hosted on HuggingFace, must pass in hf_model")
+            elif "distilbert-base-uncased-finetuned-sst-2-english" in official_model_name:
+                hf_model = DistilBertForSequenceClassification.from_pretrained(
+                    official_model_name,
+                    torch_dtype=dtype,
+                    token=huggingface_token if len(huggingface_token) > 0 else None,
+                    **kwargs,
+                )
             elif "bert" in official_model_name:
                 hf_model = BertForPreTraining.from_pretrained(
                     official_model_name,
@@ -1879,6 +1888,8 @@ def get_pretrained_state_dict(
             state_dict = convert_llama_weights(hf_model, cfg)
         elif cfg.original_architecture == "BertForMaskedLM":
             state_dict = convert_bert_weights(hf_model, cfg)
+        elif cfg.original_architecture == "DistilBertForSequenceClassification":
+            state_dict = convert_distilbertForSequenceClassification_weights(hf_model, cfg)
         elif cfg.original_architecture == "T5ForConditionalGeneration":
             state_dict = convert_t5_weights(hf_model, cfg)
         elif cfg.original_architecture == "MistralForCausalLM":
