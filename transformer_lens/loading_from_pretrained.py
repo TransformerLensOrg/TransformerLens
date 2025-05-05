@@ -947,6 +947,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "NTK_by_parts_low_freq_factor": 1.0,
             "NTK_by_parts_high_freq_factor": 4.0,
             "NTK_by_parts_factor": 32.0,
+            "NTK_original_ctx_len": 8192,
         }
     elif "Llama-3.2-3B" in official_model_name:
         cfg_dict = {
@@ -971,6 +972,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "NTK_by_parts_low_freq_factor": 1.0,
             "NTK_by_parts_high_freq_factor": 4.0,
             "NTK_by_parts_factor": 32.0,
+            "NTK_original_ctx_len": 8192,
         }
     elif "Llama-3.3-70B" in official_model_name:
         cfg_dict = {
@@ -995,6 +997,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "NTK_by_parts_low_freq_factor": 1.0,
             "NTK_by_parts_high_freq_factor": 4.0,
             "NTK_by_parts_factor": 8.0,
+            "NTK_original_ctx_len": 8192,
         }
     elif "Llama-3.1-8B" in official_model_name:
         cfg_dict = {
@@ -1019,6 +1022,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "NTK_by_parts_low_freq_factor": 1.0,
             "NTK_by_parts_high_freq_factor": 4.0,
             "NTK_by_parts_factor": 8.0,
+            "NTK_original_ctx_len": 8192,
         }
     elif "Llama-3.1-70B" in official_model_name:
         cfg_dict = {
@@ -1043,6 +1047,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "NTK_by_parts_low_freq_factor": 1.0,
             "NTK_by_parts_high_freq_factor": 4.0,
             "NTK_by_parts_factor": 8.0,
+            "NTK_original_ctx_len": 8192,
         }
     elif architecture == "GPTNeoForCausalLM":
         cfg_dict = {
