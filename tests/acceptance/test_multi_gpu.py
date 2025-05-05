@@ -43,7 +43,10 @@ def test_device_separation_and_cache(gpt2_medium_on_1_device, n_devices):
     loss_n_devices = model_n_devices(model_description_text, return_type="loss")
     elapsed_time_n_devices = time.time() - start_time_n_devices
 
-    gpt2_text = "Natural language processing tasks, such as question answering, machine translation, reading comprehension, and summarization, are typically approached with supervised learning on taskspecific datasets."
+    gpt2_text = (
+        "Natural language processing tasks, such as question answering, machine translation, reading comprehension, "
+        "and summarization, are typically approached with supervised learning on taskspecific datasets."
+    )
     gpt2_tokens = model_1_device.to_tokens(gpt2_text)
 
     gpt2_logits_1_device, gpt2_cache_1_device = model_1_device.run_with_cache(
@@ -55,7 +58,7 @@ def test_device_separation_and_cache(gpt2_medium_on_1_device, n_devices):
 
     # Make sure the tensors in cache remain on their respective devices
     for i in range(model_n_devices.cfg.n_layers):
-        expected_device = get_best_available_device(model_n_devices.cfg.device)
+        expected_device = get_best_available_device(model_n_devices.cfg)
         cache_device = gpt2_cache_n_devices[f"blocks.{i}.mlp.hook_post"].device
         assert cache_device == expected_device
 
@@ -80,8 +83,23 @@ def test_device_separation_and_cache(gpt2_medium_on_1_device, n_devices):
         assert prop_device == pytest.approx(expected_prop_device, rel=0.20)
 
     print(
-        f"Number of devices: {n_devices}, Model loss (1 device): {loss_1_device}, Model loss ({n_devices} devices): {loss_n_devices}, Time taken (1 device): {elapsed_time_1_device:.4f} seconds, Time taken ({n_devices} devices): {elapsed_time_n_devices:.4f} seconds"
+        f"Number of devices: {n_devices}, Model loss (1 device): {loss_1_device}, Model loss ({n_devices} devices): {loss_n_devices}, "
+        f"Time taken (1 device): {elapsed_time_1_device:.4f} seconds, Time taken ({n_devices} devices): {elapsed_time_n_devices:.4f} seconds"
     )
+
+
+@pytest.mark.skipif(torch.cuda.device_count() < 2, reason="Requires at least 2 CUDA devices")
+def test_load_model_on_target_device():
+    model = HookedTransformer.from_pretrained("gpt2-small", device="cuda:1")
+    assert model.cfg.device == "cuda:1"
+
+    for name, param in model.named_parameters():
+        assert param.device == torch.device(
+            "cuda:1"
+        ), f"Parameter {name} is on {param.device} instead of cuda:1"
+
+    output = model("Hello world")
+    assert output.device == torch.device("cuda:1")
 
 
 @pytest.mark.skipif(torch.cuda.device_count() < 2, reason="Requires at least 2 CUDA devices")

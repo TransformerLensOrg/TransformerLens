@@ -67,6 +67,13 @@ jobs:
         run: |
           poetry check --lock
           poetry install --with dev
+      - name: Authenticate HuggingFace CLI
+        if: env.HF_TOKEN != ''
+        run: |
+          pip install huggingface_hub
+          huggingface-cli login --token $HF_TOKEN
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
       - name: Unit Test
         run: make unit-test
         env:
@@ -106,6 +113,13 @@ jobs:
         run: make docstring-test
       - name: Type check
         run: poetry run mypy .
+      - name: Authenticate HuggingFace CLI
+        if: env.HF_TOKEN != ''
+        run: |
+          pip install huggingface_hub
+          huggingface-cli login --token $HF_TOKEN
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
       - name: Test Suite with Coverage Report
         run: make coverage-report-test
         env:
@@ -196,6 +210,13 @@ jobs:
         with:
           name: test-coverage
           path: docs/source/_static/coverage
+      - name: Authenticate HuggingFace CLI
+        if: env.HF_TOKEN != ''
+        run: |
+          pip install huggingface_hub
+          huggingface-cli login --token $HF_TOKEN
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
       - name: Build Docs
         run: poetry run build-docs
         env:
