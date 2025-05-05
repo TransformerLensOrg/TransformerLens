@@ -21,6 +21,16 @@ TINY_STORIES_MODEL_NAMES = [
 
 PYTHIA_MODEL_NAMES = [name for name in OFFICIAL_MODEL_NAMES if name.startswith("EleutherAI/pythia")]
 
+# Small subsets for basic testing
+TINY_STORIES_SMALL_MODELS = ["roneneldan/TinyStories-1M"]
+PYTHIA_SMALL_MODELS = ["EleutherAI/pythia-70m"]
+
+# Use full lists if HF_TOKEN is available, otherwise use small subsets
+TINY_STORIES_TEST_MODELS = (
+    TINY_STORIES_MODEL_NAMES if os.environ.get("HF_TOKEN", "") else TINY_STORIES_SMALL_MODELS
+)
+PYTHIA_TEST_MODELS = PYTHIA_MODEL_NAMES if os.environ.get("HF_TOKEN", "") else PYTHIA_SMALL_MODELS
+
 # Small models for basic testing
 PUBLIC_MODEL_NAMES = [
     "attn-only-demo",
@@ -550,7 +560,7 @@ def test_pos_embed_hook():
 
 
 def test_all_tinystories_models_exist():
-    for model in TINY_STORIES_MODEL_NAMES:
+    for model in TINY_STORIES_TEST_MODELS:
         try:
             AutoConfig.from_pretrained(model)
         except OSError:
@@ -561,7 +571,7 @@ def test_all_tinystories_models_exist():
 
 
 def test_all_pythia_models_exist():
-    for model in PYTHIA_MODEL_NAMES:
+    for model in PYTHIA_TEST_MODELS:
         try:
             AutoConfig.from_pretrained(model)
         except OSError:
