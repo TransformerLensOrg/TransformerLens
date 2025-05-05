@@ -69,6 +69,7 @@ FULL_MODEL_NAMES = [
 model_names = FULL_MODEL_NAMES if os.environ.get("HF_TOKEN", "") else PUBLIC_MODEL_NAMES
 
 text = "Hello world!"
+
 """ 
 # Code to regenerate loss store
 store = {}
@@ -78,7 +79,15 @@ for name in model_names:
     store[name] = loss.item()
 print(store)
 """
-loss_store = {
+
+# Loss values for minimal testing
+SMALL_LOSS_STORE = {
+    "gpt2-small": 5.331855773925781,
+    "pythia-70m": 4.659344673156738,
+}
+
+# Full set of loss values
+FULL_LOSS_STORE = {
     "attn-only-demo": 5.701841354370117,
     "gpt2-small": 5.331855773925781,
     "opt-125m": 6.159054279327393,
@@ -94,6 +103,9 @@ loss_store = {
     "tiny-stories-33M": 12.203617095947266,
     "bloom-560m": 5.237126350402832,
 }
+
+# Use full store if HF_TOKEN is available, otherwise use small store
+loss_store = FULL_LOSS_STORE if os.environ.get("HF_TOKEN", "") else SMALL_LOSS_STORE
 
 no_processing = [
     ("solu-1l", 5.256411552429199),
