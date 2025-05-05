@@ -68,6 +68,7 @@ jobs:
           poetry check --lock
           poetry install --with dev
       - name: Authenticate HuggingFace CLI
+        if: env.HF_TOKEN != ''
         run: |
           pip install huggingface_hub
           huggingface-cli login --token $HF_TOKEN
@@ -113,6 +114,7 @@ jobs:
       - name: Type check
         run: poetry run mypy .
       - name: Authenticate HuggingFace CLI
+        if: env.HF_TOKEN != ''
         run: |
           pip install huggingface_hub
           huggingface-cli login --token $HF_TOKEN
@@ -209,6 +211,7 @@ jobs:
           name: test-coverage
           path: docs/source/_static/coverage
       - name: Authenticate HuggingFace CLI
+        if: env.HF_TOKEN != ''
         run: |
           pip install huggingface_hub
           huggingface-cli login --token $HF_TOKEN
