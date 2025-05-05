@@ -504,7 +504,7 @@ class AbstractAttention(ABC, nn.Module):
             factor = self.cfg.NTK_by_parts_factor
             low_freq_factor = self.cfg.NTK_by_parts_low_freq_factor
             high_freq_factor = self.cfg.NTK_by_parts_high_freq_factor
-            old_context_len = n_ctx
+            old_context_len = self.cfg.NTK_original_ctx_len
 
             low_freq_wavelen = old_context_len / low_freq_factor
             high_freq_wavelen = old_context_len / high_freq_factor

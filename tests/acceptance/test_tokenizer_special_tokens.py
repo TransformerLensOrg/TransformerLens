@@ -1,10 +1,15 @@
+import os
+
 from transformers import AutoTokenizer
 
 import transformer_lens.loading_from_pretrained as loading
 from transformer_lens import HookedTransformer, HookedTransformerConfig
 
-# Get's tedious typing these out everytime I want to sweep over all the distinct small models
-MODEL_TESTING_LIST = [
+# Small models for basic testing
+PUBLIC_MODEL_TESTING_LIST = ["gpt2-small", "opt-125m", "pythia-70m"]
+
+# Full set of models to test when HF_TOKEN is available
+FULL_MODEL_TESTING_LIST = [
     "solu-1l",
     "gpt2-small",
     "gpt-neo-125M",
@@ -13,6 +18,11 @@ MODEL_TESTING_LIST = [
     "stanford-gpt2-small-a",
     "pythia-70m",
 ]
+
+# Use full model list if HF_TOKEN is available, otherwise use public models only
+MODEL_TESTING_LIST = (
+    FULL_MODEL_TESTING_LIST if os.environ.get("HF_TOKEN", "") else PUBLIC_MODEL_TESTING_LIST
+)
 
 
 def test_d_vocab_from_tokenizer():

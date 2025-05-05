@@ -262,6 +262,7 @@ class HookedTransformerConfig:
     NTK_by_parts_low_freq_factor: float = 1.0
     NTK_by_parts_high_freq_factor: float = 4.0
     NTK_by_parts_factor: float = 8.0
+    NTK_original_ctx_len: int = 8192
 
     def __post_init__(self):
         if self.n_heads == -1:
