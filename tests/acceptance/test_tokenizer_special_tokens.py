@@ -6,11 +6,7 @@ import transformer_lens.loading_from_pretrained as loading
 from transformer_lens import HookedTransformer, HookedTransformerConfig
 
 # Small models for basic testing
-PUBLIC_MODEL_TESTING_LIST = [
-    "gpt2-small",
-    "opt-125m",
-    "pythia-70m"
-]
+PUBLIC_MODEL_TESTING_LIST = ["gpt2-small", "opt-125m", "pythia-70m"]
 
 # Full set of models to test when HF_TOKEN is available
 FULL_MODEL_TESTING_LIST = [
@@ -20,11 +16,13 @@ FULL_MODEL_TESTING_LIST = [
     "opt-125m",
     "opt-30b",
     "stanford-gpt2-small-a",
-    "pythia-70m"
+    "pythia-70m",
 ]
 
 # Use full model list if HF_TOKEN is available, otherwise use public models only
-MODEL_TESTING_LIST = FULL_MODEL_TESTING_LIST if os.environ.get("HF_TOKEN", "") else PUBLIC_MODEL_TESTING_LIST
+MODEL_TESTING_LIST = (
+    FULL_MODEL_TESTING_LIST if os.environ.get("HF_TOKEN", "") else PUBLIC_MODEL_TESTING_LIST
+)
 
 
 def test_d_vocab_from_tokenizer():

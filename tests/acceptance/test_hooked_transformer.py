@@ -29,7 +29,7 @@ PUBLIC_MODEL_NAMES = [
     "pythia-70m",
     "tiny-stories-33M",
     "microsoft/phi-1",
-    "google/gemma-2b"
+    "google/gemma-2b",
 ]
 
 # Full set of models to test
@@ -52,7 +52,7 @@ FULL_MODEL_NAMES = [
     "microsoft/phi-1_5",
     "microsoft/phi-2",
     "google/gemma-2b",
-    "google/gemma-7b"
+    "google/gemma-7b",
 ]
 
 # Use full model list if HF_TOKEN is available, otherwise use public models only
