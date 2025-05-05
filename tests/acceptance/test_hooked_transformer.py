@@ -21,7 +21,19 @@ TINY_STORIES_MODEL_NAMES = [
 
 PYTHIA_MODEL_NAMES = [name for name in OFFICIAL_MODEL_NAMES if name.startswith("EleutherAI/pythia")]
 
-model_names = [
+# Small models for basic testing
+PUBLIC_MODEL_NAMES = [
+    "attn-only-demo",
+    "gpt2-small",
+    "opt-125m",
+    "pythia-70m",
+    "tiny-stories-33M",
+    "microsoft/phi-1",
+    "google/gemma-2b",
+]
+
+# Full set of models to test
+FULL_MODEL_NAMES = [
     "attn-only-demo",
     "gpt2-small",
     "opt-125m",
@@ -42,6 +54,10 @@ model_names = [
     "google/gemma-2b",
     "google/gemma-7b",
 ]
+
+# Use full model list if HF_TOKEN is available, otherwise use public models only
+model_names = FULL_MODEL_NAMES if os.environ.get("HF_TOKEN", "") else PUBLIC_MODEL_NAMES
+
 text = "Hello world!"
 """ 
 # Code to regenerate loss store
