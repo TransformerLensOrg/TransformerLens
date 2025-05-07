@@ -738,7 +738,7 @@ def get_official_model_name(model_name: str):
     return official_model_name
 
 
-def convert_hf_model_config(model_name: str, **kwargs):
+def convert_hf_model_config(model_name: str, force_unsupported_model=False, **kwargs):
     """
     Returns the model config for a HuggingFace model, converted to a dictionary
     in the HookedTransformerConfig format.
@@ -750,7 +750,10 @@ def convert_hf_model_config(model_name: str, **kwargs):
         logging.info("Loading model config from local directory")
         official_model_name = model_name
     else:
-        official_model_name = get_official_model_name(model_name)
+        if force_unsupported_model==False:
+            official_model_name = get_official_model_name(model_name)
+        else:
+            official_model_name = model_name
 
     # Load HuggingFace model config
     if "llama" in official_model_name.lower():
@@ -1567,6 +1570,7 @@ def get_pretrained_model_config(
     default_prepend_bos: Optional[bool] = None,
     dtype: torch.dtype = torch.float32,
     first_n_layers: Optional[int] = None,
+    force_unsupported_model=False,
     **kwargs,
 ):
     """Returns the pretrained model config as an HookedTransformerConfig object.
@@ -1605,16 +1609,22 @@ def get_pretrained_model_config(
             so this empirically seems to give better results. Note that you can also locally override the default behavior
             by passing in prepend_bos=True/False when you call a method that processes the input string.
         dtype (torch.dtype, optional): The dtype to load the TransformerLens model in.
+        force_unsupported_model: If specified, the function will try to load the model specified by the user, even though
+             it may be not official supported by TransformerLens. Use it at your own risk.
         kwargs: Other optional arguments passed to HuggingFace's from_pretrained.
             Also given to other HuggingFace functions when compatible.
 
     """
     if Path(model_name).exists():
         # If the model_name is a path, it's a local model
-        cfg_dict = convert_hf_model_config(model_name, **kwargs)
+        cfg_dict = convert_hf_model_config(model_name, force_unsupported_model=force_unsupported_model, **kwargs)
         official_model_name = model_name
     else:
-        official_model_name = get_official_model_name(model_name)
+        if force_unsupported_model==False:
+             official_model_name = get_official_model_name(model_name)
+        else:
+             #Forcing an unsupported model
+             official_model_name=model_name
     if (
         official_model_name.startswith("NeelNanda")
         or official_model_name.startswith("ArthurConmy")
@@ -1629,7 +1639,7 @@ def get_pretrained_model_config(
                 f"Loading model {official_model_name} requires setting trust_remote_code=True"
             )
             kwargs["trust_remote_code"] = True
-        cfg_dict = convert_hf_model_config(official_model_name, **kwargs)
+        cfg_dict = convert_hf_model_config(official_model_name, force_unsupported_model=force_unsupported_model, **kwargs)
     # Processing common to both model types
     # Remove any prefix, saying the organization who made a model.
     cfg_dict["model_name"] = official_model_name.split("/")[-1]
@@ -1764,6 +1774,7 @@ def get_pretrained_state_dict(
     cfg: HookedTransformerConfig,
     hf_model=None,
     dtype: torch.dtype = torch.float32,
+    force_unsupported_model=False,
     **kwargs,
 ) -> Dict[str, torch.Tensor]:
     """
@@ -1784,7 +1795,10 @@ def get_pretrained_state_dict(
         official_model_name = str(Path(official_model_name).resolve())
         logging.info(f"Loading model from local path {official_model_name}")
     else:
-        official_model_name = get_official_model_name(official_model_name)
+        if force_unsupported_model==False:
+            official_model_name = get_official_model_name(official_model_name)
+        else:
+            official_model_name = official_model_name
     if official_model_name.startswith(NEED_REMOTE_CODE_MODELS) and not kwargs.get(
         "trust_remote_code", False
     ):
