@@ -85,86 +85,71 @@ def convert_nanogpt_weights(old_state_dict, cfg: HookedTransformerConfig):
 import torch
 from torch import nn
 
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
-from transformer_lens.weight_conversion.conversion_utils import ArchitectureConversion
-from transformer_lens.weight_conversion.conversion_utils.conversion_steps import (
-    RearrangeWeightConversion,
-    TernaryWeightConversion,
-    WeightConversionSet,
-    ZerosLikeConversion,
+from transformer_lens.architecture_adapter.conversion_utils.architecture_conversion import (
+    ArchitectureConversion,
 )
+from transformer_lens.architecture_adapter.conversion_utils.conversion_steps import (
+    RearrangeWeightConversion,
+    WeightConversionSet,
+)
+from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 
-class NanoGPTWeightConversion(ArchitectureConversion):
+class NanoGPTArchitectureAdapter(ArchitectureConversion):
+    """Architecture adapter for NanoGPT models."""
+
     def __init__(self, cfg: HookedTransformerConfig) -> None:
-        number_key_value_heads = cfg.n_key_value_heads if cfg.n_key_value_heads is not None else 0
-        super().__init__(
+        """Initialize the NanoGPT architecture adapter.
+
+        Args:
+            cfg: The HookedTransformer configuration.
+        """
+        super().__init__(cfg)
+
+        self.field_set = WeightConversionSet(
             {
-                "pos_embed.W_pos": "transformer.wpe.weight",
                 "embed.W_E": "transformer.wte.weight",
+                "blocks.{i}.ln1.w": "transformer.h.{i}.ln_1.weight",
+                "blocks.{i}.ln1.b": "transformer.h.{i}.ln_1.bias",
+                "blocks.{i}.ln2.w": "transformer.h.{i}.ln_2.weight",
+                "blocks.{i}.ln2.b": "transformer.h.{i}.ln_2.bias",
+                "blocks.{i}.attn.W_Q": (
+                    "transformer.h.{i}.attn.c_attn.weight",
+                    RearrangeWeightConversion("(3 h d_head) d_model -> 3 h d_head d_model"),
+                ),
+                "blocks.{i}.attn.W_K": (
+                    "transformer.h.{i}.attn.c_attn.weight",
+                    RearrangeWeightConversion("(3 h d_head) d_model -> 3 h d_head d_model"),
+                ),
+                "blocks.{i}.attn.W_V": (
+                    "transformer.h.{i}.attn.c_attn.weight",
+                    RearrangeWeightConversion("(3 h d_head) d_model -> 3 h d_head d_model"),
+                ),
+                "blocks.{i}.attn.b_Q": (
+                    "transformer.h.{i}.attn.c_attn.bias",
+                    RearrangeWeightConversion("(3 h d_head) -> 3 h d_head"),
+                ),
+                "blocks.{i}.attn.b_K": (
+                    "transformer.h.{i}.attn.c_attn.bias",
+                    RearrangeWeightConversion("(3 h d_head) -> 3 h d_head"),
+                ),
+                "blocks.{i}.attn.b_V": (
+                    "transformer.h.{i}.attn.c_attn.bias",
+                    RearrangeWeightConversion("(3 h d_head) -> 3 h d_head"),
+                ),
+                "blocks.{i}.attn.W_O": (
+                    "transformer.h.{i}.attn.c_proj.weight",
+                    RearrangeWeightConversion("d_model (h d_head) -> h d_head d_model"),
+                ),
+                "blocks.{i}.attn.b_O": "transformer.h.{i}.attn.c_proj.bias",
+                "blocks.{i}.mlp.W_in": "transformer.h.{i}.mlp.c_fc.weight",
+                "blocks.{i}.mlp.b_in": "transformer.h.{i}.mlp.c_fc.bias",
+                "blocks.{i}.mlp.W_out": "transformer.h.{i}.mlp.c_proj.weight",
+                "blocks.{i}.mlp.b_out": "transformer.h.{i}.mlp.c_proj.bias",
+                "unembed.W_U": "lm_head.weight",
+                "unembed.b_U": "lm_head.bias",
                 "ln_final.w": "transformer.ln_f.weight",
-                "ln_final.b": (
-                    "transformer.ln_f.bias",
-                    TernaryWeightConversion(
-                        fallback_conversion=("transformer.ln_f.weight", ZerosLikeConversion())
-                    ),
-                ),
-                "unembed.W_U": "lm_head.weight.T",
-                "blocks": (
-                    "transformer.h",
-                    WeightConversionSet(
-                        {
-                            "ln1.w": "ln_1.weight",
-                            "ln1.b": (
-                                "ln_1.bias",
-                                TernaryWeightConversion(
-                                    fallback_conversion=("ln_1.weight", ZerosLikeConversion())
-                                ),
-                            ),
-                            "ln2.w": "ln_2.weight",
-                            "ln2.b": (
-                                "ln_2.bias",
-                                TernaryWeightConversion(
-                                    fallback_conversion=("ln_2.weight", ZerosLikeConversion())
-                                ),
-                            ),
-                            "attn.W_Q": (
-                                "attn.c_attn.weight",
-                                RearrangeWeightConversion(
-                                    "(i h) m->i m h",
-                                    input_filter=lambda weight: torch.tensor_split(
-                                        weight, 3, dim=0
-                                    )[0],
-                                    i=cfg.n_heads,
-                                ),
-                            ),
-                            "attn.W_K": (
-                                "attn.c_attn.weight",
-                                RearrangeWeightConversion(
-                                    "(i h) m->i m h",
-                                    input_filter=lambda weight: torch.tensor_split(
-                                        weight, 3, dim=0
-                                    )[1],
-                                    i=cfg.n_heads,
-                                ),
-                            ),
-                            "attn.W_V": (
-                                "attn.c_attn.weight",
-                                RearrangeWeightConversion(
-                                    "(i h) m->i m h",
-                                    input_filter=lambda weight: torch.tensor_split(
-                                        weight, 3, dim=0
-                                    )[2],
-                                    i=cfg.n_heads,
-                                ),
-                            ),
-                            "attn.W_O": (
-                                "attn.c_proj.weight",
-                                RearrangeWeightConversion("m (i h)->i h m", i=cfg.n_heads),
-                            ),
-                        }
-                    ),
-                ),
+                "ln_final.b": "transformer.ln_f.bias",
             }
         )
 

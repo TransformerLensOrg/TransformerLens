@@ -1,6 +1,6 @@
 """Weight conversion set."""
 
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Any
 
 import torch
 
@@ -25,7 +25,36 @@ class WeightConversionSet(BaseWeightConversion):
         super().__init__()
         self.fields = fields
 
-    def handle_conversion(self, input_value, *full_context):
+    def get_component(self, model: Any, name: str) -> Any:
+        """Get a component from the model using the field mapping.
+
+        Args:
+            model: The model to get the component from.
+            name: The name of the component to get.
+
+        Returns:
+            The requested component.
+        """
+        if name not in self.fields:
+            raise ValueError(f"Unknown component name: {name}")
+
+        field_info = self.fields[name]
+        if isinstance(field_info, str):
+            field_name = field_info
+            conversion_step = None
+        else:
+            field_name, conversion_step = field_info
+
+        # Get the component from the model
+        component = find_property(field_name, model)
+
+        # Apply conversion step if specified
+        if conversion_step is not None:
+            component = conversion_step(component)
+
+        return component
+
+    def handle_conversion(self, input_value: Any, *full_context: Any) -> dict[str, Any]:
         result = {}
         for fields_name in self.fields:
             conversion_action = self.fields[fields_name]
@@ -37,8 +66,8 @@ class WeightConversionSet(BaseWeightConversion):
         return result
 
     def process_conversion_action(
-        self, input_value, conversion_details: CONVERSION_ACTION, *full_context
-    ):
+        self, input_value: Any, conversion_details: CONVERSION_ACTION, *full_context: Any
+    ) -> Any:
         if isinstance(conversion_details, torch.Tensor):
             return conversion_details
         elif isinstance(conversion_details, str):
@@ -48,8 +77,8 @@ class WeightConversionSet(BaseWeightConversion):
             return self.process_conversion(input_value, remote_field, conversion, *full_context)
 
     def process_conversion(
-        self, input_value, remote_field: str, conversion: BaseWeightConversion, *full_context
-    ):
+        self, input_value: Any, remote_field: str, conversion: BaseWeightConversion, *full_context: Any
+    ) -> Any:
         field = find_property(remote_field, input_value)
         if isinstance(conversion, WeightConversionSet):
             result = []
@@ -60,7 +89,7 @@ class WeightConversionSet(BaseWeightConversion):
         else:
             return conversion.convert(field, *[input_value, *full_context])
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         conversion_string = (
             "Is composed of a set of nested conversions with the following details {\n\t"
         )

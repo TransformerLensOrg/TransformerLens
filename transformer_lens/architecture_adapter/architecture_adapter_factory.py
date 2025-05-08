@@ -3,8 +3,6 @@
 This module provides a factory for creating architecture adapters.
 """
 
-from typing import type
-
 from transformer_lens.architecture_adapter.conversion_utils.architecture_conversion import (
     ArchitectureConversion,
 )

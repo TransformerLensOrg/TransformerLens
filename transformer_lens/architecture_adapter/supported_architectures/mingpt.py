@@ -1,63 +1,69 @@
-import einops
+"""MinGPT architecture adapter."""
 
+from transformer_lens.architecture_adapter.conversion_utils.architecture_conversion import (
+    ArchitectureConversion,
+)
+from transformer_lens.architecture_adapter.conversion_utils.conversion_steps import (
+    RearrangeWeightConversion,
+    WeightConversionSet,
+)
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 
-def convert_mingpt_weights(old_state_dict, cfg: HookedTransformerConfig):
-    # mingpt (https://github.com/karpathy/minGPT) is mostly similar to GPT-2,
-    # but doesn't concat the QKV matrices.
-    state_dict = {}
+class MinGPTArchitectureAdapter(ArchitectureConversion):
+    """Architecture adapter for MinGPT models."""
 
-    state_dict["embed.W_E"] = old_state_dict["tok_emb.weight"]
-    state_dict["pos_embed.W_pos"] = old_state_dict["pos_emb"].squeeze()
+    def __init__(self, cfg: HookedTransformerConfig) -> None:
+        """Initialize the MinGPT architecture adapter.
 
-    for l in range(cfg.n_layers):
-        state_dict[f"blocks.{l}.ln1.w"] = old_state_dict[f"blocks.{l}.ln1.weight"]
-        state_dict[f"blocks.{l}.ln1.b"] = old_state_dict[f"blocks.{l}.ln1.bias"]
+        Args:
+            cfg: The HookedTransformer configuration.
+        """
+        super().__init__(cfg)
 
-        W_Q = old_state_dict[f"blocks.{l}.attn.query.weight"]
-        W_K = old_state_dict[f"blocks.{l}.attn.key.weight"]
-        W_V = old_state_dict[f"blocks.{l}.attn.value.weight"]
-        W_Q = einops.rearrange(W_Q, "(i h) m->i m h", i=cfg.n_heads)
-        W_K = einops.rearrange(W_K, "(i h) m->i m h", i=cfg.n_heads)
-        W_V = einops.rearrange(W_V, "(i h) m->i m h", i=cfg.n_heads)
-        state_dict[f"blocks.{l}.attn.W_Q"] = W_Q
-        state_dict[f"blocks.{l}.attn.W_K"] = W_K
-        state_dict[f"blocks.{l}.attn.W_V"] = W_V
-
-        q_bias = einops.rearrange(
-            old_state_dict[f"blocks.{l}.attn.query.bias"], "(i h)->i h", i=cfg.n_heads
+        self.field_set = WeightConversionSet(
+            {
+                "embed.W_E": "transformer.wte.weight",
+                "blocks.{i}.ln1.w": "transformer.h.{i}.ln_1.weight",
+                "blocks.{i}.ln1.b": "transformer.h.{i}.ln_1.bias",
+                "blocks.{i}.ln2.w": "transformer.h.{i}.ln_2.weight",
+                "blocks.{i}.ln2.b": "transformer.h.{i}.ln_2.bias",
+                "blocks.{i}.attn.W_Q": (
+                    "transformer.h.{i}.attn.c_attn.weight",
+                    RearrangeWeightConversion("(3 h d_head) d_model -> 3 h d_head d_model"),
+                ),
+                "blocks.{i}.attn.W_K": (
+                    "transformer.h.{i}.attn.c_attn.weight",
+                    RearrangeWeightConversion("(3 h d_head) d_model -> 3 h d_head d_model"),
+                ),
+                "blocks.{i}.attn.W_V": (
+                    "transformer.h.{i}.attn.c_attn.weight",
+                    RearrangeWeightConversion("(3 h d_head) d_model -> 3 h d_head d_model"),
+                ),
+                "blocks.{i}.attn.b_Q": (
+                    "transformer.h.{i}.attn.c_attn.bias",
+                    RearrangeWeightConversion("(3 h d_head) -> 3 h d_head"),
+                ),
+                "blocks.{i}.attn.b_K": (
+                    "transformer.h.{i}.attn.c_attn.bias",
+                    RearrangeWeightConversion("(3 h d_head) -> 3 h d_head"),
+                ),
+                "blocks.{i}.attn.b_V": (
+                    "transformer.h.{i}.attn.c_attn.bias",
+                    RearrangeWeightConversion("(3 h d_head) -> 3 h d_head"),
+                ),
+                "blocks.{i}.attn.W_O": (
+                    "transformer.h.{i}.attn.c_proj.weight",
+                    RearrangeWeightConversion("d_model (h d_head) -> h d_head d_model"),
+                ),
+                "blocks.{i}.attn.b_O": "transformer.h.{i}.attn.c_proj.bias",
+                "blocks.{i}.mlp.W_in": "transformer.h.{i}.mlp.c_fc.weight",
+                "blocks.{i}.mlp.b_in": "transformer.h.{i}.mlp.c_fc.bias",
+                "blocks.{i}.mlp.W_out": "transformer.h.{i}.mlp.c_proj.weight",
+                "blocks.{i}.mlp.b_out": "transformer.h.{i}.mlp.c_proj.bias",
+                "unembed.W_U": "lm_head.weight",
+                "unembed.b_U": "lm_head.bias",
+                "ln_final.w": "transformer.ln_f.weight",
+                "ln_final.b": "transformer.ln_f.bias",
+            }
         )
-        k_bias = einops.rearrange(
-            old_state_dict[f"blocks.{l}.attn.key.bias"], "(i h)->i h", i=cfg.n_heads
-        )
-        v_bias = einops.rearrange(
-            old_state_dict[f"blocks.{l}.attn.value.bias"], "(i h)->i h", i=cfg.n_heads
-        )
-
-        state_dict[f"blocks.{l}.attn.b_Q"] = q_bias
-        state_dict[f"blocks.{l}.attn.b_K"] = k_bias
-        state_dict[f"blocks.{l}.attn.b_V"] = v_bias
-
-        W_O = old_state_dict[f"blocks.{l}.attn.proj.weight"]
-        W_O = einops.rearrange(W_O, "m (i h)->i h m", i=cfg.n_heads)
-        state_dict[f"blocks.{l}.attn.W_O"] = W_O
-        state_dict[f"blocks.{l}.attn.b_O"] = old_state_dict[f"blocks.{l}.attn.proj.bias"]
-
-        state_dict[f"blocks.{l}.ln2.w"] = old_state_dict[f"blocks.{l}.ln2.weight"]
-        state_dict[f"blocks.{l}.ln2.b"] = old_state_dict[f"blocks.{l}.ln2.bias"]
-
-        W_in = old_state_dict[f"blocks.{l}.mlp.0.weight"]
-        state_dict[f"blocks.{l}.mlp.W_in"] = W_in.T
-        state_dict[f"blocks.{l}.mlp.b_in"] = old_state_dict[f"blocks.{l}.mlp.0.bias"]
-
-        W_out = old_state_dict[f"blocks.{l}.mlp.2.weight"]
-        state_dict[f"blocks.{l}.mlp.W_out"] = W_out.T
-        state_dict[f"blocks.{l}.mlp.b_out"] = old_state_dict[f"blocks.{l}.mlp.2.bias"]
-
-    state_dict["unembed.W_U"] = old_state_dict["head.weight"].T
-
-    state_dict["ln_final.w"] = old_state_dict["ln_f.weight"]
-    state_dict["ln_final.b"] = old_state_dict["ln_f.bias"]
-
-    return state_dict

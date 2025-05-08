@@ -1,4 +1,4 @@
-"""Neo architecture adapter."""
+"""Pythia architecture adapter."""
 
 from transformer_lens.architecture_adapter.conversion_utils.architecture_conversion import (
     ArchitectureConversion,
@@ -10,11 +10,11 @@ from transformer_lens.architecture_adapter.conversion_utils.conversion_steps imp
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 
-class NeoArchitectureAdapter(ArchitectureConversion):
-    """Architecture adapter for Neo models."""
+class PythiaArchitectureAdapter(ArchitectureConversion):
+    """Architecture adapter for Pythia models."""
 
     def __init__(self, cfg: HookedTransformerConfig) -> None:
-        """Initialize the Neo architecture adapter.
+        """Initialize the Pythia architecture adapter.
 
         Args:
             cfg: The HookedTransformer configuration.
@@ -66,4 +66,4 @@ class NeoArchitectureAdapter(ArchitectureConversion):
                 "ln_final.w": "transformer.ln_f.weight",
                 "ln_final.b": "transformer.ln_f.bias",
             }
-        )
+        ) 

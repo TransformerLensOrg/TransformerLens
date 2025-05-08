@@ -1,8 +1,17 @@
+"""Phi3 architecture adapter."""
+
 from typing import cast
 
 import einops
 import torch
 
+from transformer_lens.architecture_adapter.conversion_utils.architecture_conversion import (
+    ArchitectureConversion,
+)
+from transformer_lens.architecture_adapter.conversion_utils.conversion_steps import (
+    RearrangeWeightConversion,
+    WeightConversionSet,
+)
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 
@@ -76,3 +85,62 @@ def convert_phi3_weights(phi, cfg: HookedTransformerConfig):
     state_dict["unembed.b_U"] = torch.zeros(cfg.d_vocab, dtype=cfg.dtype)
 
     return state_dict
+
+
+class Phi3ArchitectureAdapter(ArchitectureConversion):
+    """Architecture adapter for Phi3 models."""
+
+    def __init__(self, cfg: HookedTransformerConfig) -> None:
+        """Initialize the Phi3 architecture adapter.
+
+        Args:
+            cfg: The HookedTransformer configuration.
+        """
+        super().__init__(cfg)
+
+        self.field_set = WeightConversionSet(
+            {
+                "embed.W_E": "model.embed_tokens.weight",
+                "blocks.{i}.ln1.w": "model.layers.{i}.input_layernorm.weight",
+                "blocks.{i}.ln1.b": "model.layers.{i}.input_layernorm.bias",
+                "blocks.{i}.ln2.w": "model.layers.{i}.post_attention_layernorm.weight",
+                "blocks.{i}.ln2.b": "model.layers.{i}.post_attention_layernorm.bias",
+                "blocks.{i}.attn.W_Q": (
+                    "model.layers.{i}.self_attn.q_proj.weight",
+                    RearrangeWeightConversion("(h d_head) d_model -> h d_head d_model"),
+                ),
+                "blocks.{i}.attn.W_K": (
+                    "model.layers.{i}.self_attn.k_proj.weight",
+                    RearrangeWeightConversion("(h d_head) d_model -> h d_head d_model"),
+                ),
+                "blocks.{i}.attn.W_V": (
+                    "model.layers.{i}.self_attn.v_proj.weight",
+                    RearrangeWeightConversion("(h d_head) d_model -> h d_head d_model"),
+                ),
+                "blocks.{i}.attn.b_Q": (
+                    "model.layers.{i}.self_attn.q_proj.bias",
+                    RearrangeWeightConversion("(h d_head) -> h d_head"),
+                ),
+                "blocks.{i}.attn.b_K": (
+                    "model.layers.{i}.self_attn.k_proj.bias",
+                    RearrangeWeightConversion("(h d_head) -> h d_head"),
+                ),
+                "blocks.{i}.attn.b_V": (
+                    "model.layers.{i}.self_attn.v_proj.bias",
+                    RearrangeWeightConversion("(h d_head) -> h d_head"),
+                ),
+                "blocks.{i}.attn.W_O": (
+                    "model.layers.{i}.self_attn.dense.weight",
+                    RearrangeWeightConversion("d_model (h d_head) -> h d_head d_model"),
+                ),
+                "blocks.{i}.attn.b_O": "model.layers.{i}.self_attn.dense.bias",
+                "blocks.{i}.mlp.W_in": "model.layers.{i}.mlp.fc1.weight",
+                "blocks.{i}.mlp.b_in": "model.layers.{i}.mlp.fc1.bias",
+                "blocks.{i}.mlp.W_out": "model.layers.{i}.mlp.fc2.weight",
+                "blocks.{i}.mlp.b_out": "model.layers.{i}.mlp.fc2.bias",
+                "unembed.W_U": "lm_head.weight",
+                "unembed.b_U": "lm_head.bias",
+                "ln_final.w": "model.final_layernorm.weight",
+                "ln_final.b": "model.final_layernorm.bias",
+            }
+        )

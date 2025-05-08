@@ -54,6 +54,9 @@ from transformer_lens.architecture_adapter.supported_architectures.phi import (
 from transformer_lens.architecture_adapter.supported_architectures.phi3 import (
     Phi3ArchitectureAdapter,
 )
+from transformer_lens.architecture_adapter.supported_architectures.pythia import (
+    PythiaArchitectureAdapter,
+)
 from transformer_lens.architecture_adapter.supported_architectures.qwen import (
     QwenArchitectureAdapter,
 )
@@ -85,4 +88,5 @@ __all__ = [
     "T5ArchitectureAdapter",
     "NanoGPTArchitectureAdapter",
     "MinGPTArchitectureAdapter",
+    "PythiaArchitectureAdapter",
 ] 
