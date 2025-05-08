@@ -12,13 +12,12 @@ class GPT2WeightConversion(ArchitectureConversion):
     def __init__(self, cfg: HookedTransformerConfig) -> None:
         super().__init__(
             {
-                "embed.W_E": "transformer.wte.weight",
-                "pos_embed.W_pos": "transformer.wpe.weight",
-                "unembed.W_U": "lm_head.weight.T",
-                "ln_final.w": "transformer.ln_f.weight",
-                "ln_final.b": "transformer.ln_f.bias",
+                "embed.W_E": "wte.weight",
+                "pos_embed.W_pos": "wpe.weight",
+                "ln_final.w": "ln_f.weight",
+                "ln_final.b": "ln_f.bias",
                 "blocks": (
-                    "transformer.h",
+                    "h",
                     WeightConversionSet(
                         {
                             "ln1.w": "ln_1.weight",
@@ -28,9 +27,10 @@ class GPT2WeightConversion(ArchitectureConversion):
                                 RearrangeWeightConversion(
                                     "m (i h)->i m h",
                                     input_filter=lambda weight: torch.tensor_split(
-                                        weight, 3, dim=1
+                                        weight, 3, dim=0
                                     )[0],
                                     i=cfg.n_heads,
+                                    h=cfg.d_head,
                                 ),
                             ),
                             "attn.W_K": (
@@ -38,9 +38,10 @@ class GPT2WeightConversion(ArchitectureConversion):
                                 RearrangeWeightConversion(
                                     "m (i h)->i m h",
                                     input_filter=lambda weight: torch.tensor_split(
-                                        weight, 3, dim=1
+                                        weight, 3, dim=0
                                     )[1],
                                     i=cfg.n_heads,
+                                    h=cfg.d_head,
                                 ),
                             ),
                             "attn.W_V": (
@@ -48,9 +49,10 @@ class GPT2WeightConversion(ArchitectureConversion):
                                 RearrangeWeightConversion(
                                     "m (i h)->i m h",
                                     input_filter=lambda weight: torch.tensor_split(
-                                        weight, 3, dim=1
+                                        weight, 3, dim=0
                                     )[2],
                                     i=cfg.n_heads,
+                                    h=cfg.d_head,
                                 ),
                             ),
                             "attn.b_Q": (
@@ -88,6 +90,7 @@ class GPT2WeightConversion(ArchitectureConversion):
                                 RearrangeWeightConversion(
                                     "(i h) m->i h m",
                                     i=cfg.n_heads,
+                                    h=cfg.d_head,
                                 ),
                             ),
                             "attn.b_O": "attn.c_proj.bias",
