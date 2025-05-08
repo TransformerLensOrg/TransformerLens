@@ -8,7 +8,7 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Any
 
 import torch
 from huggingface_hub import HfApi
@@ -20,8 +20,28 @@ from transformers import (
 )
 
 import transformer_lens.utils as utils
-from transformer_lens.factories.weight_conversion_factory import WeightConversionFactory
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.pretrained.weight_conversions import (
+    convert_bert_weights,
+    convert_bloom_weights,
+    convert_coder_weights,
+    convert_gemma_weights,
+    convert_gpt2_weights,
+    convert_gptj_weights,
+    convert_llama_weights,
+    convert_mingpt_weights,
+    convert_mistral_weights,
+    convert_mixtral_weights,
+    convert_neel_solu_old_weights,
+    convert_neo_weights,
+    convert_neox_weights,
+    convert_opt_weights,
+    convert_phi3_weights,
+    convert_phi_weights,
+    convert_qwen2_weights,
+    convert_qwen_weights,
+    convert_t5_weights,
+)
 from transformer_lens.supported_models import MODEL_ALIASES, OFFICIAL_MODEL_NAMES
 
 NON_HF_HOSTED_MODEL_NAMES = [
@@ -40,8 +60,7 @@ NEED_REMOTE_CODE_MODELS = (
     "microsoft/phi-4",
 )
 
-
-def make_model_alias_map():
+def make_model_alias_map() -> dict[str, str]:
     """
     Converts OFFICIAL_MODEL_NAMES (the list of actual model names on
     HuggingFace) and MODEL_ALIASES (a dictionary mapping official model names to
@@ -55,21 +74,19 @@ def make_model_alias_map():
         model_alias_map[official_model_name.lower()] = official_model_name
     return model_alias_map
 
-
-def get_official_model_name(model_name: str):
+def get_official_model_name(model_name: str) -> str:
     """
     Returns the official model name for a given model name (or alias).
     """
     model_alias_map = make_model_alias_map()
-    official_model_name = model_alias_map.get(model_name.lower(), None)
+    official_model_name = model_alias_map.get(model_name.lower())
     if official_model_name is None:
         raise ValueError(
             f"{model_name} not found. Valid official model names (excl aliases): {OFFICIAL_MODEL_NAMES}"
         )
     return official_model_name
 
-
-def convert_hf_model_config(model_name: str, **kwargs):
+def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
     """
     Returns the model config for a HuggingFace model, converted to a dictionary
     in the HookedTransformerConfig format.
@@ -99,7 +116,6 @@ def convert_hf_model_config(model_name: str, **kwargs):
         )
         architecture = hf_config.architectures[0]
 
-    cfg_dict: Dict[str, Any] = {}
     if official_model_name.startswith(
         ("llama-7b", "meta-llama/Llama-2-7b")
     ):  # same architecture for LLaMA and Llama-2
@@ -279,6 +295,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "NTK_by_parts_low_freq_factor": 1.0,
             "NTK_by_parts_high_freq_factor": 4.0,
             "NTK_by_parts_factor": 32.0,
+            "NTK_original_ctx_len": 8192,
         }
     elif "Llama-3.2-3B" in official_model_name:
         cfg_dict = {
@@ -303,6 +320,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "NTK_by_parts_low_freq_factor": 1.0,
             "NTK_by_parts_high_freq_factor": 4.0,
             "NTK_by_parts_factor": 32.0,
+            "NTK_original_ctx_len": 8192,
         }
     elif "Llama-3.3-70B" in official_model_name:
         cfg_dict = {
@@ -327,6 +345,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "NTK_by_parts_low_freq_factor": 1.0,
             "NTK_by_parts_high_freq_factor": 4.0,
             "NTK_by_parts_factor": 8.0,
+            "NTK_original_ctx_len": 8192,
         }
     elif "Llama-3.1-8B" in official_model_name:
         cfg_dict = {
@@ -351,6 +370,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "NTK_by_parts_low_freq_factor": 1.0,
             "NTK_by_parts_high_freq_factor": 4.0,
             "NTK_by_parts_factor": 8.0,
+            "NTK_original_ctx_len": 8192,
         }
     elif "Llama-3.1-70B" in official_model_name:
         cfg_dict = {
@@ -375,6 +395,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "NTK_by_parts_low_freq_factor": 1.0,
             "NTK_by_parts_high_freq_factor": 4.0,
             "NTK_by_parts_factor": 8.0,
+            "NTK_original_ctx_len": 8192,
         }
     elif architecture == "GPTNeoForCausalLM":
         cfg_dict = {
@@ -844,7 +865,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
     return cfg_dict
 
 
-def convert_neel_model_config(official_model_name: str, **kwargs):
+def convert_neel_model_config(official_model_name: str, **kwargs: Any) -> dict[str, Any]:
     """
     Loads the config for a model trained by me (NeelNanda), converted to a dictionary
     in the HookedTransformerConfig format.
@@ -885,17 +906,17 @@ def convert_neel_model_config(official_model_name: str, **kwargs):
 
 def get_pretrained_model_config(
     model_name: str,
-    hf_cfg: Optional[dict] = None,
-    checkpoint_index: Optional[int] = None,
-    checkpoint_value: Optional[int] = None,
+    hf_cfg: dict[str, Any] | None = None,
+    checkpoint_index: int | None = None,
+    checkpoint_value: int | None = None,
     fold_ln: bool = False,
-    device: Optional[Union[str, torch.device]] = None,
+    device: str | torch.device | None = None,
     n_devices: int = 1,
-    default_prepend_bos: Optional[bool] = None,
+    default_prepend_bos: bool | None = None,
     dtype: torch.dtype = torch.float32,
-    first_n_layers: Optional[int] = None,
-    **kwargs,
-):
+    first_n_layers: int | None = None,
+    **kwargs: Any,
+) -> HookedTransformerConfig:
     """Returns the pretrained model config as an HookedTransformerConfig object.
 
     There are two types of pretrained models: HuggingFace models (where
@@ -1025,7 +1046,7 @@ def get_pretrained_model_config(
     return cfg
 
 
-def get_num_params_of_pretrained(model_name):
+def get_num_params_of_pretrained(model_name: str) -> int:
     """
     Returns the number of parameters of a pretrained model, used to filter to only run code for sufficiently small models.
     """
@@ -1051,7 +1072,7 @@ PYTHIA_CHECKPOINTS = [0, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512] + list(
 PYTHIA_V0_CHECKPOINTS = list(range(1000, 143000 + 1, 1000))
 
 
-def get_checkpoint_labels(model_name: str, **kwargs):
+def get_checkpoint_labels(model_name: str, **kwargs: Any) -> tuple[list[int], str]:
     """Returns the checkpoint labels for a given model, and the label_type
     (step or token). Raises an error for models that are not checkpointed."""
     official_model_name = get_official_model_name(model_name)
@@ -1085,13 +1106,40 @@ def get_checkpoint_labels(model_name: str, **kwargs):
         raise ValueError(f"Model {official_model_name} is not checkpointed.")
 
 
-def load_hugging_face_model(
+# %% Loading state dicts
+def get_pretrained_state_dict(
     official_model_name: str,
     cfg: HookedTransformerConfig,
-    hf_model=None,
+    hf_model: Any | None = None,
     dtype: torch.dtype = torch.float32,
-    **kwargs,
-) -> Dict[str, torch.Tensor]:
+    **kwargs: Any,
+) -> dict[str, torch.Tensor]:
+    """
+    Loads in the model weights for a pretrained model, and processes them to
+    have the HookedTransformer parameter names and shapes. Supports checkpointed
+    models (and expects the checkpoint info to be stored in the config object)
+
+    hf_model: Optionally, a HuggingFace model object. If provided, we will use
+        these weights rather than reloading the model.
+    dtype: The dtype to load the HuggingFace model in.
+    kwargs: Other optional arguments passed to HuggingFace's from_pretrained.
+        Also given to other HuggingFace functions when compatible.
+    """
+    if "torch_dtype" in kwargs:
+        dtype = kwargs["torch_dtype"]
+        del kwargs["torch_dtype"]
+    if Path(official_model_name).exists():
+        official_model_name = str(Path(official_model_name).resolve())
+        logging.info(f"Loading model from local path {official_model_name}")
+    else:
+        official_model_name = get_official_model_name(official_model_name)
+    if official_model_name.startswith(NEED_REMOTE_CODE_MODELS) and not kwargs.get(
+        "trust_remote_code", False
+    ):
+        logging.warning(
+            f"Loading model {official_model_name} state dict requires setting trust_remote_code=True"
+        )
+        kwargs["trust_remote_code"] = True
     if (
         official_model_name.startswith("NeelNanda")
         or official_model_name.startswith("ArthurConmy")
@@ -1108,10 +1156,16 @@ def load_hugging_face_model(
             )[0]
         else:
             file_name = list(filter(lambda x: x.endswith("final.pth"), repo_files))[0]
-        hf_model = utils.download_file_from_hf(official_model_name, file_name, **kwargs)
+        state_dict = utils.download_file_from_hf(official_model_name, file_name, **kwargs)
 
         # Convert to dtype
-        hf_model = {k: v.to(dtype) for k, v in hf_model.items()}
+        state_dict = {k: v.to(dtype) for k, v in state_dict.items()}
+
+        if cfg.original_architecture == "neel-solu-old":
+            state_dict = convert_neel_solu_old_weights(state_dict, cfg)
+        elif cfg.original_architecture == "mingpt":
+            state_dict = convert_mingpt_weights(state_dict, cfg)
+        return state_dict
     else:
         if cfg.from_checkpoint:
             huggingface_token = os.environ.get("HF_TOKEN", "")
@@ -1159,99 +1213,63 @@ def load_hugging_face_model(
                     **kwargs,
                 )
 
-    return hf_model
+            # Load model weights, and fold in layer norm weights
+
+        for param in hf_model.parameters():
+            param.requires_grad = False
+
+        if cfg.original_architecture == "GPT2LMHeadModel":
+            state_dict = convert_gpt2_weights(hf_model, cfg)
+        elif cfg.original_architecture == "GPTNeoForCausalLM":
+            state_dict = convert_neo_weights(hf_model, cfg)
+        elif cfg.original_architecture == "OPTForCausalLM":
+            state_dict = convert_opt_weights(hf_model, cfg)
+        elif cfg.original_architecture == "GPTJForCausalLM":
+            state_dict = convert_gptj_weights(hf_model, cfg)
+        elif cfg.original_architecture == "GPTNeoXForCausalLM":
+            state_dict = convert_neox_weights(hf_model, cfg)
+        elif cfg.original_architecture == "LlamaForCausalLM":
+            state_dict = convert_llama_weights(hf_model, cfg)
+        elif cfg.original_architecture == "BertForMaskedLM":
+            state_dict = convert_bert_weights(hf_model, cfg)
+        elif cfg.original_architecture == "T5ForConditionalGeneration":
+            state_dict = convert_t5_weights(hf_model, cfg)
+        elif cfg.original_architecture == "MistralForCausalLM":
+            state_dict = convert_mistral_weights(hf_model, cfg)
+        elif cfg.original_architecture == "MixtralForCausalLM":
+            state_dict = convert_mixtral_weights(hf_model, cfg)
+        elif cfg.original_architecture == "BloomForCausalLM":
+            state_dict = convert_bloom_weights(hf_model, cfg)
+        elif cfg.original_architecture == "GPT2LMHeadCustomModel":
+            state_dict = convert_coder_weights(hf_model, cfg)
+        elif cfg.original_architecture == "QWenLMHeadModel":
+            state_dict = convert_qwen_weights(hf_model, cfg)
+        elif cfg.original_architecture == "Qwen2ForCausalLM":
+            state_dict = convert_qwen2_weights(hf_model, cfg)
+        elif cfg.original_architecture == "PhiForCausalLM":
+            state_dict = convert_phi_weights(hf_model, cfg)
+        elif cfg.original_architecture == "Phi3ForCausalLM":
+            state_dict = convert_phi3_weights(hf_model, cfg)
+        elif cfg.original_architecture == "GemmaForCausalLM":
+            state_dict = convert_gemma_weights(hf_model, cfg)
+        elif cfg.original_architecture == "Gemma2ForCausalLM":
+            state_dict = convert_gemma_weights(hf_model, cfg)
+        else:
+            raise ValueError(
+                f"Loading weights from the architecture is not currently supported: {cfg.original_architecture}, generated from model name {cfg.model_name}. Feel free to open an issue on GitHub to request this feature."
+            )
+
+        return state_dict
 
 
-# %% Loading state dicts
-def get_pretrained_state_dict(
-    official_model_name: str,
-    cfg: HookedTransformerConfig,
-    hf_model=None,
-    dtype: torch.dtype = torch.float32,
-    **kwargs,
-) -> Dict[str, torch.Tensor]:
-    """
-    Loads in the model weights for a pretrained model, and processes them to
-    have the HookedTransformer parameter names and shapes. Supports checkpointed
-    models (and expects the checkpoint info to be stored in the config object)
-
-    hf_model: Optionally, a HuggingFace model object. If provided, we will use
-        these weights rather than reloading the model.
-    dtype: The dtype to load the HuggingFace model in.
-    kwargs: Other optional arguments passed to HuggingFace's from_pretrained.
-        Also given to other HuggingFace functions when compatible.
-    """
-    if "torch_dtype" in kwargs:
-        dtype = kwargs["torch_dtype"]
-        del kwargs["torch_dtype"]
-    if Path(official_model_name).exists():
-        official_model_name = str(Path(official_model_name).resolve())
-        logging.info(f"Loading model from local path {official_model_name}")
-    else:
-        official_model_name = get_official_model_name(official_model_name)
-    if official_model_name.startswith(NEED_REMOTE_CODE_MODELS) and not kwargs.get(
-        "trust_remote_code", False
-    ):
-        logging.warning(
-            f"Loading model {official_model_name} state dict requires setting trust_remote_code=True"
-        )
-        kwargs["trust_remote_code"] = True
-
-    hf_model = load_hugging_face_model(
-        official_model_name, cfg=cfg, hf_model=hf_model, dtype=dtype, **kwargs
-    )
-
-    for param in hf_model.parameters():
-        param.requires_grad = False
-
-    weight_conversion_config = WeightConversionFactory.select_weight_conversion_config(cfg)
-
-    weight_conversion = weight_conversion_config.convert(hf_model)
-    return flatten_nested_dict(weight_conversion)
-
-
-def flatten_nested_dict(input, parent_key="", sep="."):
-    """
-    Flattens a nested dictionary/list structure into a flat dictionary with dot notation.
-
-    Args:
-        input: The input structure (can be dict, list, or a value)
-        parent_key: The parent key for the current item (used in recursion)
-        sep: Separator to use between nested keys (default '.')
-
-    Returns:
-        dict: Flattened dictionary with dot notation keys
-    """
-    items = {}
-
-    if isinstance(input, dict):
-        for k, v in input.items():
-            new_key = f"{parent_key}{sep}{k}" if parent_key else k
-            if isinstance(v, (dict, list)):
-                items.update(flatten_nested_dict(v, new_key, sep=sep))
-            else:
-                items[new_key] = v
-
-    elif isinstance(input, list):
-        for i, v in enumerate(input):
-            new_key = f"{parent_key}{sep}{i}" if parent_key else str(i)
-            if isinstance(v, (dict, list)):
-                items.update(flatten_nested_dict(v, new_key, sep=sep))
-            else:
-                items[new_key] = v
-    else:
-        items[parent_key] = input
-
-    return items
-
-
-def fill_missing_keys(model, state_dict):
+def fill_missing_keys(model: Any, state_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
     """Takes in a state dict from a pretrained model, and fills in any missing keys with the default initialization.
 
     This function is assumed to be run before weights are initialized.
 
     Args:
-        state_dict (dict): State dict from a pretrained model
+        model: The model to fill missing keys for
+        state_dict: State dict from a pretrained model
 
     Returns:
         dict: State dict with missing keys filled in
@@ -1290,7 +1308,8 @@ class Config:
 
 
 # Returns the configuration parameters of the model as a basic Config dataclass
-def get_basic_config(model_name: str, **kwargs) -> Config:
+def get_basic_config(model_name: str, **kwargs: Any) -> Config:
+    """Returns the configuration parameters of the model as a basic Config dataclass."""
     return Config(
         **{
             k: v
