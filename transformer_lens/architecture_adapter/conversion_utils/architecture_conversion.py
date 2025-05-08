@@ -3,18 +3,18 @@
 This module contains the base class for architecture conversions.
 """
 
-from abc import ABC, abstractmethod
+from abc import ABC
 from typing import Any
 
 import torch
+from transformers import PreTrainedModel
 
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
-from transformer_lens.weight_conversion.conversion_utils.helpers.merge_quantiziation_fields import (
-    merge_quantiziation_fields,
+from transformer_lens.architecture_adapter.conversion_utils.helpers.merge_quantiziation_fields import (
+    merge_quantization_fields,
 )
+from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 from .conversion_steps.types import FIELD_SET
-from .conversion_steps.weight_conversion_set import WeightConversionSet
 
 
 class ArchitectureConversion(ABC):
@@ -27,19 +27,32 @@ class ArchitectureConversion(ABC):
             cfg: The config to use for the conversion.
         """
         self.cfg = cfg
-        self.field_set = WeightConversionSet(cfg.fields)
+        self.field_set = None
 
     def enable_quantiziation(
         self, cfg: HookedTransformerConfig, quantiziation_fields: FIELD_SET
     ) -> None:
         if cfg.load_in_4bit:
-            self.field_set = merge_quantiziation_fields(self.field_set, quantiziation_fields)
+            self.field_set = merge_quantization_fields(self.field_set, quantiziation_fields)
 
-    def convert(self, remote_module: torch.nn.Module):
-        return self.field_set.convert(input_value=remote_module)
+    def get_component(self, model: PreTrainedModel, name: str) -> Any:
+        """Get a component from the model using the field set mapping.
 
-    @abstractmethod
-    def convert_weights(self, hf_model: Any) -> dict[str, torch.Tensor]:
+        This method maps HookedTransformer component names to the underlying model's structure
+        using the field set mapping.
+
+        Args:
+            model: The model to get the component from.
+            name: The name of the component to get.
+
+        Returns:
+            The requested component.
+        """
+        if self.field_set is None:
+            raise ValueError("field_set must be set before calling get_component")
+        return self.field_set.get_component(model, name)
+
+    def convert_weights(self, hf_model: PreTrainedModel) -> dict[str, torch.Tensor]:
         """Convert the weights from the HuggingFace format to the HookedTransformer format.
 
         Args:
@@ -48,4 +61,6 @@ class ArchitectureConversion(ABC):
         Returns:
             dict[str, torch.Tensor]: The converted weights.
         """
-        pass
+        if self.field_set is None:
+            raise ValueError("field_set must be set before calling convert_weights")
+        return self.field_set.convert(input_value=hf_model)

@@ -1,3 +1,8 @@
+"""Architecture adapter factory.
+
+This module contains the factory for creating architecture adapters.
+"""
+
 from transformer_lens.architecture_adapter.bert import BertArchitectureAdapter
 from transformer_lens.architecture_adapter.bloom import BloomArchitectureAdapter
 from transformer_lens.architecture_adapter.conversion_utils.architecture_conversion import (

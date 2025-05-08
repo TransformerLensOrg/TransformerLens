@@ -1,13 +1,19 @@
+"""Weight conversion set."""
+
+from typing import Dict, List, Optional, Tuple, Union
+
 import torch
 
-from transformer_lens.weight_conversion.conversion_utils.helpers.find_property import (
+from transformer_lens.architecture_adapter.conversion_utils.conversion_steps.base_weight_conversion import (
+    BaseWeightConversion,
+)
+from transformer_lens.architecture_adapter.conversion_utils.helpers.find_property import (
     find_property,
 )
-from transformer_lens.weight_conversion.conversion_utils.weight_conversion_utils import (
-    WeightConversionUtils,
+from transformer_lens.architecture_adapter.conversion_utils.weight_conversion_utils import (
+    get_weight_conversion_field_set,
 )
 
-from .base_weight_conversion import BaseWeightConversion
 from .types import CONVERSION_ACTION, FIELD_SET
 
 
@@ -59,7 +65,7 @@ class WeightConversionSet(BaseWeightConversion):
             "Is composed of a set of nested conversions with the following details {\n\t"
         )
         # This is a bit of a hack to get the string representation of nested conversions
-        conversion_string += WeightConversionUtils.create_conversion_string(self.fields)[
+        conversion_string += get_weight_conversion_field_set(self.fields)[
             :-1
         ].replace("\n", "\n\t")
         conversion_string += "\n}"

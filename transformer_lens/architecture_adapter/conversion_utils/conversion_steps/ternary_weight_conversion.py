@@ -1,13 +1,17 @@
+"""Weight conversion that performs ternary operations on weights."""
+
 from collections.abc import Callable
-from typing import Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 
-from transformer_lens.weight_conversion.conversion_utils.helpers.find_property import (
+from transformer_lens.architecture_adapter.conversion_utils.conversion_steps.base_weight_conversion import (
+    BaseWeightConversion,
+)
+from transformer_lens.architecture_adapter.conversion_utils.helpers.find_property import (
     find_property,
 )
 
-from .base_weight_conversion import BaseWeightConversion
 from .types import CONVERSION_ACTION
 
 PRIMARY_CONVERSION = torch.Tensor | BaseWeightConversion | None

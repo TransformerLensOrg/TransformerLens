@@ -1,7 +1,4 @@
-"""GPT2 Architecture Adapter.
-
-This module contains the GPT2 architecture adapter class.
-"""
+"""GPT-2 architecture adapter."""
 
 from typing import Any
 
@@ -10,20 +7,73 @@ import torch
 from transformer_lens.architecture_adapter.conversion_utils.architecture_conversion import (
     ArchitectureConversion,
 )
+from transformer_lens.architecture_adapter.conversion_utils.conversion_steps import (
+    RearrangeWeightConversion,
+    WeightConversionSet,
+)
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 
 class GPT2ArchitectureAdapter(ArchitectureConversion):
-    """GPT2 architecture adapter class."""
+    """Architecture adapter for GPT-2 models."""
 
-    def __init__(self, cfg: HookedTransformerConfig):
-        """Initialize the GPT2 architecture adapter.
+    def __init__(self, cfg: HookedTransformerConfig) -> None:
+        """Initialize the GPT-2 architecture adapter.
 
         Args:
-            cfg (HookedTransformerConfig): The config to use for the adapter.
+            cfg: The HookedTransformer configuration.
         """
         super().__init__(cfg)
-        self.cfg = cfg
+
+        self.field_set = WeightConversionSet(
+            {
+                "embed.W_E": "transformer.wte.weight",
+                "pos_embed.W_pos": "transformer.wpe.weight",
+                "blocks.{i}.ln1.w": "transformer.h.{i}.ln_1.weight",
+                "blocks.{i}.ln1.b": "transformer.h.{i}.ln_1.bias",
+                "blocks.{i}.ln2.w": "transformer.h.{i}.ln_2.weight",
+                "blocks.{i}.ln2.b": "transformer.h.{i}.ln_2.bias",
+                "blocks.{i}.attn.W_Q": (
+                    "transformer.h.{i}.attn.c_attn.weight",
+                    RearrangeWeightConversion("d_model (h d_head) -> h d_model d_head"),
+                ),
+                "blocks.{i}.attn.W_K": (
+                    "transformer.h.{i}.attn.c_attn.weight",
+                    RearrangeWeightConversion("d_model (h d_head) -> h d_model d_head"),
+                ),
+                "blocks.{i}.attn.W_V": (
+                    "transformer.h.{i}.attn.c_attn.weight",
+                    RearrangeWeightConversion("d_model (h d_head) -> h d_model d_head"),
+                ),
+                "blocks.{i}.attn.b_Q": (
+                    "transformer.h.{i}.attn.c_attn.bias",
+                    RearrangeWeightConversion("(h d_head) -> h d_head"),
+                ),
+                "blocks.{i}.attn.b_K": (
+                    "transformer.h.{i}.attn.c_attn.bias",
+                    RearrangeWeightConversion("(h d_head) -> h d_head"),
+                ),
+                "blocks.{i}.attn.b_V": (
+                    "transformer.h.{i}.attn.c_attn.bias",
+                    RearrangeWeightConversion("(h d_head) -> h d_head"),
+                ),
+                "blocks.{i}.attn.W_O": (
+                    "transformer.h.{i}.attn.c_proj.weight",
+                    RearrangeWeightConversion("(h d_head) d_model -> h d_head d_model"),
+                ),
+                "blocks.{i}.attn.b_O": "transformer.h.{i}.attn.c_proj.bias",
+                "blocks.{i}.mlp.W_in": "transformer.h.{i}.mlp.c_fc.weight",
+                "blocks.{i}.mlp.b_in": "transformer.h.{i}.mlp.c_fc.bias",
+                "blocks.{i}.mlp.W_out": "transformer.h.{i}.mlp.c_proj.weight",
+                "blocks.{i}.mlp.b_out": "transformer.h.{i}.mlp.c_proj.bias",
+                "unembed.W_U": (
+                    "lm_head.weight",
+                    RearrangeWeightConversion("d_vocab d_model -> d_model d_vocab"),
+                ),
+                "ln_final.w": "transformer.ln_f.weight",
+                "ln_final.b": "transformer.ln_f.bias",
+            }
+        )
 
     def convert_weights(self, hf_model: Any) -> dict[str, torch.Tensor]:
         """Convert the weights from the HuggingFace format to the HookedTransformer format.

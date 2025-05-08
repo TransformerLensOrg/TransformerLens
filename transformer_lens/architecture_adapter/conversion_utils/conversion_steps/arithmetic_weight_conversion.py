@@ -1,10 +1,12 @@
+"""Weight conversion that performs arithmetic operations on weights."""
+
 from collections.abc import Callable
 from enum import Enum
-from typing import Optional
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 
-from transformer_lens.weight_conversion.conversion_utils.conversion_steps.base_weight_conversion import (
+from transformer_lens.architecture_adapter.conversion_utils.conversion_steps.base_weight_conversion import (
     BaseWeightConversion,
 )
 
