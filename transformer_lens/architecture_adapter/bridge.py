@@ -12,9 +12,6 @@ from transformers import PreTrainedModel
 from transformer_lens.architecture_adapter.conversion_utils.architecture_conversion import (
     ArchitectureConversion,
 )
-from transformer_lens.architecture_adapter.conversion_utils.conversion_steps import (
-    WeightConversionSet,
-)
 
 
 class TransformerBridge:
@@ -111,41 +108,28 @@ class TransformerBridge:
         Returns:
             A list of strings representing the field mapping structure.
         """
-        field_set = getattr(self.architecture_adapter, "field_set", None)
-        if not isinstance(field_set, WeightConversionSet):
+        component_mapping = getattr(self.architecture_adapter, "component_mapping", None)
+        if not isinstance(component_mapping, dict):
             return ["    Component Mapping: Not available"]
 
         lines = ["    Component Mapping:"]
 
-        # Group fields by component type
-        groups = {
-            "embed": [],
-            "blocks": [],
-            "unembed": [],
-            "ln_final": [],
-        }
+        # Format top-level components
+        for tl_name, hf_name in component_mapping.items():
+            if tl_name == "blocks":
+                continue  # Handle blocks separately
+            component_type = self._get_component_type(hf_name)
+            lines.append(f"        {tl_name} -> {hf_name} ({component_type})")
 
-        for tl_name, hf_info in field_set.fields.items():
-            # Get the HF field name and type
-            if isinstance(hf_info, str):
-                hf_name = hf_info
-            else:
-                hf_name = hf_info[0]
-
-            component_type = self._get_component_type(hf_name.format(i=0) if "{i}" in hf_name else hf_name)
-
-            # Determine which group this field belongs to
-            for group in groups:
-                if tl_name.startswith(group):
-                    groups[group].append((tl_name, hf_name, component_type))
-                    break
-
-        # Format each group
-        for group_name, fields in groups.items():
-            if fields:
-                lines.append(f"        {group_name}:")
-                for tl_name, hf_name, component_type in sorted(fields):
-                    lines.append(f"            {tl_name} -> {hf_name} ({component_type})")
+        # Format blocks structure
+        if "blocks" in component_mapping:
+            base_path, sub_mapping = component_mapping["blocks"]
+            lines.append(f"        blocks: (base_path: {base_path})")
+            for tl_name, hf_name in sub_mapping.items():
+                # Construct full path for type lookup
+                full_path = f"{base_path}.0.{hf_name}"  # Use layer 0 for type lookup
+                component_type = self._get_component_type(full_path)
+                lines.append(f"            {tl_name} -> {hf_name} ({component_type})")
 
         return lines
 
