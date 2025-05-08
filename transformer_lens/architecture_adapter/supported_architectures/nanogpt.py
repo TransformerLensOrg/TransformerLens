@@ -85,8 +85,8 @@ def convert_nanogpt_weights(old_state_dict, cfg: HookedTransformerConfig):
 import torch
 from torch import nn
 
-from transformer_lens.architecture_adapter.conversion_utils.architecture_conversion import (
-    ArchitectureConversion,
+from transformer_lens.architecture_adapter.conversion_utils.architecture_adapter import (
+    ArchitectureAdapter,
 )
 from transformer_lens.architecture_adapter.conversion_utils.conversion_steps import (
     RearrangeWeightConversion,
@@ -95,7 +95,7 @@ from transformer_lens.architecture_adapter.conversion_utils.conversion_steps imp
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 
-class NanoGPTArchitectureAdapter(ArchitectureConversion):
+class NanoGPTArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for NanoGPT models."""
 
     def __init__(self, cfg: HookedTransformerConfig) -> None:
@@ -106,7 +106,7 @@ class NanoGPTArchitectureAdapter(ArchitectureConversion):
         """
         super().__init__(cfg)
 
-        self.field_set = WeightConversionSet(
+        self.conversion_rules = WeightConversionSet(
             {
                 "embed.W_E": "transformer.wte.weight",
                 "blocks.{i}.ln1.w": "transformer.h.{i}.ln_1.weight",

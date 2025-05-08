@@ -1,9 +1,7 @@
 """BERT architecture adapter."""
 
-from typing import Any, Dict
-
-from transformer_lens.architecture_adapter.conversion_utils.architecture_conversion import (
-    ArchitectureConversion,
+from transformer_lens.architecture_adapter.conversion_utils.architecture_adapter import (
+    ArchitectureAdapter,
 )
 from transformer_lens.architecture_adapter.conversion_utils.conversion_steps import (
     RearrangeWeightConversion,
@@ -12,7 +10,7 @@ from transformer_lens.architecture_adapter.conversion_utils.conversion_steps imp
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 
-class BertArchitectureAdapter(ArchitectureConversion):
+class BertArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for BERT models."""
 
     def __init__(self, cfg: HookedTransformerConfig) -> None:
@@ -23,7 +21,7 @@ class BertArchitectureAdapter(ArchitectureConversion):
         """
         super().__init__(cfg)
 
-        self.field_set = WeightConversionSet(
+        self.conversion_rules = WeightConversionSet(
             {
                 "embed.W_E": "bert.embeddings.word_embeddings.weight",
                 "pos_embed.W_pos": "bert.embeddings.position_embeddings.weight",
@@ -75,3 +73,25 @@ class BertArchitectureAdapter(ArchitectureConversion):
                 "unembed.decoder.bias": "cls.predictions.bias",
             }
         )
+
+        # Set up component mapping
+        self.component_mapping = {
+            "embed": "bert.embeddings",  # Word token embeddings
+            "pos_embed": "bert.embeddings.position_embeddings",  # Position embeddings
+            "blocks": (
+                "bert.encoder.layer",  # Base path for blocks
+                {
+                    "ln1": "attention.output.LayerNorm",  # Post-attention layer norm
+                    "ln2": "output.LayerNorm",  # Post-MLP layer norm
+                    "attn": "attention",  # Full attention module
+                    "attn.q_proj": "attention.self.query",  # Query projection
+                    "attn.k_proj": "attention.self.key",  # Key projection
+                    "attn.v_proj": "attention.self.value",  # Value projection
+                    "attn.output_proj": "attention.output.dense",  # Output projection
+                    "mlp": "intermediate",  # Full MLP module
+                    "mlp.fc1": "intermediate.dense",  # First linear layer
+                    "mlp.fc2": "output.dense",  # Second linear layer
+                },
+            ),
+            "unembed": "cls.predictions",  # Language model head
+        }

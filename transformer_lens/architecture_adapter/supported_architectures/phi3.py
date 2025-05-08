@@ -1,12 +1,12 @@
 """Phi3 architecture adapter."""
 
-from typing import cast
+from typing import Any, cast
 
 import einops
 import torch
 
-from transformer_lens.architecture_adapter.conversion_utils.architecture_conversion import (
-    ArchitectureConversion,
+from transformer_lens.architecture_adapter.conversion_utils.architecture_adapter import (
+    ArchitectureAdapter,
 )
 from transformer_lens.architecture_adapter.conversion_utils.conversion_steps import (
     RearrangeWeightConversion,
@@ -15,7 +15,7 @@ from transformer_lens.architecture_adapter.conversion_utils.conversion_steps imp
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 
-def convert_phi3_weights(phi, cfg: HookedTransformerConfig):
+def convert_phi3_weights(phi: Any, cfg: HookedTransformerConfig):
     state_dict = {}
     state_dict["embed.W_E"] = phi.model.embed_tokens.weight
 
@@ -30,23 +30,23 @@ def convert_phi3_weights(phi, cfg: HookedTransformerConfig):
         state_dict[f"blocks.{l}.ln1.w"] = phi.model.layers[l].input_layernorm.weight
         state_dict[f"blocks.{l}.ln1.b"] = torch.zeros(cfg.d_vocab, dtype=cfg.dtype)
 
-        W = phi.model.layers[l].self_attn.qkv_proj.weight
+        w = phi.model.layers[l].self_attn.qkv_proj.weight
         q_dim = cfg.n_heads * cfg.d_head
         kv_dim = n_kv_heads * cfg.d_head
-        W_Q, W_K, W_V = W.split([q_dim, kv_dim, kv_dim], dim=0)
+        w_q, w_k, w_v = w.split([q_dim, kv_dim, kv_dim], dim=0)
 
-        W_Q = einops.rearrange(
-            W_Q, "(n_head d_head) d_model -> n_head d_model d_head", n_head=cfg.n_heads
+        w_q = einops.rearrange(
+            w_q, "(n_head d_head) d_model -> n_head d_model d_head", n_head=cfg.n_heads
         )
-        W_K = einops.rearrange(
-            W_K, "(n_kv_head d_head) d_model -> n_kv_head d_model d_head", n_kv_head=n_kv_heads
+        w_k = einops.rearrange(
+            w_k, "(n_kv_head d_head) d_model -> n_kv_head d_model d_head", n_kv_head=n_kv_heads
         )
-        W_V = einops.rearrange(
-            W_V, "(n_kv_head d_head) d_model -> n_kv_head d_model d_head", n_kv_head=n_kv_heads
+        w_v = einops.rearrange(
+            w_v, "(n_kv_head d_head) d_model -> n_kv_head d_model d_head", n_kv_head=n_kv_heads
         )
-        state_dict[f"blocks.{l}.attn.W_Q"] = W_Q
-        state_dict[f"blocks.{l}.attn.{gqa_uscore}W_K"] = W_K
-        state_dict[f"blocks.{l}.attn.{gqa_uscore}W_V"] = W_V
+        state_dict[f"blocks.{l}.attn.W_Q"] = w_q
+        state_dict[f"blocks.{l}.attn.{gqa_uscore}W_K"] = w_k
+        state_dict[f"blocks.{l}.attn.{gqa_uscore}W_V"] = w_v
 
         state_dict[f"blocks.{l}.attn.b_Q"] = torch.zeros(
             cfg.n_heads, cfg.d_head, dtype=cfg.dtype, device=cfg.device
@@ -62,21 +62,21 @@ def convert_phi3_weights(phi, cfg: HookedTransformerConfig):
             dtype=cfg.dtype,
         )
 
-        W_O = phi.model.layers[l].self_attn.o_proj.weight
-        W_O = einops.rearrange(
-            W_O, "d_model (n_head d_head) -> n_head d_head d_model", n_head=cfg.n_heads
+        w_o = phi.model.layers[l].self_attn.o_proj.weight
+        w_o = einops.rearrange(
+            w_o, "d_model (n_head d_head) -> n_head d_head d_model", n_head=cfg.n_heads
         )
 
-        state_dict[f"blocks.{l}.attn.W_O"] = W_O
+        state_dict[f"blocks.{l}.attn.W_O"] = w_o
         state_dict[f"blocks.{l}.attn.b_O"] = torch.zeros(cfg.d_model, dtype=cfg.dtype)
 
         state_dict[f"blocks.{l}.ln2.w"] = phi.model.layers[l].post_attention_layernorm.weight
         state_dict[f"blocks.{l}.ln2.b"] = torch.zeros(cfg.d_vocab, dtype=cfg.dtype)
 
-        W = phi.model.layers[l].mlp.gate_up_proj.weight.T
-        W_gate, W_in = torch.tensor_split(W, 2, dim=1)
-        state_dict[f"blocks.{l}.mlp.W_in"] = W_in
-        state_dict[f"blocks.{l}.mlp.W_gate"] = W_gate
+        w = phi.model.layers[l].mlp.gate_up_proj.weight.T
+        w_gate, w_in = torch.tensor_split(w, 2, dim=1)
+        state_dict[f"blocks.{l}.mlp.W_in"] = w_in
+        state_dict[f"blocks.{l}.mlp.W_gate"] = w_gate
         state_dict[f"blocks.{l}.mlp.W_out"] = phi.model.layers[l].mlp.down_proj.weight.T
 
     state_dict["ln_final.w"] = phi.model.norm.weight
@@ -87,7 +87,7 @@ def convert_phi3_weights(phi, cfg: HookedTransformerConfig):
     return state_dict
 
 
-class Phi3ArchitectureAdapter(ArchitectureConversion):
+class Phi3ArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for Phi3 models."""
 
     def __init__(self, cfg: HookedTransformerConfig) -> None:
@@ -98,7 +98,7 @@ class Phi3ArchitectureAdapter(ArchitectureConversion):
         """
         super().__init__(cfg)
 
-        self.field_set = WeightConversionSet(
+        self.conversion_rules = WeightConversionSet(
             {
                 "embed.W_E": "model.embed_tokens.weight",
                 "blocks.{i}.ln1.w": "model.layers.{i}.input_layernorm.weight",
@@ -144,3 +144,25 @@ class Phi3ArchitectureAdapter(ArchitectureConversion):
                 "ln_final.b": "model.final_layernorm.bias",
             }
         )
+
+        # Set up component mapping
+        self.component_mapping = {
+            "embed": "model.embed_tokens",  # Word token embeddings
+            "blocks": (
+                "model.layers",  # Base path for blocks
+                {
+                    "ln1": "input_layernorm",  # Pre-attention layer norm
+                    "ln2": "post_attention_layernorm",  # Pre-MLP layer norm
+                    "attn": "self_attn",  # Full attention module
+                    "attn.q_proj": "self_attn.q_proj",  # Query projection
+                    "attn.k_proj": "self_attn.k_proj",  # Key projection
+                    "attn.v_proj": "self_attn.v_proj",  # Value projection
+                    "attn.output_proj": "self_attn.dense",  # Output projection
+                    "mlp": "mlp",  # Full MLP module
+                    "mlp.fc1": "mlp.fc1",  # First linear layer
+                    "mlp.fc2": "mlp.fc2",  # Second linear layer
+                },
+            ),
+            "ln_final": "model.final_layernorm",  # Final layer norm
+            "unembed": "lm_head",  # Language model head
+        }

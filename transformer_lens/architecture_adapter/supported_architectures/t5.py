@@ -1,9 +1,7 @@
 """T5 architecture adapter."""
 
-from typing import Any, Dict
-
-from transformer_lens.architecture_adapter.conversion_utils.architecture_conversion import (
-    ArchitectureConversion,
+from transformer_lens.architecture_adapter.conversion_utils.architecture_adapter import (
+    ArchitectureAdapter,
 )
 from transformer_lens.architecture_adapter.conversion_utils.conversion_steps import (
     RearrangeWeightConversion,
@@ -12,7 +10,7 @@ from transformer_lens.architecture_adapter.conversion_utils.conversion_steps imp
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 
-class T5ArchitectureAdapter(ArchitectureConversion):
+class T5ArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for T5 models."""
 
     def __init__(self, cfg: HookedTransformerConfig) -> None:
@@ -23,7 +21,7 @@ class T5ArchitectureAdapter(ArchitectureConversion):
         """
         super().__init__(cfg)
 
-        self.field_set = WeightConversionSet(
+        self.conversion_rules = WeightConversionSet(
             {
                 "embed.W_E": "shared.weight",
                 "blocks.{i}.ln1.w": "encoder.block.{i}.layer.0.layer_norm.weight",
@@ -69,3 +67,25 @@ class T5ArchitectureAdapter(ArchitectureConversion):
                 "ln_final.b": "encoder.final_layer_norm.bias",
             }
         )
+
+        # Set up component mapping
+        self.component_mapping = {
+            "embed": "shared",  # Word token embeddings (shared with unembed)
+            "blocks": (
+                "encoder.block",  # Base path for blocks
+                {
+                    "ln1": "layer.0.layer_norm",  # Pre-attention layer norm
+                    "ln2": "layer.1.layer_norm",  # Pre-MLP layer norm
+                    "attn": "layer.0.SelfAttention",  # Full attention module
+                    "attn.q_proj": "layer.0.SelfAttention.q",  # Query projection
+                    "attn.k_proj": "layer.0.SelfAttention.k",  # Key projection
+                    "attn.v_proj": "layer.0.SelfAttention.v",  # Value projection
+                    "attn.output_proj": "layer.0.SelfAttention.o",  # Output projection
+                    "mlp": "layer.1.DenseReluDense",  # Full MLP module
+                    "mlp.fc1": "layer.1.DenseReluDense.wi",  # First linear layer
+                    "mlp.fc2": "layer.1.DenseReluDense.wo",  # Second linear layer
+                },
+            ),
+            "ln_final": "encoder.final_layer_norm",  # Final layer norm
+            "unembed": "shared",  # Language model head (shared with embed)
+        }

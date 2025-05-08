@@ -2,8 +2,8 @@
 
 from typing import Any, Dict
 
-from transformer_lens.architecture_adapter.conversion_utils.architecture_conversion import (
-    ArchitectureConversion,
+from transformer_lens.architecture_adapter.conversion_utils.architecture_adapter import (
+    ArchitectureAdapter,
 )
 from transformer_lens.architecture_adapter.conversion_utils.conversion_steps import (
     RearrangeWeightConversion,
@@ -12,7 +12,7 @@ from transformer_lens.architecture_adapter.conversion_utils.conversion_steps imp
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 
-class GPTJArchitectureAdapter(ArchitectureConversion):
+class GPTJArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for GPT-J models."""
 
     def __init__(self, cfg: HookedTransformerConfig) -> None:
@@ -23,7 +23,7 @@ class GPTJArchitectureAdapter(ArchitectureConversion):
         """
         super().__init__(cfg)
 
-        self.field_set = WeightConversionSet(
+        self.conversion_rules = WeightConversionSet(
             {
                 "embed.W_E": "transformer.wte.weight",
                 "blocks.{i}.ln1.w": "transformer.h.{i}.ln_1.weight",

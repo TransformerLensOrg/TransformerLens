@@ -1,9 +1,7 @@
 """Phi architecture adapter."""
 
-from typing import Any, Dict
-
-from transformer_lens.architecture_adapter.conversion_utils.architecture_conversion import (
-    ArchitectureConversion,
+from transformer_lens.architecture_adapter.conversion_utils.architecture_adapter import (
+    ArchitectureAdapter,
 )
 from transformer_lens.architecture_adapter.conversion_utils.conversion_steps import (
     RearrangeWeightConversion,
@@ -12,7 +10,7 @@ from transformer_lens.architecture_adapter.conversion_utils.conversion_steps imp
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 
-class PhiArchitectureAdapter(ArchitectureConversion):
+class PhiArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for Phi models."""
 
     def __init__(self, cfg: HookedTransformerConfig) -> None:
@@ -23,7 +21,7 @@ class PhiArchitectureAdapter(ArchitectureConversion):
         """
         super().__init__(cfg)
 
-        self.field_set = WeightConversionSet(
+        self.conversion_rules = WeightConversionSet(
             {
                 "embed.W_E": "transformer.embd.wte.weight",
                 "blocks.{i}.ln1.w": "transformer.h.{i}.ln_1.weight",
@@ -69,3 +67,25 @@ class PhiArchitectureAdapter(ArchitectureConversion):
                 "ln_final.b": "transformer.ln_f.bias",
             }
         )
+
+        # Set up component mapping
+        self.component_mapping = {
+            "embed": "transformer.embd.wte",  # Word token embeddings
+            "blocks": (
+                "transformer.h",  # Base path for blocks
+                {
+                    "ln1": "ln_1",  # Pre-attention layer norm
+                    "ln2": "ln_2",  # Pre-MLP layer norm
+                    "attn": "attn",  # Full attention module
+                    "attn.q_proj": "attn.q_proj",  # Query projection
+                    "attn.k_proj": "attn.k_proj",  # Key projection
+                    "attn.v_proj": "attn.v_proj",  # Value projection
+                    "attn.output_proj": "attn.out_proj",  # Output projection
+                    "mlp": "mlp",  # Full MLP module
+                    "mlp.fc1": "mlp.fc1",  # First linear layer
+                    "mlp.fc2": "mlp.fc2",  # Second linear layer
+                },
+            ),
+            "ln_final": "transformer.ln_f",  # Final layer norm
+            "unembed": "lm_head",  # Language model head
+        }
