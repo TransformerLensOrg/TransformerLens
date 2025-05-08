@@ -3,7 +3,7 @@
 This module provides a factory for creating architecture adapters.
 """
 
-from typing import Any, Type
+from typing import type
 
 from transformer_lens.architecture_adapter.conversion_utils.architecture_conversion import (
     ArchitectureConversion,
@@ -36,7 +36,7 @@ from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 class ArchitectureAdapterFactory:
     """Factory for creating architecture adapters."""
 
-    _adapters: dict[str, Type[ArchitectureConversion]] = {
+    _adapters: dict[str, type[ArchitectureConversion]] = {
         "BertForMaskedLM": BertArchitectureAdapter,
         "BloomForCausalLM": BloomArchitectureAdapter,
         "GemmaForCausalLM": GemmaArchitectureAdapter,
