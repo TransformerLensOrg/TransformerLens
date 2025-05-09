@@ -9,8 +9,14 @@ from transformer_lens.architecture_adapter.supported_architectures.bert import (
 from transformer_lens.architecture_adapter.supported_architectures.bloom import (
     BloomArchitectureAdapter,
 )
-from transformer_lens.architecture_adapter.supported_architectures.gemma import (
-    GemmaArchitectureAdapter,
+from transformer_lens.architecture_adapter.supported_architectures.gemma1 import (
+    Gemma1ArchitectureAdapter,
+)
+from transformer_lens.architecture_adapter.supported_architectures.gemma2 import (
+    Gemma2ArchitectureAdapter,
+)
+from transformer_lens.architecture_adapter.supported_architectures.gemma3 import (
+    Gemma3ArchitectureAdapter,
 )
 from transformer_lens.architecture_adapter.supported_architectures.gpt2 import (
     GPT2ArchitectureAdapter,
@@ -70,7 +76,9 @@ from transformer_lens.architecture_adapter.supported_architectures.t5 import (
 __all__ = [
     "BertArchitectureAdapter",
     "BloomArchitectureAdapter",
-    "GemmaArchitectureAdapter",
+    "Gemma1ArchitectureAdapter",
+    "Gemma2ArchitectureAdapter",
+    "Gemma3ArchitectureAdapter",
     "GPT2ArchitectureAdapter",
     "GPT2LMHeadCustomArchitectureAdapter",
     "GPTJArchitectureAdapter",

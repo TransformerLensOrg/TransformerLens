@@ -9,7 +9,9 @@ from transformer_lens.architecture_adapter.conversion_utils.architecture_convers
 from transformer_lens.architecture_adapter.supported_architectures import (
     BertArchitectureAdapter,
     BloomArchitectureAdapter,
-    GemmaArchitectureAdapter,
+    Gemma1ArchitectureAdapter,
+    Gemma2ArchitectureAdapter,
+    Gemma3ArchitectureAdapter,
     GPT2ArchitectureAdapter,
     GPT2LMHeadCustomArchitectureAdapter,
     GPTJArchitectureAdapter,
@@ -37,7 +39,10 @@ class ArchitectureAdapterFactory:
     _adapters: dict[str, type[ArchitectureConversion]] = {
         "BertForMaskedLM": BertArchitectureAdapter,
         "BloomForCausalLM": BloomArchitectureAdapter,
-        "GemmaForCausalLM": GemmaArchitectureAdapter,
+        "GemmaForCausalLM": Gemma1ArchitectureAdapter,  # Default to Gemma1 as it's the original version
+        "Gemma1ForCausalLM": Gemma1ArchitectureAdapter,
+        "Gemma2ForCausalLM": Gemma2ArchitectureAdapter,
+        "Gemma3ForCausalLM": Gemma3ArchitectureAdapter,
         "GPT2LMHeadModel": GPT2ArchitectureAdapter,
         "GPT2LMHeadCustomModel": GPT2LMHeadCustomArchitectureAdapter,
         "GPTJForCausalLM": GPTJArchitectureAdapter,
