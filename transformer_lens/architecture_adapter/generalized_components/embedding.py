@@ -49,14 +49,19 @@ class EmbeddingBridge(GeneralizedComponent):
         
         Args:
             input_ids: Input token IDs
-            position_ids: Optional position IDs
+            position_ids: Optional position IDs (ignored if not supported)
             **kwargs: Additional arguments to pass to the original component
             
         Returns:
             Embedded output
         """
         # Forward through original component
-        output = self.original_component(input_ids, position_ids=position_ids, **kwargs)
+        # Remove position_ids if not supported
+        if not hasattr(self.original_component, "forward") or "position_ids" not in self.original_component.forward.__code__.co_varnames:
+            kwargs.pop("position_ids", None)
+            output = self.original_component(input_ids, **kwargs)
+        else:
+            output = self.original_component(input_ids, position_ids=position_ids, **kwargs)
         
         # Apply hook to final output
         output = self.hook_output(output)

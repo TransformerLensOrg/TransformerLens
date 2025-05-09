@@ -35,6 +35,68 @@ class ArchitectureAdapter(ABC):
         self.conversion_rules = None
         self.component_mapping = None
 
+    def get_component_path(self, name: str) -> str:
+        """Get the path to a component in the model.
+        
+        Args:
+            name: The name of the component to get the path for
+            
+        Returns:
+            The path to the component in the model
+            
+        Raises:
+            ValueError: If the component mapping is not set or the component is not found
+        """
+        if self.component_mapping is None:
+            raise ValueError("component_mapping must be set before calling get_component_path")
+            
+        if name not in self.component_mapping:
+            raise ValueError(f"Component {name} not found in component mapping")
+            
+        return self.component_mapping[name]
+
+    def get_block_component_path(self, block_idx: int, component_name: str) -> str:
+        """Get the path to a component within a block.
+        
+        Args:
+            block_idx: The index of the block
+            component_name: The name of the component within the block
+            
+        Returns:
+            The path to the component in the model
+            
+        Raises:
+            ValueError: If the component mapping is not set or the component is not found
+        """
+        if self.component_mapping is None:
+            raise ValueError("component_mapping must be set before calling get_block_component_path")
+            
+        if "blocks" not in self.component_mapping:
+            raise ValueError("No blocks found in component mapping")
+            
+        blocks_info = self.component_mapping["blocks"]
+        if not isinstance(blocks_info, tuple) or len(blocks_info) != 2:
+            raise ValueError("Invalid blocks mapping format")
+            
+        base_path, block_components = blocks_info
+        if component_name not in block_components:
+            raise ValueError(f"Component {component_name} not found in block components")
+            
+        return f"{base_path}.{block_idx}.{block_components[component_name]}"
+
+    def get_component_mapping(self) -> dict[str, str | tuple[str, dict[str, str]]]:
+        """Get the full component mapping.
+        
+        Returns:
+            The component mapping dictionary
+            
+        Raises:
+            ValueError: If the component mapping is not set
+        """
+        if self.component_mapping is None:
+            raise ValueError("component_mapping must be set before calling get_component_mapping")
+        return self.component_mapping
+
     @abstractmethod
     def get_component(self, model: PreTrainedModel, name: str) -> Any:
         """Get a component from the model.

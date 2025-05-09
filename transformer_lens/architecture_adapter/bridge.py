@@ -3,8 +3,6 @@
 from dataclasses import dataclass
 from typing import Any
 
-import torch
-import torch.nn as nn
 from transformers import PreTrainedModel
 
 from transformer_lens.architecture_adapter.conversion_utils.architecture_adapter import (
@@ -12,18 +10,20 @@ from transformer_lens.architecture_adapter.conversion_utils.architecture_adapter
 )
 from transformer_lens.architecture_adapter.generalized_components import (
     AttentionBridge,
+    EmbeddingBridge,
+    LayerNormBridge,
     MLPBridge,
+    UnembeddingBridge,
 )
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 
 @dataclass
 class Block:
     """A transformer block in the bridge."""
 
-    ln1: nn.Module
+    ln1: LayerNormBridge
     attn: AttentionBridge
-    ln2: nn.Module
+    ln2: LayerNormBridge
     mlp: MLPBridge
 
 
@@ -46,8 +46,18 @@ class TransformerBridge:
         self.adapter = adapter
         self.cfg = adapter.cfg
         
-        # Get components from the adapter
-        self.embed = adapter.get_component(model, "embed")
+        if not hasattr(adapter, 'component_mapping') or adapter.component_mapping is None:
+            raise ValueError("Adapter must have a component_mapping attribute")
+        
+        # Get and replace components in the model
+        embed = adapter.get_component(model, "embed")
+        if not isinstance(embed, EmbeddingBridge):
+            embed = EmbeddingBridge(embed, "embed")
+            # Replace in model using component mapping
+            path = adapter.get_component_path("embed")
+            self._set_by_path(model, path, embed)
+        self.embed = embed
+        
         self.blocks = []
         
         # Build blocks
@@ -56,23 +66,72 @@ class TransformerBridge:
             ln1 = adapter.get_component(model, f"blocks.{i}.ln1")
             ln2 = adapter.get_component(model, f"blocks.{i}.ln2")
             
+            # Wrap layer norms with bridge
+            if not isinstance(ln1, LayerNormBridge):
+                ln1 = LayerNormBridge(ln1, f"blocks.{i}.ln1")
+                # Replace in model using component mapping
+                path = adapter.get_block_component_path(i, "ln1")
+                self._set_by_path(model, path, ln1)
+            if not isinstance(ln2, LayerNormBridge):
+                ln2 = LayerNormBridge(ln2, f"blocks.{i}.ln2")
+                # Replace in model using component mapping
+                path = adapter.get_block_component_path(i, "ln2")
+                self._set_by_path(model, path, ln2)
+            
             # Get attention and wrap with bridge
             attn = adapter.get_component(model, f"blocks.{i}.attn")
             if not isinstance(attn, AttentionBridge):
                 attn = AttentionBridge(attn, f"blocks.{i}.attn")
+                # Replace in model using component mapping
+                path = adapter.get_block_component_path(i, "attn")
+                self._set_by_path(model, path, attn)
             
             # Get MLP and wrap with bridge
             mlp = adapter.get_component(model, f"blocks.{i}.mlp")
             if not isinstance(mlp, MLPBridge):
                 mlp = MLPBridge(mlp, f"blocks.{i}.mlp")
+                # Replace in model using component mapping
+                path = adapter.get_block_component_path(i, "mlp")
+                self._set_by_path(model, path, mlp)
             
             # Create block
             block = Block(ln1=ln1, attn=attn, ln2=ln2, mlp=mlp)
             self.blocks.append(block)
             
         # Get final components
-        self.ln_final = adapter.get_component(model, "ln_final")
-        self.unembed = adapter.get_component(model, "unembed")
+        ln_final = adapter.get_component(model, "ln_final")
+        if not isinstance(ln_final, LayerNormBridge):
+            ln_final = LayerNormBridge(ln_final, "ln_final")
+            # Replace in model using component mapping
+            path = adapter.get_component_path("ln_final")
+            self._set_by_path(model, path, ln_final)
+        self.ln_final = ln_final
+        
+        unembed = adapter.get_component(model, "unembed")
+        if not isinstance(unembed, UnembeddingBridge):
+            unembed = UnembeddingBridge(unembed, "unembed")
+            # Replace in model using component mapping
+            path = adapter.get_component_path("unembed")
+            self._set_by_path(model, path, unembed)
+        self.unembed = unembed
+        
+    def _set_by_path(self, obj: Any, path: str, value: Any) -> None:
+        """Set a value in an object by its path.
+        
+        Args:
+            obj: The object to modify
+            path: The dot-separated path to the attribute
+            value: The value to set
+        """
+        parts = path.split(".")
+        for part in parts[:-1]:
+            if part == "model":
+                obj = obj.model
+            elif part.isdigit():
+                obj = obj[int(part)]
+            else:
+                obj = getattr(obj, part)
+        setattr(obj, parts[-1], value)
         
     def __str__(self) -> str:
         """Get a string representation of the bridge.
@@ -82,16 +141,16 @@ class TransformerBridge:
         """
         lines = []
         lines.append("TransformerBridge:")
-        lines.append(f"  embed: {type(self.embed).__name__}")
-        lines.append(f"  ln_final: {type(self.ln_final).__name__}")
-        lines.append(f"  unembed: {type(self.unembed).__name__}")
+        lines.append(f"  embed: {type(self.embed).__name__}({type(self.embed.original_component).__name__})")
+        lines.append(f"  ln_final: {type(self.ln_final).__name__}({type(self.ln_final.original_component).__name__})")
+        lines.append(f"  unembed: {type(self.unembed).__name__}({type(self.unembed.original_component).__name__})")
         lines.append("  blocks:")
-        for i, block in enumerate(self.blocks):
-            lines.append(f"    {i}:")
-            lines.append(f"      ln1: {type(block.ln1).__name__}")
-            lines.append(f"      attn: {type(block.attn).__name__}")
-            lines.append(f"      ln2: {type(block.ln2).__name__}")
-            lines.append(f"      mlp: {type(block.mlp).__name__}")
+        for block in self.blocks:
+            lines.append("    block:")
+            lines.append(f"      ln1: {type(block.ln1).__name__}({type(block.ln1.original_component).__name__})")
+            lines.append(f"      attn: {type(block.attn).__name__}({type(block.attn.original_component).__name__})")
+            lines.append(f"      ln2: {type(block.ln2).__name__}({type(block.ln2.original_component).__name__})")
+            lines.append(f"      mlp: {type(block.mlp).__name__}({type(block.mlp.original_component).__name__})")
         return "\n".join(lines)
         
     def generate(self, *args: Any, **kwargs: Any) -> Any:
