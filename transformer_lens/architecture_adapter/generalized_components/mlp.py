@@ -1,4 +1,4 @@
-"""Generalized MLP component implementation."""
+"""MLP bridge component implementation."""
 
 import torch
 import torch.nn as nn
@@ -8,8 +8,8 @@ from transformer_lens.architecture_adapter.generalized_components.base import (
 )
 
 
-class GeneralizedMLP(GeneralizedComponent):
-    """Generalized MLP component that wraps transformer MLP layers.
+class MLPBridge(GeneralizedComponent):
+    """MLP bridge that wraps transformer MLP layers.
     
     This component provides standardized hook points for:
     - input projection
@@ -18,7 +18,7 @@ class GeneralizedMLP(GeneralizedComponent):
     """
 
     def __init__(self, original_component: nn.Module, name: str):
-        """Initialize the MLP component.
+        """Initialize the MLP bridge.
         
         Args:
             original_component: The original MLP component to wrap
@@ -27,7 +27,7 @@ class GeneralizedMLP(GeneralizedComponent):
         super().__init__(original_component, name)
         
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        """Forward pass through the MLP component.
+        """Forward pass through the MLP bridge.
         
         Args:
             hidden_states: Input hidden states

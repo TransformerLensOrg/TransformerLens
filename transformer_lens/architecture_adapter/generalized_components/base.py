@@ -24,10 +24,27 @@ class GeneralizedComponent(nn.Module):
         super().__init__()
         self.original_component = original_component
         self.name = name
-        self.hooks: dict[str, list[Callable]] = {}
+        self.hooks: dict[str, list[Callable[..., torch.Tensor]]] = {}
         self.hook_outputs: dict[str, Any] = {}
+        self._hook_tracker = None
 
-    def register_hook(self, hook_name: str, hook_fn: Callable) -> None:
+    def set_hook_tracker(self, tracker: Any) -> None:
+        """Set the hook tracker for this component.
+        
+        Args:
+            tracker: The hook tracker instance
+        """
+        self._hook_tracker = tracker
+
+    def get_hook_tracker(self) -> Any | None:
+        """Get the hook tracker for this component.
+        
+        Returns:
+            The hook tracker instance if set, None otherwise
+        """
+        return self._hook_tracker
+
+    def register_hook(self, hook_name: str, hook_fn: Callable[..., torch.Tensor]) -> None:
         """Register a hook function for a specific hook point.
         
         Args:
@@ -37,8 +54,12 @@ class GeneralizedComponent(nn.Module):
         if hook_name not in self.hooks:
             self.hooks[hook_name] = []
         self.hooks[hook_name].append(hook_fn)
+        
+        # If we have a hook tracker, register the hook there too
+        if self._hook_tracker is not None:
+            self._hook_tracker.register_component_hook(self.name, hook_name, hook_fn)
 
-    def remove_hook(self, hook_name: str, hook_fn: Callable) -> None:
+    def remove_hook(self, hook_name: str, hook_fn: Callable[..., torch.Tensor]) -> None:
         """Remove a previously registered hook.
         
         Args:
@@ -47,6 +68,8 @@ class GeneralizedComponent(nn.Module):
         """
         if hook_name in self.hooks:
             self.hooks[hook_name].remove(hook_fn)
+            if not self.hooks[hook_name]:  # If no hooks left, remove the entry
+                del self.hooks[hook_name]
 
     def execute_hooks(self, hook_name: str, tensor: torch.Tensor) -> torch.Tensor:
         """Execute all hooks registered for a specific hook point.
@@ -65,11 +88,9 @@ class GeneralizedComponent(nn.Module):
         if hook_name in self.hooks:
             result = tensor
             for hook in self.hooks[hook_name]:
-                hook_result = hook(result)
-                if hook_result is not None:
-                    result = hook_result
-                    # Update the hook output with the modified tensor
-                    self.hook_outputs[hook_name] = result
+                result = hook(result)  # Hook functions must return a tensor
+                # Update the hook output with the modified tensor
+                self.hook_outputs[hook_name] = result
             return result
             
         return tensor
@@ -90,7 +111,7 @@ class GeneralizedComponent(nn.Module):
         self.hooks.clear()
         self.hook_outputs.clear()
 
-    def forward(self, *args: Any, **kwargs: Any) -> torch.Tensor | tuple[torch.Tensor, ...]:
+    def forward(self, *args: Any, **kwargs: Any) -> tuple[torch.Tensor, ...] | torch.Tensor:
         """Forward pass through the component.
         
         This should be implemented by subclasses to define the specific

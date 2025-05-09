@@ -12,9 +12,20 @@ from transformers import PreTrainedModel
 from transformer_lens.architecture_adapter.conversion_utils.helpers.merge_quantiziation_fields import (
     merge_quantization_fields,
 )
-from transformer_lens.architecture_adapter.generalized_components import (
+from transformer_lens.architecture_adapter.generalized_components.attention import (
     GeneralizedAttention,
+)
+from transformer_lens.architecture_adapter.generalized_components.embedding import (
+    GeneralizedEmbedding,
+)
+from transformer_lens.architecture_adapter.generalized_components.layer_norm import (
+    GeneralizedLayerNorm,
+)
+from transformer_lens.architecture_adapter.generalized_components.mlp import (
     GeneralizedMLP,
+)
+from transformer_lens.architecture_adapter.generalized_components.unembedding import (
+    GeneralizedUnembedding,
 )
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
@@ -60,7 +71,13 @@ class ArchitectureConversion(ABC):
         original_component = self.field_set.get_component(model, name)
         
         # Wrap with appropriate generalized component based on name
-        if name.endswith(".attn"):
+        if name == "embed":
+            return GeneralizedEmbedding(original_component, name)
+        elif name == "unembed":
+            return GeneralizedUnembedding(original_component, name)
+        elif name.endswith(".ln1") or name.endswith(".ln2") or name == "ln_final":
+            return GeneralizedLayerNorm(original_component, name)
+        elif name.endswith(".attn"):
             return GeneralizedAttention(original_component, name)
         elif name.endswith(".mlp"):
             return GeneralizedMLP(original_component, name)

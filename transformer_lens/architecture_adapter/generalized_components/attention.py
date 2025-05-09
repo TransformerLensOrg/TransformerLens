@@ -1,4 +1,6 @@
-"""Generalized attention component implementation."""
+"""Attention bridge component implementation."""
+
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -8,8 +10,8 @@ from transformer_lens.architecture_adapter.generalized_components.base import (
 )
 
 
-class GeneralizedAttention(GeneralizedComponent):
-    """Generalized attention component that wraps transformer attention layers.
+class AttentionBridge(GeneralizedComponent):
+    """Attention bridge that wraps transformer attention layers.
     
     This component provides standardized hook points for:
     - query/key/value projections
@@ -19,7 +21,7 @@ class GeneralizedAttention(GeneralizedComponent):
     """
 
     def __init__(self, original_component: nn.Module, name: str):
-        """Initialize the attention component.
+        """Initialize the attention bridge.
         
         Args:
             original_component: The original attention component to wrap
@@ -35,8 +37,9 @@ class GeneralizedAttention(GeneralizedComponent):
         past_key_value: tuple[torch.Tensor, ...] | None = None,
         output_attentions: bool = False,
         use_cache: bool = False,
-    ) -> tuple[torch.Tensor, ...]:
-        """Forward pass through the attention component.
+        **kwargs: Any,  # Accept any additional arguments
+    ) -> tuple[torch.Tensor, torch.Tensor | None, tuple[torch.Tensor, ...] | None]:
+        """Forward pass through the attention bridge.
         
         Args:
             hidden_states: Input hidden states
@@ -45,12 +48,13 @@ class GeneralizedAttention(GeneralizedComponent):
             past_key_value: Optional past key/value states
             output_attentions: Whether to output attention weights
             use_cache: Whether to use KV cache
+            **kwargs: Additional arguments to pass to the original component
             
         Returns:
             Tuple containing:
             - Output hidden states
-            - Optional attention weights
-            - Optional present key/value states
+            - Attention weights (None if not requested)
+            - Present key/value states (None if not using cache)
         """
         # Execute pre-attention hooks
         hidden_states = self.execute_hooks("pre_attention", hidden_states)
@@ -63,6 +67,7 @@ class GeneralizedAttention(GeneralizedComponent):
             past_key_value=past_key_value,
             output_attentions=True,  # Always get attention weights for hooks
             use_cache=use_cache,
+            **kwargs,  # Pass through any additional arguments
         )
         
         # Unpack outputs
@@ -79,11 +84,9 @@ class GeneralizedAttention(GeneralizedComponent):
             "output": output
         })
         
-        # Return appropriate outputs based on flags
-        outputs = (output,)
-        if output_attentions and attention_weights is not None:
-            outputs += (attention_weights,)
-        if use_cache and present_key_value is not None:
-            outputs += (present_key_value,)
-            
-        return outputs 
+        # Always return a 3-tuple with the expected types
+        return (
+            output,
+            attention_weights if output_attentions else None,
+            present_key_value if use_cache else None,
+        ) 

@@ -12,6 +12,10 @@ from transformers import PreTrainedModel
 from transformer_lens.architecture_adapter.conversion_utils.architecture_conversion import (
     ArchitectureConversion,
 )
+from transformer_lens.architecture_adapter.generalized_components import (
+    GeneralizedAttention,
+    GeneralizedMLP,
+)
 
 
 class BlockComponentProxy:
@@ -87,6 +91,57 @@ class TransformerBridge:
         self.device = device
         self.dtype = dtype
         self._blocks = BlockProxy(self)
+        
+        # Replace model components with generalized ones
+        self._replace_model_components()
+
+    def _replace_model_components(self) -> None:
+        """Replace model components with generalized ones.
+        
+        This method replaces attention and MLP components in the model with
+        our generalized versions that support hooks.
+        """
+        # Get the component mapping
+        component_mapping = self.architecture_adapter.component_mapping
+        if not isinstance(component_mapping, dict):
+            return
+
+        # Get the blocks base path and sub-mapping
+        if "blocks" not in component_mapping:
+            return
+        base_path, sub_mapping = component_mapping["blocks"]
+
+        # Get attention and MLP component names
+        attn_name = sub_mapping.get("attn")
+        mlp_name = sub_mapping.get("mlp")
+        if not attn_name or not mlp_name:
+            return
+
+        # Replace components in each layer
+        n_layers = self.model.config.num_hidden_layers
+        for layer_idx in range(n_layers):
+            # Navigate to the layer
+            layer = self.model
+            for part in base_path.split("."):
+                if part:  # Skip empty parts
+                    layer = getattr(layer, part)
+            layer = layer[layer_idx]
+
+            # Replace attention component
+            original_attn = getattr(layer, attn_name)
+            generalized_attn = GeneralizedAttention(
+                original_attn,
+                f"blocks.{layer_idx}.{attn_name}"
+            )
+            setattr(layer, attn_name, generalized_attn)
+
+            # Replace MLP component
+            original_mlp = getattr(layer, mlp_name)
+            generalized_mlp = GeneralizedMLP(
+                original_mlp,
+                f"blocks.{layer_idx}.{mlp_name}"
+            )
+            setattr(layer, mlp_name, generalized_mlp)
 
     def __getattr__(self, name: str) -> Any:
         """Get a component from the model using the architecture adapter.
@@ -176,6 +231,11 @@ class TransformerBridge:
                 dtype_str = str(component.dtype).replace("torch.", "")
                 return f"Tensor({shape_str}, {dtype_str})"
             elif isinstance(component, torch.nn.Module):
+                # For generalized components, show both the wrapper and original class
+                if hasattr(component, 'original_component'):
+                    orig_class = component.original_component.__class__.__name__
+                    wrapper_class = component.__class__.__name__
+                    return f"{wrapper_class}({orig_class})"
                 return component.__class__.__name__
             else:
                 return type(component).__name__
