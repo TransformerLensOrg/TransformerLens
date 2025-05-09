@@ -145,12 +145,18 @@ class TransformerBridge:
         lines.append(f"  ln_final: {type(self.ln_final).__name__}({type(self.ln_final.original_component).__name__})")
         lines.append(f"  unembed: {type(self.unembed).__name__}({type(self.unembed.original_component).__name__})")
         lines.append("  blocks:")
-        for block in self.blocks:
-            lines.append("    block:")
-            lines.append(f"      ln1: {type(block.ln1).__name__}({type(block.ln1.original_component).__name__})")
-            lines.append(f"      attn: {type(block.attn).__name__}({type(block.attn.original_component).__name__})")
-            lines.append(f"      ln2: {type(block.ln2).__name__}({type(block.ln2.original_component).__name__})")
-            lines.append(f"      mlp: {type(block.mlp).__name__}({type(block.mlp.original_component).__name__})")
+        if self.blocks:
+            block = self.blocks[0]
+            lines.append(f"    ln1: {type(block.ln1).__name__}({type(block.ln1.original_component).__name__})")
+            lines.append(f"    attn: {type(block.attn).__name__}({type(block.attn.original_component).__name__})")
+            lines.append(f"    ln2: {type(block.ln2).__name__}({type(block.ln2.original_component).__name__})")
+            lines.append(f"    mlp: {type(block.mlp).__name__}({type(block.mlp.original_component).__name__})")
+            
+            # Show any additional components in the block
+            for attr_name, attr_value in vars(block).items():
+                if attr_name not in ['ln1', 'attn', 'ln2', 'mlp'] and hasattr(attr_value, 'original_component'):
+                    lines.append(f"    {attr_name}: {type(attr_value).__name__}({type(attr_value.original_component).__name__})")
+        
         return "\n".join(lines)
         
     def generate(self, *args: Any, **kwargs: Any) -> Any:
