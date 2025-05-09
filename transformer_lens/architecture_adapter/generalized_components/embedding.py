@@ -1,4 +1,4 @@
-"""Generalized embedding component implementation."""
+"""Embedding bridge component implementation."""
 
 from typing import Any
 
@@ -10,8 +10,8 @@ from transformer_lens.architecture_adapter.generalized_components.base import (
 )
 
 
-class GeneralizedEmbedding(GeneralizedComponent):
-    """Generalized embedding component that wraps transformer embedding layers.
+class EmbeddingBridge(GeneralizedComponent):
+    """Embedding bridge that wraps transformer embedding layers.
     
     This component provides standardized hook points for:
     - input embeddings
@@ -20,7 +20,7 @@ class GeneralizedEmbedding(GeneralizedComponent):
     """
 
     def __init__(self, original_component: nn.Module, name: str):
-        """Initialize the embedding component.
+        """Initialize the embedding bridge.
         
         Args:
             original_component: The original embedding component to wrap
@@ -34,7 +34,7 @@ class GeneralizedEmbedding(GeneralizedComponent):
         position_ids: torch.Tensor | None = None,
         **kwargs: Any,
     ) -> torch.Tensor:
-        """Forward pass through the embedding component.
+        """Forward pass through the embedding bridge.
         
         Args:
             input_ids: Input token IDs

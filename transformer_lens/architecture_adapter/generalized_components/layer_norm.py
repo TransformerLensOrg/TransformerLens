@@ -1,4 +1,4 @@
-"""Generalized layer norm component implementation."""
+"""Layer norm bridge component implementation."""
 
 from typing import Any
 
@@ -10,8 +10,8 @@ from transformer_lens.architecture_adapter.generalized_components.base import (
 )
 
 
-class GeneralizedLayerNorm(GeneralizedComponent):
-    """Generalized layer norm component that wraps transformer layer normalization layers.
+class LayerNormBridge(GeneralizedComponent):
+    """Layer norm bridge that wraps transformer layer normalization layers.
     
     This component provides standardized hook points for:
     - input normalization
@@ -20,7 +20,7 @@ class GeneralizedLayerNorm(GeneralizedComponent):
     """
 
     def __init__(self, original_component: nn.Module, name: str):
-        """Initialize the layer norm component.
+        """Initialize the layer norm bridge.
         
         Args:
             original_component: The original layer norm component to wrap
@@ -33,7 +33,7 @@ class GeneralizedLayerNorm(GeneralizedComponent):
         hidden_states: torch.Tensor,
         **kwargs: Any,
     ) -> torch.Tensor:
-        """Forward pass through the layer norm component.
+        """Forward pass through the layer norm bridge.
         
         Args:
             hidden_states: Input hidden states

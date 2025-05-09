@@ -1,4 +1,4 @@
-"""Generalized unembedding component implementation."""
+"""Unembedding bridge component implementation."""
 
 from typing import Any
 
@@ -10,8 +10,8 @@ from transformer_lens.architecture_adapter.generalized_components.base import (
 )
 
 
-class GeneralizedUnembedding(GeneralizedComponent):
-    """Generalized unembedding component that wraps transformer language model heads.
+class UnembeddingBridge(GeneralizedComponent):
+    """Unembedding bridge that wraps transformer language model heads.
     
     This component provides standardized hook points for:
     - input projection
@@ -19,7 +19,7 @@ class GeneralizedUnembedding(GeneralizedComponent):
     """
 
     def __init__(self, original_component: nn.Module, name: str):
-        """Initialize the unembedding component.
+        """Initialize the unembedding bridge.
         
         Args:
             original_component: The original unembedding component to wrap
@@ -32,7 +32,7 @@ class GeneralizedUnembedding(GeneralizedComponent):
         hidden_states: torch.Tensor,
         **kwargs: Any,
     ) -> torch.Tensor:
-        """Forward pass through the unembedding component.
+        """Forward pass through the unembedding bridge.
         
         Args:
             hidden_states: Input hidden states
