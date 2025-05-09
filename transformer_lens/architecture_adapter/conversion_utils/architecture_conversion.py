@@ -12,6 +12,10 @@ from transformers import PreTrainedModel
 from transformer_lens.architecture_adapter.conversion_utils.helpers.merge_quantiziation_fields import (
     merge_quantization_fields,
 )
+from transformer_lens.architecture_adapter.generalized_components import (
+    GeneralizedAttention,
+    GeneralizedMLP,
+)
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 from .conversion_steps.types import FIELD_SET
@@ -39,18 +43,30 @@ class ArchitectureConversion(ABC):
         """Get a component from the model using the field set mapping.
 
         This method maps HookedTransformer component names to the underlying model's structure
-        using the field set mapping.
+        using the field set mapping. It wraps the original components with generalized ones
+        that provide standardized hook points.
 
         Args:
             model: The model to get the component from.
             name: The name of the component to get.
 
         Returns:
-            The requested component.
+            The requested component, wrapped in a generalized component if applicable.
         """
         if self.field_set is None:
             raise ValueError("field_set must be set before calling get_component")
-        return self.field_set.get_component(model, name)
+            
+        # Get the original component
+        original_component = self.field_set.get_component(model, name)
+        
+        # Wrap with appropriate generalized component based on name
+        if name.endswith(".attn"):
+            return GeneralizedAttention(original_component, name)
+        elif name.endswith(".mlp"):
+            return GeneralizedMLP(original_component, name)
+            
+        # Return original component for other cases
+        return original_component
 
     def convert_weights(self, hf_model: PreTrainedModel) -> dict[str, torch.Tensor]:
         """Convert the weights from the HuggingFace format to the HookedTransformer format.
