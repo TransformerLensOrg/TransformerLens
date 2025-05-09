@@ -14,6 +14,56 @@ from transformer_lens.architecture_adapter.conversion_utils.architecture_convers
 )
 
 
+class BlockComponentProxy:
+    """Proxy class for block component access."""
+
+    def __init__(self, bridge: "TransformerBridge", block_idx: int):
+        """Initialize the block component proxy.
+
+        Args:
+            bridge: The bridge instance.
+            block_idx: The block index.
+        """
+        self.bridge = bridge
+        self.block_idx = block_idx
+
+    def __getattr__(self, name: str) -> Any:
+        """Get a block component by name.
+
+        Args:
+            name: The component name.
+
+        Returns:
+            The requested component.
+        """
+        return self.bridge.architecture_adapter.get_component(
+            self.bridge.model, f"blocks.{self.block_idx}.{name}"
+        )
+
+
+class BlockProxy:
+    """Proxy class for block access that handles array indexing."""
+
+    def __init__(self, bridge: "TransformerBridge"):
+        """Initialize the block proxy.
+
+        Args:
+            bridge: The bridge instance.
+        """
+        self.bridge = bridge
+
+    def __getitem__(self, idx: int) -> BlockComponentProxy:
+        """Get a block by index.
+
+        Args:
+            idx: The block index.
+
+        Returns:
+            A proxy for accessing the block's components.
+        """
+        return BlockComponentProxy(self.bridge, idx)
+
+
 class TransformerBridge:
     """Bridge between HookedTransformer and underlying model architectures."""
 
@@ -36,6 +86,7 @@ class TransformerBridge:
         self.architecture_adapter = architecture_adapter
         self.device = device
         self.dtype = dtype
+        self._blocks = BlockProxy(self)
 
     def __getattr__(self, name: str) -> Any:
         """Get a component from the model using the architecture adapter.
@@ -49,7 +100,8 @@ class TransformerBridge:
         Returns:
             The requested component.
         """
-        # Use the architecture adapter to map the component name to the underlying model's structure
+        if name == "blocks":
+            return self._blocks
         return self.architecture_adapter.get_component(self.model, name)
 
     def to(self, device: str | torch.device | None = None, dtype: torch.dtype | None = None) -> "TransformerBridge":
