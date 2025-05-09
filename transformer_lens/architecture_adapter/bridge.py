@@ -122,6 +122,34 @@ class TransformerBridge:
             self.model = self.model.to(dtype)
         return self
 
+    def forward(self, *args: Any, **kwargs: Any) -> Any:
+        """Forward pass through the model.
+
+        This method delegates the forward pass to the underlying model.
+
+        Args:
+            *args: Positional arguments to pass to the model.
+            **kwargs: Keyword arguments to pass to the model.
+
+        Returns:
+            The model's output.
+        """
+        return self.model(*args, **kwargs)
+
+    def generate(self, *args: Any, **kwargs: Any) -> Any:
+        """Generate text using the model.
+
+        This method delegates text generation to the underlying model.
+
+        Args:
+            *args: Positional arguments to pass to the model's generate method.
+            **kwargs: Keyword arguments to pass to the model's generate method.
+
+        Returns:
+            The generated output.
+        """
+        return self.model.generate(*args, **kwargs)
+
     def _get_component_type(self, name: str) -> str:
         """Get the type information for a component.
 

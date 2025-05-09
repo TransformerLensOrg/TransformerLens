@@ -36,13 +36,13 @@ class GeneralizedMLP(GeneralizedComponent):
             Output hidden states
         """
         # Execute pre-MLP hooks
-        hidden_states = self.execute_hooks("pre_mlp", hidden_states) or hidden_states
+        hidden_states = self.execute_hooks("pre_mlp", hidden_states)
         
         # Forward through original component
         output = self.original_component(hidden_states)
         
         # Execute post-MLP hooks
-        output = self.execute_hooks("post_mlp", output) or output
+        output = self.execute_hooks("post_mlp", output)
         
         # Store hook outputs
         self.hook_outputs.update({

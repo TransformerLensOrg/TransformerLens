@@ -1,6 +1,7 @@
 """Base class for generalized transformer components."""
 
-from typing import Any, Dict, Optional
+from collections.abc import Callable
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -23,10 +24,10 @@ class GeneralizedComponent(nn.Module):
         super().__init__()
         self.original_component = original_component
         self.name = name
-        self.hooks: Dict[str, list[callable]] = {}
-        self.hook_outputs: Dict[str, Any] = {}
+        self.hooks: dict[str, list[Callable]] = {}
+        self.hook_outputs: dict[str, Any] = {}
 
-    def register_hook(self, hook_name: str, hook_fn: callable) -> None:
+    def register_hook(self, hook_name: str, hook_fn: Callable) -> None:
         """Register a hook function for a specific hook point.
         
         Args:
@@ -37,7 +38,7 @@ class GeneralizedComponent(nn.Module):
             self.hooks[hook_name] = []
         self.hooks[hook_name].append(hook_fn)
 
-    def remove_hook(self, hook_name: str, hook_fn: callable) -> None:
+    def remove_hook(self, hook_name: str, hook_fn: Callable) -> None:
         """Remove a previously registered hook.
         
         Args:
@@ -47,24 +48,31 @@ class GeneralizedComponent(nn.Module):
         if hook_name in self.hooks:
             self.hooks[hook_name].remove(hook_fn)
 
-    def execute_hooks(self, hook_name: str, *args, **kwargs) -> Any:
+    def execute_hooks(self, hook_name: str, tensor: torch.Tensor) -> torch.Tensor:
         """Execute all hooks registered for a specific hook point.
         
         Args:
             hook_name: Name of the hook point
-            *args: Arguments to pass to the hooks
-            **kwargs: Keyword arguments to pass to the hooks
+            tensor: The tensor to pass through the hooks
             
         Returns:
-            The result of the last hook execution, or None if no hooks
+            The result of the last hook execution, or the input tensor if no hooks
         """
-        if hook_name not in self.hooks:
-            return None
+        # Store the input tensor as the hook output
+        self.hook_outputs[hook_name] = tensor
+        
+        # Execute hooks if any
+        if hook_name in self.hooks:
+            result = tensor
+            for hook in self.hooks[hook_name]:
+                hook_result = hook(result)
+                if hook_result is not None:
+                    result = hook_result
+                    # Update the hook output with the modified tensor
+                    self.hook_outputs[hook_name] = result
+            return result
             
-        result = None
-        for hook in self.hooks[hook_name]:
-            result = hook(*args, **kwargs)
-        return result
+        return tensor
 
     def get_hook_output(self, hook_name: str) -> Any:
         """Get the output from a specific hook point.
@@ -82,7 +90,7 @@ class GeneralizedComponent(nn.Module):
         self.hooks.clear()
         self.hook_outputs.clear()
 
-    def forward(self, *args, **kwargs) -> torch.Tensor:
+    def forward(self, *args: Any, **kwargs: Any) -> torch.Tensor | tuple[torch.Tensor, ...]:
         """Forward pass through the component.
         
         This should be implemented by subclasses to define the specific
@@ -93,6 +101,6 @@ class GeneralizedComponent(nn.Module):
             **kwargs: Input keyword arguments
             
         Returns:
-            The output tensor
+            Either a single tensor or a tuple of tensors
         """
         raise NotImplementedError("Subclasses must implement forward()") 

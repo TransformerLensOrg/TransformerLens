@@ -1,7 +1,5 @@
 """Generalized attention component implementation."""
 
-from typing import Optional, Tuple
-
 import torch
 import torch.nn as nn
 
@@ -32,12 +30,12 @@ class GeneralizedAttention(GeneralizedComponent):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.Tensor] = None,
-        past_key_value: Optional[Tuple[torch.Tensor]] = None,
+        attention_mask: torch.Tensor | None = None,
+        position_ids: torch.Tensor | None = None,
+        past_key_value: tuple[torch.Tensor, ...] | None = None,
         output_attentions: bool = False,
         use_cache: bool = False,
-    ) -> Tuple[torch.Tensor, ...]:
+    ) -> tuple[torch.Tensor, ...]:
         """Forward pass through the attention component.
         
         Args:
@@ -55,7 +53,7 @@ class GeneralizedAttention(GeneralizedComponent):
             - Optional present key/value states
         """
         # Execute pre-attention hooks
-        hidden_states = self.execute_hooks("pre_attention", hidden_states) or hidden_states
+        hidden_states = self.execute_hooks("pre_attention", hidden_states)
         
         # Forward through original component
         outputs = self.original_component(
@@ -73,7 +71,7 @@ class GeneralizedAttention(GeneralizedComponent):
         present_key_value = outputs[2] if len(outputs) > 2 else None
         
         # Execute post-attention hooks
-        output = self.execute_hooks("post_attention", output) or output
+        output = self.execute_hooks("post_attention", output)
         
         # Store hook outputs
         self.hook_outputs.update({

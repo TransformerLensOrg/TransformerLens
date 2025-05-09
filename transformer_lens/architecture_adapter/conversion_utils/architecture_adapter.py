@@ -3,21 +3,19 @@
 This module contains the base class for architecture adapters that map between different model architectures.
 """
 
-from abc import ABC
 from typing import Any
 
 import torch
 from transformers import PreTrainedModel
 
-from transformer_lens.architecture_adapter.conversion_utils.helpers.merge_quantiziation_fields import (
-    merge_quantization_fields,
+from transformer_lens.architecture_adapter.generalized_components import (
+    GeneralizedAttention,
+    GeneralizedMLP,
 )
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
-from .conversion_steps.types import FIELD_SET
 
-
-class ArchitectureAdapter(ABC):
+class ArchitectureAdapter:
     """Base class for architecture adapters.
     
     This class provides the interface for adapting between different model architectures.
@@ -34,18 +32,6 @@ class ArchitectureAdapter(ABC):
         self.cfg = cfg
         self.conversion_rules = None
         self.component_mapping = None
-
-    def enable_quantiziation(
-        self, cfg: HookedTransformerConfig, quantiziation_fields: FIELD_SET
-    ) -> None:
-        """Enable quantization for the adapter.
-
-        Args:
-            cfg: The config to use for quantization.
-            quantiziation_fields: The fields to quantize.
-        """
-        if cfg.load_in_4bit:
-            self.conversion_rules = merge_quantization_fields(self.conversion_rules, quantiziation_fields)
 
     def get_component(self, model: PreTrainedModel, name: str) -> Any:
         """Get a component from the model using the component mapping.
@@ -66,7 +52,7 @@ class ArchitectureAdapter(ABC):
         if self.component_mapping is None:
             raise ValueError("component_mapping must be set before calling get_component")
 
-        def resolve_path(path_parts: list[str], mapping: dict | tuple) -> str:
+        def resolve_path(path_parts: list[str], mapping: dict[str, Any] | tuple[str, dict[str, str]]) -> str:
             """Recursively resolve a component path to its underlying model path.
             
             Args:
@@ -120,6 +106,13 @@ class ArchitectureAdapter(ABC):
             else:
                 current = getattr(current, part)
 
+        # Wrap with appropriate generalized component based on name
+        if name.endswith(".attn"):
+            return GeneralizedAttention(current, name)
+        elif name.endswith(".mlp"):
+            return GeneralizedMLP(current, name)
+            
+        # Return original component for other cases
         return current
 
     def convert_weights(self, hf_model: PreTrainedModel) -> dict[str, torch.Tensor]:
