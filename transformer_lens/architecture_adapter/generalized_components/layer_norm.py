@@ -8,15 +8,16 @@ import torch.nn as nn
 from transformer_lens.architecture_adapter.generalized_components.base import (
     GeneralizedComponent,
 )
+from transformer_lens.hook_points import HookPoint
 
 
 class LayerNormBridge(GeneralizedComponent):
     """Layer norm bridge that wraps transformer layer normalization layers.
     
-    This component provides standardized hook points for:
-    - input normalization
-    - scale factor
-    - normalized output
+    This component provides hook points for:
+    - Input to normalization
+    - Scale factor
+    - Normalized output
     """
 
     def __init__(self, original_component: nn.Module, name: str):
@@ -27,6 +28,14 @@ class LayerNormBridge(GeneralizedComponent):
             name: The name of this component
         """
         super().__init__(original_component, name)
+        
+        # Initialize hook points
+        self.hook_scale = HookPoint()  # Scale factor
+        self.hook_normalized = HookPoint()  # Normalized output
+        
+        # Set hook names
+        self.hook_scale.name = f"{name}.scale"
+        self.hook_normalized.name = f"{name}.normalized"
         
     def forward(
         self,
@@ -42,14 +51,11 @@ class LayerNormBridge(GeneralizedComponent):
         Returns:
             Normalized output
         """
-        # Execute pre-norm hooks
-        hidden_states = self.execute_hooks("pre_norm", hidden_states)
-        
         # Forward through original component
         output = self.original_component(hidden_states, **kwargs)
         
-        # Execute post-norm hooks
-        output = self.execute_hooks("post_norm", output)
+        # Apply hook to normalized output
+        output = self.hook_normalized(output)
         
         # Store hook outputs
         self.hook_outputs.update({

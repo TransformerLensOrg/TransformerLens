@@ -1,310 +1,107 @@
-"""Bridge between HookedTransformer and underlying model architectures.
+"""Bridge between HuggingFace and HookedTransformer models."""
 
-This module provides a pure adapter layer that maps HookedTransformer's component access patterns
-to the underlying model's structure using architecture adapters.
-"""
-
+from dataclasses import dataclass
 from typing import Any
 
 import torch
+import torch.nn as nn
 from transformers import PreTrainedModel
 
-from transformer_lens.architecture_adapter.conversion_utils.architecture_conversion import (
-    ArchitectureConversion,
+from transformer_lens.architecture_adapter.conversion_utils.architecture_adapter import (
+    ArchitectureAdapter,
 )
 from transformer_lens.architecture_adapter.generalized_components import (
-    GeneralizedAttention,
-    GeneralizedMLP,
+    AttentionBridge,
+    MLPBridge,
 )
+from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 
-class BlockComponentProxy:
-    """Proxy class for block component access."""
+@dataclass
+class Block:
+    """A transformer block in the bridge."""
 
-    def __init__(self, bridge: "TransformerBridge", block_idx: int):
-        """Initialize the block component proxy.
-
-        Args:
-            bridge: The bridge instance.
-            block_idx: The block index.
-        """
-        self.bridge = bridge
-        self.block_idx = block_idx
-
-    def __getattr__(self, name: str) -> Any:
-        """Get a block component by name.
-
-        Args:
-            name: The component name.
-
-        Returns:
-            The requested component.
-        """
-        return self.bridge.architecture_adapter.get_component(
-            self.bridge.model, f"blocks.{self.block_idx}.{name}"
-        )
-
-
-class BlockProxy:
-    """Proxy class for block access that handles array indexing."""
-
-    def __init__(self, bridge: "TransformerBridge"):
-        """Initialize the block proxy.
-
-        Args:
-            bridge: The bridge instance.
-        """
-        self.bridge = bridge
-
-    def __getitem__(self, idx: int) -> BlockComponentProxy:
-        """Get a block by index.
-
-        Args:
-            idx: The block index.
-
-        Returns:
-            A proxy for accessing the block's components.
-        """
-        return BlockComponentProxy(self.bridge, idx)
+    ln1: nn.Module
+    attn: AttentionBridge
+    ln2: nn.Module
+    mlp: MLPBridge
 
 
 class TransformerBridge:
-    """Bridge between HookedTransformer and underlying model architectures."""
+    """Bridge between HuggingFace and HookedTransformer models.
+    
+    This class provides a standardized interface to access components of a transformer
+    model, regardless of the underlying architecture. It uses an architecture adapter
+    to map between the HookedTransformer and HuggingFace model structures.
+    """
 
-    def __init__(
-        self,
-        model: PreTrainedModel,
-        architecture_adapter: ArchitectureConversion,
-        device: str | torch.device | None = None,
-        dtype: torch.dtype = torch.float32,
-    ) -> None:
-        """Initialize the transformer bridge.
-
+    def __init__(self, model: PreTrainedModel, adapter: ArchitectureAdapter):
+        """Initialize the bridge.
+        
         Args:
-            model: The underlying model to bridge to.
-            architecture_adapter: The architecture adapter to use for mapping between models.
-            device: The device to put the model on.
-            dtype: The dtype to use for the model.
+            model: The HuggingFace model to bridge
+            adapter: The architecture adapter to use
         """
         self.model = model
-        self.architecture_adapter = architecture_adapter
-        self.device = device
-        self.dtype = dtype
-        self._blocks = BlockProxy(self)
+        self.adapter = adapter
+        self.cfg = adapter.cfg
         
-        # Replace model components with generalized ones
-        self._replace_model_components()
-
-    def _replace_model_components(self) -> None:
-        """Replace model components with generalized ones.
+        # Get components from the adapter
+        self.embed = adapter.get_component(model, "embed")
+        self.blocks = []
         
-        This method replaces attention and MLP components in the model with
-        our generalized versions that support hooks.
-        """
-        # Get the component mapping
-        component_mapping = self.architecture_adapter.component_mapping
-        if not isinstance(component_mapping, dict):
-            return
-
-        # Get the blocks base path and sub-mapping
-        if "blocks" not in component_mapping:
-            return
-        base_path, sub_mapping = component_mapping["blocks"]
-
-        # Get attention and MLP component names
-        attn_name = sub_mapping.get("attn")
-        mlp_name = sub_mapping.get("mlp")
-        if not attn_name or not mlp_name:
-            return
-
-        # Replace components in each layer
-        n_layers = self.model.config.num_hidden_layers
-        for layer_idx in range(n_layers):
-            # Navigate to the layer
-            layer = self.model
-            for part in base_path.split("."):
-                if part:  # Skip empty parts
-                    layer = getattr(layer, part)
-            layer = layer[layer_idx]
-
-            # Replace attention component
-            original_attn = getattr(layer, attn_name)
-            generalized_attn = GeneralizedAttention(
-                original_attn,
-                f"blocks.{layer_idx}.{attn_name}"
-            )
-            setattr(layer, attn_name, generalized_attn)
-
-            # Replace MLP component
-            original_mlp = getattr(layer, mlp_name)
-            generalized_mlp = GeneralizedMLP(
-                original_mlp,
-                f"blocks.{layer_idx}.{mlp_name}"
-            )
-            setattr(layer, mlp_name, generalized_mlp)
-
-    def __getattr__(self, name: str) -> Any:
-        """Get a component from the model using the architecture adapter.
-
-        This method allows HookedTransformer to access components using its own naming scheme,
-        which are then mapped to the underlying model's structure using the architecture adapter.
-
-        Args:
-            name: The name of the component to get.
-
-        Returns:
-            The requested component.
-        """
-        if name == "blocks":
-            return self._blocks
-        return self.architecture_adapter.get_component(self.model, name)
-
-    def to(self, device: str | torch.device | None = None, dtype: torch.dtype | None = None) -> "TransformerBridge":
-        """Move the model to the specified device and dtype.
-
-        Args:
-            device: The device to move the model to.
-            dtype: The dtype to convert the model to.
-
-        Returns:
-            self: The bridge instance.
-        """
-        if device is not None:
-            self.device = device
-            self.model = self.model.to(device)
-        if dtype is not None:
-            self.dtype = dtype
-            self.model = self.model.to(dtype)
-        return self
-
-    def forward(self, *args: Any, **kwargs: Any) -> Any:
-        """Forward pass through the model.
-
-        This method delegates the forward pass to the underlying model.
-
-        Args:
-            *args: Positional arguments to pass to the model.
-            **kwargs: Keyword arguments to pass to the model.
-
-        Returns:
-            The model's output.
-        """
-        return self.model(*args, **kwargs)
-
-    def generate(self, *args: Any, **kwargs: Any) -> Any:
-        """Generate text using the model.
-
-        This method delegates text generation to the underlying model.
-
-        Args:
-            *args: Positional arguments to pass to the model's generate method.
-            **kwargs: Keyword arguments to pass to the model's generate method.
-
-        Returns:
-            The generated output.
-        """
-        return self.model.generate(*args, **kwargs)
-
-    def _get_component_type(self, name: str) -> str:
-        """Get the type information for a component.
-
-        Args:
-            name: The name of the component in the HuggingFace model.
-
-        Returns:
-            A string describing the component's type and shape.
-        """
-        try:
-            # Navigate through the model's structure using the component name
-            parts = name.split(".")
-            component = self.model
-            for part in parts:
-                # Handle array indexing in the name (e.g., "h.0" -> "h[0]")
-                if part.isdigit():
-                    component = component[int(part)]
-                else:
-                    component = getattr(component, part)
-
-            # Get the component's type and shape
-            if isinstance(component, torch.Tensor):
-                shape_str = "×".join(str(s) for s in component.shape)
-                dtype_str = str(component.dtype).replace("torch.", "")
-                return f"Tensor({shape_str}, {dtype_str})"
-            elif isinstance(component, torch.nn.Module):
-                # For generalized components, show both the wrapper and original class
-                if hasattr(component, 'original_component'):
-                    orig_class = component.original_component.__class__.__name__
-                    wrapper_class = component.__class__.__name__
-                    return f"{wrapper_class}({orig_class})"
-                return component.__class__.__name__
-            else:
-                return type(component).__name__
-        except (AttributeError, IndexError):
-            return "Unknown"
-
-    def _format_field_mapping(self) -> list[str]:
-        """Format the field mapping into a readable structure.
-
-        Returns:
-            A list of strings representing the field mapping structure.
-        """
-        component_mapping = getattr(self.architecture_adapter, "component_mapping", None)
-        if not isinstance(component_mapping, dict):
-            return ["    Component Mapping: Not available"]
-
-        lines = ["    Component Mapping:"]
-
-        # Format top-level components
-        for tl_name, hf_name in component_mapping.items():
-            if tl_name == "blocks":
-                continue  # Handle blocks separately
-            component_type = self._get_component_type(hf_name)
-            lines.append(f"        {tl_name} -> {hf_name} ({component_type})")
-
-        # Format blocks structure
-        if "blocks" in component_mapping:
-            base_path, sub_mapping = component_mapping["blocks"]
-            lines.append(f"        blocks: (base_path: {base_path})")
-            for tl_name, hf_name in sub_mapping.items():
-                # Construct full path for type lookup
-                full_path = f"{base_path}.0.{hf_name}"  # Use layer 0 for type lookup
-                component_type = self._get_component_type(full_path)
-                lines.append(f"            {tl_name} -> {hf_name} ({component_type})")
-
-        return lines
-
-    def __repr__(self) -> str:
+        # Build blocks
+        for i in range(self.cfg.n_layers):
+            # Get block components
+            ln1 = adapter.get_component(model, f"blocks.{i}.ln1")
+            ln2 = adapter.get_component(model, f"blocks.{i}.ln2")
+            
+            # Get attention and wrap with bridge
+            attn = adapter.get_component(model, f"blocks.{i}.attn")
+            if not isinstance(attn, AttentionBridge):
+                attn = AttentionBridge(attn, f"blocks.{i}.attn")
+            
+            # Get MLP and wrap with bridge
+            mlp = adapter.get_component(model, f"blocks.{i}.mlp")
+            if not isinstance(mlp, MLPBridge):
+                mlp = MLPBridge(mlp, f"blocks.{i}.mlp")
+            
+            # Create block
+            block = Block(ln1=ln1, attn=attn, ln2=ln2, mlp=mlp)
+            self.blocks.append(block)
+            
+        # Get final components
+        self.ln_final = adapter.get_component(model, "ln_final")
+        self.unembed = adapter.get_component(model, "unembed")
+        
+    def __str__(self) -> str:
         """Get a string representation of the bridge.
-
+        
         Returns:
-            A detailed string representation showing the bridge's components and configuration.
+            A string describing the bridge's components
         """
-        model_config = self.model.config
-        adapter_config = self.architecture_adapter.cfg
-
-        # Build the representation string
-        lines = [
-            "TransformerBridge(",
-            f"    Model: {getattr(model_config, 'name_or_path', 'Unknown')}",
-            f"    Architecture: {model_config.architectures[0] if model_config.architectures else 'Unknown'}",
-            f"    Device: {self.device}",
-            f"    Dtype: {self.dtype}",
-            "    Model Config:",
-            f"        Hidden Size: {model_config.hidden_size}",
-            f"        Num Layers: {model_config.num_hidden_layers}",
-            f"        Num Attention Heads: {model_config.num_attention_heads}",
-            f"        Vocab Size: {model_config.vocab_size}",
-            "    Adapter Config:",
-            f"        D Model: {adapter_config.d_model}",
-            f"        N Layers: {adapter_config.n_layers}",
-            f"        N Heads: {adapter_config.n_heads}",
-            f"        D Head: {adapter_config.d_head}",
-            f"        D MLP: {adapter_config.d_mlp}",
-            f"        D Vocab: {adapter_config.d_vocab}",
-        ]
-
-        # Add the component mapping
-        lines.extend(self._format_field_mapping())
-        lines.append(")")
-
-        return "\n".join(lines) 
+        lines = []
+        lines.append("TransformerBridge:")
+        lines.append(f"  embed: {type(self.embed).__name__}")
+        lines.append(f"  ln_final: {type(self.ln_final).__name__}")
+        lines.append(f"  unembed: {type(self.unembed).__name__}")
+        lines.append("  blocks:")
+        for i, block in enumerate(self.blocks):
+            lines.append(f"    {i}:")
+            lines.append(f"      ln1: {type(block.ln1).__name__}")
+            lines.append(f"      attn: {type(block.attn).__name__}")
+            lines.append(f"      ln2: {type(block.ln2).__name__}")
+            lines.append(f"      mlp: {type(block.mlp).__name__}")
+        return "\n".join(lines)
+        
+    def generate(self, *args: Any, **kwargs: Any) -> Any:
+        """Generate text using the underlying model.
+        
+        Args:
+            *args: Positional arguments to pass to the model's generate method
+            **kwargs: Keyword arguments to pass to the model's generate method
+            
+        Returns:
+            The generated output from the model
+        """
+        return self.model.generate(*args, **kwargs) 

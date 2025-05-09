@@ -8,15 +8,16 @@ import torch.nn as nn
 from transformer_lens.architecture_adapter.generalized_components.base import (
     GeneralizedComponent,
 )
+from transformer_lens.hook_points import HookPoint
 
 
 class EmbeddingBridge(GeneralizedComponent):
     """Embedding bridge that wraps transformer embedding layers.
     
-    This component provides standardized hook points for:
-    - input embeddings
-    - position embeddings (if applicable)
-    - final embedding output
+    This component provides hook points for:
+    - Token embeddings
+    - Position embeddings
+    - Combined embeddings
     """
 
     def __init__(self, original_component: nn.Module, name: str):
@@ -27,6 +28,16 @@ class EmbeddingBridge(GeneralizedComponent):
             name: The name of this component
         """
         super().__init__(original_component, name)
+        
+        # Initialize hook points
+        self.hook_embed = HookPoint()  # Token embeddings
+        self.hook_pos = HookPoint()  # Position embeddings
+        self.hook_output = HookPoint()  # Combined embeddings
+        
+        # Set hook names
+        self.hook_embed.name = f"{name}.embed"
+        self.hook_pos.name = f"{name}.pos"
+        self.hook_output.name = f"{name}.output"
         
     def forward(
         self,
@@ -44,14 +55,11 @@ class EmbeddingBridge(GeneralizedComponent):
         Returns:
             Embedded output
         """
-        # Execute pre-embedding hooks
-        input_ids = self.execute_hooks("pre_embedding", input_ids)
-        
         # Forward through original component
         output = self.original_component(input_ids, position_ids=position_ids, **kwargs)
         
-        # Execute post-embedding hooks
-        output = self.execute_hooks("post_embedding", output)
+        # Apply hook to final output
+        output = self.hook_output(output)
         
         # Store hook outputs
         self.hook_outputs.update({

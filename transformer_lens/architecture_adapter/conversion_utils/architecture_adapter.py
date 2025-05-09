@@ -3,19 +3,21 @@
 This module contains the base class for architecture adapters that map between different model architectures.
 """
 
+from abc import ABC, abstractmethod
 from typing import Any
 
 import torch
+import torch.nn as nn
 from transformers import PreTrainedModel
 
 from transformer_lens.architecture_adapter.generalized_components import (
-    GeneralizedAttention,
-    GeneralizedMLP,
+    AttentionBridge,
+    MLPBridge,
 )
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 
-class ArchitectureAdapter:
+class ArchitectureAdapter(ABC):
     """Base class for architecture adapters.
     
     This class provides the interface for adapting between different model architectures.
@@ -33,86 +35,70 @@ class ArchitectureAdapter:
         self.conversion_rules = None
         self.component_mapping = None
 
+    @abstractmethod
     def get_component(self, model: PreTrainedModel, name: str) -> Any:
-        """Get a component from the model using the component mapping.
-
-        This method maps HookedTransformer component names to the underlying model's structure
-        using the component mapping dictionary. It handles nested structures recursively.
-
+        """Get a component from the model.
+        
         Args:
-            model: The model to get the component from.
-            name: The name of the component to get.
-
+            model: The model to get the component from
+            name: The name of the component to get
+            
         Returns:
-            The requested component.
-
-        Raises:
-            ValueError: If component_mapping is not set or if the component path is invalid.
+            The requested component
         """
-        if self.component_mapping is None:
-            raise ValueError("component_mapping must be set before calling get_component")
+        pass
 
-        def resolve_path(path_parts: list[str], mapping: dict[str, Any] | tuple[str, dict[str, str]]) -> str:
-            """Recursively resolve a component path to its underlying model path.
+    def _get_component_type(self, name: str) -> str:
+        """Get the type information for a component.
+        
+        Args:
+            name: The name of the component in the HuggingFace model
             
-            Args:
-                path_parts: List of path components.
-                mapping: Current level of component mapping.
-            
-            Returns:
-                The resolved path in the underlying model.
-            """
-            if not path_parts:
-                raise ValueError("Empty path")
+        Returns:
+            A string describing the component's type and shape
+        """
+        try:
+            # Navigate through the model's structure using the component name
+            parts = name.split(".")
+            component = self.model
+            for part in parts:
+                # Handle array indexing in the name (e.g., "h.0" -> "h[0]")
+                if part.isdigit():
+                    component = component[int(part)]
+                else:
+                    component = getattr(component, part)
 
-            # Handle tuple case (base_path, sub_mapping)
-            if isinstance(mapping, tuple):
-                base_path, sub_mapping = mapping
-                # If we're at a leaf node (just the block index)
-                if len(path_parts) == 1:
-                    if not path_parts[0].isdigit():
-                        raise ValueError(f"Expected layer index, got {path_parts[0]}")
-                    return f"{base_path}.{path_parts[0]}"
-                # Otherwise, continue with the sub_mapping
-                if not path_parts[0].isdigit():
-                    raise ValueError(f"Expected layer index, got {path_parts[0]}")
-                layer_idx = path_parts[0]
-                return f"{base_path}.{layer_idx}.{resolve_path(path_parts[1:], sub_mapping)}"
-
-            # Handle dictionary case
-            current = path_parts[0]
-            if current not in mapping:
-                raise ValueError(f"Unknown component: {current}")
-            
-            value = mapping[current]
-            # If this is a leaf node (string path)
-            if isinstance(value, str):
-                if len(path_parts) == 1:
-                    return value
-                # If there are more parts, append them to the path
-                return f"{value}.{'.'.join(path_parts[1:])}"
-            # If this is a nested structure, recurse
-            return resolve_path(path_parts[1:], value)
-
-        # Parse the component path and resolve it
-        parts = name.split(".")
-        component_path = resolve_path(parts, self.component_mapping)
-
-        # Navigate through the model to get the component
-        current = model
-        for part in component_path.split("."):
-            if part.isdigit():
-                current = current[int(part)]
+            # Get the component's type and shape
+            if isinstance(component, torch.Tensor):
+                shape_str = "×".join(str(s) for s in component.shape)
+                dtype_str = str(component.dtype).replace("torch.", "")
+                return f"Tensor({shape_str}, {dtype_str})"
+            elif isinstance(component, nn.Module):
+                # For bridge components, show both the wrapper and original class
+                if hasattr(component, 'original_component'):
+                    orig_class = component.original_component.__class__.__name__
+                    wrapper_class = component.__class__.__name__
+                    return f"{wrapper_class}({orig_class})"
+                return component.__class__.__name__
             else:
-                current = getattr(current, part)
+                return type(component).__name__
+        except (AttributeError, IndexError):
+            return "Unknown"
 
-        # Wrap with appropriate generalized component based on name
-        if name.endswith(".attn"):
-            return GeneralizedAttention(current, name)
-        elif name.endswith(".mlp"):
-            return GeneralizedMLP(current, name)
+    def _wrap_component(self, current: nn.Module, name: str) -> nn.Module:
+        """Wrap a component with its bridge if needed.
+        
+        Args:
+            current: The component to wrap
+            name: The name of the component
             
-        # Return original component for other cases
+        Returns:
+            The wrapped component
+        """
+        if name.endswith(".attn"):
+            return AttentionBridge(current, name)
+        elif name.endswith(".mlp"):
+            return MLPBridge(current, name)
         return current
 
     def convert_weights(self, hf_model: PreTrainedModel) -> dict[str, torch.Tensor]:

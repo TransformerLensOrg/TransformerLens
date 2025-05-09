@@ -8,14 +8,15 @@ import torch.nn as nn
 from transformer_lens.architecture_adapter.generalized_components.base import (
     GeneralizedComponent,
 )
+from transformer_lens.hook_points import HookPoint
 
 
 class UnembeddingBridge(GeneralizedComponent):
     """Unembedding bridge that wraps transformer language model heads.
     
-    This component provides standardized hook points for:
-    - input projection
-    - logits output
+    This component provides hook points for:
+    - Input to projection
+    - Logits output
     """
 
     def __init__(self, original_component: nn.Module, name: str):
@@ -26,6 +27,14 @@ class UnembeddingBridge(GeneralizedComponent):
             name: The name of this component
         """
         super().__init__(original_component, name)
+        
+        # Initialize hook points
+        self.hook_input = HookPoint()  # Input to projection
+        self.hook_logits = HookPoint()  # Logits output
+        
+        # Set hook names
+        self.hook_input.name = f"{name}.input"
+        self.hook_logits.name = f"{name}.logits"
         
     def forward(
         self,
@@ -41,14 +50,14 @@ class UnembeddingBridge(GeneralizedComponent):
         Returns:
             Logits output
         """
-        # Execute pre-unembedding hooks
-        hidden_states = self.execute_hooks("pre_unembedding", hidden_states)
+        # Apply input hook
+        hidden_states = self.hook_input(hidden_states)
         
         # Forward through original component
         output = self.original_component(hidden_states, **kwargs)
         
-        # Execute post-unembedding hooks
-        output = self.execute_hooks("post_unembedding", output)
+        # Apply logits hook
+        output = self.hook_logits(output)
         
         # Store hook outputs
         self.hook_outputs.update({
