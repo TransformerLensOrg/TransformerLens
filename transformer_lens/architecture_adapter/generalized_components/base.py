@@ -124,4 +124,18 @@ class GeneralizedComponent(nn.Module):
         Returns:
             Either a single tensor or a tuple of tensors
         """
-        raise NotImplementedError("Subclasses must implement forward()") 
+        raise NotImplementedError("Subclasses must implement forward()")
+
+    def __getattr__(self, name: str):
+        # Only called if attribute not found through normal lookup
+        # Try to get from original_component
+        if name == "is_sliding":
+            print("is_sliding", self.__dict__)
+        if "original_component" in self._modules:
+            try:
+                return getattr(self._modules["original_component"], name)
+            except AttributeError:
+                pass
+        return super().__getattr__(name)
+        # If we get here, the attribute wasn't found anywhere
+        # raise AttributeError(f"{type(self).__name__} has no attribute {name}") 

@@ -6,20 +6,19 @@ This module provides functionality to load and convert models from HuggingFace t
 from typing import Any
 
 import torch
-from transformers import AutoModelForCausalLM
+from transformers.models.auto.configuration_auto import AutoConfig
+from transformers.models.auto.modeling_auto import AutoModelForCausalLM
 
 from transformer_lens.architecture_adapter.architecture_adapter_factory import (
     ArchitectureAdapterFactory,
 )
 from transformer_lens.architecture_adapter.bridge import TransformerBridge
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
-from transformer_lens.loading_from_pretrained import get_pretrained_model_config
 from transformer_lens.utilities.devices import get_device_for_block_index
 
 
 def boot(
     model_name: str,
-    config: HookedTransformerConfig | None = None,
+    config: Any = None,
     device: str | torch.device | None = None,
     dtype: torch.dtype = torch.float32,
     **kwargs: Any,
@@ -37,10 +36,15 @@ def boot(
         TransformerBridge: The bridge to the loaded model.
     """
     if config is None:
-        config = get_pretrained_model_config(model_name, **kwargs)
+        # Download the config from Hugging Face
+        config = AutoConfig.from_pretrained(model_name, **kwargs)
 
+    # Try to get device if possible, fallback to 'cpu' if not available
     if device is None:
-        device = get_device_for_block_index(0, config)
+        try:
+            device = get_device_for_block_index(0, config)
+        except Exception:
+            device = 'cpu'
 
     # Load the model from HuggingFace
     hf_model = AutoModelForCausalLM.from_pretrained(
@@ -54,6 +58,4 @@ def boot(
     return TransformerBridge(
         hf_model,
         adapter,
-        device=device,
-        dtype=dtype,
     ) 

@@ -1,5 +1,7 @@
 """Gemma2 architecture adapter."""
 
+from transformers import PreTrainedModel
+
 from transformer_lens.architecture_adapter.conversion_utils.architecture_adapter import (
     ArchitectureAdapter,
 )
@@ -76,4 +78,49 @@ class Gemma2ArchitectureAdapter(ArchitectureAdapter):
             ),
             "ln_final": "model.norm",  # Final layer norm
             "unembed": "lm_head",  # Language model head (not shared with embed)
-        } 
+        }
+        
+    def get_component(self, model: PreTrainedModel, name: str):
+        """Get a component from the model by its name.
+        
+        Args:
+            model: The HuggingFace model
+            name: The name of the component to get
+            
+        Returns:
+            The requested component
+        """
+        if name == "embed":
+            return model.model.embed_tokens
+        elif name == "ln_final":
+            return model.model.norm
+        elif name == "unembed":
+            return model.lm_head
+        elif name.startswith("blocks."):
+            # Parse block index and component name
+            parts = name.split(".")
+            if len(parts) != 3:
+                raise ValueError(f"Invalid block component name: {name}")
+            
+            block_idx = int(parts[1])
+            block_component = parts[2]
+            
+            # Get the block
+            block = model.model.layers[block_idx]
+            
+            # Map component name to actual attribute
+            component_map = {
+                "ln1": "input_layernorm",
+                "ln1_post": "post_attention_layernorm",
+                "attn": "self_attn",
+                "ln2": "pre_feedforward_layernorm",
+                "ln2_post": "post_feedforward_layernorm",
+                "mlp": "mlp"
+            }
+            
+            if block_component not in component_map:
+                raise ValueError(f"Unknown block component: {block_component}")
+                
+            return getattr(block, component_map[block_component])
+        else:
+            raise ValueError(f"Unknown component: {name}") 

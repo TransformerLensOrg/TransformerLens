@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from typing import Any
 
-from transformers import PreTrainedModel
+from transformers.modeling_utils import PreTrainedModel
 
 from transformer_lens.architecture_adapter.conversion_utils.architecture_adapter import (
     ArchitectureAdapter,
@@ -60,8 +60,12 @@ class TransformerBridge:
         
         self.blocks = []
         
+        # Use num_hidden_layers for Hugging Face configs, fallback to n_layers
+        n_layers = getattr(self.cfg, 'num_hidden_layers', getattr(self.cfg, 'n_layers', None))
+        if n_layers is None:
+            raise AttributeError('Config has neither num_hidden_layers nor n_layers')
         # Build blocks
-        for i in range(self.cfg.n_layers):
+        for i in range(n_layers):
             # Get block components
             ln1 = adapter.get_component(model, f"blocks.{i}.ln1")
             ln2 = adapter.get_component(model, f"blocks.{i}.ln2")
@@ -169,4 +173,28 @@ class TransformerBridge:
         Returns:
             The generated output from the model
         """
-        return self.model.generate(*args, **kwargs) 
+        # Get hooks from kwargs if provided
+        hooks = kwargs.pop('hooks', {})
+        
+        # Register hooks if provided
+        registered_hooks = []
+        if hooks:
+            for block_idx, block_hooks in hooks.items():
+                if isinstance(block_idx, int) and 0 <= block_idx < len(self.blocks):
+                    block = self.blocks[block_idx]
+                    for component_name, component_hooks in block_hooks.items():
+                        component = getattr(block, component_name, None)
+                        if component is not None:
+                            for hook_point, hook_fn in component_hooks.items():
+                                hook = getattr(component, hook_point, None)
+                                if hook is not None:
+                                    hook.add_hook(hook_fn)
+                                    registered_hooks.append((hook, hook_fn))
+        
+        try:
+            # Generate text
+            return self.model.generate(*args, **kwargs)
+        finally:
+            # Clean up hooks
+            for hook, hook_fn in registered_hooks:
+                hook.remove_hooks() 
