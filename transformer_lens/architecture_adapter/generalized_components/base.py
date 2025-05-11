@@ -129,8 +129,6 @@ class GeneralizedComponent(nn.Module):
     def __getattr__(self, name: str):
         # Only called if attribute not found through normal lookup
         # Try to get from original_component
-        if name == "is_sliding":
-            print("is_sliding", self.__dict__)
         if "original_component" in self._modules:
             try:
                 return getattr(self._modules["original_component"], name)

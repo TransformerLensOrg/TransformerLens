@@ -65,7 +65,7 @@ class AttentionBridge(GeneralizedComponent):
         output_attentions: bool = False,
         use_cache: bool = False,
         **kwargs: Any,
-    ) -> tuple[torch.Tensor, torch.Tensor | None, tuple[torch.Tensor, ...] | None]:
+    ) -> tuple[torch.Tensor, torch.Tensor | None]:
         """Forward pass through the attention bridge.
         
         Args:
@@ -81,7 +81,6 @@ class AttentionBridge(GeneralizedComponent):
             Tuple containing:
             - Output hidden states
             - Optional attention weights
-            - Optional past key/value states
         """
         # Forward through original component
         outputs = self.original_component(
@@ -94,10 +93,16 @@ class AttentionBridge(GeneralizedComponent):
             **kwargs,
         )
         
-        # Unpack outputs
-        output = outputs[0]
-        attention_weights = outputs[1] if len(outputs) > 1 else None
-        present_key_value = outputs[2] if len(outputs) > 2 else None
+        # Handle different output formats
+        if isinstance(outputs, tuple):
+            if len(outputs) == 2:  # (hidden_states, attention_weights)
+                output, attention_weights = outputs
+            else:  # (hidden_states, attention_weights, present_key_value)
+                output = outputs[0]
+                attention_weights = outputs[1]
+        else:  # Just hidden_states
+            output = outputs
+            attention_weights = None
         
         # Apply hooks
         if attention_weights is not None:
@@ -111,9 +116,5 @@ class AttentionBridge(GeneralizedComponent):
             "output": output
         })
         
-        # Return outputs based on flags
-        return (
-            output,
-            attention_weights if output_attentions else None,
-            present_key_value if use_cache else None,
-        ) 
+        # Return just hidden_states and attention_weights
+        return output, attention_weights if output_attentions else None 
