@@ -65,7 +65,7 @@ class AttentionBridge(GeneralizedComponent):
         output_attentions: bool = False,
         use_cache: bool = False,
         **kwargs: Any,
-    ) -> tuple[torch.Tensor, torch.Tensor | None]:
+    ) -> Any:
         """Forward pass through the attention bridge.
         
         Args:
@@ -78,9 +78,7 @@ class AttentionBridge(GeneralizedComponent):
             **kwargs: Additional arguments to pass to the original component
             
         Returns:
-            Tuple containing:
-            - Output hidden states
-            - Optional attention weights
+            The output from the original component, with hooks applied
         """
         # Forward through original component
         outputs = self.original_component(
@@ -93,28 +91,25 @@ class AttentionBridge(GeneralizedComponent):
             **kwargs,
         )
         
-        # Handle different output formats
-        if isinstance(outputs, tuple):
-            if len(outputs) == 2:  # (hidden_states, attention_weights)
-                output, attention_weights = outputs
-            else:  # (hidden_states, attention_weights, present_key_value)
-                output = outputs[0]
-                attention_weights = outputs[1]
-        else:  # Just hidden_states
-            output = outputs
-            attention_weights = None
+        # Define which outputs should go through which hooks
+        hook_map = {
+            0: "output",  # First output (hidden_states) goes through output hook
+            1: "attn",    # Second output (attention_weights) goes through attn hook
+        }
         
-        # Apply hooks
-        if attention_weights is not None:
-            attention_weights = self.hook_attn(attention_weights)
-            
-        output = self.hook_output(output)
+        # Apply hooks to outputs
+        outputs = self._apply_hooks_to_outputs(outputs, hook_map)
         
         # Store hook outputs
-        self.hook_outputs.update({
-            "attention_weights": attention_weights,
-            "output": output
-        })
+        if isinstance(outputs, tuple):
+            self.hook_outputs.update({
+                "output": outputs[0],
+                "attention_weights": outputs[1] if len(outputs) > 1 else None
+            })
+        else:
+            self.hook_outputs.update({
+                "output": outputs
+            })
         
-        # Return just hidden_states and attention_weights
-        return output, attention_weights if output_attentions else None 
+        # Return the outputs in the same format as the original component
+        return outputs 

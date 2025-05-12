@@ -111,20 +111,47 @@ class GeneralizedComponent(nn.Module):
         self.hooks.clear()
         self.hook_outputs.clear()
 
-    def forward(self, *args: Any, **kwargs: Any) -> tuple[torch.Tensor, ...] | torch.Tensor:
+    def forward(self, *args: Any, **kwargs: Any) -> Any:
         """Forward pass through the component.
         
         This should be implemented by subclasses to define the specific
-        behavior of the component.
+        behavior of the component. The return type should match the original
+        component's forward method.
         
         Args:
             *args: Input arguments
             **kwargs: Input keyword arguments
             
         Returns:
-            Either a single tensor or a tuple of tensors
+            The output from the original component, with hooks applied
         """
         raise NotImplementedError("Subclasses must implement forward()")
+
+    def _apply_hooks_to_outputs(self, outputs: Any, hook_map: dict[str, str]) -> Any:
+        """Apply hooks to outputs from the original component.
+        
+        Args:
+            outputs: The outputs from the original component
+            hook_map: Dictionary mapping output indices/keys to hook names
+            
+        Returns:
+            The outputs with hooks applied
+        """
+        if isinstance(outputs, tuple):
+            # For tuple outputs, apply hooks to each element that has a hook
+            return tuple(
+                self.execute_hooks(hook_map[i], out) if i in hook_map else out
+                for i, out in enumerate(outputs)
+            )
+        elif isinstance(outputs, dict):
+            # For dict outputs, apply hooks to each value that has a hook
+            return {
+                k: self.execute_hooks(hook_map[k], v) if k in hook_map else v
+                for k, v in outputs.items()
+            }
+        else:
+            # For single tensor outputs, apply the default hook
+            return self.execute_hooks(hook_map.get("output", "output"), outputs)
 
     def __getattr__(self, name: str):
         # Only called if attribute not found through normal lookup
