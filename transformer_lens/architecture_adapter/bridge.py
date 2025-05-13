@@ -197,4 +197,65 @@ class TransformerBridge:
         finally:
             # Clean up hooks
             for hook, hook_fn in registered_hooks:
-                hook.remove_hooks() 
+                hook.remove_hooks()
+
+    def forward(self, *args, **kwargs):
+        """Forward pass through the underlying HuggingFace model, with all arguments passed through."""
+        # Pre-processing (if needed)
+        output = self.model(*args, **kwargs)
+        # Post-processing (if needed)
+        return output
+
+    def run_with_cache(self, *args, **kwargs):
+        """Run the model and cache all activations at HookPoint objects.
+        Returns (output, cache_dict)."""
+        import torch.nn as nn
+
+        from transformer_lens.hook_points import HookPoint
+
+        cache = {}
+        hooks = []
+        visited = set()
+
+        def make_cache_hook(name):
+            def cache_hook(tensor, hook):
+                cache[name] = tensor.detach().cpu()
+                return tensor
+            return cache_hook
+
+        # Recursively collect all HookPoint objects and their names
+        def collect_hookpoints(module, prefix=""):
+            obj_id = id(module)
+            if obj_id in visited:
+                return
+            visited.add(obj_id)
+            for attr_name in dir(module):
+                if attr_name.startswith("_"):
+                    continue
+                try:
+                    attr = getattr(module, attr_name)
+                except Exception:
+                    continue
+                name = f"{prefix}.{attr_name}" if prefix else attr_name
+                if isinstance(attr, HookPoint):
+                    hooks.append((attr, name))
+                elif isinstance(attr, nn.Module):
+                    collect_hookpoints(attr, name)
+                elif isinstance(attr, (list, tuple)):
+                    for i, item in enumerate(attr):
+                        if isinstance(item, nn.Module):
+                            collect_hookpoints(item, f"{name}[{i}]")
+        collect_hookpoints(self)
+
+        # Register hooks
+        for hp, name in hooks:
+            hp.add_hook(make_cache_hook(name))
+
+        try:
+            # Run the bridge's forward method
+            output = self.forward(*args, **kwargs)
+        finally:
+            # Remove hooks
+            for hp, _ in hooks:
+                hp.remove_hooks()
+        return output, cache 
