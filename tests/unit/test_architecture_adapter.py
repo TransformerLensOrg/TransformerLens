@@ -68,6 +68,7 @@ def test_translate_transformer_lens_path(adapter: Gemma3ArchitectureAdapter) -> 
     assert adapter.translate_transformer_lens_path("unembed") == "model.embed_tokens"
     
     # Test block mapping
+    assert adapter.translate_transformer_lens_path("blocks") == "model.layers"
     assert adapter.translate_transformer_lens_path("blocks.0") == "model.layers.0"
     assert adapter.translate_transformer_lens_path("blocks.1") == "model.layers.1"
     

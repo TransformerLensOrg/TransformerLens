@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from typing import Any
 
+import torch.nn as nn
 from transformers.modeling_utils import PreTrainedModel
 
 from transformer_lens.architecture_adapter.conversion_utils.architecture_adapter import (
@@ -57,15 +58,18 @@ class TransformerBridge:
         if not isinstance(embed, EmbeddingBridge):
             embed = EmbeddingBridge(embed, "embed")
             # Replace in model using component mapping
-            path = adapter.get_component_path("embed")
+            path = adapter.translate_transformer_lens_path("embed")
             self._set_by_path(model, path, embed)
         self.embed = embed
         
-        block_bridges = []
         # Use num_hidden_layers for Hugging Face configs, fallback to n_layers
         n_layers = getattr(self.cfg, 'num_hidden_layers', getattr(self.cfg, 'n_layers', None))
         if n_layers is None:
             raise AttributeError('Config has neither num_hidden_layers nor n_layers')
+            
+        # Create ModuleList for blocks
+        block_bridges = nn.ModuleList()
+        
         # Build blocks
         for i in range(n_layers):
             # Get block components
@@ -74,48 +78,36 @@ class TransformerBridge:
             # Wrap layer norms with bridge
             if not isinstance(ln1, LayerNormBridge):
                 ln1 = LayerNormBridge(ln1, f"blocks.{i}.ln1")
-                path = adapter.get_block_component_path(i, "ln1")
+                path = adapter.translate_transformer_lens_path(f"blocks.{i}.ln1")
                 self._set_by_path(model, path, ln1)
             if not isinstance(ln2, LayerNormBridge):
                 ln2 = LayerNormBridge(ln2, f"blocks.{i}.ln2")
-                path = adapter.get_block_component_path(i, "ln2")
+                path = adapter.translate_transformer_lens_path(f"blocks.{i}.ln2")
                 self._set_by_path(model, path, ln2)
             attn = adapter.get_component(model, f"blocks.{i}.attn")
             if not isinstance(attn, AttentionBridge):
                 attn = AttentionBridge(attn, f"blocks.{i}.attn")
-                path = adapter.get_block_component_path(i, "attn")
+                path = adapter.translate_transformer_lens_path(f"blocks.{i}.attn")
                 self._set_by_path(model, path, attn)
             mlp = adapter.get_component(model, f"blocks.{i}.mlp")
             if not isinstance(mlp, MLPBridge):
                 mlp = MLPBridge(mlp, f"blocks.{i}.mlp")
-                path = adapter.get_block_component_path(i, "mlp")
+                path = adapter.translate_transformer_lens_path(f"blocks.{i}.mlp")
                 self._set_by_path(model, path, mlp)
-            # Get the original block for reference
-            original_block = None
-            try:
-                original_block = model.model.layers[i]
-            except Exception:
-                pass
+                
             # Create block bridge
-            block_bridge = BlockBridge(original_component=original_block, name=f"blocks.{i}")
+            block_bridge = BlockBridge(original_component=None, name=f"blocks.{i}")
             block_bridges.append(block_bridge)
-        # Replace model layers with block bridges in-place
-        try:
-            for i, block_bridge in enumerate(block_bridges):
-                model.model.layers[i] = block_bridge
-        except Exception:
-            # Fallback: try to replace the whole layers attribute
-            try:
-                model.model.layers = type(model.model.layers)(block_bridges)
-            except Exception:
-                model.model.layers = block_bridges
+            
+        path = adapter.translate_transformer_lens_path("blocks")
+        self._set_by_path(model, path, block_bridges)
         
         # Get final components
         ln_final = adapter.get_component(model, "ln_final")
         if not isinstance(ln_final, LayerNormBridge):
             ln_final = LayerNormBridge(ln_final, "ln_final")
             # Replace in model using component mapping
-            path = adapter.get_component_path("ln_final")
+            path = adapter.translate_transformer_lens_path("ln_final")
             self._set_by_path(model, path, ln_final)
         self.ln_final = ln_final
         
@@ -123,7 +115,7 @@ class TransformerBridge:
         if not isinstance(unembed, UnembeddingBridge):
             unembed = UnembeddingBridge(unembed, "unembed")
             # Replace in model using component mapping
-            path = adapter.get_component_path("unembed")
+            path = adapter.translate_transformer_lens_path("unembed")
             self._set_by_path(model, path, unembed)
         self.unembed = unembed
         
@@ -250,8 +242,6 @@ class TransformerBridge:
     def run_with_cache(self, *args, **kwargs):
         """Run the model and cache all activations at HookPoint objects.
         Returns (output, cache_dict)."""
-        import torch.nn as nn
-
         from transformer_lens.hook_points import HookPoint
 
         cache = {}
