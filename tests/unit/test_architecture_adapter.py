@@ -23,7 +23,7 @@ class MockModel(nn.Module):
         self.model.layers = nn.ModuleList([
             nn.Module() for _ in range(2)
         ])
-        for i, layer in enumerate(self.model.layers):
+        for layer in self.model.layers:
             layer.input_layernorm = nn.LayerNorm(512)
             layer.post_attention_layernorm = nn.LayerNorm(512)
             layer.self_attn = nn.Module()
@@ -33,7 +33,7 @@ class MockModel(nn.Module):
 @pytest.fixture
 def cfg():
     """Create a test config."""
-    return HookedTransformerConfig(
+    config = HookedTransformerConfig(
         d_model=512,
         n_layers=2,
         n_heads=8,
@@ -42,21 +42,25 @@ def cfg():
         act_fn="gelu",
         normalization_type="LN",
     )
+    # Add required attributes for Gemma3
+    config.num_attention_heads = config.n_heads
+    config.num_key_value_heads = config.n_heads
+    return config
 
 
 @pytest.fixture
-def adapter(cfg):
+def adapter(cfg: HookedTransformerConfig) -> Gemma3ArchitectureAdapter:
     """Create a Gemma3 adapter."""
     return Gemma3ArchitectureAdapter(cfg)
 
 
 @pytest.fixture
-def model():
+def model() -> MockModel:
     """Create a mock model."""
     return MockModel()
 
 
-def test_translate_transformer_lens_path(adapter):
+def test_translate_transformer_lens_path(adapter: Gemma3ArchitectureAdapter) -> None:
     """Test path translation from TransformerLens to Remote paths."""
     # Test direct mapping
     assert adapter.translate_transformer_lens_path("embed") == "model.embed_tokens"
@@ -74,7 +78,7 @@ def test_translate_transformer_lens_path(adapter):
     assert adapter.translate_transformer_lens_path("blocks.0.mlp") == "model.layers.0.mlp"
 
 
-def test_get_component(adapter, model):
+def test_get_component(adapter: Gemma3ArchitectureAdapter, model: MockModel) -> None:
     """Test getting components from the model."""
     # Test direct mapping
     assert isinstance(adapter.get_component(model, "embed"), nn.Embedding)
@@ -94,7 +98,7 @@ def test_get_component(adapter, model):
     assert isinstance(mlp, nn.Module)
 
 
-def test_invalid_paths(adapter):
+def test_invalid_paths(adapter: Gemma3ArchitectureAdapter) -> None:
     """Test handling of invalid paths."""
     with pytest.raises(ValueError, match="Component not_found not found in component mapping"):
         adapter.translate_transformer_lens_path("not_found")

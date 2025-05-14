@@ -173,16 +173,16 @@ class ArchitectureAdapter(ABC):
         """
         if self.component_mapping is None:
             raise ValueError("component_mapping must be set before calling translate_transformer_lens_path")
-            
+        
         parts = path.split(".")
         if not parts:
             raise ValueError("Empty path")
-            
+        
         # First part should be a top-level component
         if parts[0] not in self.component_mapping:
             raise ValueError(f"Component {parts[0]} not found in component mapping")
-            
-        return self._resolve_component_path(parts, self.component_mapping[parts[0]])
+        
+        return self._resolve_component_path(parts[1:], self.component_mapping[parts[0]])
 
     def _resolve_component_path(self, parts: list[str], mapping: RemotePath | tuple[RemotePath, ComponentLayer]) -> RemotePath:
         """Recursively resolve a component path to its remote path.
@@ -190,33 +190,40 @@ class ArchitectureAdapter(ABC):
         Args:
             parts: List of path components to resolve
             mapping: Current level of component mapping
-            
+        
         Returns:
             The resolved remote path
-            
+        
         Raises:
             ValueError: If the path is invalid or component not found
         """
         if not parts:
+            if isinstance(mapping, str):
+                return mapping
             raise ValueError("Empty path")
-            
+
         # Handle tuple case (base_path, sub_mapping)
         if isinstance(mapping, tuple):
             base_path, sub_mapping = mapping
-            # If we're at a leaf node (just the index)
-            if len(parts) == 1:
-                if not parts[0].isdigit():
-                    raise ValueError(f"Expected index, got {parts[0]}")
-                return f"{base_path}.{parts[0]}"
-            # Otherwise, continue with the sub_mapping
-            if not parts[0].isdigit():
-                raise ValueError(f"Expected index, got {parts[0]}")
             idx = parts[0]
-            return f"{base_path}.{idx}.{self._resolve_component_path(parts[1:], sub_mapping)}"
-            
+            if not idx.isdigit():
+                raise ValueError(f"Expected index, got {idx}")
+            if len(parts) == 1:
+                return f"{base_path}.{idx}"
+            # If next part is a subcomponent, look it up in sub_mapping
+            sub_name = parts[1]
+            if sub_name not in sub_mapping:
+                raise ValueError(f"Component {sub_name} not found in blocks components")
+            sub_map = sub_mapping[sub_name]
+            # If there are more parts, recurse into sub_map
+            if isinstance(sub_map, tuple) or (isinstance(sub_map, str) and len(parts) > 2):
+                return self._resolve_component_path(parts[2:], sub_map)
+            return f"{base_path}.{idx}.{sub_map}"
+
         # Handle string case (direct path)
         if len(parts) == 1:
             return mapping
+        # For direct string mapping, just append the rest of the path
         return f"{mapping}.{'.'.join(parts[1:])}"
 
     def get_component(self, model: RemoteModel, path: TransformerLensPath) -> RemoteComponent:
