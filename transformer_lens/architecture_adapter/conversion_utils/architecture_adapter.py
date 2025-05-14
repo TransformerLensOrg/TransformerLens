@@ -25,6 +25,9 @@ ComponentLayer: TypeAlias = dict[TransformerLensPath, RemotePath]  # Maps Transf
 BlockMapping: TypeAlias = tuple[RemotePath, ComponentLayer]  # Maps a block and its components
 ComponentMapping: TypeAlias = dict[TransformerLensPath, RemotePath | BlockMapping]  # Complete component mapping
 
+RemoteModel: TypeAlias = nn.Module
+RemoteComponent: TypeAlias = nn.Module
+
 
 class ArchitectureAdapter(ABC):
     """Base class for architecture adapters.
@@ -106,8 +109,117 @@ class ArchitectureAdapter(ABC):
             raise ValueError("component_mapping must be set before calling get_component_mapping")
         return self.component_mapping
 
+    def get_remote_component(self, model: RemoteModel, path: RemotePath) -> RemoteComponent:
+        """Get a component from the remote model using a dot-separated path.
+        
+        Args:
+            model: The remote model to extract the component from
+            path: The dot-separated path to the component (e.g. "model.layers.0.ln1")
+            
+        Returns:
+            The component at the specified path
+            
+        Raises:
+            AttributeError: If a component in the path doesn't exist
+            IndexError: If an invalid index is accessed
+            ValueError: If the path is empty or invalid
+            
+        Examples:
+            >>> adapter.get_remote_component(model, "model.embed_tokens")
+            <Embedding>
+            >>> adapter.get_remote_component(model, "model.layers.0")
+            <TransformerBlock>
+            >>> adapter.get_remote_component(model, "model.layers.0.ln1")
+            <LayerNorm>
+        """
+        if not path:
+            raise ValueError("Path cannot be empty")
+            
+        parts = path.split(".")
+        current: Any = model
+        
+        for part in parts:
+            if not part:
+                raise ValueError(f"Invalid path segment in {path}")
+            if part.isdigit():
+                current = current[int(part)]
+            else:
+                current = getattr(current, part)
+                
+        if not isinstance(current, nn.Module):
+            raise ValueError(f"Component at path {path} is not a nn.Module")
+            
+        return current
 
-    def get_component(self, model: Any, path: TransformerLensPath) -> nn.Module:
+    def translate_transformer_lens_path(self, path: TransformerLensPath) -> RemotePath:
+        """Translate a TransformerLens path to its corresponding Remote path.
+        
+        Args:
+            path: The TransformerLens path to translate (e.g. "blocks.0.ln1")
+            
+        Returns:
+            The corresponding Remote path (e.g. "model.layers.0.input_layernorm")
+            
+        Raises:
+            ValueError: If the component mapping is not set or if the path is invalid
+            
+        Examples:
+            >>> adapter.translate_transformer_lens_path("embed")
+            "model.embed_tokens"
+            >>> adapter.translate_transformer_lens_path("blocks.0")
+            "model.layers.0"
+            >>> adapter.translate_transformer_lens_path("blocks.0.ln1")
+            "model.layers.0.input_layernorm"
+        """
+        if self.component_mapping is None:
+            raise ValueError("component_mapping must be set before calling translate_transformer_lens_path")
+            
+        parts = path.split(".")
+        if not parts:
+            raise ValueError("Empty path")
+            
+        # First part should be a top-level component
+        if parts[0] not in self.component_mapping:
+            raise ValueError(f"Component {parts[0]} not found in component mapping")
+            
+        return self._resolve_component_path(parts, self.component_mapping[parts[0]])
+
+    def _resolve_component_path(self, parts: list[str], mapping: RemotePath | tuple[RemotePath, ComponentLayer]) -> RemotePath:
+        """Recursively resolve a component path to its remote path.
+        
+        Args:
+            parts: List of path components to resolve
+            mapping: Current level of component mapping
+            
+        Returns:
+            The resolved remote path
+            
+        Raises:
+            ValueError: If the path is invalid or component not found
+        """
+        if not parts:
+            raise ValueError("Empty path")
+            
+        # Handle tuple case (base_path, sub_mapping)
+        if isinstance(mapping, tuple):
+            base_path, sub_mapping = mapping
+            # If we're at a leaf node (just the index)
+            if len(parts) == 1:
+                if not parts[0].isdigit():
+                    raise ValueError(f"Expected index, got {parts[0]}")
+                return f"{base_path}.{parts[0]}"
+            # Otherwise, continue with the sub_mapping
+            if not parts[0].isdigit():
+                raise ValueError(f"Expected index, got {parts[0]}")
+            idx = parts[0]
+            return f"{base_path}.{idx}.{self._resolve_component_path(parts[1:], sub_mapping)}"
+            
+        # Handle string case (direct path)
+        if len(parts) == 1:
+            return mapping
+        return f"{mapping}.{'.'.join(parts[1:])}"
+
+    def get_component(self, model: RemoteModel, path: TransformerLensPath) -> RemoteComponent:
         """Get a component from the model using the component_mapping.
         
         Args:
@@ -119,20 +231,23 @@ class ArchitectureAdapter(ABC):
             
         Raises:
             ValueError: If component_mapping is not set or if the component is not found
+            AttributeError: If a component in the path doesn't exist
+            IndexError: If an invalid index is accessed
+            
+        Examples:
+            >>> adapter.get_component(model, "embed")
+            <Embedding>
+            >>> adapter.get_component(model, "blocks.0")
+            <TransformerBlock>
+            >>> adapter.get_component(model, "blocks.0.ln1")
+            <LayerNorm>
         """
         if self.component_mapping is None:
             raise ValueError("component_mapping must be set before calling get_component")
             
-        parts = path.split(".")
-        current = model
-        
-        for part in parts:
-            if part.isdigit():
-                current = current[int(part)]
-            else:
-                current = getattr(current, part)
-                
-        return current
+        # Get the remote path and then get the component
+        remote_path = self.translate_transformer_lens_path(path)
+        return self.get_remote_component(model, remote_path)
 
     def _get_component_type(self, name: str) -> str:
         """Get the type information for a component.
