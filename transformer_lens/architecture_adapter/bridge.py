@@ -97,7 +97,7 @@ class TransformerBridge:
             except Exception:
                 pass
             # Create block bridge
-            block_bridge = BlockBridge(original_component=original_block)
+            block_bridge = BlockBridge(original_component=original_block, name=f"blocks.{i}")
             block_bridges.append(block_bridge)
         # Replace model layers with block bridges in-place
         try:
@@ -165,29 +165,32 @@ class TransformerBridge:
         except Exception as e:
             return f"{indent_str}{name}: <error: {e}>"
 
-    def _format_component_mapping(self, mapping: dict, indent: int = 0) -> list[str]:
+    def _format_component_mapping(self, mapping: dict, indent: int = 0, prepend: str | None = None) -> list[str]:
         """Format a component mapping dictionary.
         
         Args:
             mapping: The component mapping dictionary
             indent: The indentation level
+            prepend: Optional path to prepend to component names (e.g. "blocks.0")
             
         Returns:
             A list of formatted strings
         """
         lines = []
         for name, value in mapping.items():
+            path = f"{prepend}.{name}" if prepend else name
             if isinstance(value, tuple):
                 # For tuple paths (like blocks), get the TransformerLens path and component mapping
                 tl_path, sub_mapping = value
-                # Format the main component
-                lines.append(self._format_single_component(name, f"{name}.0", indent))
-                # Recursively format subcomponents
-                sub_lines = self._format_component_mapping(sub_mapping, indent + 1)
+                # Format the main component with prepend if provided
+                path = f"{path}.0"
+                lines.append(self._format_single_component(name, path, indent))
+                # Recursively format subcomponents with updated prepend
+                sub_lines = self._format_component_mapping(sub_mapping, indent + 1, path)
                 lines.extend(sub_lines)
             else:
-                # For regular components
-                lines.append(self._format_single_component(name, name, indent))
+                # For regular components, use prepend if provided
+                lines.append(self._format_single_component(name, path, indent))
         return lines
 
     def __str__(self) -> str:
