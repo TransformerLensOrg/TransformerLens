@@ -61,7 +61,6 @@ class TransformerBridge:
             self._set_by_path(model, path, embed)
         self.embed = embed
         
-        self.blocks = []
         block_bridges = []
         # Use num_hidden_layers for Hugging Face configs, fallback to n_layers
         n_layers = getattr(self.cfg, 'num_hidden_layers', getattr(self.cfg, 'n_layers', None))
@@ -98,7 +97,7 @@ class TransformerBridge:
             except Exception:
                 pass
             # Create block bridge
-            block_bridge = BlockBridge(ln1, attn, ln2, mlp, original_component=original_block)
+            block_bridge = BlockBridge(original_component=original_block)
             block_bridges.append(block_bridge)
         # Replace model layers with block bridges in-place
         try:
@@ -110,7 +109,6 @@ class TransformerBridge:
                 model.model.layers = type(model.model.layers)(block_bridges)
             except Exception:
                 model.model.layers = block_bridges
-        self.blocks = block_bridges
         
         # Get final components
         ln_final = adapter.get_component(model, "ln_final")
@@ -147,30 +145,60 @@ class TransformerBridge:
                 obj = getattr(obj, part)
         setattr(obj, parts[-1], value)
         
+    def _format_single_component(self, name: str, path: str, indent: int = 0) -> str:
+        """Format a single component's string representation.
+        
+        Args:
+            name: The name of the component
+            path: The path to get the component
+            indent: The indentation level
+            
+        Returns:
+            A formatted string for the component
+        """
+        indent_str = "  " * indent
+        try:
+            comp = self.adapter.get_component(self.model, path)
+            if hasattr(comp, 'original_component'):
+                return f"{indent_str}{name}: {type(comp).__name__}({type(comp.original_component).__name__})"
+            return f"{indent_str}{name}: {type(comp).__name__}"
+        except Exception as e:
+            return f"{indent_str}{name}: <error: {e}>"
+
+    def _format_component_mapping(self, mapping: dict, indent: int = 0) -> list[str]:
+        """Format a component mapping dictionary.
+        
+        Args:
+            mapping: The component mapping dictionary
+            indent: The indentation level
+            
+        Returns:
+            A list of formatted strings
+        """
+        lines = []
+        for name, value in mapping.items():
+            if isinstance(value, tuple):
+                # For tuple paths (like blocks), get the TransformerLens path and component mapping
+                tl_path, sub_mapping = value
+                # Format the main component
+                lines.append(self._format_single_component(name, f"{name}.0", indent))
+                # Recursively format subcomponents
+                sub_lines = self._format_component_mapping(sub_mapping, indent + 1)
+                lines.extend(sub_lines)
+            else:
+                # For regular components
+                lines.append(self._format_single_component(name, name, indent))
+        return lines
+
     def __str__(self) -> str:
         """Get a string representation of the bridge.
         
         Returns:
             A string describing the bridge's components
         """
-        lines = []
-        lines.append("TransformerBridge:")
-        lines.append(f"  embed: {type(self.embed).__name__}({type(self.embed.original_component).__name__})")
-        lines.append(f"  ln_final: {type(self.ln_final).__name__}({type(self.ln_final.original_component).__name__})")
-        lines.append(f"  unembed: {type(self.unembed).__name__}({type(self.unembed.original_component).__name__})")
-        if self.blocks:
-            block = self.blocks[0]
-            lines.append(f"  blocks: {type(block).__name__}({type(getattr(block, 'original_component', type(block))).__name__})")
-            lines.append(f"    ln1: {type(block.ln1).__name__}({type(block.ln1.original_component).__name__})")
-            lines.append(f"    attn: {type(block.attn).__name__}({type(block.attn.original_component).__name__})")
-            lines.append(f"    ln2: {type(block.ln2).__name__}({type(block.ln2.original_component).__name__})")
-            lines.append(f"    mlp: {type(block.mlp).__name__}({type(block.mlp.original_component).__name__})")
-            # Show any additional components in the block
-            for attr_name, attr_value in vars(block).items():
-                if attr_name not in ['ln1', 'attn', 'ln2', 'mlp'] and hasattr(attr_value, 'original_component'):
-                    lines.append(f"    {attr_name}: {type(attr_value).__name__}({type(attr_value.original_component).__name__})")
-        else:
-            lines.append("  blocks: None")
+        lines = ["TransformerBridge:"]
+        mapping = self.adapter.get_component_mapping()
+        lines.extend(self._format_component_mapping(mapping, indent=1))
         return "\n".join(lines)
         
     def generate(self, *args: Any, **kwargs: Any) -> Any:
@@ -269,3 +297,8 @@ class TransformerBridge:
             for hp, _ in hooks:
                 hp.remove_hooks()
         return output, cache 
+
+    @property
+    def blocks(self):
+        # Use the adapter to get the blocks component, for flexibility
+        return self.adapter.get_component(self.model, "blocks") 

@@ -67,38 +67,4 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
             ),
             "ln_final": "model.norm",  # Final layer norm
             "unembed": "model.embed_tokens",  # Language model head (shared with embed)
-        } 
-
-    def get_component(self, model: PreTrainedModel, name: str):
-        """Get a component from the model by its name.
-        Args:
-            model: The HuggingFace model
-            name: The name of the component to get
-        Returns:
-            The requested component
-        """
-        if name == "embed":
-            return model.model.embed_tokens
-        elif name == "ln_final":
-            return model.model.norm
-        elif name == "unembed":
-            return model.model.embed_tokens
-        elif name.startswith("blocks."):
-            # Parse block index and component name
-            parts = name.split(".")
-            if len(parts) != 3:
-                raise ValueError(f"Invalid block component name: {name}")
-            block_idx = int(parts[1])
-            block_component = parts[2]
-            block = model.model.layers[block_idx]
-            component_map = {
-                "ln1": "input_layernorm",
-                "ln2": "post_attention_layernorm",
-                "attn": "self_attn",
-                "mlp": "mlp"
-            }
-            if block_component not in component_map:
-                raise ValueError(f"Unknown block component: {block_component}")
-            return getattr(block, component_map[block_component])
-        else:
-            raise ValueError(f"Unknown component: {name}") 
+        }

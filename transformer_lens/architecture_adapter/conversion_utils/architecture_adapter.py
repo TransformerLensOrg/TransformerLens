@@ -4,17 +4,26 @@ This module contains the base class for architecture adapters that map between d
 """
 
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, TypeAlias
 
 import torch
 import torch.nn as nn
-from transformers import PreTrainedModel
+from transformers.modeling_utils import PreTrainedModel
 
 from transformer_lens.architecture_adapter.generalized_components import (
     AttentionBridge,
     MLPBridge,
 )
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+
+# Type aliases for paths
+TransformerLensPath: TypeAlias = str  # Path in TransformerLens format (e.g. "blocks.0.attn")
+RemotePath: TypeAlias = str  # Path in the remote model format (e.g. "transformer.h.0.attn")
+
+# Component mapping types
+ComponentLayer: TypeAlias = dict[TransformerLensPath, RemotePath]  # Maps TransformerLens components to remote components
+BlockMapping: TypeAlias = tuple[RemotePath, ComponentLayer]  # Maps a block and its components
+ComponentMapping: TypeAlias = dict[TransformerLensPath, RemotePath | BlockMapping]  # Complete component mapping
 
 
 class ArchitectureAdapter(ABC):
@@ -33,7 +42,7 @@ class ArchitectureAdapter(ABC):
         """
         self.cfg = cfg
         self.conversion_rules = None
-        self.component_mapping = None
+        self.component_mapping: ComponentMapping | None = None
 
     def get_component_path(self, name: str) -> str:
         """Get the path to a component in the model.
@@ -84,7 +93,7 @@ class ArchitectureAdapter(ABC):
             
         return f"{base_path}.{block_idx}.{block_components[component_name]}"
 
-    def get_component_mapping(self) -> dict[str, str | tuple[str, dict[str, str]]]:
+    def get_component_mapping(self) -> ComponentMapping:
         """Get the full component mapping.
         
         Returns:
@@ -97,18 +106,33 @@ class ArchitectureAdapter(ABC):
             raise ValueError("component_mapping must be set before calling get_component_mapping")
         return self.component_mapping
 
-    @abstractmethod
-    def get_component(self, model: PreTrainedModel, name: str) -> Any:
-        """Get a component from the model.
+
+    def get_component(self, model: Any, path: TransformerLensPath) -> nn.Module:
+        """Get a component from the model using the component_mapping.
         
         Args:
-            model: The model to get the component from
-            name: The name of the component to get
+            model: The model to extract components from
+            path: The path of the component to get, as defined in component_mapping
             
         Returns:
-            The requested component
+            The requested component from the model
+            
+        Raises:
+            ValueError: If component_mapping is not set or if the component is not found
         """
-        pass
+        if self.component_mapping is None:
+            raise ValueError("component_mapping must be set before calling get_component")
+            
+        parts = path.split(".")
+        current = model
+        
+        for part in parts:
+            if part.isdigit():
+                current = current[int(part)]
+            else:
+                current = getattr(current, part)
+                
+        return current
 
     def _get_component_type(self, name: str) -> str:
         """Get the type information for a component.

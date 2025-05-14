@@ -56,63 +56,24 @@ class AttentionBridge(GeneralizedComponent):
         self.hook_z.name = f"{name}.z"
         self.hook_output.name = f"{name}.output"
         
-    def forward(
-        self,
-        hidden_states: torch.Tensor,
-        attention_mask: torch.Tensor | None = None,
-        position_ids: torch.Tensor | None = None,
-        past_key_value: tuple[torch.Tensor, torch.Tensor] | None = None,
-        output_attentions: bool = False,
-        use_cache: bool = False,
-        position_embeddings: torch.Tensor | None = None,
-        **kwargs: Any,
-    ) -> Any:
-        """Forward pass through the attention bridge.
-        
-        Args:
-            hidden_states: Input hidden states
-            attention_mask: Optional attention mask
-            position_ids: Optional position IDs
-            past_key_value: Optional past key/value states
-            output_attentions: Whether to output attention weights
-            use_cache: Whether to use KV cache
-            position_embeddings: Optional position embeddings
-            **kwargs: Additional arguments to pass to the original component
-            
-        Returns:
-            The output from the original component, with hooks applied
-        """
-        # Forward through original component
-        outputs = self.original_component(
-            hidden_states,
-            attention_mask=attention_mask,
-            position_ids=position_ids,
-            past_key_value=past_key_value,
-            output_attentions=True,  # Always get attention weights for hooks
-            use_cache=use_cache,
-            position_embeddings=position_embeddings,
-            **kwargs,
-        )
-        
-        # Define which outputs should go through which hooks
-        hook_map = {
-            0: "output",  # First output (hidden_states) goes through output hook
-            1: "attn",    # Second output (attention_weights) goes through attn hook
-        }
-        
-        # Apply hooks to outputs
-        outputs = self._apply_hooks_to_outputs(outputs, hook_map)
-        
-        # Store hook outputs
+    def forward(self, *args, **kwargs) -> Any:
+        """Forward pass through the attention bridge, passing all arguments through."""
+        outputs = self.original_component(*args, **kwargs)
+
+        # Dynamically apply hooks to outputs if tuple or dict
         if isinstance(outputs, tuple):
-            self.hook_outputs.update({
-                "output": outputs[0],
-                "attention_weights": outputs[1] if len(outputs) > 1 else None
-            })
+            outputs = list(outputs)
+            if len(outputs) > 0:
+                outputs[0] = self.hook_output(outputs[0])
+            if len(outputs) > 1:
+                outputs[1] = self.hook_attn(outputs[1])
+            outputs = tuple(outputs)
+        elif isinstance(outputs, dict):
+            if 'hidden_states' in outputs:
+                outputs['hidden_states'] = self.hook_output(outputs['hidden_states'])
+            if 'attn_weights' in outputs:
+                outputs['attn_weights'] = self.hook_attn(outputs['attn_weights'])
         else:
-            self.hook_outputs.update({
-                "output": outputs
-            })
-        
-        # Return the outputs in the same format as the original component
+            outputs = self.hook_output(outputs)
+
         return outputs 
