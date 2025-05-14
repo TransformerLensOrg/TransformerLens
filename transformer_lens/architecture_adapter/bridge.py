@@ -15,6 +15,9 @@ from transformer_lens.architecture_adapter.generalized_components import (
     MLPBridge,
     UnembeddingBridge,
 )
+from transformer_lens.architecture_adapter.generalized_components.block import (
+    BlockBridge,
+)
 
 
 @dataclass
@@ -59,7 +62,7 @@ class TransformerBridge:
         self.embed = embed
         
         self.blocks = []
-        
+        block_bridges = []
         # Use num_hidden_layers for Hugging Face configs, fallback to n_layers
         n_layers = getattr(self.cfg, 'num_hidden_layers', getattr(self.cfg, 'n_layers', None))
         if n_layers is None:
@@ -69,39 +72,46 @@ class TransformerBridge:
             # Get block components
             ln1 = adapter.get_component(model, f"blocks.{i}.ln1")
             ln2 = adapter.get_component(model, f"blocks.{i}.ln2")
-            
             # Wrap layer norms with bridge
             if not isinstance(ln1, LayerNormBridge):
                 ln1 = LayerNormBridge(ln1, f"blocks.{i}.ln1")
-                # Replace in model using component mapping
                 path = adapter.get_block_component_path(i, "ln1")
                 self._set_by_path(model, path, ln1)
             if not isinstance(ln2, LayerNormBridge):
                 ln2 = LayerNormBridge(ln2, f"blocks.{i}.ln2")
-                # Replace in model using component mapping
                 path = adapter.get_block_component_path(i, "ln2")
                 self._set_by_path(model, path, ln2)
-            
-            # Get attention and wrap with bridge
             attn = adapter.get_component(model, f"blocks.{i}.attn")
             if not isinstance(attn, AttentionBridge):
                 attn = AttentionBridge(attn, f"blocks.{i}.attn")
-                # Replace in model using component mapping
                 path = adapter.get_block_component_path(i, "attn")
                 self._set_by_path(model, path, attn)
-            
-            # Get MLP and wrap with bridge
             mlp = adapter.get_component(model, f"blocks.{i}.mlp")
             if not isinstance(mlp, MLPBridge):
                 mlp = MLPBridge(mlp, f"blocks.{i}.mlp")
-                # Replace in model using component mapping
                 path = adapter.get_block_component_path(i, "mlp")
                 self._set_by_path(model, path, mlp)
-            
-            # Create block
-            block = Block(ln1=ln1, attn=attn, ln2=ln2, mlp=mlp)
-            self.blocks.append(block)
-            
+            # Get the original block for reference
+            original_block = None
+            try:
+                original_block = model.model.layers[i]
+            except Exception:
+                pass
+            # Create block bridge
+            block_bridge = BlockBridge(ln1, attn, ln2, mlp, original_component=original_block)
+            block_bridges.append(block_bridge)
+        # Replace model layers with block bridges in-place
+        try:
+            for i, block_bridge in enumerate(block_bridges):
+                model.model.layers[i] = block_bridge
+        except Exception:
+            # Fallback: try to replace the whole layers attribute
+            try:
+                model.model.layers = type(model.model.layers)(block_bridges)
+            except Exception:
+                model.model.layers = block_bridges
+        self.blocks = block_bridges
+        
         # Get final components
         ln_final = adapter.get_component(model, "ln_final")
         if not isinstance(ln_final, LayerNormBridge):
@@ -148,19 +158,19 @@ class TransformerBridge:
         lines.append(f"  embed: {type(self.embed).__name__}({type(self.embed.original_component).__name__})")
         lines.append(f"  ln_final: {type(self.ln_final).__name__}({type(self.ln_final.original_component).__name__})")
         lines.append(f"  unembed: {type(self.unembed).__name__}({type(self.unembed.original_component).__name__})")
-        lines.append("  blocks:")
         if self.blocks:
             block = self.blocks[0]
+            lines.append(f"  blocks: {type(block).__name__}({type(getattr(block, 'original_component', type(block))).__name__})")
             lines.append(f"    ln1: {type(block.ln1).__name__}({type(block.ln1.original_component).__name__})")
             lines.append(f"    attn: {type(block.attn).__name__}({type(block.attn.original_component).__name__})")
             lines.append(f"    ln2: {type(block.ln2).__name__}({type(block.ln2.original_component).__name__})")
             lines.append(f"    mlp: {type(block.mlp).__name__}({type(block.mlp.original_component).__name__})")
-            
             # Show any additional components in the block
             for attr_name, attr_value in vars(block).items():
                 if attr_name not in ['ln1', 'attn', 'ln2', 'mlp'] and hasattr(attr_value, 'original_component'):
                     lines.append(f"    {attr_name}: {type(attr_value).__name__}({type(attr_value.original_component).__name__})")
-        
+        else:
+            lines.append("  blocks: None")
         return "\n".join(lines)
         
     def generate(self, *args: Any, **kwargs: Any) -> Any:
@@ -252,8 +262,8 @@ class TransformerBridge:
             hp.add_hook(make_cache_hook(name))
 
         try:
-            # Run the bridge's forward method
-            output = self.forward(*args, **kwargs)
+            # Run the underlying model's forward method
+            output = self.model(*args, **kwargs)
         finally:
             # Remove hooks
             for hp, _ in hooks:

@@ -64,6 +64,7 @@ class AttentionBridge(GeneralizedComponent):
         past_key_value: tuple[torch.Tensor, torch.Tensor] | None = None,
         output_attentions: bool = False,
         use_cache: bool = False,
+        position_embeddings: torch.Tensor | None = None,
         **kwargs: Any,
     ) -> Any:
         """Forward pass through the attention bridge.
@@ -75,6 +76,7 @@ class AttentionBridge(GeneralizedComponent):
             past_key_value: Optional past key/value states
             output_attentions: Whether to output attention weights
             use_cache: Whether to use KV cache
+            position_embeddings: Optional position embeddings
             **kwargs: Additional arguments to pass to the original component
             
         Returns:
@@ -88,6 +90,7 @@ class AttentionBridge(GeneralizedComponent):
             past_key_value=past_key_value,
             output_attentions=True,  # Always get attention weights for hooks
             use_cache=use_cache,
+            position_embeddings=position_embeddings,
             **kwargs,
         )
         
