@@ -79,6 +79,25 @@ def test_translate_transformer_lens_path(adapter: Gemma3ArchitectureAdapter) -> 
     assert adapter.translate_transformer_lens_path("blocks.0.mlp") == "model.layers.0.mlp"
 
 
+def test_translate_transformer_lens_path_last_component(adapter: Gemma3ArchitectureAdapter) -> None:
+    """Test path translation with last_component_only=True."""
+    # Test direct mapping
+    assert adapter.translate_transformer_lens_path("embed", last_component_only=True) == "embed_tokens"
+    assert adapter.translate_transformer_lens_path("ln_final", last_component_only=True) == "norm"
+    assert adapter.translate_transformer_lens_path("unembed", last_component_only=True) == "embed_tokens"
+    
+    # Test block mapping
+    assert adapter.translate_transformer_lens_path("blocks", last_component_only=True) == "layers"
+    assert adapter.translate_transformer_lens_path("blocks.0", last_component_only=True) == "0"
+    assert adapter.translate_transformer_lens_path("blocks.1", last_component_only=True) == "1"
+    
+    # Test block subcomponent mapping
+    assert adapter.translate_transformer_lens_path("blocks.0.ln1", last_component_only=True) == "input_layernorm"
+    assert adapter.translate_transformer_lens_path("blocks.0.ln2", last_component_only=True) == "post_attention_layernorm"
+    assert adapter.translate_transformer_lens_path("blocks.0.attn", last_component_only=True) == "self_attn"
+    assert adapter.translate_transformer_lens_path("blocks.0.mlp", last_component_only=True) == "mlp"
+
+
 def test_get_component(adapter: Gemma3ArchitectureAdapter, model: MockModel) -> None:
     """Test getting components from the model."""
     # Test direct mapping

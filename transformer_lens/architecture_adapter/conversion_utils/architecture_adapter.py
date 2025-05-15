@@ -3,7 +3,7 @@
 This module contains the base class for architecture adapters that map between different model architectures.
 """
 
-from abc import ABC, abstractmethod
+from abc import ABC
 from typing import Any, TypeAlias
 
 import torch
@@ -98,14 +98,15 @@ class ArchitectureAdapter(ABC):
             
         return current
 
-    def translate_transformer_lens_path(self, path: TransformerLensPath) -> RemotePath:
+    def translate_transformer_lens_path(self, path: TransformerLensPath, last_component_only: bool = False) -> RemotePath:
         """Translate a TransformerLens path to its corresponding Remote path.
         
         Args:
             path: The TransformerLens path to translate (e.g. "blocks.0.ln1")
+            last_component_only: If True, only return the last component of the path (e.g. "input_layernorm")
             
         Returns:
-            The corresponding Remote path (e.g. "model.layers.0.input_layernorm")
+            The corresponding Remote path (e.g. "model.layers.0.input_layernorm" or just "input_layernorm")
             
         Raises:
             ValueError: If the component mapping is not set or if the path is invalid
@@ -117,6 +118,8 @@ class ArchitectureAdapter(ABC):
             "model.layers.0"
             >>> adapter.translate_transformer_lens_path("blocks.0.ln1")
             "model.layers.0.input_layernorm"
+            >>> adapter.translate_transformer_lens_path("blocks.0.ln1", last_component_only=True)
+            "input_layernorm"
         """
         if self.component_mapping is None:
             raise ValueError("component_mapping must be set before calling translate_transformer_lens_path")
@@ -129,7 +132,13 @@ class ArchitectureAdapter(ABC):
         if parts[0] not in self.component_mapping:
             raise ValueError(f"Component {parts[0]} not found in component mapping")
         
-        return self._resolve_component_path(parts[1:], self.component_mapping[parts[0]])
+        full_path = self._resolve_component_path(parts[1:], self.component_mapping[parts[0]])
+        
+        if last_component_only:
+            # Split the path and return only the last component
+            return full_path.split(".")[-1]
+            
+        return full_path
 
     def _resolve_component_path(self, parts: list[str], mapping: RemotePath | tuple[RemotePath, ComponentLayer]) -> RemotePath:
         """Recursively resolve a component path to its remote path.
@@ -147,9 +156,8 @@ class ArchitectureAdapter(ABC):
         if not parts:
             if isinstance(mapping, str):
                 return mapping
-            if isinstance(mapping, tuple):
-                return mapping[0]  # Return the base path for tuple mappings
-            raise ValueError("Empty path")
+            # For tuple mappings, return the base path
+            return mapping[0]  # Return the base path for tuple mappings
 
         # Handle tuple case (base_path, sub_mapping)
         if isinstance(mapping, tuple):
@@ -165,7 +173,7 @@ class ArchitectureAdapter(ABC):
                 raise ValueError(f"Component {sub_name} not found in blocks components")
             sub_map = sub_mapping[sub_name]
             # If there are more parts, recurse into sub_map
-            if isinstance(sub_map, tuple) or (isinstance(sub_map, str) and len(parts) > 2):
+            if isinstance(sub_map, tuple) or len(parts) > 2:
                 return self._resolve_component_path(parts[2:], sub_map)
             return f"{base_path}.{idx}.{sub_map}"
 
