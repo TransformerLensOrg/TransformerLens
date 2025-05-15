@@ -1,7 +1,7 @@
 """Base class for generalized transformer components."""
 
 from collections.abc import Callable
-from typing import Any, Protocol
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -9,6 +9,7 @@ import torch.nn as nn
 from transformer_lens.architecture_adapter.conversion_utils.architecture_adapter import (
     ArchitectureAdapter,
 )
+from transformer_lens.HookedTransformer import HookPoint
 
 
 class GeneralizedComponent(nn.Module):
@@ -18,13 +19,13 @@ class GeneralizedComponent(nn.Module):
     and handles hook registration and execution.
     """
 
-    def __init__(self, original_component: nn.Module, name: str, architecture_adapter: ArchitectureAdapter | None = None):
+    def __init__(self, original_component: nn.Module, name: str, architecture_adapter: ArchitectureAdapter):
         """Initialize the generalized component.
         
         Args:
             original_component: The original transformer component to wrap
             name: The name of this component
-            architecture_adapter: Optional architecture adapter for component-specific operations
+            architecture_adapter: Architecture adapter for component-specific operations
         """
         super().__init__()
         self.original_component = original_component
@@ -166,7 +167,25 @@ class GeneralizedComponent(nn.Module):
             try:
                 return getattr(self._modules["original_component"], name)
             except AttributeError:
-                pass
+                # If direct attribute lookup fails, try translating the path
+                # Get the current component's path and append the requested name
+                
+                current_path = self.name
+                full_path = f"{current_path}.{name}"
+                try:
+                    # Get the last component of the translated path
+                    translated_name = self.architecture_adapter.translate_transformer_lens_path(
+                        full_path, last_component_only=True
+                    )
+                    print(translated_name, getattr(self._modules["original_component"], translated_name))
+                    return getattr(self._modules["original_component"], translated_name)
+                    # Try to get the attribute using the translated name
+                except ValueError:
+                    # If translation fails, continue to raise the original AttributeError
+                    pass
+                except AttributeError:
+                    # If translation fails, continue to raise the original AttributeError
+                    pass
         return super().__getattr__(name)
         # If we get here, the attribute wasn't found anywhere
         # raise AttributeError(f"{type(self).__name__} has no attribute {name}") 

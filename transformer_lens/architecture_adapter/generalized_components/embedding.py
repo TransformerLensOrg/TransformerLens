@@ -38,8 +38,6 @@ class EmbeddingBridge(GeneralizedComponent):
         self.hook_pos = HookPoint()  # Position embeddings
         self.hook_output = HookPoint()  # Combined embeddings
         
-        assert hasattr(self, "hook_embed")
-        
         # Set hook names
         self.hook_embed.name = f"{name}.embed"
         self.hook_pos.name = f"{name}.pos"
