@@ -45,16 +45,18 @@ class TransformerBridge:
     to map between the HookedTransformer and HuggingFace model structures.
     """
 
-    def __init__(self, model: PreTrainedModel, adapter: ArchitectureAdapter):
+    def __init__(self, model: PreTrainedModel, adapter: ArchitectureAdapter, tokenizer: Any):
         """Initialize the bridge.
         
         Args:
             model: The HuggingFace model to bridge
             adapter: The architecture adapter to use
+            tokenizer: The tokenizer to use (required)
         """
         self.model = model
         self.adapter = adapter
         self.cfg = adapter.cfg
+        self.tokenizer = tokenizer
         
         if not hasattr(adapter, 'component_mapping') or adapter.component_mapping is None:
             raise ValueError("Adapter must have a component_mapping attribute")
@@ -205,19 +207,34 @@ class TransformerBridge:
         lines.extend(self._format_component_mapping(mapping, indent=1))
         return "\n".join(lines)
         
-    def generate(self, *args: Any, **kwargs: Any) -> Any:
-        """Generate text using the underlying model.
-        
-        Args:
-            *args: Positional arguments to pass to the model's generate method
-            **kwargs: Keyword arguments to pass to the model's generate method
-            
-        Returns:
-            The generated output from the model
-        """
-        # Get hooks from kwargs if provided
-        hooks = kwargs.pop('hooks', {})
-        
+    def generate(
+        self,
+        input: Any = "",
+        max_new_tokens: int = 10,
+        stop_at_eos: bool = True,
+        eos_token_id: int | None = None,
+        do_sample: bool = True,
+        top_k: int | None = None,
+        top_p: float | None = None,
+        temperature: float = 1.0,
+        freq_penalty: float = 0.0,
+        use_past_kv_cache: bool = True,
+        prepend_bos: bool | None = None,
+        padding_side: str | None = None,
+        return_type: str | None = "input",
+        verbose: bool = True,
+        hooks: dict = None,
+    ) -> Any:
+        """Sample tokens from the model, using the bridge's model and triggering hooks."""
+        import tqdm
+
+        from transformer_lens.past_key_value_caching import (
+            HookedTransformerKeyValueCache,
+        )
+
+        if hooks is None:
+            hooks = {}
+
         # Register hooks if provided
         registered_hooks = []
         if hooks:
@@ -232,12 +249,89 @@ class TransformerBridge:
                                 if hook is not None:
                                     hook.add_hook(hook_fn)
                                     registered_hooks.append((hook, hook_fn))
-        
+
         try:
-            # Generate text
-            return self.model.generate(*args, **kwargs)
+            # Tokenization and input handling
+            if isinstance(input, (str, list)):
+                input = self.tokenizer(input, return_tensors="pt")["input_ids"]
+            if input.ndim == 1:
+                input = input.unsqueeze(0)
+            device = next(self.model.parameters()).device
+            input = input.to(device)
+            batch_size = input.shape[0]
+
+            # EOS token handling
+            if stop_at_eos:
+                if eos_token_id is None:
+                    eos_token_id = self.tokenizer.eos_token_id
+                stop_tokens = [eos_token_id] if isinstance(eos_token_id, int) else list(eos_token_id)
+                eos_token_for_padding = stop_tokens[0]
+            else:
+                stop_tokens = []
+                eos_token_for_padding = 0
+
+            # Setup for generation
+            finished_sequences = torch.zeros(batch_size, dtype=torch.bool, device=device)
+            sampled_tokens_list = []
+            input_tokens = input
+            past_kv_cache = None
+            if use_past_kv_cache:
+                past_kv_cache = HookedTransformerKeyValueCache.init_cache(self.model.config, device, batch_size)
+
+            # Main generation loop
+            for index in tqdm.tqdm(range(max_new_tokens), disable=not verbose):
+                # Forward pass
+                if use_past_kv_cache and past_kv_cache is not None and index > 0:
+                    # Only pass the last token for efficient generation
+                    model_inputs = input_tokens[:, -1:]
+                else:
+                    model_inputs = input_tokens
+                outputs = self.model(
+                    model_inputs,
+                    past_key_values=past_kv_cache if use_past_kv_cache else None,
+                    use_cache=use_past_kv_cache,
+                )
+                logits = outputs.logits if hasattr(outputs, 'logits') else outputs[0]
+                final_logits = logits[:, -1, :]
+
+                # Sampling
+                if do_sample:
+                    probs = torch.softmax(final_logits / temperature, dim=-1)
+                    if top_k is not None and top_k > 0:
+                        top_k_probs, top_k_indices = torch.topk(probs, top_k)
+                        probs = torch.zeros_like(probs).scatter_(1, top_k_indices, top_k_probs)
+                        probs = probs / probs.sum(dim=-1, keepdim=True)
+                    if top_p is not None and top_p < 1.0:
+                        sorted_probs, sorted_indices = torch.sort(probs, descending=True, dim=-1)
+                        cumulative_probs = torch.cumsum(sorted_probs, dim=-1)
+                        mask = cumulative_probs > top_p
+                        sorted_probs[mask] = 0
+                        probs = torch.zeros_like(probs).scatter_(1, sorted_indices, sorted_probs)
+                        probs = probs / probs.sum(dim=-1, keepdim=True)
+                    sampled_tokens = torch.multinomial(probs, num_samples=1)
+                else:
+                    sampled_tokens = final_logits.argmax(dim=-1, keepdim=True)
+
+                # Update finished sequences
+                if stop_at_eos:
+                    sampled_tokens[finished_sequences] = eos_token_for_padding
+                    finished_sequences.logical_or_(torch.isin(sampled_tokens.squeeze(-1), torch.tensor(stop_tokens, device=device)))
+
+                sampled_tokens_list.append(sampled_tokens)
+                input_tokens = torch.cat([input_tokens, sampled_tokens], dim=1)
+
+                if stop_at_eos and finished_sequences.all():
+                    break
+
+            output_tokens = input_tokens
+            if return_type == "str":
+                decoded_texts = [self.tokenizer.decode(tokens, skip_special_tokens=True) for tokens in output_tokens]
+                return decoded_texts[0] if len(decoded_texts) == 1 else decoded_texts
+            elif return_type == "tokens":
+                return output_tokens
+            else:
+                return output_tokens
         finally:
-            # Clean up hooks
             for hook, hook_fn in registered_hooks:
                 hook.remove_hooks()
 

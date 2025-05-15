@@ -22,7 +22,7 @@ def boot(
     device: str | torch.device | None = None,
     dtype: torch.dtype = torch.float32,
     **kwargs: Any,
-) -> TransformerBridge:
+) -> tuple[TransformerBridge, Any]:
     """Boot a model from HuggingFace.
 
     Args:
@@ -33,7 +33,7 @@ def boot(
         **kwargs: Additional arguments to pass to the config.
 
     Returns:
-        TransformerBridge: The bridge to the loaded model.
+        (TransformerBridge, tokenizer): The bridge to the loaded model and the tokenizer.
     """
     if config is None:
         # Download the config from Hugging Face
@@ -53,9 +53,14 @@ def boot(
         **kwargs,
     )
 
+    # Load the tokenizer
+    from transformers.models.auto.tokenization_auto import AutoTokenizer
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+
     # Create and return the bridge
     adapter = ArchitectureAdapterFactory.select_architecture_adapter(config)
     return TransformerBridge(
         hf_model,
         adapter,
-    ) 
+        tokenizer,
+    ), tokenizer 

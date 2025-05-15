@@ -1,15 +1,12 @@
 """Tests for the architecture adapter."""
 
 import pytest
-import torch
 import torch.nn as nn
 
-from transformer_lens.architecture_adapter.conversion_utils.architecture_adapter import (
-    ArchitectureAdapter,
-)
 from transformer_lens.architecture_adapter.supported_architectures.gemma3 import (
     Gemma3ArchitectureAdapter,
 )
+from transformer_lens.boot import boot
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 
@@ -127,4 +124,34 @@ def test_invalid_paths(adapter: Gemma3ArchitectureAdapter) -> None:
         adapter.translate_transformer_lens_path("blocks.invalid")
         
     with pytest.raises(ValueError, match="Component not_found not found in blocks components"):
-        adapter.translate_transformer_lens_path("blocks.0.not_found") 
+        adapter.translate_transformer_lens_path("blocks.0.not_found")
+
+
+def test_transformer_bridge_generate():
+    # Use a small model for testing
+    model_name = "sshleifer/tiny-gpt2"
+    (bridge, _) = boot(model_name)
+
+    # Track if the hook is called
+    hook_called = {"hit": False}
+    def dummy_hook(tensor: object, hook: object) -> object:
+        hook_called["hit"] = True
+        return tensor
+
+    # Register the hook on the first block's attention input
+    bridge.blocks[0].attn.hook_attn_input.add_hook(dummy_hook)
+
+    # Generate text
+    prompt = "Hello world"
+    output = bridge.generate(
+        prompt,
+        max_new_tokens=5,
+        temperature=0.7,
+        top_k=10,
+        hooks={0: {"attn": {"hook_attn_input": dummy_hook}}},
+        return_type="str",
+        verbose=False,
+    )
+    assert isinstance(output, str)
+    assert len(output) > 0
+    assert hook_called["hit"], "Attention input hook was not called during generation." 
