@@ -70,7 +70,7 @@ jobs:
       - name: Authenticate HuggingFace CLI
         run: |
           pip install huggingface_hub
-          huggingface-cli login --token $HF_TOKEN
+          huggingface-cli login --token "$HF_TOKEN"
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
       - name: Unit Test
@@ -115,7 +115,7 @@ jobs:
       - name: Authenticate HuggingFace CLI
         run: |
           pip install huggingface_hub
-          huggingface-cli login --token $HF_TOKEN
+          huggingface-cli login --token "$HF_TOKEN"
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
       - name: Test Suite with Coverage Report
@@ -211,7 +211,7 @@ jobs:
       - name: Authenticate HuggingFace CLI
         run: |
           pip install huggingface_hub
-          huggingface-cli login --token $HF_TOKEN
+          huggingface-cli login --token "$HF_TOKEN"
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
       - name: Build Docs
