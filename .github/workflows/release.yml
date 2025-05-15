@@ -9,6 +9,8 @@ jobs:
   checks:
     name: Run checks workflow
     uses: TransformerLensOrg/TransformerLens/.github/workflows/checks.yml@main
+    secrets:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
 
   semver-parser:
     name: Parse the semantic version from the release
