@@ -177,7 +177,6 @@ class GeneralizedComponent(nn.Module):
                     translated_name = self.architecture_adapter.translate_transformer_lens_path(
                         full_path, last_component_only=True
                     )
-                    print(translated_name, getattr(self._modules["original_component"], translated_name))
                     return getattr(self._modules["original_component"], translated_name)
                     # Try to get the attribute using the translated name
                 except ValueError:

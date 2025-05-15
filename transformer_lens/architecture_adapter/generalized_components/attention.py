@@ -62,7 +62,6 @@ class AttentionBridge(GeneralizedComponent):
         Returns:
             The output from the original component, with hooks applied
         """
-        print("kwargs", kwargs)
         # Handle hook_attn_input for shortformer positional embeddings
         if 'query_input' in kwargs:
             # Combine normalized residual stream with positional embeddings
