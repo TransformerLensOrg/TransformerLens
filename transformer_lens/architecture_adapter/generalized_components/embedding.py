@@ -1,4 +1,7 @@
-"""Embedding bridge component implementation."""
+"""Embedding bridge component.
+
+This module contains the bridge component for embedding layers.
+"""
 
 from typing import Any
 
@@ -20,14 +23,15 @@ class EmbeddingBridge(GeneralizedComponent):
     - Combined embeddings
     """
 
-    def __init__(self, original_component: nn.Module, name: str):
+    def __init__(self, original_component: nn.Module, name: str, architecture_adapter: Any | None = None):
         """Initialize the embedding bridge.
         
         Args:
             original_component: The original embedding component to wrap
             name: The name of this component
+            architecture_adapter: Optional architecture adapter for component-specific operations
         """
-        super().__init__(original_component, name)
+        super().__init__(original_component, name, architecture_adapter)
         
         # Initialize hook points
         self.hook_embed = HookPoint()  # Token embeddings
@@ -73,4 +77,20 @@ class EmbeddingBridge(GeneralizedComponent):
             "output": output
         })
         
-        return output 
+        return output
+
+    @classmethod
+    def wrap_component(cls, component: nn.Module, name: str, architecture_adapter: Any | None = None) -> nn.Module:
+        """Wrap a component with this bridge if it's an embedding layer.
+        
+        Args:
+            component: The component to wrap
+            name: The name of the component
+            architecture_adapter: The architecture adapter instance
+            
+        Returns:
+            The wrapped component if it's an embedding layer, otherwise the original component
+        """
+        if name.endswith(".embed") or name.endswith(".embed_tokens"):
+            return cls(component, name, architecture_adapter)
+        return component 

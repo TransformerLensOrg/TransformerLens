@@ -1,4 +1,9 @@
-"""MLP bridge component implementation."""
+"""MLP bridge component.
+
+This module contains the bridge component for MLP layers.
+"""
+
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -10,22 +15,26 @@ from transformer_lens.hook_points import HookPoint
 
 
 class MLPBridge(GeneralizedComponent):
-    """MLP bridge that wraps transformer MLP layers.
+    """Bridge component for MLP layers.
     
-    This component provides hook points for:
-    - Input to up projection
-    - Up projection output
-    - Down projection output
+    This component wraps an MLP layer from a remote model and provides a consistent interface
+    for accessing its weights and performing MLP operations.
     """
 
-    def __init__(self, original_component: nn.Module, name: str):
+    def __init__(
+        self,
+        original_component: nn.Module,
+        name: str,
+        architecture_adapter: Any | None = None,
+    ):
         """Initialize the MLP bridge.
         
         Args:
             original_component: The original MLP component to wrap
-            name: The name of this component
+            name: The name of the component in the model
+            architecture_adapter: The architecture adapter instance
         """
-        super().__init__(original_component, name)
+        super().__init__(original_component, name, architecture_adapter)
         
         # Initialize hook points
         self.hook_pre = HookPoint()  # Input to MLP
@@ -58,4 +67,20 @@ class MLPBridge(GeneralizedComponent):
             "output": output
         })
         
-        return output 
+        return output
+
+    @classmethod
+    def wrap_component(cls, component: nn.Module, name: str, architecture_adapter: Any | None = None) -> nn.Module:
+        """Wrap a component with this bridge if it's an MLP layer.
+        
+        Args:
+            component: The component to wrap
+            name: The name of the component
+            architecture_adapter: The architecture adapter instance
+            
+        Returns:
+            The wrapped component if it's an MLP layer, otherwise the original component
+        """
+        if name.endswith(".mlp"):
+            return cls(component, name, architecture_adapter)
+        return component 

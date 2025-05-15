@@ -1,8 +1,14 @@
-"""Bridge between HuggingFace and HookedTransformer models."""
+"""Bridge module for connecting different model architectures.
 
+This module provides the bridge components that wrap remote model components and provide
+a consistent interface for accessing their weights and performing operations.
+"""
+
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+import torch
 import torch.nn as nn
 from transformers.modeling_utils import PreTrainedModel
 
@@ -56,7 +62,7 @@ class TransformerBridge:
         # Get and replace components in the model
         embed = adapter.get_component(model, "embed")
         if not isinstance(embed, EmbeddingBridge):
-            embed = EmbeddingBridge(embed, "embed")
+            embed = EmbeddingBridge(original_component=embed, name="embed", architecture_adapter=adapter)
             # Replace in model using component mapping
             path = adapter.translate_transformer_lens_path("embed")
             self._set_by_path(model, path, embed)
@@ -70,6 +76,9 @@ class TransformerBridge:
         # Create ModuleList for blocks
         block_bridges = nn.ModuleList()
         
+        # Get the blocks path and component
+        blocks = adapter.get_component(model, "blocks")
+        
         # Build blocks
         for i in range(n_layers):
             # Get block components
@@ -77,26 +86,26 @@ class TransformerBridge:
             ln2 = adapter.get_component(model, f"blocks.{i}.ln2")
             # Wrap layer norms with bridge
             if not isinstance(ln1, LayerNormBridge):
-                ln1 = LayerNormBridge(ln1, f"blocks.{i}.ln1")
+                ln1 = LayerNormBridge(original_component=ln1, name=f"blocks.{i}.ln1", architecture_adapter=adapter)
                 path = adapter.translate_transformer_lens_path(f"blocks.{i}.ln1")
                 self._set_by_path(model, path, ln1)
             if not isinstance(ln2, LayerNormBridge):
-                ln2 = LayerNormBridge(ln2, f"blocks.{i}.ln2")
+                ln2 = LayerNormBridge(original_component=ln2, name=f"blocks.{i}.ln2", architecture_adapter=adapter)
                 path = adapter.translate_transformer_lens_path(f"blocks.{i}.ln2")
                 self._set_by_path(model, path, ln2)
             attn = adapter.get_component(model, f"blocks.{i}.attn")
             if not isinstance(attn, AttentionBridge):
-                attn = AttentionBridge(attn, f"blocks.{i}.attn")
+                attn = AttentionBridge(original_component=attn, name=f"blocks.{i}.attn", architecture_adapter=adapter)
                 path = adapter.translate_transformer_lens_path(f"blocks.{i}.attn")
                 self._set_by_path(model, path, attn)
             mlp = adapter.get_component(model, f"blocks.{i}.mlp")
             if not isinstance(mlp, MLPBridge):
-                mlp = MLPBridge(mlp, f"blocks.{i}.mlp")
+                mlp = MLPBridge(original_component=mlp, name=f"blocks.{i}.mlp", architecture_adapter=adapter)
                 path = adapter.translate_transformer_lens_path(f"blocks.{i}.mlp")
                 self._set_by_path(model, path, mlp)
                 
-            # Create block bridge
-            block_bridge = BlockBridge(original_component=None, name=f"blocks.{i}")
+            # Create block bridge with the actual block layer
+            block_bridge = BlockBridge(original_component=blocks[i], name=f"blocks.{i}", architecture_adapter=adapter)
             block_bridges.append(block_bridge)
             
         path = adapter.translate_transformer_lens_path("blocks")
@@ -105,7 +114,7 @@ class TransformerBridge:
         # Get final components
         ln_final = adapter.get_component(model, "ln_final")
         if not isinstance(ln_final, LayerNormBridge):
-            ln_final = LayerNormBridge(ln_final, "ln_final")
+            ln_final = LayerNormBridge(original_component=ln_final, name="ln_final", architecture_adapter=adapter)
             # Replace in model using component mapping
             path = adapter.translate_transformer_lens_path("ln_final")
             self._set_by_path(model, path, ln_final)
@@ -113,7 +122,7 @@ class TransformerBridge:
         
         unembed = adapter.get_component(model, "unembed")
         if not isinstance(unembed, UnembeddingBridge):
-            unembed = UnembeddingBridge(unembed, "unembed")
+            unembed = UnembeddingBridge(original_component=unembed, name="unembed", architecture_adapter=adapter)
             # Replace in model using component mapping
             path = adapter.translate_transformer_lens_path("unembed")
             self._set_by_path(model, path, unembed)
@@ -173,7 +182,7 @@ class TransformerBridge:
             path = f"{prepend}.{name}" if prepend else name
             if isinstance(value, tuple):
                 # For tuple paths (like blocks), get the TransformerLens path and component mapping
-                tl_path, sub_mapping = value
+                _, sub_mapping = value  # Unpack but ignore tl_path since it's not used
                 # Format the main component with prepend if provided
                 path = f"{path}.0"
                 lines.append(self._format_single_component(name, path, indent))
@@ -232,30 +241,30 @@ class TransformerBridge:
             for hook, hook_fn in registered_hooks:
                 hook.remove_hooks()
 
-    def forward(self, *args, **kwargs):
+    def forward(self, *args: Any, **kwargs: Any) -> Any:
         """Forward pass through the underlying HuggingFace model, with all arguments passed through."""
         # Pre-processing (if needed)
         output = self.model(*args, **kwargs)
         # Post-processing (if needed)
         return output
 
-    def run_with_cache(self, *args, **kwargs):
+    def run_with_cache(self, *args: Any, **kwargs: Any) -> tuple[Any, dict[str, torch.Tensor]]:
         """Run the model and cache all activations at HookPoint objects.
         Returns (output, cache_dict)."""
         from transformer_lens.hook_points import HookPoint
 
-        cache = {}
-        hooks = []
-        visited = set()
+        cache: dict[str, torch.Tensor] = {}
+        hooks: list[tuple[HookPoint, str]] = []
+        visited: set[int] = set()
 
-        def make_cache_hook(name):
-            def cache_hook(tensor, hook):
+        def make_cache_hook(name: str) -> Callable[[torch.Tensor, Any], torch.Tensor]:
+            def cache_hook(tensor: torch.Tensor, hook: Any) -> torch.Tensor:
                 cache[name] = tensor.detach().cpu()
                 return tensor
             return cache_hook
 
         # Recursively collect all HookPoint objects and their names
-        def collect_hookpoints(module, prefix=""):
+        def collect_hookpoints(module: nn.Module, prefix: str = "") -> None:
             obj_id = id(module)
             if obj_id in visited:
                 return

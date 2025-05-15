@@ -1,10 +1,14 @@
 """Base class for generalized transformer components."""
 
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Protocol
 
 import torch
 import torch.nn as nn
+
+from transformer_lens.architecture_adapter.conversion_utils.architecture_adapter import (
+    ArchitectureAdapter,
+)
 
 
 class GeneralizedComponent(nn.Module):
@@ -14,16 +18,18 @@ class GeneralizedComponent(nn.Module):
     and handles hook registration and execution.
     """
 
-    def __init__(self, original_component: nn.Module, name: str):
+    def __init__(self, original_component: nn.Module, name: str, architecture_adapter: ArchitectureAdapter | None = None):
         """Initialize the generalized component.
         
         Args:
             original_component: The original transformer component to wrap
             name: The name of this component
+            architecture_adapter: Optional architecture adapter for component-specific operations
         """
         super().__init__()
         self.original_component = original_component
         self.name = name
+        self.architecture_adapter = architecture_adapter
         self.hooks: dict[str, list[Callable[..., torch.Tensor]]] = {}
         self.hook_outputs: dict[str, Any] = {}
         self._hook_tracker = None

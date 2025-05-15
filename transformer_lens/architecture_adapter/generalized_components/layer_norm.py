@@ -20,14 +20,15 @@ class LayerNormBridge(GeneralizedComponent):
     - Normalized output
     """
 
-    def __init__(self, original_component: nn.Module, name: str):
+    def __init__(self, original_component: nn.Module, name: str, architecture_adapter: Any | None = None):
         """Initialize the layer norm bridge.
         
         Args:
             original_component: The original layer norm component to wrap
             name: The name of this component
+            architecture_adapter: Optional architecture adapter for component-specific operations
         """
-        super().__init__(original_component, name)
+        super().__init__(original_component, name, architecture_adapter)
         
         # Initialize hook points
         self.hook_scale = HookPoint()  # Scale factor
@@ -62,4 +63,20 @@ class LayerNormBridge(GeneralizedComponent):
             "output": output
         })
         
-        return output 
+        return output
+
+    @classmethod
+    def wrap_component(cls, component: nn.Module, name: str, architecture_adapter: Any | None = None) -> nn.Module:
+        """Wrap a component with this bridge if it's a LayerNorm layer.
+        
+        Args:
+            component: The component to wrap
+            name: The name of the component
+            architecture_adapter: The architecture adapter instance
+            
+        Returns:
+            The wrapped component if it's a LayerNorm layer, otherwise the original component
+        """
+        if name.endswith(".ln") or name.endswith(".ln1") or name.endswith(".ln2"):
+            return cls(component, name, architecture_adapter)
+        return component 

@@ -10,10 +10,6 @@ import torch
 import torch.nn as nn
 from transformers.modeling_utils import PreTrainedModel
 
-from transformer_lens.architecture_adapter.generalized_components import (
-    AttentionBridge,
-    MLPBridge,
-)
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 # Type aliases for paths
@@ -245,22 +241,6 @@ class ArchitectureAdapter(ABC):
                 return type(component).__name__
         except (AttributeError, IndexError):
             return "Unknown"
-
-    def _wrap_component(self, current: nn.Module, name: str) -> nn.Module:
-        """Wrap a component with its bridge if needed.
-        
-        Args:
-            current: The component to wrap
-            name: The name of the component
-            
-        Returns:
-            The wrapped component
-        """
-        if name.endswith(".attn"):
-            return AttentionBridge(current, name)
-        elif name.endswith(".mlp"):
-            return MLPBridge(current, name)
-        return current
 
     def convert_weights(self, hf_model: PreTrainedModel) -> dict[str, torch.Tensor]:
         """Convert the weights from the HuggingFace format to the HookedTransformer format.
