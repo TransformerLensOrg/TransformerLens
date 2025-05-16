@@ -78,16 +78,9 @@ class Gemma2ArchitectureAdapter(ArchitectureAdapter):
                     "ln1": ("input_layernorm", LayerNormBridge),  # Pre-attention layer norm
                     "ln1_post": ("post_attention_layernorm", LayerNormBridge),  # Post-attention layer norm
                     "attn": ("self_attn", AttentionBridge),  # Full attention module
-                    "attn.q_proj": ("self_attn.q_proj", AttentionBridge),  # Query projection
-                    "attn.k_proj": ("self_attn.k_proj", AttentionBridge),  # Key projection
-                    "attn.v_proj": ("self_attn.v_proj", AttentionBridge),  # Value projection
-                    "attn.o_proj": ("self_attn.o_proj", AttentionBridge),  # Output projection
                     "ln2": ("pre_feedforward_layernorm", LayerNormBridge),  # Pre-MLP layer norm
                     "ln2_post": ("post_feedforward_layernorm", LayerNormBridge),  # Post-MLP layer norm
                     "mlp": ("mlp", MLPBridge),  # Full MLP module
-                    "mlp.up_proj": ("mlp.up_proj", MLPBridge),  # First linear layer
-                    "mlp.gate_proj": ("mlp.gate_proj", MLPBridge),  # Gate projection
-                    "mlp.down_proj": ("mlp.down_proj", MLPBridge),  # Second linear layer
                 },
             ),
             "ln_final": ("model.norm", LayerNormBridge),  # Final layer norm

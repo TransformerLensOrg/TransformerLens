@@ -85,14 +85,7 @@ class MixtralArchitectureAdapter(ArchitectureAdapter):
                     "ln1": ("input_layernorm", LayerNormBridge),  # Pre-attention layer norm
                     "ln2": ("post_attention_layernorm", LayerNormBridge),  # Pre-MLP layer norm
                     "attn": ("self_attn", AttentionBridge),  # Full attention module
-                    "attn.q_proj": ("self_attn.q_proj", AttentionBridge),  # Query projection
-                    "attn.k_proj": ("self_attn.k_proj", AttentionBridge),  # Key projection
-                    "attn.v_proj": ("self_attn.v_proj", AttentionBridge),  # Value projection
-                    "attn.output_proj": ("self_attn.o_proj", AttentionBridge),  # Output projection
                     "mlp": ("mlp", MoEBridge),  # Full MoE module
-                    "mlp.gate": ("mlp.gate_proj", MLPBridge),  # Gate projection (SwiGLU)
-                    "mlp.up": ("mlp.up_proj", MLPBridge),  # Up projection
-                    "mlp.down": ("mlp.down_proj", MLPBridge),  # Down projection
                 },
             ),
             "ln_final": ("model.norm", LayerNormBridge),  # Final layer norm
