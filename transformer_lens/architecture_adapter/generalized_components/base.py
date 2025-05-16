@@ -6,9 +6,7 @@ from typing import Any
 import torch
 import torch.nn as nn
 
-from transformer_lens.architecture_adapter.conversion_utils.architecture_adapter import (
-    ArchitectureAdapter,
-)
+from transformer_lens.architecture_adapter.types import RemoteComponent
 from transformer_lens.HookedTransformer import HookPoint
 
 
@@ -19,7 +17,7 @@ class GeneralizedComponent(nn.Module):
     and handles hook registration and execution.
     """
 
-    def __init__(self, original_component: nn.Module, name: str, architecture_adapter: ArchitectureAdapter):
+    def __init__(self, original_component: RemoteComponent, name: str, architecture_adapter: Any):
         """Initialize the generalized component.
         
         Args:

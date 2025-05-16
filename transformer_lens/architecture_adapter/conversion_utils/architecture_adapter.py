@@ -5,29 +5,20 @@ This module contains the base class for architecture adapters that map between d
 
 from abc import ABC
 from collections.abc import Callable
-from typing import Any, TypeAlias
+from typing import Any
 
 import torch
 import torch.nn as nn
 from transformers.modeling_utils import PreTrainedModel
 
-from transformer_lens.architecture_adapter.generalized_components.base import (
-    GeneralizedComponent,
+from transformer_lens.architecture_adapter.types import (
+    ComponentMapping,
+    RemoteComponent,
+    RemoteModel,
+    RemotePath,
+    TransformerLensPath,
 )
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
-
-# Type aliases for paths
-TransformerLensPath: TypeAlias = str  # Path in TransformerLens format (e.g. "blocks.0.attn")
-RemotePath: TypeAlias = str  # Path in the remote model format (e.g. "transformer.h.0.attn")
-
-# Component mapping types
-RemoteImport: TypeAlias = tuple[RemotePath, Callable[..., GeneralizedComponent]]  # Path and component factory
-ComponentLayer: TypeAlias = dict[TransformerLensPath, RemoteImport]  # Maps TransformerLens components to remote components
-BlockMapping: TypeAlias = tuple[RemotePath, ComponentLayer]  # Maps a block and its components
-ComponentMapping: TypeAlias = dict[TransformerLensPath, RemoteImport | BlockMapping]  # Complete component mapping
-
-RemoteModel: TypeAlias = nn.Module
-RemoteComponent: TypeAlias = nn.Module
 
 
 class ArchitectureAdapter(ABC):
@@ -145,7 +136,7 @@ class ArchitectureAdapter(ABC):
             
         return full_path
 
-    def _resolve_component_path(self, parts: list[str], mapping: RemoteImport | BlockMapping) -> RemotePath:
+    def _resolve_component_path(self, parts: list[str], mapping: tuple[RemotePath, dict[str, tuple[RemotePath, Callable[..., Any]]]]) -> RemotePath:
         """Recursively resolve a component path to its remote path.
         
         Args:

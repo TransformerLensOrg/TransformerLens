@@ -13,6 +13,7 @@ from transformer_lens.architecture_adapter.architecture_adapter_factory import (
     ArchitectureAdapterFactory,
 )
 from transformer_lens.architecture_adapter.bridge import TransformerBridge
+from transformer_lens.architecture_adapter.config_mapping import create_tl_config
 from transformer_lens.utilities.devices import get_device_for_block_index
 
 
@@ -22,7 +23,7 @@ def boot(
     device: str | torch.device | None = None,
     dtype: torch.dtype = torch.float32,
     **kwargs: Any,
-) -> tuple[TransformerBridge, Any]:
+) -> TransformerBridge:
     """Boot a model from HuggingFace.
 
     Args:
@@ -33,11 +34,13 @@ def boot(
         **kwargs: Additional arguments to pass to the config.
 
     Returns:
-        (TransformerBridge, tokenizer): The bridge to the loaded model and the tokenizer.
+        The bridge to the loaded model.
     """
     if config is None:
         # Download the config from Hugging Face
-        config = AutoConfig.from_pretrained(model_name, **kwargs)
+        hf_config = AutoConfig.from_pretrained(model_name, **kwargs)
+        # Convert to TransformerLens config
+        config = create_tl_config(hf_config)
 
     # Try to get device if possible, fallback to 'cpu' if not available
     if device is None:
@@ -53,7 +56,7 @@ def boot(
         **kwargs,
     )
 
-    # Load the tokenizer
+    # Load the tokenizer (not returned)
     from transformers.models.auto.tokenization_auto import AutoTokenizer
     tokenizer = AutoTokenizer.from_pretrained(model_name)
 
@@ -63,4 +66,4 @@ def boot(
         hf_model,
         adapter,
         tokenizer,
-    ), tokenizer 
+    ) 
