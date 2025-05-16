@@ -77,20 +77,16 @@ class PhiArchitectureAdapter(ArchitectureAdapter):
 
         # Set up component mapping
         self.component_mapping = {
-            "embed": ("transformer.wte", EmbeddingBridge),  # Word token embeddings
+            "embed": ("model.embed_tokens", EmbeddingBridge),
             "blocks": (
-                "transformer.h",  # Base path for blocks
+                "model.layers",
                 {
-                    "ln1": ("ln_1", LayerNormBridge),  # Pre-attention layer norm
-                    "ln2": ("ln_2", LayerNormBridge),  # Pre-MLP layer norm
-                    "attn": ("attn", AttentionBridge),  # Full attention module
-                    "attn.c_attn": ("attn.c_attn", AttentionBridge),  # Combined QKV projection
-                    "attn.c_proj": ("attn.c_proj", AttentionBridge),  # Output projection
-                    "mlp": ("mlp", MLPBridge),  # Full MLP module
-                    "mlp.c_fc": ("mlp.c_fc", MLPBridge),  # First linear layer
-                    "mlp.c_proj": ("mlp.c_proj", MLPBridge),  # Second linear layer
+                    "ln1": ("input_layernorm", LayerNormBridge),
+                    "ln2": ("input_layernorm", LayerNormBridge),
+                    "attn": ("self_attn", AttentionBridge),
+                    "mlp": ("mlp", MLPBridge),
                 },
             ),
-            "ln_final": ("transformer.ln_f", LayerNormBridge),  # Final layer norm
-            "unembed": ("lm_head", UnembeddingBridge),  # Language model head
+            "ln_final": ("model.final_layernorm", LayerNormBridge),
+            "unembed": ("lm_head", UnembeddingBridge),
         }

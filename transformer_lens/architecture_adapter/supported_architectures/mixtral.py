@@ -78,16 +78,16 @@ class MixtralArchitectureAdapter(ArchitectureAdapter):
 
         # Set up component mapping
         self.component_mapping = {
-            "embed": ("model.embed_tokens", EmbeddingBridge),  # Word token embeddings
+            "embed": ("model.embed_tokens", EmbeddingBridge),
             "blocks": (
-                "model.layers",  # Base path for blocks
+                "model.layers",
                 {
-                    "ln1": ("input_layernorm", LayerNormBridge),  # Pre-attention layer norm
-                    "ln2": ("post_attention_layernorm", LayerNormBridge),  # Pre-MLP layer norm
-                    "attn": ("self_attn", AttentionBridge),  # Full attention module
-                    "mlp": ("mlp", MoEBridge),  # Full MoE module
+                    "ln1": ("input_layernorm", LayerNormBridge),
+                    "ln2": ("post_attention_layernorm", LayerNormBridge),
+                    "attn": ("self_attn", AttentionBridge),
+                    "mlp": ("block_sparse_moe", MoEBridge),
                 },
             ),
-            "ln_final": ("model.norm", LayerNormBridge),  # Final layer norm
-            "unembed": ("lm_head", UnembeddingBridge),  # Language model head
+            "ln_final": ("model.norm", LayerNormBridge),
+            "unembed": ("lm_head", UnembeddingBridge),
         }
