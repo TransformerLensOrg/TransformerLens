@@ -13,8 +13,6 @@ from transformer_lens.architecture_adapter.architecture_adapter_factory import (
     ArchitectureAdapterFactory,
 )
 from transformer_lens.architecture_adapter.bridge import TransformerBridge
-from transformer_lens.architecture_adapter.config_mapping import create_tl_config
-from transformer_lens.utilities.devices import get_device_for_block_index
 
 
 def boot(
@@ -38,16 +36,7 @@ def boot(
     """
     if config is None:
         # Download the config from Hugging Face
-        hf_config = AutoConfig.from_pretrained(model_name, **kwargs)
-        # Convert to TransformerLens config
-        config = create_tl_config(hf_config)
-
-    # Try to get device if possible, fallback to 'cpu' if not available
-    if device is None:
-        try:
-            device = get_device_for_block_index(0, config)
-        except Exception:
-            device = 'cpu'
+        config = AutoConfig.from_pretrained(model_name, **kwargs)
 
     # Load the model from HuggingFace
     hf_model = AutoModelForCausalLM.from_pretrained(
