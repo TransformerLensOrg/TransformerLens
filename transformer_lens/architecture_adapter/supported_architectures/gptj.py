@@ -1,13 +1,18 @@
 """GPT-J architecture adapter."""
 
-from typing import Any, Dict
-
 from transformer_lens.architecture_adapter.conversion_utils.architecture_adapter import (
     ArchitectureAdapter,
 )
 from transformer_lens.architecture_adapter.conversion_utils.conversion_steps import (
     RearrangeWeightConversion,
     WeightConversionSet,
+)
+from transformer_lens.architecture_adapter.generalized_components import (
+    AttentionBridge,
+    EmbeddingBridge,
+    LayerNormBridge,
+    MLPBridge,
+    UnembeddingBridge,
 )
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
@@ -32,40 +37,49 @@ class GPTJArchitectureAdapter(ArchitectureAdapter):
                 "blocks.{i}.ln2.b": "transformer.h.{i}.ln_2.bias",
                 "blocks.{i}.attn.W_Q": (
                     "transformer.h.{i}.attn.q_proj.weight",
-                    RearrangeWeightConversion("(h d_head) d_model -> h d_head d_model"),
+                    RearrangeWeightConversion("d_model (n_head d_head) -> n_head d_head d_model"),
                 ),
                 "blocks.{i}.attn.W_K": (
                     "transformer.h.{i}.attn.k_proj.weight",
-                    RearrangeWeightConversion("(h d_head) d_model -> h d_head d_model"),
+                    RearrangeWeightConversion("d_model (n_head d_head) -> n_head d_head d_model"),
                 ),
                 "blocks.{i}.attn.W_V": (
                     "transformer.h.{i}.attn.v_proj.weight",
-                    RearrangeWeightConversion("(h d_head) d_model -> h d_head d_model"),
-                ),
-                "blocks.{i}.attn.b_Q": (
-                    "transformer.h.{i}.attn.q_proj.bias",
-                    RearrangeWeightConversion("(h d_head) -> h d_head"),
-                ),
-                "blocks.{i}.attn.b_K": (
-                    "transformer.h.{i}.attn.k_proj.bias",
-                    RearrangeWeightConversion("(h d_head) -> h d_head"),
-                ),
-                "blocks.{i}.attn.b_V": (
-                    "transformer.h.{i}.attn.v_proj.bias",
-                    RearrangeWeightConversion("(h d_head) -> h d_head"),
+                    RearrangeWeightConversion("d_model (n_head d_head) -> n_head d_head d_model"),
                 ),
                 "blocks.{i}.attn.W_O": (
                     "transformer.h.{i}.attn.out_proj.weight",
-                    RearrangeWeightConversion("d_model (h d_head) -> h d_head d_model"),
+                    RearrangeWeightConversion("(n_head d_head) d_model -> n_head d_head d_model"),
                 ),
-                "blocks.{i}.attn.b_O": "transformer.h.{i}.attn.out_proj.bias",
                 "blocks.{i}.mlp.W_in": "transformer.h.{i}.mlp.fc_in.weight",
                 "blocks.{i}.mlp.b_in": "transformer.h.{i}.mlp.fc_in.bias",
                 "blocks.{i}.mlp.W_out": "transformer.h.{i}.mlp.fc_out.weight",
                 "blocks.{i}.mlp.b_out": "transformer.h.{i}.mlp.fc_out.bias",
-                "unembed.W_U": "lm_head.weight",
-                "unembed.b_U": "lm_head.bias",
                 "ln_final.w": "transformer.ln_f.weight",
                 "ln_final.b": "transformer.ln_f.bias",
+                "unembed.W_U": "lm_head.weight",
+                "unembed.b_U": "lm_head.bias",
             }
         )
+
+        # Set up component mapping
+        self.component_mapping = {
+            "embed": ("transformer.wte", EmbeddingBridge),  # Word token embeddings
+            "blocks": (
+                "transformer.h",  # Base path for blocks
+                {
+                    "ln1": ("ln_1", LayerNormBridge),  # Pre-attention layer norm
+                    "ln2": ("ln_2", LayerNormBridge),  # Pre-MLP layer norm
+                    "attn": ("attn", AttentionBridge),  # Full attention module
+                    "attn.q_proj": ("attn.q_proj", AttentionBridge),  # Query projection
+                    "attn.k_proj": ("attn.k_proj", AttentionBridge),  # Key projection
+                    "attn.v_proj": ("attn.v_proj", AttentionBridge),  # Value projection
+                    "attn.out_proj": ("attn.out_proj", AttentionBridge),  # Output projection
+                    "mlp": ("mlp", MLPBridge),  # Full MLP module
+                    "mlp.fc_in": ("mlp.fc_in", MLPBridge),  # First linear layer
+                    "mlp.fc_out": ("mlp.fc_out", MLPBridge),  # Second linear layer
+                },
+            ),
+            "ln_final": ("transformer.ln_f", LayerNormBridge),  # Final layer norm
+            "unembed": ("lm_head", UnembeddingBridge),  # Language model head
+        }

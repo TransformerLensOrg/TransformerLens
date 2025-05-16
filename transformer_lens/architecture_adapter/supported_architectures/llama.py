@@ -7,6 +7,13 @@ from transformer_lens.architecture_adapter.conversion_utils.conversion_steps imp
     RearrangeWeightConversion,
     WeightConversionSet,
 )
+from transformer_lens.architecture_adapter.generalized_components import (
+    AttentionBridge,
+    EmbeddingBridge,
+    LayerNormBridge,
+    MLPBridge,
+    UnembeddingBridge,
+)
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 
@@ -31,64 +38,49 @@ class LlamaArchitectureAdapter(ArchitectureAdapter):
                 "blocks.{i}.ln2.b": "model.layers.{i}.post_attention_layernorm.bias",
                 "blocks.{i}.attn.W_Q": (
                     "model.layers.{i}.self_attn.q_proj.weight",
-                    RearrangeWeightConversion("(h d_head) d_model -> h d_head d_model"),
+                    RearrangeWeightConversion("d_model (n_head d_head) -> n_head d_head d_model"),
                 ),
                 "blocks.{i}.attn.W_K": (
                     "model.layers.{i}.self_attn.k_proj.weight",
-                    RearrangeWeightConversion("(h d_head) d_model -> h d_head d_model"),
+                    RearrangeWeightConversion("d_model (n_head d_head) -> n_head d_head d_model"),
                 ),
                 "blocks.{i}.attn.W_V": (
                     "model.layers.{i}.self_attn.v_proj.weight",
-                    RearrangeWeightConversion("(h d_head) d_model -> h d_head d_model"),
-                ),
-                "blocks.{i}.attn.b_Q": (
-                    "model.layers.{i}.self_attn.q_proj.bias",
-                    RearrangeWeightConversion("(h d_head) -> h d_head"),
-                ),
-                "blocks.{i}.attn.b_K": (
-                    "model.layers.{i}.self_attn.k_proj.bias",
-                    RearrangeWeightConversion("(h d_head) -> h d_head"),
-                ),
-                "blocks.{i}.attn.b_V": (
-                    "model.layers.{i}.self_attn.v_proj.bias",
-                    RearrangeWeightConversion("(h d_head) -> h d_head"),
+                    RearrangeWeightConversion("d_model (n_head d_head) -> n_head d_head d_model"),
                 ),
                 "blocks.{i}.attn.W_O": (
                     "model.layers.{i}.self_attn.o_proj.weight",
-                    RearrangeWeightConversion("d_model (h d_head) -> h d_head d_model"),
+                    RearrangeWeightConversion("(n_head d_head) d_model -> n_head d_head d_model"),
                 ),
-                "blocks.{i}.attn.b_O": "model.layers.{i}.self_attn.o_proj.bias",
                 "blocks.{i}.mlp.W_in": "model.layers.{i}.mlp.gate_proj.weight",
                 "blocks.{i}.mlp.b_in": "model.layers.{i}.mlp.gate_proj.bias",
                 "blocks.{i}.mlp.W_out": "model.layers.{i}.mlp.down_proj.weight",
                 "blocks.{i}.mlp.b_out": "model.layers.{i}.mlp.down_proj.bias",
-                "unembed.W_U": "lm_head.weight",
-                "unembed.b_U": "lm_head.bias",
                 "ln_final.w": "model.norm.weight",
                 "ln_final.b": "model.norm.bias",
+                "unembed.W_U": "lm_head.weight",
+                "unembed.b_U": "lm_head.bias",
             }
         )
 
         # Set up component mapping
         self.component_mapping = {
-            "embed": "model.embed_tokens",  # Word token embeddings
+            "embed": ("model.embed_tokens", EmbeddingBridge),  # Word token embeddings
             "blocks": (
                 "model.layers",  # Base path for blocks
                 {
-                    "ln1": "input_layernorm",  # Pre-attention layer norm
-                    "ln2": "post_attention_layernorm",  # Pre-MLP layer norm
-                    "attn": "self_attn",  # Full attention module
-                    "attn.q_proj": "self_attn.q_proj",  # Query projection
-                    "attn.k_proj": "self_attn.k_proj",  # Key projection
-                    "attn.v_proj": "self_attn.v_proj",  # Value projection
-                    "attn.output_proj": "self_attn.o_proj",  # Output projection
-                    "attn.rotary_emb": "self_attn.rotary_emb",  # Rotary embeddings
-                    "mlp": "mlp",  # Full MLP module
-                    "mlp.gate": "mlp.gate_proj",  # Gate projection (SwiGLU)
-                    "mlp.up": "mlp.up_proj",  # Up projection
-                    "mlp.down": "mlp.down_proj",  # Down projection
+                    "ln1": ("input_layernorm", LayerNormBridge),  # Pre-attention layer norm
+                    "ln2": ("post_attention_layernorm", LayerNormBridge),  # Pre-MLP layer norm
+                    "attn": ("self_attn", AttentionBridge),  # Full attention module
+                    "attn.q_proj": ("self_attn.q_proj", AttentionBridge),  # Query projection
+                    "attn.k_proj": ("self_attn.k_proj", AttentionBridge),  # Key projection
+                    "attn.v_proj": ("self_attn.v_proj", AttentionBridge),  # Value projection
+                    "attn.o_proj": ("self_attn.o_proj", AttentionBridge),  # Output projection
+                    "mlp": ("mlp", MLPBridge),  # Full MLP module
+                    "mlp.gate_proj": ("mlp.gate_proj", MLPBridge),  # First linear layer
+                    "mlp.down_proj": ("mlp.down_proj", MLPBridge),  # Second linear layer
                 },
             ),
-            "ln_final": "model.norm",  # Final layer norm
-            "unembed": "lm_head",  # Language model head
+            "ln_final": ("model.norm", LayerNormBridge),  # Final layer norm
+            "unembed": ("lm_head", UnembeddingBridge),  # Language model head
         }

@@ -9,6 +9,13 @@ from transformer_lens.architecture_adapter.conversion_utils.conversion_steps imp
     RearrangeWeightConversion,
     WeightConversionSet,
 )
+from transformer_lens.architecture_adapter.generalized_components import (
+    AttentionBridge,
+    EmbeddingBridge,
+    LayerNormBridge,
+    MLPBridge,
+    UnembeddingBridge,
+)
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 
@@ -26,46 +33,70 @@ class QwenArchitectureAdapter(ArchitectureAdapter):
         self.conversion_rules = WeightConversionSet(
             {
                 "embed.W_E": "transformer.wte.weight",
+                "pos_embed.W_pos": "transformer.wpe.weight",
                 "blocks.{i}.ln1.w": "transformer.h.{i}.ln_1.weight",
                 "blocks.{i}.ln1.b": "transformer.h.{i}.ln_1.bias",
                 "blocks.{i}.ln2.w": "transformer.h.{i}.ln_2.weight",
                 "blocks.{i}.ln2.b": "transformer.h.{i}.ln_2.bias",
                 "blocks.{i}.attn.W_Q": (
-                    "transformer.h.{i}.attn.c_attn.weight",
-                    RearrangeWeightConversion("(h d_head) d_model -> h d_head d_model"),
+                    "transformer.h.{i}.attn.q_proj.weight",
+                    RearrangeWeightConversion("(n_head d_head) d_model -> n_head d_head d_model"),
                 ),
                 "blocks.{i}.attn.W_K": (
-                    "transformer.h.{i}.attn.c_attn.weight",
-                    RearrangeWeightConversion("(h d_head) d_model -> h d_head d_model"),
+                    "transformer.h.{i}.attn.k_proj.weight",
+                    RearrangeWeightConversion("(n_head d_head) d_model -> n_head d_head d_model"),
                 ),
                 "blocks.{i}.attn.W_V": (
-                    "transformer.h.{i}.attn.c_attn.weight",
-                    RearrangeWeightConversion("(h d_head) d_model -> h d_head d_model"),
+                    "transformer.h.{i}.attn.v_proj.weight",
+                    RearrangeWeightConversion("(n_head d_head) d_model -> n_head d_head d_model"),
                 ),
                 "blocks.{i}.attn.b_Q": (
-                    "transformer.h.{i}.attn.c_attn.bias",
-                    RearrangeWeightConversion("(h d_head) -> h d_head"),
+                    "transformer.h.{i}.attn.q_proj.bias",
+                    RearrangeWeightConversion("(n_head d_head) -> n_head d_head"),
                 ),
                 "blocks.{i}.attn.b_K": (
-                    "transformer.h.{i}.attn.c_attn.bias",
-                    RearrangeWeightConversion("(h d_head) -> h d_head"),
+                    "transformer.h.{i}.attn.k_proj.bias",
+                    RearrangeWeightConversion("(n_head d_head) -> n_head d_head"),
                 ),
                 "blocks.{i}.attn.b_V": (
-                    "transformer.h.{i}.attn.c_attn.bias",
-                    RearrangeWeightConversion("(h d_head) -> h d_head"),
+                    "transformer.h.{i}.attn.v_proj.bias",
+                    RearrangeWeightConversion("(n_head d_head) -> n_head d_head"),
                 ),
                 "blocks.{i}.attn.W_O": (
-                    "transformer.h.{i}.attn.c_proj.weight",
-                    RearrangeWeightConversion("d_model (h d_head) -> h d_head d_model"),
+                    "transformer.h.{i}.attn.o_proj.weight",
+                    RearrangeWeightConversion("d_model (n_head d_head) -> n_head d_head d_model"),
                 ),
-                "blocks.{i}.attn.b_O": "transformer.h.{i}.attn.c_proj.bias",
-                "blocks.{i}.mlp.W_in": "transformer.h.{i}.mlp.w1.weight",
-                "blocks.{i}.mlp.b_in": "transformer.h.{i}.mlp.w1.bias",
-                "blocks.{i}.mlp.W_out": "transformer.h.{i}.mlp.w2.weight",
-                "blocks.{i}.mlp.b_out": "transformer.h.{i}.mlp.w2.bias",
-                "unembed.W_U": "lm_head.weight",
-                "unembed.b_U": "lm_head.bias",
+                "blocks.{i}.attn.b_O": "transformer.h.{i}.attn.o_proj.bias",
+                "blocks.{i}.mlp.W_in": "transformer.h.{i}.mlp.gate_proj.weight",
+                "blocks.{i}.mlp.b_in": "transformer.h.{i}.mlp.gate_proj.bias",
+                "blocks.{i}.mlp.W_out": "transformer.h.{i}.mlp.down_proj.weight",
+                "blocks.{i}.mlp.b_out": "transformer.h.{i}.mlp.down_proj.bias",
                 "ln_final.w": "transformer.ln_f.weight",
                 "ln_final.b": "transformer.ln_f.bias",
+                "unembed.W_U": "lm_head.weight",
+                "unembed.b_U": "lm_head.bias",
             }
         )
+
+        # Set up component mapping
+        self.component_mapping = {
+            "embed": ("transformer.wte", EmbeddingBridge),  # Word token embeddings
+            "pos_embed": ("transformer.wpe", EmbeddingBridge),  # Position embeddings
+            "blocks": (
+                "transformer.h",  # Base path for blocks
+                {
+                    "ln1": ("ln_1", LayerNormBridge),  # Pre-attention layer norm
+                    "ln2": ("ln_2", LayerNormBridge),  # Pre-MLP layer norm
+                    "attn": ("attn", AttentionBridge),  # Full attention module
+                    "attn.q_proj": ("attn.q_proj", AttentionBridge),  # Query projection
+                    "attn.k_proj": ("attn.k_proj", AttentionBridge),  # Key projection
+                    "attn.v_proj": ("attn.v_proj", AttentionBridge),  # Value projection
+                    "attn.o_proj": ("attn.o_proj", AttentionBridge),  # Output projection
+                    "mlp": ("mlp", MLPBridge),  # Full MLP module
+                    "mlp.gate_proj": ("mlp.gate_proj", MLPBridge),  # First linear layer
+                    "mlp.down_proj": ("mlp.down_proj", MLPBridge),  # Second linear layer
+                },
+            ),
+            "ln_final": ("transformer.ln_f", LayerNormBridge),  # Final layer norm
+            "unembed": ("lm_head", UnembeddingBridge),  # Language model head
+        }

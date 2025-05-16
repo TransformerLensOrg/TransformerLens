@@ -7,6 +7,14 @@ from transformer_lens.architecture_adapter.conversion_utils.conversion_steps imp
     RearrangeWeightConversion,
     WeightConversionSet,
 )
+from transformer_lens.architecture_adapter.generalized_components import (
+    AttentionBridge,
+    EmbeddingBridge,
+    LayerNormBridge,
+    MLPBridge,
+    UnembeddingBridge,
+)
+from transformer_lens.architecture_adapter.generalized_components.moe import MoEBridge
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 
@@ -70,23 +78,23 @@ class MixtralArchitectureAdapter(ArchitectureAdapter):
 
         # Set up component mapping
         self.component_mapping = {
-            "embed": "model.embed_tokens",  # Word token embeddings
+            "embed": ("model.embed_tokens", EmbeddingBridge),  # Word token embeddings
             "blocks": (
                 "model.layers",  # Base path for blocks
                 {
-                    "ln1": "input_layernorm",  # Pre-attention layer norm
-                    "ln2": "post_attention_layernorm",  # Pre-MLP layer norm
-                    "attn": "self_attn",  # Full attention module
-                    "attn.q_proj": "self_attn.q_proj",  # Query projection
-                    "attn.k_proj": "self_attn.k_proj",  # Key projection
-                    "attn.v_proj": "self_attn.v_proj",  # Value projection
-                    "attn.output_proj": "self_attn.o_proj",  # Output projection
-                    "mlp": "mlp",  # Full MLP module
-                    "mlp.gate": "mlp.gate_proj",  # Gate projection (SwiGLU)
-                    "mlp.up": "mlp.up_proj",  # Up projection
-                    "mlp.down": "mlp.down_proj",  # Down projection
+                    "ln1": ("input_layernorm", LayerNormBridge),  # Pre-attention layer norm
+                    "ln2": ("post_attention_layernorm", LayerNormBridge),  # Pre-MLP layer norm
+                    "attn": ("self_attn", AttentionBridge),  # Full attention module
+                    "attn.q_proj": ("self_attn.q_proj", AttentionBridge),  # Query projection
+                    "attn.k_proj": ("self_attn.k_proj", AttentionBridge),  # Key projection
+                    "attn.v_proj": ("self_attn.v_proj", AttentionBridge),  # Value projection
+                    "attn.output_proj": ("self_attn.o_proj", AttentionBridge),  # Output projection
+                    "mlp": ("mlp", MoEBridge),  # Full MoE module
+                    "mlp.gate": ("mlp.gate_proj", MLPBridge),  # Gate projection (SwiGLU)
+                    "mlp.up": ("mlp.up_proj", MLPBridge),  # Up projection
+                    "mlp.down": ("mlp.down_proj", MLPBridge),  # Down projection
                 },
             ),
-            "ln_final": "model.norm",  # Final layer norm
-            "unembed": "lm_head",  # Language model head
+            "ln_final": ("model.norm", LayerNormBridge),  # Final layer norm
+            "unembed": ("lm_head", UnembeddingBridge),  # Language model head
         }
