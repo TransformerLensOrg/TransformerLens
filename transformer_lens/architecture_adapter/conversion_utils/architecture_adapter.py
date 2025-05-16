@@ -38,6 +38,7 @@ class ArchitectureAdapter(ABC):
         self.cfg = cfg
         self.conversion_rules = None
         self.component_mapping: ComponentMapping | None = None
+        self.default_config: dict = {}
 
     def get_component_mapping(self) -> ComponentMapping:
         """Get the full component mapping.

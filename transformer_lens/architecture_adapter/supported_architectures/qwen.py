@@ -28,6 +28,7 @@ class QwenArchitectureAdapter(ArchitectureAdapter):
         Args:
             cfg: The HookedTransformer configuration.
         """
+        self.default_config = {"trust_remote_code": True}
         super().__init__(cfg)
 
         self.conversion_rules = WeightConversionSet(
