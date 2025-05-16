@@ -7,6 +7,13 @@ from transformer_lens.architecture_adapter.conversion_utils.conversion_steps imp
     RearrangeWeightConversion,
     WeightConversionSet,
 )
+from transformer_lens.architecture_adapter.generalized_components import (
+    AttentionBridge,
+    EmbeddingBridge,
+    LayerNormBridge,
+    MLPBridge,
+    UnembeddingBridge,
+)
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 
@@ -67,3 +74,23 @@ class NeoXArchitectureAdapter(ArchitectureAdapter):
                 "ln_final.b": "transformer.ln_f.bias",
             }
         )
+
+        # Set up component mapping
+        self.component_mapping = {
+            "embed": ("transformer.wte", EmbeddingBridge),  # Word token embeddings
+            "blocks": (
+                "transformer.h",  # Base path for blocks
+                {
+                    "ln1": ("ln_1", LayerNormBridge),  # Pre-attention layer norm
+                    "ln2": ("ln_2", LayerNormBridge),  # Pre-MLP layer norm
+                    "attn": ("attn", AttentionBridge),  # Full attention module
+                    "attn.c_attn": ("attn.c_attn", AttentionBridge),  # Combined QKV projection
+                    "attn.c_proj": ("attn.c_proj", AttentionBridge),  # Output projection
+                    "mlp": ("mlp", MLPBridge),  # Full MLP module
+                    "mlp.c_fc": ("mlp.c_fc", MLPBridge),  # First linear layer
+                    "mlp.c_proj": ("mlp.c_proj", MLPBridge),  # Second linear layer
+                },
+            ),
+            "ln_final": ("transformer.ln_f", LayerNormBridge),  # Final layer norm
+            "unembed": ("lm_head", UnembeddingBridge),  # Language model head
+        }

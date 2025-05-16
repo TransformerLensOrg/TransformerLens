@@ -9,6 +9,13 @@ from transformer_lens.architecture_adapter.conversion_utils.conversion_steps imp
     RearrangeWeightConversion,
     WeightConversionSet,
 )
+from transformer_lens.architecture_adapter.generalized_components import (
+    AttentionBridge,
+    EmbeddingBridge,
+    LayerNormBridge,
+    MLPBridge,
+    UnembeddingBridge,
+)
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 
@@ -64,20 +71,27 @@ class Gemma2ArchitectureAdapter(ArchitectureAdapter):
 
         # Set up component mapping
         self.component_mapping = {
-            "embed": "model.embed_tokens",  # Word token embeddings
+            "embed": ("model.embed_tokens", EmbeddingBridge),  # Word token embeddings
             "blocks": (
                 "model.layers",  # Base path for blocks
                 {
-                    "ln1": "input_layernorm",  # Pre-attention layer norm
-                    "ln1_post": "post_attention_layernorm",  # Post-attention layer norm
-                    "attn": "self_attn",  # Full attention module
-                    "ln2": "pre_feedforward_layernorm",  # Pre-MLP layer norm
-                    "ln2_post": "post_feedforward_layernorm",  # Post-MLP layer norm
-                    "mlp": "mlp",  # Full MLP module
+                    "ln1": ("input_layernorm", LayerNormBridge),  # Pre-attention layer norm
+                    "ln1_post": ("post_attention_layernorm", LayerNormBridge),  # Post-attention layer norm
+                    "attn": ("self_attn", AttentionBridge),  # Full attention module
+                    "attn.q_proj": ("self_attn.q_proj", AttentionBridge),  # Query projection
+                    "attn.k_proj": ("self_attn.k_proj", AttentionBridge),  # Key projection
+                    "attn.v_proj": ("self_attn.v_proj", AttentionBridge),  # Value projection
+                    "attn.o_proj": ("self_attn.o_proj", AttentionBridge),  # Output projection
+                    "ln2": ("pre_feedforward_layernorm", LayerNormBridge),  # Pre-MLP layer norm
+                    "ln2_post": ("post_feedforward_layernorm", LayerNormBridge),  # Post-MLP layer norm
+                    "mlp": ("mlp", MLPBridge),  # Full MLP module
+                    "mlp.up_proj": ("mlp.up_proj", MLPBridge),  # First linear layer
+                    "mlp.gate_proj": ("mlp.gate_proj", MLPBridge),  # Gate projection
+                    "mlp.down_proj": ("mlp.down_proj", MLPBridge),  # Second linear layer
                 },
             ),
-            "ln_final": "model.norm",  # Final layer norm
-            "unembed": "lm_head",  # Language model head (not shared with embed)
+            "ln_final": ("model.norm", LayerNormBridge),  # Final layer norm
+            "unembed": ("lm_head", UnembeddingBridge),  # Language model head (not shared with embed)
         }
         
     def get_component(self, model: PreTrainedModel, name: str):

@@ -7,6 +7,13 @@ from transformer_lens.architecture_adapter.conversion_utils.conversion_steps imp
     RearrangeWeightConversion,
     WeightConversionSet,
 )
+from transformer_lens.architecture_adapter.generalized_components import (
+    AttentionBridge,
+    EmbeddingBridge,
+    LayerNormBridge,
+    MLPBridge,
+    UnembeddingBridge,
+)
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 
@@ -70,22 +77,22 @@ class T5ArchitectureAdapter(ArchitectureAdapter):
 
         # Set up component mapping
         self.component_mapping = {
-            "embed": "shared",  # Word token embeddings (shared with unembed)
+            "embed": ("shared", EmbeddingBridge),  # Word token embeddings (shared with unembed)
             "blocks": (
                 "encoder.block",  # Base path for blocks
                 {
-                    "ln1": "layer.0.layer_norm",  # Pre-attention layer norm
-                    "ln2": "layer.1.layer_norm",  # Pre-MLP layer norm
-                    "attn": "layer.0.SelfAttention",  # Full attention module
-                    "attn.q_proj": "layer.0.SelfAttention.q",  # Query projection
-                    "attn.k_proj": "layer.0.SelfAttention.k",  # Key projection
-                    "attn.v_proj": "layer.0.SelfAttention.v",  # Value projection
-                    "attn.output_proj": "layer.0.SelfAttention.o",  # Output projection
-                    "mlp": "layer.1.DenseReluDense",  # Full MLP module
-                    "mlp.fc1": "layer.1.DenseReluDense.wi",  # First linear layer
-                    "mlp.fc2": "layer.1.DenseReluDense.wo",  # Second linear layer
+                    "ln1": ("layer.0.layer_norm", LayerNormBridge),  # Pre-attention layer norm
+                    "ln2": ("layer.1.layer_norm", LayerNormBridge),  # Pre-MLP layer norm
+                    "attn": ("layer.0.SelfAttention", AttentionBridge),  # Full attention module
+                    "attn.q_proj": ("layer.0.SelfAttention.q", AttentionBridge),  # Query projection
+                    "attn.k_proj": ("layer.0.SelfAttention.k", AttentionBridge),  # Key projection
+                    "attn.v_proj": ("layer.0.SelfAttention.v", AttentionBridge),  # Value projection
+                    "attn.output_proj": ("layer.0.SelfAttention.o", AttentionBridge),  # Output projection
+                    "mlp": ("layer.1.DenseReluDense", MLPBridge),  # Full MLP module
+                    "mlp.fc1": ("layer.1.DenseReluDense.wi", MLPBridge),  # First linear layer
+                    "mlp.fc2": ("layer.1.DenseReluDense.wo", MLPBridge),  # Second linear layer
                 },
             ),
-            "ln_final": "encoder.final_layer_norm",  # Final layer norm
-            "unembed": "shared",  # Language model head (shared with embed)
+            "ln_final": ("encoder.final_layer_norm", LayerNormBridge),  # Final layer norm
+            "unembed": ("shared", UnembeddingBridge),  # Language model head (shared with embed)
         }

@@ -7,6 +7,13 @@ from transformer_lens.architecture_adapter.conversion_utils.conversion_steps imp
     RearrangeWeightConversion,
     WeightConversionSet,
 )
+from transformer_lens.architecture_adapter.generalized_components import (
+    AttentionBridge,
+    EmbeddingBridge,
+    LayerNormBridge,
+    MLPBridge,
+    UnembeddingBridge,
+)
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 
@@ -67,3 +74,25 @@ class OPTArchitectureAdapter(ArchitectureAdapter):
                 "ln_final.b": "model.decoder.final_layer_norm.bias",
             }
         )
+
+        # Set up component mapping
+        self.component_mapping = {
+            "embed": ("model.decoder.embed_tokens", EmbeddingBridge),  # Word token embeddings
+            "blocks": (
+                "model.decoder.layers",  # Base path for blocks
+                {
+                    "ln1": ("self_attn_layer_norm", LayerNormBridge),  # Pre-attention layer norm
+                    "ln2": ("final_layer_norm", LayerNormBridge),  # Pre-MLP layer norm
+                    "attn": ("self_attn", AttentionBridge),  # Full attention module
+                    "attn.q_proj": ("self_attn.q_proj", AttentionBridge),  # Query projection
+                    "attn.k_proj": ("self_attn.k_proj", AttentionBridge),  # Key projection
+                    "attn.v_proj": ("self_attn.v_proj", AttentionBridge),  # Value projection
+                    "attn.out_proj": ("self_attn.out_proj", AttentionBridge),  # Output projection
+                    "mlp": ("fc1", MLPBridge),  # Full MLP module
+                    "mlp.fc1": ("fc1", MLPBridge),  # First linear layer
+                    "mlp.fc2": ("fc2", MLPBridge),  # Second linear layer
+                },
+            ),
+            "ln_final": ("model.decoder.final_layer_norm", LayerNormBridge),  # Final layer norm
+            "unembed": ("lm_head", UnembeddingBridge),  # Language model head
+        }

@@ -9,6 +9,13 @@ from transformer_lens.architecture_adapter.conversion_utils.conversion_steps imp
     RearrangeWeightConversion,
     WeightConversionSet,
 )
+from transformer_lens.architecture_adapter.generalized_components import (
+    AttentionBridge,
+    EmbeddingBridge,
+    LayerNormBridge,
+    MLPBridge,
+    UnembeddingBridge,
+)
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 
@@ -72,3 +79,24 @@ class BloomArchitectureAdapter(ArchitectureAdapter):
                 "ln_final.b": "transformer.ln_f.bias",
             }
         )
+
+        # Set up component mapping
+        self.component_mapping = {
+            "embed": ("transformer.word_embeddings", EmbeddingBridge),  # Word token embeddings
+            "pos_embed": ("transformer.word_embeddings_layernorm", LayerNormBridge),  # Position embeddings
+            "blocks": (
+                "transformer.h",  # Base path for blocks
+                {
+                    "ln1": ("input_layernorm", LayerNormBridge),  # Pre-attention layer norm
+                    "ln2": ("post_attention_layernorm", LayerNormBridge),  # Pre-MLP layer norm
+                    "attn": ("self_attention", AttentionBridge),  # Full attention module
+                    "attn.query_key_value": ("self_attention.query_key_value", AttentionBridge),  # Combined QKV projection
+                    "attn.dense": ("self_attention.dense", AttentionBridge),  # Output projection
+                    "mlp": ("mlp", MLPBridge),  # Full MLP module
+                    "mlp.dense_h_to_4h": ("mlp.dense_h_to_4h", MLPBridge),  # First linear layer
+                    "mlp.dense_4h_to_h": ("mlp.dense_4h_to_h", MLPBridge),  # Second linear layer
+                },
+            ),
+            "ln_final": ("transformer.ln_f", LayerNormBridge),  # Final layer norm
+            "unembed": ("lm_head", UnembeddingBridge),  # Language model head
+        }
