@@ -7,6 +7,13 @@ from transformer_lens.architecture_adapter.conversion_utils.conversion_steps imp
     RearrangeWeightConversion,
     WeightConversionSet,
 )
+from transformer_lens.architecture_adapter.generalized_components import (
+    AttentionBridge,
+    EmbeddingBridge,
+    LayerNormBridge,
+    MLPBridge,
+    UnembeddingBridge,
+)
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 
@@ -76,22 +83,22 @@ class BertArchitectureAdapter(ArchitectureAdapter):
 
         # Set up component mapping
         self.component_mapping = {
-            "embed": "bert.embeddings",  # Word token embeddings
-            "pos_embed": "bert.embeddings.position_embeddings",  # Position embeddings
+            "embed": ("bert.embeddings", EmbeddingBridge),  # Word token embeddings
+            "pos_embed": ("bert.embeddings.position_embeddings", EmbeddingBridge),  # Position embeddings
             "blocks": (
                 "bert.encoder.layer",  # Base path for blocks
                 {
-                    "ln1": "attention.output.LayerNorm",  # Post-attention layer norm
-                    "ln2": "output.LayerNorm",  # Post-MLP layer norm
-                    "attn": "attention",  # Full attention module
-                    "attn.q_proj": "attention.self.query",  # Query projection
-                    "attn.k_proj": "attention.self.key",  # Key projection
-                    "attn.v_proj": "attention.self.value",  # Value projection
-                    "attn.output_proj": "attention.output.dense",  # Output projection
-                    "mlp": "intermediate",  # Full MLP module
-                    "mlp.fc1": "intermediate.dense",  # First linear layer
-                    "mlp.fc2": "output.dense",  # Second linear layer
+                    "ln1": ("attention.output.LayerNorm", LayerNormBridge),  # Post-attention layer norm
+                    "ln2": ("output.LayerNorm", LayerNormBridge),  # Post-MLP layer norm
+                    "attn": ("attention", AttentionBridge),  # Full attention module
+                    "attn.q_proj": ("attention.self.query", AttentionBridge),  # Query projection
+                    "attn.k_proj": ("attention.self.key", AttentionBridge),  # Key projection
+                    "attn.v_proj": ("attention.self.value", AttentionBridge),  # Value projection
+                    "attn.output_proj": ("attention.output.dense", AttentionBridge),  # Output projection
+                    "mlp": ("intermediate", MLPBridge),  # Full MLP module
+                    "mlp.fc1": ("intermediate.dense", MLPBridge),  # First linear layer
+                    "mlp.fc2": ("output.dense", MLPBridge),  # Second linear layer
                 },
             ),
-            "unembed": "cls.predictions",  # Language model head
+            "unembed": ("cls.predictions", UnembeddingBridge),  # Language model head
         }
