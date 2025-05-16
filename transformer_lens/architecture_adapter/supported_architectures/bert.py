@@ -83,22 +83,16 @@ class BertArchitectureAdapter(ArchitectureAdapter):
 
         # Set up component mapping
         self.component_mapping = {
-            "embed": ("bert.embeddings", EmbeddingBridge),  # Word token embeddings
-            "pos_embed": ("bert.embeddings.position_embeddings", EmbeddingBridge),  # Position embeddings
+            "embed": ("bert.embeddings", EmbeddingBridge),
+            "pos_embed": ("bert.embeddings.position_embeddings", EmbeddingBridge),
             "blocks": (
-                "bert.encoder.layer",  # Base path for blocks
+                "bert.encoder.layer",
                 {
-                    "ln1": ("attention.output.LayerNorm", LayerNormBridge),  # Post-attention layer norm
-                    "ln2": ("output.LayerNorm", LayerNormBridge),  # Post-MLP layer norm
-                    "attn": ("attention", AttentionBridge),  # Full attention module
-                    "attn.q_proj": ("attention.self.query", AttentionBridge),  # Query projection
-                    "attn.k_proj": ("attention.self.key", AttentionBridge),  # Key projection
-                    "attn.v_proj": ("attention.self.value", AttentionBridge),  # Value projection
-                    "attn.output_proj": ("attention.output.dense", AttentionBridge),  # Output projection
-                    "mlp": ("intermediate", MLPBridge),  # Full MLP module
-                    "mlp.fc1": ("intermediate.dense", MLPBridge),  # First linear layer
-                    "mlp.fc2": ("output.dense", MLPBridge),  # Second linear layer
+                    "ln1": ("attention.output.LayerNorm", LayerNormBridge),
+                    "ln2": ("output.LayerNorm", LayerNormBridge),
+                    "attn": ("attention", AttentionBridge),
+                    "mlp": ("intermediate", MLPBridge),
                 },
             ),
-            "unembed": ("cls.predictions", UnembeddingBridge),  # Language model head
+            "unembed": ("cls.predictions", UnembeddingBridge),
         }
