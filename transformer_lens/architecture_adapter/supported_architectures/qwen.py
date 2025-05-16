@@ -89,13 +89,7 @@ class QwenArchitectureAdapter(ArchitectureAdapter):
                     "ln1": ("ln_1", LayerNormBridge),  # Pre-attention layer norm
                     "ln2": ("ln_2", LayerNormBridge),  # Pre-MLP layer norm
                     "attn": ("attn", AttentionBridge),  # Full attention module
-                    "attn.q_proj": ("attn.q_proj", AttentionBridge),  # Query projection
-                    "attn.k_proj": ("attn.k_proj", AttentionBridge),  # Key projection
-                    "attn.v_proj": ("attn.v_proj", AttentionBridge),  # Value projection
-                    "attn.o_proj": ("attn.o_proj", AttentionBridge),  # Output projection
                     "mlp": ("mlp", MLPBridge),  # Full MLP module
-                    "mlp.gate_proj": ("mlp.gate_proj", MLPBridge),  # First linear layer
-                    "mlp.down_proj": ("mlp.down_proj", MLPBridge),  # Second linear layer
                 },
             ),
             "ln_final": ("transformer.ln_f", LayerNormBridge),  # Final layer norm

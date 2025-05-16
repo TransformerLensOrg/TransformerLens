@@ -61,6 +61,8 @@ class ArchitectureAdapterFactory:
         "T5ForConditionalGeneration": T5ArchitectureAdapter,
         "NanoGPTForCausalLM": NanoGPTArchitectureAdapter,
         "MinGPTForCausalLM": MinGPTArchitectureAdapter,
+        "GPTNeoForCausalLM": NeoArchitectureAdapter,
+        "GPTNeoXForCausalLM": NeoXArchitectureAdapter,
     }
 
     @classmethod
