@@ -77,22 +77,17 @@ class OPTArchitectureAdapter(ArchitectureAdapter):
 
         # Set up component mapping
         self.component_mapping = {
-            "embed": ("model.decoder.embed_tokens", EmbeddingBridge),  # Word token embeddings
+            "embed": ("model.decoder.embed_tokens", EmbeddingBridge),
+            "pos_embed": ("model.decoder.embed_positions", EmbeddingBridge),
             "blocks": (
-                "model.decoder.layers",  # Base path for blocks
+                "model.decoder.layers",
                 {
-                    "ln1": ("self_attn_layer_norm", LayerNormBridge),  # Pre-attention layer norm
-                    "ln2": ("final_layer_norm", LayerNormBridge),  # Pre-MLP layer norm
-                    "attn": ("self_attn", AttentionBridge),  # Full attention module
-                    "attn.q_proj": ("self_attn.q_proj", AttentionBridge),  # Query projection
-                    "attn.k_proj": ("self_attn.k_proj", AttentionBridge),  # Key projection
-                    "attn.v_proj": ("self_attn.v_proj", AttentionBridge),  # Value projection
-                    "attn.out_proj": ("self_attn.out_proj", AttentionBridge),  # Output projection
-                    "mlp": ("fc1", MLPBridge),  # Full MLP module
-                    "mlp.fc1": ("fc1", MLPBridge),  # First linear layer
-                    "mlp.fc2": ("fc2", MLPBridge),  # Second linear layer
+                    "ln1": ("self_attn_layer_norm", LayerNormBridge),
+                    "ln2": ("final_layer_norm", LayerNormBridge),
+                    "attn": ("self_attn", AttentionBridge),
+                    "mlp": ("mlp", MLPBridge),
                 },
             ),
-            "ln_final": ("model.decoder.final_layer_norm", LayerNormBridge),  # Final layer norm
-            "unembed": ("lm_head", UnembeddingBridge),  # Language model head
+            "ln_final": ("model.decoder.final_layer_norm", LayerNormBridge),
+            "unembed": ("lm_head", UnembeddingBridge),
         }

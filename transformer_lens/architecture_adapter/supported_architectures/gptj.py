@@ -64,22 +64,16 @@ class GPTJArchitectureAdapter(ArchitectureAdapter):
 
         # Set up component mapping
         self.component_mapping = {
-            "embed": ("transformer.wte", EmbeddingBridge),  # Word token embeddings
+            "embed": ("transformer.wte", EmbeddingBridge),
             "blocks": (
-                "transformer.h",  # Base path for blocks
+                "transformer.h",
                 {
-                    "ln1": ("ln_1", LayerNormBridge),  # Pre-attention layer norm
-                    "ln2": ("ln_2", LayerNormBridge),  # Pre-MLP layer norm
-                    "attn": ("attn", AttentionBridge),  # Full attention module
-                    "attn.q_proj": ("attn.q_proj", AttentionBridge),  # Query projection
-                    "attn.k_proj": ("attn.k_proj", AttentionBridge),  # Key projection
-                    "attn.v_proj": ("attn.v_proj", AttentionBridge),  # Value projection
-                    "attn.out_proj": ("attn.out_proj", AttentionBridge),  # Output projection
-                    "mlp": ("mlp", MLPBridge),  # Full MLP module
-                    "mlp.fc_in": ("mlp.fc_in", MLPBridge),  # First linear layer
-                    "mlp.fc_out": ("mlp.fc_out", MLPBridge),  # Second linear layer
+                    "ln1": ("ln_1", LayerNormBridge),
+                    "ln2": ("ln_2", LayerNormBridge),
+                    "attn": ("attn", AttentionBridge),
+                    "mlp": ("mlp", MLPBridge),
                 },
             ),
-            "ln_final": ("transformer.ln_f", LayerNormBridge),  # Final layer norm
-            "unembed": ("lm_head", UnembeddingBridge),  # Language model head
+            "ln_final": ("transformer.ln_f", LayerNormBridge),
+            "unembed": ("lm_head", UnembeddingBridge),
         }

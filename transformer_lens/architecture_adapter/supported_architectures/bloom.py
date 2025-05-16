@@ -82,21 +82,16 @@ class BloomArchitectureAdapter(ArchitectureAdapter):
 
         # Set up component mapping
         self.component_mapping = {
-            "embed": ("transformer.word_embeddings", EmbeddingBridge),  # Word token embeddings
-            "pos_embed": ("transformer.word_embeddings_layernorm", LayerNormBridge),  # Position embeddings
+            "embed": ("transformer.word_embeddings", EmbeddingBridge),
             "blocks": (
-                "transformer.h",  # Base path for blocks
+                "transformer.h",
                 {
-                    "ln1": ("input_layernorm", LayerNormBridge),  # Pre-attention layer norm
-                    "ln2": ("post_attention_layernorm", LayerNormBridge),  # Pre-MLP layer norm
-                    "attn": ("self_attention", AttentionBridge),  # Full attention module
-                    "attn.query_key_value": ("self_attention.query_key_value", AttentionBridge),  # Combined QKV projection
-                    "attn.dense": ("self_attention.dense", AttentionBridge),  # Output projection
-                    "mlp": ("mlp", MLPBridge),  # Full MLP module
-                    "mlp.dense_h_to_4h": ("mlp.dense_h_to_4h", MLPBridge),  # First linear layer
-                    "mlp.dense_4h_to_h": ("mlp.dense_4h_to_h", MLPBridge),  # Second linear layer
+                    "ln1": ("input_layernorm", LayerNormBridge),
+                    "ln2": ("post_attention_layernorm", LayerNormBridge),
+                    "attn": ("self_attention", AttentionBridge),
+                    "mlp": ("mlp", MLPBridge),
                 },
             ),
-            "ln_final": ("transformer.ln_f", LayerNormBridge),  # Final layer norm
-            "unembed": ("lm_head", UnembeddingBridge),  # Language model head
+            "ln_final": ("transformer.ln_f", LayerNormBridge),
+            "unembed": ("lm_head", UnembeddingBridge),
         }

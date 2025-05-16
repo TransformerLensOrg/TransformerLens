@@ -77,20 +77,16 @@ class NeoXArchitectureAdapter(ArchitectureAdapter):
 
         # Set up component mapping
         self.component_mapping = {
-            "embed": ("transformer.wte", EmbeddingBridge),  # Word token embeddings
+            "embed": ("gpt_neox.embed_in", EmbeddingBridge),
             "blocks": (
-                "transformer.h",  # Base path for blocks
+                "gpt_neox.layers",
                 {
-                    "ln1": ("ln_1", LayerNormBridge),  # Pre-attention layer norm
-                    "ln2": ("ln_2", LayerNormBridge),  # Pre-MLP layer norm
-                    "attn": ("attn", AttentionBridge),  # Full attention module
-                    "attn.c_attn": ("attn.c_attn", AttentionBridge),  # Combined QKV projection
-                    "attn.c_proj": ("attn.c_proj", AttentionBridge),  # Output projection
-                    "mlp": ("mlp", MLPBridge),  # Full MLP module
-                    "mlp.c_fc": ("mlp.c_fc", MLPBridge),  # First linear layer
-                    "mlp.c_proj": ("mlp.c_proj", MLPBridge),  # Second linear layer
+                    "ln1": ("input_layernorm", LayerNormBridge),
+                    "ln2": ("post_attention_layernorm", LayerNormBridge),
+                    "attn": ("attention", AttentionBridge),
+                    "mlp": ("mlp", MLPBridge),
                 },
             ),
-            "ln_final": ("transformer.ln_f", LayerNormBridge),  # Final layer norm
-            "unembed": ("lm_head", UnembeddingBridge),  # Language model head
+            "ln_final": ("gpt_neox.final_layer_norm", LayerNormBridge),
+            "unembed": ("embed_out", UnembeddingBridge),
         }
