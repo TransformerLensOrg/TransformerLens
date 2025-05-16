@@ -9,6 +9,13 @@ from transformer_lens.architecture_adapter.conversion_utils.conversion_steps imp
     RearrangeWeightConversion,
     WeightConversionSet,
 )
+from transformer_lens.architecture_adapter.generalized_components import (
+    AttentionBridge,
+    EmbeddingBridge,
+    LayerNormBridge,
+    MLPBridge,
+    UnembeddingBridge,
+)
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 
@@ -55,16 +62,16 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
 
         # Set up component mapping
         self.component_mapping = {
-            "embed": "model.embed_tokens",  # Word token embeddings
+            "embed": ("model.embed_tokens", EmbeddingBridge),  # Word token embeddings
             "blocks": (
                 "model.layers",  # Base path for blocks
                 {
-                    "ln1": "input_layernorm",  # Pre-attention layer norm
-                    "ln2": "post_attention_layernorm",  # Post-attention layer norm
-                    "attn": "self_attn",  # Full attention module
-                    "mlp": "mlp",  # Full MLP module
+                    "ln1": ("input_layernorm", LayerNormBridge),  # Pre-attention layer norm
+                    "ln2": ("post_attention_layernorm", LayerNormBridge),  # Post-attention layer norm
+                    "attn": ("self_attn", AttentionBridge),  # Full attention module
+                    "mlp": ("mlp", MLPBridge),  # Full MLP module
                 },
             ),
-            "ln_final": "model.norm",  # Final layer norm
-            "unembed": "model.embed_tokens",  # Language model head (shared with embed)
+            "ln_final": ("model.norm", LayerNormBridge),  # Final layer norm
+            "unembed": ("model.embed_tokens", UnembeddingBridge),  # Language model head (shared with embed)
         }

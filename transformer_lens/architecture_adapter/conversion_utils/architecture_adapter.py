@@ -4,12 +4,16 @@ This module contains the base class for architecture adapters that map between d
 """
 
 from abc import ABC
+from collections.abc import Callable
 from typing import Any, TypeAlias
 
 import torch
 import torch.nn as nn
 from transformers.modeling_utils import PreTrainedModel
 
+from transformer_lens.architecture_adapter.generalized_components.base import (
+    GeneralizedComponent,
+)
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 # Type aliases for paths
@@ -17,9 +21,10 @@ TransformerLensPath: TypeAlias = str  # Path in TransformerLens format (e.g. "bl
 RemotePath: TypeAlias = str  # Path in the remote model format (e.g. "transformer.h.0.attn")
 
 # Component mapping types
-ComponentLayer: TypeAlias = dict[TransformerLensPath, RemotePath]  # Maps TransformerLens components to remote components
+RemoteImport: TypeAlias = tuple[RemotePath, Callable[..., GeneralizedComponent]]  # Path and component factory
+ComponentLayer: TypeAlias = dict[TransformerLensPath, RemoteImport]  # Maps TransformerLens components to remote components
 BlockMapping: TypeAlias = tuple[RemotePath, ComponentLayer]  # Maps a block and its components
-ComponentMapping: TypeAlias = dict[TransformerLensPath, RemotePath | BlockMapping]  # Complete component mapping
+ComponentMapping: TypeAlias = dict[TransformerLensPath, RemoteImport | BlockMapping]  # Complete component mapping
 
 RemoteModel: TypeAlias = nn.Module
 RemoteComponent: TypeAlias = nn.Module
@@ -140,7 +145,7 @@ class ArchitectureAdapter(ABC):
             
         return full_path
 
-    def _resolve_component_path(self, parts: list[str], mapping: RemotePath | tuple[RemotePath, ComponentLayer]) -> RemotePath:
+    def _resolve_component_path(self, parts: list[str], mapping: RemoteImport | BlockMapping) -> RemotePath:
         """Recursively resolve a component path to its remote path.
         
         Args:
@@ -154,34 +159,29 @@ class ArchitectureAdapter(ABC):
             ValueError: If the path is invalid or component not found
         """
         if not parts:
-            if isinstance(mapping, str):
-                return mapping
-            # For tuple mappings, return the base path
-            return mapping[0]  # Return the base path for tuple mappings
+            # For both RemoteImport and BlockMapping, return the base path
+            return mapping[0]  # Return the base path (first element of tuple)
 
-        # Handle tuple case (base_path, sub_mapping)
-        if isinstance(mapping, tuple):
-            base_path, sub_mapping = mapping
-            idx = parts[0]
-            if not idx.isdigit():
-                raise ValueError(f"Expected index, got {idx}")
-            if len(parts) == 1:
-                return f"{base_path}.{idx}"
-            # If next part is a subcomponent, look it up in sub_mapping
-            sub_name = parts[1]
+        base_path, sub_mapping = mapping
+        idx = parts[0]
+        if not idx.isdigit():
+            raise ValueError(f"Expected index, got {idx}")
+        if len(parts) == 1:
+            return f"{base_path}.{idx}"
+            
+        # If next part is a subcomponent, look it up in sub_mapping
+        sub_name = parts[1]
+        if isinstance(sub_mapping, dict):  # BlockMapping case
             if sub_name not in sub_mapping:
                 raise ValueError(f"Component {sub_name} not found in blocks components")
             sub_map = sub_mapping[sub_name]
             # If there are more parts, recurse into sub_map
-            if isinstance(sub_map, tuple) or len(parts) > 2:
+            if len(parts) > 2:
                 return self._resolve_component_path(parts[2:], sub_map)
-            return f"{base_path}.{idx}.{sub_map}"
-
-        # Handle string case (direct path)
-        if len(parts) == 1:
-            return mapping
-        # For direct string mapping, just append the rest of the path
-        return f"{mapping}.{'.'.join(parts[1:])}"
+            return f"{base_path}.{idx}.{sub_map[0]}"  # Use first element (path) from RemoteImport
+        else:  # RemoteImport case
+            # For direct mapping, just append the rest of the path
+            return f"{base_path}.{'.'.join(parts[1:])}"
 
     def get_component(self, model: RemoteModel, path: TransformerLensPath) -> RemoteComponent:
         """Get a component from the model using the component_mapping.
