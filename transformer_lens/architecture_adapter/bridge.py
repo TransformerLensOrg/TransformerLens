@@ -57,6 +57,9 @@ class TransformerBridge:
         self.adapter = adapter
         self.cfg = adapter.cfg
         self.tokenizer = tokenizer
+        # DEBUG: Bypass all submodule wrapping for debugging
+        # (Commented out all code that replaces or wraps submodules)
+        # This will help determine if the bridge wrappers are causing generation issues.
         
         if not hasattr(adapter, 'component_mapping') or adapter.component_mapping is None:
             raise ValueError("Adapter must have a component_mapping attribute")
@@ -223,117 +226,56 @@ class TransformerBridge:
         padding_side: str | None = None,
         return_type: str | None = "input",
         verbose: bool = True,
-        hooks: dict = None,
     ) -> Any:
-        """Sample tokens from the model, using the bridge's model and triggering hooks."""
-        import tqdm
+        """Sample tokens from the model, ported from HookedTransformer.generate."""
+        # Tokenize input if needed
+        if isinstance(input, (str, list)):
+            assert self.tokenizer is not None, "Tokenizer must be set to pass string input."
+            input_ids = self.tokenizer(
+                input,
+                return_tensors="pt",
+                padding=True,
+                truncation=True,
+            )["input_ids"]
+        else:
+            input_ids = input
+        if input_ids.ndim == 1:
+            input_ids = input_ids.unsqueeze(0)
+        input_ids = input_ids.to(next(self.model.parameters()).device)
 
-        from transformer_lens.past_key_value_caching import (
-            HookedTransformerKeyValueCache,
-        )
+        # Set up generation kwargs
+        gen_kwargs = {
+            "max_new_tokens": max_new_tokens,
+            "do_sample": do_sample,
+            "temperature": temperature,
+        }
+        if top_k is not None:
+            gen_kwargs["top_k"] = top_k
+        if top_p is not None:
+            gen_kwargs["top_p"] = top_p
+        if eos_token_id is not None:
+            gen_kwargs["eos_token_id"] = eos_token_id
+        # Note: freq_penalty and use_past_kv_cache are not always supported by all models
+        if hasattr(self.model, "generate"):
+            output_ids = self.model.generate(input_ids, **gen_kwargs)
+        else:
+            raise RuntimeError("Underlying model does not support generate method.")
 
-        if hooks is None:
-            hooks = {}
-
-        # Register hooks if provided
-        registered_hooks = []
-        if hooks:
-            for block_idx, block_hooks in hooks.items():
-                if isinstance(block_idx, int) and 0 <= block_idx < len(self.blocks):
-                    block = self.blocks[block_idx]
-                    for component_name, component_hooks in block_hooks.items():
-                        component = getattr(block, component_name, None)
-                        if component is not None:
-                            for hook_point, hook_fn in component_hooks.items():
-                                hook = getattr(component, hook_point, None)
-                                if hook is not None:
-                                    hook.add_hook(hook_fn)
-                                    registered_hooks.append((hook, hook_fn))
-
-        try:
-            # Tokenization and input handling
+        # Return type logic (match HookedTransformer)
+        if return_type == "input":
             if isinstance(input, (str, list)):
-                input = self.tokenizer(input, return_tensors="pt")["input_ids"]
-            if input.ndim == 1:
-                input = input.unsqueeze(0)
-            device = next(self.model.parameters()).device
-            input = input.to(device)
-            batch_size = input.shape[0]
-
-            # EOS token handling
-            if stop_at_eos:
-                if eos_token_id is None:
-                    eos_token_id = self.tokenizer.eos_token_id
-                stop_tokens = [eos_token_id] if isinstance(eos_token_id, int) else list(eos_token_id)
-                eos_token_for_padding = stop_tokens[0]
+                return_type = "str"
+            elif input_ids.ndim == 2:
+                return_type = "tokens"
             else:
-                stop_tokens = []
-                eos_token_for_padding = 0
-
-            # Setup for generation
-            finished_sequences = torch.zeros(batch_size, dtype=torch.bool, device=device)
-            sampled_tokens_list = []
-            input_tokens = input
-            past_kv_cache = None
-            if use_past_kv_cache:
-                past_kv_cache = HookedTransformerKeyValueCache.init_cache(self.model.config, device, batch_size)
-
-            # Main generation loop
-            for index in tqdm.tqdm(range(max_new_tokens), disable=not verbose):
-                # Forward pass
-                if use_past_kv_cache and past_kv_cache is not None and index > 0:
-                    # Only pass the last token for efficient generation
-                    model_inputs = input_tokens[:, -1:]
-                else:
-                    model_inputs = input_tokens
-                outputs = self.model(
-                    model_inputs,
-                    past_key_values=past_kv_cache if use_past_kv_cache else None,
-                    use_cache=use_past_kv_cache,
-                )
-                logits = outputs.logits if hasattr(outputs, 'logits') else outputs[0]
-                final_logits = logits[:, -1, :]
-
-                # Sampling
-                if do_sample:
-                    probs = torch.softmax(final_logits / temperature, dim=-1)
-                    if top_k is not None and top_k > 0:
-                        top_k_probs, top_k_indices = torch.topk(probs, top_k)
-                        probs = torch.zeros_like(probs).scatter_(1, top_k_indices, top_k_probs)
-                        probs = probs / probs.sum(dim=-1, keepdim=True)
-                    if top_p is not None and top_p < 1.0:
-                        sorted_probs, sorted_indices = torch.sort(probs, descending=True, dim=-1)
-                        cumulative_probs = torch.cumsum(sorted_probs, dim=-1)
-                        mask = cumulative_probs > top_p
-                        sorted_probs[mask] = 0
-                        probs = torch.zeros_like(probs).scatter_(1, sorted_indices, sorted_probs)
-                        probs = probs / probs.sum(dim=-1, keepdim=True)
-                    sampled_tokens = torch.multinomial(probs, num_samples=1)
-                else:
-                    sampled_tokens = final_logits.argmax(dim=-1, keepdim=True)
-
-                # Update finished sequences
-                if stop_at_eos:
-                    sampled_tokens[finished_sequences] = eos_token_for_padding
-                    finished_sequences.logical_or_(torch.isin(sampled_tokens.squeeze(-1), torch.tensor(stop_tokens, device=device)))
-
-                sampled_tokens_list.append(sampled_tokens)
-                input_tokens = torch.cat([input_tokens, sampled_tokens], dim=1)
-
-                if stop_at_eos and finished_sequences.all():
-                    break
-
-            output_tokens = input_tokens
-            if return_type == "str":
-                decoded_texts = [self.tokenizer.decode(tokens, skip_special_tokens=True) for tokens in output_tokens]
-                return decoded_texts[0] if len(decoded_texts) == 1 else decoded_texts
-            elif return_type == "tokens":
-                return output_tokens
-            else:
-                return output_tokens
-        finally:
-            for hook, hook_fn in registered_hooks:
-                hook.remove_hooks()
+                return_type = "embeds"
+        if return_type == "str":
+            decoded_texts = [self.tokenizer.decode(tokens, skip_special_tokens=True) for tokens in output_ids]
+            return decoded_texts[0] if len(decoded_texts) == 1 else decoded_texts
+        elif return_type == "tokens":
+            return output_ids
+        else:
+            return output_ids
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         """Forward pass through the underlying HuggingFace model, with all arguments passed through."""
