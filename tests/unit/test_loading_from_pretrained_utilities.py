@@ -1,16 +1,15 @@
-from typing import Any
 from unittest import mock
 
 import pytest
 
 from transformer_lens import HookedTransformer
+from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.loading_from_pretrained import fill_missing_keys
-from transformer_lens.TransformerLensConfig import TransformerLensConfig
 
 
 def get_default_config():
-    return TransformerLensConfig(
-        d_model=128, d_head=8, n_heads=16, n_ctx=128, n_layers=1, d_vocab=50257
+    return HookedTransformerConfig(
+        d_model=128, d_head=8, n_heads=16, n_ctx=128, n_layers=1, d_vocab=50257, attn_only=True
     )
 
 
@@ -18,7 +17,7 @@ def get_default_config():
 
 
 @mock.patch("logging.warning")
-def test_fill_missing_keys(mock_warning: Any) -> None:
+def test_fill_missing_keys(mock_warning):
     cfg = get_default_config()
     model = HookedTransformer(cfg)
     default_state_dict = model.state_dict()

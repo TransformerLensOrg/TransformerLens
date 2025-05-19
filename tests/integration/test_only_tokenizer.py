@@ -1,27 +1,26 @@
 import logging
-from typing import Any
+from typing import Dict
 
 import pytest
 from transformers import AutoTokenizer
 
 import transformer_lens.loading_from_pretrained as loading
-from transformer_lens import HookedTransformer
-from transformer_lens.TransformerLensConfig import TransformerLensConfig
+from transformer_lens import HookedTransformer, HookedTransformerConfig
 
 
 class TokenizerOnlyHookedTransformer(HookedTransformer):
     def __init__(
         self,
-        cfg: Any,
-        tokenizer: Any = None,
-        move_to_device: bool = True,
-        default_padding_side: str = "right",
+        cfg,
+        tokenizer=None,
+        move_to_device=True,
+        default_padding_side="right",
     ):
-        if isinstance(cfg, dict):
-            cfg = TransformerLensConfig(**cfg)
+        if isinstance(cfg, Dict):
+            cfg = HookedTransformerConfig(**cfg)
         elif isinstance(cfg, str):
             raise ValueError(
-                "Please pass in a config dictionary or TransformerLensConfig object. If you want to load a "
+                "Please pass in a config dictionary or HookedTransformerConfig object. If you want to load a "
                 "pretrained model, use HookedTransformer.from_pretrained() instead."
             )
         self.cfg = cfg
@@ -67,7 +66,7 @@ class TokenizerOnlyHookedTransformer(HookedTransformer):
         # Get the model name used in HuggingFace, rather than the alias.
         official_model_name = loading.get_official_model_name(model_name)
 
-        # Load the config into a TransformerLensConfig object. If loading from a
+        # Load the config into an HookedTransformerConfig object. If loading from a
         # checkpoint, the config object will contain the information about the
         # checkpoint
         cfg = loading.get_pretrained_model_config(
