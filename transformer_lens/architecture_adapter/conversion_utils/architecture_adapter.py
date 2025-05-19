@@ -20,7 +20,7 @@ from transformer_lens.architecture_adapter.types import (
     RemotePath,
     TransformerLensPath,
 )
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.TransformerLensConfig import TransformerLensConfig
 
 
 class ArchitectureAdapter(ABC):
@@ -31,7 +31,7 @@ class ArchitectureAdapter(ABC):
     (for initializing weights from one format to another).
     """
 
-    def __init__(self, cfg: HookedTransformerConfig):
+    def __init__(self, cfg: TransformerLensConfig):
         """Initialize the architecture adapter.
 
         Args:

@@ -16,32 +16,18 @@ import numpy as np
 import torch
 
 import transformer_lens.utilities.devices as device_utils
+from transformer_lens.TransformerLensConfig import TransformerLensConfig
 from transformer_lens.utilities.activation_functions import SUPPORTED_ACTIVATIONS
 
 
 @dataclass
-class HookedTransformerConfig:
+class HookedTransformerConfig(TransformerLensConfig):
     """
     Configuration class to store the configuration of a HookedTransformer model.
 
     See further_comments.md for more details on the more complex arguments.
 
     Args:
-        d_model (int): The dimensionality of the embeddings.
-        d_head (int): The dimensionality of each attention head.
-        n_layers (int): The number of transformer blocks (one block = one attn layer AND one MLP layer).
-        n_ctx (int): The maximum sequence length.
-        n_heads (int): The number of attention heads. If not
-            specified, will be set to d_model // d_head. (This is represented by a default value of -1)
-        d_mlp (int, *optional*): The dimensionality of the feedforward mlp
-            network. Defaults to 4 * d_model, and in an attn-only model is None.
-        d_vocab (int): The size of the vocabulary. Defaults to -1, which means not set. If not set, will be
-            automatically set from the tokenizer's vocab size.
-        act_fn (str, *optional*): The activation function to use. Always
-            lowercase. Supports ['relu', 'gelu', 'silu', 'gelu_new', 'solu_ln',
-            'gelu_fast']. Must be set unless using an attn-only model.
-        eps (float): The epsilon value to use for layer normalization. Defaults
-            to 1e-5
         use_attn_result (bool): whether to explicitly calculate the amount
             each head adds to the residual stream (with a hook) and THEN add it
             up, vs just calculating the sum. This can be very memory intensive
@@ -89,8 +75,6 @@ class HookedTransformerConfig:
             & biases) and 'LNPre' (use LayerNorm, but no weights or biases), 'RMS'
             (use RMSNorm, including weights) and 'RMSPre' (use RMSNorm, but no weights or biases).
             Defaults to LN
-        device(str): The device to use for the model. Defaults to 'cuda' if
-            available, else 'cpu'. Must be 'cuda' if `n_devices` > 1.
         n_devices (int): The number of devices to use for the model. Defaults to 1. Layers are loaded
             to support "pipeline parallelism", where each device is responsible for a subset of the layers.
         attention_dir (str): Whether to use causal (aka unidirectional aka GPT-2
@@ -150,7 +134,6 @@ class HookedTransformerConfig:
             so this empirically seems to give better results. To change the default behavior to False, pass in
             default_prepend_bos=False. Note that you can also locally override the default behavior by passing
             in prepend_bos=True/False when you call a method that processes the input string.
-        dtype (torch.dtype, *optional*): The model's dtype. Defaults to torch.float32.
         tokenizer_prepends_bos (bool, *optional*): This flag is set by set_tokenizer. It is set to True only
             when the tokenizer automatically prepends the BOS token if initialized with add_bos_token=True.
             We need this information to dynamically control bos prepending.
@@ -192,39 +175,27 @@ class HookedTransformerConfig:
         NTK_by_parts_factor (float): The overall factor used in the "NTK-by-parts" method that
             affects the rate of change between low and high-frequency interpolation strategies.
             Defaults to 8.0.
-
-
     """
 
-    n_layers: int
-    d_model: int
-    n_ctx: int
-    d_head: int
-    model_name: str = "custom"
-    n_heads: int = -1
-    d_mlp: Optional[int] = None
-    act_fn: Optional[str] = None
-    d_vocab: int = -1
-    eps: float = 1e-5
     use_attn_result: bool = False
-    use_attn_scale: bool = True
-    attn_scale: float = -1.0
     use_split_qkv_input: bool = False
     use_hook_mlp_in: bool = False
     use_attn_in: bool = False
-    use_local_attn: bool = False
+    use_attn_scale: bool = True
     ungroup_grouped_query_attention: bool = False
+    attn_scale: float = -1.0
+    model_name: str = "custom"
     original_architecture: Optional[str] = None
     from_checkpoint: bool = False
     checkpoint_index: Optional[int] = None
     checkpoint_label_type: Optional[str] = None
     checkpoint_value: Optional[int] = None
     tokenizer_name: Optional[str] = None
+    use_local_attn: bool = False
     window_size: Optional[int] = None
     attn_types: Optional[List] = None
     init_mode: str = "gpt2"
     normalization_type: Optional[str] = "LN"
-    device: Optional[str] = None
     n_devices: int = 1
     attention_dir: str = "causal"
     attn_only: bool = False
@@ -241,7 +212,6 @@ class HookedTransformerConfig:
     use_hook_tokens: bool = False
     gated_mlp: bool = False
     default_prepend_bos: bool = True
-    dtype: torch.dtype = torch.float32
     tokenizer_prepends_bos: Optional[bool] = None
     n_key_value_heads: Optional[int] = None
     post_embedding_ln: bool = False
@@ -264,27 +234,16 @@ class HookedTransformerConfig:
     NTK_by_parts_factor: float = 8.0
 
     def __post_init__(self):
-        if self.n_heads == -1:
-            self.n_heads = self.d_model // self.d_head
-
-            if not self.d_model % (self.d_head) == 0:
-                logging.warning(
-                    "d_model %d is not divisible by d_head %d."
-                    "n_heads was inferred to be %d, rounding down the ratio.",
-                    self.d_model,
-                    self.d_head,
-                    self.n_heads,
-                )
-
+        """Post initialization processing."""
+        # Call parent's post_init first
+        super().__post_init__()
+        
         if self.seed is not None:
             self.set_seed_everywhere(self.seed)
         if self.use_local_attn:
             assert self.window_size is not None, "window_size must be specified for local attention"
             assert self.attn_types is not None, "attn_types must be specified for local attention"
         if not self.attn_only:
-            if self.d_mlp is None:
-                # For some reason everyone hard codes in this hyper-parameter!
-                self.d_mlp: int = self.d_model * 4
             assert self.act_fn is not None, "act_fn must be specified for non-attn-only models"
             assert (
                 self.act_fn in SUPPORTED_ACTIVATIONS
@@ -342,31 +301,12 @@ class HookedTransformerConfig:
             False,
         ], f"default_prepend_bos must be either True or False, but {self.default_prepend_bos} is given"
 
-    @classmethod
-    def unwrap(cls, config: Union[Dict, "HookedTransformerConfig"]) -> HookedTransformerConfig:
-        """
-        Convenience function to avoid duplicate code from a common way config is passed to various components
-        """
-        return HookedTransformerConfig.from_dict(config) if isinstance(config, Dict) else config
-
-    @classmethod
-    def from_dict(cls, config_dict: Dict[str, Any]) -> HookedTransformerConfig:
-        """
-        Instantiates a `HookedTransformerConfig` from a Python dictionary of
-        parameters.
-        """
-        return cls(**config_dict)
-
-    def to_dict(self):
-        return self.__dict__
-
-    def __repr__(self):
-        return "HookedTransformerConfig:\n" + pprint.pformat(self.to_dict())
-
     def set_seed_everywhere(self, seed: int):
+        """Set the seed for all random number generators."""
         torch.manual_seed(seed)
         random.seed(seed)
         np.random.seed(seed)
 
     def is_layer_norm_activation(self) -> bool:
+        """Check if the activation function is a layer norm activation."""
         return self.act_fn is not None and self.act_fn.endswith("_ln")
