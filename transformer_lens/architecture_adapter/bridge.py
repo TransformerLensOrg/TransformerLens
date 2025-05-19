@@ -9,7 +9,6 @@ from typing import Any
 
 import torch
 import torch.nn as nn
-from transformers.modeling_utils import PreTrainedModel
 
 from transformer_lens.architecture_adapter.conversion_utils.architecture_adapter import (
     ArchitectureAdapter,
@@ -34,11 +33,11 @@ class TransformerBridge:
     to map between the HookedTransformer and HuggingFace model structures.
     """
 
-    def __init__(self, model: PreTrainedModel, adapter: ArchitectureAdapter, tokenizer: Any):
+    def __init__(self, model: nn.Module, adapter: ArchitectureAdapter, tokenizer: Any):
         """Initialize the bridge.
         
         Args:
-            model: The HuggingFace model to bridge
+            model: The model to bridge (must be a PyTorch nn.Module)
             adapter: The architecture adapter to use
             tokenizer: The tokenizer to use (required)
         """
