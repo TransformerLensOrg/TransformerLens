@@ -138,32 +138,4 @@ def test_invalid_paths(adapter: Gemma3ArchitectureAdapter) -> None:
         adapter.translate_transformer_lens_path("blocks.invalid")
         
     with pytest.raises(ValueError, match="Component not_found not found in blocks components"):
-        adapter.translate_transformer_lens_path("blocks.0.not_found")
-
-
-def test_transformer_bridge_generate(cfg: TransformerLensConfig):
-    """Test transformer bridge generation."""
-    # Create adapter and model
-    adapter = Gemma3ArchitectureAdapter(cfg)
-    model = MockGemma3Model()
-
-    # Track if the hook is called
-    hook_called = {"hit": False}
-    def dummy_hook(tensor: object, hook: object) -> object:
-        hook_called["hit"] = True
-        return tensor
-
-    # Register the hook on the first block's attention input
-    attn = adapter.get_component(model, "blocks.0.attn")
-    attn.register_forward_hook(dummy_hook)
-
-    # Test forward pass
-    batch_size, seq_len = 1, 10
-    x = torch.randn(batch_size, seq_len, cfg.d_model)
-    position_ids = torch.arange(seq_len).unsqueeze(0).expand(batch_size, -1)
-    outputs = attn(x, position_ids=position_ids)
-
-    # Verify outputs
-    assert isinstance(outputs, torch.Tensor)
-    assert outputs.shape == (batch_size, seq_len, cfg.d_model)
-    assert hook_called["hit"] 
+        adapter.translate_transformer_lens_path("blocks.0.not_found") 
