@@ -3,16 +3,24 @@
 import pytest
 import torch
 import torch.nn as nn
-from transformers.models.gemma import GemmaConfig
 
 from transformer_lens.architecture_adapter.supported_architectures.gemma3 import (
     Gemma3ArchitectureAdapter,
 )
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.TransformerLensConfig import TransformerLensConfig
 
 
-class MockModel(nn.Module):
-    """Mock model for testing Gemma3 architecture."""
+class MockGemma3Model(nn.Module):
+    """A mock implementation of the Gemma 3 model architecture for testing purposes.
+    
+    This mock model replicates the key architectural components of Gemma 3:
+    - Embedding layer (embed_tokens)
+    - Multiple transformer layers with:
+        - Input and post-attention layer norms
+        - Self-attention with Q, K, V, O projections
+        - MLP with up, gate, and down projections
+    - Final layer norm
+    """
 
     def __init__(self):
         super().__init__()
@@ -38,33 +46,29 @@ class MockModel(nn.Module):
 
 
 @pytest.fixture
-def cfg() -> GemmaConfig:
+def cfg() -> TransformerLensConfig:
     """Create a test config."""
-    return GemmaConfig(
-        hidden_size=512,
-        num_hidden_layers=2,
-        num_attention_heads=8,
-        num_key_value_heads=8,
-        intermediate_size=2048,
-        max_position_embeddings=1024,
-        vocab_size=1000,
-        rms_norm_eps=1e-6,
-        pad_token_id=0,
-        bos_token_id=1,
-        eos_token_id=2,
+    return TransformerLensConfig(
+        d_model=512,
+        d_head=64,
+        n_layers=2,
+        n_heads=8,
+        n_ctx=1024,
+        d_vocab=1000,
+        act_fn="silu",
     )
 
 
 @pytest.fixture
-def adapter(cfg: HookedTransformerConfig) -> Gemma3ArchitectureAdapter:
+def adapter(cfg: TransformerLensConfig) -> Gemma3ArchitectureAdapter:
     """Create a Gemma3 adapter."""
     return Gemma3ArchitectureAdapter(cfg)
 
 
 @pytest.fixture
-def model() -> MockModel:
-    """Create a mock model."""
-    return MockModel()
+def model() -> MockGemma3Model:
+    """Create a mock Gemma 3 model."""
+    return MockGemma3Model()
 
 
 def test_translate_transformer_lens_path(adapter: Gemma3ArchitectureAdapter) -> None:
@@ -105,7 +109,7 @@ def test_translate_transformer_lens_path_last_component(adapter: Gemma3Architect
     assert adapter.translate_transformer_lens_path("blocks.0.mlp", last_component_only=True) == "mlp"
 
 
-def test_get_component(adapter: Gemma3ArchitectureAdapter, model: MockModel) -> None:
+def test_get_component(adapter: Gemma3ArchitectureAdapter, model: MockGemma3Model) -> None:
     """Test getting components from the model."""
     # Test direct mapping
     assert isinstance(adapter.get_component(model, "embed"), nn.Embedding)
@@ -137,11 +141,11 @@ def test_invalid_paths(adapter: Gemma3ArchitectureAdapter) -> None:
         adapter.translate_transformer_lens_path("blocks.0.not_found")
 
 
-def test_transformer_bridge_generate(cfg: GemmaConfig):
+def test_transformer_bridge_generate(cfg: TransformerLensConfig):
     """Test transformer bridge generation."""
     # Create adapter and model
     adapter = Gemma3ArchitectureAdapter(cfg)
-    model = MockModel()
+    model = MockGemma3Model()
 
     # Track if the hook is called
     hook_called = {"hit": False}
@@ -155,11 +159,11 @@ def test_transformer_bridge_generate(cfg: GemmaConfig):
 
     # Test forward pass
     batch_size, seq_len = 1, 10
-    x = torch.randn(batch_size, seq_len, cfg.hidden_size)
+    x = torch.randn(batch_size, seq_len, cfg.d_model)
     position_ids = torch.arange(seq_len).unsqueeze(0).expand(batch_size, -1)
     outputs = attn(x, position_ids=position_ids)
 
     # Verify outputs
     assert isinstance(outputs, torch.Tensor)
-    assert outputs.shape == (batch_size, seq_len, cfg.hidden_size)
+    assert outputs.shape == (batch_size, seq_len, cfg.d_model)
     assert hook_called["hit"] 
