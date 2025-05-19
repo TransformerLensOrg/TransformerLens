@@ -3,6 +3,7 @@
 import pytest
 import torch
 import torch.nn as nn
+from transformers.models.gemma import GemmaConfig
 
 from transformer_lens.architecture_adapter.supported_architectures.gemma3 import (
     Gemma3ArchitectureAdapter,
@@ -37,22 +38,21 @@ class MockModel(nn.Module):
 
 
 @pytest.fixture
-def cfg():
+def cfg() -> GemmaConfig:
     """Create a test config."""
-    config = HookedTransformerConfig(
-        d_model=512,
-        n_layers=2,
-        n_heads=8,
-        d_head=64,
-        n_ctx=1024,
-        act_fn="gelu",
-        normalization_type="LN",
-        original_architecture="Gemma3ForCausalLM",
+    return GemmaConfig(
+        hidden_size=512,
+        num_hidden_layers=2,
+        num_attention_heads=8,
+        num_key_value_heads=8,
+        intermediate_size=2048,
+        max_position_embeddings=1024,
+        vocab_size=1000,
+        rms_norm_eps=1e-6,
+        pad_token_id=0,
+        bos_token_id=1,
+        eos_token_id=2,
     )
-    # Add required attributes for Gemma3
-    config.num_attention_heads = config.n_heads
-    config.num_key_value_heads = config.n_heads
-    return config
 
 
 @pytest.fixture
@@ -137,27 +137,12 @@ def test_invalid_paths(adapter: Gemma3ArchitectureAdapter) -> None:
         adapter.translate_transformer_lens_path("blocks.0.not_found")
 
 
-def test_transformer_bridge_generate():
+def test_transformer_bridge_generate(cfg: GemmaConfig):
     """Test transformer bridge generation."""
-    # Create config for Gemma model
-    cfg = HookedTransformerConfig(
-        d_model=2048,
-        n_layers=18,
-        n_heads=8,
-        d_head=256,
-        n_ctx=8192,
-        act_fn="gelu_new",
-        normalization_type="RMS",
-        original_architecture="Gemma3ForCausalLM",
-    )
-    # Add required attributes for Gemma3
-    cfg.num_attention_heads = cfg.n_heads
-    cfg.num_key_value_heads = 1
-    
     # Create adapter and model
     adapter = Gemma3ArchitectureAdapter(cfg)
     model = MockModel()
-    
+
     # Track if the hook is called
     hook_called = {"hit": False}
     def dummy_hook(tensor: object, hook: object) -> object:
@@ -170,8 +155,11 @@ def test_transformer_bridge_generate():
 
     # Test forward pass
     batch_size, seq_len = 1, 10
-    x = torch.randn(batch_size, seq_len, cfg.d_model)
+    x = torch.randn(batch_size, seq_len, cfg.hidden_size)
     position_ids = torch.arange(seq_len).unsqueeze(0).expand(batch_size, -1)
     outputs = attn(x, position_ids=position_ids)
+
+    # Verify outputs
     assert isinstance(outputs, torch.Tensor)
-    assert hook_called["hit"], "Attention input hook was not called during forward pass." 
+    assert outputs.shape == (batch_size, seq_len, cfg.hidden_size)
+    assert hook_called["hit"] 
