@@ -15,13 +15,11 @@ from transformer_lens.architecture_adapter.conversion_utils.architecture_adapter
 )
 from transformer_lens.architecture_adapter.generalized_components import (
     AttentionBridge,
+    BlockBridge,
     EmbeddingBridge,
     LayerNormBridge,
     MLPBridge,
     UnembeddingBridge,
-)
-from transformer_lens.architecture_adapter.generalized_components.block import (
-    BlockBridge,
 )
 
 
