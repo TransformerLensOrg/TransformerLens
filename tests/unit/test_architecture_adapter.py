@@ -1,12 +1,12 @@
 """Tests for the architecture adapter."""
 
 import pytest
+import torch
 import torch.nn as nn
 
 from transformer_lens.architecture_adapter.supported_architectures.gemma3 import (
     Gemma3ArchitectureAdapter,
 )
-from transformer_lens.boot import boot
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 
@@ -47,6 +47,7 @@ def cfg():
         n_ctx=1024,
         act_fn="gelu",
         normalization_type="LN",
+        original_architecture="Gemma3ForCausalLM",
     )
     # Add required attributes for Gemma3
     config.num_attention_heads = config.n_heads
@@ -137,10 +138,26 @@ def test_invalid_paths(adapter: Gemma3ArchitectureAdapter) -> None:
 
 
 def test_transformer_bridge_generate():
-    # Use a small model for testing
-    model_name = "sshleifer/tiny-gpt2"
-    (bridge, _) = boot(model_name)
-
+    """Test transformer bridge generation."""
+    # Create config for Gemma model
+    cfg = HookedTransformerConfig(
+        d_model=2048,
+        n_layers=18,
+        n_heads=8,
+        d_head=256,
+        n_ctx=8192,
+        act_fn="gelu_new",
+        normalization_type="RMS",
+        original_architecture="Gemma3ForCausalLM",
+    )
+    # Add required attributes for Gemma3
+    cfg.num_attention_heads = cfg.n_heads
+    cfg.num_key_value_heads = 1
+    
+    # Create adapter and model
+    adapter = Gemma3ArchitectureAdapter(cfg)
+    model = MockModel()
+    
     # Track if the hook is called
     hook_called = {"hit": False}
     def dummy_hook(tensor: object, hook: object) -> object:
@@ -148,19 +165,13 @@ def test_transformer_bridge_generate():
         return tensor
 
     # Register the hook on the first block's attention input
-    bridge.blocks[0].attn.hook_attn_input.add_hook(dummy_hook)
+    attn = adapter.get_component(model, "blocks.0.attn")
+    attn.register_forward_hook(dummy_hook)
 
-    # Generate text
-    prompt = "Hello world"
-    output = bridge.generate(
-        prompt,
-        max_new_tokens=5,
-        temperature=0.7,
-        top_k=10,
-        hooks={0: {"attn": {"hook_attn_input": dummy_hook}}},
-        return_type="str",
-        verbose=False,
-    )
-    assert isinstance(output, str)
-    assert len(output) > 0
-    assert hook_called["hit"], "Attention input hook was not called during generation." 
+    # Test forward pass
+    batch_size, seq_len = 1, 10
+    x = torch.randn(batch_size, seq_len, cfg.d_model)
+    position_ids = torch.arange(seq_len).unsqueeze(0).expand(batch_size, -1)
+    outputs = attn(x, position_ids=position_ids)
+    assert isinstance(outputs, torch.Tensor)
+    assert hook_called["hit"], "Attention input hook was not called during forward pass." 

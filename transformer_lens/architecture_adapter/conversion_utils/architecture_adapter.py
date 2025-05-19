@@ -12,8 +12,10 @@ import torch.nn as nn
 from transformers.modeling_utils import PreTrainedModel
 
 from transformer_lens.architecture_adapter.types import (
+    BlockMapping,
     ComponentMapping,
     RemoteComponent,
+    RemoteImport,
     RemoteModel,
     RemotePath,
     TransformerLensPath,
@@ -137,12 +139,12 @@ class ArchitectureAdapter(ABC):
             
         return full_path
 
-    def _resolve_component_path(self, parts: list[str], mapping: tuple[RemotePath, dict[str, tuple[RemotePath, Callable[..., Any]]]]) -> RemotePath:
+    def _resolve_component_path(self, parts: list[str], mapping: RemoteImport | BlockMapping) -> RemotePath:
         """Recursively resolve a component path to its remote path.
         
         Args:
             parts: List of path components to resolve
-            mapping: Current level of component mapping
+            mapping: Current level of component mapping (either RemoteImport or BlockMapping)
         
         Returns:
             The resolved remote path
@@ -155,6 +157,12 @@ class ArchitectureAdapter(ABC):
             return mapping[0]  # Return the base path (first element of tuple)
 
         base_path, sub_mapping = mapping
+        
+        # If this is a RemoteImport (direct mapping), just append the rest of the path
+        if not isinstance(sub_mapping, dict):
+            return f"{base_path}.{'.'.join(parts)}"
+            
+        # Handle BlockMapping case
         idx = parts[0]
         if not idx.isdigit():
             raise ValueError(f"Expected index, got {idx}")
@@ -163,17 +171,14 @@ class ArchitectureAdapter(ABC):
             
         # If next part is a subcomponent, look it up in sub_mapping
         sub_name = parts[1]
-        if isinstance(sub_mapping, dict):  # BlockMapping case
-            if sub_name not in sub_mapping:
-                raise ValueError(f"Component {sub_name} not found in blocks components")
-            sub_map = sub_mapping[sub_name]
-            # If there are more parts, recurse into sub_map
-            if len(parts) > 2:
-                return self._resolve_component_path(parts[2:], sub_map)
-            return f"{base_path}.{idx}.{sub_map[0]}"  # Use first element (path) from RemoteImport
-        else:  # RemoteImport case
-            # For direct mapping, just append the rest of the path
-            return f"{base_path}.{'.'.join(parts[1:])}"
+        if sub_name not in sub_mapping:
+            raise ValueError(f"Component {sub_name} not found in blocks components")
+        sub_map = sub_mapping[sub_name]
+        
+        # If there are more parts, recurse into sub_map
+        if len(parts) > 2:
+            return self._resolve_component_path(parts[2:], sub_map)
+        return f"{base_path}.{idx}.{sub_map[0]}"  # Use first element (path) from RemoteImport
 
     def get_component(self, model: RemoteModel, path: TransformerLensPath) -> RemoteComponent:
         """Get a component from the model using the component_mapping.
