@@ -11,8 +11,8 @@ from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 
 class MockModel(nn.Module):
-    """Mock model for testing."""
-    
+    """Mock model for testing Gemma3 architecture."""
+
     def __init__(self):
         super().__init__()
         self.model = nn.Module()
@@ -24,7 +24,16 @@ class MockModel(nn.Module):
             layer.input_layernorm = nn.LayerNorm(512)
             layer.post_attention_layernorm = nn.LayerNorm(512)
             layer.self_attn = nn.Module()
+            layer.self_attn.q_proj = nn.Linear(512, 512)
+            layer.self_attn.k_proj = nn.Linear(512, 512)
+            layer.self_attn.v_proj = nn.Linear(512, 512)
+            layer.self_attn.o_proj = nn.Linear(512, 512)
             layer.mlp = nn.Module()
+            layer.mlp.up_proj = nn.Linear(512, 2048)
+            layer.mlp.gate_proj = nn.Linear(512, 2048)
+            layer.mlp.down_proj = nn.Linear(2048, 512)
+        self.model.norm = nn.LayerNorm(512)
+        self.embed_tokens = self.model.embed_tokens  # For shared embedding/unembedding
 
 
 @pytest.fixture
