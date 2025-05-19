@@ -5,10 +5,12 @@ import torch
 import torch.nn as nn
 
 from tests.mocks.models import MockGemma3Model
+from transformer_lens import TransformerLensConfig
+from transformer_lens.architecture_adapter import ArchitectureAdapterFactory
+from transformer_lens.architecture_adapter.bridge import TransformerBridge
 from transformer_lens.architecture_adapter.supported_architectures.gemma3 import (
     Gemma3ArchitectureAdapter,
 )
-from transformer_lens.TransformerLensConfig import TransformerLensConfig
 
 
 @pytest.fixture

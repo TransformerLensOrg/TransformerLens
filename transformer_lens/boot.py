@@ -3,17 +3,16 @@
 This module provides functionality to load and convert models from HuggingFace to TransformerLens format.
 """
 
-from typing import Any
+import os
+from typing import Any, Dict, Optional
 
 import torch
-from transformers.models.auto.configuration_auto import AutoConfig
-from transformers.models.auto.modeling_auto import AutoModelForCausalLM
-from transformers.models.auto.tokenization_auto import AutoTokenizer
+from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 
-from transformer_lens.architecture_adapter.architecture_adapter_factory import (
-    ArchitectureAdapterFactory,
-)
+from transformer_lens.architecture_adapter import ArchitectureAdapterFactory
 from transformer_lens.architecture_adapter.bridge import TransformerBridge
+from transformer_lens.HookedTransformer import HookedTransformer
+from transformer_lens.TransformerLensConfig import TransformerLensConfig
 
 
 def boot(
