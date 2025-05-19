@@ -5,7 +5,6 @@ a consistent interface for accessing their weights and performing operations.
 """
 
 from collections.abc import Callable
-from dataclasses import dataclass
 from typing import Any
 
 import torch
@@ -25,16 +24,6 @@ from transformer_lens.architecture_adapter.generalized_components import (
 from transformer_lens.architecture_adapter.generalized_components.block import (
     BlockBridge,
 )
-
-
-@dataclass
-class Block:
-    """A transformer block in the bridge."""
-
-    ln1: LayerNormBridge
-    attn: AttentionBridge
-    ln2: LayerNormBridge
-    mlp: MLPBridge
 
 
 class TransformerBridge:
