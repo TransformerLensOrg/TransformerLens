@@ -43,9 +43,6 @@ class TransformerBridge:
         self.adapter = adapter
         self.cfg = adapter.cfg
         self.tokenizer = tokenizer
-        # DEBUG: Bypass all submodule wrapping for debugging
-        # (Commented out all code that replaces or wraps submodules)
-        # This will help determine if the bridge wrappers are causing generation issues.
         
         if not hasattr(adapter, 'component_mapping') or adapter.component_mapping is None:
             raise ValueError("Adapter must have a component_mapping attribute")
