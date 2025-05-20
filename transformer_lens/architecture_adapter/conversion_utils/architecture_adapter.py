@@ -3,7 +3,6 @@
 This module contains the base class for architecture adapters that map between different model architectures.
 """
 
-from abc import ABC
 from collections.abc import Callable
 from typing import Any
 
@@ -23,7 +22,7 @@ from transformer_lens.architecture_adapter.types import (
 from transformer_lens.TransformerLensConfig import TransformerLensConfig
 
 
-class ArchitectureAdapter(ABC):
+class ArchitectureAdapter:
     """Base class for architecture adapters.
     
     This class provides the interface for adapting between different model architectures.
