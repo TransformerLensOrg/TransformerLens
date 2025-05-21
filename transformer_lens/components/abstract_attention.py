@@ -76,6 +76,15 @@ class AbstractAttention(ABC, nn.Module):
         self.b_V: nn.Parameter = abstract_attribute()
         self.b_O = nn.Parameter(torch.zeros(self.cfg.d_model, dtype=self.cfg.dtype))
 
+        if self.cfg.use_qk_norm:
+            self.q_norm_weight = nn.Parameter(torch.ones(self.cfg.d_head, dtype=self.cfg.dtype))
+            self.k_norm_weight = nn.Parameter(torch.ones(self.cfg.d_head, dtype=self.cfg.dtype))
+            self.qk_norm_eps = self.cfg.qk_norm_eps
+        else:
+            self.q_norm_weight = None
+            self.k_norm_weight = None
+            self.qk_norm_eps = 1e-6
+
         self.attn_type = attn_type
         # Create a max_ctx x max_ctx mask, with True iff that query position
         # can attend to that key position (query is first axis, key is second axis)
@@ -403,6 +412,10 @@ class AbstractAttention(ABC, nn.Module):
         else:
             v = self.hook_v(attn_fn(value_input, self.W_V, self.b_V))
 
+        if self.cfg.use_qk_norm:
+            q = self.apply_qk_norm(q, self.q_norm_weight)
+            k = self.apply_qk_norm(k, self.k_norm_weight)
+
         return q, k, v
 
     def calculate_attention_scores(
@@ -583,6 +596,16 @@ class AbstractAttention(ABC, nn.Module):
             x_rotated = x_rot * mask_rotary_cos + x_flip * mask_rotary_sin
 
         return torch.cat([x_rotated, x_pass], dim=-1)
+
+    def apply_qk_norm(
+        self, x: Float[torch.Tensor, "batch pos head_index d_head"], weight: torch.Tensor
+    ) -> Float[torch.Tensor, "batch pos head_index d_head"]:
+        x_dtype = x.dtype
+        x = x.to(torch.float32)
+        var = x.pow(2).mean(-1, keepdim=True)
+        x = x * torch.rsqrt(var + self.qk_norm_eps)
+        x = x * weight
+        return x.to(x_dtype)
 
     @staticmethod
     def create_alibi_slope(
