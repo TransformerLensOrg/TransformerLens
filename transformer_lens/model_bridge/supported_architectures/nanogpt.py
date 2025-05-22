@@ -3,6 +3,7 @@ import torch
 from torch import nn
 
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
     RearrangeWeightConversion,
     WeightConversionSet,
@@ -14,7 +15,6 @@ from transformer_lens.model_bridge.generalized_components import (
     MLPBridge,
     UnembeddingBridge,
 )
-from transformer_lens.model_bridge.model_bridge import ModelBridge
 
 
 def convert_nanogpt_weights(old_state_dict, cfg: HookedTransformerConfig):
@@ -108,7 +108,7 @@ from transformer_lens.architecture_adapter.architecture_adapter import (
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 
-class NanoGPTArchitectureAdapter(ModelBridge):
+class NanoGPTArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for NanoGPT models."""
 
     def __init__(self, cfg: HookedTransformerConfig) -> None:

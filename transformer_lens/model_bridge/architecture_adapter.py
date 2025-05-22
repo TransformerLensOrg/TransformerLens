@@ -10,7 +10,7 @@ import torch
 import torch.nn as nn
 from transformers.modeling_utils import PreTrainedModel
 
-from transformer_lens.architecture_adapter.types import (
+from transformer_lens.model_bridge.types import (
     BlockMapping,
     ComponentMapping,
     RemoteComponent,

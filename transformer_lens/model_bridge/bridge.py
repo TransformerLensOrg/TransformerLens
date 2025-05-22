@@ -10,10 +10,8 @@ from typing import Any
 import torch
 import torch.nn as nn
 
-from transformer_lens.architecture_adapter.architecture_adapter import (
-    ArchitectureAdapter,
-)
-from transformer_lens.architecture_adapter.generalized_components import (
+from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
+from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
     BlockBridge,
     EmbeddingBridge,

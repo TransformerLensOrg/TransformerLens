@@ -2,10 +2,8 @@
 
 from typing import Any, Dict
 
-from transformer_lens.architecture_adapter.architecture_adapter import (
-    ArchitectureAdapter,
-)
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
     RearrangeWeightConversion,
     WeightConversionSet,
@@ -17,10 +15,9 @@ from transformer_lens.model_bridge.generalized_components import (
     MLPBridge,
     UnembeddingBridge,
 )
-from transformer_lens.model_bridge.model_bridge import ModelBridge
 
 
-class BloomArchitectureAdapter(ModelBridge):
+class BloomArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for BLOOM models."""
 
     def __init__(self, cfg: HookedTransformerConfig) -> None:

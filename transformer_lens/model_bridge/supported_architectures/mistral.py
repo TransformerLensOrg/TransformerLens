@@ -1,9 +1,7 @@
 """Mistral architecture adapter."""
 
-from transformer_lens.architecture_adapter.architecture_adapter import (
-    ArchitectureAdapter,
-)
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
     RearrangeWeightConversion,
     WeightConversionSet,
@@ -15,10 +13,9 @@ from transformer_lens.model_bridge.generalized_components import (
     MLPBridge,
     UnembeddingBridge,
 )
-from transformer_lens.model_bridge.model_bridge import ModelBridge
 
 
-class MistralArchitectureAdapter(ModelBridge):
+class MistralArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for Mistral models."""
 
     def __init__(self, cfg: HookedTransformerConfig) -> None:

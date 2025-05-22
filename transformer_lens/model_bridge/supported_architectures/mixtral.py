@@ -16,7 +16,7 @@ from transformer_lens.model_bridge.generalized_components import (
 from transformer_lens.model_bridge.model_bridge import ModelBridge
 
 
-class MixtralArchitectureAdapter(ModelBridge):
+class MixtralArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for Mixtral models."""
 
     def __init__(self, cfg: HookedTransformerConfig) -> None:
