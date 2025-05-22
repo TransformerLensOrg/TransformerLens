@@ -1,7 +1,6 @@
 """Llama architecture adapter."""
 
-from transformer_lens.architecture_adapter.conversion_utils.architecture_adapter import (
-    ArchitectureAdapter,
+from transformer_lens.architecture_adapter.architecture_adapter import ArchitectureAdapter
 )
 from transformer_lens.architecture_adapter.conversion_utils.conversion_steps import (
     RearrangeWeightConversion,
@@ -17,7 +16,7 @@ from transformer_lens.architecture_adapter.generalized_components import (
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 
-class LlamaArchitectureAdapter(ArchitectureAdapter):
+class LlamaArchitectureAdapter(ModelBridge):
     """Architecture adapter for Llama models."""
 
     def __init__(self, cfg: HookedTransformerConfig) -> None:

@@ -1,6 +1,6 @@
 """Gemma1 architecture adapter."""
 
-from transformer_lens.architecture_adapter.conversion_utils.architecture_adapter import (
+from transformer_lens.architecture_adapter.architecture_adapter import (
     ArchitectureAdapter,
 )
 from transformer_lens.architecture_adapter.conversion_utils.conversion_steps import (

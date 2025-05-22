@@ -4,8 +4,8 @@ from typing import Any
 
 import torch.nn as nn
 
-from transformer_lens.architecture_adapter.conversion_utils.architecture_adapter import (
-    ArchitectureAdapter,
+from transformer_lens.architecture_adapter.model_bridge import (
+    ModelBridge,
 )
 from transformer_lens.architecture_adapter.generalized_components.base import (
     GeneralizedComponent,
@@ -18,7 +18,7 @@ class MoEBridge(GeneralizedComponent):
     This bridge handles MoE layers that consist of multiple expert MLPs and a router.
     """
 
-    def __init__(self, original_component: nn.Module, name: str, architecture_adapter: ArchitectureAdapter):
+    def __init__(self, original_component: nn.Module, name: str, architecture_adapter: ModelBridge):
         """Initialize the MoE bridge.
         
         Args:

@@ -5,8 +5,7 @@ from typing import Any, cast
 import einops
 import torch
 
-from transformer_lens.architecture_adapter.conversion_utils.architecture_adapter import (
-    ArchitectureAdapter,
+from transformer_lens.architecture_adapter.architecture_adapter import ArchitectureAdapter
 )
 from transformer_lens.architecture_adapter.conversion_utils.conversion_steps import (
     RearrangeWeightConversion,
@@ -94,7 +93,7 @@ def convert_phi3_weights(phi: Any, cfg: HookedTransformerConfig):
     return state_dict
 
 
-class Phi3ArchitectureAdapter(ArchitectureAdapter):
+class Phi3ArchitectureAdapter(ModelBridge):
     """Architecture adapter for Phi-3 models."""
 
     def __init__(self, cfg: HookedTransformerConfig) -> None:

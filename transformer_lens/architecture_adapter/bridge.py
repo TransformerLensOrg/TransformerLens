@@ -10,7 +10,7 @@ from typing import Any
 import torch
 import torch.nn as nn
 
-from transformer_lens.architecture_adapter.conversion_utils.architecture_adapter import (
+from transformer_lens.architecture_adapter.architecture_adapter import (
     ArchitectureAdapter,
 )
 from transformer_lens.architecture_adapter.generalized_components import (
@@ -40,7 +40,7 @@ class TransformerBridge:
             tokenizer: The tokenizer to use (required)
         """
         self.model = model
-        self.adapter = adapter
+        self.bridge = adapter
         self.cfg = adapter.cfg
         self.tokenizer = tokenizer
         
@@ -147,7 +147,7 @@ class TransformerBridge:
         """
         indent_str = "  " * indent
         try:
-            comp = self.adapter.get_component(self.model, path)
+            comp = self.bridge.get_component(self.model, path)
             if hasattr(comp, 'original_component'):
                 return f"{indent_str}{name}: {type(comp).__name__}({type(comp.original_component).__name__})"
             return f"{indent_str}{name}: {type(comp).__name__}"
@@ -189,7 +189,7 @@ class TransformerBridge:
             A string describing the bridge's components
         """
         lines = ["TransformerBridge:"]
-        mapping = self.adapter.get_component_mapping()
+        mapping = self.bridge.get_component_mapping()
         lines.extend(self._format_component_mapping(mapping, indent=1))
         return "\n".join(lines)
         
@@ -322,4 +322,4 @@ class TransformerBridge:
     @property
     def blocks(self):
         # Use the adapter to get the blocks component, for flexibility
-        return self.adapter.get_component(self.model, "blocks") 
+        return self.bridge.get_component(self.model, "blocks") 

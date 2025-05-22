@@ -1,6 +1,6 @@
 """BERT architecture adapter."""
 
-from transformer_lens.architecture_adapter.conversion_utils.architecture_adapter import (
+from transformer_lens.architecture_adapter.architecture_adapter import (
     ArchitectureAdapter,
 )
 from transformer_lens.architecture_adapter.conversion_utils.conversion_steps import (
@@ -14,17 +14,17 @@ from transformer_lens.architecture_adapter.generalized_components import (
     MLPBridge,
     UnembeddingBridge,
 )
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.TransformerLensConfig import TransformerLensConfig
 
 
 class BertArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for BERT models."""
 
-    def __init__(self, cfg: HookedTransformerConfig) -> None:
+    def __init__(self, cfg: TransformerLensConfig) -> None:
         """Initialize the BERT architecture adapter.
 
         Args:
-            cfg: The HookedTransformer configuration.
+            cfg: The TransformerLens configuration.
         """
         super().__init__(cfg)
 

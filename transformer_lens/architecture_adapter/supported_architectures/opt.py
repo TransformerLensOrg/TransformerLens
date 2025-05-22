@@ -1,7 +1,6 @@
 """OPT architecture adapter."""
 
-from transformer_lens.architecture_adapter.conversion_utils.architecture_adapter import (
-    ArchitectureAdapter,
+from transformer_lens.architecture_adapter.architecture_adapter import ArchitectureAdapter
 )
 from transformer_lens.architecture_adapter.conversion_utils.conversion_steps import (
     RearrangeWeightConversion,
@@ -17,7 +16,7 @@ from transformer_lens.architecture_adapter.generalized_components import (
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 
-class OPTArchitectureAdapter(ArchitectureAdapter):
+class OPTArchitectureAdapter(ModelBridge):
     """Architecture adapter for OPT models."""
 
     def __init__(self, cfg: HookedTransformerConfig) -> None:

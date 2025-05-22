@@ -2,8 +2,7 @@
 
 from typing import Any, Dict
 
-from transformer_lens.architecture_adapter.conversion_utils.architecture_adapter import (
-    ArchitectureAdapter,
+from transformer_lens.architecture_adapter.architecture_adapter import ArchitectureAdapter
 )
 from transformer_lens.architecture_adapter.conversion_utils.conversion_steps import (
     RearrangeWeightConversion,
@@ -19,7 +18,7 @@ from transformer_lens.architecture_adapter.generalized_components import (
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 
-class GPT2LMHeadCustomArchitectureAdapter(ArchitectureAdapter):
+class GPT2LMHeadCustomArchitectureAdapter(ModelBridge):
     """Architecture adapter for GPT-2 LM Head Custom models."""
 
     def __init__(self, cfg: HookedTransformerConfig) -> None:
