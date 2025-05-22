@@ -102,9 +102,6 @@ def convert_nanogpt_weights(old_state_dict, cfg: HookedTransformerConfig):
 import torch
 from torch import nn
 
-from transformer_lens.architecture_adapter.architecture_adapter import (
-    ArchitectureAdapter,
-)
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 
