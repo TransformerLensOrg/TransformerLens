@@ -5,11 +5,11 @@ This module provides a factory for creating architecture adapters.
 
 from typing import Any
 
+from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.conversion_utils.architecture_conversion import (
     ArchitectureConversion,
 )
 from transformer_lens.model_bridge.supported_architectures import (
-    ArchitectureAdapter,
     BertArchitectureAdapter,
     BloomArchitectureAdapter,
     Gemma1ArchitectureAdapter,
