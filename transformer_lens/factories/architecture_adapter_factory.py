@@ -82,22 +82,24 @@ class ArchitectureAdapterFactory:
             ValueError: If no adapter is found for the given config.
         """
         # Try to extract architecture name from Hugging Face config
-        architecture = None
+        architectures = []
         if hasattr(cfg, 'original_architecture'):
-            architecture = cfg.original_architecture
-        elif hasattr(cfg, 'architectures') and cfg.architectures:
-            architecture = cfg.architectures[0]
-        elif hasattr(cfg, 'model_type'):
+            architectures.append(cfg.original_architecture)
+        if hasattr(cfg, 'architectures') and cfg.architectures:
+            architectures.extend(cfg.architectures)
+        if hasattr(cfg, 'model_type'):
             # Try to map model_type to a known architecture
             # e.g. 'gemma3' -> 'Gemma3ForCausalLM'
             model_type = cfg.model_type
             # Try to find a matching adapter by model_type
             for arch_name in cls._adapters:
                 if model_type.lower() in arch_name.lower():
-                    architecture = arch_name
-                    break
-        if not architecture:
-            raise ValueError(f"Could not determine architecture from config: {cfg}")
-        if architecture not in cls._adapters:
-            raise ValueError(f"No adapter found for architecture: {architecture}")
-        return cls._adapters[architecture](cfg) 
+                    architectures.append(arch_name)
+
+        # Try each architecture in order
+        for architecture in architectures:
+            if architecture in cls._adapters:
+                return cls._adapters[architecture](cfg)
+
+        # If no architecture was found, raise an error
+        raise ValueError(f"Could not determine architecture from config: {cfg}") 

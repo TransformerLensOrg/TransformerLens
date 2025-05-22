@@ -33,7 +33,8 @@ def boot(
         The bridge to the loaded model.
     """
     hf_config = AutoConfig.from_pretrained(model_name)
-    adapter = ArchitectureAdapterFactory.select_architecture_adapter(hf_config)
+    tl_config = TransformerLensConfig(**hf_config.__dict__)
+    adapter = ArchitectureAdapterFactory.select_architecture_adapter(tl_config)
     default_config = adapter.default_config
     merged_config = {**default_config, **(config or {})}
 
