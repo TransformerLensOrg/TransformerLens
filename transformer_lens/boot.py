@@ -9,9 +9,9 @@ from typing import Any, Dict, Optional
 import torch
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 
-from transformer_lens.architecture_adapter import ArchitectureAdapterFactory
-from transformer_lens.architecture_adapter.bridge import TransformerBridge
 from transformer_lens.HookedTransformer import HookedTransformer
+from transformer_lens.model_bridge import ArchitectureAdapterFactory
+from transformer_lens.model_bridge.bridge import TransformerBridge
 from transformer_lens.TransformerLensConfig import TransformerLensConfig
 
 

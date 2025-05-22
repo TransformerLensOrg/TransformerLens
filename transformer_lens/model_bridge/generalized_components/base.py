@@ -6,8 +6,8 @@ from typing import Any
 import torch
 import torch.nn as nn
 
-from transformer_lens.architecture_adapter.types import RemoteComponent
 from transformer_lens.HookedTransformer import HookPoint
+from transformer_lens.model_bridge.types import RemoteComponent
 
 
 class GeneralizedComponent(nn.Module):

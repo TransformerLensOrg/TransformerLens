@@ -4,15 +4,13 @@ from typing import Any
 
 import torch.nn as nn
 
-from transformer_lens.architecture_adapter.model_bridge import (
-    ModelBridge,
+from transformer_lens.model_bridge.generalized_components.base import (
+    BaseComponentBridge,
 )
-from transformer_lens.architecture_adapter.generalized_components.base import (
-    GeneralizedComponent,
-)
+from transformer_lens.model_bridge.model_bridge import ModelBridge
 
 
-class MoEBridge(GeneralizedComponent):
+class MoEBridge(BaseComponentBridge):
     """Bridge for Mixture of Experts components.
     
     This bridge handles MoE layers that consist of multiple expert MLPs and a router.
