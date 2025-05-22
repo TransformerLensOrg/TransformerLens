@@ -137,6 +137,11 @@ class GroupedQueryAttention(AbstractAttention):
             if self.cfg.ungroup_grouped_query_attention
             else attn_fn(value_input, self._W_V, self._b_V)
         )  # [batch, pos, head_index, d_head]
+
+        if self.cfg.use_qk_norm:
+            q = self.apply_qk_norm(q, self.q_norm_weight)
+            k = self.apply_qk_norm(k, self.k_norm_weight)
+
         return q, k, v
 
     def calculate_attention_scores(
