@@ -1,19 +1,20 @@
 """Bridge components for transformer architectures."""
 
-from transformer_lens.architecture_adapter.generalized_components.attention import (
+from transformer_lens.model_bridge.generalized_components.attention import (
     AttentionBridge,
 )
-from transformer_lens.architecture_adapter.generalized_components.block import (
+from transformer_lens.model_bridge.generalized_components.block import (
     BlockBridge,
 )
-from transformer_lens.architecture_adapter.generalized_components.embedding import (
+from transformer_lens.model_bridge.generalized_components.embedding import (
     EmbeddingBridge,
 )
-from transformer_lens.architecture_adapter.generalized_components.layer_norm import (
+from transformer_lens.model_bridge.generalized_components.layer_norm import (
     LayerNormBridge,
 )
-from transformer_lens.architecture_adapter.generalized_components.mlp import MLPBridge
-from transformer_lens.architecture_adapter.generalized_components.unembedding import (
+from transformer_lens.model_bridge.generalized_components.mlp import MLPBridge
+from transformer_lens.model_bridge.generalized_components.moe import MoEBridge
+from transformer_lens.model_bridge.generalized_components.unembedding import (
     UnembeddingBridge,
 )
 
@@ -23,5 +24,6 @@ __all__ = [
     "EmbeddingBridge",
     "LayerNormBridge",
     "MLPBridge",
+    "MoEBridge",
     "UnembeddingBridge",
 ] 

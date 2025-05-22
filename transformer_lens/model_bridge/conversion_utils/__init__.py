@@ -3,7 +3,7 @@
 This module contains utilities for converting between different model architectures.
 """
 
-from transformer_lens.architecture_adapter.conversion_utils.architecture_conversion import (
+from transformer_lens.model_bridge.conversion_utils.architecture_conversion import (
     ArchitectureConversion,
 )
 

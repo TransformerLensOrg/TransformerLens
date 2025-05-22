@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 
-from transformer_lens.architecture_adapter.conversion_utils.conversion_steps.types import (
+from transformer_lens.model_bridge.conversion_utils.conversion_steps.types import (
     FIELD_SET,
 )
 

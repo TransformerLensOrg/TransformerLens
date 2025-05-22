@@ -1,7 +1,9 @@
 """Neo architecture adapter."""
 
+from transformer_lens.architecture_adapter.architecture_adapter import (
+    ArchitectureAdapter,
+)
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
-from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
     RearrangeWeightConversion,
     WeightConversionSet,
@@ -15,7 +17,7 @@ from transformer_lens.model_bridge.generalized_components import (
 )
 
 
-class NeoArchitectureAdapter(ModelBridge):
+class NeoArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for Neo models."""
 
     def __init__(self, cfg: HookedTransformerConfig) -> None:

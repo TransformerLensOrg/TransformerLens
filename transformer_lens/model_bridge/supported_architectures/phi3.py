@@ -5,20 +5,21 @@ from typing import Any, cast
 import einops
 import torch
 
-from transformer_lens.architecture_adapter.architecture_adapter import ArchitectureAdapter
+from transformer_lens.architecture_adapter.architecture_adapter import (
+    ArchitectureAdapter,
 )
-from transformer_lens.architecture_adapter.conversion_utils.conversion_steps import (
+from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
     RearrangeWeightConversion,
     WeightConversionSet,
 )
-from transformer_lens.architecture_adapter.generalized_components import (
+from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
     EmbeddingBridge,
     LayerNormBridge,
     MLPBridge,
     UnembeddingBridge,
 )
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 
 def convert_phi3_weights(phi: Any, cfg: HookedTransformerConfig):
@@ -93,7 +94,7 @@ def convert_phi3_weights(phi: Any, cfg: HookedTransformerConfig):
     return state_dict
 
 
-class Phi3ArchitectureAdapter(ModelBridge):
+class Phi3ArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for Phi-3 models."""
 
     def __init__(self, cfg: HookedTransformerConfig) -> None:

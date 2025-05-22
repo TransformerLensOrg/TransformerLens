@@ -9,23 +9,23 @@ from typing import Any
 import torch
 from transformers import PreTrainedModel
 
-from transformer_lens.architecture_adapter.conversion_utils.helpers.merge_quantiziation_fields import (
+from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.model_bridge.conversion_utils.helpers.merge_quantiziation_fields import (
     merge_quantization_fields,
 )
-from transformer_lens.architecture_adapter.generalized_components.attention import (
+from transformer_lens.model_bridge.generalized_components.attention import (
     AttentionBridge,
 )
-from transformer_lens.architecture_adapter.generalized_components.embedding import (
+from transformer_lens.model_bridge.generalized_components.embedding import (
     EmbeddingBridge,
 )
-from transformer_lens.architecture_adapter.generalized_components.layer_norm import (
+from transformer_lens.model_bridge.generalized_components.layer_norm import (
     LayerNormBridge,
 )
-from transformer_lens.architecture_adapter.generalized_components.mlp import MLPBridge
-from transformer_lens.architecture_adapter.generalized_components.unembedding import (
+from transformer_lens.model_bridge.generalized_components.mlp import MLPBridge
+from transformer_lens.model_bridge.generalized_components.unembedding import (
     UnembeddingBridge,
 )
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 from .conversion_steps.types import FIELD_SET
 

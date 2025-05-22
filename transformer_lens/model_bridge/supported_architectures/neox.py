@@ -1,22 +1,23 @@
 """NeoX architecture adapter."""
 
-from transformer_lens.architecture_adapter.architecture_adapter import ArchitectureAdapter
+from transformer_lens.architecture_adapter.architecture_adapter import (
+    ArchitectureAdapter,
 )
-from transformer_lens.architecture_adapter.conversion_utils.conversion_steps import (
+from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
     RearrangeWeightConversion,
     WeightConversionSet,
 )
-from transformer_lens.architecture_adapter.generalized_components import (
+from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
     EmbeddingBridge,
     LayerNormBridge,
     MLPBridge,
     UnembeddingBridge,
 )
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 
-class NeoXArchitectureAdapter(ModelBridge):
+class NeoXArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for NeoX models."""
 
     def __init__(self, cfg: HookedTransformerConfig) -> None:

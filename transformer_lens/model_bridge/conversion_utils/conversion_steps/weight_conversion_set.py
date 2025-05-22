@@ -4,13 +4,13 @@ from typing import Any
 
 import torch
 
-from transformer_lens.architecture_adapter.conversion_utils.conversion_steps.base_weight_conversion import (
+from transformer_lens.model_bridge.conversion_utils.conversion_steps.base_weight_conversion import (
     BaseWeightConversion,
 )
-from transformer_lens.architecture_adapter.conversion_utils.helpers.find_property import (
+from transformer_lens.model_bridge.conversion_utils.helpers.find_property import (
     find_property,
 )
-from transformer_lens.architecture_adapter.conversion_utils.weight_conversion_utils import (
+from transformer_lens.model_bridge.conversion_utils.weight_conversion_utils import (
     get_weight_conversion_field_set,
 )
 

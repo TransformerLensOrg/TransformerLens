@@ -1,7 +1,20 @@
 import einops
 import torch
+from torch import nn
 
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
+    RearrangeWeightConversion,
+    WeightConversionSet,
+)
+from transformer_lens.model_bridge.generalized_components import (
+    AttentionBridge,
+    EmbeddingBridge,
+    LayerNormBridge,
+    MLPBridge,
+    UnembeddingBridge,
+)
+from transformer_lens.model_bridge.model_bridge import ModelBridge
 
 
 def convert_nanogpt_weights(old_state_dict, cfg: HookedTransformerConfig):
@@ -12,6 +25,10 @@ def convert_nanogpt_weights(old_state_dict, cfg: HookedTransformerConfig):
     is no bias. This function can handle both cases."""
 
     new_state_dict = {}
+    bias = False
+    if "transformer.ln_f.bias" in old_state_dict:
+        bias = True
+
     # new_state_dict["pos_embed.W_pos"] = old_state_dict["transformer.wpe.weight"]
     # new_state_dict["embed.W_E"] = old_state_dict["transformer.wte.weight"]
 
@@ -85,18 +102,8 @@ def convert_nanogpt_weights(old_state_dict, cfg: HookedTransformerConfig):
 import torch
 from torch import nn
 
-from transformer_lens.architecture_adapter.architecture_adapter import ArchitectureAdapter
-)
-from transformer_lens.architecture_adapter.conversion_utils.conversion_steps import (
-    RearrangeWeightConversion,
-    WeightConversionSet,
-)
-from transformer_lens.architecture_adapter.generalized_components import (
-    AttentionBridge,
-    EmbeddingBridge,
-    LayerNormBridge,
-    MLPBridge,
-    UnembeddingBridge,
+from transformer_lens.architecture_adapter.architecture_adapter import (
+    ArchitectureAdapter,
 )
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 

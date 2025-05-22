@@ -8,10 +8,10 @@ from typing import Any
 import torch
 import torch.nn as nn
 
-from transformer_lens.architecture_adapter.generalized_components.base import (
+from transformer_lens.hook_points import HookPoint
+from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
-from transformer_lens.hook_points import HookPoint
 
 
 class EmbeddingBridge(GeneralizedComponent):

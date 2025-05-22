@@ -1,69 +1,40 @@
-"""Architecture adapter module.
+"""Model bridge module.
 
-This module provides functionality to adapt different transformer architectures to a common interface.
+This module provides functionality to bridge between different model architectures.
 """
 
-from transformer_lens.architecture_adapter.architecture_adapter import (
+from transformer_lens.factories.architecture_adapter_factory import (
+    ArchitectureAdapterFactory,
+)
+from transformer_lens.model_bridge.architecture_adapter import (
     ArchitectureAdapter,
 )
-from transformer_lens.architecture_adapter.bridge import TransformerBridge
-from transformer_lens.architecture_adapter.conversion_utils.architecture_conversion import (
-    ArchitectureConversion,
+from transformer_lens.model_bridge.bridge import (
+    TransformerBridge,
 )
-from transformer_lens.architecture_adapter.supported_architectures import (
-    BertArchitectureAdapter,
-    BloomArchitectureAdapter,
-    Gemma1ArchitectureAdapter,
-    Gemma2ArchitectureAdapter,
-    Gemma3ArchitectureAdapter,
-    GPT2ArchitectureAdapter,
-    GPT2LMHeadCustomArchitectureAdapter,
-    GPTJArchitectureAdapter,
-    LlamaArchitectureAdapter,
-    MinGPTArchitectureAdapter,
-    MistralArchitectureAdapter,
-    MixtralArchitectureAdapter,
-    NanoGPTArchitectureAdapter,
-    NeelSoluOldArchitectureAdapter,
-    NeoArchitectureAdapter,
-    NeoXArchitectureAdapter,
-    OPTArchitectureAdapter,
-    Phi3ArchitectureAdapter,
-    PhiArchitectureAdapter,
-    Qwen2ArchitectureAdapter,
-    QwenArchitectureAdapter,
-    T5ArchitectureAdapter,
+from transformer_lens.model_bridge.generalized_components import (
+    AttentionBridge,
+    BlockBridge,
+    EmbeddingBridge,
+    LayerNormBridge,
+    MLPBridge,
+    MoEBridge,
+    UnembeddingBridge,
 )
-from transformer_lens.factories.architecture_adapter_factory import (
-    SUPPORTED_ARCHITECTURES,
-    ArchitectureAdapterFactory,
+from transformer_lens.model_bridge.model_bridge import (
+    ModelBridge,
 )
 
 __all__ = [
     "ArchitectureAdapter",
     "ArchitectureAdapterFactory",
-    "ArchitectureConversion",
     "TransformerBridge",
-    "BertArchitectureAdapter",
-    "BloomArchitectureAdapter",
-    "Gemma1ArchitectureAdapter",
-    "Gemma2ArchitectureAdapter",
-    "Gemma3ArchitectureAdapter",
-    "GPT2ArchitectureAdapter",
-    "GPT2LMHeadCustomArchitectureAdapter",
-    "GPTJArchitectureAdapter",
-    "LlamaArchitectureAdapter",
-    "MinGPTArchitectureAdapter",
-    "MistralArchitectureAdapter",
-    "MixtralArchitectureAdapter",
-    "NanoGPTArchitectureAdapter",
-    "NeelSoluOldArchitectureAdapter",
-    "NeoArchitectureAdapter",
-    "NeoXArchitectureAdapter",
-    "OPTArchitectureAdapter",
-    "Phi3ArchitectureAdapter",
-    "PhiArchitectureAdapter",
-    "Qwen2ArchitectureAdapter",
-    "QwenArchitectureAdapter",
-    "T5ArchitectureAdapter",
+    "AttentionBridge",
+    "BlockBridge",
+    "EmbeddingBridge",
+    "LayerNormBridge",
+    "MLPBridge",
+    "MoEBridge",
+    "UnembeddingBridge",
+    "ModelBridge",
 ]
