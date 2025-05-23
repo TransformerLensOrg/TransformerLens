@@ -40,7 +40,7 @@ def test_weight_conversion_set_basic_tensor_and_str():
         "pos_embed": "pos_embed.weight",  # property to look up in input_value
     }
 
-    conversion_set = WeightConversionSet(weights=field_set)
+    conversion_set = WeightConversionSet(fields=field_set)
 
     # Suppose the input_value is a dictionary or object that find_property can parse
     input_value = {
@@ -65,7 +65,7 @@ def test_weight_conversion_set_tuple_subconversion():
     """
     mock_sub = MockSubConversion()
     field_set = {"layer_0_attn": ("attn_proj.weight", mock_sub)}
-    conversion_set = WeightConversionSet(weights=field_set)
+    conversion_set = WeightConversionSet(fields=field_set)
 
     # We'll store "attn_proj.weight" in our input_value so find_property can retrieve it
     input_value = {"attn_proj": {"weight": torch.tensor([1.0, 2.0])}}
@@ -86,7 +86,7 @@ def test_weight_conversion_set_process_conversion_action_tensor():
     Tests process_conversion_action for a direct tensor.
     """
     field_set = {"some_weight": torch.tensor([5.0])}
-    conversion_set = WeightConversionSet(field_set)
+    conversion_set = WeightConversionSet(fields=field_set)
 
     input_value = {}  # not used for direct tensor
     output = conversion_set.convert(input_value)
@@ -100,7 +100,7 @@ def test_weight_conversion_set_process_conversion_action_str_property():
     with a nested dict.
     """
     field_set = {"some_str_key": "my_field.data"}
-    conversion_set = WeightConversionSet(field_set)
+    conversion_set = WeightConversionSet(fields=field_set)
 
     input_value = {"my_field": {"data": torch.tensor([42.0])}}
     output = conversion_set.convert(input_value)
@@ -114,7 +114,7 @@ def test_weight_conversion_set_process_conversion_action_tuple():
     """
     mock_sub = MockSubConversion()
     field_set = {"my_tuple_key": ("fieldA", mock_sub)}
-    conversion_set = WeightConversionSet(field_set)
+    conversion_set = WeightConversionSet(fields=field_set)
 
     input_value = {"fieldA": torch.tensor([0.0])}
     output = conversion_set.convert(input_value)
@@ -136,7 +136,7 @@ def test_weight_conversion_set_repr():
         "layer_0_attn": ("attn_proj.weight", mock_sub),
     }
 
-    conversion_set = WeightConversionSet(field_set)
+    conversion_set = WeightConversionSet(fields=field_set)
     rep_str = repr(conversion_set).lower()
 
     assert (
