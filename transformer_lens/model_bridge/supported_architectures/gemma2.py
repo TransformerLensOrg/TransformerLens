@@ -41,7 +41,7 @@ class Gemma2ArchitectureAdapter(ArchitectureAdapter):
                 "blocks.{i}.ln1_post.w": "model.layers.{i}.post_attention_layernorm.weight",
                 "blocks.{i}.attn.W_Q": (
                     "model.layers.{i}.self_attn.q_proj.weight",
-                    RearrangeWeightConversion("(n h) m->n m h", n=cfg.n_heads),
+                    RearrangeWeightConversion("(n h) m->n m h", n=cfg.num_attention_heads),
                 ),
                 "blocks.{i}.attn._W_K": (
                     "model.layers.{i}.self_attn.k_proj.weight",
@@ -53,7 +53,7 @@ class Gemma2ArchitectureAdapter(ArchitectureAdapter):
                 ),
                 "blocks.{i}.attn.W_O": (
                     "model.layers.{i}.self_attn.o_proj.weight",
-                    RearrangeWeightConversion("m (n h)->n h m", n=cfg.n_heads),
+                    RearrangeWeightConversion("m (n h)->n h m", n=cfg.num_attention_heads),
                 ),
                 "blocks.{i}.ln2.w": "model.layers.{i}.pre_feedforward_layernorm.weight",
                 "blocks.{i}.ln2_post.w": "model.layers.{i}.post_feedforward_layernorm.weight",
