@@ -5,8 +5,8 @@ Base configuration class for TransformerLens models.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any, Dict, List
+from dataclasses import dataclass
+from typing import Any, Dict, Optional
 
 import torch
 
@@ -31,26 +31,22 @@ class TransformerLensConfig:
         eps (float): The epsilon value to use for layer normalization. Defaults to 1e-5.
         device (str): The device to use for the model. Defaults to 'cuda' if available, else 'cpu'.
         dtype (torch.dtype): The model's dtype. Defaults to torch.float32.
-        architectures (List[str]): List of model architectures. Defaults to empty list.
     """
     
-    # Core TransformerLens parameters
     d_model: int
     d_head: int
     n_layers: int
     n_ctx: int
     n_heads: int = -1
-    d_mlp: int | None = None
+    d_mlp: Optional[int] = None
     d_vocab: int = -1
-    act_fn: str | None = None
+    act_fn: Optional[str] = None
     eps: float = 1e-5
-    device: str | None = None
+    device: Optional[str] = None
     dtype: torch.dtype = torch.float32
-    architectures: List[str] = field(default_factory=list)
 
     def __post_init__(self):
         """Post initialization processing."""
-        # Set core parameters if not specified
         if self.n_heads == -1:
             self.n_heads = self.d_model // self.d_head
             
@@ -64,7 +60,7 @@ class TransformerLensConfig:
             self.d_mlp = self.d_model * 4
 
     @classmethod
-    def from_dict(cls, config_dict: Dict[str, Any]) -> "TransformerLensConfig":
+    def from_dict(cls, config_dict: Dict[str, Any]) -> TransformerLensConfig:
         """Create a config from a dictionary.
         
         Args:
