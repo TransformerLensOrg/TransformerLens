@@ -45,20 +45,6 @@ class TransformerLensConfig:
     device: Optional[str] = None
     dtype: torch.dtype = torch.float32
 
-    def __post_init__(self):
-        """Post initialization processing."""
-        if self.n_heads == -1:
-            self.n_heads = self.d_model // self.d_head
-            
-            if not self.d_model % self.d_head == 0:
-                raise ValueError(
-                    f"d_model {self.d_model} is not divisible by d_head {self.d_head}."
-                    f"n_heads was inferred to be {self.n_heads}, rounding down the ratio."
-                )
-                
-        if self.d_mlp is None:
-            self.d_mlp = self.d_model * 4
-
     @classmethod
     def from_dict(cls, config_dict: Dict[str, Any]) -> TransformerLensConfig:
         """Create a config from a dictionary.
