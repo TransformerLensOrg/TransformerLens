@@ -1,5 +1,14 @@
-"""BERT architecture adapter."""
+"""BERT architecture adapter.
 
+This module provides the architecture adapter for BERT models.
+"""
+
+from typing import Any, Dict, Optional
+
+import torch
+from transformers import PreTrainedModel
+
+from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
     RearrangeWeightConversion,
@@ -12,17 +21,16 @@ from transformer_lens.model_bridge.generalized_components import (
     MLPBridge,
     UnembeddingBridge,
 )
-from transformer_lens.TransformerLensConfig import TransformerLensConfig
 
 
 class BertArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for BERT models."""
 
-    def __init__(self, cfg: TransformerLensConfig) -> None:
+    def __init__(self, cfg: HookedTransformerConfig) -> None:
         """Initialize the BERT architecture adapter.
 
         Args:
-            cfg: The TransformerLens configuration.
+            cfg: The HookedTransformer configuration.
         """
         super().__init__(cfg)
 

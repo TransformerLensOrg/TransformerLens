@@ -16,18 +16,32 @@ import numpy as np
 import torch
 
 import transformer_lens.utilities.devices as device_utils
-from transformer_lens.TransformerLensConfig import TransformerLensConfig
 from transformer_lens.utilities.activation_functions import SUPPORTED_ACTIVATIONS
 
 
 @dataclass
-class HookedTransformerConfig(TransformerLensConfig):
+class HookedTransformerConfig:
     """
     Configuration class to store the configuration of a HookedTransformer model.
 
     See further_comments.md for more details on the more complex arguments.
 
     Args:
+        d_model (int): The dimensionality of the embeddings.
+        d_head (int): The dimensionality of each attention head.
+        n_layers (int): The number of transformer blocks (one block = one attn layer AND one MLP layer).
+        n_ctx (int): The maximum sequence length.
+        n_heads (int): The number of attention heads. If not
+            specified, will be set to d_model // d_head. (This is represented by a default value of -1)
+        d_mlp (int, *optional*): The dimensionality of the feedforward mlp
+            network. Defaults to 4 * d_model, and in an attn-only model is None.
+        d_vocab (int): The size of the vocabulary. Defaults to -1, which means not set. If not set, will be
+            automatically set from the tokenizer's vocab size.
+        act_fn (str, *optional*): The activation function to use. Always
+            lowercase. Supports ['relu', 'gelu', 'silu', 'gelu_new', 'solu_ln',
+            'gelu_fast']. Must be set unless using an attn-only model.
+        eps (float): The epsilon value to use for layer normalization. Defaults
+            to 1e-5
         use_attn_result (bool): whether to explicitly calculate the amount
             each head adds to the residual stream (with a hook) and THEN add it
             up, vs just calculating the sum. This can be very memory intensive
@@ -44,8 +58,6 @@ class HookedTransformerConfig(TransformerLensConfig):
             grouped query attention.
         attn_scale (float): The amount to divide attention scores by (if applicable). Defaults to
             sqrt(d_head)
-        model_name (str): the name of the model, used to load
-            weights from HuggingFace or initialized to "custom" if not passed
         original_architecture (str, *optional*): the family of the model, used
         to help load
             weights from HuggingFace or initialized to "custom" if not passed
@@ -177,6 +189,16 @@ class HookedTransformerConfig(TransformerLensConfig):
             Defaults to 8.0.
     """
 
+    d_model: int
+    n_layers: int
+    n_ctx: int
+    d_head: int
+    n_heads: int = -1
+    d_mlp: Optional[int] = None
+    d_vocab: int = -1
+    act_fn: Optional[str] = None
+    eps: float = 1e-5
+    model_name: str = "custom"
     use_attn_result: bool = False
     use_split_qkv_input: bool = False
     use_hook_mlp_in: bool = False
@@ -184,7 +206,6 @@ class HookedTransformerConfig(TransformerLensConfig):
     use_attn_scale: bool = True
     ungroup_grouped_query_attention: bool = False
     attn_scale: float = -1.0
-    model_name: str = "custom"
     original_architecture: Optional[str] = None
     from_checkpoint: bool = False
     checkpoint_index: Optional[int] = None
@@ -235,9 +256,6 @@ class HookedTransformerConfig(TransformerLensConfig):
 
     def __post_init__(self):
         """Post initialization processing."""
-        # Call parent's post_init first
-        super().__post_init__()
-        
         if self.seed is not None:
             self.set_seed_everywhere(self.seed)
         if self.use_local_attn:

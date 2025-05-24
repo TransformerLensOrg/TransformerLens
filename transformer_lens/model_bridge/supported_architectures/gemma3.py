@@ -1,5 +1,11 @@
 """Gemma3 architecture adapter."""
 
+from typing import Any, Dict, Optional
+
+import torch
+from transformers import PreTrainedModel
+
+from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
     RearrangeWeightConversion,
@@ -12,17 +18,16 @@ from transformer_lens.model_bridge.generalized_components import (
     MLPBridge,
     UnembeddingBridge,
 )
-from transformer_lens.TransformerLensConfig import TransformerLensConfig
 
 
 class Gemma3ArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for Gemma3 models."""
 
-    def __init__(self, cfg: TransformerLensConfig) -> None:
+    def __init__(self, cfg: HookedTransformerConfig) -> None:
         """Initialize the Gemma3 architecture adapter.
 
         Args:
-            cfg: The TransformerLens configuration.
+            cfg: The HookedTransformer configuration.
         """
         super().__init__(cfg)
 

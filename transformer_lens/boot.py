@@ -10,9 +10,9 @@ import torch
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 
 from transformer_lens.HookedTransformer import HookedTransformer
+from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.model_bridge import ArchitectureAdapterFactory
 from transformer_lens.model_bridge.bridge import TransformerBridge
-from transformer_lens.TransformerLensConfig import TransformerLensConfig
 
 
 def boot(

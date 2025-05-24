@@ -10,6 +10,7 @@ import torch
 import torch.nn as nn
 from transformers.modeling_utils import PreTrainedModel
 
+from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.model_bridge.types import (
     BlockMapping,
     ComponentMapping,
@@ -19,7 +20,6 @@ from transformer_lens.model_bridge.types import (
     RemotePath,
     TransformerLensPath,
 )
-from transformer_lens.TransformerLensConfig import TransformerLensConfig
 
 
 class ArchitectureAdapter:
@@ -30,7 +30,7 @@ class ArchitectureAdapter:
     (for initializing weights from one format to another).
     """
 
-    def __init__(self, cfg: TransformerLensConfig):
+    def __init__(self, cfg: HookedTransformerConfig):
         """Initialize the architecture adapter.
 
         Args:
