@@ -81,16 +81,12 @@ class PythiaArchitectureAdapter(ArchitectureAdapter):
             "blocks": (
                 "gpt_neox.layers",  # Base path for blocks
                 {
-                    "ln1": ("input_layernorm", LayerNormBridge),  # Pre-attention layer norm
-                    "ln2": ("post_attention_layernorm", LayerNormBridge),  # Pre-MLP layer norm
-                    "attn": ("attention", AttentionBridge),  # Full attention module
-                    "attn.query_key_value": ("attention.query_key_value", AttentionBridge),  # Combined QKV projection
-                    "attn.dense": ("attention.dense", AttentionBridge),  # Output projection
+                    "ln1": ("ln_1", LayerNormBridge),  # Pre-attention layer norm
+                    "ln2": ("ln_2", LayerNormBridge),  # Pre-MLP layer norm
+                    "attn": ("attn", AttentionBridge),  # Full attention module
                     "mlp": ("mlp", MLPBridge),  # Full MLP module
-                    "mlp.dense_h_to_4h": ("mlp.dense_h_to_4h", MLPBridge),  # First linear layer
-                    "mlp.dense_4h_to_h": ("mlp.dense_4h_to_h", MLPBridge),  # Second linear layer
                 },
             ),
-            "ln_final": ("gpt_neox.final_layer_norm", LayerNormBridge),  # Final layer norm
+            "ln_final": ("transformer.ln_f", LayerNormBridge),  # Final layer norm
             "unembed": ("embed_out", UnembeddingBridge),  # Language model head
         } 
