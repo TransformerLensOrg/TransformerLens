@@ -84,8 +84,6 @@ class NeelSoluOldArchitectureAdapter(ArchitectureAdapter):
                     "attn": ("attn", AttentionBridge),  # Full attention module
                     "attn.c_attn": ("attn.c_attn", AttentionBridge),  # QKV projection
                     "mlp": ("mlp", MLPBridge),  # Full MLP module
-                    "mlp.c_fc": ("mlp.c_fc", MLPBridge),  # First linear layer
-                    "mlp.c_proj": ("mlp.c_proj", MLPBridge),  # Second linear layer
                 },
             ),
             "ln_final": ("transformer.ln_f", LayerNormBridge),  # Final layer norm
