@@ -5,9 +5,6 @@ from transformer_lens.model_bridge.conversion_utils.conversion_steps.arithmetic_
     ArithmeticWeightConversion,
     OperationTypes,
 )
-from transformer_lens.model_bridge.conversion_utils.conversion_steps.base_weight_conversion import (
-    BaseWeightConversion,
-)
 
 
 @pytest.mark.parametrize(

@@ -10,4 +10,4 @@ from transformer_lens.model_bridge.conversion_utils.helpers.merge_quantiziation_
 __all__ = [
     "find_property",
     "merge_quantization_fields",
-] 
+]

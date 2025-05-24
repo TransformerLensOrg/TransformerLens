@@ -1,6 +1,5 @@
 """Qwen architecture adapter."""
 
-from typing import Any, Dict
 
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter

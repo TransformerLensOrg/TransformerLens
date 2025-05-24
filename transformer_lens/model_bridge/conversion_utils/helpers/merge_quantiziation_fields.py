@@ -3,13 +3,7 @@
 This module contains helper functions for merging quantization fields.
 """
 
-from typing import Any, Dict, List, Optional, Tuple, Union
-
-import torch
-
-from transformer_lens.model_bridge.conversion_utils.conversion_steps.types import (
-    FIELD_SET,
-)
+from typing import Any
 
 
 def merge_quantization_fields(field_set: Any, quantization_fields: dict[str, Any]) -> Any:

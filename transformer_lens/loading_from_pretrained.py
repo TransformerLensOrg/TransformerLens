@@ -60,6 +60,7 @@ NEED_REMOTE_CODE_MODELS = (
     "microsoft/phi-4",
 )
 
+
 def make_model_alias_map() -> dict[str, str]:
     """
     Converts OFFICIAL_MODEL_NAMES (the list of actual model names on
@@ -74,6 +75,7 @@ def make_model_alias_map() -> dict[str, str]:
         model_alias_map[official_model_name.lower()] = official_model_name
     return model_alias_map
 
+
 def get_official_model_name(model_name: str) -> str:
     """
     Returns the official model name for a given model name (or alias).
@@ -85,6 +87,7 @@ def get_official_model_name(model_name: str) -> str:
             f"{model_name} not found. Valid official model names (excl aliases): {OFFICIAL_MODEL_NAMES}"
         )
     return official_model_name
+
 
 def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
     """

@@ -3,7 +3,6 @@
 from collections.abc import Callable
 from typing import Any, TypeAlias
 
-import torch
 import torch.nn as nn
 
 # Type aliases for paths
@@ -12,9 +11,13 @@ RemotePath: TypeAlias = str  # Path in the remote model format (e.g. "transforme
 
 # Component mapping types
 RemoteImport: TypeAlias = tuple[RemotePath, Callable[..., Any]]  # Path and component factory
-ComponentLayer: TypeAlias = dict[TransformerLensPath, RemoteImport]  # Maps TransformerLens components to remote components
+ComponentLayer: TypeAlias = dict[
+    TransformerLensPath, RemoteImport
+]  # Maps TransformerLens components to remote components
 BlockMapping: TypeAlias = tuple[RemotePath, ComponentLayer]  # Maps a block and its components
-ComponentMapping: TypeAlias = dict[TransformerLensPath, RemoteImport | BlockMapping]  # Complete component mapping
+ComponentMapping: TypeAlias = dict[
+    TransformerLensPath, RemoteImport | BlockMapping
+]  # Complete component mapping
 
 RemoteModel: TypeAlias = nn.Module
-RemoteComponent: TypeAlias = nn.Module 
+RemoteComponent: TypeAlias = nn.Module

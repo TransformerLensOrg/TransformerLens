@@ -1,9 +1,5 @@
 """Gemma2 architecture adapter."""
 
-from typing import Any, Dict, Optional
-
-import torch
-from transformers import PreTrainedModel
 
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
@@ -77,13 +73,22 @@ class Gemma2ArchitectureAdapter(ArchitectureAdapter):
                 "model.layers",  # Base path for blocks
                 {
                     "ln1": ("input_layernorm", LayerNormBridge),  # Pre-attention layer norm
-                    "ln1_post": ("post_attention_layernorm", LayerNormBridge),  # Post-attention layer norm
+                    "ln1_post": (
+                        "post_attention_layernorm",
+                        LayerNormBridge,
+                    ),  # Post-attention layer norm
                     "attn": ("self_attn", AttentionBridge),  # Full attention module
                     "ln2": ("pre_feedforward_layernorm", LayerNormBridge),  # Pre-MLP layer norm
-                    "ln2_post": ("post_feedforward_layernorm", LayerNormBridge),  # Post-MLP layer norm
+                    "ln2_post": (
+                        "post_feedforward_layernorm",
+                        LayerNormBridge,
+                    ),  # Post-MLP layer norm
                     "mlp": ("mlp", MLPBridge),  # Full MLP module
                 },
             ),
             "ln_final": ("model.norm", LayerNormBridge),  # Final layer norm
-            "unembed": ("lm_head", UnembeddingBridge),  # Language model head (not shared with embed)
-        } 
+            "unembed": (
+                "lm_head",
+                UnembeddingBridge,
+            ),  # Language model head (not shared with embed)
+        }

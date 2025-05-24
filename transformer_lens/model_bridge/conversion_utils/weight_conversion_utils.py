@@ -42,6 +42,7 @@ def get_weight_conversion_field_set(weights: dict) -> str:
             conversion_string += f'"{transformer_lens_weight}" -> "{hugging_face_weight}",\n'
     return conversion_string
 
+
 def model_info_cfg(cfg):
     """
     Displays the weight conversion from HuggingFace to TransformerLens for a given model configuration.
@@ -57,6 +58,7 @@ def model_info_cfg(cfg):
     weight_conversion = WeightConversionFactory.select_weight_conversion_config(cfg)
     print(f"Weight conversion details for architecture {cfg.original_architecture}:")
     print(weight_conversion.__repr__())
+
 
 def model_info(model_name):
     """

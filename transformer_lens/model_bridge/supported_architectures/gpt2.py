@@ -36,15 +36,21 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
                 "blocks.{i}.ln2.b": "transformer.h.{i}.ln_2.bias",
                 "blocks.{i}.attn.W_Q": (
                     "transformer.h.{i}.attn.c_attn.weight",
-                    RearrangeWeightConversion("d_model (3 n_head d_head) -> 3 n_head d_head d_model"),
+                    RearrangeWeightConversion(
+                        "d_model (3 n_head d_head) -> 3 n_head d_head d_model"
+                    ),
                 ),
                 "blocks.{i}.attn.W_K": (
                     "transformer.h.{i}.attn.c_attn.weight",
-                    RearrangeWeightConversion("d_model (3 n_head d_head) -> 3 n_head d_head d_model"),
+                    RearrangeWeightConversion(
+                        "d_model (3 n_head d_head) -> 3 n_head d_head d_model"
+                    ),
                 ),
                 "blocks.{i}.attn.W_V": (
                     "transformer.h.{i}.attn.c_attn.weight",
-                    RearrangeWeightConversion("d_model (3 n_head d_head) -> 3 n_head d_head d_model"),
+                    RearrangeWeightConversion(
+                        "d_model (3 n_head d_head) -> 3 n_head d_head d_model"
+                    ),
                 ),
                 "blocks.{i}.attn.b_Q": (
                     "transformer.h.{i}.attn.c_attn.bias",

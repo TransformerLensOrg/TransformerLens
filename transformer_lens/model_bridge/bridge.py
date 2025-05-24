@@ -23,7 +23,7 @@ from transformer_lens.model_bridge.generalized_components import (
 
 class TransformerBridge:
     """Bridge between HuggingFace and HookedTransformer models.
-    
+
     This class provides a standardized interface to access components of a transformer
     model, regardless of the underlying architecture. It uses an architecture adapter
     to map between the HookedTransformer and HuggingFace model structures.
@@ -31,7 +31,7 @@ class TransformerBridge:
 
     def __init__(self, model: nn.Module, adapter: ArchitectureAdapter, tokenizer: Any):
         """Initialize the bridge.
-        
+
         Args:
             model: The model to bridge (must be a PyTorch nn.Module)
             adapter: The architecture adapter to use
@@ -41,30 +41,32 @@ class TransformerBridge:
         self.bridge = adapter
         self.cfg = adapter.cfg
         self.tokenizer = tokenizer
-        
-        if not hasattr(adapter, 'component_mapping') or adapter.component_mapping is None:
+
+        if not hasattr(adapter, "component_mapping") or adapter.component_mapping is None:
             raise ValueError("Adapter must have a component_mapping attribute")
-        
+
         # Get and replace components in the model
         embed = adapter.get_component(model, "embed")
         if not isinstance(embed, EmbeddingBridge):
-            embed = EmbeddingBridge(original_component=embed, name="embed", architecture_adapter=adapter)
+            embed = EmbeddingBridge(
+                original_component=embed, name="embed", architecture_adapter=adapter
+            )
             # Replace in model using component mapping
             path = adapter.translate_transformer_lens_path("embed")
             self._set_by_path(model, path, embed)
         self.embed = embed
-        
+
         # Use num_hidden_layers for Hugging Face configs, fallback to n_layers
-        n_layers = getattr(self.cfg, 'num_hidden_layers', getattr(self.cfg, 'n_layers', None))
+        n_layers = getattr(self.cfg, "num_hidden_layers", getattr(self.cfg, "n_layers", None))
         if n_layers is None:
-            raise AttributeError('Config has neither num_hidden_layers nor n_layers')
-            
+            raise AttributeError("Config has neither num_hidden_layers nor n_layers")
+
         # Create ModuleList for blocks
         block_bridges = nn.ModuleList()
-        
+
         # Get the blocks path and component
         blocks = adapter.get_component(model, "blocks")
-        
+
         # Build blocks
         for i in range(n_layers):
             # Get block components
@@ -72,51 +74,65 @@ class TransformerBridge:
             ln2 = adapter.get_component(model, f"blocks.{i}.ln2")
             # Wrap layer norms with bridge
             if not isinstance(ln1, LayerNormBridge):
-                ln1 = LayerNormBridge(original_component=ln1, name=f"blocks.{i}.ln1", architecture_adapter=adapter)
+                ln1 = LayerNormBridge(
+                    original_component=ln1, name=f"blocks.{i}.ln1", architecture_adapter=adapter
+                )
                 path = adapter.translate_transformer_lens_path(f"blocks.{i}.ln1")
                 self._set_by_path(model, path, ln1)
             if not isinstance(ln2, LayerNormBridge):
-                ln2 = LayerNormBridge(original_component=ln2, name=f"blocks.{i}.ln2", architecture_adapter=adapter)
+                ln2 = LayerNormBridge(
+                    original_component=ln2, name=f"blocks.{i}.ln2", architecture_adapter=adapter
+                )
                 path = adapter.translate_transformer_lens_path(f"blocks.{i}.ln2")
                 self._set_by_path(model, path, ln2)
             attn = adapter.get_component(model, f"blocks.{i}.attn")
             if not isinstance(attn, AttentionBridge):
-                attn = AttentionBridge(original_component=attn, name=f"blocks.{i}.attn", architecture_adapter=adapter)
+                attn = AttentionBridge(
+                    original_component=attn, name=f"blocks.{i}.attn", architecture_adapter=adapter
+                )
                 path = adapter.translate_transformer_lens_path(f"blocks.{i}.attn")
                 self._set_by_path(model, path, attn)
             mlp = adapter.get_component(model, f"blocks.{i}.mlp")
             if not isinstance(mlp, MLPBridge):
-                mlp = MLPBridge(original_component=mlp, name=f"blocks.{i}.mlp", architecture_adapter=adapter)
+                mlp = MLPBridge(
+                    original_component=mlp, name=f"blocks.{i}.mlp", architecture_adapter=adapter
+                )
                 path = adapter.translate_transformer_lens_path(f"blocks.{i}.mlp")
                 self._set_by_path(model, path, mlp)
-                
+
             # Create block bridge with the actual block layer
-            block_bridge = BlockBridge(original_component=blocks[i], name=f"blocks.{i}", architecture_adapter=adapter)
+            block_bridge = BlockBridge(
+                original_component=blocks[i], name=f"blocks.{i}", architecture_adapter=adapter
+            )
             block_bridges.append(block_bridge)
-            
+
         path = adapter.translate_transformer_lens_path("blocks")
         self._set_by_path(model, path, block_bridges)
-        
+
         # Get final components
         ln_final = adapter.get_component(model, "ln_final")
         if not isinstance(ln_final, LayerNormBridge):
-            ln_final = LayerNormBridge(original_component=ln_final, name="ln_final", architecture_adapter=adapter)
+            ln_final = LayerNormBridge(
+                original_component=ln_final, name="ln_final", architecture_adapter=adapter
+            )
             # Replace in model using component mapping
             path = adapter.translate_transformer_lens_path("ln_final")
             self._set_by_path(model, path, ln_final)
         self.ln_final = ln_final
-        
+
         unembed = adapter.get_component(model, "unembed")
         if not isinstance(unembed, UnembeddingBridge):
-            unembed = UnembeddingBridge(original_component=unembed, name="unembed", architecture_adapter=adapter)
+            unembed = UnembeddingBridge(
+                original_component=unembed, name="unembed", architecture_adapter=adapter
+            )
             # Replace in model using component mapping
             path = adapter.translate_transformer_lens_path("unembed")
             self._set_by_path(model, path, unembed)
         self.unembed = unembed
-        
+
     def _set_by_path(self, obj: Any, path: str, value: Any) -> None:
         """Set a value in an object by its path.
-        
+
         Args:
             obj: The object to modify
             path: The dot-separated path to the attribute
@@ -131,35 +147,37 @@ class TransformerBridge:
             else:
                 obj = getattr(obj, part)
         setattr(obj, parts[-1], value)
-        
+
     def _format_single_component(self, name: str, path: str, indent: int = 0) -> str:
         """Format a single component's string representation.
-        
+
         Args:
             name: The name of the component
             path: The path to get the component
             indent: The indentation level
-            
+
         Returns:
             A formatted string for the component
         """
         indent_str = "  " * indent
         try:
             comp = self.bridge.get_component(self.model, path)
-            if hasattr(comp, 'original_component'):
+            if hasattr(comp, "original_component"):
                 return f"{indent_str}{name}: {type(comp).__name__}({type(comp.original_component).__name__})"
             return f"{indent_str}{name}: {type(comp).__name__}"
         except Exception as e:
             return f"{indent_str}{name}: <error: {e}>"
 
-    def _format_component_mapping(self, mapping: dict, indent: int = 0, prepend: str | None = None) -> list[str]:
+    def _format_component_mapping(
+        self, mapping: dict, indent: int = 0, prepend: str | None = None
+    ) -> list[str]:
         """Format a component mapping dictionary.
-        
+
         Args:
             mapping: The component mapping dictionary
             indent: The indentation level
             prepend: Optional path to prepend to component names (e.g. "blocks.0")
-            
+
         Returns:
             A list of formatted strings
         """
@@ -182,7 +200,7 @@ class TransformerBridge:
 
     def __str__(self) -> str:
         """Get a string representation of the bridge.
-        
+
         Returns:
             A string describing the bridge's components
         """
@@ -190,7 +208,7 @@ class TransformerBridge:
         mapping = self.bridge.get_component_mapping()
         lines.extend(self._format_component_mapping(mapping, indent=1))
         return "\n".join(lines)
-        
+
     def generate(
         self,
         input: Any = "",
@@ -251,7 +269,9 @@ class TransformerBridge:
             else:
                 return_type = "embeds"
         if return_type == "str":
-            decoded_texts = [self.tokenizer.decode(tokens, skip_special_tokens=True) for tokens in output_ids]
+            decoded_texts = [
+                self.tokenizer.decode(tokens, skip_special_tokens=True) for tokens in output_ids
+            ]
             return decoded_texts[0] if len(decoded_texts) == 1 else decoded_texts
         elif return_type == "tokens":
             return output_ids
@@ -278,6 +298,7 @@ class TransformerBridge:
             def cache_hook(tensor: torch.Tensor, hook: Any) -> torch.Tensor:
                 cache[name] = tensor.detach().cpu()
                 return tensor
+
             return cache_hook
 
         # Recursively collect all HookPoint objects and their names
@@ -302,6 +323,7 @@ class TransformerBridge:
                     for i, item in enumerate(attr):
                         if isinstance(item, nn.Module):
                             collect_hookpoints(item, f"{name}[{i}]")
+
         collect_hookpoints(self)
 
         # Register hooks
@@ -315,9 +337,9 @@ class TransformerBridge:
             # Remove hooks
             for hp, _ in hooks:
                 hp.remove_hooks()
-        return output, cache 
+        return output, cache
 
     @property
     def blocks(self):
         # Use the adapter to get the blocks component, for flexibility
-        return self.bridge.get_component(self.model, "blocks") 
+        return self.bridge.get_component(self.model, "blocks")

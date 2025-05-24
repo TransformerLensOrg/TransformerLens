@@ -90,6 +90,7 @@ class NeelSoluOldArchitectureAdapter(ArchitectureAdapter):
             "unembed": ("lm_head", UnembeddingBridge),  # Language model head
         }
 
+
 def convert_neel_solu_old_weights(state_dict: dict, cfg: HookedTransformerConfig):
     """
     Converts the weights of my old SoLU models to the HookedTransformer format.

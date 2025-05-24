@@ -60,6 +60,7 @@ SUPPORTED_ARCHITECTURES = {
     "GPTNeoXForCausalLM": NeoXArchitectureAdapter,
 }
 
+
 class ArchitectureAdapterFactory:
     """Factory for creating architecture adapters."""
 
@@ -80,11 +81,11 @@ class ArchitectureAdapterFactory:
         """
         # Try to extract architecture name from Hugging Face config
         architectures = []
-        if hasattr(cfg, 'original_architecture'):
+        if hasattr(cfg, "original_architecture"):
             architectures.append(cfg.original_architecture)
-        if hasattr(cfg, 'architectures') and cfg.architectures:
+        if hasattr(cfg, "architectures") and cfg.architectures:
             architectures.extend(cfg.architectures)
-        if hasattr(cfg, 'model_type'):
+        if hasattr(cfg, "model_type"):
             # Try to map model_type to a known architecture
             # e.g. 'gemma3' -> 'Gemma3ForCausalLM'
             model_type = cfg.model_type
@@ -99,4 +100,4 @@ class ArchitectureAdapterFactory:
                 return cls._adapters[architecture](cfg)
 
         # If no architecture was found, raise an error
-        raise ValueError(f"Could not determine architecture from config: {cfg}") 
+        raise ValueError(f"Could not determine architecture from config: {cfg}")

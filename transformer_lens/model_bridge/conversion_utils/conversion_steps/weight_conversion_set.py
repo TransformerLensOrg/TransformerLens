@@ -77,7 +77,11 @@ class WeightConversionSet(BaseWeightConversion):
             return self.process_conversion(input_value, remote_field, conversion, *full_context)
 
     def process_conversion(
-        self, input_value: Any, remote_field: str, conversion: BaseWeightConversion, *full_context: Any
+        self,
+        input_value: Any,
+        remote_field: str,
+        conversion: BaseWeightConversion,
+        *full_context: Any,
     ) -> Any:
         field = find_property(remote_field, input_value)
         if isinstance(conversion, WeightConversionSet):
@@ -94,8 +98,6 @@ class WeightConversionSet(BaseWeightConversion):
             "Is composed of a set of nested conversions with the following details {\n\t"
         )
         # This is a bit of a hack to get the string representation of nested conversions
-        conversion_string += get_weight_conversion_field_set(self.fields)[
-            :-1
-        ].replace("\n", "\n\t")
+        conversion_string += get_weight_conversion_field_set(self.fields)[:-1].replace("\n", "\n\t")
         conversion_string += "\n}"
         return conversion_string

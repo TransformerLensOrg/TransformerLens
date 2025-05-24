@@ -3,10 +3,6 @@
 This module provides the architecture adapter for BERT models.
 """
 
-from typing import Any, Dict, Optional
-
-import torch
-from transformers import PreTrainedModel
 
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter

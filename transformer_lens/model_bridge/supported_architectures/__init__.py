@@ -97,4 +97,4 @@ __all__ = [
     "QwenArchitectureAdapter",
     "Qwen2ArchitectureAdapter",
     "T5ArchitectureAdapter",
-] 
+]

@@ -10,7 +10,6 @@ from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
     EmbeddingBridge,
     LayerNormBridge,
-    MLPBridge,
     MoEBridge,
     UnembeddingBridge,
 )

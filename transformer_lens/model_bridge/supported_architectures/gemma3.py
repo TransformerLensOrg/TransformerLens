@@ -1,9 +1,5 @@
 """Gemma3 architecture adapter."""
 
-from typing import Any, Dict, Optional
-
-import torch
-from transformers import PreTrainedModel
 
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
@@ -43,11 +39,17 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
                 ),
                 "blocks.{i}.attn._W_K": (
                     "model.layers.{i}.self_attn.k_proj.weight",
-                    RearrangeWeightConversion("(n h) m->n m h", n=getattr(cfg, 'num_key_value_heads', cfg.num_attention_heads)),
+                    RearrangeWeightConversion(
+                        "(n h) m->n m h",
+                        n=getattr(cfg, "num_key_value_heads", cfg.num_attention_heads),
+                    ),
                 ),
                 "blocks.{i}.attn._W_V": (
                     "model.layers.{i}.self_attn.v_proj.weight",
-                    RearrangeWeightConversion("(n h) m->n m h", n=getattr(cfg, 'num_key_value_heads', cfg.num_attention_heads)),
+                    RearrangeWeightConversion(
+                        "(n h) m->n m h",
+                        n=getattr(cfg, "num_key_value_heads", cfg.num_attention_heads),
+                    ),
                 ),
                 "blocks.{i}.attn.W_O": (
                     "model.layers.{i}.self_attn.o_proj.weight",
@@ -68,11 +70,17 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
                 "model.layers",  # Base path for blocks
                 {
                     "ln1": ("input_layernorm", LayerNormBridge),  # Pre-attention layer norm
-                    "ln2": ("post_attention_layernorm", LayerNormBridge),  # Post-attention layer norm
+                    "ln2": (
+                        "post_attention_layernorm",
+                        LayerNormBridge,
+                    ),  # Post-attention layer norm
                     "attn": ("self_attn", AttentionBridge),  # Full attention module
                     "mlp": ("mlp", MLPBridge),  # Full MLP module
                 },
             ),
             "ln_final": ("model.norm", LayerNormBridge),  # Final layer norm
-            "unembed": ("model.embed_tokens", UnembeddingBridge),  # Language model head (shared with embed)
+            "unembed": (
+                "model.embed_tokens",
+                UnembeddingBridge,
+            ),  # Language model head (shared with embed)
         }

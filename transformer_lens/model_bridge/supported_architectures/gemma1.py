@@ -1,9 +1,5 @@
 """Gemma1 architecture adapter."""
 
-from typing import Any, Dict, Optional
-
-import torch
-from transformers import PreTrainedModel
 
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
@@ -75,13 +71,19 @@ class Gemma1ArchitectureAdapter(ArchitectureAdapter):
                 "model.layers",  # Base path for blocks
                 {
                     "ln1": ("input_layernorm", LayerNormBridge),  # Pre-attention layer norm
-                    "ln2": ("post_attention_layernorm", LayerNormBridge),  # Post-attention layer norm
+                    "ln2": (
+                        "post_attention_layernorm",
+                        LayerNormBridge,
+                    ),  # Post-attention layer norm
                     "attn": ("self_attn", AttentionBridge),  # Full attention module
                     "mlp": ("mlp", MLPBridge),  # Full MLP module
                 },
             ),
             "ln_final": ("model.norm", LayerNormBridge),  # Final layer norm
-            "unembed": ("lm_head", UnembeddingBridge),  # Language model head (not shared with embed)
+            "unembed": (
+                "lm_head",
+                UnembeddingBridge,
+            ),  # Language model head (not shared with embed)
         }
-        
-    # Remove the get_component method (from line 95 to the end of the method) 
+
+    # Remove the get_component method (from line 95 to the end of the method)

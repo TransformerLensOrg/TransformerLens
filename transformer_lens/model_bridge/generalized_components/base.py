@@ -6,20 +6,19 @@ from typing import Any
 import torch
 import torch.nn as nn
 
-from transformer_lens.HookedTransformer import HookPoint
 from transformer_lens.model_bridge.types import RemoteComponent
 
 
 class GeneralizedComponent(nn.Module):
     """Base class for generalized transformer components.
-    
+
     This class provides a standardized interface for transformer components
     and handles hook registration and execution.
     """
 
     def __init__(self, original_component: RemoteComponent, name: str, architecture_adapter: Any):
         """Initialize the generalized component.
-        
+
         Args:
             original_component: The original transformer component to wrap
             name: The name of this component
@@ -35,7 +34,7 @@ class GeneralizedComponent(nn.Module):
 
     def set_hook_tracker(self, tracker: Any) -> None:
         """Set the hook tracker for this component.
-        
+
         Args:
             tracker: The hook tracker instance
         """
@@ -43,7 +42,7 @@ class GeneralizedComponent(nn.Module):
 
     def get_hook_tracker(self) -> Any | None:
         """Get the hook tracker for this component.
-        
+
         Returns:
             The hook tracker instance if set, None otherwise
         """
@@ -51,7 +50,7 @@ class GeneralizedComponent(nn.Module):
 
     def register_hook(self, hook_name: str, hook_fn: Callable[..., torch.Tensor]) -> None:
         """Register a hook function for a specific hook point.
-        
+
         Args:
             hook_name: Name of the hook point
             hook_fn: Function to call at this hook point
@@ -59,14 +58,14 @@ class GeneralizedComponent(nn.Module):
         if hook_name not in self.hooks:
             self.hooks[hook_name] = []
         self.hooks[hook_name].append(hook_fn)
-        
+
         # If we have a hook tracker, register the hook there too
         if self._hook_tracker is not None:
             self._hook_tracker.register_component_hook(self.name, hook_name, hook_fn)
 
     def remove_hook(self, hook_name: str, hook_fn: Callable[..., torch.Tensor]) -> None:
         """Remove a previously registered hook.
-        
+
         Args:
             hook_name: Name of the hook point
             hook_fn: Function to remove
@@ -78,17 +77,17 @@ class GeneralizedComponent(nn.Module):
 
     def execute_hooks(self, hook_name: str, tensor: torch.Tensor) -> torch.Tensor:
         """Execute all hooks registered for a specific hook point.
-        
+
         Args:
             hook_name: Name of the hook point
             tensor: The tensor to pass through the hooks
-            
+
         Returns:
             The result of the last hook execution, or the input tensor if no hooks
         """
         # Store the input tensor as the hook output
         self.hook_outputs[hook_name] = tensor
-        
+
         # Execute hooks if any
         if hook_name in self.hooks:
             result = tensor
@@ -97,15 +96,15 @@ class GeneralizedComponent(nn.Module):
                 # Update the hook output with the modified tensor
                 self.hook_outputs[hook_name] = result
             return result
-            
+
         return tensor
 
     def get_hook_output(self, hook_name: str) -> Any:
         """Get the output from a specific hook point.
-        
+
         Args:
             hook_name: Name of the hook point
-            
+
         Returns:
             The stored output for this hook point
         """
@@ -118,15 +117,15 @@ class GeneralizedComponent(nn.Module):
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         """Forward pass through the component.
-        
+
         This should be implemented by subclasses to define the specific
         behavior of the component. The return type should match the original
         component's forward method.
-        
+
         Args:
             *args: Input arguments
             **kwargs: Input keyword arguments
-            
+
         Returns:
             The output from the original component, with hooks applied
         """
@@ -134,11 +133,11 @@ class GeneralizedComponent(nn.Module):
 
     def _apply_hooks_to_outputs(self, outputs: Any, hook_map: dict[str, str]) -> Any:
         """Apply hooks to outputs from the original component.
-        
+
         Args:
             outputs: The outputs from the original component
             hook_map: Dictionary mapping output indices/keys to hook names
-            
+
         Returns:
             The outputs with hooks applied
         """
@@ -167,7 +166,7 @@ class GeneralizedComponent(nn.Module):
             except AttributeError:
                 # If direct attribute lookup fails, try translating the path
                 # Get the current component's path and append the requested name
-                
+
                 current_path = self.name
                 full_path = f"{current_path}.{name}"
                 try:
@@ -185,4 +184,4 @@ class GeneralizedComponent(nn.Module):
                     pass
         return super().__getattr__(name)
         # If we get here, the attribute wasn't found anywhere
-        # raise AttributeError(f"{type(self).__name__} has no attribute {name}") 
+        # raise AttributeError(f"{type(self).__name__} has no attribute {name}")

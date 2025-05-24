@@ -36,15 +36,21 @@ class PythiaArchitectureAdapter(ArchitectureAdapter):
                 "blocks.{i}.ln2.b": "gpt_neox.layers.{i}.post_attention_layernorm.bias",
                 "blocks.{i}.attn.W_Q": (
                     "gpt_neox.layers.{i}.attention.query_key_value.weight",
-                    RearrangeWeightConversion("(3 n_head d_head) d_model -> 3 n_head d_head d_model"),
+                    RearrangeWeightConversion(
+                        "(3 n_head d_head) d_model -> 3 n_head d_head d_model"
+                    ),
                 ),
                 "blocks.{i}.attn.W_K": (
                     "gpt_neox.layers.{i}.attention.query_key_value.weight",
-                    RearrangeWeightConversion("(3 n_head d_head) d_model -> 3 n_head d_head d_model"),
+                    RearrangeWeightConversion(
+                        "(3 n_head d_head) d_model -> 3 n_head d_head d_model"
+                    ),
                 ),
                 "blocks.{i}.attn.W_V": (
                     "gpt_neox.layers.{i}.attention.query_key_value.weight",
-                    RearrangeWeightConversion("(3 n_head d_head) d_model -> 3 n_head d_head d_model"),
+                    RearrangeWeightConversion(
+                        "(3 n_head d_head) d_model -> 3 n_head d_head d_model"
+                    ),
                 ),
                 "blocks.{i}.attn.b_Q": (
                     "gpt_neox.layers.{i}.attention.query_key_value.bias",
@@ -89,4 +95,4 @@ class PythiaArchitectureAdapter(ArchitectureAdapter):
             ),
             "ln_final": ("transformer.ln_f", LayerNormBridge),  # Final layer norm
             "unembed": ("embed_out", UnembeddingBridge),  # Language model head
-        } 
+        }

@@ -1,8 +1,5 @@
 import torch
 
-from transformer_lens.model_bridge.conversion_utils.conversion_steps.base_weight_conversion import (
-    BaseWeightConversion,
-)
 from transformer_lens.model_bridge.conversion_utils.conversion_steps.zeros_like_conversion import (
     ZerosLikeConversion,
 )

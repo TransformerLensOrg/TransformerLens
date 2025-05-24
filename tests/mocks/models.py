@@ -5,7 +5,7 @@ import torch.nn as nn
 
 class MockGemma3Model(nn.Module):
     """A mock implementation of the Gemma 3 model architecture for testing purposes.
-    
+
     This mock model replicates the key architectural components of Gemma 3:
     - Embedding layer (embed_tokens)
     - Multiple transformer layers with:
@@ -19,9 +19,7 @@ class MockGemma3Model(nn.Module):
         super().__init__()
         self.model = nn.Module()
         self.model.embed_tokens = nn.Embedding(1000, 512)
-        self.model.layers = nn.ModuleList([
-            nn.Module() for _ in range(2)
-        ])
+        self.model.layers = nn.ModuleList([nn.Module() for _ in range(2)])
         for layer in self.model.layers:
             layer.input_layernorm = nn.LayerNorm(512)
             layer.post_attention_layernorm = nn.LayerNorm(512)
@@ -35,4 +33,4 @@ class MockGemma3Model(nn.Module):
             layer.mlp.gate_proj = nn.Linear(512, 2048)
             layer.mlp.down_proj = nn.Linear(2048, 512)
         self.model.norm = nn.LayerNorm(512)
-        self.embed_tokens = self.model.embed_tokens  # For shared embedding/unembedding 
+        self.embed_tokens = self.model.embed_tokens  # For shared embedding/unembedding

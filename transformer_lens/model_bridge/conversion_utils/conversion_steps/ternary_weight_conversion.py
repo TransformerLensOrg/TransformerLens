@@ -1,7 +1,7 @@
 """Weight conversion that performs ternary operations on weights."""
 
 from collections.abc import Callable
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Optional, Union
 
 import torch
 
