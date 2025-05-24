@@ -159,7 +159,7 @@ class Phi3ArchitectureAdapter(ArchitectureAdapter):
                     "ln1": ("ln_1", LayerNormBridge),  # Pre-attention layer norm
                     "ln2": ("ln_2", LayerNormBridge),  # Pre-MLP layer norm
                     "attn": ("attn", AttentionBridge),  # Full attention module
-                    "attn.c_attn": ("attn.c_attn", AttentionBridge),  # Combined QKV projection
+                    "attn.c_attn": ("attn.c_attn", AttentionBridge),  # QKV projection
                     "attn.c_proj": ("attn.c_proj", AttentionBridge),  # Output projection
                     "mlp": ("mlp", MLPBridge),  # Full MLP module
                     "mlp.c_fc": ("mlp.c_fc", MLPBridge),  # First linear layer
