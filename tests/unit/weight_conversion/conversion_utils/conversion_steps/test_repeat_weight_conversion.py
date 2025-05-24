@@ -1,6 +1,6 @@
 import torch
 
-from transformer_lens.weight_conversion.conversion_utils.conversion_steps.repeat_weight_conversion import (
+from transformer_lens.model_bridge.conversion_utils.conversion_steps.repeat_weight_conversion import (
     RepeatWeightConversion,
 )
 

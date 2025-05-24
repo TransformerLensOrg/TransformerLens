@@ -1,11 +1,11 @@
 import pytest
 import torch
 
-from transformer_lens.weight_conversion.conversion_utils.conversion_steps.weight_conversion_set import (
+from transformer_lens.model_bridge.conversion_utils.conversion_steps.weight_conversion_set import (
     WeightConversionSet,
 )
-from transformer_lens.weight_conversion.conversion_utils.helpers.merge_quantiziation_fields import (
-    merge_quantiziation_fields,
+from transformer_lens.model_bridge.conversion_utils.helpers.merge_quantiziation_fields import (
+    merge_quantization_fields,
 )
 
 
@@ -23,7 +23,7 @@ def test_merge_quantization_fields_simple_overwrite():
     }
 
     conversion_set = WeightConversionSet(original_fields)
-    result = merge_quantiziation_fields(conversion_set, new_fields)
+    result = merge_quantization_fields(conversion_set, new_fields)
 
     # Check we got the same object back
     assert result is conversion_set, "Expected the same WeightConversionSet returned (in-place)."
@@ -50,7 +50,7 @@ def test_merge_quantization_fields_missing_original_field():
         RuntimeError,
         match="Attempted to merge quantization field into existing conversion without original field configured",
     ):
-        merge_quantiziation_fields(conversion_set, new_fields)
+        merge_quantization_fields(conversion_set, new_fields)
 
 
 def test_merge_quantization_fields_complex_subfield_structure():
@@ -81,7 +81,7 @@ def test_merge_quantization_fields_complex_subfield_structure():
     }
 
     conversion_set = WeightConversionSet(original_fields)
-    merge_quantiziation_fields(conversion_set, new_fields)
+    merge_quantization_fields(conversion_set, new_fields)
 
     merged_field = conversion_set.fields["layer_0"]
     assert isinstance(merged_field, tuple), "Expected the merged field to remain a tuple."
@@ -118,7 +118,7 @@ def test_merge_quantization_fields_new_field_tuple_existing_not_tuple():
         RuntimeError,
         match="Attempted to merge WeightConversionSet into a field that is not configured as a WeightConversionSet",
     ):
-        merge_quantiziation_fields(conversion_set, new_fields)
+        merge_quantization_fields(conversion_set, new_fields)
 
 
 def test_merge_quantization_fields_existing_tuple_new_is_not_tuple():
@@ -135,7 +135,7 @@ def test_merge_quantization_fields_existing_tuple_new_is_not_tuple():
     }
 
     conversion_set = WeightConversionSet(original_fields)
-    ret = merge_quantiziation_fields(conversion_set, new_fields)
+    ret = merge_quantization_fields(conversion_set, new_fields)
     assert ret is conversion_set
     # Overwritten with [999.0]
     assert torch.allclose(ret.fields["layer_0"], torch.tensor([999.0]))
@@ -147,6 +147,6 @@ def test_merge_quantization_fields_returns_same_object():
     new_fields = {"fieldA": torch.tensor([2.0])}
 
     conversion_set = WeightConversionSet(original_fields)
-    ret = merge_quantiziation_fields(conversion_set, new_fields)
+    ret = merge_quantization_fields(conversion_set, new_fields)
     assert ret is conversion_set, "Expected in-place merge to return the same object."
     assert torch.allclose(ret.fields["fieldA"], torch.tensor([2.0]))
