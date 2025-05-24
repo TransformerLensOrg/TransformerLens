@@ -58,6 +58,8 @@ class HookedTransformerConfig:
             grouped query attention.
         attn_scale (float): The amount to divide attention scores by (if applicable). Defaults to
             sqrt(d_head)
+        model_name (str): the name of the model, used to load
+            weights from HuggingFace or initialized to "custom" if not passed
         original_architecture (str, *optional*): the family of the model, used
         to help load
             weights from HuggingFace or initialized to "custom" if not passed
@@ -87,6 +89,8 @@ class HookedTransformerConfig:
             & biases) and 'LNPre' (use LayerNorm, but no weights or biases), 'RMS'
             (use RMSNorm, including weights) and 'RMSPre' (use RMSNorm, but no weights or biases).
             Defaults to LN
+        device(str): The device to use for the model. Defaults to 'cuda' if
+            available, else 'cpu'. Must be 'cuda' if `n_devices` > 1.
         n_devices (int): The number of devices to use for the model. Defaults to 1. Layers are loaded
             to support "pipeline parallelism", where each device is responsible for a subset of the layers.
         attention_dir (str): Whether to use causal (aka unidirectional aka GPT-2
@@ -146,6 +150,7 @@ class HookedTransformerConfig:
             so this empirically seems to give better results. To change the default behavior to False, pass in
             default_prepend_bos=False. Note that you can also locally override the default behavior by passing
             in prepend_bos=True/False when you call a method that processes the input string.
+        dtype (torch.dtype, *optional*): The model's dtype. Defaults to torch.float32.
         tokenizer_prepends_bos (bool, *optional*): This flag is set by set_tokenizer. It is set to True only
             when the tokenizer automatically prepends the BOS token if initialized with add_bos_token=True.
             We need this information to dynamically control bos prepending.
@@ -189,34 +194,35 @@ class HookedTransformerConfig:
             Defaults to 8.0.
     """
 
-    d_model: int
     n_layers: int
+    d_model: int
     n_ctx: int
     d_head: int
+    model_name: str = "custom"
     n_heads: int = -1
     d_mlp: Optional[int] = None
-    d_vocab: int = -1
     act_fn: Optional[str] = None
+    d_vocab: int = -1
     eps: float = 1e-5
-    model_name: str = "custom"
     use_attn_result: bool = False
+    use_attn_scale: bool = True
+    attn_scale: float = -1.0
     use_split_qkv_input: bool = False
     use_hook_mlp_in: bool = False
     use_attn_in: bool = False
-    use_attn_scale: bool = True
+    use_local_attn: bool = False
     ungroup_grouped_query_attention: bool = False
-    attn_scale: float = -1.0
     original_architecture: Optional[str] = None
     from_checkpoint: bool = False
     checkpoint_index: Optional[int] = None
     checkpoint_label_type: Optional[str] = None
     checkpoint_value: Optional[int] = None
     tokenizer_name: Optional[str] = None
-    use_local_attn: bool = False
     window_size: Optional[int] = None
     attn_types: Optional[List] = None
     init_mode: str = "gpt2"
     normalization_type: Optional[str] = "LN"
+    device: Optional[str] = None
     n_devices: int = 1
     attention_dir: str = "causal"
     attn_only: bool = False
@@ -233,6 +239,7 @@ class HookedTransformerConfig:
     use_hook_tokens: bool = False
     gated_mlp: bool = False
     default_prepend_bos: bool = True
+    dtype: torch.dtype = torch.float32
     tokenizer_prepends_bos: Optional[bool] = None
     n_key_value_heads: Optional[int] = None
     post_embedding_ln: bool = False
@@ -255,13 +262,27 @@ class HookedTransformerConfig:
     NTK_by_parts_factor: float = 8.0
 
     def __post_init__(self):
-        """Post initialization processing."""
+        if self.n_heads == -1:
+            self.n_heads = self.d_model // self.d_head
+
+            if not self.d_model % (self.d_head) == 0:
+                logging.warning(
+                    "d_model %d is not divisible by d_head %d."
+                    "n_heads was inferred to be %d, rounding down the ratio.",
+                    self.d_model,
+                    self.d_head,
+                    self.n_heads,
+                )
+
         if self.seed is not None:
             self.set_seed_everywhere(self.seed)
         if self.use_local_attn:
             assert self.window_size is not None, "window_size must be specified for local attention"
             assert self.attn_types is not None, "attn_types must be specified for local attention"
         if not self.attn_only:
+            if self.d_mlp is None:
+                # For some reason everyone hard codes in this hyper-parameter!
+                self.d_mlp: int = self.d_model * 4
             assert self.act_fn is not None, "act_fn must be specified for non-attn-only models"
             assert (
                 self.act_fn in SUPPORTED_ACTIVATIONS
@@ -319,12 +340,31 @@ class HookedTransformerConfig:
             False,
         ], f"default_prepend_bos must be either True or False, but {self.default_prepend_bos} is given"
 
+    @classmethod
+    def unwrap(cls, config: Union[Dict, "HookedTransformerConfig"]) -> HookedTransformerConfig:
+        """
+        Convenience function to avoid duplicate code from a common way config is passed to various components
+        """
+        return HookedTransformerConfig.from_dict(config) if isinstance(config, Dict) else config
+
+    @classmethod
+    def from_dict(cls, config_dict: Dict[str, Any]) -> HookedTransformerConfig:
+        """
+        Instantiates a `HookedTransformerConfig` from a Python dictionary of
+        parameters.
+        """
+        return cls(**config_dict)
+
+    def to_dict(self):
+        return self.__dict__
+
+    def __repr__(self):
+        return "HookedTransformerConfig:\n" + pprint.pformat(self.to_dict())
+
     def set_seed_everywhere(self, seed: int):
-        """Set the seed for all random number generators."""
         torch.manual_seed(seed)
         random.seed(seed)
         np.random.seed(seed)
 
     def is_layer_norm_activation(self) -> bool:
-        """Check if the activation function is a layer norm activation."""
         return self.act_fn is not None and self.act_fn.endswith("_ln")
