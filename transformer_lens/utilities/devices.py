@@ -85,7 +85,7 @@ def get_best_available_cuda_device(max_devices: Optional[int] = None) -> torch.d
 
 def get_device() -> torch.device:
     """Get the best available device for the current system.
-    
+
     Returns:
         torch.device: The best available device (cuda, mps, or cpu)
     """
@@ -158,7 +158,7 @@ def get_device_for_block_index(
 def move_to_and_update_config(
     model: Union[
         "transformer_lens.HookedTransformer",
-        "transformer_lens.HookedEncoder", 
+        "transformer_lens.HookedEncoder",
         "transformer_lens.HookedEncoderDecoder",
     ],
     device_or_dtype: Union[torch.device, str, torch.dtype],

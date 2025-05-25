@@ -19,24 +19,24 @@ def merge_quantization_fields(field_set: Any, quantization_fields: dict[str, Any
     # Merge the quantization fields into the existing field_set
     for field_name, new_field_value in quantization_fields.items():
         existing_field = field_set.fields.get(field_name)
-        
+
         # Check if existing field is None and raise error as expected by tests
         if existing_field is None:
             raise RuntimeError(
                 "Attempted to merge quantization field into existing conversion without original field configured"
             )
-        
+
         # Handle different cases based on the types of existing and new fields
         if isinstance(new_field_value, tuple) and len(new_field_value) == 2:
             # new_field_value is (str, WeightConversionSet)
             new_remote, new_sub_wcs = new_field_value
-            
+
             if isinstance(existing_field, tuple) and len(existing_field) == 2:
                 # existing_field is also (str, WeightConversionSet)
                 existing_remote, existing_sub_wcs = existing_field
-                
+
                 # Check if the second element is a WeightConversionSet-like object
-                if hasattr(existing_sub_wcs, 'fields') and hasattr(new_sub_wcs, 'fields'):
+                if hasattr(existing_sub_wcs, "fields") and hasattr(new_sub_wcs, "fields"):
                     # Recursively merge the sub-WeightConversionSets
                     merge_quantization_fields(existing_sub_wcs, new_sub_wcs.fields)
                     # Update the remote field name
