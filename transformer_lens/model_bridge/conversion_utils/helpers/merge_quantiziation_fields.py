@@ -14,25 +14,45 @@ def merge_quantization_fields(field_set: Any, quantization_fields: dict[str, Any
         quantization_fields: The quantization fields to merge.
 
     Returns:
-        The merged field set.
+        The merged field set (same object, modified in-place).
     """
-    # Create a new field set with the same fields as the original
-    new_field_set = field_set.__class__(field_set.fields)
-
-    # Merge the quantization fields
-    for field_name, field_value in quantization_fields.items():
-        if field_name in new_field_set.fields:
-            # If the field exists in both sets, merge them
-            if hasattr(field_value, "fields"):
-                # If both fields are field sets, recursively merge them
-                new_field_set.fields[field_name] = merge_quantization_fields(
-                    new_field_set.fields[field_name], field_value.fields
-                )
+    # Merge the quantization fields into the existing field_set
+    for field_name, new_field_value in quantization_fields.items():
+        existing_field = field_set.fields.get(field_name)
+        
+        # Check if existing field is None and raise error as expected by tests
+        if existing_field is None:
+            raise RuntimeError(
+                "Attempted to merge quantization field into existing conversion without original field configured"
+            )
+        
+        # Handle different cases based on the types of existing and new fields
+        if isinstance(new_field_value, tuple) and len(new_field_value) == 2:
+            # new_field_value is (str, WeightConversionSet)
+            new_remote, new_sub_wcs = new_field_value
+            
+            if isinstance(existing_field, tuple) and len(existing_field) == 2:
+                # existing_field is also (str, WeightConversionSet)
+                existing_remote, existing_sub_wcs = existing_field
+                
+                # Check if the second element is a WeightConversionSet-like object
+                if hasattr(existing_sub_wcs, 'fields') and hasattr(new_sub_wcs, 'fields'):
+                    # Recursively merge the sub-WeightConversionSets
+                    merge_quantization_fields(existing_sub_wcs, new_sub_wcs.fields)
+                    # Update the remote field name
+                    field_set.fields[field_name] = (new_remote, existing_sub_wcs)
+                else:
+                    raise RuntimeError(
+                        "Attempted to merge WeightConversionSet into a field that is not configured as a WeightConversionSet"
+                    )
             else:
-                # If the field in the quantization set is not a field set, replace the field
-                new_field_set.fields[field_name] = field_value
+                # existing_field is not a tuple, but new_field_value is
+                raise RuntimeError(
+                    "Attempted to merge WeightConversionSet into a field that is not configured as a WeightConversionSet"
+                )
         else:
-            # If the field only exists in the quantization set, add it
-            new_field_set.fields[field_name] = field_value
+            # new_field_value is a simple value (like torch.Tensor)
+            # Simply overwrite the existing field
+            field_set.fields[field_name] = new_field_value
 
-    return new_field_set
+    return field_set
