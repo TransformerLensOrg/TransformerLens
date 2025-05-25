@@ -3,13 +3,12 @@
 This module contains the base class for architecture adapters that map between different model architectures.
 """
 
-from typing import Any, Dict, Optional, Union
+from typing import Any
 
 import torch
 import torch.nn as nn
 from transformers.modeling_utils import PreTrainedModel
 
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
     WeightConversionSet,
 )
