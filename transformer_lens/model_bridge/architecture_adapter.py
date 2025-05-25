@@ -71,12 +71,20 @@ class ArchitectureAdapter:
             ValueError: If the path is empty or invalid
 
         Examples:
-            >>> adapter.get_remote_component(model, "model.embed_tokens")
-            <Embedding>
-            >>> adapter.get_remote_component(model, "model.layers.0")
-            <TransformerBlock>
-            >>> adapter.get_remote_component(model, "model.layers.0.ln1")
-            <LayerNorm>
+            Get an embedding component:
+            
+            >>> # adapter.get_remote_component(model, "model.embed_tokens")
+            >>> # <Embedding>
+            
+            Get a transformer block:
+            
+            >>> # adapter.get_remote_component(model, "model.layers.0")
+            >>> # <TransformerBlock>
+            
+            Get a layer norm component:
+            
+            >>> # adapter.get_remote_component(model, "model.layers.0.ln1")
+            >>> # <LayerNorm>
         """
         if not path:
             raise ValueError("Path cannot be empty")
@@ -113,14 +121,25 @@ class ArchitectureAdapter:
             ValueError: If the component mapping is not set or if the path is invalid
 
         Examples:
-            >>> adapter.translate_transformer_lens_path("embed")
-            "model.embed_tokens"
-            >>> adapter.translate_transformer_lens_path("blocks.0")
-            "model.layers.0"
-            >>> adapter.translate_transformer_lens_path("blocks.0.ln1")
-            "model.layers.0.input_layernorm"
-            >>> adapter.translate_transformer_lens_path("blocks.0.ln1", last_component_only=True)
-            "input_layernorm"
+            Translate embedding path:
+            
+            >>> # adapter.translate_transformer_lens_path("embed")
+            >>> # "model.embed_tokens"
+            
+            Translate block path:
+            
+            >>> # adapter.translate_transformer_lens_path("blocks.0")
+            >>> # "model.layers.0"
+            
+            Translate layer norm path:
+            
+            >>> # adapter.translate_transformer_lens_path("blocks.0.ln1")
+            >>> # "model.layers.0.input_layernorm"
+            
+            Get only the last component:
+            
+            >>> # adapter.translate_transformer_lens_path("blocks.0.ln1", last_component_only=True)
+            >>> # "input_layernorm"
         """
         if self.component_mapping is None:
             raise ValueError(
@@ -202,12 +221,20 @@ class ArchitectureAdapter:
             IndexError: If an invalid index is accessed
 
         Examples:
-            >>> adapter.get_component(model, "embed")
-            <Embedding>
-            >>> adapter.get_component(model, "blocks.0")
-            <TransformerBlock>
-            >>> adapter.get_component(model, "blocks.0.ln1")
-            <LayerNorm>
+            Get an embedding component:
+            
+            >>> # adapter.get_component(model, "embed")
+            >>> # <Embedding>
+            
+            Get a transformer block:
+            
+            >>> # adapter.get_component(model, "blocks.0")
+            >>> # <TransformerBlock>
+            
+            Get a layer norm component:
+            
+            >>> # adapter.get_component(model, "blocks.0.ln1")
+            >>> # <LayerNorm>
         """
         if self.component_mapping is None:
             raise ValueError("component_mapping must be set before calling get_component")
