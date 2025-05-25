@@ -3,13 +3,16 @@
 This module contains the base class for architecture adapters that map between different model architectures.
 """
 
-from typing import Any
+from typing import Any, Dict, Optional, Union
 
 import torch
 import torch.nn as nn
 from transformers.modeling_utils import PreTrainedModel
 
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
+    WeightConversionSet,
+)
 from transformer_lens.model_bridge.types import (
     BlockMapping,
     ComponentMapping,
@@ -29,14 +32,14 @@ class ArchitectureAdapter:
     (for initializing weights from one format to another).
     """
 
-    def __init__(self, cfg: HookedTransformerConfig):
+    def __init__(self, cfg) -> None:
         """Initialize the architecture adapter.
 
         Args:
-            cfg: The config to use for the adapter.
+            cfg: The configuration object.
         """
         self.cfg = cfg
-        self.conversion_rules = None
+        self.conversion_rules: WeightConversionSet | None = None
         self.component_mapping: ComponentMapping | None = None
         self.default_config: dict = {}
 

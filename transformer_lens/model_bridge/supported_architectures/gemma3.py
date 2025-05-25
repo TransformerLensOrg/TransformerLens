@@ -19,11 +19,11 @@ from transformer_lens.model_bridge.generalized_components import (
 class Gemma3ArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for Gemma3 models."""
 
-    def __init__(self, cfg: HookedTransformerConfig) -> None:
+    def __init__(self, cfg) -> None:
         """Initialize the Gemma3 architecture adapter.
 
         Args:
-            cfg: The HookedTransformer configuration.
+            cfg: The HuggingFace-style config.
         """
         super().__init__(cfg)
 

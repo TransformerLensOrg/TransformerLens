@@ -4,28 +4,25 @@ import pytest
 import torch.nn as nn
 
 from tests.mocks.models import MockGemma3Model
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.model_bridge.supported_architectures.gemma3 import (
     Gemma3ArchitectureAdapter,
 )
 
 
-@pytest.fixture
-def cfg() -> HookedTransformerConfig:
-    """Create a test config."""
-    return HookedTransformerConfig(
-        d_model=512,
-        d_head=64,
-        n_layers=2,
-        n_heads=8,
-        n_ctx=1024,
-        d_vocab=1000,
-        act_fn="silu",
-    )
+class DummyHFConfig:
+    def __init__(self):
+        self.num_attention_heads = 8
+        self.num_key_value_heads = 8
+        # Add any other attributes needed by the adapter here
 
 
 @pytest.fixture
-def adapter(cfg: HookedTransformerConfig) -> Gemma3ArchitectureAdapter:
+def cfg():
+    return DummyHFConfig()
+
+
+@pytest.fixture
+def adapter(cfg) -> Gemma3ArchitectureAdapter:
     """Create a Gemma3 adapter."""
     return Gemma3ArchitectureAdapter(cfg)
 
