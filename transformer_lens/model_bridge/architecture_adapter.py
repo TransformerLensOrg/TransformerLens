@@ -72,17 +72,17 @@ class ArchitectureAdapter:
 
         Examples:
             Get an embedding component:
-            
+
             >>> # adapter.get_remote_component(model, "model.embed_tokens")
             >>> # <Embedding>
-            
+
             Get a transformer block:
-            
+
             >>> # adapter.get_remote_component(model, "model.layers.0")
             >>> # <TransformerBlock>
-            
+
             Get a layer norm component:
-            
+
             >>> # adapter.get_remote_component(model, "model.layers.0.ln1")
             >>> # <LayerNorm>
         """
@@ -122,22 +122,22 @@ class ArchitectureAdapter:
 
         Examples:
             Translate embedding path:
-            
+
             >>> # adapter.translate_transformer_lens_path("embed")
             >>> # "model.embed_tokens"
-            
+
             Translate block path:
-            
+
             >>> # adapter.translate_transformer_lens_path("blocks.0")
             >>> # "model.layers.0"
-            
+
             Translate layer norm path:
-            
+
             >>> # adapter.translate_transformer_lens_path("blocks.0.ln1")
             >>> # "model.layers.0.input_layernorm"
-            
+
             Get only the last component:
-            
+
             >>> # adapter.translate_transformer_lens_path("blocks.0.ln1", last_component_only=True)
             >>> # "input_layernorm"
         """
@@ -222,17 +222,17 @@ class ArchitectureAdapter:
 
         Examples:
             Get an embedding component:
-            
+
             >>> # adapter.get_component(model, "embed")
             >>> # <Embedding>
-            
+
             Get a transformer block:
-            
+
             >>> # adapter.get_component(model, "blocks.0")
             >>> # <TransformerBlock>
-            
+
             Get a layer norm component:
-            
+
             >>> # adapter.get_component(model, "blocks.0.ln1")
             >>> # <LayerNorm>
         """
