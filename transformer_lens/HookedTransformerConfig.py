@@ -325,7 +325,7 @@ class HookedTransformerConfig:
             self.n_params += self.n_layers * mlp_params_per_layer
 
         if self.device is None:
-            self.device = utils.get_device()
+            self.device = str(utils.get_device())
 
         if self.n_devices > 1:
             assert (

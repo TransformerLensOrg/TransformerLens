@@ -82,7 +82,7 @@ def train(
         wandb.init(project=config.wandb_project_name, config=vars(config))
 
     if config.device is None:
-        config.device = utils.get_device()
+        config.device = str(utils.get_device())
 
     optimizer: Optimizer
     if config.optimizer_name in ["Adam", "AdamW"]:

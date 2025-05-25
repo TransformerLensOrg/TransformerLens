@@ -3,4 +3,4 @@
 This module contains utilities for converting between different model architectures.
 """
 
-__all__ = []
+__all__: list[str] = []

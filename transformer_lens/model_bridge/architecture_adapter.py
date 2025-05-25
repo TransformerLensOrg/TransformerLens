@@ -3,7 +3,7 @@
 This module contains the base class for architecture adapters that map between different model architectures.
 """
 
-from typing import Any
+from typing import Any, cast
 
 import torch
 import torch.nn as nn
@@ -151,10 +151,12 @@ class ArchitectureAdapter:
             raise ValueError("Empty path")
 
         # First part should be a top-level component
-        if parts[0] not in self.component_mapping:
+        # Use cast to help mypy understand this is a dict
+        component_mapping = cast(dict[str, RemoteImport | BlockMapping], self.component_mapping)
+        if parts[0] not in component_mapping:
             raise ValueError(f"Component {parts[0]} not found in component mapping")
 
-        full_path = self._resolve_component_path(parts[1:], self.component_mapping[parts[0]])
+        full_path = self._resolve_component_path(parts[1:], component_mapping[parts[0]])
 
         if last_component_only:
             # Split the path and return only the last component
@@ -242,43 +244,6 @@ class ArchitectureAdapter:
         # Get the remote path and then get the component
         remote_path = self.translate_transformer_lens_path(path)
         return self.get_remote_component(model, remote_path)
-
-    def _get_component_type(self, name: str) -> str:
-        """Get the type information for a component.
-
-        Args:
-            name: The name of the component in the HuggingFace model
-
-        Returns:
-            A string describing the component's type and shape
-        """
-        try:
-            # Navigate through the model's structure using the component name
-            parts = name.split(".")
-            component = self.model
-            for part in parts:
-                # Handle array indexing in the name (e.g., "h.0" -> "h[0]")
-                if part.isdigit():
-                    component = component[int(part)]
-                else:
-                    component = getattr(component, part)
-
-            # Get the component's type and shape
-            if isinstance(component, torch.Tensor):
-                shape_str = "×".join(str(s) for s in component.shape)
-                dtype_str = str(component.dtype).replace("torch.", "")
-                return f"Tensor({shape_str}, {dtype_str})"
-            elif isinstance(component, nn.Module):
-                # For bridge components, show both the wrapper and original class
-                if hasattr(component, "original_component"):
-                    orig_class = component.original_component.__class__.__name__
-                    wrapper_class = component.__class__.__name__
-                    return f"{wrapper_class}({orig_class})"
-                return component.__class__.__name__
-            else:
-                return type(component).__name__
-        except (AttributeError, IndexError):
-            return "Unknown"
 
     def convert_weights(self, hf_model: PreTrainedModel) -> dict[str, torch.Tensor]:
         """Convert the weights from the HuggingFace format to the HookedTransformer format.
