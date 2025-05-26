@@ -14,7 +14,7 @@ from transformer_lens.model_bridge.conversion_utils.weight_conversion_utils impo
     get_weight_conversion_field_set,
 )
 
-from .types import CONVERSION_ACTION, FIELD_SET
+from .types import CONVERSION_ACTION, FIELD_SET, WeightConversionInterface
 
 
 class WeightConversionSet(BaseWeightConversion):
@@ -80,7 +80,7 @@ class WeightConversionSet(BaseWeightConversion):
         self,
         input_value: Any,
         remote_field: str,
-        conversion: BaseWeightConversion,
+        conversion: WeightConversionInterface,
         *full_context: Any,
     ) -> Any:
         field = find_property(remote_field, input_value)

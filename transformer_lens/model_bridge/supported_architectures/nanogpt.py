@@ -1,8 +1,9 @@
+from typing import Any
+
 import einops
 import torch
 from torch import nn
 
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
     RearrangeWeightConversion,
@@ -17,7 +18,7 @@ from transformer_lens.model_bridge.generalized_components import (
 )
 
 
-def convert_nanogpt_weights(old_state_dict, cfg: HookedTransformerConfig):
+def convert_nanogpt_weights(old_state_dict, cfg: Any):
     """For https://github.com/karpathy/nanoGPT
     There are two complications with converting nanogpt models:
     The first is that some state dicts have an unwanted prefix on keys that needs to be removed.
@@ -99,20 +100,14 @@ def convert_nanogpt_weights(old_state_dict, cfg: HookedTransformerConfig):
     return new_state_dict
 
 
-import torch
-from torch import nn
-
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
-
-
-class NanoGPTArchitectureAdapter(ArchitectureAdapter):
+class NanogptArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for NanoGPT models."""
 
-    def __init__(self, cfg: HookedTransformerConfig) -> None:
+    def __init__(self, cfg: Any) -> None:
         """Initialize the NanoGPT architecture adapter.
 
         Args:
-            cfg: The HookedTransformer configuration.
+            cfg: The configuration object.
         """
         super().__init__(cfg)
 

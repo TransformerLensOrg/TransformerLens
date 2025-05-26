@@ -1,6 +1,7 @@
 """Neel Solu Old architecture adapter."""
 
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from typing import Any
+
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
     RearrangeWeightConversion,
@@ -18,11 +19,11 @@ from transformer_lens.model_bridge.generalized_components import (
 class NeelSoluOldArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for Neel Solu Old models."""
 
-    def __init__(self, cfg: HookedTransformerConfig) -> None:
+    def __init__(self, cfg: Any) -> None:
         """Initialize the Neel Solu Old architecture adapter.
 
         Args:
-            cfg: The HookedTransformer configuration.
+            cfg: The configuration object.
         """
         super().__init__(cfg)
 
@@ -91,7 +92,7 @@ class NeelSoluOldArchitectureAdapter(ArchitectureAdapter):
         }
 
 
-def convert_neel_solu_old_weights(state_dict: dict, cfg: HookedTransformerConfig):
+def convert_neel_solu_old_weights(state_dict: dict, cfg: Any):
     """
     Converts the weights of my old SoLU models to the HookedTransformer format.
     Takes as input a state dict, *not* a model object.

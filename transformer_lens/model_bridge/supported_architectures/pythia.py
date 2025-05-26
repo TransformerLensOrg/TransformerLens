@@ -1,6 +1,7 @@
 """Pythia architecture adapter."""
 
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from typing import Any
+
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
     RearrangeWeightConversion,
@@ -18,11 +19,11 @@ from transformer_lens.model_bridge.generalized_components import (
 class PythiaArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for Pythia models."""
 
-    def __init__(self, cfg: HookedTransformerConfig) -> None:
+    def __init__(self, cfg: Any) -> None:
         """Initialize the Pythia architecture adapter.
 
         Args:
-            cfg: The HookedTransformer configuration.
+            cfg: The configuration object.
         """
         super().__init__(cfg)
 

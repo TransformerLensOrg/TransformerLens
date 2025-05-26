@@ -44,9 +44,9 @@ def tokenize_and_concatenate(
         Dataset: Returns the tokenized dataset, as a dataset of tensors, with a single column called "tokens"
     """
     dataset = keep_single_column(dataset, column_name)
-    if tokenizer.pad_token is None:
+    if tokenizer.pad_token is None:  # type: ignore[attr-defined]
         # We add a padding token, purely to implement the tokenizer. This will be removed before inputting tokens to the model, so we do not need to increment d_vocab in the model.
-        tokenizer.add_special_tokens({"pad_token": "<PAD>"})
+        tokenizer.add_special_tokens({"pad_token": "<PAD>"})  # type: ignore[attr-defined]
     # Define the length to chop things up into - leaving space for a bos_token if required
     if add_bos_token:
         seq_len = max_length - 1
@@ -56,7 +56,7 @@ def tokenize_and_concatenate(
     def tokenize_function(examples: Dict[str, List[str]]) -> Dict[str, np.ndarray]:
         text = examples[column_name]
         # Concatenate it all into an enormous string, separated by eos_tokens
-        full_text = tokenizer.eos_token.join(text)
+        full_text = tokenizer.eos_token.join(text)  # type: ignore[attr-defined]
 
         # Handle the case when full_text is empty
         if not full_text.strip():
@@ -67,9 +67,9 @@ def tokenize_and_concatenate(
         chunk_length = (len(full_text) - 1) // num_chunks + 1
         chunks = [full_text[i * chunk_length : (i + 1) * chunk_length] for i in range(num_chunks)]
         # Tokenize the chunks in parallel. Uses NumPy because HuggingFace map doesn't want tensors returned
-        tokens = tokenizer(chunks, return_tensors="np", padding=True)["input_ids"].flatten()
+        tokens = tokenizer(chunks, return_tensors="np", padding=True)["input_ids"].flatten()  # type: ignore[operator]
         # Drop padding tokens
-        tokens = tokens[tokens != tokenizer.pad_token_id]
+        tokens = tokens[tokens != tokenizer.pad_token_id]  # type: ignore[attr-defined]
         num_tokens = len(tokens)
 
         # Handle cases where num_tokens is less than seq_len
@@ -79,7 +79,7 @@ def tokenize_and_concatenate(
             tokens = tokens[:seq_len]
             if len(tokens) < seq_len:
                 padding_length = seq_len - len(tokens)
-                padding = np.full(padding_length, tokenizer.pad_token_id)
+                padding = np.full(padding_length, tokenizer.pad_token_id)  # type: ignore[attr-defined]
                 tokens = np.concatenate([tokens, padding], axis=0)
         else:
             num_batches = num_tokens // seq_len
@@ -90,7 +90,7 @@ def tokenize_and_concatenate(
             tokens, "(batch seq) -> batch seq", batch=num_batches, seq=seq_len
         )
         if add_bos_token:
-            prefix = np.full((num_batches, 1), tokenizer.bos_token_id)
+            prefix = np.full((num_batches, 1), tokenizer.bos_token_id)  # type: ignore[attr-defined]
             tokens = np.concatenate([prefix, tokens], axis=1)
         return {"tokens": tokens}
 

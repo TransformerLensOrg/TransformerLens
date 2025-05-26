@@ -5,7 +5,6 @@ from typing import Any, cast
 import einops
 import torch
 
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
     RearrangeWeightConversion,
@@ -20,7 +19,7 @@ from transformer_lens.model_bridge.generalized_components import (
 )
 
 
-def convert_phi3_weights(phi: Any, cfg: HookedTransformerConfig):
+def convert_phi3_weights(phi: Any, cfg: Any):
     state_dict = {}
     state_dict["embed.W_E"] = phi.model.embed_tokens.weight
 
@@ -95,11 +94,11 @@ def convert_phi3_weights(phi: Any, cfg: HookedTransformerConfig):
 class Phi3ArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for Phi-3 models."""
 
-    def __init__(self, cfg: HookedTransformerConfig) -> None:
+    def __init__(self, cfg: Any) -> None:
         """Initialize the Phi-3 architecture adapter.
 
         Args:
-            cfg: The HookedTransformer configuration.
+            cfg: The configuration object.
         """
         super().__init__(cfg)
 

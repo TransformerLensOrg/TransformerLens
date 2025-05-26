@@ -1,7 +1,7 @@
 """Qwen architecture adapter."""
 
+from typing import Any
 
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
     RearrangeWeightConversion,
@@ -19,11 +19,11 @@ from transformer_lens.model_bridge.generalized_components import (
 class QwenArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for Qwen models."""
 
-    def __init__(self, cfg: HookedTransformerConfig) -> None:
+    def __init__(self, cfg: Any) -> None:
         """Initialize the Qwen architecture adapter.
 
         Args:
-            cfg: The HookedTransformer configuration.
+            cfg: The configuration object.
         """
         self.default_config = {"trust_remote_code": True}
         super().__init__(cfg)

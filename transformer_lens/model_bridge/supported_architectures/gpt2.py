@@ -1,6 +1,7 @@
 """GPT-2 architecture adapter."""
 
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from typing import Any
+
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
     RearrangeWeightConversion,
@@ -18,11 +19,11 @@ from transformer_lens.model_bridge.generalized_components import (
 class GPT2ArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for GPT-2 models."""
 
-    def __init__(self, cfg: HookedTransformerConfig) -> None:
+    def __init__(self, cfg: Any) -> None:
         """Initialize the GPT-2 architecture adapter.
 
         Args:
-            cfg: The HookedTransformer configuration.
+            cfg: The configuration object.
         """
         super().__init__(cfg)
 

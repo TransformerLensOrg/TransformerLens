@@ -131,7 +131,7 @@ class GeneralizedComponent(nn.Module):
         """
         raise NotImplementedError("Subclasses must implement forward()")
 
-    def _apply_hooks_to_outputs(self, outputs: Any, hook_map: dict[str, str]) -> Any:
+    def _apply_hooks_to_outputs(self, outputs: Any, hook_map: dict[str | int, str]) -> Any:
         """Apply hooks to outputs from the original component.
 
         Args:

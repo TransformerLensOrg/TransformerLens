@@ -22,16 +22,16 @@ from transformer_lens.model_bridge.supported_architectures.gpt2 import (
     GPT2ArchitectureAdapter,
 )
 from transformer_lens.model_bridge.supported_architectures.gpt2_lm_head_custom import (
-    GPT2LMHeadCustomArchitectureAdapter,
+    Gpt2LmHeadCustomArchitectureAdapter,
 )
 from transformer_lens.model_bridge.supported_architectures.gptj import (
-    GPTJArchitectureAdapter,
+    GptjArchitectureAdapter,
 )
 from transformer_lens.model_bridge.supported_architectures.llama import (
     LlamaArchitectureAdapter,
 )
 from transformer_lens.model_bridge.supported_architectures.mingpt import (
-    MinGPTArchitectureAdapter,
+    MingptArchitectureAdapter,
 )
 from transformer_lens.model_bridge.supported_architectures.mistral import (
     MistralArchitectureAdapter,
@@ -40,7 +40,7 @@ from transformer_lens.model_bridge.supported_architectures.mixtral import (
     MixtralArchitectureAdapter,
 )
 from transformer_lens.model_bridge.supported_architectures.nanogpt import (
-    NanoGPTArchitectureAdapter,
+    NanogptArchitectureAdapter,
 )
 from transformer_lens.model_bridge.supported_architectures.neel_solu_old import (
     NeelSoluOldArchitectureAdapter,
@@ -52,7 +52,7 @@ from transformer_lens.model_bridge.supported_architectures.neox import (
     NeoXArchitectureAdapter,
 )
 from transformer_lens.model_bridge.supported_architectures.opt import (
-    OPTArchitectureAdapter,
+    OptArchitectureAdapter,
 )
 from transformer_lens.model_bridge.supported_architectures.phi import (
     PhiArchitectureAdapter,
@@ -80,17 +80,17 @@ __all__ = [
     "Gemma2ArchitectureAdapter",
     "Gemma3ArchitectureAdapter",
     "GPT2ArchitectureAdapter",
-    "GPT2LMHeadCustomArchitectureAdapter",
-    "GPTJArchitectureAdapter",
+    "Gpt2LmHeadCustomArchitectureAdapter",
+    "GptjArchitectureAdapter",
     "LlamaArchitectureAdapter",
-    "MinGPTArchitectureAdapter",
+    "MingptArchitectureAdapter",
     "MistralArchitectureAdapter",
     "MixtralArchitectureAdapter",
-    "NanoGPTArchitectureAdapter",
+    "NanogptArchitectureAdapter",
     "NeelSoluOldArchitectureAdapter",
     "NeoArchitectureAdapter",
     "NeoXArchitectureAdapter",
-    "OPTArchitectureAdapter",
+    "OptArchitectureAdapter",
     "PhiArchitectureAdapter",
     "Phi3ArchitectureAdapter",
     "PythiaArchitectureAdapter",

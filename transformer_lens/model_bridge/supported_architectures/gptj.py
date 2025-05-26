@@ -1,6 +1,7 @@
 """GPT-J architecture adapter."""
 
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from typing import Any
+
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
     RearrangeWeightConversion,
@@ -15,14 +16,14 @@ from transformer_lens.model_bridge.generalized_components import (
 )
 
 
-class GPTJArchitectureAdapter(ArchitectureAdapter):
-    """Architecture adapter for GPT-J models."""
+class GptjArchitectureAdapter(ArchitectureAdapter):
+    """Architecture adapter for GPTJ models."""
 
-    def __init__(self, cfg: HookedTransformerConfig) -> None:
-        """Initialize the GPT-J architecture adapter.
+    def __init__(self, cfg: Any) -> None:
+        """Initialize the GPTJ architecture adapter.
 
         Args:
-            cfg: The HookedTransformer configuration.
+            cfg: The configuration object.
         """
         super().__init__(cfg)
 

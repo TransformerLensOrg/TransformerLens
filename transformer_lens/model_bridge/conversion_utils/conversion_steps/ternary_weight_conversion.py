@@ -43,7 +43,7 @@ class TernaryWeightConversion(BaseWeightConversion):
         elif isinstance(self.primary_conversion, torch.Tensor):
             return self.primary_conversion
         else:
-            return self.primary_conversion.convert(input_value=input_value, *full_context)
+            return self.primary_conversion.convert(input_value, *full_context)
 
     def handle_fallback_conversion(self, *full_context) -> torch.Tensor | None:
         if isinstance(self.fallback_conversion, torch.Tensor):
