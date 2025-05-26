@@ -4,10 +4,11 @@ This module provides the bridge components that wrap remote model components and
 a consistent interface for accessing their weights and performing operations.
 """
 
-from typing import Any
+from typing import Any, Union
 
 import torch
 import torch.nn as nn
+from transformers.modeling_utils import PreTrainedModel
 
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
@@ -28,11 +29,11 @@ class TransformerBridge:
     to map between the HookedTransformer and HuggingFace model structures.
     """
 
-    def __init__(self, model: nn.Module, adapter: ArchitectureAdapter, tokenizer: Any):
+    def __init__(self, model: Union[nn.Module, PreTrainedModel], adapter: ArchitectureAdapter, tokenizer: Any):
         """Initialize the bridge.
 
         Args:
-            model: The model to bridge (must be a PyTorch nn.Module)
+            model: The model to bridge (must be a PyTorch nn.Module or PreTrainedModel)
             adapter: The architecture adapter to use
             tokenizer: The tokenizer to use (required)
         """
@@ -256,7 +257,7 @@ class TransformerBridge:
             gen_kwargs["eos_token_id"] = eos_token_id
         # Note: freq_penalty and use_past_kv_cache are not always supported by all models
         if hasattr(self.model, "generate"):
-            output_ids = self.model.generate(input_ids, **gen_kwargs)
+            output_ids = self.model.generate(input_ids, **gen_kwargs)  # type: ignore[operator,arg-type]
         else:
             raise RuntimeError("Underlying model does not support generate method.")
 

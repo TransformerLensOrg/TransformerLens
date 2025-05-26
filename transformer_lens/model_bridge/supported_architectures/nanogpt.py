@@ -175,11 +175,11 @@ class NanogptArchitectureAdapter(ArchitectureAdapter):
             "unembed": ("lm_head", UnembeddingBridge),  # Language model head
         }
 
-    def convert_weights(self, remote_module: nn.Module):
+    def convert_weights(self, remote_module: Any) -> dict[str, torch.Tensor]:
         # Nanogpt models saved after torch.compile() have this unwanted prefix
         # This is a simple way to remove it
         unwanted_prefix = "_orig_mod."
-        state_dict = (
+        state_dict: dict[str, torch.Tensor] = (
             remote_module.state_dict() if hasattr(remote_module, "state_dict") else remote_module
         )
         for k, v in list(state_dict.items()):
