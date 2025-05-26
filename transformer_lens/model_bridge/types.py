@@ -10,9 +10,9 @@ TransformerLensPath: TypeAlias = str  # Path in TransformerLens format (e.g. "bl
 RemotePath: TypeAlias = str  # Path in the remote model format (e.g. "transformer.h.0.attn")
 
 # Component mapping types
-RemoteImport: TypeAlias = tuple[RemotePath, Callable[..., Any]]  # Path and component factory
+RemoteImport: TypeAlias = tuple[RemotePath, Callable[..., Any] | type]  # Path and component factory
 ComponentLayer: TypeAlias = dict[
-    TransformerLensPath, RemoteImport
+    TransformerLensPath, tuple[RemotePath, Callable[..., Any] | type]
 ]  # Maps TransformerLens components to remote components
 BlockMapping: TypeAlias = tuple[RemotePath, ComponentLayer]  # Maps a block and its components
 ComponentMapping: TypeAlias = dict[

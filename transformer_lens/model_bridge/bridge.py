@@ -101,8 +101,9 @@ class TransformerBridge:
                 self._set_by_path(model, path, mlp)
 
             # Create block bridge with the actual block layer
+            block_component = adapter.get_component(model, f"blocks.{i}")
             block_bridge = BlockBridge(
-                original_component=blocks[i], name=f"blocks.{i}", architecture_adapter=adapter
+                original_component=block_component, name=f"blocks.{i}", architecture_adapter=adapter
             )
             block_bridges.append(block_bridge)
 
@@ -294,8 +295,8 @@ class TransformerBridge:
         hooks: list[tuple[HookPoint, str]] = []
         visited: set[int] = set()
 
-        def make_cache_hook(name: str) -> Callable[[torch.Tensor, Any], torch.Tensor]:
-            def cache_hook(tensor: torch.Tensor, hook: Any) -> torch.Tensor:
+        def make_cache_hook(name: str):
+            def cache_hook(tensor: torch.Tensor, *, hook: Any) -> torch.Tensor:
                 cache[name] = tensor.detach().cpu()
                 return tensor
 
@@ -324,7 +325,7 @@ class TransformerBridge:
                         if isinstance(item, nn.Module):
                             collect_hookpoints(item, f"{name}[{i}]")
 
-        collect_hookpoints(self)
+        collect_hookpoints(self.model)
 
         # Register hooks
         for hp, name in hooks:

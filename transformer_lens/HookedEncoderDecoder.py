@@ -95,7 +95,8 @@ class HookedEncoderDecoder(HookedRootModule):
         self.hook_embed = HookPoint()
 
         if move_to_device:
-            self.to(self.cfg.device)
+            if self.cfg.device is not None:
+                self.to(self.cfg.device)
 
         self.setup()
 
@@ -578,7 +579,8 @@ class HookedEncoderDecoder(HookedRootModule):
         model.load_state_dict(state_dict, strict=False)
 
         if move_to_device:
-            model.to(cfg.device)
+            if cfg.device is not None:
+                model.to(cfg.device)
 
         print(f"Loaded pretrained model {model_name} into HookedTransformer")
 

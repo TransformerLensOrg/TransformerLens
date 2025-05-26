@@ -119,11 +119,13 @@ class HookedEncoder(HookedRootModule):
         )
 
         tokens = encodings.input_ids
+        token_type_ids = encodings.token_type_ids
+        attention_mask = encodings.attention_mask
 
         if move_to_device:
             tokens = tokens.to(self.cfg.device)
-            token_type_ids = encodings.token_type_ids.to(self.cfg.device)
-            attention_mask = encodings.attention_mask.to(self.cfg.device)
+            token_type_ids = token_type_ids.to(self.cfg.device)
+            attention_mask = attention_mask.to(self.cfg.device)
 
         return tokens, token_type_ids, attention_mask
 
@@ -399,7 +401,8 @@ class HookedEncoder(HookedRootModule):
         model.load_state_dict(state_dict, strict=False)
 
         if move_to_device:
-            model.to(cfg.device)
+            if cfg.device is not None:
+                model.to(cfg.device)
 
         print(f"Loaded pretrained model {model_name} into HookedEncoder")
 

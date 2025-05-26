@@ -179,8 +179,9 @@ class NanogptArchitectureAdapter(ArchitectureAdapter):
         # Nanogpt models saved after torch.compile() have this unwanted prefix
         # This is a simple way to remove it
         unwanted_prefix = "_orig_mod."
-        for k, v in list(remote_module.items()):
+        state_dict = remote_module.state_dict() if hasattr(remote_module, 'state_dict') else remote_module
+        for k, v in list(state_dict.items()):
             if k.startswith(unwanted_prefix):
-                remote_module[k[len(unwanted_prefix) :]] = remote_module.pop(k)
+                state_dict[k[len(unwanted_prefix) :]] = state_dict.pop(k)
 
         return super().convert_weights(remote_module)
