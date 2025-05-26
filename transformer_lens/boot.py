@@ -40,7 +40,7 @@ def boot(
         **merged_config,
     )
 
-    # Load the tokenizer (not returned)
+    # Load the tokenizer
     tokenizer = AutoTokenizer.from_pretrained(model_name)
 
     return TransformerBridge(
