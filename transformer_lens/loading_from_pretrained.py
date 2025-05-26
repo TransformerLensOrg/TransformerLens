@@ -3,12 +3,14 @@
 This module contains functions for loading pretrained models from the Hugging Face Hub.
 """
 
+from __future__ import annotations
+
 import dataclasses
 import logging
 import os
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict
 
 import torch
 from huggingface_hub import HfApi
@@ -122,7 +124,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
     if official_model_name.startswith(
         ("llama-7b", "meta-llama/Llama-2-7b")
     ):  # same architecture for LLaMA and Llama-2
-        cfg_dict = {
+        cfg_dict: Dict[str, Any] = {
             "d_model": 4096,
             "d_head": 4096 // 32,
             "n_heads": 32,
@@ -1054,6 +1056,8 @@ def get_num_params_of_pretrained(model_name: str) -> int:
     Returns the number of parameters of a pretrained model, used to filter to only run code for sufficiently small models.
     """
     cfg = get_pretrained_model_config(model_name)
+    if cfg.n_params is None:
+        raise ValueError(f"n_params not calculated for model {model_name}")
     return cfg.n_params
 
 

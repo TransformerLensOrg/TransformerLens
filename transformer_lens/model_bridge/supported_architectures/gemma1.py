@@ -46,11 +46,15 @@ class Gemma1ArchitectureAdapter(ArchitectureAdapter):
                 ),
                 "blocks.{i}.attn._W_K": (
                     "model.layers.{i}.self_attn.k_proj.weight",
-                    RearrangeWeightConversion("(n h) m->n m h", n=getattr(cfg, "n_key_value_heads", cfg.n_heads)),
+                    RearrangeWeightConversion(
+                        "(n h) m->n m h", n=getattr(cfg, "n_key_value_heads", cfg.n_heads)
+                    ),
                 ),
                 "blocks.{i}.attn._W_V": (
                     "model.layers.{i}.self_attn.v_proj.weight",
-                    RearrangeWeightConversion("(n h) m->n m h", n=getattr(cfg, "n_key_value_heads", cfg.n_heads)),
+                    RearrangeWeightConversion(
+                        "(n h) m->n m h", n=getattr(cfg, "n_key_value_heads", cfg.n_heads)
+                    ),
                 ),
                 "blocks.{i}.attn.W_O": (
                     "model.layers.{i}.self_attn.o_proj.weight",
