@@ -75,12 +75,12 @@ class GeneralizedComponent(nn.Module):
             if not self.hooks[hook_name]:  # If no hooks left, remove the entry
                 del self.hooks[hook_name]
 
-    def execute_hooks(self, hook_name: str, tensor: torch.Tensor) -> torch.Tensor:
+    def execute_hooks(self, hook_name: str, tensor: torch.Tensor | tuple) -> torch.Tensor | tuple:
         """Execute all hooks registered for a specific hook point.
 
         Args:
             hook_name: Name of the hook point
-            tensor: The tensor to pass through the hooks
+            tensor: The tensor or tuple to pass through the hooks
 
         Returns:
             The result of the last hook execution, or the input tensor if no hooks
@@ -92,7 +92,12 @@ class GeneralizedComponent(nn.Module):
         if hook_name in self.hooks:
             result = tensor
             for hook in self.hooks[hook_name]:
-                result = hook(result)  # Hook functions must return a tensor
+                # For tuple outputs (like attention), pass the first element to hooks
+                if isinstance(result, tuple):
+                    hooked_first = hook(result[0], hook=self)  # Pass hook object as second argument
+                    result = (hooked_first,) + result[1:]
+                else:
+                    result = hook(result, hook=self)  # Pass hook object as second argument
                 # Update the hook output with the modified tensor
                 self.hook_outputs[hook_name] = result
             return result
@@ -114,6 +119,29 @@ class GeneralizedComponent(nn.Module):
         """Clear all registered hooks."""
         self.hooks.clear()
         self.hook_outputs.clear()
+
+    def add_hook(self, hook_fn: Callable[..., torch.Tensor], hook_name: str = "output") -> None:
+        """Add a hook function (HookedTransformer-compatible interface).
+
+        Args:
+            hook_fn: Function to call at this hook point
+            hook_name: Name of the hook point (defaults to "output")
+        """
+        self.register_hook(hook_name, hook_fn)
+
+    def remove_hooks(self, hook_name: str | None = None) -> None:
+        """Remove hooks (HookedTransformer-compatible interface).
+
+        Args:
+            hook_name: Name of the hook point to remove. If None, removes all hooks.
+        """
+        if hook_name is None:
+            self.clear_hooks()
+        else:
+            if hook_name in self.hooks:
+                del self.hooks[hook_name]
+            if hook_name in self.hook_outputs:
+                del self.hook_outputs[hook_name]
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         """Forward pass through the component.

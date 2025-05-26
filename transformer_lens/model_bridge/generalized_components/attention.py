@@ -73,4 +73,8 @@ class AttentionBridge(GeneralizedComponent):
 
         # Forward through the original component
         output = self.original_component(*args, **kwargs)
+        
+        # Execute hooks on the output (for add_hook compatibility)
+        output = self.execute_hooks("output", output)
+        
         return output
