@@ -4,7 +4,6 @@ This module provides the bridge components that wrap remote model components and
 a consistent interface for accessing their weights and performing operations.
 """
 
-from collections.abc import Callable
 from typing import Any
 
 import torch
