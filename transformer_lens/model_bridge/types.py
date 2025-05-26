@@ -1,7 +1,6 @@
 """Type definitions for architecture adapters."""
 
-from collections.abc import Callable
-from typing import Any, TypeAlias
+from typing import TypeAlias
 
 import torch.nn as nn
 

@@ -29,7 +29,9 @@ class TransformerBridge:
     to map between the HookedTransformer and HuggingFace model structures.
     """
 
-    def __init__(self, model: Union[nn.Module, PreTrainedModel], adapter: ArchitectureAdapter, tokenizer: Any):
+    def __init__(
+        self, model: Union[nn.Module, PreTrainedModel], adapter: ArchitectureAdapter, tokenizer: Any
+    ):
         """Initialize the bridge.
 
         Args:

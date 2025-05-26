@@ -2,7 +2,6 @@ from typing import Any
 
 import einops
 import torch
-from torch import nn
 
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
