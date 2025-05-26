@@ -343,11 +343,11 @@ class TransformerBridge:
             processed_args = list(args)
             if len(args) > 0 and isinstance(args[0], str):
                 assert self.tokenizer is not None, "Tokenizer must be set to pass string input."
-                
+
                 # Fix padding token issue for GPT2 tokenizers
                 if self.tokenizer.pad_token is None:
                     self.tokenizer.pad_token = self.tokenizer.eos_token
-                
+
                 input_ids = self.tokenizer(
                     args[0],
                     return_tensors="pt",
@@ -356,14 +356,14 @@ class TransformerBridge:
                 )["input_ids"]
                 input_ids = input_ids.to(next(self.model.parameters()).device)
                 processed_args[0] = input_ids
-            
+
             # Run the underlying model's forward method
             output = self.model(*processed_args, **kwargs)
-            
+
             # Extract logits if output is a HuggingFace model output object
-            if hasattr(output, 'logits'):
+            if hasattr(output, "logits"):
                 output = output.logits
-                
+
         finally:
             # Remove hooks
             for hp, _ in hooks:

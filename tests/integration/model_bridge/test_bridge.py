@@ -86,7 +86,7 @@ def test_cache():
     assert any("wte" in key for key in cache_keys), "Cache should contain word token embeddings"
     assert any("ln_f" in key for key in cache_keys), "Cache should contain final layer norm"
     assert any("lm_head" in key for key in cache_keys), "Cache should contain language model head"
-    
+
     # Verify that cached tensors are actually tensors
     for key, value in cache.items():
         assert isinstance(value, torch.Tensor), f"Cache value for {key} should be a tensor"
