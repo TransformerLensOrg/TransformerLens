@@ -1,7 +1,7 @@
 """Gemma1 architecture adapter."""
 
+from typing import Any
 
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
     RearrangeWeightConversion,
@@ -19,11 +19,11 @@ from transformer_lens.model_bridge.generalized_components import (
 class Gemma1ArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for Gemma1 models."""
 
-    def __init__(self, cfg: HookedTransformerConfig) -> None:
+    def __init__(self, cfg: Any) -> None:
         """Initialize the Gemma1 architecture adapter.
 
         Args:
-            cfg: The HookedTransformer configuration.
+            cfg: The configuration object.
         """
         super().__init__(cfg)
 
@@ -42,19 +42,19 @@ class Gemma1ArchitectureAdapter(ArchitectureAdapter):
                 "blocks.{i}.ln2.w": "model.layers.{i}.post_attention_layernorm.weight",
                 "blocks.{i}.attn.W_Q": (
                     "model.layers.{i}.self_attn.q_proj.weight",
-                    RearrangeWeightConversion("(n h) m->n m h", n=cfg.num_attention_heads),
+                    RearrangeWeightConversion("(n h) m->n m h", n=cfg.n_heads),
                 ),
                 "blocks.{i}.attn._W_K": (
                     "model.layers.{i}.self_attn.k_proj.weight",
-                    RearrangeWeightConversion("(n h) m->n m h", n=cfg.n_key_value_heads),
+                    RearrangeWeightConversion("(n h) m->n m h", n=getattr(cfg, "n_key_value_heads", cfg.n_heads)),
                 ),
                 "blocks.{i}.attn._W_V": (
                     "model.layers.{i}.self_attn.v_proj.weight",
-                    RearrangeWeightConversion("(n h) m->n m h", n=cfg.n_key_value_heads),
+                    RearrangeWeightConversion("(n h) m->n m h", n=getattr(cfg, "n_key_value_heads", cfg.n_heads)),
                 ),
                 "blocks.{i}.attn.W_O": (
                     "model.layers.{i}.self_attn.o_proj.weight",
-                    RearrangeWeightConversion("m (n h)->n h m", n=cfg.num_attention_heads),
+                    RearrangeWeightConversion("m (n h)->n h m", n=cfg.n_heads),
                 ),
                 "blocks.{i}.mlp.W_in": "model.layers.{i}.mlp.up_proj.weight.T",
                 "blocks.{i}.mlp.W_gate": "model.layers.{i}.mlp.gate_proj.weight.T",

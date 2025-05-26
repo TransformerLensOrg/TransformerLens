@@ -153,10 +153,10 @@ class ArchitectureAdapter:
         # First part should be a top-level component
         # Use cast to help mypy understand this is a dict
         component_mapping = cast(dict[str, RemoteImport | BlockMapping], self.component_mapping)
-        if parts[0] not in component_mapping:
+        if parts[0] not in component_mapping:  # type: ignore[operator]
             raise ValueError(f"Component {parts[0]} not found in component mapping")
 
-        full_path = self._resolve_component_path(parts[1:], component_mapping[parts[0]])
+        full_path = self._resolve_component_path(parts[1:], component_mapping[parts[0]])  # type: ignore[index]
 
         if last_component_only:
             # Split the path and return only the last component
