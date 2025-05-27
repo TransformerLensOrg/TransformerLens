@@ -188,14 +188,19 @@ class TransformerBridge:
         for name, value in mapping.items():
             path = f"{prepend}.{name}" if prepend else name
             if isinstance(value, tuple):
-                # For tuple paths (like blocks), get the TransformerLens path and component mapping
-                _, sub_mapping = value  # Unpack but ignore tl_path since it's not used
-                # Format the main component with prepend if provided
-                path = f"{path}.0"
-                lines.append(self._format_single_component(name, path, indent))
-                # Recursively format subcomponents with updated prepend
-                sub_lines = self._format_component_mapping(sub_mapping, indent + 1, path)
-                lines.extend(sub_lines)
+                # For tuple paths, check if the second element is a dictionary (BlockMapping)
+                # or a class type (RemoteImport)
+                _, sub_mapping = value
+                if isinstance(sub_mapping, dict):
+                    # This is a BlockMapping (like blocks) - format recursively
+                    path = f"{path}.0"
+                    lines.append(self._format_single_component(name, path, indent))
+                    # Recursively format subcomponents with updated prepend
+                    sub_lines = self._format_component_mapping(sub_mapping, indent + 1, path)
+                    lines.extend(sub_lines)
+                else:
+                    # This is a RemoteImport (like embed, ln_final, unembed) - format as single component
+                    lines.append(self._format_single_component(name, path, indent))
             else:
                 # For regular components, use prepend if provided
                 lines.append(self._format_single_component(name, path, indent))
