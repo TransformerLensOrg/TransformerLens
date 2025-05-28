@@ -144,4 +144,4 @@ def test_weight_conversion_set_repr():
     ), f"Expected reference to 'nested conversions', got {rep_str}"
     assert "embed.w_e" in rep_str, "Expected mention of embed.W_E key."
     assert "pos_embed" in rep_str, "Expected mention of pos_embed key."
-    assert "layer_0_attn" in rep_str, "Expected mention of layer_0_attn key." 
+    assert "layer_0_attn" in rep_str, "Expected mention of layer_0_attn key."
