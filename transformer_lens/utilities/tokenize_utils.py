@@ -44,9 +44,9 @@ def tokenize_and_concatenate(
         Dataset: Returns the tokenized dataset, as a dataset of tensors, with a single column called "tokens"
     """
     dataset = keep_single_column(dataset, column_name)
-    if tokenizer.pad_token is None:  # type: ignore[attr-defined]
+    if tokenizer.pad_token is None:
         # We add a padding token, purely to implement the tokenizer. This will be removed before inputting tokens to the model, so we do not need to increment d_vocab in the model.
-        tokenizer.add_special_tokens({"pad_token": "<PAD>"})  # type: ignore[attr-defined]
+        tokenizer.add_special_tokens({"pad_token": "<PAD>"})
     # Define the length to chop things up into - leaving space for a bos_token if required
     if add_bos_token:
         seq_len = max_length - 1
@@ -56,42 +56,37 @@ def tokenize_and_concatenate(
     def tokenize_function(examples: Dict[str, List[str]]) -> Dict[str, np.ndarray]:
         text = examples[column_name]
         # Concatenate it all into an enormous string, separated by eos_tokens
-        full_text = tokenizer.eos_token.join(text)  # type: ignore[attr-defined]
+        full_text = tokenizer.eos_token.join(text)
 
         # Handle the case when full_text is empty
         if not full_text.strip():
-            return {"tokens": np.array([], dtype=np.int64)}
+            return {"tokens": np.array([])}
 
-        # Divide into 20 chunks of ~ equal length
-        num_chunks = 20
-        chunk_length = (len(full_text) - 1) // num_chunks + 1
-        chunks = [full_text[i * chunk_length : (i + 1) * chunk_length] for i in range(num_chunks)]
+        # Split into chunks of appropriate length
+        num_chunks = (len(full_text) - 1) // seq_len + 1
+        chunks = [full_text[i * seq_len : (i + 1) * seq_len] for i in range(num_chunks)]
         # Tokenize the chunks in parallel. Uses NumPy because HuggingFace map doesn't want tensors returned
-        tokens = tokenizer(chunks, return_tensors="np", padding=True)["input_ids"].flatten()  # type: ignore[operator]
+        tokens = tokenizer(chunks, return_tensors="np", padding=True)["input_ids"].flatten()
         # Drop padding tokens
-        tokens = tokens[tokens != tokenizer.pad_token_id]  # type: ignore[attr-defined]
+        tokens = tokens[tokens != tokenizer.pad_token_id]
         num_tokens = len(tokens)
 
         # Handle cases where num_tokens is less than seq_len
         if num_tokens < seq_len:
-            num_batches = 1
-            # Pad tokens if necessary
             tokens = tokens[:seq_len]
             if len(tokens) < seq_len:
                 padding_length = seq_len - len(tokens)
-                padding = np.full(padding_length, tokenizer.pad_token_id)  # type: ignore[attr-defined]
+                padding = np.full(padding_length, tokenizer.pad_token_id)
                 tokens = np.concatenate([tokens, padding], axis=0)
         else:
             num_batches = num_tokens // seq_len
-            # Drop the final tokens if not enough to make a full sequence
-            tokens = tokens[: seq_len * num_batches]
-
-        tokens = einops.rearrange(
-            tokens, "(batch seq) -> batch seq", batch=num_batches, seq=seq_len
-        )
-        if add_bos_token:
-            prefix = np.full((num_batches, 1), tokenizer.bos_token_id)  # type: ignore[attr-defined]
-            tokens = np.concatenate([prefix, tokens], axis=1)
+            tokens = tokens[: num_batches * seq_len]
+            tokens = einops.rearrange(
+                tokens, "(batch seq) -> batch seq", batch=num_batches, seq=seq_len
+            )
+            if add_bos_token:
+                prefix = np.full((num_batches, 1), tokenizer.bos_token_id)
+                tokens = np.concatenate([prefix, tokens], axis=1)
         return {"tokens": tokens}
 
     tokenized_dataset = dataset.map(
