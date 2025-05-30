@@ -60,11 +60,12 @@ def tokenize_and_concatenate(
 
         # Handle the case when full_text is empty
         if not full_text.strip():
-            return {"tokens": np.array([])}
+            return {"tokens": np.array([], dtype=np.int64)}
 
-        # Split into chunks of appropriate length
-        num_chunks = (len(full_text) - 1) // seq_len + 1
-        chunks = [full_text[i * seq_len : (i + 1) * seq_len] for i in range(num_chunks)]
+        # Divide into 20 chunks of ~ equal length
+        num_chunks = 20
+        chunk_length = (len(full_text) - 1) // num_chunks + 1
+        chunks = [full_text[i * chunk_length : (i + 1) * chunk_length] for i in range(num_chunks)]
         # Tokenize the chunks in parallel. Uses NumPy because HuggingFace map doesn't want tensors returned
         tokens = tokenizer(chunks, return_tensors="np", padding=True)["input_ids"].flatten()
         # Drop padding tokens
@@ -73,6 +74,8 @@ def tokenize_and_concatenate(
 
         # Handle cases where num_tokens is less than seq_len
         if num_tokens < seq_len:
+            num_batches = 1
+            # Pad tokens if necessary
             tokens = tokens[:seq_len]
             if len(tokens) < seq_len:
                 padding_length = seq_len - len(tokens)
@@ -80,13 +83,15 @@ def tokenize_and_concatenate(
                 tokens = np.concatenate([tokens, padding], axis=0)
         else:
             num_batches = num_tokens // seq_len
-            tokens = tokens[: num_batches * seq_len]
-            tokens = einops.rearrange(
-                tokens, "(batch seq) -> batch seq", batch=num_batches, seq=seq_len
-            )
-            if add_bos_token:
-                prefix = np.full((num_batches, 1), tokenizer.bos_token_id)
-                tokens = np.concatenate([prefix, tokens], axis=1)
+            # Drop the final tokens if not enough to make a full sequence
+            tokens = tokens[: seq_len * num_batches]
+
+        tokens = einops.rearrange(
+            tokens, "(batch seq) -> batch seq", batch=num_batches, seq=seq_len
+        )
+        if add_bos_token:
+            prefix = np.full((num_batches, 1), tokenizer.bos_token_id)
+            tokens = np.concatenate([prefix, tokens], axis=1)
         return {"tokens": tokens}
 
     tokenized_dataset = dataset.map(
