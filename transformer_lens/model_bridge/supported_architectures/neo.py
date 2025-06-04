@@ -13,6 +13,8 @@ from transformer_lens.model_bridge.generalized_components import (
     LayerNormBridge,
     MLPBridge,
     UnembeddingBridge,
+,
+    BlockBridge,
 )
 
 
@@ -80,6 +82,7 @@ class NeoArchitectureAdapter(ArchitectureAdapter):
             "pos_embed": ("transformer.wpe", EmbeddingBridge),
             "blocks": (
                 "transformer.h",
+                BlockBridge,
                 {
                     "ln1": ("ln_1", LayerNormBridge),
                     "ln2": ("ln_2", LayerNormBridge),

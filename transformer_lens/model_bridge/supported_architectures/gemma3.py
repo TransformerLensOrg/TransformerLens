@@ -8,6 +8,7 @@ from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
 )
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
+    BlockBridge,
     EmbeddingBridge,
     LayerNormBridge,
     MLPBridge,
@@ -67,6 +68,7 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
             "embed": ("model.embed_tokens", EmbeddingBridge),  # Word token embeddings
             "blocks": (
                 "model.layers",  # Base path for blocks
+                BlockBridge,     # Bridge type for blocks
                 {
                     "ln1": ("input_layernorm", LayerNormBridge),  # Pre-attention layer norm
                     "ln2": (

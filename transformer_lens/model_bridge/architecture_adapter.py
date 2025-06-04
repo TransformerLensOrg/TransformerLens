@@ -150,13 +150,14 @@ class ArchitectureAdapter:
         if not parts:
             raise ValueError("Empty path")
 
+        # At this point, we know component_mapping is not None
+        component_mapping = self.component_mapping
+        
         # First part should be a top-level component
-        # Use cast to help mypy understand this is a dict
-        component_mapping = cast(dict[str, RemoteImport | BlockMapping], self.component_mapping)
-        if parts[0] not in component_mapping:  # type: ignore[operator]
+        if parts[0] not in component_mapping:
             raise ValueError(f"Component {parts[0]} not found in component mapping")
 
-        full_path = self._resolve_component_path(parts[1:], component_mapping[parts[0]])  # type: ignore[index]
+        full_path = self._resolve_component_path(parts[1:], component_mapping[parts[0]])
 
         if last_component_only:
             # Split the path and return only the last component
@@ -183,11 +184,15 @@ class ArchitectureAdapter:
             # For both RemoteImport and BlockMapping, return the base path
             return mapping[0]  # Return the base path (first element of tuple)
 
-        base_path, sub_mapping = mapping
-
-        # If this is a RemoteImport (direct mapping), just append the rest of the path
-        if not isinstance(sub_mapping, dict):
+        if len(mapping) == 2:
+            # This is a RemoteImport (path, bridge_type)
+            base_path, _ = mapping
             return f"{base_path}.{'.'.join(parts)}"
+        elif len(mapping) == 3:
+            # This is a BlockMapping (path, bridge_type, sub_mapping)
+            base_path, _, sub_mapping = mapping
+        else:
+            raise ValueError(f"Invalid mapping structure: {mapping}")
 
         # Handle BlockMapping case
         idx = parts[0]

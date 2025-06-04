@@ -13,7 +13,7 @@ RemoteImport: TypeAlias = tuple[RemotePath, type]  # Path and component class
 ComponentLayer: TypeAlias = dict[
     TransformerLensPath, RemoteImport
 ]  # Maps TransformerLens components to remote components
-BlockMapping: TypeAlias = tuple[RemotePath, ComponentLayer]  # Maps a block and its components
+BlockMapping: TypeAlias = tuple[RemotePath, type, ComponentLayer]  # Maps a block path, bridge type, and its components
 ComponentMapping: TypeAlias = dict[
     TransformerLensPath, RemoteImport | BlockMapping
 ]  # Complete component mapping

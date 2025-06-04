@@ -13,6 +13,8 @@ from transformer_lens.model_bridge.generalized_components import (
     LayerNormBridge,
     MLPBridge,
     UnembeddingBridge,
+,
+    BlockBridge,
 )
 
 
@@ -80,6 +82,7 @@ class MingptArchitectureAdapter(ArchitectureAdapter):
             "pos_embed": ("pos_emb", EmbeddingBridge),
             "blocks": (
                 "blocks",
+                BlockBridge,
                 {
                     "ln1": ("ln1", LayerNormBridge),
                     "ln2": ("ln2", LayerNormBridge),

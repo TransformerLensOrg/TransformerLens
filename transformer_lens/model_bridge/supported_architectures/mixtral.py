@@ -9,6 +9,7 @@ from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
 )
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
+    BlockBridge,
     EmbeddingBridge,
     LayerNormBridge,
     MoEBridge,
@@ -79,6 +80,7 @@ class MixtralArchitectureAdapter(ArchitectureAdapter):
             "embed": ("model.embed_tokens", EmbeddingBridge),
             "blocks": (
                 "model.layers",
+                BlockBridge,
                 {
                     "ln1": ("input_layernorm", LayerNormBridge),
                     "ln2": ("post_attention_layernorm", LayerNormBridge),

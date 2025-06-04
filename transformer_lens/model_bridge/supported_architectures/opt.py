@@ -13,6 +13,8 @@ from transformer_lens.model_bridge.generalized_components import (
     LayerNormBridge,
     MLPBridge,
     UnembeddingBridge,
+,
+    BlockBridge,
 )
 
 
@@ -80,6 +82,7 @@ class OptArchitectureAdapter(ArchitectureAdapter):
             "pos_embed": ("model.decoder.embed_positions", EmbeddingBridge),
             "blocks": (
                 "model.decoder.layers",
+                BlockBridge,
                 {
                     "ln1": ("self_attn_layer_norm", LayerNormBridge),
                     "ln2": ("final_layer_norm", LayerNormBridge),

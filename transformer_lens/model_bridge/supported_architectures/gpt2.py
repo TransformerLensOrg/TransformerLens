@@ -9,6 +9,7 @@ from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
 )
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
+    BlockBridge,
     EmbeddingBridge,
     LayerNormBridge,
     MLPBridge,
@@ -87,6 +88,7 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
             "pos_embed": ("transformer.wpe", EmbeddingBridge),
             "blocks": (
                 "transformer.h",
+                BlockBridge,
                 {
                     "ln1": ("ln_1", LayerNormBridge),
                     "ln2": ("ln_2", LayerNormBridge),

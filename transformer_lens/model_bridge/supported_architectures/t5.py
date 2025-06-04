@@ -13,6 +13,8 @@ from transformer_lens.model_bridge.generalized_components import (
     LayerNormBridge,
     MLPBridge,
     UnembeddingBridge,
+,
+    BlockBridge,
 )
 
 
@@ -79,6 +81,7 @@ class T5ArchitectureAdapter(ArchitectureAdapter):
             "embed": ("shared", EmbeddingBridge),
             "blocks": (
                 "encoder.block",
+                BlockBridge,
                 {
                     "ln1": ("layer.0.layer_norm", LayerNormBridge),
                     "ln2": ("layer.1.layer_norm", LayerNormBridge),

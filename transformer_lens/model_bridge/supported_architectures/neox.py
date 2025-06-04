@@ -13,6 +13,8 @@ from transformer_lens.model_bridge.generalized_components import (
     LayerNormBridge,
     MLPBridge,
     UnembeddingBridge,
+,
+    BlockBridge,
 )
 
 
@@ -79,6 +81,7 @@ class NeoXArchitectureAdapter(ArchitectureAdapter):
             "embed": ("gpt_neox.embed_in", EmbeddingBridge),
             "blocks": (
                 "gpt_neox.layers",
+                BlockBridge,
                 {
                     "ln1": ("input_layernorm", LayerNormBridge),
                     "ln2": ("post_attention_layernorm", LayerNormBridge),

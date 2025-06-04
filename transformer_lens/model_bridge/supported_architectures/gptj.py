@@ -13,6 +13,8 @@ from transformer_lens.model_bridge.generalized_components import (
     LayerNormBridge,
     MLPBridge,
     UnembeddingBridge,
+,
+    BlockBridge,
 )
 
 
@@ -66,6 +68,7 @@ class GptjArchitectureAdapter(ArchitectureAdapter):
             "embed": ("transformer.wte", EmbeddingBridge),
             "blocks": (
                 "transformer.h",
+                BlockBridge,
                 {
                     "ln1": ("ln_1", LayerNormBridge),
                     "ln2": ("ln_2", LayerNormBridge),

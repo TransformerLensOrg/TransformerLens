@@ -16,6 +16,8 @@ from transformer_lens.model_bridge.generalized_components import (
     LayerNormBridge,
     MLPBridge,
     UnembeddingBridge,
+,
+    BlockBridge,
 )
 
 
@@ -89,6 +91,7 @@ class BertArchitectureAdapter(ArchitectureAdapter):
             "pos_embed": ("bert.embeddings.position_embeddings", EmbeddingBridge),
             "blocks": (
                 "bert.encoder.layer",
+                BlockBridge,
                 {
                     "ln1": ("attention.output.LayerNorm", LayerNormBridge),
                     "ln2": ("output.LayerNorm", LayerNormBridge),
