@@ -12,6 +12,9 @@ from transformer_lens.model_bridge.architecture_adapter import (
 from transformer_lens.model_bridge.bridge import (
     TransformerBridge,
 )
+from transformer_lens.model_bridge.component_creation import (
+    create_bridged_component,
+)
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
     BlockBridge,
@@ -33,4 +36,5 @@ __all__ = [
     "MLPBridge",
     "MoEBridge",
     "UnembeddingBridge",
+    "create_bridged_component",
 ]

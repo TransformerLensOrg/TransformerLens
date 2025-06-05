@@ -1,13 +1,11 @@
-"""Tests for component mapping utilities."""
+"""Tests for component creation utilities."""
 
 import pytest
 import torch
 import torch.nn as nn
 
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
-from transformer_lens.model_bridge.conversion_utils.component_mapping import (
-    create_bridged_component,
-)
+from transformer_lens.model_bridge.component_creation import create_bridged_component
 from transformer_lens.model_bridge.generalized_components import LayerNormBridge
 from transformer_lens.model_bridge.types import RemoteImport
 

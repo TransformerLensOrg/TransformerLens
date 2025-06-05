@@ -1,13 +1,17 @@
-"""Component mapping utilities for creating bridged components."""
+from __future__ import annotations
 
+"""Component creation utilities for creating bridged components."""
+
+from typing import Any, Type
 
 import torch.nn as nn
 
+from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.types import RemoteImport, RemoteModel
 
 
 def create_bridged_component(
-    remote_import: RemoteImport,
+    remote_import,
     remote_model: RemoteModel,
     architecture_adapter: "ArchitectureAdapter",
     prepend: str | None = None,
@@ -30,6 +34,9 @@ def create_bridged_component(
         ValueError: If the remote import structure is invalid
         AttributeError: If the component cannot be found in the remote module
     """
+    if not isinstance(architecture_adapter, ArchitectureAdapter):
+        raise TypeError("architecture_adapter must be an instance of ArchitectureAdapter")
+
     if not isinstance(remote_import, tuple) or len(remote_import) != 2:
         raise ValueError("RemoteImport must be a tuple of (path, component_type)")
 
