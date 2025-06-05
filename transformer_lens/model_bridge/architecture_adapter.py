@@ -3,7 +3,7 @@
 This module contains the base class for architecture adapters that map between different model architectures.
 """
 
-from typing import Any, cast
+from typing import Any
 
 import torch
 import torch.nn as nn

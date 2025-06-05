@@ -1,6 +1,5 @@
 """Component mapping utilities for creating bridged components."""
 
-from typing import Any, Type
 
 import torch.nn as nn
 
