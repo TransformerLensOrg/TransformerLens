@@ -54,3 +54,26 @@ def create_bridged_component(
         name=full_path,
         architecture_adapter=architecture_adapter
     ) 
+
+def replace_remote_component(
+    bridged_component: nn.Module, remote_path: str, remote_model: nn.Module
+) -> None:
+    """Replace a component on the remote model.
+
+    This works by grabbing everything in the path before the last part, and then
+    setting the property in that object to the bridged component based on the
+    last part of the path.
+
+    Args:
+        bridged_component: The new, bridged component.
+        remote_path: The full path to the component.
+        remote_model: The remote model to modify.
+    """
+    path_parts = remote_path.split(".")
+    parent_obj = remote_model
+    for part in path_parts[:-1]:
+        if part.isdigit():
+            parent_obj = parent_obj[int(part)]
+        else:
+            parent_obj = getattr(parent_obj, part)
+    setattr(parent_obj, path_parts[-1], bridged_component) 

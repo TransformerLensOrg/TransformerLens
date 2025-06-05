@@ -5,7 +5,10 @@ import torch
 import torch.nn as nn
 
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
-from transformer_lens.model_bridge.component_creation import create_bridged_component
+from transformer_lens.model_bridge.component_creation import (
+    create_bridged_component,
+    replace_remote_component,
+)
 from transformer_lens.model_bridge.generalized_components import LayerNormBridge
 from transformer_lens.model_bridge.types import RemoteImport
 
@@ -97,4 +100,30 @@ class TestCreateBridgedComponent:
         
         # Test that hook outputs are stored
         assert "output" in component.hook_outputs
-        assert component.hook_outputs["output"].shape == x.shape 
+        assert component.hook_outputs["output"].shape == x.shape
+
+    def test_replace_remote_component(self, mock_model, adapter):
+        """Test replacing a component on the remote model."""
+        # 1. Test replacing a nested component
+        remote_import: RemoteImport = ("model.ln", LayerNormBridge)
+        bridged_component = create_bridged_component(remote_import, mock_model, adapter)
+        
+        # Replace the component
+        replace_remote_component(bridged_component, "model.ln", mock_model)
+        
+        # Check that it was replaced
+        assert isinstance(mock_model.model.ln, LayerNormBridge)
+        assert mock_model.model.ln is bridged_component
+
+        # 2. Test replacing a component in a ModuleList
+        remote_import_block: RemoteImport = ("ln", LayerNormBridge)
+        bridged_component_block = create_bridged_component(
+            remote_import_block, mock_model, adapter, prepend="blocks.0"
+        )
+        
+        # Replace the component
+        replace_remote_component(bridged_component_block, "blocks.0.ln", mock_model)
+
+        # Check that it was replaced
+        assert isinstance(mock_model.blocks[0].ln, LayerNormBridge)
+        assert mock_model.blocks[0].ln is bridged_component_block 
