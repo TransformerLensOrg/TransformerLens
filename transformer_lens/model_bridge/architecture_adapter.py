@@ -3,6 +3,7 @@
 This module contains the base class for architecture adapters that map between different model architectures.
 """
 
+from abc import ABC
 from typing import Any
 
 import torch
@@ -23,7 +24,7 @@ from transformer_lens.model_bridge.types import (
 )
 
 
-class ArchitectureAdapter:
+class ArchitectureAdapter(ABC):
     """Base class for architecture adapters.
 
     This class provides the interface for adapting between different model architectures.
@@ -55,54 +56,27 @@ class ArchitectureAdapter:
             raise ValueError("component_mapping must be set before calling get_component_mapping")
         return self.component_mapping
 
-    def get_remote_component(self, model: RemoteModel, path: RemotePath) -> RemoteComponent:
-        """Get a component from the remote model using a dot-separated path.
+    def get_remote_component(
+        self, model: RemoteModel, path: str
+    ) -> RemoteComponent:
+        """Get a component from a remote model by its path.
+
+        This method should be overridden by subclasses to provide the logic for
+        accessing components in a specific model architecture.
 
         Args:
-            model: The remote model to extract the component from
-            path: The dot-separated path to the component (e.g. "model.layers.0.ln1")
+            model: The remote model
+            path: The path to the component in the remote model's format
 
         Returns:
-            The component at the specified path
-
-        Raises:
-            AttributeError: If a component in the path doesn't exist
-            IndexError: If an invalid index is accessed
-            ValueError: If the path is empty or invalid
-
-        Examples:
-            Get an embedding component:
-
-            >>> # adapter.get_remote_component(model, "model.embed_tokens")
-            >>> # <Embedding>
-
-            Get a transformer block:
-
-            >>> # adapter.get_remote_component(model, "model.layers.0")
-            >>> # <TransformerBlock>
-
-            Get a layer norm component:
-
-            >>> # adapter.get_remote_component(model, "model.layers.0.ln1")
-            >>> # <LayerNorm>
+            The component (e.g., a PyTorch module)
         """
-        if not path:
-            raise ValueError("Path cannot be empty")
-
-        parts = path.split(".")
-        current: Any = model
-
-        for part in parts:
-            if not part:
-                raise ValueError(f"Invalid path segment in {path}")
+        current = model
+        for part in path.split("."):
             if part.isdigit():
                 current = current[int(part)]
             else:
                 current = getattr(current, part)
-
-        if not isinstance(current, nn.Module):
-            raise ValueError(f"Component at path {path} is not a nn.Module")
-
         return current
 
     def translate_transformer_lens_path(
@@ -262,3 +236,37 @@ class ArchitectureAdapter:
         if self.conversion_rules is None:
             raise ValueError("conversion_rules must be set before calling convert_weights")
         return self.conversion_rules.convert(input_value=hf_model)
+
+    def get_remote_path_and_type(self, tl_path: str) -> RemoteImport:
+        """Get the remote path and type for a given TransformerLens path.
+
+        Args:
+            tl_path: The TransformerLens path (e.g., "blocks.0.attn")
+
+        Returns:
+            A tuple of (remote_path, remote_type)
+
+        Raises:
+            KeyError: If the path is not found in the component mapping.
+        """
+        current_mapping = self.component_mapping
+        path_parts = tl_path.split(".")
+        for i, part in enumerate(path_parts):
+            if part in current_mapping:
+                entry = current_mapping[part]
+                if isinstance(entry, tuple) and len(entry) == 3:  # BlockMapping
+                    if i == len(path_parts) - 1:
+                        # We are at the block itself
+                        return entry[0], entry[1]
+                    else:
+                        # We are descending into a block
+                        current_mapping = entry[2]
+                elif isinstance(entry, tuple) and len(entry) == 2:  # RemoteImport
+                    if i != len(path_parts) - 1:
+                        raise KeyError(f"Path {tl_path} is too long.")
+                    return entry
+                else:
+                    raise TypeError(f"Invalid entry in component_mapping: {entry}")
+            else:
+                raise KeyError(f"Path {tl_path} not found in component_mapping.")
+        raise KeyError(f"Path {tl_path} not found in component_mapping.")

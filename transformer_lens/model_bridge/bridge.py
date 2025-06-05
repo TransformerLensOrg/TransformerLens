@@ -11,9 +11,10 @@ import torch.nn as nn
 from transformers.modeling_utils import PreTrainedModel
 
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
-from transformer_lens.model_bridge.generalized_components import (
-    BlockBridge,
+from transformer_lens.model_bridge.component_creation import (
+    create_and_replace_components_from_mapping,
 )
+from transformer_lens.model_bridge.generalized_components import BlockBridge
 
 
 class TransformerBridge:
@@ -42,202 +43,39 @@ class TransformerBridge:
         if not hasattr(adapter, "component_mapping") or adapter.component_mapping is None:
             raise ValueError("Adapter must have a component_mapping attribute")
 
-        # Recursively build components using the mapping
-        self._build_components_from_mapping(adapter.component_mapping)
-
-    def _build_components_from_mapping(self, mapping: dict, prefix: str = "") -> None:
-        """Recursively build components from the component mapping.
-
-        Args:
-            mapping: The component mapping dictionary
-            prefix: The current path prefix for component names
-        """
-        for name, value in mapping.items():
-            if self._should_skip_component(name):
-                continue
-                
-            if isinstance(value, tuple):
-                self._handle_tuple_component(name, value, prefix)
-            else:
-                self._handle_regular_component(name, value)
-
-    def _should_skip_component(self, name: str) -> bool:
-        """Check if component should be skipped (already processed).
-        
-        Args:
-            name: The component name
-            
-        Returns:
-            True if component should be skipped
-        """
-        return hasattr(self, name)
-
-    def _handle_tuple_component(self, name: str, value: tuple, prefix: str) -> None:
-        """Handle tuple-based component definitions.
-        
-        Args:
-            name: The component name
-            value: The tuple containing path and mapping/type info
-            prefix: Current path prefix
-        """
-        if len(value) == 3:
-            # This is a BlockMapping: (path, bridge_type, sub_mapping)
-            _, bridge_type, sub_mapping = value
-            if isinstance(sub_mapping, dict):
-                self._handle_nested_mapping(name, sub_mapping, bridge_type)
-            else:
-                self._create_single_component(name, name, bridge_type)
-        elif len(value) == 2:
-            # This is a RemoteImport: (path, bridge_type)
-            _, bridge_type = value
-            self._create_single_component(name, name, bridge_type)
-        else:
-            raise ValueError(f"Invalid tuple structure for component {name}: {value}")
-
-    def _handle_regular_component(self, name: str, value: type) -> None:
-        """Handle regular component definitions.
-        
-        Args:
-            name: The component name
-            value: The component type/class
-        """
-        self._create_single_component(name, name, value)
-
-    def _handle_nested_mapping(self, name: str, sub_mapping: dict, bridge_type: type = None) -> None:
-        """Handle nested component mappings.
-        
-        Args:
-            name: The component name
-            sub_mapping: The nested mapping dictionary
-            bridge_type: The bridge type for this component (used for blocks)
-        """
-        if name == "blocks":
-            self._create_blocks_component(bridge_type)
-        else:
-            # Recurse for other nested mappings
-            self._build_components_from_mapping(sub_mapping, name)
-
-    def _create_blocks_component(self, bridge_type: type = None) -> None:
-        """Create the blocks component with proper ModuleList structure.
-        
-        Args:
-            bridge_type: The bridge type to use for individual blocks (should be BlockBridge)
-        """
-        if bridge_type is None:
-            # Import here to avoid circular imports
-            from transformer_lens.model_bridge.generalized_components import BlockBridge
-            bridge_type = BlockBridge
-            
-        n_layers = self._get_num_layers()
-        block_bridges = nn.ModuleList()
-        
-        for i in range(n_layers):
-            block_path = f"blocks.{i}"
-            block_component = self.bridge.get_component(self.model, block_path)
-            block_bridge = bridge_type(
-                original_component=block_component,
-                name=block_path,
-                architecture_adapter=self.bridge
-            )
-            block_bridges.append(block_bridge)
-            
-        self._set_component_in_model("blocks", block_bridges)
-        setattr(self, "blocks", block_bridges)
-
-    def _get_num_layers(self) -> int:
-        """Get the number of layers from the config.
-        
-        Returns:
-            Number of layers in the model
-            
-        Raises:
-            AttributeError: If neither num_hidden_layers nor n_layers is found
-        """
-        n_layers = getattr(self.cfg, "num_hidden_layers", getattr(self.cfg, "n_layers", None))
-        if n_layers is None:
-            raise AttributeError("Config has neither num_hidden_layers nor n_layers")
-        return n_layers
-
-    def _create_single_component(self, name: str, path: str, component_type: type) -> None:
-        """Create and wrap a single component.
-        
-        Args:
-            name: The component name
-            path: The path to get the component
-            component_type: The expected bridge type for this component
-        """
-        if self._should_skip_component(name):
-            return
-            
-        component = self.bridge.get_component(self.model, path)
-        bridge_class = self._get_bridge_class(component_type)
-        
-        if not isinstance(component, bridge_class):
-            wrapped_component = self._wrap_component_with_bridge(
-                component, path, bridge_class
-            )
-            self._set_component_in_model(path, wrapped_component)
-            setattr(self, name, wrapped_component)
-        else:
-            setattr(self, name, component)
-
-    def _get_bridge_class(self, component_type: type) -> type:
-        """Get the appropriate bridge class for a component type.
-        
-        Args:
-            component_type: The component type (already the bridge class)
-            
-        Returns:
-            The bridge class
-        """
-        return component_type
-
-    def _wrap_component_with_bridge(
-        self, component: Any, path: str, bridge_class: type
-    ) -> Any:
-        """Wrap a component with its bridge.
-        
-        Args:
-            component: The original component
-            path: The component path
-            bridge_class: The bridge class to use
-            
-        Returns:
-            The wrapped component
-        """
-        return bridge_class(
-            original_component=component,
-            name=path,
-            architecture_adapter=self.bridge
+        # Create and replace all components from the mapping
+        create_and_replace_components_from_mapping(
+            adapter.component_mapping, self.model, self.bridge
         )
 
-    def _set_component_in_model(self, path: str, component: Any) -> None:
-        """Set a component in the model at the specified path.
-        
-        Args:
-            path: The path where to set the component
-            component: The component to set
-        """
-        model_path = self.bridge.translate_transformer_lens_path(path)
-        self._set_by_path(self.model, model_path, component)
+        # After replacing, we still need to set the components on the bridge itself
+        # for easy access.
+        self._set_components_on_bridge(adapter.component_mapping)
 
-    def _set_by_path(self, obj: Any, path: str, value: Any) -> None:
-        """Set a value in an object by its path.
+    def _set_components_on_bridge(self, mapping: dict) -> None:
+        """Set components on the bridge for easy access after they have been replaced.
 
         Args:
-            obj: The object to modify
-            path: The dot-separated path to the attribute
-            value: The value to set
+            mapping: The component mapping dictionary to iterate through.
         """
-        parts = path.split(".")
-        for part in parts[:-1]:
-            if part == "model":
-                obj = obj.model
-            elif part.isdigit():
-                obj = obj[int(part)]
-            else:
-                obj = getattr(obj, part)
-        setattr(obj, parts[-1], value)
+        for tl_path, remote_spec in mapping.items():
+            # The remote_path is the first element of the spec tuple.
+            remote_path_template = remote_spec[0]
+
+            # The component on the remote model has already been replaced. We just
+            # need to get it and set it as an attribute on the bridge.
+            bridged_component = self.bridge.get_remote_component(
+                self.model, remote_path_template
+            )
+
+            setattr(self, tl_path, bridged_component)
+
+    def __getattr__(self, name: str) -> Any:
+        """Provide a clear error message for missing attributes."""
+        raise AttributeError(
+            f"'{type(self).__name__}' object has no attribute '{name}'. "
+            f"Check the component mapping in your architecture adapter."
+        )
 
     def _format_single_component(self, name: str, path: str, indent: int = 0) -> str:
         """Format a single component's string representation.
@@ -470,7 +308,6 @@ class TransformerBridge:
                 hp.remove_hooks()
         return output, cache
 
-    @property
     def blocks(self):
         # Use the adapter to get the blocks component, for flexibility
         return self.bridge.get_component(self.model, "blocks")

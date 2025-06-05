@@ -95,7 +95,7 @@ def create_and_replace_components_from_mapping(
 
     This function iterates through a component mapping, creates bridged
     components, and replaces them on the remote model. It handles nested
-    mappings (i.e. blocks) by recursively calling itself.
+    mappings and ModuleLists generically.
 
     Args:
         component_mapping: A dictionary mapping TransformerLens paths to remote
@@ -112,31 +112,64 @@ def create_and_replace_components_from_mapping(
         full_tl_path = f"{tl_path_prepend}.{tl_path}" if tl_path_prepend else tl_path
 
         if isinstance(remote_spec, tuple) and len(remote_spec) == 3:
-            # This is a BlockMapping, we need to recurse
-            block_remote_path, block_bridge_type, block_component_mapping = remote_spec
-            full_block_remote_path = (
-                f"{remote_path_prepend}.{block_remote_path}"
+            # This is a BlockMapping (remote_path, bridge_type, sub_mapping)
+            remote_path_template, bridge_type, sub_mapping = remote_spec
+
+            full_remote_path_template = (
+                f"{remote_path_prepend}.{remote_path_template}"
                 if remote_path_prepend
-                else block_remote_path
+                else remote_path_template
             )
 
-            create_and_replace_components_from_mapping(
-                block_component_mapping,
-                remote_model,
-                architecture_adapter,
-                remote_path_prepend=full_block_remote_path,
-                tl_path_prepend=full_tl_path,
+            # Get the component this mapping refers to
+            component_to_check = architecture_adapter.get_remote_component(
+                remote_model, full_remote_path_template
             )
 
-            # Now that the innards of the block are replaced, we can bridge the block itself.
-            bridged_block = create_bridged_component(
-                (block_remote_path, block_bridge_type),
-                remote_model,
-                architecture_adapter,
-                name=full_tl_path,
-                prepend=remote_path_prepend,
-            )
-            replace_remote_component(bridged_block, full_block_remote_path, remote_model)
+            if isinstance(component_to_check, nn.ModuleList):
+                # It's a list of blocks, so we iterate
+                for i in range(len(component_to_check)):
+                    tl_item_path = f"{full_tl_path}.{i}"
+                    remote_item_path = f"{full_remote_path_template}.{i}"
+
+                    # Recurse for the sub-components within the item
+                    create_and_replace_components_from_mapping(
+                        sub_mapping,
+                        remote_model,
+                        architecture_adapter,
+                        remote_path_prepend=remote_item_path,
+                        tl_path_prepend=tl_item_path,
+                    )
+
+                    # Now bridge the block container itself
+                    bridged_item = create_bridged_component(
+                        (remote_item_path, bridge_type),
+                        remote_model,
+                        architecture_adapter,
+                        name=tl_item_path,
+                    )
+                    replace_remote_component(
+                        bridged_item, remote_item_path, remote_model
+                    )
+            else:
+                # It's a single, non-list block-like component. Recurse.
+                create_and_replace_components_from_mapping(
+                    sub_mapping,
+                    remote_model,
+                    architecture_adapter,
+                    remote_path_prepend=full_remote_path_template,
+                    tl_path_prepend=full_tl_path,
+                )
+                # Bridge the container
+                bridged_container = create_bridged_component(
+                    (full_remote_path_template, bridge_type),
+                    remote_model,
+                    architecture_adapter,
+                    name=full_tl_path,
+                )
+                replace_remote_component(
+                    bridged_container, full_remote_path_template, remote_model
+                )
 
         elif isinstance(remote_spec, tuple) and len(remote_spec) == 2:
             # This is a RemoteImport
