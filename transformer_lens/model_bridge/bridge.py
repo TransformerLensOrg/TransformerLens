@@ -43,32 +43,10 @@ class TransformerBridge:
         if not hasattr(adapter, "component_mapping") or adapter.component_mapping is None:
             raise ValueError("Adapter must have a component_mapping attribute")
 
-        # Create and replace all components from the mapping
-        create_and_replace_components_from_mapping(
-            adapter.component_mapping, self.model, self.bridge
+        # Create, replace, and set all components from the mapping
+        self.model = create_and_replace_components_from_mapping(
+            adapter.component_mapping, self.model, self.bridge, bridge=self
         )
-
-        # After replacing, we still need to set the components on the bridge itself
-        # for easy access.
-        self._set_components_on_bridge(adapter.component_mapping)
-
-    def _set_components_on_bridge(self, mapping: dict) -> None:
-        """Set components on the bridge for easy access after they have been replaced.
-
-        Args:
-            mapping: The component mapping dictionary to iterate through.
-        """
-        for tl_path, remote_spec in mapping.items():
-            # The remote_path is the first element of the spec tuple.
-            remote_path_template = remote_spec[0]
-
-            # The component on the remote model has already been replaced. We just
-            # need to get it and set it as an attribute on the bridge.
-            bridged_component = self.bridge.get_remote_component(
-                self.model, remote_path_template
-            )
-
-            setattr(self, tl_path, bridged_component)
 
     def __getattr__(self, name: str) -> Any:
         """Provide a clear error message for missing attributes."""

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 """Component creation utilities for creating bridged components."""
 
-from typing import Any, Type
+from typing import TYPE_CHECKING, Any, Optional, Type
 
 import torch.nn as nn
 
@@ -12,6 +12,9 @@ from transformer_lens.model_bridge.types import (
     RemoteImport,
     RemoteModel,
 )
+
+if TYPE_CHECKING:
+    from transformer_lens.model_bridge.bridge import TransformerBridge
 
 
 def create_bridged_component(
@@ -88,14 +91,17 @@ def create_and_replace_components_from_mapping(
     component_mapping: ComponentMapping,
     remote_model: RemoteModel,
     architecture_adapter: "ArchitectureAdapter",
+    bridge: Any = None,
     remote_path_prepend: str | None = None,
     tl_path_prepend: str | None = None,
-) -> None:
+) -> RemoteModel:
     """Create and replace components on a remote model from a mapping.
 
     This function iterates through a component mapping, creates bridged
     components, and replaces them on the remote model. It handles nested
     mappings and ModuleLists generically.
+    If a bridge is provided, it will also set the bridged components as attributes
+    on the bridge instance.
 
     Args:
         component_mapping: A dictionary mapping TransformerLens paths to remote
@@ -103,11 +109,18 @@ def create_and_replace_components_from_mapping(
         remote_model: The remote model to modify.
         architecture_adapter: The architecture adapter to use for component
             creation.
+        bridge: Optional TransformerBridge instance to set attributes on.
         remote_path_prepend: A path to prepend to all remote component paths,
             used for recursion.
         tl_path_prepend: A path to prepend to all TransformerLens component paths,
             used for recursion.
+
+    Returns:
+        The modified remote_model
     """
+    # Import here to avoid circular dependencies
+    from transformer_lens.model_bridge.bridge import TransformerBridge
+    
     for tl_path, remote_spec in component_mapping.items():
         full_tl_path = f"{tl_path_prepend}.{tl_path}" if tl_path_prepend else tl_path
 
@@ -137,6 +150,7 @@ def create_and_replace_components_from_mapping(
                         sub_mapping,
                         remote_model,
                         architecture_adapter,
+                        bridge=None,
                         remote_path_prepend=remote_item_path,
                         tl_path_prepend=tl_item_path,
                     )
@@ -157,6 +171,7 @@ def create_and_replace_components_from_mapping(
                     sub_mapping,
                     remote_model,
                     architecture_adapter,
+                    bridge=None,
                     remote_path_prepend=full_remote_path_template,
                     tl_path_prepend=full_tl_path,
                 )
@@ -186,4 +201,15 @@ def create_and_replace_components_from_mapping(
                 name=full_tl_path,
                 prepend=remote_path_prepend,
             )
-            replace_remote_component(bridged_component, full_remote_path, remote_model) 
+            replace_remote_component(bridged_component, full_remote_path, remote_model)
+
+    # After all replacements, if a bridge is provided, set the attributes on it
+    if bridge:
+        for tl_path, remote_spec in component_mapping.items():
+            remote_path_template = remote_spec[0]
+            bridged_component = architecture_adapter.get_remote_component(
+                remote_model, remote_path_template
+            )
+            setattr(bridge, tl_path, bridged_component)
+
+    return remote_model 
