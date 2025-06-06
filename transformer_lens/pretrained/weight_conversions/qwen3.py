@@ -1,6 +1,7 @@
+from typing import Any
+
 import einops
 import torch
-from typing import Any
 
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
