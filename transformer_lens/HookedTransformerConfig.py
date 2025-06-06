@@ -213,7 +213,6 @@ class HookedTransformerConfig:
     use_hook_mlp_in: bool = False
     use_attn_in: bool = False
     use_qk_norm: bool = False
-    qk_norm_eps: float = 1e-6
     use_local_attn: bool = False
     ungroup_grouped_query_attention: bool = False
     original_architecture: Optional[str] = None

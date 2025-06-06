@@ -78,7 +78,6 @@ class AbstractAttention(ABC, nn.Module):
         self.b_O = nn.Parameter(torch.zeros(self.cfg.d_model, dtype=self.cfg.dtype))
 
         if self.cfg.use_qk_norm:
-            # Use RMSNorm modules with qk_norm_eps
             self.q_norm = RMSNorm(self.cfg, length=self.cfg.d_head)
             self.k_norm = RMSNorm(self.cfg, length=self.cfg.d_head)
         else:

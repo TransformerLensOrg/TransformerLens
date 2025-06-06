@@ -1354,7 +1354,6 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "gated_mlp": True,
             "default_prepend_bos": False,
             "use_qk_norm": True,
-            "qk_norm_eps": hf_config.rms_norm_eps,
             "trust_remote_code": True,
         }
     elif architecture == "PhiForCausalLM":
