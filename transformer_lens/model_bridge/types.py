@@ -10,7 +10,9 @@ RemotePath: TypeAlias = str  # Path in the remote model format (e.g. "transforme
 
 # Component mapping types
 RemoteImport: TypeAlias = tuple[RemotePath, type]  # Path and component class
-BlockMapping: TypeAlias = tuple[RemotePath, type, dict]  # Maps a block path, bridge type, and its components
+BlockMapping: TypeAlias = tuple[
+    RemotePath, type, dict
+]  # Maps a block path, bridge type, and its components
 ComponentMapping: TypeAlias = dict[
     TransformerLensPath, RemoteImport | BlockMapping
 ]  # Complete component mapping

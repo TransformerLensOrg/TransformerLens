@@ -2,19 +2,15 @@ from __future__ import annotations
 
 """Component creation utilities for creating bridged components."""
 
-from typing import TYPE_CHECKING, Any, Optional, Type
+from typing import TYPE_CHECKING, Any
 
 import torch.nn as nn
 
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
-from transformer_lens.model_bridge.types import (
-    ComponentMapping,
-    RemoteImport,
-    RemoteModel,
-)
+from transformer_lens.model_bridge.types import ComponentMapping, RemoteModel
 
 if TYPE_CHECKING:
-    from transformer_lens.model_bridge.bridge import TransformerBridge
+    pass
 
 
 def create_bridged_component(
@@ -62,7 +58,8 @@ def create_bridged_component(
         original_component=original_component,
         name=name,
         architecture_adapter=architecture_adapter,
-    ) 
+    )
+
 
 def replace_remote_component(
     bridged_component: nn.Module, remote_path: str, remote_model: nn.Module
@@ -85,7 +82,8 @@ def replace_remote_component(
             parent_obj = parent_obj[int(part)]
         else:
             parent_obj = getattr(parent_obj, part)
-    setattr(parent_obj, path_parts[-1], bridged_component) 
+    setattr(parent_obj, path_parts[-1], bridged_component)
+
 
 def create_and_replace_components_from_mapping(
     component_mapping: ComponentMapping,
@@ -119,8 +117,7 @@ def create_and_replace_components_from_mapping(
         The modified remote_model
     """
     # Import here to avoid circular dependencies
-    from transformer_lens.model_bridge.bridge import TransformerBridge
-    
+
     for tl_path, remote_spec in component_mapping.items():
         full_tl_path = f"{tl_path_prepend}.{tl_path}" if tl_path_prepend else tl_path
 
@@ -162,9 +159,7 @@ def create_and_replace_components_from_mapping(
                         architecture_adapter,
                         name=tl_item_path,
                     )
-                    replace_remote_component(
-                        bridged_item, remote_item_path, remote_model
-                    )
+                    replace_remote_component(bridged_item, remote_item_path, remote_model)
             else:
                 # It's a single, non-list block-like component. Recurse.
                 create_and_replace_components_from_mapping(
@@ -182,17 +177,13 @@ def create_and_replace_components_from_mapping(
                     architecture_adapter,
                     name=full_tl_path,
                 )
-                replace_remote_component(
-                    bridged_container, full_remote_path_template, remote_model
-                )
+                replace_remote_component(bridged_container, full_remote_path_template, remote_model)
 
         elif isinstance(remote_spec, tuple) and len(remote_spec) == 2:
             # This is a RemoteImport
             remote_path, _ = remote_spec
             full_remote_path = (
-                f"{remote_path_prepend}.{remote_path}"
-                if remote_path_prepend
-                else remote_path
+                f"{remote_path_prepend}.{remote_path}" if remote_path_prepend else remote_path
             )
             bridged_component = create_bridged_component(
                 remote_spec,
@@ -212,4 +203,4 @@ def create_and_replace_components_from_mapping(
             )
             setattr(bridge, tl_path, bridged_component)
 
-    return remote_model 
+    return remote_model

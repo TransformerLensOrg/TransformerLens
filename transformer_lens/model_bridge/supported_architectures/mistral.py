@@ -21,48 +21,52 @@ class MistralArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for Mistral models."""
 
     def __init__(self, cfg: Any) -> None:
-        """Initialize the Mistral architecture adapter.
-
-        Args:
-            cfg: The configuration object.
-        """
+        """Initialize the Mistral architecture adapter."""
+        self.default_config = {
+            "d_model": cfg.hidden_size,
+            "d_head": cfg.hidden_size // cfg.num_attention_heads,
+            "n_heads": cfg.num_attention_heads,
+            "n_layers": cfg.num_hidden_layers,
+            "d_vocab": cfg.vocab_size,
+            "n_key_value_heads": cfg.num_key_value_heads,
+        }
         super().__init__(cfg)
 
         self.conversion_rules = WeightConversionSet(
             {
                 "embed.W_E": "model.embed_tokens.weight",
                 "blocks.{i}.ln1.w": "model.layers.{i}.input_layernorm.weight",
-                "blocks.{i}.ln1.b": "model.layers.{i}.input_layernorm.bias",
                 "blocks.{i}.ln2.w": "model.layers.{i}.post_attention_layernorm.weight",
-                "blocks.{i}.ln2.b": "model.layers.{i}.post_attention_layernorm.bias",
                 "blocks.{i}.attn.W_Q": (
                     "model.layers.{i}.self_attn.q_proj.weight",
-                    RearrangeWeightConversion("d_model (n_head d_head) -> n_head d_head d_model"),
+                    RearrangeWeightConversion("(n h) m -> n m h", n=self.cfg.n_heads),
                 ),
                 "blocks.{i}.attn.W_K": (
                     "model.layers.{i}.self_attn.k_proj.weight",
-                    RearrangeWeightConversion("d_model (n_head d_head) -> n_head d_head d_model"),
+                    RearrangeWeightConversion(
+                        "(n h) m -> n m h",
+                        n=getattr(self.cfg, "n_key_value_heads", self.cfg.n_heads),
+                    ),
                 ),
                 "blocks.{i}.attn.W_V": (
                     "model.layers.{i}.self_attn.v_proj.weight",
-                    RearrangeWeightConversion("d_model (n_head d_head) -> n_head d_head d_model"),
+                    RearrangeWeightConversion(
+                        "(n h) m -> n m h",
+                        n=getattr(self.cfg, "n_key_value_heads", self.cfg.n_heads),
+                    ),
                 ),
                 "blocks.{i}.attn.W_O": (
                     "model.layers.{i}.self_attn.o_proj.weight",
-                    RearrangeWeightConversion("(n_head d_head) d_model -> n_head d_head d_model"),
+                    RearrangeWeightConversion("m (n h) -> n h m", n=self.cfg.n_heads),
                 ),
-                "blocks.{i}.mlp.W_in": "model.layers.{i}.mlp.gate_proj.weight",
-                "blocks.{i}.mlp.b_in": "model.layers.{i}.mlp.gate_proj.bias",
-                "blocks.{i}.mlp.W_out": "model.layers.{i}.mlp.down_proj.weight",
-                "blocks.{i}.mlp.b_out": "model.layers.{i}.mlp.down_proj.bias",
+                "blocks.{i}.mlp.W_in": "model.layers.{i}.mlp.up_proj.weight.T",
+                "blocks.{i}.mlp.W_gate": "model.layers.{i}.mlp.gate_proj.weight.T",
+                "blocks.{i}.mlp.W_out": "model.layers.{i}.mlp.down_proj.weight.T",
                 "ln_final.w": "model.norm.weight",
-                "ln_final.b": "model.norm.bias",
-                "unembed.W_U": "lm_head.weight",
-                "unembed.b_U": "lm_head.bias",
+                "unembed.W_U": "lm_head.weight.T",  # Not shared with embedding
             }
         )
 
-        # Set up component mapping
         self.component_mapping = {
             "embed": ("model.embed_tokens", EmbeddingBridge),
             "blocks": (

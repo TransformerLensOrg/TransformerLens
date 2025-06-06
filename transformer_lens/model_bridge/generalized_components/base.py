@@ -17,7 +17,12 @@ class GeneralizedComponent(nn.Module):
     and handles hook registration and execution.
     """
 
-    def __init__(self, original_component: RemoteComponent, name: str, architecture_adapter: ArchitectureAdapter):
+    def __init__(
+        self,
+        original_component: RemoteComponent,
+        name: str,
+        architecture_adapter: ArchitectureAdapter,
+    ):
         """Initialize the generalized component.
 
         Args:

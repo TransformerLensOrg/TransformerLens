@@ -22,7 +22,7 @@ from transformer_lens.model_bridge.supported_architectures import (
     NanogptArchitectureAdapter,
     NeelSoluOldArchitectureAdapter,
     NeoArchitectureAdapter,
-    NeoXArchitectureAdapter,
+    NeoxArchitectureAdapter,
     OptArchitectureAdapter,
     Phi3ArchitectureAdapter,
     PhiArchitectureAdapter,
@@ -46,7 +46,7 @@ SUPPORTED_ARCHITECTURES = {
     "MixtralForCausalLM": MixtralArchitectureAdapter,
     "MistralForCausalLM": MistralArchitectureAdapter,
     "NeoForCausalLM": NeoArchitectureAdapter,
-    "NeoXForCausalLM": NeoXArchitectureAdapter,
+    "NeoXForCausalLM": NeoxArchitectureAdapter,
     "NeelSoluOldForCausalLM": NeelSoluOldArchitectureAdapter,
     "OPTForCausalLM": OptArchitectureAdapter,
     "PhiForCausalLM": PhiArchitectureAdapter,
@@ -57,7 +57,7 @@ SUPPORTED_ARCHITECTURES = {
     "NanoGPTForCausalLM": NanogptArchitectureAdapter,
     "MinGPTForCausalLM": MingptArchitectureAdapter,
     "GPTNeoForCausalLM": NeoArchitectureAdapter,
-    "GPTNeoXForCausalLM": NeoXArchitectureAdapter,
+    "GPTNeoXForCausalLM": NeoxArchitectureAdapter,
 }
 
 

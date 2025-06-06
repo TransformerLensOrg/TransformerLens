@@ -20,13 +20,13 @@ from transformer_lens.model_bridge.generalized_components import (
 class PhiArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for Phi models."""
 
-    def __init__(self, cfg: Any) -> None:
+    def __init__(self, user_cfg: Any) -> None:
         """Initialize the Phi architecture adapter.
 
         Args:
-            cfg: The configuration object.
+            user_cfg: The configuration object.
         """
-        super().__init__(cfg)
+        super().__init__(user_cfg)
 
         self.conversion_rules = WeightConversionSet(
             {

@@ -1,7 +1,6 @@
 """End-to-end tests for the TransformerBridge."""
 from unittest.mock import MagicMock
 
-import pytest
 import torch.nn as nn
 
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
@@ -16,6 +15,7 @@ from transformer_lens.model_bridge.types import ComponentMapping
 
 class MockBlock(BlockBridge):
     """Mock block for testing."""
+
     pass
 
 
@@ -23,9 +23,7 @@ class MockModel(nn.Module):
     def __init__(self):
         super().__init__()
         self.ln_final = nn.LayerNorm(10)
-        self.h = nn.ModuleList([
-            nn.Module() for _ in range(2)
-        ])
+        self.h = nn.ModuleList([nn.Module() for _ in range(2)])
         for i in range(2):
             self.h[i].ln_1 = nn.LayerNorm(10)
             # This needs to be a full module for replacement to work
@@ -46,7 +44,7 @@ class MockAdapter(ArchitectureAdapter):
             "ln_final": ("ln_final", LayerNormBridge),
             "blocks": (
                 "h",
-                MockBlock, # Mock block bridge
+                MockBlock,  # Mock block bridge
                 {
                     "ln1": ("ln_1", LayerNormBridge),
                     "attn": ("attn", AttentionBridge),
@@ -74,12 +72,12 @@ def test_end_to_end_bridge_creation():
     # Check that components are set on the bridge
     assert hasattr(bridge, "ln_final")
     assert hasattr(bridge, "blocks")
-    assert not hasattr(bridge, "blocks.0") # Should not be set individually
+    assert not hasattr(bridge, "blocks.0")  # Should not be set individually
     assert isinstance(bridge.ln_final, LayerNormBridge)
     assert isinstance(bridge.blocks, nn.ModuleList)
     assert len(bridge.blocks) == 2
     assert isinstance(bridge.blocks[0], MockBlock)
-    
+
     # After bridging, the sub-components should now be on the bridged block
     assert isinstance(bridge.blocks[0].ln_1, LayerNormBridge)
-    assert isinstance(bridge.blocks[0].attn, AttentionBridge) 
+    assert isinstance(bridge.blocks[0].attn, AttentionBridge)

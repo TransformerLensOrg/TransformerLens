@@ -57,9 +57,7 @@ class TestCreateBridgedComponent:
     def test_create_basic_component(self, mock_model, adapter):
         """Test creating a basic component without prepend."""
         remote_import: RemoteImport = ("model.ln", LayerNormBridge)
-        component = create_bridged_component(
-            remote_import, mock_model, adapter, name="model.ln"
-        )
+        component = create_bridged_component(remote_import, mock_model, adapter, name="model.ln")
 
         assert isinstance(component, LayerNormBridge)
         assert component.name == "model.ln"
@@ -89,33 +87,27 @@ class TestCreateBridgedComponent:
         with pytest.raises(
             ValueError, match="RemoteImport must be a tuple of \\(path, component_type\\)"
         ):
-            create_bridged_component(
-                ("model.ln",), mock_model, adapter, name="model.ln"
-            )
+            create_bridged_component(("model.ln",), mock_model, adapter, name="model.ln")
 
     def test_component_not_found(self, mock_model, adapter):
         """Test that non-existent component raises AttributeError."""
         remote_import: RemoteImport = ("nonexistent.path", LayerNormBridge)
         with pytest.raises(AttributeError, match="Component not found at path"):
-            create_bridged_component(
-                remote_import, mock_model, adapter, name="nonexistent.path"
-            )
+            create_bridged_component(remote_import, mock_model, adapter, name="nonexistent.path")
 
     def test_component_forward(self, mock_model, adapter):
         """Test that the created component can perform forward pass."""
         remote_import: RemoteImport = ("model.ln", LayerNormBridge)
-        component = create_bridged_component(
-            remote_import, mock_model, adapter, name="model.ln"
-        )
+        component = create_bridged_component(remote_import, mock_model, adapter, name="model.ln")
 
         # Create some test input
         x = torch.randn(5, 10)
-        
+
         # Test forward pass
         output = component(x)
         assert isinstance(output, torch.Tensor)
         assert output.shape == x.shape
-        
+
         # Test that hook outputs are stored
         assert "output" in component.hook_outputs
         assert component.hook_outputs["output"].shape == x.shape
@@ -127,10 +119,10 @@ class TestCreateBridgedComponent:
         bridged_component = create_bridged_component(
             remote_import, mock_model, adapter, name="model.ln"
         )
-        
+
         # Replace the component
         replace_remote_component(bridged_component, "model.ln", mock_model)
-        
+
         # Check that it was replaced
         assert isinstance(mock_model.model.ln, LayerNormBridge)
         assert mock_model.model.ln is bridged_component
@@ -166,12 +158,8 @@ class TestCreateAndReplaceComponentsFromMapping:
         """Create a mock architecture adapter for testing."""
         return MockArchitectureAdapter()
 
-    @patch(
-        "transformer_lens.model_bridge.component_creation.create_bridged_component"
-    )
-    @patch(
-        "transformer_lens.model_bridge.component_creation.replace_remote_component"
-    )
+    @patch("transformer_lens.model_bridge.component_creation.create_bridged_component")
+    @patch("transformer_lens.model_bridge.component_creation.replace_remote_component")
     def test_recursive_component_creation(
         self,
         mock_replace: MagicMock,
@@ -195,9 +183,7 @@ class TestCreateAndReplaceComponentsFromMapping:
             ),
         }
 
-        create_and_replace_components_from_mapping(
-            component_mapping, mock_model, adapter
-        )
+        create_and_replace_components_from_mapping(component_mapping, mock_model, adapter)
 
         # Check that create_bridged_component was called for all components
         assert mock_create.call_count == 4
@@ -212,9 +198,7 @@ class TestCreateAndReplaceComponentsFromMapping:
             name="ln_final",
             prepend=None,
         )
-        mock_replace.assert_any_call(
-            mock_create.return_value, "ln_final", mock_model
-        )
+        mock_replace.assert_any_call(mock_create.return_value, "ln_final", mock_model)
 
         # Check calls for block's layer norm
         mock_create.assert_any_call(
@@ -224,9 +208,7 @@ class TestCreateAndReplaceComponentsFromMapping:
             name="blocks.0.ln1",
             prepend="h.0",
         )
-        mock_replace.assert_any_call(
-            mock_create.return_value, "h.0.ln_1", mock_model
-        )
+        mock_replace.assert_any_call(mock_create.return_value, "h.0.ln_1", mock_model)
 
         # Check calls for block's attention
         mock_create.assert_any_call(
@@ -236,9 +218,7 @@ class TestCreateAndReplaceComponentsFromMapping:
             name="blocks.0.attn",
             prepend="h.0",
         )
-        mock_replace.assert_any_call(
-            mock_create.return_value, "h.0.attn", mock_model
-        )
+        mock_replace.assert_any_call(mock_create.return_value, "h.0.attn", mock_model)
 
         # Check that the block itself was bridged
         block_mapping = component_mapping["blocks.0"]
@@ -249,4 +229,4 @@ class TestCreateAndReplaceComponentsFromMapping:
             name="blocks.0",
             prepend=None,
         )
-        mock_replace.assert_any_call(mock_create.return_value, "h.0", mock_model) 
+        mock_replace.assert_any_call(mock_create.return_value, "h.0", mock_model)

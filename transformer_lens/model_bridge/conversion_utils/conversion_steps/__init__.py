@@ -18,6 +18,9 @@ from transformer_lens.model_bridge.conversion_utils.conversion_steps.rearrange_w
 from transformer_lens.model_bridge.conversion_utils.conversion_steps.repeat_weight_conversion import (
     RepeatWeightConversion,
 )
+from transformer_lens.model_bridge.conversion_utils.conversion_steps.split_weight_conversion import (
+    SplitWeightConversion,
+)
 from transformer_lens.model_bridge.conversion_utils.conversion_steps.ternary_weight_conversion import (
     TernaryWeightConversion,
 )
@@ -34,6 +37,7 @@ __all__ = [
     "CallableWeightConversion",
     "RearrangeWeightConversion",
     "RepeatWeightConversion",
+    "SplitWeightConversion",
     "TernaryWeightConversion",
     "WeightConversionSet",
     "ZerosLikeConversion",

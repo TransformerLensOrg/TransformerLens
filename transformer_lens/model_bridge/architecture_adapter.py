@@ -3,11 +3,9 @@
 This module contains the base class for architecture adapters that map between different model architectures.
 """
 
-from abc import ABC
 from typing import Any
 
 import torch
-import torch.nn as nn
 from transformers.modeling_utils import PreTrainedModel
 
 from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
@@ -24,7 +22,7 @@ from transformer_lens.model_bridge.types import (
 )
 
 
-class ArchitectureAdapter(ABC):
+class ArchitectureAdapter:
     """Base class for architecture adapters.
 
     This class provides the interface for adapting between different model architectures.
@@ -32,16 +30,16 @@ class ArchitectureAdapter(ABC):
     (for initializing weights from one format to another).
     """
 
-    def __init__(self, cfg) -> None:
+    def __init__(self, user_cfg: Any) -> None:
         """Initialize the architecture adapter.
 
         Args:
-            cfg: The configuration object.
+            user_cfg: The user-provided configuration object.
         """
-        self.cfg = cfg
-        self.conversion_rules: WeightConversionSet | None = None
+        self.user_cfg = user_cfg
+        self.default_cfg = {}
         self.component_mapping: ComponentMapping | None = None
-        self.default_config: dict = {}
+        self.conversion_rules: WeightConversionSet | None = None
 
     def get_component_mapping(self) -> ComponentMapping:
         """Get the full component mapping.
@@ -56,9 +54,7 @@ class ArchitectureAdapter(ABC):
             raise ValueError("component_mapping must be set before calling get_component_mapping")
         return self.component_mapping
 
-    def get_remote_component(
-        self, model: RemoteModel, path: str
-    ) -> RemoteComponent:
+    def get_remote_component(self, model: RemoteModel, path: str) -> RemoteComponent:
         """Get a component from a remote model by its path.
 
         This method should be overridden by subclasses to provide the logic for
@@ -126,7 +122,7 @@ class ArchitectureAdapter(ABC):
 
         # At this point, we know component_mapping is not None
         component_mapping = self.component_mapping
-        
+
         # First part should be a top-level component
         if parts[0] not in component_mapping:
             raise ValueError(f"Component {parts[0]} not found in component mapping")

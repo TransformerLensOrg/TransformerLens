@@ -14,7 +14,6 @@ from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapt
 from transformer_lens.model_bridge.component_creation import (
     create_and_replace_components_from_mapping,
 )
-from transformer_lens.model_bridge.generalized_components import BlockBridge
 
 
 class TransformerBridge:
@@ -37,7 +36,7 @@ class TransformerBridge:
         """
         self.model = model
         self.bridge = adapter
-        self.cfg = adapter.cfg
+        self.cfg = adapter.user_cfg
         self.tokenizer = tokenizer
 
         if not hasattr(adapter, "component_mapping") or adapter.component_mapping is None:
