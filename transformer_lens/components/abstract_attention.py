@@ -16,6 +16,7 @@ from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.past_key_value_caching import HookedTransformerKeyValueCacheEntry
 from transformer_lens.utilities.attention import complex_attn_linear, simple_attn_linear
 from transformer_lens.utils import get_offset_position_ids
+from transformer_lens.components.rms_norm import RMSNorm
 
 if is_bitsandbytes_available():
     import bitsandbytes as bnb
@@ -77,13 +78,12 @@ class AbstractAttention(ABC, nn.Module):
         self.b_O = nn.Parameter(torch.zeros(self.cfg.d_model, dtype=self.cfg.dtype))
 
         if self.cfg.use_qk_norm:
-            self.q_norm_weight = nn.Parameter(torch.ones(self.cfg.d_head, dtype=self.cfg.dtype))
-            self.k_norm_weight = nn.Parameter(torch.ones(self.cfg.d_head, dtype=self.cfg.dtype))
-            self.qk_norm_eps = self.cfg.qk_norm_eps
+            # Use RMSNorm modules with qk_norm_eps
+            self.q_norm = RMSNorm(self.cfg, length=self.cfg.d_head)
+            self.k_norm = RMSNorm(self.cfg, length=self.cfg.d_head)
         else:
-            self.q_norm_weight = None
-            self.k_norm_weight = None
-            self.qk_norm_eps = 1e-6
+            self.q_norm = None
+            self.k_norm = None
 
         self.attn_type = attn_type
         # Create a max_ctx x max_ctx mask, with True iff that query position
@@ -331,6 +331,23 @@ class AbstractAttention(ABC, nn.Module):
             )  # [batch, pos, d_model]
         return out
 
+    def _apply_qk_norm(
+        self, x: Float[torch.Tensor, "batch pos head_index d_head"], norm_module: RMSNorm
+    ) -> Float[torch.Tensor, "batch pos head_index d_head"]:
+        """Apply QK normalization with proper reshaping.
+
+        Args:
+            x: Input tensor with shape [batch, pos, head_index, d_head]
+            norm_module: RMSNorm module to apply
+
+        Returns:
+            Normalized tensor with same shape as input
+        """
+        # Reshape from [batch, pos, head_index, d_head] to [batch * pos * head_index, d_head]
+        d_head = x.shape[-1]
+        x_normed = norm_module(x.reshape(-1, d_head))
+        return x_normed.reshape(x.shape)
+
     def calculate_qkv_matrices(
         self,
         query_input: Union[
@@ -413,8 +430,8 @@ class AbstractAttention(ABC, nn.Module):
             v = self.hook_v(attn_fn(value_input, self.W_V, self.b_V))
 
         if self.cfg.use_qk_norm:
-            q = self.apply_qk_norm(q, self.q_norm_weight)
-            k = self.apply_qk_norm(k, self.k_norm_weight)
+            q = self._apply_qk_norm(q, self.q_norm)
+            k = self._apply_qk_norm(k, self.k_norm)
 
         return q, k, v
 
@@ -596,16 +613,6 @@ class AbstractAttention(ABC, nn.Module):
             x_rotated = x_rot * mask_rotary_cos + x_flip * mask_rotary_sin
 
         return torch.cat([x_rotated, x_pass], dim=-1)
-
-    def apply_qk_norm(
-        self, x: Float[torch.Tensor, "batch pos head_index d_head"], weight: torch.Tensor
-    ) -> Float[torch.Tensor, "batch pos head_index d_head"]:
-        x_dtype = x.dtype
-        x = x.to(torch.float32)
-        var = x.pow(2).mean(-1, keepdim=True)
-        x = x * torch.rsqrt(var + self.qk_norm_eps)
-        x = x * weight
-        return x.to(x_dtype)
 
     @staticmethod
     def create_alibi_slope(

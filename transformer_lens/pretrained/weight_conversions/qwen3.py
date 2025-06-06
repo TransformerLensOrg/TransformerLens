@@ -1,10 +1,11 @@
 import einops
 import torch
+from typing import Any
 
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 
-def convert_qwen3_weights(qwen, cfg: HookedTransformerConfig):
+def convert_qwen3_weights(qwen: Any, cfg: HookedTransformerConfig):
     """Convert Qwen3 weights to TransformerLens format."""
     state_dict = {}
 
@@ -29,12 +30,18 @@ def convert_qwen3_weights(qwen, cfg: HookedTransformerConfig):
         state_dict[f"blocks.{l}.attn.W_Q"] = W_Q
         state_dict[f"blocks.{l}.attn.{gqa_uscore}W_K"] = W_K
         state_dict[f"blocks.{l}.attn.{gqa_uscore}W_V"] = W_V
-        state_dict[f"blocks.{l}.attn.q_norm_weight"] = qwen.model.layers[l].self_attn.q_norm.weight
-        state_dict[f"blocks.{l}.attn.k_norm_weight"] = qwen.model.layers[l].self_attn.k_norm.weight
+
+        # Load weights into RMSNorm modules
+        state_dict[f"blocks.{l}.attn.q_norm.w"] = qwen.model.layers[l].self_attn.q_norm.weight
+        state_dict[f"blocks.{l}.attn.k_norm.w"] = qwen.model.layers[l].self_attn.k_norm.weight
 
         state_dict[f"blocks.{l}.attn.b_Q"] = torch.zeros(cfg.n_heads, cfg.d_head, dtype=cfg.dtype)
-        state_dict[f"blocks.{l}.attn.{gqa_uscore}b_K"] = torch.zeros(n_kv_heads, cfg.d_head, dtype=cfg.dtype)
-        state_dict[f"blocks.{l}.attn.{gqa_uscore}b_V"] = torch.zeros(n_kv_heads, cfg.d_head, dtype=cfg.dtype)
+        state_dict[f"blocks.{l}.attn.{gqa_uscore}b_K"] = torch.zeros(
+            n_kv_heads, cfg.d_head, dtype=cfg.dtype
+        )
+        state_dict[f"blocks.{l}.attn.{gqa_uscore}b_V"] = torch.zeros(
+            n_kv_heads, cfg.d_head, dtype=cfg.dtype
+        )
 
         W_O = qwen.model.layers[l].self_attn.o_proj.weight
         W_O = einops.rearrange(W_O, "m (n h)->n h m", n=cfg.n_heads)
