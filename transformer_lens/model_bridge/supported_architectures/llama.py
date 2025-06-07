@@ -20,16 +20,16 @@ from transformer_lens.model_bridge.generalized_components import (
 class LlamaArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for Llama models."""
 
-    def __init__(self, cfg: Any) -> None:
+    def __init__(self, user_cfg: Any) -> None:
         """Initialize the Llama architecture adapter."""
+        super().__init__(user_cfg)
         self.default_config = {
-            "d_model": cfg.hidden_size,
-            "d_head": cfg.hidden_size // cfg.num_attention_heads,
-            "n_heads": cfg.num_attention_heads,
-            "n_layers": cfg.num_hidden_layers,
-            "d_vocab": cfg.vocab_size,
+            "d_model": user_cfg.hidden_size,
+            "d_head": user_cfg.hidden_size // user_cfg.num_attention_heads,
+            "n_heads": user_cfg.num_attention_heads,
+            "n_layers": user_cfg.num_hidden_layers,
+            "d_vocab": user_cfg.vocab_size,
         }
-        super().__init__(cfg)
 
         self.conversion_rules = WeightConversionSet(
             {
@@ -38,19 +38,27 @@ class LlamaArchitectureAdapter(ArchitectureAdapter):
                 "blocks.{i}.ln2.w": "model.layers.{i}.post_attention_layernorm.weight",
                 "blocks.{i}.attn.W_Q": (
                     "model.layers.{i}.self_attn.q_proj.weight",
-                    RearrangeWeightConversion("(n h) m -> n m h", n=self.cfg.n_heads),
+                    RearrangeWeightConversion(
+                        "(n h) m -> n m h", n=self.user_cfg.num_attention_heads
+                    ),
                 ),
                 "blocks.{i}.attn.W_K": (
                     "model.layers.{i}.self_attn.k_proj.weight",
-                    RearrangeWeightConversion("(n h) m -> n m h", n=self.cfg.n_heads),
+                    RearrangeWeightConversion(
+                        "(n h) m -> n m h", n=self.user_cfg.num_attention_heads
+                    ),
                 ),
                 "blocks.{i}.attn.W_V": (
                     "model.layers.{i}.self_attn.v_proj.weight",
-                    RearrangeWeightConversion("(n h) m -> n m h", n=self.cfg.n_heads),
+                    RearrangeWeightConversion(
+                        "(n h) m -> n m h", n=self.user_cfg.num_attention_heads
+                    ),
                 ),
                 "blocks.{i}.attn.W_O": (
                     "model.layers.{i}.self_attn.o_proj.weight",
-                    RearrangeWeightConversion("m (n h) -> n h m", n=self.cfg.n_heads),
+                    RearrangeWeightConversion(
+                        "m (n h) -> n h m", n=self.user_cfg.num_attention_heads
+                    ),
                 ),
                 "blocks.{i}.mlp.W_in": "model.layers.{i}.mlp.up_proj.weight.T",
                 "blocks.{i}.mlp.W_gate": "model.layers.{i}.mlp.gate_proj.weight.T",

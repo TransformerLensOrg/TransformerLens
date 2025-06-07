@@ -89,27 +89,7 @@ class ArchitectureAdapter:
 
         Raises:
             ValueError: If the component mapping is not set or if the path is invalid
-
-        Examples:
-            Translate embedding path:
-
-            >>> # adapter.translate_transformer_lens_path("embed")
-            >>> # "model.embed_tokens"
-
-            Translate block path:
-
-            >>> # adapter.translate_transformer_lens_path("blocks.0")
-            >>> # "model.layers.0"
-
-            Translate layer norm path:
-
-            >>> # adapter.translate_transformer_lens_path("blocks.0.ln1")
-            >>> # "model.layers.0.input_layernorm"
-
-            Get only the last component:
-
-            >>> # adapter.translate_transformer_lens_path("blocks.0.ln1", last_component_only=True)
-            >>> # "input_layernorm"
+            KeyError: If the path is not found in the component mapping.
         """
         if self.component_mapping is None:
             raise ValueError(
@@ -120,14 +100,11 @@ class ArchitectureAdapter:
         if not parts:
             raise ValueError("Empty path")
 
-        # At this point, we know component_mapping is not None
-        component_mapping = self.component_mapping
-
         # First part should be a top-level component
-        if parts[0] not in component_mapping:
+        if parts[0] not in self.component_mapping:
             raise ValueError(f"Component {parts[0]} not found in component mapping")
 
-        full_path = self._resolve_component_path(parts[1:], component_mapping[parts[0]])
+        full_path = self._resolve_component_path(parts[1:], self.component_mapping[parts[0]])
 
         if last_component_only:
             # Split the path and return only the last component
@@ -245,24 +222,25 @@ class ArchitectureAdapter:
         Raises:
             KeyError: If the path is not found in the component mapping.
         """
+        if self.component_mapping is None:
+            raise ValueError("component_mapping must be set before calling get_remote_path_and_type")
         current_mapping = self.component_mapping
         path_parts = tl_path.split(".")
         for i, part in enumerate(path_parts):
-            if part in current_mapping:
-                entry = current_mapping[part]
-                if isinstance(entry, tuple) and len(entry) == 3:  # BlockMapping
-                    if i == len(path_parts) - 1:
-                        # We are at the block itself
-                        return entry[0], entry[1]
-                    else:
-                        # We are descending into a block
-                        current_mapping = entry[2]
-                elif isinstance(entry, tuple) and len(entry) == 2:  # RemoteImport
-                    if i != len(path_parts) - 1:
-                        raise KeyError(f"Path {tl_path} is too long.")
-                    return entry
-                else:
-                    raise TypeError(f"Invalid entry in component_mapping: {entry}")
-            else:
+            if part not in current_mapping:
                 raise KeyError(f"Path {tl_path} not found in component_mapping.")
+            entry = current_mapping[part]
+            if isinstance(entry, tuple) and len(entry) == 3:  # BlockMapping
+                if i == len(path_parts) - 1:
+                    # We are at the block itself
+                    return entry[0], entry[1]
+                else:
+                    # We are descending into a block
+                    current_mapping = entry[2]
+            elif isinstance(entry, tuple) and len(entry) == 2:  # RemoteImport
+                if i != len(path_parts) - 1:
+                    raise KeyError(f"Path {tl_path} is too long.")
+                return entry
+            else:
+                raise TypeError(f"Invalid entry in component_mapping: {entry}")
         raise KeyError(f"Path {tl_path} not found in component_mapping.")
