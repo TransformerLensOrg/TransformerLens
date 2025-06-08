@@ -223,7 +223,9 @@ class ArchitectureAdapter:
             KeyError: If the path is not found in the component mapping.
         """
         if self.component_mapping is None:
-            raise ValueError("component_mapping must be set before calling get_remote_path_and_type")
+            raise ValueError(
+                "component_mapping must be set before calling get_remote_path_and_type"
+            )
         current_mapping = self.component_mapping
         path_parts = tl_path.split(".")
         for i, part in enumerate(path_parts):
