@@ -17,24 +17,26 @@ class TestEndToEndBridge:
 
     def test_bridge_creation_and_component_access(self):
         """Test the creation of a TransformerBridge and accessing its components."""
-        # Create a mock model and adapter
+        # Create a mock model with different naming conventions
         model = nn.Module()
-        model.ln_final = nn.LayerNorm(10)
-        model.blocks = nn.ModuleList([nn.Module() for _ in range(2)])
-        model.blocks[0].ln1 = nn.LayerNorm(10)
-        model.blocks[0].attn = nn.Module()
-        model.blocks[1].ln1 = nn.LayerNorm(10)
-        model.blocks[1].attn = nn.Module()
+        model.final_norm = nn.LayerNorm(10)
+        model.encoder = nn.Module()
+        model.encoder.layers = nn.ModuleList([nn.Module() for _ in range(2)])
+        model.encoder.layers[0].norm1 = nn.LayerNorm(10)
+        model.encoder.layers[0].self_attn = nn.Module()
+        model.encoder.layers[1].norm1 = nn.LayerNorm(10)
+        model.encoder.layers[1].self_attn = nn.Module()
 
         adapter = MockArchitectureAdapter()
+        # The mapping should now reflect the different names in the remote model
         adapter.component_mapping = {
-            "ln_final": ("ln_final", LayerNormBridge),
+            "ln_final": ("final_norm", LayerNormBridge),
             "blocks": (
-                "blocks",
+                "encoder.layers",
                 BlockBridge,
                 {
-                    "ln1": ("ln1", LayerNormBridge),
-                    "attn": ("attn", AttentionBridge),
+                    "ln1": ("norm1", LayerNormBridge),
+                    "attn": ("self_attn", AttentionBridge),
                 },
             ),
         }
