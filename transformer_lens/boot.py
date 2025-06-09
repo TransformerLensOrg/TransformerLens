@@ -31,17 +31,17 @@ def boot(
         The bridge to the loaded model.
     """
     hf_config = AutoConfig.from_pretrained(model_name, **kwargs)
+    adapter = ArchitectureAdapterFactory.select_architecture_adapter(hf_config)
+    default_config = adapter.default_cfg
+    merged_config = {**default_config, **(config or {})}
 
     # Load the model from HuggingFace using the original config
     hf_model = AutoModelForCausalLM.from_pretrained(
         model_name,
         config=hf_config,
         torch_dtype=dtype,
-        **kwargs,
+        **merged_config,
     )
-
-    # Now, initialize the adapter with the config
-    adapter = ArchitectureAdapterFactory.select_architecture_adapter(hf_config)
 
     # Load the tokenizer
     tokenizer = AutoTokenizer.from_pretrained(model_name, **kwargs)
