@@ -96,15 +96,16 @@ class ArchitectureAdapter:
                 "component_mapping must be set before calling translate_transformer_lens_path"
             )
 
+        component_mapping = self.component_mapping
         parts = path.split(".")
         if not parts:
             raise ValueError("Empty path")
 
         # First part should be a top-level component
-        if parts[0] not in self.component_mapping:
+        if parts[0] not in component_mapping:
             raise ValueError(f"Component {parts[0]} not found in component mapping")
 
-        full_path = self._resolve_component_path(parts[1:], self.component_mapping[parts[0]])
+        full_path = self._resolve_component_path(parts[1:], component_mapping[parts[0]])
 
         if last_component_only:
             # Split the path and return only the last component
@@ -229,6 +230,7 @@ class ArchitectureAdapter:
         current_mapping = self.component_mapping
         path_parts = tl_path.split(".")
         for i, part in enumerate(path_parts):
+            assert isinstance(current_mapping, dict)
             if part not in current_mapping:
                 raise KeyError(f"Path {tl_path} not found in component_mapping.")
             entry = current_mapping[part]

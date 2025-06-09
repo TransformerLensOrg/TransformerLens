@@ -4,15 +4,87 @@ import pytest
 import torch.nn as nn
 
 from tests.mocks.models import MockGemma3Model
+from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
+from transformer_lens.model_bridge.generalized_components import (
+    AttentionBridge,
+    BlockBridge,
+    LayerNormBridge,
+    MLPBridge,
+)
 from transformer_lens.model_bridge.supported_architectures.gemma3 import (
     Gemma3ArchitectureAdapter,
 )
+
+
+class MockArchitectureAdapter(ArchitectureAdapter):
+    """Mock architecture adapter for testing."""
+
+    def __init__(self, cfg=None):
+        super().__init__(cfg)
+        self.component_mapping = {
+            "ln_final": ("ln_final", LayerNormBridge),
+            "blocks": (
+                "blocks",
+                BlockBridge,
+                {
+                    "ln1": ("ln1", LayerNormBridge),
+                    "ln2": ("ln2", LayerNormBridge),
+                    "attn": ("attn", AttentionBridge),
+                    "mlp": ("mlp", MLPBridge),
+                },
+            ),
+        }
+
+
+@pytest.fixture
+def mock_adapter() -> MockArchitectureAdapter:
+    """Create a mock adapter."""
+    return MockArchitectureAdapter()
+
+
+@pytest.fixture
+def mock_model() -> nn.Module:
+    """Create a mock model for testing."""
+    model = nn.Module()
+    model.ln_final = nn.LayerNorm(10)
+    model.blocks = nn.ModuleList()
+    block = nn.Module()
+    block.ln1 = nn.LayerNorm(10)
+    block.ln2 = nn.LayerNorm(10)
+    block.attn = nn.Module()
+    block.mlp = nn.Module()
+    model.blocks.append(block)
+    return model
+
+
+def test_get_remote_component_with_mock(
+    mock_adapter: MockArchitectureAdapter, mock_model: nn.Module
+):
+    """Test get_remote_component with the mock adapter."""
+    # Test direct mapping
+    ln_final = mock_adapter.get_component(mock_model, "ln_final")
+    assert isinstance(ln_final, nn.LayerNorm)
+
+    # Test block mapping
+    block = mock_adapter.get_component(mock_model, "blocks.0")
+    assert isinstance(block, nn.Module)
+
+    # Test block subcomponent mapping
+    ln1 = mock_adapter.get_component(mock_model, "blocks.0.ln1")
+    assert isinstance(ln1, nn.LayerNorm)
+
+    attn = mock_adapter.get_component(mock_model, "blocks.0.attn")
+    assert isinstance(attn, nn.Module)
+
+    mlp = mock_adapter.get_component(mock_model, "blocks.0.mlp")
+    assert isinstance(mlp, nn.Module)
 
 
 class DummyHFConfig:
     def __init__(self):
         self.num_attention_heads = 8
         self.num_key_value_heads = 8
+        self.hidden_size = 128
         # Add any other attributes needed by the adapter here
 
 
@@ -38,7 +110,7 @@ def test_translate_transformer_lens_path(adapter: Gemma3ArchitectureAdapter) -> 
     # Test direct mapping
     assert adapter.translate_transformer_lens_path("embed") == "model.embed_tokens"
     assert adapter.translate_transformer_lens_path("ln_final") == "model.norm"
-    assert adapter.translate_transformer_lens_path("unembed") == "model.embed_tokens"
+    assert adapter.translate_transformer_lens_path("unembed") == "lm_head"
 
     # Test block mapping
     assert adapter.translate_transformer_lens_path("blocks") == "model.layers"
@@ -66,7 +138,7 @@ def test_translate_transformer_lens_path_last_component(adapter: Gemma3Architect
     assert adapter.translate_transformer_lens_path("ln_final", last_component_only=True) == "norm"
     assert (
         adapter.translate_transformer_lens_path("unembed", last_component_only=True)
-        == "embed_tokens"
+        == "lm_head"
     )
 
     # Test block mapping
