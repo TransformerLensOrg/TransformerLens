@@ -6,7 +6,7 @@ import torch.nn as nn
 from tests.mocks.architecture_adapter import (
     MockArchitectureAdapter,
     mock_adapter,
-    mock_model,
+    mock_model_adapter,
 )
 from tests.mocks.models import MockGemma3Model
 from transformer_lens.model_bridge.supported_architectures.gemma3 import (
@@ -15,25 +15,25 @@ from transformer_lens.model_bridge.supported_architectures.gemma3 import (
 
 
 def test_get_remote_component_with_mock(
-    mock_adapter: MockArchitectureAdapter, mock_model: nn.Module
+    mock_adapter: MockArchitectureAdapter, mock_model_adapter: nn.Module
 ):
     """Test get_remote_component with the mock adapter."""
     # Test direct mapping
-    ln_final = mock_adapter.get_component(mock_model, "ln_final")
+    ln_final = mock_adapter.get_component(mock_model_adapter, "ln_final")
     assert isinstance(ln_final, nn.LayerNorm)
 
     # Test block mapping
-    block = mock_adapter.get_component(mock_model, "blocks.0")
+    block = mock_adapter.get_component(mock_model_adapter, "blocks.0")
     assert isinstance(block, nn.Module)
 
     # Test block subcomponent mapping
-    ln1 = mock_adapter.get_component(mock_model, "blocks.0.ln1")
+    ln1 = mock_adapter.get_component(mock_model_adapter, "blocks.0.ln1")
     assert isinstance(ln1, nn.LayerNorm)
 
-    attn = mock_adapter.get_component(mock_model, "blocks.0.attn")
+    attn = mock_adapter.get_component(mock_model_adapter, "blocks.0.attn")
     assert isinstance(attn, nn.Module)
 
-    mlp = mock_adapter.get_component(mock_model, "blocks.0.mlp")
+    mlp = mock_adapter.get_component(mock_model_adapter, "blocks.0.mlp")
     assert isinstance(mlp, nn.Module)
 
 

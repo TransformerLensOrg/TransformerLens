@@ -38,7 +38,7 @@ def mock_adapter() -> MockArchitectureAdapter:
 
 
 @pytest.fixture
-def mock_model() -> nn.Module:
+def mock_model_adapter() -> nn.Module:
     """Create a mock model for testing."""
     model = nn.Module()
     model.ln_final = nn.LayerNorm(10)
@@ -49,4 +49,4 @@ def mock_model() -> nn.Module:
     block.attn = nn.Module()
     block.mlp = nn.Module()
     model.blocks.append(block)
-    return model 
+    return model

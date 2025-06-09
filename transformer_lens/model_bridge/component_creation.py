@@ -18,42 +18,13 @@ def create_bridged_component(
     remote_model: RemoteModel,
     architecture_adapter: "ArchitectureAdapter",
     name: str,
-    prepend: str | None = None,
 ) -> nn.Module:
-    """Create a bridged component from a RemoteImport.
-
-    This function takes a RemoteImport (path and component type), a remote model,
-    and an architecture adapter, then creates and returns the appropriate bridged component.
-
-    Args:
-        remote_import: A tuple containing (path, component_type)
-        remote_model: The remote model to extract the component from
-        architecture_adapter: The architecture adapter to use for component creation
-        name: The name of the component in the TransformerLens model
-        prepend: Optional path to prepend to the component path (e.g. "blocks.0")
-
-    Returns:
-        The created bridged component
-
-    Raises:
-        ValueError: If the remote import structure is invalid
-        AttributeError: If the component cannot be found in the remote module
-    """
-    if not isinstance(architecture_adapter, ArchitectureAdapter):
-        raise TypeError("architecture_adapter must be an instance of ArchitectureAdapter")
-
+    """Create a bridged component from a RemoteImport."""
     if not isinstance(remote_import, tuple) or len(remote_import) != 2:
         raise ValueError("RemoteImport must be a tuple of (path, component_type)")
 
     path, component_type = remote_import
-
-    # If prepend is set, modify the path
-    full_path = f"{prepend}.{path}" if prepend else path
-
-    # Get the original component from the remote model
-    original_component = architecture_adapter.get_remote_component(remote_model, full_path)
-
-    # Create and return the bridged component
+    original_component = architecture_adapter.get_remote_component(remote_model, path)
     return component_type(
         original_component=original_component,
         name=name,
@@ -64,17 +35,7 @@ def create_bridged_component(
 def replace_remote_component(
     bridged_component: nn.Module, remote_path: str, remote_model: nn.Module
 ) -> None:
-    """Replace a component on the remote model.
-
-    This works by grabbing everything in the path before the last part, and then
-    setting the property in that object to the bridged component based on the
-    last part of the path.
-
-    Args:
-        bridged_component: The new, bridged component.
-        remote_path: The full path to the component.
-        remote_model: The remote model to modify.
-    """
+    """Replace a component on the remote model."""
     path_parts = remote_path.split(".")
     parent_obj = remote_model
     for part in path_parts[:-1]:
@@ -87,120 +48,59 @@ def replace_remote_component(
 
 def create_and_replace_components_from_mapping(
     component_mapping: ComponentMapping,
-    remote_model: RemoteModel,
+    model: RemoteModel,
     architecture_adapter: "ArchitectureAdapter",
     bridge: Any = None,
-    remote_path_prepend: str | None = None,
-    tl_path_prepend: str | None = None,
 ) -> RemoteModel:
-    """Create and replace components on a remote model from a mapping.
-
-    This function iterates through a component mapping, creates bridged
-    components, and replaces them on the remote model. It handles nested
-    mappings and ModuleLists generically.
-    If a bridge is provided, it will also set the bridged components as attributes
-    on the bridge instance.
-
-    Args:
-        component_mapping: A dictionary mapping TransformerLens paths to remote
-            components.
-        remote_model: The remote model to modify.
-        architecture_adapter: The architecture adapter to use for component
-            creation.
-        bridge: Optional TransformerBridge instance to set attributes on.
-        remote_path_prepend: A path to prepend to all remote component paths,
-            used for recursion.
-        tl_path_prepend: A path to prepend to all TransformerLens component paths,
-            used for recursion.
-
-    Returns:
-        The modified remote_model
-    """
-    # Import here to avoid circular dependencies
-
+    """Create and replace components on a remote model from a mapping."""
     for tl_path, remote_spec in component_mapping.items():
-        full_tl_path = f"{tl_path_prepend}.{tl_path}" if tl_path_prepend else tl_path
-
         if isinstance(remote_spec, tuple) and len(remote_spec) == 3:
-            # This is a BlockMapping (remote_path, bridge_type, sub_mapping)
+            # This is a BlockMapping
             remote_path_template, bridge_type, sub_mapping = remote_spec
-
-            full_remote_path_template = (
-                f"{remote_path_prepend}.{remote_path_template}"
-                if remote_path_prepend
-                else remote_path_template
+            original_block_container = architecture_adapter.get_remote_component(
+                model, remote_path_template
             )
-
-            # Get the component this mapping refers to
-            component_to_check = architecture_adapter.get_remote_component(
-                remote_model, full_remote_path_template
-            )
-
-            if isinstance(component_to_check, nn.ModuleList):
-                # It's a list of blocks, so we iterate
-                for i in range(len(component_to_check)):
-                    tl_item_path = f"{full_tl_path}.{i}"
-                    remote_item_path = f"{full_remote_path_template}.{i}"
-
-                    # Recurse for the sub-components within the item
+            if isinstance(original_block_container, nn.ModuleList):
+                bridged_block_list = nn.ModuleList()
+                for i, original_block in enumerate(original_block_container):
+                    bridged_block = bridge_type(
+                        original_component=original_block,
+                        name=f"{tl_path}.{i}",
+                        architecture_adapter=architecture_adapter,
+                    )
                     create_and_replace_components_from_mapping(
                         sub_mapping,
-                        remote_model,
+                        bridged_block.original_component,
                         architecture_adapter,
-                        bridge=None,
-                        remote_path_prepend=remote_item_path,
-                        tl_path_prepend=tl_item_path,
                     )
-
-                    # Now bridge the block container itself
-                    bridged_item = create_bridged_component(
-                        (remote_item_path, bridge_type),
-                        remote_model,
-                        architecture_adapter,
-                        name=tl_item_path,
-                    )
-                    replace_remote_component(bridged_item, remote_item_path, remote_model)
+                    bridged_block_list.append(bridged_block)
+                replace_remote_component(bridged_block_list, remote_path_template, model)
             else:
-                # It's a single, non-list block-like component. Recurse.
+                bridged_block = bridge_type(
+                    original_component=original_block_container,
+                    name=tl_path,
+                    architecture_adapter=architecture_adapter,
+                )
                 create_and_replace_components_from_mapping(
                     sub_mapping,
-                    remote_model,
+                    bridged_block.original_component,
                     architecture_adapter,
-                    bridge=None,
-                    remote_path_prepend=full_remote_path_template,
-                    tl_path_prepend=full_tl_path,
                 )
-                # Bridge the container
-                bridged_container = create_bridged_component(
-                    (full_remote_path_template, bridge_type),
-                    remote_model,
-                    architecture_adapter,
-                    name=full_tl_path,
-                )
-                replace_remote_component(bridged_container, full_remote_path_template, remote_model)
-
+                replace_remote_component(bridged_block, remote_path_template, model)
         elif isinstance(remote_spec, tuple) and len(remote_spec) == 2:
             # This is a RemoteImport
-            remote_path, _ = remote_spec
-            full_remote_path = (
-                f"{remote_path_prepend}.{remote_path}" if remote_path_prepend else remote_path
-            )
             bridged_component = create_bridged_component(
                 remote_spec,
-                remote_model,
+                model,
                 architecture_adapter,
-                name=full_tl_path,
-                prepend=remote_path_prepend,
+                name=tl_path,
             )
-            replace_remote_component(bridged_component, full_remote_path, remote_model)
+            replace_remote_component(bridged_component, remote_spec[0], model)
 
-    # After all replacements, if a bridge is provided, set the attributes on it
     if bridge:
-        for tl_path, remote_spec in component_mapping.items():
-            remote_path_template = remote_spec[0]
-            bridged_component = architecture_adapter.get_remote_component(
-                remote_model, remote_path_template
-            )
+        for tl_path in component_mapping:
+            remote_path = architecture_adapter.translate_transformer_lens_path(tl_path)
+            bridged_component = architecture_adapter.get_remote_component(model, remote_path)
             setattr(bridge, tl_path, bridged_component)
 
-    return remote_model
+    return model

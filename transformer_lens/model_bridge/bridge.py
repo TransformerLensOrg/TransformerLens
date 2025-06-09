@@ -34,6 +34,7 @@ class TransformerBridge:
             adapter: The architecture adapter to use
             tokenizer: The tokenizer to use (required)
         """
+        super().__init__()
         self.model = model
         self.bridge = adapter
         self.cfg = adapter.user_cfg
@@ -42,9 +43,9 @@ class TransformerBridge:
         if not hasattr(adapter, "component_mapping") or adapter.component_mapping is None:
             raise ValueError("Adapter must have a component_mapping attribute")
 
-        # Create, replace, and set all components from the mapping
-        self.model = create_and_replace_components_from_mapping(
-            adapter.component_mapping, self.model, self.bridge, bridge=self
+        # Create and replace components
+        create_and_replace_components_from_mapping(
+            self.bridge.get_component_mapping(), self.model, self.bridge, bridge=self
         )
 
     def __getattr__(self, name: str) -> Any:

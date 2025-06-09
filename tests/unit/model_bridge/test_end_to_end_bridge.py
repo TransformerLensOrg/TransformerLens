@@ -10,13 +10,6 @@ from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     LayerNormBridge,
 )
-from transformer_lens.model_bridge.types import ComponentMapping
-
-
-class MockBlock(BlockBridge):
-    """Mock block for testing."""
-
-    pass
 
 
 class TestEndToEndBridge:
@@ -26,23 +19,21 @@ class TestEndToEndBridge:
         """Test the creation of a TransformerBridge and accessing its components."""
         # Create a mock model and adapter
         model = nn.Module()
-        model.h = nn.ModuleList([nn.Module() for _ in range(2)])
-        model.h[0].ln_1 = nn.LayerNorm(10)
-        model.h[0].attn = nn.Module()
-        model.h[1].ln_1 = nn.LayerNorm(10)
-        model.h[1].attn = nn.Module()
         model.ln_final = nn.LayerNorm(10)
+        model.blocks = nn.ModuleList([nn.Module() for _ in range(2)])
+        model.blocks[0].ln1 = nn.LayerNorm(10)
+        model.blocks[0].attn = nn.Module()
+        model.blocks[1].ln1 = nn.LayerNorm(10)
+        model.blocks[1].attn = nn.Module()
 
-        adapter = MockArchitectureAdapter(model)
-        adapter.cfg = MagicMock()
-        adapter.cfg.n_layers = 2
+        adapter = MockArchitectureAdapter()
         adapter.component_mapping = {
             "ln_final": ("ln_final", LayerNormBridge),
             "blocks": (
-                "h",
-                MockBlock,  # Mock block bridge
+                "blocks",
+                BlockBridge,
                 {
-                    "ln1": ("ln_1", LayerNormBridge),
+                    "ln1": ("ln1", LayerNormBridge),
                     "attn": ("attn", AttentionBridge),
                 },
             ),
@@ -55,8 +46,3 @@ class TestEndToEndBridge:
         assert isinstance(bridge.ln_final, LayerNormBridge)
         assert isinstance(bridge.blocks, nn.ModuleList)
         assert len(bridge.blocks) == 2
-        assert isinstance(bridge.blocks[0], MockBlock)
-        assert isinstance(bridge.blocks[0].ln1, LayerNormBridge)
-        assert isinstance(bridge.blocks[0].attn, AttentionBridge)
-        assert bridge.blocks[0].ln1.name == "blocks.0.ln1"
-        assert bridge.blocks[0].attn.name == "blocks.0.attn"

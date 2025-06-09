@@ -3,13 +3,18 @@
 This module contains the bridge component for transformer blocks.
 """
 
-from typing import Any
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
 
 import torch.nn as nn
 
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
+
+if TYPE_CHECKING:
+    pass
 
 
 class BlockBridge(GeneralizedComponent):

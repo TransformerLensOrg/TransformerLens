@@ -11,6 +11,7 @@ import pytest
 from transformer_lens.model_bridge.bridge import TransformerBridge
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
+    BlockBridge,
     EmbeddingBridge,
     LayerNormBridge,
     MLPBridge,
@@ -33,13 +34,16 @@ class TestTransformerBridge:
         # Mock the get_component method to return mock components
         self.mock_components = {
             "embed": Mock(spec=EmbeddingBridge),
+            "unembed": Mock(spec=EmbeddingBridge),
+            "ln_final": Mock(spec=LayerNormBridge),
             "blocks.0": Mock(),
             "blocks.0.ln1": Mock(spec=LayerNormBridge),
             "blocks.0.ln2": Mock(spec=LayerNormBridge),
             "blocks.0.attn": Mock(spec=AttentionBridge),
             "blocks.0.mlp": Mock(spec=MLPBridge),
-            "ln_final": Mock(spec=LayerNormBridge),
-            "unembed": Mock(spec=EmbeddingBridge),
+            "outer_blocks.0": Mock(),
+            "outer_blocks.0.inner_blocks.0": Mock(),
+            "outer_blocks.0.inner_blocks.0.ln": Mock(spec=LayerNormBridge),
         }
 
         def mock_get_component(model, path):
@@ -96,6 +100,7 @@ class TestTransformerBridge:
         mapping = {
             "blocks": (
                 "model.layers",
+                BlockBridge,
                 {
                     "ln1": ("input_layernorm", LayerNormBridge),
                     "ln2": ("post_attention_layernorm", LayerNormBridge),
@@ -121,6 +126,7 @@ class TestTransformerBridge:
             "embed": ("model.embed_tokens", EmbeddingBridge),
             "blocks": (
                 "model.layers",
+                BlockBridge,
                 {
                     "ln1": ("input_layernorm", LayerNormBridge),
                     "attn": ("self_attn", AttentionBridge),
@@ -177,9 +183,11 @@ class TestTransformerBridge:
         mapping = {
             "outer_blocks": (
                 "model.outer_layers",
+                BlockBridge,
                 {
                     "inner_blocks": (
                         "inner_layers",
+                        BlockBridge,
                         {
                             "ln": ("layernorm", LayerNormBridge),
                         },
@@ -230,6 +238,7 @@ class TestTransformerBridge:
             "embed": ("model.embed_tokens", EmbeddingBridge),
             "blocks": (
                 "model.layers",
+                BlockBridge,
                 {
                     "attn": ("self_attn", AttentionBridge),
                 },
