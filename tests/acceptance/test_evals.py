@@ -6,7 +6,7 @@ from transformer_lens.HookedTransformer import HookedTransformer
 
 @pytest.fixture(scope="module")
 def model():
-    return HookedTransformer.from_pretrained("gpt2-small")
+    return HookedTransformer.from_pretrained("gpt2-small", device="cpu")
 
 
 def test_basic_ioi_eval(model):
