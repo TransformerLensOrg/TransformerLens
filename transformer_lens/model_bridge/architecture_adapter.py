@@ -54,7 +54,7 @@ class ArchitectureAdapter:
             raise ValueError("component_mapping must be set before calling get_component_mapping")
         return self.component_mapping
 
-    def get_remote_component(self, model: RemoteModel, path: str) -> RemoteComponent:
+    def get_remote_component(self, model: RemoteModel, path: RemotePath) -> RemoteComponent:
         """Get a component from a remote model by its path.
 
         This method should be overridden by subclasses to provide the logic for
