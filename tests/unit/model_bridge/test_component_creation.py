@@ -6,7 +6,7 @@ import pytest
 import torch
 import torch.nn as nn
 
-from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
+from tests.mocks.architecture_adapter import MockArchitectureAdapter, mock_model
 from transformer_lens.model_bridge.component_creation import (
     create_and_replace_components_from_mapping,
     create_bridged_component,
@@ -19,35 +19,8 @@ from transformer_lens.model_bridge.generalized_components import (
 from transformer_lens.model_bridge.types import ComponentMapping, RemoteImport
 
 
-class MockArchitectureAdapter(ArchitectureAdapter):
-    """Mock architecture adapter for testing."""
-
-    def __init__(self, cfg=None):
-        super().__init__(cfg)
-        self.component_mapping = {}
-
-    def get_remote_component(self, model: nn.Module, path: str) -> nn.Module:
-        """Mock implementation that returns a component based on the path."""
-        if path == "model.ln":
-            return nn.LayerNorm(10)
-        elif path == "blocks.0.ln":
-            return nn.LayerNorm(10)
-        else:
-            raise AttributeError(f"Component not found at path: {path}")
-
-
 class TestCreateBridgedComponent:
     """Test suite for create_bridged_component function."""
-
-    @pytest.fixture
-    def mock_model(self):
-        """Create a mock model for testing."""
-        model = nn.Module()
-        model.model = nn.Module()
-        model.model.ln = nn.LayerNorm(10)
-        model.blocks = nn.ModuleList([nn.Module()])
-        model.blocks[0].ln = nn.LayerNorm(10)
-        return model
 
     @pytest.fixture
     def adapter(self):
@@ -56,6 +29,7 @@ class TestCreateBridgedComponent:
 
     def test_create_basic_component(self, mock_model, adapter):
         """Test creating a basic component without prepend."""
+        adapter.component_mapping = {"model.ln": ("model.ln", LayerNormBridge)}
         remote_import: RemoteImport = ("model.ln", LayerNormBridge)
         component = create_bridged_component(remote_import, mock_model, adapter, name="model.ln")
 
@@ -69,6 +43,7 @@ class TestCreateBridgedComponent:
 
     def test_create_component_with_prepend(self, mock_model, adapter):
         """Test creating a component with prepend path."""
+        adapter.component_mapping = {"blocks.0.ln": ("ln", LayerNormBridge)}
         remote_import: RemoteImport = ("ln", LayerNormBridge)
         component = create_bridged_component(
             remote_import, mock_model, adapter, name="blocks.0.ln", prepend="blocks.0"
