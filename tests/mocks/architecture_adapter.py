@@ -6,6 +6,7 @@ from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapt
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
     BlockBridge,
+    EmbeddingBridge,
     LayerNormBridge,
     MLPBridge,
 )
@@ -17,6 +18,8 @@ class MockArchitectureAdapter(ArchitectureAdapter):
     def __init__(self, cfg=None):
         super().__init__(cfg)
         self.component_mapping = {
+            "embed": ("embed", EmbeddingBridge),
+            "unembed": ("unembed", EmbeddingBridge),
             "ln_final": ("ln_final", LayerNormBridge),
             "blocks": (
                 "blocks",
@@ -26,6 +29,17 @@ class MockArchitectureAdapter(ArchitectureAdapter):
                     "ln2": ("ln2", LayerNormBridge),
                     "attn": ("attn", AttentionBridge),
                     "mlp": ("mlp", MLPBridge),
+                },
+            ),
+            "outer_blocks": (
+                "outer_blocks",
+                BlockBridge,
+                {
+                    "inner_blocks": (
+                        "inner_blocks",
+                        BlockBridge,
+                        {"ln": ("ln", LayerNormBridge)},
+                    )
                 },
             ),
         }
@@ -41,6 +55,11 @@ def mock_adapter() -> MockArchitectureAdapter:
 def mock_model_adapter() -> nn.Module:
     """Create a mock model for testing."""
     model = nn.Module()
+
+    # For embed/unembed
+    model.embed = nn.Embedding(100, 10)
+    model.unembed = nn.Linear(10, 100)
+
     model.ln_final = nn.LayerNorm(10)
     model.blocks = nn.ModuleList()
     block = nn.Module()
@@ -49,4 +68,14 @@ def mock_model_adapter() -> nn.Module:
     block.attn = nn.Module()
     block.mlp = nn.Module()
     model.blocks.append(block)
+
+    # For nested blocks
+    model.outer_blocks = nn.ModuleList()
+    outer_block = nn.Module()
+    outer_block.inner_blocks = nn.ModuleList()
+    inner_block = nn.Module()
+    inner_block.ln = nn.LayerNorm(10)
+    outer_block.inner_blocks.append(inner_block)
+    model.outer_blocks.append(outer_block)
+
     return model
