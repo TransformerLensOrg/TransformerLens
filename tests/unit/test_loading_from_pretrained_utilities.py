@@ -1,4 +1,4 @@
-import mock
+from unittest import mock
 
 from transformer_lens import HookedTransformer
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
