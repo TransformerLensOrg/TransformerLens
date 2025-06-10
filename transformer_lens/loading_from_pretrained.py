@@ -39,6 +39,7 @@ from transformer_lens.pretrained.weight_conversions import (
     convert_phi3_weights,
     convert_phi_weights,
     convert_qwen2_weights,
+    convert_qwen3_weights,
     convert_qwen_weights,
     convert_t5_weights,
 )
@@ -232,6 +233,11 @@ OFFICIAL_MODEL_NAMES = [
     "Qwen/Qwen2.5-72B",
     "Qwen/Qwen2.5-72B-Instruct",
     "Qwen/QwQ-32B-Preview",
+    "Qwen/Qwen3-0.6B",
+    "Qwen/Qwen3-1.7B",
+    "Qwen/Qwen3-4B",
+    "Qwen/Qwen3-8B",
+    "Qwen/Qwen3-14B",
     "microsoft/phi-1",
     "microsoft/phi-1_5",
     "microsoft/phi-2",
@@ -662,6 +668,10 @@ MODEL_ALIASES = {
     "Qwen/Qwen1.5-7B-Chat": ["qwen1.5-7b-chat"],
     "Qwen/Qwen1.5-14B": ["qwen1.5-14b"],
     "Qwen/Qwen1.5-14B-Chat": ["qwen1.5-14b-chat"],
+    "Qwen/Qwen3-0.6B": ["qwen3-0.6b"],
+    "Qwen/Qwen3-1.5B": ["qwen3-1.5b"],
+    "Qwen/Qwen3-7B": ["qwen3-7b"],
+    "Qwen/Qwen3-14B": ["qwen3-14b"],
     "microsoft/phi-1": ["phi-1"],
     "microsoft/phi-1_5": ["phi-1_5"],
     "microsoft/phi-2": ["phi-2"],
@@ -704,6 +714,7 @@ DEFAULT_MODEL_ALIASES = [
 NEED_REMOTE_CODE_MODELS = (
     "bigcode/santacoder",
     "Qwen/Qwen-",
+    "Qwen/Qwen3-",
     "microsoft/phi-2",
     "microsoft/Phi-3-mini-4k-instruct",
     "microsoft/phi-4",
@@ -1311,6 +1322,40 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "gated_mlp": True,
             "default_prepend_bos": False,
         }
+    elif architecture == "Qwen3ForCausalLM":
+        cfg_dict = {
+            "d_model": hf_config.hidden_size,
+            "d_head": hf_config.head_dim
+            if hasattr(hf_config, "head_dim") and hf_config.head_dim > 0
+            else hf_config.hidden_size // hf_config.num_attention_heads,
+            "n_heads": hf_config.num_attention_heads,
+            "n_key_value_heads": (
+                hf_config.num_key_value_heads
+                if hf_config.num_key_value_heads != hf_config.num_attention_heads
+                else None
+            ),
+            "d_mlp": hf_config.intermediate_size,
+            "n_layers": hf_config.num_hidden_layers,
+            "n_ctx": 2048,
+            "eps": hf_config.rms_norm_eps,
+            "d_vocab": hf_config.vocab_size,
+            "act_fn": hf_config.hidden_act,
+            "use_attn_scale": True,
+            "initializer_range": hf_config.initializer_range,
+            "normalization_type": "RMS",
+            "positional_embedding_type": "rotary",
+            "rotary_base": int(hf_config.rope_theta),
+            "rotary_adjacent_pairs": False,
+            "rotary_dim": hf_config.head_dim
+            if hasattr(hf_config, "head_dim") and hf_config.head_dim > 0
+            else hf_config.hidden_size // hf_config.num_attention_heads,
+            "tokenizer_prepends_bos": True,
+            "final_rms": True,
+            "gated_mlp": True,
+            "default_prepend_bos": False,
+            "use_qk_norm": True,
+            "trust_remote_code": True,
+        }
     elif architecture == "PhiForCausalLM":
         # Architecture for microsoft/phi models
         cfg_dict = {
@@ -1898,6 +1943,8 @@ def get_pretrained_state_dict(
             state_dict = convert_qwen_weights(hf_model, cfg)
         elif cfg.original_architecture == "Qwen2ForCausalLM":
             state_dict = convert_qwen2_weights(hf_model, cfg)
+        elif cfg.original_architecture == "Qwen3ForCausalLM":
+            state_dict = convert_qwen3_weights(hf_model, cfg)
         elif cfg.original_architecture == "PhiForCausalLM":
             state_dict = convert_phi_weights(hf_model, cfg)
         elif cfg.original_architecture == "Phi3ForCausalLM":

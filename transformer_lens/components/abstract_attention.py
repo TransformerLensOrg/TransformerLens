@@ -10,6 +10,7 @@ from better_abc import abstract_attribute
 from jaxtyping import Float, Int
 from transformers.utils import is_bitsandbytes_available
 
+from transformer_lens.components.rms_norm import RMSNorm
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
@@ -24,6 +25,8 @@ if is_bitsandbytes_available():
 
 class AbstractAttention(ABC, nn.Module):
     alibi: Union[torch.Tensor, None]
+    q_norm: Optional[RMSNorm]
+    k_norm: Optional[RMSNorm]
 
     def __init__(
         self,
@@ -75,6 +78,13 @@ class AbstractAttention(ABC, nn.Module):
         self.b_K: nn.Parameter = abstract_attribute()
         self.b_V: nn.Parameter = abstract_attribute()
         self.b_O = nn.Parameter(torch.zeros(self.cfg.d_model, dtype=self.cfg.dtype))
+
+        if self.cfg.use_qk_norm:
+            self.q_norm = RMSNorm(self.cfg, length=self.cfg.d_head)
+            self.k_norm = RMSNorm(self.cfg, length=self.cfg.d_head)
+        else:
+            self.q_norm = None
+            self.k_norm = None
 
         self.attn_type = attn_type
         # Create a max_ctx x max_ctx mask, with True iff that query position
@@ -322,6 +332,23 @@ class AbstractAttention(ABC, nn.Module):
             )  # [batch, pos, d_model]
         return out
 
+    def _apply_qk_norm(
+        self, x: Float[torch.Tensor, "batch pos head_index d_head"], norm_module: RMSNorm
+    ) -> Float[torch.Tensor, "batch pos head_index d_head"]:
+        """Apply QK normalization with proper reshaping.
+
+        Args:
+            x: Input tensor with shape [batch, pos, head_index, d_head]
+            norm_module: RMSNorm module to apply
+
+        Returns:
+            Normalized tensor with same shape as input
+        """
+        # Reshape from [batch, pos, head_index, d_head] to [batch * pos * head_index, d_head]
+        d_head = x.shape[-1]
+        x_normed = norm_module(x.reshape(-1, d_head))
+        return x_normed.reshape(x.shape)
+
     def calculate_qkv_matrices(
         self,
         query_input: Union[
@@ -402,6 +429,12 @@ class AbstractAttention(ABC, nn.Module):
             )
         else:
             v = self.hook_v(attn_fn(value_input, self.W_V, self.b_V))
+
+        if self.cfg.use_qk_norm:
+            assert self.q_norm is not None
+            assert self.k_norm is not None
+            q = self._apply_qk_norm(q, self.q_norm)
+            k = self._apply_qk_norm(k, self.k_norm)
 
         return q, k, v
 
