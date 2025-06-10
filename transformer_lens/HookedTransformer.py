@@ -11,17 +11,13 @@ a deeper understanding of the internal workings of transformers like GPT-2.
 
 from __future__ import annotations
 
-import dataclasses
 import logging
 import os
 from typing import (
-    TYPE_CHECKING,
-    Callable,
     Dict,
     List,
     NamedTuple,
     Optional,
-    Sequence,
     Tuple,
     Type,
     TypeVar,

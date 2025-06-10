@@ -1,5 +1,4 @@
 import mock
-import pytest
 
 from transformer_lens import HookedTransformer
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
@@ -58,4 +57,3 @@ def test_fill_missing_keys_no_missing_keys():
     filled_state_dict = fill_missing_keys(model, default_state_dict)
 
     assert filled_state_dict == default_state_dict
-
