@@ -1589,11 +1589,10 @@ def convert_hf_model_config(model_name: str, **kwargs: Any):
     return cfg_dict
 
 
-def convert_neel_model_config(official_model_name: str, **kwargs: Any):
+def convert_neel_model_config(official_model_name: str) -> dict[str, Any]:
     """
     Returns the model config for a Neel Nanda model, converted to a dictionary
     in the HookedTransformerConfig format.
-
     Takes the official_model_name as an input.
     """
     cfg_dict: dict[str, Any] = {
@@ -1610,8 +1609,45 @@ def convert_neel_model_config(official_model_name: str, **kwargs: Any):
         "attn_only": False,
         "final_rms": False,
     }
+    if "solu" in official_model_name.lower() and "old" in official_model_name.lower():
+        cfg_dict["original_architecture"] = "neel-solu-old"
+    elif "GELU" in official_model_name:
+        # For GELU models, the architecture is mingpt
+        cfg_dict["original_architecture"] = "mingpt"
+
     # The d_model and n_layers for these models are included in the name.
+    # For a list of Neel Nanda's models, see the model alias table.
+    model_size_regex = re.search(r"(\d+)L(\d+)W", official_model_name)
+    if model_size_regex is None:
+        # If the model size is not in the name, we can't infer the parameters.
+        # This is the case for some of Neel's older models.
+        # So we just return the default values.
+        return cfg_dict
+    cfg_dict["d_model"] = int(model_size_regex.group(2))
+    cfg_dict["n_layers"] = int(model_size_regex.group(1))
+
     # The other parameters are fixed.
+    cfg_dict["d_head"] = 64
+    cfg_dict["d_mlp"] = cfg_dict["d_model"] * 4
+    cfg_dict["n_heads"] = cfg_dict["d_model"] // cfg_dict["d_head"]
+
+    # For attn-only models, d_mlp is not used.
+    if "Attn_Only" in official_model_name:
+        cfg_dict["attn_only"] = True
+        cfg_dict["d_mlp"] = 0
+
+    # For old solu models, the activation function is solu_ln, but for the new
+    # models it is relu_ln.
+    if "old" in official_model_name:
+        cfg_dict["act_fn"] = "solu_ln"
+    else:
+        cfg_dict["act_fn"] = "relu_ln"
+        if "SoLU" in official_model_name:
+            cfg_dict["act_fn"] = "solu_ln"
+
+    # The vocab size is 50257 for all of Neel's models.
+    cfg_dict["d_vocab"] = 50257
+    cfg_dict["n_ctx"] = 1024
     return cfg_dict
 
 
@@ -1679,7 +1715,7 @@ def get_pretrained_model_config(
         or official_model_name.startswith("ArthurConmy")
         or official_model_name.startswith("Baidicoot")
     ):
-        cfg_dict = convert_neel_model_config(official_model_name, **kwargs)
+        cfg_dict = convert_neel_model_config(official_model_name)
     else:
         if official_model_name.startswith(NEED_REMOTE_CODE_MODELS) and not kwargs.get(
             "trust_remote_code", False
