@@ -26,7 +26,7 @@ class NeelSoluOldArchitectureAdapter(ArchitectureAdapter):
         Args:
             cfg: The configuration object.
         """
-        self.default_config = {}
+        self.default_config: dict[str, Any] = {}
         super().__init__(cfg)
 
         self.conversion_rules = WeightConversionSet(

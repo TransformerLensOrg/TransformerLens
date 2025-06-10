@@ -8,6 +8,9 @@ from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
     SplitWeightConversion,
     WeightConversionSet,
 )
+from transformer_lens.model_bridge.conversion_utils.conversion_steps.chain_weight_conversion import (
+    ChainWeightConversion,
+)
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
     BlockBridge,
@@ -38,53 +41,77 @@ class NeoxArchitectureAdapter(ArchitectureAdapter):
                 "blocks.{i}.ln2.b": "gpt_neox.layers.{i}.post_attention_layernorm.bias",
                 "blocks.{i}.attn.W_Q": (
                     "gpt_neox.layers.{i}.attention.query_key_value.weight",
-                    SplitWeightConversion(0, 3),
-                    RearrangeWeightConversion(
-                        "(head d_head) d_model -> head d_model d_head",
-                        head=self.user_cfg.num_attention_heads,
-                        d_head=self.user_cfg.hidden_size // self.user_cfg.num_attention_heads,
+                    ChainWeightConversion(
+                        [
+                            SplitWeightConversion(0, 3),
+                            RearrangeWeightConversion(
+                                "(head d_head) d_model -> head d_model d_head",
+                                head=self.user_cfg.num_attention_heads,
+                                d_head=self.user_cfg.hidden_size // self.user_cfg.num_attention_heads,
+                            ),
+                        ]
                     ),
                 ),
                 "blocks.{i}.attn.W_K": (
                     "gpt_neox.layers.{i}.attention.query_key_value.weight",
-                    SplitWeightConversion(1, 3),
-                    RearrangeWeightConversion(
-                        "(head d_head) d_model -> head d_model d_head",
-                        head=self.user_cfg.num_attention_heads,
-                        d_head=self.user_cfg.hidden_size // self.user_cfg.num_attention_heads,
+                    ChainWeightConversion(
+                        [
+                            SplitWeightConversion(1, 3),
+                            RearrangeWeightConversion(
+                                "(head d_head) d_model -> head d_model d_head",
+                                head=self.user_cfg.num_attention_heads,
+                                d_head=self.user_cfg.hidden_size // self.user_cfg.num_attention_heads,
+                            ),
+                        ]
                     ),
                 ),
                 "blocks.{i}.attn.W_V": (
                     "gpt_neox.layers.{i}.attention.query_key_value.weight",
-                    SplitWeightConversion(2, 3),
-                    RearrangeWeightConversion(
-                        "(head d_head) d_model -> head d_model d_head",
-                        head=self.user_cfg.num_attention_heads,
-                        d_head=self.user_cfg.hidden_size // self.user_cfg.num_attention_heads,
+                    ChainWeightConversion(
+                        [
+                            SplitWeightConversion(2, 3),
+                            RearrangeWeightConversion(
+                                "(head d_head) d_model -> head d_model d_head",
+                                head=self.user_cfg.num_attention_heads,
+                                d_head=self.user_cfg.hidden_size // self.user_cfg.num_attention_heads,
+                            ),
+                        ]
                     ),
                 ),
                 "blocks.{i}.attn.b_Q": (
                     "gpt_neox.layers.{i}.attention.query_key_value.bias",
-                    SplitWeightConversion(0, 3),
-                    RearrangeWeightConversion(
-                        "(head d_head) -> head d_head",
-                        head=self.user_cfg.num_attention_heads,
+                    ChainWeightConversion(
+                        [
+                            SplitWeightConversion(0, 3),
+                            RearrangeWeightConversion(
+                                "(head d_head) -> head d_head",
+                                head=self.user_cfg.num_attention_heads,
+                            ),
+                        ]
                     ),
                 ),
                 "blocks.{i}.attn.b_K": (
                     "gpt_neox.layers.{i}.attention.query_key_value.bias",
-                    SplitWeightConversion(1, 3),
-                    RearrangeWeightConversion(
-                        "(head d_head) -> head d_head",
-                        head=self.user_cfg.num_attention_heads,
+                    ChainWeightConversion(
+                        [
+                            SplitWeightConversion(1, 3),
+                            RearrangeWeightConversion(
+                                "(head d_head) -> head d_head",
+                                head=self.user_cfg.num_attention_heads,
+                            ),
+                        ]
                     ),
                 ),
                 "blocks.{i}.attn.b_V": (
                     "gpt_neox.layers.{i}.attention.query_key_value.bias",
-                    SplitWeightConversion(2, 3),
-                    RearrangeWeightConversion(
-                        "(head d_head) -> head d_head",
-                        head=self.user_cfg.num_attention_heads,
+                    ChainWeightConversion(
+                        [
+                            SplitWeightConversion(2, 3),
+                            RearrangeWeightConversion(
+                                "(head d_head) -> head d_head",
+                                head=self.user_cfg.num_attention_heads,
+                            ),
+                        ]
                     ),
                 ),
                 "blocks.{i}.attn.W_O": (

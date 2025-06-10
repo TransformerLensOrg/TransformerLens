@@ -1,5 +1,6 @@
 """Split weight conversion step."""
 import torch
+from torch import Tensor
 
 from transformer_lens.model_bridge.conversion_utils.conversion_steps.base_weight_conversion import (
     BaseWeightConversion,
@@ -22,14 +23,14 @@ class SplitWeightConversion(BaseWeightConversion):
         self.num_splits = num_splits
         self.dim = dim
 
-    def convert(self, weight: torch.Tensor) -> torch.Tensor:
+    def handle_conversion(self, input_value: Tensor, *full_context) -> Tensor:
         """Convert the weight by splitting it and selecting a chunk.
 
         Args:
-            weight (torch.Tensor): The weight to convert.
+            input_value (torch.Tensor): The weight to convert.
 
         Returns:
             torch.Tensor: The converted weight.
         """
-        chunks = torch.chunk(weight, self.num_splits, dim=self.dim)
+        chunks = torch.chunk(input_value, self.num_splits, dim=self.dim)
         return chunks[self.index]

@@ -13,7 +13,7 @@ import einops
 import numpy as np
 import torch
 from datasets.arrow_dataset import Dataset
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, PreTrainedTokenizerBase
 
 from transformer_lens.utilities.hf_utils import keep_single_column
 from transformer_lens.utilities.tensors import get_cumsum_along_dim
@@ -21,7 +21,7 @@ from transformer_lens.utilities.tensors import get_cumsum_along_dim
 
 def tokenize_and_concatenate(
     dataset: Dataset,
-    tokenizer: AutoTokenizer,
+    tokenizer: PreTrainedTokenizerBase,
     streaming: bool = False,
     max_length: int = 1024,
     column_name: str = "text",
@@ -34,7 +34,7 @@ def tokenize_and_concatenate(
 
     Args:
         dataset (Dataset): The dataset to tokenize, assumed to be a HuggingFace text dataset.
-        tokenizer (AutoTokenizer): The tokenizer. Assumed to have a bos_token_id and an eos_token_id.
+        tokenizer (PreTrainedTokenizerBase): The tokenizer. Assumed to have a bos_token_id and an eos_token_id.
         streaming (bool, optional): Whether the dataset is being streamed. If True, avoids using parallelism. Defaults to False.
         max_length (int, optional): The length of the context window of the sequence. Defaults to 1024.
         column_name (str, optional): The name of the text column in the dataset. Defaults to 'text'.

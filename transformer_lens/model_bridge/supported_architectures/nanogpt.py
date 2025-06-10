@@ -87,11 +87,11 @@ class NanogptArchitectureAdapter(ArchitectureAdapter):
             "pos_embed": ("transformer.wpe", EmbeddingBridge),  # Positional embeddings
             "blocks": (
                 "transformer.h",  # Base path for blocks
+                AttentionBridge,
                 {
                     "ln1": ("ln_1", LayerNormBridge),  # Pre-attention layer norm
                     "ln2": ("ln_2", LayerNormBridge),  # Pre-MLP layer norm
                     "attn": ("attn", AttentionBridge),  # Full attention module
-                    "attn.c_attn": ("attn.c_attn", AttentionBridge),  # QKV projection
                     "mlp": ("mlp", MLPBridge),  # Full MLP module
                 },
             ),

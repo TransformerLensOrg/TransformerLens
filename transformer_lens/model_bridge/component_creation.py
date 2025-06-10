@@ -40,7 +40,7 @@ def replace_remote_component(
     parent_obj = remote_model
     for part in path_parts[:-1]:
         if part.isdigit():
-            parent_obj = parent_obj[int(part)]
+            parent_obj = parent_obj[int(part)]  # type: ignore[index]
         else:
             parent_obj = getattr(parent_obj, part)
     setattr(parent_obj, path_parts[-1], bridged_component)

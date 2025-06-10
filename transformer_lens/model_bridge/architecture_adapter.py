@@ -37,7 +37,7 @@ class ArchitectureAdapter:
             user_cfg: The user-provided configuration object.
         """
         self.user_cfg = user_cfg
-        self.default_cfg = {}
+        self.default_cfg: dict[str, Any] = {}
         self.component_mapping: ComponentMapping | None = None
         self.conversion_rules: WeightConversionSet | None = None
 
@@ -66,11 +66,32 @@ class ArchitectureAdapter:
 
         Returns:
             The component (e.g., a PyTorch module)
+
+        Raises:
+            AttributeError: If a component in the path doesn't exist
+            IndexError: If an invalid index is accessed
+            ValueError: If the path is empty or invalid
+
+        Examples:
+            Get an embedding component:
+
+            >>> # adapter.get_remote_component(model, "model.embed_tokens")
+            >>> # <Embedding>
+
+            Get a transformer block:
+
+            >>> # adapter.get_remote_component(model, "model.layers.0")
+            >>> # <TransformerBlock>
+
+            Get a layer norm component:
+
+            >>> # adapter.get_remote_component(model, "model.layers.0.ln1")
+            >>> # <LayerNorm>
         """
         current = model
         for part in path.split("."):
             if part.isdigit():
-                current = current[int(part)]
+                current = current[int(part)]  # type: ignore[index]
             else:
                 current = getattr(current, part)
         return current
@@ -91,12 +112,7 @@ class ArchitectureAdapter:
             ValueError: If the component mapping is not set or if the path is invalid
             KeyError: If the path is not found in the component mapping.
         """
-        if self.component_mapping is None:
-            raise ValueError(
-                "component_mapping must be set before calling translate_transformer_lens_path"
-            )
-
-        component_mapping = self.component_mapping
+        component_mapping = self.get_component_mapping()
         parts = path.split(".")
         if not parts:
             raise ValueError("Empty path")
@@ -223,11 +239,7 @@ class ArchitectureAdapter:
         Raises:
             KeyError: If the path is not found in the component mapping.
         """
-        if self.component_mapping is None:
-            raise ValueError(
-                "component_mapping must be set before calling get_remote_path_and_type"
-            )
-        current_mapping = self.component_mapping
+        current_mapping = self.get_component_mapping()
         path_parts = tl_path.split(".")
         for i, part in enumerate(path_parts):
             assert isinstance(current_mapping, dict)
@@ -241,6 +253,7 @@ class ArchitectureAdapter:
                 else:
                     # We are descending into a block
                     current_mapping = entry[2]
+                    assert isinstance(current_mapping, dict)
             elif isinstance(entry, tuple) and len(entry) == 2:  # RemoteImport
                 if i != len(path_parts) - 1:
                     raise KeyError(f"Path {tl_path} is too long.")

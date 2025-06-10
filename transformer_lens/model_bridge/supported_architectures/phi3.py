@@ -32,42 +32,21 @@ class Phi3ArchitectureAdapter(ArchitectureAdapter):
                     "model.layers.{i}.self_attn.qkv_proj.weight",
                     SplitWeightConversion(
                         0,
-                        [
-                            self.user_cfg.num_attention_heads
-                            * (self.user_cfg.hidden_size // self.user_cfg.num_attention_heads),
-                            self.user_cfg.num_key_value_heads
-                            * (self.user_cfg.hidden_size // self.user_cfg.num_attention_heads),
-                            self.user_cfg.num_key_value_heads
-                            * (self.user_cfg.hidden_size // self.user_cfg.num_attention_heads),
-                        ],
+                        3,
                     ),
                 ),
                 "blocks.{i}.attn.W_K": (
                     "model.layers.{i}.self_attn.qkv_proj.weight",
                     SplitWeightConversion(
                         1,
-                        [
-                            self.user_cfg.num_attention_heads
-                            * (self.user_cfg.hidden_size // self.user_cfg.num_attention_heads),
-                            self.user_cfg.num_key_value_heads
-                            * (self.user_cfg.hidden_size // self.user_cfg.num_attention_heads),
-                            self.user_cfg.num_key_value_heads
-                            * (self.user_cfg.hidden_size // self.user_cfg.num_attention_heads),
-                        ],
+                        3,
                     ),
                 ),
                 "blocks.{i}.attn.W_V": (
                     "model.layers.{i}.self_attn.qkv_proj.weight",
                     SplitWeightConversion(
                         2,
-                        [
-                            self.user_cfg.num_attention_heads
-                            * (self.user_cfg.hidden_size // self.user_cfg.num_attention_heads),
-                            self.user_cfg.num_key_value_heads
-                            * (self.user_cfg.hidden_size // self.user_cfg.num_attention_heads),
-                            self.user_cfg.num_key_value_heads
-                            * (self.user_cfg.hidden_size // self.user_cfg.num_attention_heads),
-                        ],
+                        3,
                     ),
                 ),
                 "blocks.{i}.attn.W_O": (

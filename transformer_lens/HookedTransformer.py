@@ -12,6 +12,7 @@ a deeper understanding of the internal workings of transformers like GPT-2.
 import logging
 import os
 from typing import (
+    Any,
     Dict,
     List,
     NamedTuple,
@@ -32,7 +33,12 @@ import torch.nn.functional as F
 import tqdm.auto as tqdm
 from jaxtyping import Float, Int
 from packaging import version
-from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedTokenizerBase
+from transformers import (
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    PreTrainedModel,
+    PreTrainedTokenizerBase,
+)
 from typing_extensions import Literal
 
 import transformer_lens.loading_from_pretrained as loading
@@ -1123,7 +1129,7 @@ class HookedTransformer(HookedRootModule):
         refactor_factored_attn_matrices: bool = False,
         checkpoint_index: Optional[int] = None,
         checkpoint_value: Optional[int] = None,
-        hf_model: Optional[AutoModelForCausalLM] = None,
+        hf_model: Optional[PreTrainedModel] = None,
         device: Optional[Union[str, torch.device]] = None,
         n_devices: int = 1,
         tokenizer: Optional[PreTrainedTokenizerBase] = None,
@@ -1292,7 +1298,7 @@ class HookedTransformer(HookedRootModule):
         ), "Quantization not supported"
 
         if hf_model is not None:
-            hf_cfg = hf_model.config.to_dict()
+            hf_cfg = cast(Any, hf_model).config.to_dict()
             qc = hf_cfg.get("quantization_config", {})
             load_in_4bit = qc.get("load_in_4bit", False)
             load_in_8bit = qc.get("load_in_8bit", False)
