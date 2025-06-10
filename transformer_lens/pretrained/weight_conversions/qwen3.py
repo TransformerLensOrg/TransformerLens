@@ -12,9 +12,12 @@ def convert_qwen3_weights(qwen: Any, cfg: HookedTransformerConfig):
 
     state_dict["embed.W_E"] = qwen.model.embed_tokens.weight
 
-    using_gqa = cfg.n_key_value_heads is not None
-    gqa_uscore = "_" if using_gqa else ""
-    n_kv_heads = cfg.n_key_value_heads if using_gqa else cfg.n_heads
+    if cfg.n_key_value_heads is None:
+        gqa_uscore = ""
+        n_kv_heads = cfg.n_heads
+    else:
+        gqa_uscore = "_"
+        n_kv_heads = cfg.n_key_value_heads
 
     assert cfg.d_mlp is not None  # keep mypy happy
 
