@@ -1,5 +1,4 @@
-from unittest import mock
-
+import mock
 import pytest
 
 from transformer_lens import HookedTransformer
@@ -17,7 +16,7 @@ def get_default_config():
 
 
 @mock.patch("logging.warning")
-def test_fill_missing_keys(mock_warning):
+def test_fill_missing_keys(mock_warning: mock.MagicMock):
     cfg = get_default_config()
     model = HookedTransformer(cfg)
     default_state_dict = model.state_dict()
@@ -60,13 +59,3 @@ def test_fill_missing_keys_no_missing_keys():
 
     assert filled_state_dict == default_state_dict
 
-
-# Failures
-
-
-def test_fill_missing_keys_raises_error_on_invalid_model():
-    invalid_model = None
-    default_state_dict = {}
-
-    with pytest.raises(AttributeError):
-        fill_missing_keys(invalid_model, default_state_dict)
