@@ -890,11 +890,12 @@ class ActivationCache:
         if not isinstance(pos_slice, Slice):
             pos_slice = Slice(pos_slice)
 
-        neuron_labels: torch.Tensor | np.ndarray = neuron_slice.apply(
+        neuron_labels: Union[torch.Tensor, np.ndarray] = neuron_slice.apply(
             torch.arange(self.model.cfg.d_mlp), dim=0
         )
-        if type(neuron_labels) == int:
+        if isinstance(neuron_labels, int):
             neuron_labels = np.array([neuron_labels])
+
         for l in range(layer):
             # Note that this has shape batch x pos x head_index x d_model
             components.append(

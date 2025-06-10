@@ -9,13 +9,19 @@ alteration of activations in individual components like attention heads and MLP 
 a deeper understanding of the internal workings of transformers like GPT-2.
 """
 
+from __future__ import annotations
+
+import dataclasses
 import logging
 import os
 from typing import (
+    TYPE_CHECKING,
+    Callable,
     Dict,
     List,
     NamedTuple,
     Optional,
+    Sequence,
     Tuple,
     Type,
     TypeVar,
@@ -1079,7 +1085,8 @@ class HookedTransformer(HookedRootModule):
     ):
         return devices.move_to_and_update_config(self, device_or_dtype, print_details)
 
-    def cuda(self: T, device: int | torch.device | None = None) -> T:
+    def cuda(self: T, device: Optional[Union[int, torch.device]] = None) -> T:
+        # TODO: Add support for kwargs
         if isinstance(device, int):
             return self.to(f"cuda:{device}")
         elif device is None:
