@@ -25,6 +25,8 @@ if is_bitsandbytes_available():
 
 class AbstractAttention(ABC, nn.Module):
     alibi: Union[torch.Tensor, None]
+    q_norm: Optional[RMSNorm]
+    k_norm: Optional[RMSNorm]
 
     def __init__(
         self,
@@ -429,6 +431,8 @@ class AbstractAttention(ABC, nn.Module):
             v = self.hook_v(attn_fn(value_input, self.W_V, self.b_V))
 
         if self.cfg.use_qk_norm:
+            assert self.q_norm is not None
+            assert self.k_norm is not None
             q = self._apply_qk_norm(q, self.q_norm)
             k = self._apply_qk_norm(k, self.k_norm)
 
