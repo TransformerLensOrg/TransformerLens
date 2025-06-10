@@ -1,4 +1,5 @@
-from . import utils
+from . import supported_models
+from . import utilities
 from . import hook_points
 from . import evals
 from .past_key_value_caching import (
@@ -17,6 +18,7 @@ from .HookedEncoderDecoder import HookedEncoderDecoder
 from .BertNextSentencePrediction import BertNextSentencePrediction
 from . import head_detector
 from . import loading_from_pretrained as loading
+from . import boot
 from . import patching
 from . import train
 
@@ -39,4 +41,5 @@ __all__ = [
     "EasyTransformerConfig",
     "EasyTransformerKeyValueCache",
     "EasyTransformerKeyValueCacheEntry",
+    "boot",
 ]
