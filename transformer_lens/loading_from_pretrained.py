@@ -10,7 +10,7 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional, Union
 
 import torch
 from huggingface_hub import HfApi
@@ -1608,15 +1608,15 @@ def convert_neel_model_config(official_model_name: str, **kwargs: Any):
 
 def get_pretrained_model_config(
     model_name: str,
-    hf_cfg: dict | None = None,
-    checkpoint_index: int | None = None,
-    checkpoint_value: int | None = None,
+    hf_cfg: Optional[dict] = None,
+    checkpoint_index: Optional[int] = None,
+    checkpoint_value: Optional[int] = None,
     fold_ln: bool = False,
-    device: str | torch.device | None = None,
+    device: Optional[Union[str, torch.device]] = None,
     n_devices: int = 1,
-    default_prepend_bos: bool | None = None,
+    default_prepend_bos: Optional[bool] = None,
     dtype: torch.dtype = torch.float32,
-    first_n_layers: int | None = None,
+    first_n_layers: Optional[int] = None,
     **kwargs: Any,
 ):
     """Returns the pretrained model config as an HookedTransformerConfig object.
@@ -1814,7 +1814,7 @@ def get_checkpoint_labels(model_name: str, **kwargs: Any):
 def get_pretrained_state_dict(
     official_model_name: str,
     cfg: HookedTransformerConfig,
-    hf_model: Any | None = None,
+    hf_model: Optional[Any] = None,
     dtype: torch.dtype = torch.float32,
     **kwargs: Any,
 ) -> dict[str, torch.Tensor]:
