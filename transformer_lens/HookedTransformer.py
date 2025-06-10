@@ -9,6 +9,8 @@ alteration of activations in individual components like attention heads and MLP 
 a deeper understanding of the internal workings of transformers like GPT-2.
 """
 
+from __future__ import annotations
+
 import logging
 import os
 from typing import (
@@ -1079,17 +1081,20 @@ class HookedTransformer(HookedRootModule):
     ):
         return devices.move_to_and_update_config(self, device_or_dtype, print_details)
 
-    def cuda(self):
-        """Wrapper around cuda that also changes `self.cfg.device`."""
-        return self.to("cuda")
+    def cuda(self: T, device: Optional[Union[int, torch.device]] = None) -> T:
+        # TODO: Add support for kwargs
+        if isinstance(device, int):
+            return self.to(f"cuda:{device}")
+        elif device is None:
+            return self.to("cuda")
+        else:
+            return self.to(device)
 
-    def cpu(self):
-        """Wrapper around cuda that also changes `self.cfg.device`."""
-        return self.to("cpu")
+    def cpu(self: T) -> T:
+        return self.to(torch.device("cpu"))
 
-    def mps(self):
-        """Wrapper around mps that also changes `self.cfg.device`."""
-        return self.to("mps")
+    def mps(self: T) -> T:
+        return self.to(torch.device("mps"))
 
     def move_model_modules_to_device(self):
         self.embed.to(devices.get_best_available_device(self.cfg))

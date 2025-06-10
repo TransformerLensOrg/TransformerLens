@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Loading Pretrained Models Utilities.
 
 This module contains functions for loading pretrained models from the Hugging Face Hub.
@@ -8,7 +10,7 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import Dict, Optional, Union
+from typing import Any, Optional, Union
 
 import torch
 from huggingface_hub import HfApi
@@ -749,7 +751,7 @@ def get_official_model_name(model_name: str):
     return official_model_name
 
 
-def convert_hf_model_config(model_name: str, **kwargs):
+def convert_hf_model_config(model_name: str, **kwargs: Any):
     """
     Returns the model config for a HuggingFace model, converted to a dictionary
     in the HookedTransformerConfig format.
@@ -779,6 +781,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
         )
         architecture = hf_config.architectures[0]
 
+    cfg_dict: dict[str, Any]
     if official_model_name.startswith(
         ("llama-7b", "meta-llama/Llama-2-7b")
     ):  # same architecture for LLaMA and Llama-2
@@ -1564,7 +1567,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
     return cfg_dict
 
 
-def convert_neel_model_config(official_model_name: str, **kwargs):
+def convert_neel_model_config(official_model_name: str, **kwargs: Any):
     """
     Loads the config for a model trained by me (NeelNanda), converted to a dictionary
     in the HookedTransformerConfig format.
@@ -1614,7 +1617,7 @@ def get_pretrained_model_config(
     default_prepend_bos: Optional[bool] = None,
     dtype: torch.dtype = torch.float32,
     first_n_layers: Optional[int] = None,
-    **kwargs,
+    **kwargs: Any,
 ):
     """Returns the pretrained model config as an HookedTransformerConfig object.
 
@@ -1747,7 +1750,7 @@ def get_pretrained_model_config(
     return cfg
 
 
-def get_num_params_of_pretrained(model_name):
+def get_num_params_of_pretrained(model_name: str):
     """
     Returns the number of parameters of a pretrained model, used to filter to only run code for sufficiently small models.
     """
@@ -1773,7 +1776,7 @@ PYTHIA_CHECKPOINTS = [0, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512] + list(
 PYTHIA_V0_CHECKPOINTS = list(range(1000, 143000 + 1, 1000))
 
 
-def get_checkpoint_labels(model_name: str, **kwargs):
+def get_checkpoint_labels(model_name: str, **kwargs: Any):
     """Returns the checkpoint labels for a given model, and the label_type
     (step or token). Raises an error for models that are not checkpointed."""
     official_model_name = get_official_model_name(model_name)
@@ -1811,10 +1814,10 @@ def get_checkpoint_labels(model_name: str, **kwargs):
 def get_pretrained_state_dict(
     official_model_name: str,
     cfg: HookedTransformerConfig,
-    hf_model=None,
+    hf_model: Optional[Any] = None,
     dtype: torch.dtype = torch.float32,
-    **kwargs,
-) -> Dict[str, torch.Tensor]:
+    **kwargs: Any,
+) -> dict[str, torch.Tensor]:
     """
     Loads in the model weights for a pretrained model, and processes them to
     have the HookedTransformer parameter names and shapes. Supports checkpointed
@@ -1965,7 +1968,7 @@ def get_pretrained_state_dict(
         return state_dict
 
 
-def fill_missing_keys(model, state_dict):
+def fill_missing_keys(model: torch.nn.Module, state_dict: dict[str, torch.Tensor]):
     """Takes in a state dict from a pretrained model, and fills in any missing keys with the default initialization.
 
     This function is assumed to be run before weights are initialized.
@@ -2010,7 +2013,7 @@ class Config:
 
 
 # Returns the configuration parameters of the model as a basic Config dataclass
-def get_basic_config(model_name: str, **kwargs) -> Config:
+def get_basic_config(model_name: str, **kwargs: Any) -> Config:
     return Config(
         **{
             k: v
