@@ -263,7 +263,6 @@ OFFICIAL_MODEL_NAMES = [
     "google-t5/t5-base",
     "google-t5/t5-large",
     "ai-forever/mGPT",
-    "google/gemma-2-27b-it",
 ]
 """Official model names for models on HuggingFace."""
 
