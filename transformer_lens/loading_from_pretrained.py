@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Loading Pretrained Models Utilities.
 
 This module contains functions for loading pretrained models from the Hugging Face Hub.
@@ -8,7 +10,7 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import Dict, Optional, Union
+from typing import Any
 
 import torch
 from huggingface_hub import HfApi
@@ -261,6 +263,7 @@ OFFICIAL_MODEL_NAMES = [
     "google-t5/t5-base",
     "google-t5/t5-large",
     "ai-forever/mGPT",
+    "google/gemma-2-27b-it",
 ]
 """Official model names for models on HuggingFace."""
 
@@ -640,6 +643,7 @@ MODEL_ALIASES = {
     ],
     "mistralai/Mistral-7B-v0.1": ["mistral-7b"],
     "mistralai/Mistral-7B-Instruct-v0.1": ["mistral-7b-instruct"],
+    "mistralai/Mistral-Small-24B-Base-2501": ["mistral-nemo-base-2407"],
     "mistralai/Mistral-Nemo-Base-2407": ["mistral-nemo-base-2407"],
     "mistralai/Mixtral-8x7B-v0.1": ["mixtral", "mixtral-8x7b"],
     "mistralai/Mixtral-8x7B-Instruct-v0.1": [
@@ -668,24 +672,43 @@ MODEL_ALIASES = {
     "Qwen/Qwen1.5-7B-Chat": ["qwen1.5-7b-chat"],
     "Qwen/Qwen1.5-14B": ["qwen1.5-14b"],
     "Qwen/Qwen1.5-14B-Chat": ["qwen1.5-14b-chat"],
+    "Qwen/Qwen2-0.5B": ["qwen3-0.6b"],
+    "Qwen/Qwen2-0.5B-Instruct": ["qwen3-1.5b"],
+    "Qwen/Qwen2-1.5B": ["qwen3-7b"],
+    "Qwen/Qwen2-1.5B-Instruct": ["qwen3-14b"],
+    "Qwen/Qwen2-7B": ["qwen3-7b"],
+    "Qwen/Qwen2-7B-Instruct": ["qwen3-14b"],
+    "Qwen/Qwen2.5-0.5B": ["qwen3-7b"],
+    "Qwen/Qwen2.5-0.5B-Instruct": ["qwen3-14b"],
+    "Qwen/Qwen2.5-1.5B": ["qwen3-14b"],
+    "Qwen/Qwen2.5-1.5B-Instruct": ["qwen3-32B"],
+    "Qwen/Qwen2.5-3B": ["qwen3-32B"],
+    "Qwen/Qwen2.5-3B-Instruct": ["qwen3-72B"],
+    "Qwen/Qwen2.5-7B": ["qwen3-72B"],
+    "Qwen/Qwen2.5-7B-Instruct": ["qwen3-14B"],
+    "Qwen/Qwen2.5-14B": ["qwen3-14B"],
+    "Qwen/Qwen2.5-32B": ["qwen3-32B"],
+    "Qwen/Qwen2.5-72B": ["qwen3-72B"],
+    "Qwen/QwQ-32B-Preview": ["qwen3-32B"],
     "Qwen/Qwen3-0.6B": ["qwen3-0.6b"],
-    "Qwen/Qwen3-1.5B": ["qwen3-1.5b"],
-    "Qwen/Qwen3-7B": ["qwen3-7b"],
+    "Qwen/Qwen3-1.7B": ["qwen3-1.7b"],
+    "Qwen/Qwen3-4B": ["qwen3-4b"],
+    "Qwen/Qwen3-8B": ["qwen3-8b"],
     "Qwen/Qwen3-14B": ["qwen3-14b"],
     "microsoft/phi-1": ["phi-1"],
     "microsoft/phi-1_5": ["phi-1_5"],
     "microsoft/phi-2": ["phi-2"],
-    "microsoft/Phi-3-mini-4k-instruct": ["phi-3"],
+    "microsoft/Phi-3-mini-4k-instruct": ["phi-3-mini"],
     "microsoft/phi-4": ["phi-4"],
     "google/gemma-2b": ["gemma-2b"],
     "google/gemma-7b": ["gemma-7b"],
     "google/gemma-2b-it": ["gemma-2b-it"],
     "google/gemma-7b-it": ["gemma-7b-it"],
     "google/gemma-2-2b": ["gemma-2-2b"],
-    "google/gemma-2-9b": ["gemma-2-9b"],
-    "google/gemma-2-27b": ["gemma-2-27b"],
     "google/gemma-2-2b-it": ["gemma-2-2b-it"],
+    "google/gemma-2-9b": ["gemma-2-9b"],
     "google/gemma-2-9b-it": ["gemma-2-9b-it"],
+    "google/gemma-2-27b": ["gemma-2-27b"],
     "google/gemma-2-27b-it": ["gemma-2-27b-it"],
     "01-ai/Yi-6B": ["yi-6b", "Yi-6B"],
     "01-ai/Yi-34B": ["yi-34b", "Yi-34B"],
@@ -695,6 +718,7 @@ MODEL_ALIASES = {
     "google-t5/t5-base": ["t5-base"],
     "google-t5/t5-large": ["t5-large"],
     "ai-forever/mGPT": ["mGPT"],
+    "google/gemma-2-27b-it": ["gemma-2-27b-it"],
 }
 """Model aliases for models on HuggingFace."""
 
@@ -749,7 +773,7 @@ def get_official_model_name(model_name: str):
     return official_model_name
 
 
-def convert_hf_model_config(model_name: str, **kwargs):
+def convert_hf_model_config(model_name: str, **kwargs: Any):
     """
     Returns the model config for a HuggingFace model, converted to a dictionary
     in the HookedTransformerConfig format.
@@ -779,6 +803,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
         )
         architecture = hf_config.architectures[0]
 
+    cfg_dict: dict[str, Any]
     if official_model_name.startswith(
         ("llama-7b", "meta-llama/Llama-2-7b")
     ):  # same architecture for LLaMA and Llama-2
@@ -1564,57 +1589,44 @@ def convert_hf_model_config(model_name: str, **kwargs):
     return cfg_dict
 
 
-def convert_neel_model_config(official_model_name: str, **kwargs):
+def convert_neel_model_config(official_model_name: str, **kwargs: Any):
     """
-    Loads the config for a model trained by me (NeelNanda), converted to a dictionary
+    Returns the model config for a Neel Nanda model, converted to a dictionary
     in the HookedTransformerConfig format.
 
-    AutoConfig is not supported, because these models are in the HookedTransformer format, so we directly download and load the json.
+    Takes the official_model_name as an input.
     """
-    official_model_name = get_official_model_name(official_model_name)
-    cfg_json: dict = utils.download_file_from_hf(official_model_name, "config.json", **kwargs)
-    cfg_arch = cfg_json.get(
-        "architecture", "neel" if "_old" not in official_model_name else "neel-solu-old"
-    )
-    cfg_dict = {
-        "d_model": cfg_json["d_model"],
-        "n_layers": cfg_json["n_layers"],
-        "d_mlp": cfg_json["d_mlp"],
-        "d_head": cfg_json["d_head"],
-        "n_heads": cfg_json["n_heads"],
-        "n_ctx": cfg_json["n_ctx"],
-        "d_vocab": cfg_json["d_vocab"],
-        "tokenizer_name": cfg_json.get("tokenizer_name", None),
-        "act_fn": cfg_json["act_fn"],
-        "attn_only": cfg_json["attn_only"],
-        "final_rms": cfg_json.get("final_rms", False),
-        "original_architecture": cfg_arch,
+    cfg_dict: dict[str, Any] = {
+        "original_architecture": "NeelNanda",
+        "d_model": -1,
+        "n_layers": -1,
+        "d_mlp": -1,
+        "d_head": -1,
+        "n_heads": -1,
+        "n_ctx": -1,
+        "d_vocab": -1,
+        "tokenizer_name": None,
+        "act_fn": "solu_ln",
+        "attn_only": False,
+        "final_rms": False,
     }
-    if "normalization" in cfg_json:
-        cfg_dict["normalization_type"] = cfg_json["normalization"]
-    else:
-        cfg_dict["normalization_type"] = cfg_json["normalization_type"]
-    if "shortformer_pos" in cfg_json:
-        cfg_dict["positional_embedding_type"] = (
-            "shortformer" if cfg_json["shortformer_pos"] else "standard"
-        )
-    else:
-        cfg_dict["positional_embedding_type"] = "standard"
+    # The d_model and n_layers for these models are included in the name.
+    # The other parameters are fixed.
     return cfg_dict
 
 
 def get_pretrained_model_config(
     model_name: str,
-    hf_cfg: Optional[dict] = None,
-    checkpoint_index: Optional[int] = None,
-    checkpoint_value: Optional[int] = None,
+    hf_cfg: dict | None = None,
+    checkpoint_index: int | None = None,
+    checkpoint_value: int | None = None,
     fold_ln: bool = False,
-    device: Optional[Union[str, torch.device]] = None,
+    device: str | torch.device | None = None,
     n_devices: int = 1,
-    default_prepend_bos: Optional[bool] = None,
+    default_prepend_bos: bool | None = None,
     dtype: torch.dtype = torch.float32,
-    first_n_layers: Optional[int] = None,
-    **kwargs,
+    first_n_layers: int | None = None,
+    **kwargs: Any,
 ):
     """Returns the pretrained model config as an HookedTransformerConfig object.
 
@@ -1747,7 +1759,7 @@ def get_pretrained_model_config(
     return cfg
 
 
-def get_num_params_of_pretrained(model_name):
+def get_num_params_of_pretrained(model_name: str):
     """
     Returns the number of parameters of a pretrained model, used to filter to only run code for sufficiently small models.
     """
@@ -1773,7 +1785,7 @@ PYTHIA_CHECKPOINTS = [0, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512] + list(
 PYTHIA_V0_CHECKPOINTS = list(range(1000, 143000 + 1, 1000))
 
 
-def get_checkpoint_labels(model_name: str, **kwargs):
+def get_checkpoint_labels(model_name: str, **kwargs: Any):
     """Returns the checkpoint labels for a given model, and the label_type
     (step or token). Raises an error for models that are not checkpointed."""
     official_model_name = get_official_model_name(model_name)
@@ -1811,10 +1823,10 @@ def get_checkpoint_labels(model_name: str, **kwargs):
 def get_pretrained_state_dict(
     official_model_name: str,
     cfg: HookedTransformerConfig,
-    hf_model=None,
+    hf_model: Any | None = None,
     dtype: torch.dtype = torch.float32,
-    **kwargs,
-) -> Dict[str, torch.Tensor]:
+    **kwargs: Any,
+) -> dict[str, torch.Tensor]:
     """
     Loads in the model weights for a pretrained model, and processes them to
     have the HookedTransformer parameter names and shapes. Supports checkpointed
@@ -1965,7 +1977,7 @@ def get_pretrained_state_dict(
         return state_dict
 
 
-def fill_missing_keys(model, state_dict):
+def fill_missing_keys(model: torch.nn.Module, state_dict: dict[str, torch.Tensor]):
     """Takes in a state dict from a pretrained model, and fills in any missing keys with the default initialization.
 
     This function is assumed to be run before weights are initialized.
@@ -2010,7 +2022,7 @@ class Config:
 
 
 # Returns the configuration parameters of the model as a basic Config dataclass
-def get_basic_config(model_name: str, **kwargs) -> Config:
+def get_basic_config(model_name: str, **kwargs: Any) -> Config:
     return Config(
         **{
             k: v
