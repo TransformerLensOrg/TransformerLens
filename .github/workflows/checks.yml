@@ -5,26 +5,26 @@ on:
     branches:
       - main
       - dev*
-    paths:
-      - "**" # Include all files by default
-      - "!.devcontainer/**"
-      - "!.vscode/**"
-      - "!.git*"
-      - "!*.md"
-      - "!.github/**"
-      - ".github/workflows/checks.yml" # Still include current workflow
+    tags:
+      - "v*.*.*"
+    paths-ignore:
+      - ".devcontainer/**"
+      - ".vscode/**"
+      - ".git*"
+      - "*.md"
+      - ".github/**"
+      - "!.github/workflows/checks.yml"
   pull_request:
     branches:
       - main
       - dev*
-    paths:
-      - "**"
-      - "!.devcontainer/**"
-      - "!.vscode/**"
-      - "!.git*"
-      - "!*.md"
-      - "!.github/**"
-      - ".github/workflows/checks.yml"
+    paths-ignore:
+      - ".devcontainer/**"
+      - ".vscode/**"
+      - ".git*"
+      - "*.md"
+      - ".github/**"
+      - "!.github/workflows/checks.yml"
   # Allow this workflow to be called from other workflows
   workflow_call:
     inputs:
@@ -32,6 +32,9 @@ on:
       dummy:
         type: string
         required: false
+    secrets:
+      HF_TOKEN:
+        required: false 
 
 permissions:
   actions: write
@@ -67,6 +70,13 @@ jobs:
         run: |
           poetry check --lock
           poetry install --with dev
+      - name: Authenticate HuggingFace CLI
+        if: env.HF_TOKEN != ''
+        run: |
+          pip install huggingface_hub
+          huggingface-cli login --token "$HF_TOKEN"
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
       - name: Unit Test
         run: make unit-test
         env:
@@ -106,6 +116,13 @@ jobs:
         run: make docstring-test
       - name: Type check
         run: poetry run mypy .
+      - name: Authenticate HuggingFace CLI
+        if: env.HF_TOKEN != ''
+        run: |
+          pip install huggingface_hub
+          huggingface-cli login --token "$HF_TOKEN"
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
       - name: Test Suite with Coverage Report
         run: make coverage-report-test
         env:
@@ -196,6 +213,13 @@ jobs:
         with:
           name: test-coverage
           path: docs/source/_static/coverage
+      - name: Authenticate HuggingFace CLI
+        if: env.HF_TOKEN != ''
+        run: |
+          pip install huggingface_hub
+          huggingface-cli login --token "$HF_TOKEN"
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
       - name: Build Docs
         run: poetry run build-docs
         env:
