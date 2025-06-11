@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any, Dict, List, Optional, Tuple, TypeVar, Union, cast, overload
+from typing import Any, Dict, List, Optional, Tuple, TypeVar, Union, overload
 
 import torch
 import torch.nn as nn
@@ -25,11 +25,8 @@ from transformer_lens.components import (
     BertBlock,
     BertEmbed,
     BertMLMHead,
-    BertMLP,
     BertNSPHead,
     BertPooler,
-    BertUnembed,
-    LayerNorm,
     Unembed,
 )
 from transformer_lens.FactoredMatrix import FactoredMatrix
@@ -87,7 +84,7 @@ class HookedEncoder(HookedRootModule):
             self.cfg.d_vocab_out = self.cfg.d_vocab
 
         self.embed = BertEmbed(self.cfg)
-        self.blocks = nn.ModuleList([BertBlock(self.cfg) for _ in range(self.cfg.n_layers)])
+        self.blocks = nn.ModuleList([BertBlock(self.cfg, i) for i in range(self.cfg.n_layers)])
         self.mlm_head = BertMLMHead(self.cfg)
         self.unembed = Unembed(self.cfg)
         self.nsp_head = BertNSPHead(self.cfg)
@@ -96,6 +93,8 @@ class HookedEncoder(HookedRootModule):
         self.hook_full_embed = HookPoint()
 
         if move_to_device:
+            if self.cfg.device is None:
+                raise ValueError("Cannot move to device when device is None")
             self.to(self.cfg.device)
 
         self.setup()
@@ -132,11 +131,13 @@ class HookedEncoder(HookedRootModule):
         )
 
         tokens = encodings.input_ids
+        token_type_ids = encodings.token_type_ids
+        attention_mask = encodings.attention_mask
 
         if move_to_device:
             tokens = tokens.to(self.cfg.device)
-            token_type_ids = encodings.token_type_ids.to(self.cfg.device)
-            attention_mask = encodings.attention_mask.to(self.cfg.device)
+            token_type_ids = token_type_ids.to(self.cfg.device)
+            attention_mask = attention_mask.to(self.cfg.device)
 
         return tokens, token_type_ids, attention_mask
 
@@ -288,6 +289,9 @@ class HookedEncoder(HookedRootModule):
         logits = self.unembed(resid)
 
         if return_type == "predictions":
+            assert (
+                self.tokenizer is not None
+            ), "Must have a tokenizer to use return_type='predictions'"
             # Get predictions for masked tokens
             logprobs = logits[tokens == self.tokenizer.mask_token_id].log_softmax(dim=-1)
             predictions = self.tokenizer.decode(logprobs.argmax(dim=-1))
@@ -306,22 +310,22 @@ class HookedEncoder(HookedRootModule):
 
     @overload
     def run_with_cache(
-        self, *model_args, return_cache_object: Literal[True] = True, **kwargs
+        self, *model_args: Any, return_cache_object: Literal[True] = True, **kwargs: Any
     ) -> Tuple[Float[torch.Tensor, "batch pos d_vocab"], ActivationCache,]:
         ...
 
     @overload
     def run_with_cache(
-        self, *model_args, return_cache_object: Literal[False], **kwargs
+        self, *model_args: Any, return_cache_object: Literal[False], **kwargs: Any
     ) -> Tuple[Float[torch.Tensor, "batch pos d_vocab"], Dict[str, torch.Tensor],]:
         ...
 
     def run_with_cache(
         self,
-        *model_args,
+        *model_args: Any,
         return_cache_object: bool = True,
         remove_batch_dim: bool = False,
-        **kwargs,
+        **kwargs: Any,
     ) -> Tuple[
         Float[torch.Tensor, "batch pos d_vocab"],
         Union[ActivationCache, Dict[str, torch.Tensor]],
@@ -365,12 +369,12 @@ class HookedEncoder(HookedRootModule):
         model_name: str,
         checkpoint_index: Optional[int] = None,
         checkpoint_value: Optional[int] = None,
-        hf_model=None,
+        hf_model: Optional[Any] = None,
         device: Optional[str] = None,
-        tokenizer=None,
-        move_to_device=True,
-        dtype=torch.float32,
-        **from_pretrained_kwargs,
+        tokenizer: Optional[Any] = None,
+        move_to_device: bool = True,
+        dtype: torch.dtype = torch.float32,
+        **from_pretrained_kwargs: Any,
     ) -> HookedEncoder:
         """Loads in the pretrained weights from huggingface. Currently supports loading weight from HuggingFace BertForMaskedLM. Unlike HookedTransformer, this does not yet do any preprocessing on the model."""
         logging.warning(
