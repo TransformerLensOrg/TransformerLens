@@ -29,7 +29,10 @@
         python=">=3.8,<4.0"
         rich=">=12.6.0"
         sentencepiece="*"
-        torch=">=2.2"
+        torch=[
+            {version="<2.6", python=">=3.8,<3.9"},
+            {version=">=2.6", python=">=3.9"},
+        ]
         tqdm=">=4.64.1"
         transformers=">=4.43"
         typing-extensions="*"
