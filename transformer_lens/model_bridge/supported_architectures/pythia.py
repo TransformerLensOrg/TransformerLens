@@ -48,7 +48,8 @@ class PythiaArchitectureAdapter(ArchitectureAdapter):
                             RearrangeWeightConversion(
                                 "(head d_head) d_model -> head d_model d_head",
                                 head=self.user_cfg.num_attention_heads,
-                                d_head=self.user_cfg.hidden_size // self.user_cfg.num_attention_heads,
+                                d_head=self.user_cfg.hidden_size
+                                // self.user_cfg.num_attention_heads,
                             ),
                         ]
                     ),
@@ -61,7 +62,8 @@ class PythiaArchitectureAdapter(ArchitectureAdapter):
                             RearrangeWeightConversion(
                                 "(head d_head) d_model -> head d_model d_head",
                                 head=self.user_cfg.num_attention_heads,
-                                d_head=self.user_cfg.hidden_size // self.user_cfg.num_attention_heads,
+                                d_head=self.user_cfg.hidden_size
+                                // self.user_cfg.num_attention_heads,
                             ),
                         ]
                     ),
@@ -74,7 +76,8 @@ class PythiaArchitectureAdapter(ArchitectureAdapter):
                             RearrangeWeightConversion(
                                 "(head d_head) d_model -> head d_model d_head",
                                 head=self.user_cfg.num_attention_heads,
-                                d_head=self.user_cfg.hidden_size // self.user_cfg.num_attention_heads,
+                                d_head=self.user_cfg.hidden_size
+                                // self.user_cfg.num_attention_heads,
                             ),
                         ]
                     ),

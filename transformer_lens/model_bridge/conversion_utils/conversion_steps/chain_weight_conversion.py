@@ -31,4 +31,4 @@ class ChainWeightConversion(BaseWeightConversion):
         """
         for conversion in self.conversions:
             input_value = conversion.handle_conversion(input_value, *full_context)
-        return input_value 
+        return input_value
