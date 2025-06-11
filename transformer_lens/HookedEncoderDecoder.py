@@ -10,14 +10,25 @@ import logging
 import os
 from itertools import chain
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, TypeVar, Union, cast, overload
+from typing import (
+    Any,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    Type,
+    TypeVar,
+    Union,
+    cast,
+    overload,
+)
 
 import torch
 import tqdm
 from einops import repeat
 from jaxtyping import Float, Int
 from torch import nn
-from transformers import AutoTokenizer
+from transformers.models.auto.tokenization_auto import AutoTokenizer
 from typing_extensions import Literal
 
 import transformer_lens.loading_from_pretrained as loading
@@ -47,9 +58,9 @@ class HookedEncoderDecoder(HookedRootModule):
     def __init__(
         self,
         cfg: Union[HookedTransformerConfig, Dict],
-        tokenizer: AutoTokenizer = None,
+        tokenizer: Optional[AutoTokenizer] = None,
         move_to_device: bool = True,
-        **kwargs,
+        **kwargs: Any,
     ):
         super().__init__()
         if isinstance(cfg, Dict):
@@ -220,6 +231,7 @@ class HookedEncoderDecoder(HookedRootModule):
 
             # If decoder_input is not provided, start with tensor of PAD tokens of shape (batch, 1)
             if decoder_input is None:
+                assert self.tokenizer is not None
                 decoder_input = torch.full(
                     (tokens.shape[0], 1),
                     self.tokenizer.pad_token_id,
@@ -268,6 +280,8 @@ class HookedEncoderDecoder(HookedRootModule):
 
         encoder_resid = self.encoder_final_ln(resid)
 
+        if decoder_input is None:
+            raise ValueError("decoder_input cannot be None when input is not a string")
         decoder_resid = self.embed(decoder_input)
         decoder_query_len = decoder_key_len = decoder_input.shape[1]
         decoder_positional_bias = self.decoder[0].attn.compute_relative_attention_bias(
@@ -387,11 +401,11 @@ class HookedEncoderDecoder(HookedRootModule):
         device = devices.get_device_for_block_index(0, self.cfg)
 
         # For the decoder input, we start with a tensor of PAD tokens of shape (batch, 1)
+        assert self.tokenizer is not None
         decoder_input = torch.full((batch_size, 1), self.tokenizer.pad_token_id).to(device)
 
         stop_tokens: List[int] = []
         eos_token_for_padding = 0
-        assert self.tokenizer is not None
         if stop_at_eos:
             tokenizer_has_eos_token = (
                 self.tokenizer is not None and self.tokenizer.eos_token_id is not None
@@ -433,6 +447,7 @@ class HookedEncoderDecoder(HookedRootModule):
                 decoder_input=decoder_input,
                 one_zero_attention_mask=one_zero_attention_mask,
             )
+            assert logits is not None
             final_logits = logits[:, -1, :]
 
             if do_sample:
@@ -468,6 +483,7 @@ class HookedEncoderDecoder(HookedRootModule):
                 break
 
         if return_type == "str":
+            assert self.tokenizer is not None
             # Convert tokens to string
             return self.tokenizer.decode(decoder_input[0], skip_special_tokens=True)
 
@@ -508,12 +524,13 @@ class HookedEncoderDecoder(HookedRootModule):
         else:
             return out, cache_dict
 
-    def to(  # type: ignore
+    def to(
         self,
-        device_or_dtype: Union[torch.device, str, torch.dtype],
-        print_details: bool = True,
-    ):
-        return devices.move_to_and_update_config(self, device_or_dtype, print_details)
+        device: Optional[Union[torch.device, str]] = None,
+        dtype: Optional[torch.dtype] = None,
+        non_blocking: bool = False,
+    ) -> "HookedEncoderDecoder":
+        return super().to(device=device, dtype=dtype, non_blocking=non_blocking)
 
     def cuda(self: T, device: Optional[Union[int, torch.device]] = None) -> T:
         if isinstance(device, int):
