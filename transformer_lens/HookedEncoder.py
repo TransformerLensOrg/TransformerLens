@@ -84,7 +84,7 @@ class HookedEncoder(HookedRootModule):
             self.cfg.d_vocab_out = self.cfg.d_vocab
 
         self.embed = BertEmbed(self.cfg)
-        self.blocks = nn.ModuleList([BertBlock(self.cfg, i) for i in range(self.cfg.n_layers)])
+        self.blocks = nn.ModuleList([BertBlock(self.cfg) for _ in range(self.cfg.n_layers)])
         self.mlm_head = BertMLMHead(self.cfg)
         self.unembed = Unembed(self.cfg)
         self.nsp_head = BertNSPHead(self.cfg)
@@ -200,7 +200,7 @@ class HookedEncoder(HookedRootModule):
         return_type: Union[Literal["logits"], Literal["predictions"]],
         token_type_ids: Optional[Int[torch.Tensor, "batch pos"]] = None,
         one_zero_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
-    ) -> Union[Float[torch.Tensor, "batch pos d_vocab"], str, List[str],]:
+    ) -> Union[Float[torch.Tensor, "batch pos d_vocab"], str, List[str]]:
         ...
 
     @overload
@@ -214,7 +214,7 @@ class HookedEncoder(HookedRootModule):
         return_type: Literal[None],
         token_type_ids: Optional[Int[torch.Tensor, "batch pos"]] = None,
         one_zero_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
-    ) -> Optional[Union[Float[torch.Tensor, "batch pos d_vocab"], str, List[str],]]:
+    ) -> Optional[Union[Float[torch.Tensor, "batch pos d_vocab"], str, List[str]]]:
         ...
 
     def forward(
@@ -227,7 +227,7 @@ class HookedEncoder(HookedRootModule):
         return_type: Optional[Union[Literal["logits"], Literal["predictions"]]] = "logits",
         token_type_ids: Optional[Int[torch.Tensor, "batch pos"]] = None,
         one_zero_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
-    ) -> Optional[Union[Float[torch.Tensor, "batch pos d_vocab"], str, List[str],]]:
+    ) -> Optional[Union[Float[torch.Tensor, "batch pos d_vocab"], str, List[str]]]:
         """Forward pass through the HookedEncoder. Performs Masked Language Modelling on the given input.
 
         Args:
@@ -311,13 +311,13 @@ class HookedEncoder(HookedRootModule):
     @overload
     def run_with_cache(
         self, *model_args: Any, return_cache_object: Literal[True] = True, **kwargs: Any
-    ) -> Tuple[Float[torch.Tensor, "batch pos d_vocab"], ActivationCache,]:
+    ) -> Tuple[Float[torch.Tensor, "batch pos d_vocab"], ActivationCache]:
         ...
 
     @overload
     def run_with_cache(
         self, *model_args: Any, return_cache_object: Literal[False], **kwargs: Any
-    ) -> Tuple[Float[torch.Tensor, "batch pos d_vocab"], Dict[str, torch.Tensor],]:
+    ) -> Tuple[Float[torch.Tensor, "batch pos d_vocab"], Dict[str, torch.Tensor]]:
         ...
 
     def run_with_cache(
