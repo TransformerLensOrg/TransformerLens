@@ -10,18 +10,7 @@ import logging
 import os
 from itertools import chain
 from pathlib import Path
-from typing import (
-    Any,
-    Dict,
-    List,
-    Optional,
-    Sequence,
-    Tuple,
-    TypeVar,
-    Union,
-    cast,
-    overload,
-)
+from typing import Dict, List, Optional, Tuple, TypeVar, Union, cast, overload
 
 import torch
 import tqdm
@@ -55,7 +44,13 @@ class HookedEncoderDecoder(HookedRootModule):
         - The model only accepts tokens as inputs, and not strings, or lists of strings
     """
 
-    def __init__(self, cfg: Union[HookedTransformerConfig, Dict], tokenizer: AutoTokenizer = None, move_to_device: bool = True, **kwargs):
+    def __init__(
+        self,
+        cfg: Union[HookedTransformerConfig, Dict],
+        tokenizer: AutoTokenizer = None,
+        move_to_device: bool = True,
+        **kwargs,
+    ):
         super().__init__()
         if isinstance(cfg, Dict):
             cfg = HookedTransformerConfig(**cfg)
