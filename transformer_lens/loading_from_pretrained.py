@@ -670,9 +670,31 @@ MODEL_ALIASES = {
     "Qwen/Qwen1.5-7B-Chat": ["qwen1.5-7b-chat"],
     "Qwen/Qwen1.5-14B": ["qwen1.5-14b"],
     "Qwen/Qwen1.5-14B-Chat": ["qwen1.5-14b-chat"],
+    "Qwen/Qwen2-0.5B": ["qwen2-0.5b"],
+    "Qwen/Qwen2-0.5B-Instruct": ["qwen2-0.5b-instruct"],
+    "Qwen/Qwen2-1.5B": ["qwen2-1.5b"],
+    "Qwen/Qwen2-1.5B-Instruct": ["qwen2-1.5b-instruct"],
+    "Qwen/Qwen2-7B": ["qwen2-7b"],
+    "Qwen/Qwen2-7B-Instruct": ["qwen2-7b-instruct"],
+    "Qwen/Qwen2.5-0.5B": ["qwen2.5-0.5b"],
+    "Qwen/Qwen2.5-0.5B-Instruct": ["qwen2.5-0.5b-instruct"],
+    "Qwen/Qwen2.5-1.5B": ["qwen2.5-1.5b"],
+    "Qwen/Qwen2.5-1.5B-Instruct": ["qwen2.5-1.5b-instruct"],
+    "Qwen/Qwen2.5-3B": ["qwen2.5-3b"],
+    "Qwen/Qwen2.5-3B-Instruct": ["qwen2.5-3b-instruct"],
+    "Qwen/Qwen2.5-7B": ["qwen2.5-7b"],
+    "Qwen/Qwen2.5-7B-Instruct": ["qwen2.5-7b-instruct"],
+    "Qwen/Qwen2.5-14B": ["qwen2.5-14b"],
+    "Qwen/Qwen2.5-14B-Instruct": ["qwen2.5-14b-instruct"],
+    "Qwen/Qwen2.5-32B": ["qwen2.5-32b"],
+    "Qwen/Qwen2.5-32B-Instruct": ["qwen2.5-32b-instruct"],
+    "Qwen/Qwen2.5-72B": ["qwen2.5-72b"],
+    "Qwen/Qwen2.5-72B-Instruct": ["qwen2.5-72b-instruct"],
+    "Qwen/QwQ-32B-Preview": ["qwen-32b-preview"],
     "Qwen/Qwen3-0.6B": ["qwen3-0.6b"],
-    "Qwen/Qwen3-1.5B": ["qwen3-1.5b"],
-    "Qwen/Qwen3-7B": ["qwen3-7b"],
+    "Qwen/Qwen3-1.7B": ["qwen3-1.7b"],
+    "Qwen/Qwen3-4B": ["qwen3-4b"],
+    "Qwen/Qwen3-8B": ["qwen3-8b"],
     "Qwen/Qwen3-14B": ["qwen3-14b"],
     "microsoft/phi-1": ["phi-1"],
     "microsoft/phi-1_5": ["phi-1_5"],
@@ -684,10 +706,10 @@ MODEL_ALIASES = {
     "google/gemma-2b-it": ["gemma-2b-it"],
     "google/gemma-7b-it": ["gemma-7b-it"],
     "google/gemma-2-2b": ["gemma-2-2b"],
-    "google/gemma-2-9b": ["gemma-2-9b"],
-    "google/gemma-2-27b": ["gemma-2-27b"],
     "google/gemma-2-2b-it": ["gemma-2-2b-it"],
+    "google/gemma-2-9b": ["gemma-2-9b"],
     "google/gemma-2-9b-it": ["gemma-2-9b-it"],
+    "google/gemma-2-27b": ["gemma-2-27b"],
     "google/gemma-2-27b-it": ["gemma-2-27b-it"],
     "01-ai/Yi-6B": ["yi-6b", "Yi-6B"],
     "01-ai/Yi-34B": ["yi-34b", "Yi-34B"],
@@ -1175,7 +1197,9 @@ def convert_hf_model_config(model_name: str, **kwargs: Any):
             "d_model": hf_config.hidden_size,
             "d_head": (
                 hf_config.head_dim
-                if hasattr(hf_config, "head_dim") and hf_config.head_dim > 0
+                if hasattr(hf_config, "head_dim")
+                and hf_config.head_dim is not None
+                and hf_config.head_dim > 0
                 else hf_config.hidden_size // hf_config.num_attention_heads
             ),
             "n_heads": hf_config.num_attention_heads,
@@ -1331,7 +1355,9 @@ def convert_hf_model_config(model_name: str, **kwargs: Any):
         cfg_dict = {
             "d_model": hf_config.hidden_size,
             "d_head": hf_config.head_dim
-            if hasattr(hf_config, "head_dim") and hf_config.head_dim > 0
+            if hasattr(hf_config, "head_dim")
+            and hf_config.head_dim is not None
+            and hf_config.head_dim > 0
             else hf_config.hidden_size // hf_config.num_attention_heads,
             "n_heads": hf_config.num_attention_heads,
             "n_key_value_heads": (
