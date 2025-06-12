@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Loading Pretrained Models Utilities.
 
 This module contains functions for loading pretrained models from the Hugging Face Hub.
@@ -12,7 +10,7 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict
 
 import torch
 from huggingface_hub import HfApi
