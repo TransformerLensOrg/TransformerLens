@@ -565,6 +565,9 @@ class HookedEncoderDecoder(HookedRootModule):
         if "torch_dtype" in from_pretrained_kwargs:
             dtype = from_pretrained_kwargs["torch_dtype"]
 
+        if dtype is None:
+            dtype = torch.float32
+
         name_or_path = (
             model_name if Path(model_name).exists() else loading.get_official_model_name(model_name)
         )
@@ -660,7 +663,7 @@ class HookedEncoderDecoder(HookedRootModule):
     @property
     def W_in(self) -> Float[torch.Tensor, "n_layers d_model d_mlp"]:
         """Stacks the MLP input weights across all layers"""
-        weights = []
+        weights: List[torch.Tensor] = []
         for block in chain(self.encoder, self.decoder):
             mlp = cast(T5Block, block).mlp
             if isinstance(mlp, (MLP, GatedMLP)):
@@ -674,7 +677,7 @@ class HookedEncoderDecoder(HookedRootModule):
     @property
     def W_out(self) -> Float[torch.Tensor, "n_layers d_mlp d_model"]:
         """Stacks the MLP output weights across all layers"""
-        weights = []
+        weights: List[torch.Tensor] = []
         for block in chain(self.encoder, self.decoder):
             mlp = cast(T5Block, block).mlp
             if isinstance(mlp, (MLP, GatedMLP)):
@@ -720,7 +723,7 @@ class HookedEncoderDecoder(HookedRootModule):
     @property
     def b_in(self) -> Float[torch.Tensor, "n_layers d_mlp"]:
         """Stacks the MLP input biases across all layers"""
-        biases = []
+        biases: List[torch.Tensor] = []
         for block in chain(self.encoder, self.decoder):
             mlp = cast(T5Block, block).mlp
             if isinstance(mlp, (MLP, GatedMLP)):
@@ -734,7 +737,7 @@ class HookedEncoderDecoder(HookedRootModule):
     @property
     def b_out(self) -> Float[torch.Tensor, "n_layers d_model"]:
         """Stacks the MLP output biases across all layers"""
-        biases = []
+        biases: List[torch.Tensor] = []
         for block in chain(self.encoder, self.decoder):
             mlp = cast(T5Block, block).mlp
             if isinstance(mlp, (MLP, GatedMLP)):
