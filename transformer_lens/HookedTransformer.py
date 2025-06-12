@@ -35,9 +35,11 @@ import torch.nn.functional as F
 import tqdm.auto as tqdm
 from jaxtyping import Float, Int
 from packaging import version
-from transformers.models.auto.modeling_auto import AutoModelForCausalLM
+from torch import nn
+from transformers import AutoTokenizer, PreTrainedModel, PreTrainedTokenizerBase
 from transformers.models.auto.tokenization_auto import AutoTokenizer
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
+from typing_extensions import Literal
 
 import transformer_lens.loading_from_pretrained as loading
 import transformer_lens.utils as utils
@@ -110,6 +112,7 @@ class HookedTransformer(HookedRootModule):
     """
 
     ln_final: nn.Module
+    tokenizer: Optional[PreTrainedTokenizerBase]
 
     def __init__(
         self,
@@ -388,6 +391,8 @@ class HookedTransformer(HookedRootModule):
                 # that pad tokens are not attended.
                 if prepend_bos is USE_DEFAULT_VALUE:
                     prepend_bos = self.cfg.default_prepend_bos
+                if self.tokenizer is None:
+                    raise ValueError("Cannot compute attention mask without a tokenizer.")
                 attention_mask = utils.get_attention_mask(self.tokenizer, tokens, prepend_bos)
 
             assert attention_mask.shape == tokens.shape, (
@@ -732,7 +737,6 @@ class HookedTransformer(HookedRootModule):
         # (https://github.com/huggingface/transformers/issues/25886).
         tokenizer_with_bos = utils.get_tokenizer_with_bos(tokenizer)
         self.tokenizer = tokenizer_with_bos
-        assert self.tokenizer is not None  # keep mypy happy
         self.tokenizer.padding_side = default_padding_side
 
         # Some tokenizers doesn't automatically prepend the BOS token even when they are initialized
@@ -1121,7 +1125,7 @@ class HookedTransformer(HookedRootModule):
         refactor_factored_attn_matrices: bool = False,
         checkpoint_index: Optional[int] = None,
         checkpoint_value: Optional[int] = None,
-        hf_model: Optional[AutoModelForCausalLM] = None,
+        hf_model: Optional[PreTrainedModel] = None,
         device: Optional[Union[str, torch.device]] = None,
         n_devices: int = 1,
         tokenizer: Optional[PreTrainedTokenizerBase] = None,
@@ -1282,6 +1286,7 @@ class HookedTransformer(HookedRootModule):
         ), "Quantization not supported"
 
         if hf_model is not None:
+            assert hf_model.config is not None
             hf_cfg = hf_model.config.to_dict()
             qc = hf_cfg.get("quantization_config", {})
             load_in_4bit = qc.get("load_in_4bit", False)
