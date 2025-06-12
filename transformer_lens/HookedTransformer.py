@@ -17,7 +17,6 @@ from typing import (
     Any,
     Dict,
     List,
-    Literal,
     NamedTuple,
     Optional,
     Tuple,
