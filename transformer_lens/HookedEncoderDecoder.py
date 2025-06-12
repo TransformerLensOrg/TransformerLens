@@ -400,7 +400,7 @@ class HookedEncoderDecoder(HookedRootModule):
         eos_token_for_padding = 0
         if stop_at_eos:
             tokenizer_has_eos_token = self.tokenizer.eos_token_id is not None
-            
+
             local_eos_token_id: Optional[Union[int, List[int]]] = eos_token_id
             if local_eos_token_id is None:
                 assert (
