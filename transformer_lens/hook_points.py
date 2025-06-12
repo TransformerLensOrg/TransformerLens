@@ -362,7 +362,7 @@ class HookedRootModule(nn.Module):
             dir (Literal[&quot;fwd&quot;, &quot;bwd&quot;], optional): The direction of the hook. Defaults to "fwd".
         """
         if isinstance(name, str):
-            self._enable_hook_with_name(name=name, hook_fn=hook, dir=dir)
+            self._enable_hook_with_name(name=name, hook=hook, dir=dir)
         else:
             self._enable_hooks_for_points(
                 hook_points=self.hook_dict.items(), enabled=name, hook=hook, dir=dir
