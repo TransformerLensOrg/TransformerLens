@@ -323,7 +323,7 @@ class HookedRootModule(nn.Module):
     ) -> None:
         self.add_hook(name, hook, dir=dir, is_permanent=True)
 
-    def _enable_hook_with_name(self, name: str, hook_fn: Callable, dir: Literal["fwd", "bwd"]):
+    def _enable_hook_with_name(self, name: str, hook: Callable, dir: Literal["fwd", "bwd"]):
         """This function takes a key for the mod_dict and enables the related hook for that module
 
         Args:
@@ -331,7 +331,8 @@ class HookedRootModule(nn.Module):
             hook (Callable): The hook to add
             dir (Literal[&quot;fwd&quot;, &quot;bwd&quot;]): The direction for the hook
         """
-        self.mod_dict[name].add_hook(hook_fn, dir=dir, level=self.context_level)
+        assert callable(hook), f"`hook` must be callable, but got {type(hook)}"  # Keep mypy happy
+        self.mod_dict[name].add_hook(hook, dir=dir, level=self.context_level)
 
     def _enable_hooks_for_points(
         self,
