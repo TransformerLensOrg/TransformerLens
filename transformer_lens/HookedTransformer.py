@@ -16,6 +16,7 @@ import os
 from typing import (
     Dict,
     List,
+    Literal,
     NamedTuple,
     Optional,
     Tuple,
@@ -34,10 +35,9 @@ import torch.nn.functional as F
 import tqdm.auto as tqdm
 from jaxtyping import Float, Int
 from packaging import version
-from transformers import AutoTokenizer, PreTrainedModel, PreTrainedTokenizerBase
-from transformers.modeling_utils import PreTrainedModel
+from transformers.models.auto.modeling_auto import AutoModelForCausalLM
+from transformers.models.auto.tokenization_auto import AutoTokenizer
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
-from typing_extensions import Literal
 
 import transformer_lens.loading_from_pretrained as loading
 import transformer_lens.utils as utils
@@ -1121,7 +1121,7 @@ class HookedTransformer(HookedRootModule):
         refactor_factored_attn_matrices: bool = False,
         checkpoint_index: Optional[int] = None,
         checkpoint_value: Optional[int] = None,
-        hf_model: Optional[PreTrainedModel] = None,
+        hf_model: Optional[AutoModelForCausalLM] = None,
         device: Optional[Union[str, torch.device]] = None,
         n_devices: int = 1,
         tokenizer: Optional[PreTrainedTokenizerBase] = None,
@@ -2491,12 +2491,14 @@ class HookedTransformer(HookedRootModule):
         accumulated_bias = torch.zeros(self.cfg.d_model, device=self.cfg.device)
 
         for i in range(layer):
-            accumulated_bias += self.blocks[i].attn.b_O
+            block = cast(TransformerBlock, self.blocks[i])
+            accumulated_bias += cast(torch.Tensor, block.attn.b_O)
             if include_mlp_biases:
-                accumulated_bias += self.blocks[i].mlp.b_out
+                accumulated_bias += cast(torch.Tensor, block.mlp.b_out)
         if mlp_input:
             assert layer < self.cfg.n_layers, "Cannot include attn_bias from beyond the final layer"
-            accumulated_bias += self.blocks[layer].attn.b_O
+            block = cast(TransformerBlock, self.blocks[layer])
+            accumulated_bias += cast(torch.Tensor, block.attn.b_O)
         return accumulated_bias
 
     def all_composition_scores(

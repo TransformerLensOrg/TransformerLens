@@ -26,6 +26,7 @@
             {version=">=1.26,<2", python=">=3.12,<3.13"},
         ]
         pandas=">=1.1.5"
+        protobuf="3.20.1"
         python=">=3.8,<4.0"
         rich=">=12.6.0"
         sentencepiece="*"
@@ -193,4 +194,3 @@
     strictListInference=true
     strictParameterNoneValue=true
     strictSetInference=true
-    

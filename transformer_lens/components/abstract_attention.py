@@ -27,6 +27,10 @@ class AbstractAttention(ABC, nn.Module):
     alibi: Union[torch.Tensor, None]
     q_norm: Optional[RMSNorm]
     k_norm: Optional[RMSNorm]
+    mask: torch.Tensor
+    IGNORE: torch.Tensor
+    rotary_sin: torch.Tensor
+    rotary_cos: torch.Tensor
 
     def __init__(
         self,
