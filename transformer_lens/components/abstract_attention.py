@@ -8,7 +8,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from better_abc import abstract_attribute
 from jaxtyping import Float, Int
-from transformers.utils import is_bitsandbytes_available
+from transformers.utils.import_utils import is_bitsandbytes_available
 
 from transformer_lens.components.rms_norm import RMSNorm
 from transformer_lens.FactoredMatrix import FactoredMatrix
@@ -27,6 +27,10 @@ class AbstractAttention(ABC, nn.Module):
     alibi: Union[torch.Tensor, None]
     q_norm: Optional[RMSNorm]
     k_norm: Optional[RMSNorm]
+    mask: torch.Tensor
+    IGNORE: torch.Tensor
+    rotary_sin: torch.Tensor
+    rotary_cos: torch.Tensor
 
     def __init__(
         self,
