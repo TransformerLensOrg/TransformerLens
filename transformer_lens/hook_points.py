@@ -331,8 +331,7 @@ class HookedRootModule(nn.Module):
             hook (Callable): The hook to add
             dir (Literal[&quot;fwd&quot;, &quot;bwd&quot;]): The direction for the hook
         """
-        assert callable(hook), f"`hook` must be callable, but got {type(hook)}"  # Keep mypy happy
-        self.mod_dict[name].add_hook(hook, dir=dir, level=self.context_level)
+        self.mod_dict[name].add_hook(hook, dir=dir, level=self.context_level)  # type: ignore[operator]
 
     def _enable_hooks_for_points(
         self,
