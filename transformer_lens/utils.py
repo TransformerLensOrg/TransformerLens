@@ -1002,7 +1002,7 @@ def get_device():
 
 def override_or_use_default_value(
     default_flag: Any,
-    override: Any | None = None,
+    override: Optional[Any] = None,
 ) -> Any:
     """
     Determines which flag to return based on whether an overriding flag is provided.
