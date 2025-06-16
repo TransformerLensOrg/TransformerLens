@@ -5,10 +5,15 @@ from typing import Any
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
     RearrangeWeightConversion,
+    SplitWeightConversion,
     WeightConversionSet,
+)
+from transformer_lens.model_bridge.conversion_utils.conversion_steps.chain_weight_conversion import (
+    ChainWeightConversion,
 )
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
+    BlockBridge,
     EmbeddingBridge,
     LayerNormBridge,
     MLPBridge,
@@ -19,55 +24,103 @@ from transformer_lens.model_bridge.generalized_components import (
 class PythiaArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for Pythia models."""
 
-    def __init__(self, cfg: Any) -> None:
+    def __init__(self, user_cfg: Any) -> None:
         """Initialize the Pythia architecture adapter.
 
         Args:
-            cfg: The configuration object.
+            user_cfg: The configuration object.
         """
-        super().__init__(cfg)
+        super().__init__(user_cfg)
+        self.user_cfg.positional_embedding_type = "rotary"
 
         self.conversion_rules = WeightConversionSet(
             {
                 "embed.W_E": "gpt_neox.embed_in.weight",
-                "pos_embed.W_pos": "gpt_neox.embed_pos.weight",
                 "blocks.{i}.ln1.w": "gpt_neox.layers.{i}.input_layernorm.weight",
                 "blocks.{i}.ln1.b": "gpt_neox.layers.{i}.input_layernorm.bias",
                 "blocks.{i}.ln2.w": "gpt_neox.layers.{i}.post_attention_layernorm.weight",
                 "blocks.{i}.ln2.b": "gpt_neox.layers.{i}.post_attention_layernorm.bias",
                 "blocks.{i}.attn.W_Q": (
                     "gpt_neox.layers.{i}.attention.query_key_value.weight",
-                    RearrangeWeightConversion(
-                        "(3 n_head d_head) d_model -> 3 n_head d_head d_model"
+                    ChainWeightConversion(
+                        [
+                            SplitWeightConversion(0, 3),
+                            RearrangeWeightConversion(
+                                "(head d_head) d_model -> head d_model d_head",
+                                head=self.user_cfg.num_attention_heads,
+                                d_head=self.user_cfg.hidden_size
+                                // self.user_cfg.num_attention_heads,
+                            ),
+                        ]
                     ),
                 ),
                 "blocks.{i}.attn.W_K": (
                     "gpt_neox.layers.{i}.attention.query_key_value.weight",
-                    RearrangeWeightConversion(
-                        "(3 n_head d_head) d_model -> 3 n_head d_head d_model"
+                    ChainWeightConversion(
+                        [
+                            SplitWeightConversion(1, 3),
+                            RearrangeWeightConversion(
+                                "(head d_head) d_model -> head d_model d_head",
+                                head=self.user_cfg.num_attention_heads,
+                                d_head=self.user_cfg.hidden_size
+                                // self.user_cfg.num_attention_heads,
+                            ),
+                        ]
                     ),
                 ),
                 "blocks.{i}.attn.W_V": (
                     "gpt_neox.layers.{i}.attention.query_key_value.weight",
-                    RearrangeWeightConversion(
-                        "(3 n_head d_head) d_model -> 3 n_head d_head d_model"
+                    ChainWeightConversion(
+                        [
+                            SplitWeightConversion(2, 3),
+                            RearrangeWeightConversion(
+                                "(head d_head) d_model -> head d_model d_head",
+                                head=self.user_cfg.num_attention_heads,
+                                d_head=self.user_cfg.hidden_size
+                                // self.user_cfg.num_attention_heads,
+                            ),
+                        ]
                     ),
                 ),
                 "blocks.{i}.attn.b_Q": (
                     "gpt_neox.layers.{i}.attention.query_key_value.bias",
-                    RearrangeWeightConversion("(3 n_head d_head) -> 3 n_head d_head"),
+                    ChainWeightConversion(
+                        [
+                            SplitWeightConversion(0, 3),
+                            RearrangeWeightConversion(
+                                "(head d_head) -> head d_head",
+                                head=self.user_cfg.num_attention_heads,
+                            ),
+                        ]
+                    ),
                 ),
                 "blocks.{i}.attn.b_K": (
                     "gpt_neox.layers.{i}.attention.query_key_value.bias",
-                    RearrangeWeightConversion("(3 n_head d_head) -> 3 n_head d_head"),
+                    ChainWeightConversion(
+                        [
+                            SplitWeightConversion(1, 3),
+                            RearrangeWeightConversion(
+                                "(head d_head) -> head d_head",
+                                head=self.user_cfg.num_attention_heads,
+                            ),
+                        ]
+                    ),
                 ),
                 "blocks.{i}.attn.b_V": (
                     "gpt_neox.layers.{i}.attention.query_key_value.bias",
-                    RearrangeWeightConversion("(3 n_head d_head) -> 3 n_head d_head"),
+                    ChainWeightConversion(
+                        [
+                            SplitWeightConversion(2, 3),
+                            RearrangeWeightConversion(
+                                "(head d_head) -> head d_head",
+                                head=self.user_cfg.num_attention_heads,
+                            ),
+                        ]
+                    ),
                 ),
                 "blocks.{i}.attn.W_O": (
                     "gpt_neox.layers.{i}.attention.dense.weight",
-                    RearrangeWeightConversion("d_model (n_head d_head) -> n_head d_head d_model"),
+                    RearrangeWeightConversion("d_model (head d_head) -> head d_head d_model"),
                 ),
                 "blocks.{i}.attn.b_O": "gpt_neox.layers.{i}.attention.dense.bias",
                 "blocks.{i}.mlp.W_in": "gpt_neox.layers.{i}.mlp.dense_h_to_4h.weight",
@@ -77,23 +130,21 @@ class PythiaArchitectureAdapter(ArchitectureAdapter):
                 "ln_final.w": "gpt_neox.final_layer_norm.weight",
                 "ln_final.b": "gpt_neox.final_layer_norm.bias",
                 "unembed.W_U": "embed_out.weight",
-                "unembed.b_U": "embed_out.bias",
             }
         )
 
-        # Set up component mapping
         self.component_mapping = {
-            "embed": ("gpt_neox.embed_in", EmbeddingBridge),  # Word token embeddings
-            "pos_embed": ("gpt_neox.embed_pos", EmbeddingBridge),  # Position embeddings
+            "embed": ("gpt_neox.embed_in", EmbeddingBridge),
             "blocks": (
-                "gpt_neox.layers",  # Base path for blocks
+                "gpt_neox.layers",
+                BlockBridge,
                 {
-                    "ln1": ("ln_1", LayerNormBridge),  # Pre-attention layer norm
-                    "ln2": ("ln_2", LayerNormBridge),  # Pre-MLP layer norm
-                    "attn": ("attn", AttentionBridge),  # Full attention module
-                    "mlp": ("mlp", MLPBridge),  # Full MLP module
+                    "ln1": ("input_layernorm", LayerNormBridge),
+                    "ln2": ("post_attention_layernorm", LayerNormBridge),
+                    "attn": ("attention", AttentionBridge),
+                    "mlp": ("mlp", MLPBridge),
                 },
             ),
-            "ln_final": ("transformer.ln_f", LayerNormBridge),  # Final layer norm
-            "unembed": ("embed_out", UnembeddingBridge),  # Language model head
+            "ln_final": ("gpt_neox.final_layer_norm", LayerNormBridge),
+            "unembed": ("embed_out", UnembeddingBridge),
         }

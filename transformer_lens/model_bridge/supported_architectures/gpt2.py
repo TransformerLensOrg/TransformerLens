@@ -9,6 +9,7 @@ from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
 )
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
+    BlockBridge,
     EmbeddingBridge,
     LayerNormBridge,
     MLPBridge,
@@ -19,55 +20,45 @@ from transformer_lens.model_bridge.generalized_components import (
 class GPT2ArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for GPT-2 models."""
 
-    def __init__(self, cfg: Any) -> None:
-        """Initialize the GPT-2 architecture adapter.
-
-        Args:
-            cfg: The configuration object.
-        """
-        super().__init__(cfg)
+    def __init__(self, user_cfg: Any) -> None:
+        """Initialize the GPT-2 architecture adapter."""
+        super().__init__(user_cfg)
 
         self.conversion_rules = WeightConversionSet(
             {
-                "embed.W_E": "transformer.wte.weight",
                 "pos_embed.W_pos": "transformer.wpe.weight",
+                "embed.W_E": "transformer.wte.weight",
                 "blocks.{i}.ln1.w": "transformer.h.{i}.ln_1.weight",
                 "blocks.{i}.ln1.b": "transformer.h.{i}.ln_1.bias",
                 "blocks.{i}.ln2.w": "transformer.h.{i}.ln_2.weight",
                 "blocks.{i}.ln2.b": "transformer.h.{i}.ln_2.bias",
                 "blocks.{i}.attn.W_Q": (
                     "transformer.h.{i}.attn.c_attn.weight",
-                    RearrangeWeightConversion(
-                        "d_model (3 n_head d_head) -> 3 n_head d_head d_model"
-                    ),
+                    RearrangeWeightConversion("d_model (n d_head) -> n d_model d_head"),
                 ),
                 "blocks.{i}.attn.W_K": (
                     "transformer.h.{i}.attn.c_attn.weight",
-                    RearrangeWeightConversion(
-                        "d_model (3 n_head d_head) -> 3 n_head d_head d_model"
-                    ),
+                    RearrangeWeightConversion("d_model (n d_head) -> n d_model d_head"),
                 ),
                 "blocks.{i}.attn.W_V": (
                     "transformer.h.{i}.attn.c_attn.weight",
-                    RearrangeWeightConversion(
-                        "d_model (3 n_head d_head) -> 3 n_head d_head d_model"
-                    ),
+                    RearrangeWeightConversion("d_model (n d_head) -> n d_model d_head"),
                 ),
                 "blocks.{i}.attn.b_Q": (
                     "transformer.h.{i}.attn.c_attn.bias",
-                    RearrangeWeightConversion("(3 n_head d_head) -> 3 n_head d_head"),
+                    RearrangeWeightConversion("(n d_head) -> n d_head"),
                 ),
                 "blocks.{i}.attn.b_K": (
                     "transformer.h.{i}.attn.c_attn.bias",
-                    RearrangeWeightConversion("(3 n_head d_head) -> 3 n_head d_head"),
+                    RearrangeWeightConversion("(n d_head) -> n d_head"),
                 ),
                 "blocks.{i}.attn.b_V": (
                     "transformer.h.{i}.attn.c_attn.bias",
-                    RearrangeWeightConversion("(3 n_head d_head) -> 3 n_head d_head"),
+                    RearrangeWeightConversion("(n d_head) -> n d_head"),
                 ),
                 "blocks.{i}.attn.W_O": (
                     "transformer.h.{i}.attn.c_proj.weight",
-                    RearrangeWeightConversion("(n_head d_head) d_model -> n_head d_head d_model"),
+                    RearrangeWeightConversion("(n d_head) d_model -> n d_head d_model"),
                 ),
                 "blocks.{i}.attn.b_O": "transformer.h.{i}.attn.c_proj.bias",
                 "blocks.{i}.mlp.W_in": "transformer.h.{i}.mlp.c_fc.weight",
@@ -81,16 +72,16 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
             }
         )
 
-        # Set up component mapping
         self.component_mapping = {
             "embed": ("transformer.wte", EmbeddingBridge),
             "pos_embed": ("transformer.wpe", EmbeddingBridge),
             "blocks": (
                 "transformer.h",
+                BlockBridge,
                 {
                     "ln1": ("ln_1", LayerNormBridge),
-                    "ln2": ("ln_2", LayerNormBridge),
                     "attn": ("attn", AttentionBridge),
+                    "ln2": ("ln_2", LayerNormBridge),
                     "mlp": ("mlp", MLPBridge),
                 },
             ),

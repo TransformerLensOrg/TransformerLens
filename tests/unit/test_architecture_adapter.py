@@ -3,16 +3,45 @@
 import pytest
 import torch.nn as nn
 
+from tests.mocks.architecture_adapter import (
+    MockArchitectureAdapter,
+    mock_adapter,
+    mock_model_adapter,
+)
 from tests.mocks.models import MockGemma3Model
 from transformer_lens.model_bridge.supported_architectures.gemma3 import (
     Gemma3ArchitectureAdapter,
 )
 
 
+def test_get_remote_component_with_mock(
+    mock_adapter: MockArchitectureAdapter, mock_model_adapter: nn.Module
+):
+    """Test get_remote_component with the mock adapter."""
+    # Test direct mapping
+    ln_final = mock_adapter.get_component(mock_model_adapter, "ln_final")
+    assert isinstance(ln_final, nn.LayerNorm)
+
+    # Test block mapping
+    block = mock_adapter.get_component(mock_model_adapter, "blocks.0")
+    assert isinstance(block, nn.Module)
+
+    # Test block subcomponent mapping
+    ln1 = mock_adapter.get_component(mock_model_adapter, "blocks.0.ln1")
+    assert isinstance(ln1, nn.LayerNorm)
+
+    attn = mock_adapter.get_component(mock_model_adapter, "blocks.0.attn")
+    assert isinstance(attn, nn.Module)
+
+    mlp = mock_adapter.get_component(mock_model_adapter, "blocks.0.mlp")
+    assert isinstance(mlp, nn.Module)
+
+
 class DummyHFConfig:
     def __init__(self):
         self.num_attention_heads = 8
         self.num_key_value_heads = 8
+        self.hidden_size = 128
         # Add any other attributes needed by the adapter here
 
 
@@ -38,7 +67,7 @@ def test_translate_transformer_lens_path(adapter: Gemma3ArchitectureAdapter) -> 
     # Test direct mapping
     assert adapter.translate_transformer_lens_path("embed") == "model.embed_tokens"
     assert adapter.translate_transformer_lens_path("ln_final") == "model.norm"
-    assert adapter.translate_transformer_lens_path("unembed") == "model.embed_tokens"
+    assert adapter.translate_transformer_lens_path("unembed") == "lm_head"
 
     # Test block mapping
     assert adapter.translate_transformer_lens_path("blocks") == "model.layers"
@@ -64,10 +93,7 @@ def test_translate_transformer_lens_path_last_component(adapter: Gemma3Architect
         adapter.translate_transformer_lens_path("embed", last_component_only=True) == "embed_tokens"
     )
     assert adapter.translate_transformer_lens_path("ln_final", last_component_only=True) == "norm"
-    assert (
-        adapter.translate_transformer_lens_path("unembed", last_component_only=True)
-        == "embed_tokens"
-    )
+    assert adapter.translate_transformer_lens_path("unembed", last_component_only=True) == "lm_head"
 
     # Test block mapping
     assert adapter.translate_transformer_lens_path("blocks", last_component_only=True) == "layers"

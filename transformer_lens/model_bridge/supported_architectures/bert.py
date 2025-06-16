@@ -12,6 +12,7 @@ from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
 )
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
+    BlockBridge,
     EmbeddingBridge,
     LayerNormBridge,
     MLPBridge,
@@ -22,13 +23,13 @@ from transformer_lens.model_bridge.generalized_components import (
 class BertArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for BERT models."""
 
-    def __init__(self, cfg: Any) -> None:
+    def __init__(self, user_cfg: Any) -> None:
         """Initialize the BERT architecture adapter.
 
         Args:
-            cfg: The configuration object.
+            user_cfg: The configuration object.
         """
-        super().__init__(cfg)
+        super().__init__(user_cfg)
 
         self.conversion_rules = WeightConversionSet(
             {
@@ -74,6 +75,8 @@ class BertArchitectureAdapter(ArchitectureAdapter):
                 "blocks.{i}.mlp.b_in": "bert.encoder.layer.{i}.intermediate.dense.bias",
                 "blocks.{i}.mlp.W_out": "bert.encoder.layer.{i}.output.dense.weight",
                 "blocks.{i}.mlp.b_out": "bert.encoder.layer.{i}.output.dense.bias",
+                "ln_final.w": "bert.pooler.dense.weight",
+                "ln_final.b": "bert.pooler.dense.bias",
                 "unembed.W_U": "cls.predictions.transform.dense.weight",
                 "unembed.b_U": "cls.predictions.transform.dense.bias",
                 "unembed.LayerNorm.weight": "cls.predictions.transform.LayerNorm.weight",
@@ -89,6 +92,7 @@ class BertArchitectureAdapter(ArchitectureAdapter):
             "pos_embed": ("bert.embeddings.position_embeddings", EmbeddingBridge),
             "blocks": (
                 "bert.encoder.layer",
+                BlockBridge,
                 {
                     "ln1": ("attention.output.LayerNorm", LayerNormBridge),
                     "ln2": ("output.LayerNorm", LayerNormBridge),
@@ -98,3 +102,5 @@ class BertArchitectureAdapter(ArchitectureAdapter):
             ),
             "unembed": ("cls.predictions", UnembeddingBridge),
         }
+        if hasattr(self.user_cfg, "add_pooling_layer") and self.user_cfg.add_pooling_layer:
+            self.component_mapping["ln_final"] = ("bert.pooler.dense", LayerNormBridge)

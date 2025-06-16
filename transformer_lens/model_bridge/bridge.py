@@ -11,13 +11,8 @@ import torch.nn as nn
 from transformers.modeling_utils import PreTrainedModel
 
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
-from transformer_lens.model_bridge.generalized_components import (
-    AttentionBridge,
-    BlockBridge,
-    EmbeddingBridge,
-    LayerNormBridge,
-    MLPBridge,
-    UnembeddingBridge,
+from transformer_lens.model_bridge.component_creation import (
+    create_and_replace_components_from_mapping,
 )
 
 
@@ -39,117 +34,26 @@ class TransformerBridge:
             adapter: The architecture adapter to use
             tokenizer: The tokenizer to use (required)
         """
+        super().__init__()
         self.model = model
         self.bridge = adapter
-        self.cfg = adapter.cfg
+        self.cfg = adapter.user_cfg
         self.tokenizer = tokenizer
 
         if not hasattr(adapter, "component_mapping") or adapter.component_mapping is None:
             raise ValueError("Adapter must have a component_mapping attribute")
 
-        # Get and replace components in the model
-        embed = adapter.get_component(model, "embed")
-        if not isinstance(embed, EmbeddingBridge):
-            embed = EmbeddingBridge(
-                original_component=embed, name="embed", architecture_adapter=adapter
-            )
-            # Replace in model using component mapping
-            path = adapter.translate_transformer_lens_path("embed")
-            self._set_by_path(model, path, embed)
-        self.embed = embed
+        # Create and replace components
+        create_and_replace_components_from_mapping(
+            self.bridge.get_component_mapping(), self.model, self.bridge, bridge=self
+        )
 
-        # Use num_hidden_layers for Hugging Face configs, fallback to n_layers
-        n_layers = getattr(self.cfg, "num_hidden_layers", getattr(self.cfg, "n_layers", None))
-        if n_layers is None:
-            raise AttributeError("Config has neither num_hidden_layers nor n_layers")
-
-        # Create ModuleList for blocks
-        block_bridges = nn.ModuleList()
-
-        # Get the blocks path and component
-        blocks = adapter.get_component(model, "blocks")
-
-        # Build blocks
-        for i in range(n_layers):
-            # Get block components
-            ln1 = adapter.get_component(model, f"blocks.{i}.ln1")
-            ln2 = adapter.get_component(model, f"blocks.{i}.ln2")
-            # Wrap layer norms with bridge
-            if not isinstance(ln1, LayerNormBridge):
-                ln1 = LayerNormBridge(
-                    original_component=ln1, name=f"blocks.{i}.ln1", architecture_adapter=adapter
-                )
-                path = adapter.translate_transformer_lens_path(f"blocks.{i}.ln1")
-                self._set_by_path(model, path, ln1)
-            if not isinstance(ln2, LayerNormBridge):
-                ln2 = LayerNormBridge(
-                    original_component=ln2, name=f"blocks.{i}.ln2", architecture_adapter=adapter
-                )
-                path = adapter.translate_transformer_lens_path(f"blocks.{i}.ln2")
-                self._set_by_path(model, path, ln2)
-            attn = adapter.get_component(model, f"blocks.{i}.attn")
-            if not isinstance(attn, AttentionBridge):
-                attn = AttentionBridge(
-                    original_component=attn, name=f"blocks.{i}.attn", architecture_adapter=adapter
-                )
-                path = adapter.translate_transformer_lens_path(f"blocks.{i}.attn")
-                self._set_by_path(model, path, attn)
-            mlp = adapter.get_component(model, f"blocks.{i}.mlp")
-            if not isinstance(mlp, MLPBridge):
-                mlp = MLPBridge(
-                    original_component=mlp, name=f"blocks.{i}.mlp", architecture_adapter=adapter
-                )
-                path = adapter.translate_transformer_lens_path(f"blocks.{i}.mlp")
-                self._set_by_path(model, path, mlp)
-
-            # Create block bridge with the actual block layer
-            block_component = adapter.get_component(model, f"blocks.{i}")
-            block_bridge = BlockBridge(
-                original_component=block_component, name=f"blocks.{i}", architecture_adapter=adapter
-            )
-            block_bridges.append(block_bridge)
-
-        path = adapter.translate_transformer_lens_path("blocks")
-        self._set_by_path(model, path, block_bridges)
-
-        # Get final components
-        ln_final = adapter.get_component(model, "ln_final")
-        if not isinstance(ln_final, LayerNormBridge):
-            ln_final = LayerNormBridge(
-                original_component=ln_final, name="ln_final", architecture_adapter=adapter
-            )
-            # Replace in model using component mapping
-            path = adapter.translate_transformer_lens_path("ln_final")
-            self._set_by_path(model, path, ln_final)
-        self.ln_final = ln_final
-
-        unembed = adapter.get_component(model, "unembed")
-        if not isinstance(unembed, UnembeddingBridge):
-            unembed = UnembeddingBridge(
-                original_component=unembed, name="unembed", architecture_adapter=adapter
-            )
-            # Replace in model using component mapping
-            path = adapter.translate_transformer_lens_path("unembed")
-            self._set_by_path(model, path, unembed)
-        self.unembed = unembed
-
-    def _set_by_path(self, obj: Any, path: str, value: Any) -> None:
-        """Set a value in an object by its path.
-
-        Args:
-            obj: The object to modify
-            path: The dot-separated path to the attribute
-            value: The value to set
-        """
-        parts = path.split(".")
-        for part in parts[:-1]:
-            if part == "model":
-                obj = obj.model
-            elif part.isdigit():
-                obj = obj[int(part)]
-            else:
-                obj = getattr(obj, part)
-        setattr(obj, parts[-1], value)
+    def __getattr__(self, name: str) -> Any:
+        """Provide a clear error message for missing attributes."""
+        raise AttributeError(
+            f"'{type(self).__name__}' object has no attribute '{name}'. "
+            f"Check the component mapping in your architecture adapter."
+        )
 
     def _format_single_component(self, name: str, path: str, indent: int = 0) -> str:
         """Format a single component's string representation.
@@ -188,18 +92,25 @@ class TransformerBridge:
         for name, value in mapping.items():
             path = f"{prepend}.{name}" if prepend else name
             if isinstance(value, tuple):
-                # For tuple paths, check if the second element is a dictionary (BlockMapping)
-                # or a class type (RemoteImport)
-                _, sub_mapping = value
-                if isinstance(sub_mapping, dict):
-                    # This is a BlockMapping (like blocks) - format recursively
-                    path = f"{path}.0"
+                # Handle both 2-tuple (RemoteImport) and 3-tuple (BlockMapping) structures
+                if len(value) == 3:
+                    # This is a BlockMapping (path, bridge_type, sub_mapping)
+                    _, _, sub_mapping = value
+                    if isinstance(sub_mapping, dict):
+                        # This is a BlockMapping (like blocks) - format recursively
+                        path = f"{path}.0"
+                        lines.append(self._format_single_component(name, path, indent))
+                        # Recursively format subcomponents with updated prepend
+                        sub_lines = self._format_component_mapping(sub_mapping, indent + 1, path)
+                        lines.extend(sub_lines)
+                    else:
+                        # This should not happen with BlockMapping
+                        lines.append(self._format_single_component(name, path, indent))
+                elif len(value) == 2:
+                    # This is a RemoteImport (path, bridge_type) - format as single component
                     lines.append(self._format_single_component(name, path, indent))
-                    # Recursively format subcomponents with updated prepend
-                    sub_lines = self._format_component_mapping(sub_mapping, indent + 1, path)
-                    lines.extend(sub_lines)
                 else:
-                    # This is a RemoteImport (like embed, ln_final, unembed) - format as single component
+                    # Unknown tuple structure
                     lines.append(self._format_single_component(name, path, indent))
             else:
                 # For regular components, use prepend if provided
@@ -375,7 +286,6 @@ class TransformerBridge:
                 hp.remove_hooks()
         return output, cache
 
-    @property
     def blocks(self):
         # Use the adapter to get the blocks component, for flexibility
         return self.bridge.get_component(self.model, "blocks")

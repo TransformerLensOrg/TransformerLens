@@ -3,12 +3,12 @@
 This module contains the bridge component for MLP layers.
 """
 
-from typing import Any
 
 import torch
 import torch.nn as nn
 
 from transformer_lens.hook_points import HookPoint
+from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
@@ -25,7 +25,7 @@ class MLPBridge(GeneralizedComponent):
         self,
         original_component: nn.Module,
         name: str,
-        architecture_adapter: Any | None = None,
+        architecture_adapter: ArchitectureAdapter,
     ):
         """Initialize the MLP bridge.
 
@@ -44,20 +44,27 @@ class MLPBridge(GeneralizedComponent):
         self.hook_pre.name = f"{name}.pre"
         self.hook_post.name = f"{name}.post"
 
-    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+    def forward(self, *args, **kwargs) -> torch.Tensor:
         """Forward pass through the MLP bridge.
 
         Args:
-            hidden_states: Input hidden states
+            *args: Positional arguments for the original component
+            **kwargs: Keyword arguments for the original component
 
         Returns:
             Output hidden states
         """
+        # The first argument is always the hidden state
+        hidden_states = args[0]
+
         # Apply pre hook
         hidden_states = self.hook_pre(hidden_states)
 
+        # Reconstruct args
+        new_args = (hidden_states,) + args[1:]
+
         # Forward through original component
-        output = self.original_component(hidden_states)
+        output = self.original_component(*new_args, **kwargs)
 
         # Apply post hook
         output = self.hook_post(output)
@@ -69,7 +76,7 @@ class MLPBridge(GeneralizedComponent):
 
     @classmethod
     def wrap_component(
-        cls, component: nn.Module, name: str, architecture_adapter: Any | None = None
+        cls, component: nn.Module, name: str, architecture_adapter: ArchitectureAdapter
     ) -> nn.Module:
         """Wrap a component with this bridge if it's an MLP layer.
 

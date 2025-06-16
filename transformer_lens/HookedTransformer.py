@@ -34,14 +34,15 @@ import torch.nn.functional as F
 import tqdm.auto as tqdm
 from jaxtyping import Float, Int
 from packaging import version
-from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedTokenizerBase
+from transformers import AutoTokenizer, PreTrainedModel, PreTrainedTokenizerBase
+from transformers.models.auto.tokenization_auto import AutoTokenizer
+from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 from typing_extensions import Literal
 
 import transformer_lens.loading_from_pretrained as loading
 import transformer_lens.utils as utils
 from transformer_lens.ActivationCache import ActivationCache
 from transformer_lens.components import (
-    AbstractAttention,
     Embed,
     LayerNorm,
     LayerNormPre,
@@ -109,6 +110,7 @@ class HookedTransformer(HookedRootModule):
     """
 
     ln_final: nn.Module
+    tokenizer: Optional[PreTrainedTokenizerBase]
 
     def __init__(
         self,
@@ -387,6 +389,8 @@ class HookedTransformer(HookedRootModule):
                 # that pad tokens are not attended.
                 if prepend_bos is USE_DEFAULT_VALUE:
                     prepend_bos = self.cfg.default_prepend_bos
+                if self.tokenizer is None:
+                    raise ValueError("Cannot compute attention mask without a tokenizer.")
                 attention_mask = utils.get_attention_mask(self.tokenizer, tokens, prepend_bos)
 
             assert attention_mask.shape == tokens.shape, (
@@ -1128,7 +1132,7 @@ class HookedTransformer(HookedRootModule):
         refactor_factored_attn_matrices: bool = False,
         checkpoint_index: Optional[int] = None,
         checkpoint_value: Optional[int] = None,
-        hf_model: Optional[AutoModelForCausalLM] = None,
+        hf_model: Optional[PreTrainedModel] = None,
         device: Optional[Union[str, torch.device]] = None,
         n_devices: int = 1,
         tokenizer: Optional[PreTrainedTokenizerBase] = None,
@@ -1297,6 +1301,7 @@ class HookedTransformer(HookedRootModule):
         ), "Quantization not supported"
 
         if hf_model is not None:
+            assert hasattr(hf_model, "config"), "PreTrainedModel must have a config attribute"
             hf_cfg = hf_model.config.to_dict()
             qc = hf_cfg.get("quantization_config", {})
             load_in_4bit = qc.get("load_in_4bit", False)
@@ -2247,7 +2252,7 @@ class HookedTransformer(HookedRootModule):
             # Currently nothing in HookedTransformer changes with eval, but this is here in case
             # that changes in the future.
             self.eval()
-            sampled_tokens_list = []
+            sampled_tokens_list: List[torch.Tensor] = []
             for index in tqdm.tqdm(range(max_new_tokens), disable=not verbose):
                 pos_offset = self.get_pos_offset(past_kv_cache, batch_size)
 
@@ -2307,6 +2312,7 @@ class HookedTransformer(HookedRootModule):
                         "str",
                         "tokens",
                     ]:  # Those types of inputs support frequency penalty
+                        assert input_tokens is not None
                         sampled_tokens = utils.sample_logits(
                             final_logits,
                             top_k=top_k,
@@ -2347,6 +2353,7 @@ class HookedTransformer(HookedRootModule):
 
             sampled_tokens = torch.cat(sampled_tokens_list, dim=1)
             if input_type in ["str", "tokens"]:
+                assert input_tokens is not None
                 output_tokens = torch.cat((input_tokens, sampled_tokens), dim=1)
             else:
                 output_tokens = sampled_tokens
@@ -2506,15 +2513,14 @@ class HookedTransformer(HookedRootModule):
         accumulated_bias = torch.zeros(self.cfg.d_model, device=self.cfg.device)
 
         for i in range(layer):
-            accumulated_bias += cast(AbstractAttention, self.blocks[i].attn).b_O
+            block = cast(TransformerBlock, self.blocks[i])
+            accumulated_bias += cast(torch.Tensor, block.attn.b_O)
             if include_mlp_biases:
-                mlp = cast(nn.Module, self.blocks[i].mlp)
-                if not hasattr(mlp, "b_out"):
-                    raise AttributeError("self.blocks[i].mlp does not have an attribute 'b_out'")
-                accumulated_bias += cast(torch.Tensor, mlp.b_out)
+                accumulated_bias += cast(torch.Tensor, block.mlp.b_out)
         if mlp_input:
             assert layer < self.cfg.n_layers, "Cannot include attn_bias from beyond the final layer"
-            accumulated_bias += cast(AbstractAttention, self.blocks[layer].attn).b_O
+            block = cast(TransformerBlock, self.blocks[layer])
+            accumulated_bias += cast(torch.Tensor, block.attn.b_O)
         return accumulated_bias
 
     def all_composition_scores(

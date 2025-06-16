@@ -8,7 +8,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from better_abc import abstract_attribute
 from jaxtyping import Float, Int
-from transformers.utils import is_bitsandbytes_available
+from transformers.utils.import_utils import is_bitsandbytes_available
 
 from transformer_lens.components.rms_norm import RMSNorm
 from transformer_lens.FactoredMatrix import FactoredMatrix
@@ -27,6 +27,10 @@ class AbstractAttention(ABC, nn.Module):
     alibi: Union[torch.Tensor, None]
     q_norm: Optional[RMSNorm]
     k_norm: Optional[RMSNorm]
+    mask: torch.Tensor
+    IGNORE: torch.Tensor
+    rotary_sin: torch.Tensor
+    rotary_cos: torch.Tensor
 
     def __init__(
         self,
@@ -594,7 +598,7 @@ class AbstractAttention(ABC, nn.Module):
     def apply_rotary(
         self,
         x: Float[torch.Tensor, "batch pos head_index d_head"],
-        past_kv_pos_offset=0,
+        past_kv_pos_offset: int = 0,
         attention_mask: Optional[Int[torch.Tensor, "batch offset_pos"]] = None,
     ) -> Float[torch.Tensor, "batch pos head_index d_head"]:
         # Only apply rotary to first rotary_dim dimensions (eg, if rotary_dim=64 and d_head=256, only apply to first 1/4 of dimensions)

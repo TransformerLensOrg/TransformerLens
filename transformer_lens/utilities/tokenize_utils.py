@@ -7,13 +7,12 @@ from __future__ import annotations
 
 import os
 from copy import deepcopy
-from typing import Dict, List
 
 import einops
 import numpy as np
 import torch
 from datasets.arrow_dataset import Dataset
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, PreTrainedTokenizerBase
 
 from transformer_lens.utilities.hf_utils import keep_single_column
 from transformer_lens.utilities.tensors import get_cumsum_along_dim
@@ -21,7 +20,7 @@ from transformer_lens.utilities.tensors import get_cumsum_along_dim
 
 def tokenize_and_concatenate(
     dataset: Dataset,
-    tokenizer: AutoTokenizer,
+    tokenizer: PreTrainedTokenizerBase,
     streaming: bool = False,
     max_length: int = 1024,
     column_name: str = "text",
@@ -34,7 +33,7 @@ def tokenize_and_concatenate(
 
     Args:
         dataset (Dataset): The dataset to tokenize, assumed to be a HuggingFace text dataset.
-        tokenizer (AutoTokenizer): The tokenizer. Assumed to have a bos_token_id and an eos_token_id.
+        tokenizer (PreTrainedTokenizerBase): The tokenizer. Assumed to have a bos_token_id and an eos_token_id.
         streaming (bool, optional): Whether the dataset is being streamed. If True, avoids using parallelism. Defaults to False.
         max_length (int, optional): The length of the context window of the sequence. Defaults to 1024.
         column_name (str, optional): The name of the text column in the dataset. Defaults to 'text'.
@@ -53,9 +52,11 @@ def tokenize_and_concatenate(
     else:
         seq_len = max_length
 
-    def tokenize_function(examples: Dict[str, List[str]]) -> Dict[str, np.ndarray]:
+    def tokenize_function(examples: dict[str, list[str]]) -> dict[str, np.ndarray]:
         text = examples[column_name]
         # Concatenate it all into an enormous string, separated by eos_tokens
+        if not hasattr(tokenizer, "eos_token") or tokenizer.eos_token is None:
+            raise ValueError("Tokenizer must have an eos_token")
         full_text = tokenizer.eos_token.join(text)
 
         # Handle the case when full_text is empty
@@ -104,7 +105,7 @@ def tokenize_and_concatenate(
     return tokenized_dataset
 
 
-def get_tokenizer_with_bos(tokenizer):
+def get_tokenizer_with_bos(tokenizer: PreTrainedTokenizerBase) -> PreTrainedTokenizerBase:
     """
     Returns the tokenizer initialized with add_bos_token=True.
     Such a tokenizer should be set as the default tokenizer because the tokenization of some
@@ -112,10 +113,10 @@ def get_tokenizer_with_bos(tokenizer):
     prepended.
 
     Args:
-        tokenizer (AutoTokenizer): The tokenizer to initialize with add_bos_token=True.
+        tokenizer (PreTrainedTokenizerBase): The tokenizer to initialize with add_bos_token=True.
 
     Returns:
-        AutoTokenizer: The tokenizer initialized with add_bos_token=True.
+        PreTrainedTokenizerBase: The tokenizer initialized with add_bos_token=True.
     """
     init_kwargs = deepcopy(tokenizer.init_kwargs)
     pretrained_model_name_or_path = init_kwargs.pop("name_or_path")
@@ -137,16 +138,18 @@ def get_tokenizer_with_bos(tokenizer):
     return tokenizer_with_bos
 
 
-def get_input_with_manually_prepended_bos(tokenizer, input):
+def get_input_with_manually_prepended_bos(
+    tokenizer: PreTrainedTokenizerBase, input: str | list[str]
+) -> str | list[str]:
     """
     Manually prepends the bos token to the input.
 
     Args:
-        tokenizer (AutoTokenizer): The tokenizer to use for prepending the bos token.
-        input (Union[str, List[str]]): The input to prepend the bos token to.
+        tokenizer (PreTrainedTokenizerBase): The tokenizer to use for prepending the bos token.
+        input (str | list[str]): The input to prepend the bos token to.
 
     Returns:
-        Union[str, List[str]]: The input with the bos token manually prepended.
+        str | list[str]: The input with the bos token manually prepended.
     """
     if isinstance(input, str):
         input = tokenizer.bos_token + input
@@ -155,13 +158,15 @@ def get_input_with_manually_prepended_bos(tokenizer, input):
     return input
 
 
-def get_tokens_with_bos_removed(tokenizer, tokens):
+def get_tokens_with_bos_removed(
+    tokenizer: PreTrainedTokenizerBase, tokens: torch.Tensor
+) -> torch.Tensor:
     """
     Removes the bos token from the beginning of each sequence in `tokens`.
     The last dimension of `tokens` must be the sequence length.
 
     Args:
-        tokenizer (AutoTokenizer): The tokenizer used to tokenize the input.
+        tokenizer (PreTrainedTokenizerBase): The tokenizer used to tokenize the input.
         tokens (torch.Tensor): The tokenized input.
 
     Returns:
@@ -185,7 +190,9 @@ def get_tokens_with_bos_removed(tokenizer, tokens):
         return tokens[tokens != -100].view(*bos_removed_shape)
 
 
-def get_attention_mask(tokenizer, tokens: torch.Tensor, prepend_bos: bool) -> torch.Tensor:
+def get_attention_mask(
+    tokenizer: PreTrainedTokenizerBase, tokens: torch.Tensor, prepend_bos: bool
+) -> torch.Tensor:
     """
     Computes the attention mask for the tokenized input.
     NOTE: Only the leftmost leading pads (when `padding_side == left`)
@@ -193,7 +200,7 @@ def get_attention_mask(tokenizer, tokens: torch.Tensor, prepend_bos: bool) -> to
     considered as real pad tokens that should not be attended.
 
     Args:
-        tokenizer: The tokenizer used for tokenization.
+        tokenizer (PreTrainedTokenizerBase): The tokenizer used for tokenization.
         tokens (torch.Tensor): The tokenized input.
         prepend_bos (bool): If True, a BOS token is prepended to the input.
 

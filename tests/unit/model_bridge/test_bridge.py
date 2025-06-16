@@ -4,13 +4,15 @@ This module tests the bridge functionality, including component mapping formatti
 and other bridge operations.
 """
 
-from unittest.mock import Mock
+from unittest.mock import MagicMock
 
 import pytest
 
+from tests.mocks.architecture_adapter import mock_adapter, mock_model_adapter
 from transformer_lens.model_bridge.bridge import TransformerBridge
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
+    BlockBridge,
     EmbeddingBridge,
     LayerNormBridge,
     MLPBridge,
@@ -20,66 +22,25 @@ from transformer_lens.model_bridge.generalized_components import (
 class TestTransformerBridge:
     """Test cases for the TransformerBridge class."""
 
-    def setup_method(self):
+    @pytest.fixture(autouse=True)
+    def setup_method(self, mock_adapter, mock_model_adapter):
         """Set up test fixtures."""
-        # Create mock model, adapter, and tokenizer
-        self.mock_model = Mock()
-        self.mock_adapter = Mock()
-        self.mock_tokenizer = Mock()
-
-        # Mock the adapter's component_mapping attribute
-        self.mock_adapter.component_mapping = {}
-
-        # Mock the get_component method to return mock components
-        self.mock_components = {
-            "embed": Mock(spec=EmbeddingBridge),
-            "blocks.0": Mock(),
-            "blocks.0.ln1": Mock(spec=LayerNormBridge),
-            "blocks.0.ln2": Mock(spec=LayerNormBridge),
-            "blocks.0.attn": Mock(spec=AttentionBridge),
-            "blocks.0.mlp": Mock(spec=MLPBridge),
-            "ln_final": Mock(spec=LayerNormBridge),
-            "unembed": Mock(spec=EmbeddingBridge),
-        }
-
-        def mock_get_component(model, path):
-            if path in self.mock_components:
-                comp = self.mock_components[path]
-                # Add original_component attribute for bridge components
-                if hasattr(comp, "spec") and comp.spec in [
-                    EmbeddingBridge,
-                    LayerNormBridge,
-                    AttentionBridge,
-                    MLPBridge,
-                ]:
-                    comp.original_component = Mock()
-                    comp.original_component.__class__.__name__ = (
-                        f"Mock{comp.spec.__name__.replace('Bridge', '')}"
-                    )
-                return comp
-            raise AttributeError(f"Component {path} not found")
-
-        self.mock_adapter.get_component = mock_get_component
-
-        # Mock the cfg to have required attributes
-        self.mock_adapter.cfg = Mock()
-        self.mock_adapter.cfg.num_hidden_layers = 1
-
-        # Create a bridge instance (we'll mock the initialization to avoid complexity)
         self.bridge = TransformerBridge.__new__(TransformerBridge)
-        self.bridge.model = self.mock_model
-        self.bridge.bridge = self.mock_adapter
-        self.bridge.cfg = self.mock_adapter.cfg
-        self.bridge.tokenizer = self.mock_tokenizer
+        self.bridge.model = mock_model_adapter
+        self.bridge.bridge = mock_adapter
+        self.bridge.tokenizer = MagicMock()
+        mock_adapter.user_cfg = MagicMock()
+        self.bridge.cfg = mock_adapter.user_cfg
 
     def test_format_remote_import_tuple(self):
         """Test formatting of RemoteImport tuples (like embed, ln_final, unembed)."""
         # This is the case that was causing the original bug
         mapping = {
-            "embed": ("model.embed_tokens", EmbeddingBridge),
-            "ln_final": ("model.norm", LayerNormBridge),
-            "unembed": ("model.embed_tokens", EmbeddingBridge),
+            "embed": ("embed", EmbeddingBridge),
+            "ln_final": ("ln_final", LayerNormBridge),
+            "unembed": ("unembed", EmbeddingBridge),
         }
+        self.bridge.bridge.component_mapping = mapping
 
         result = self.bridge._format_component_mapping(mapping, indent=1)
 
@@ -95,15 +56,17 @@ class TestTransformerBridge:
         """Test formatting of BlockMapping tuples (like blocks)."""
         mapping = {
             "blocks": (
-                "model.layers",
+                "blocks",
+                BlockBridge,
                 {
-                    "ln1": ("input_layernorm", LayerNormBridge),
-                    "ln2": ("post_attention_layernorm", LayerNormBridge),
-                    "attn": ("self_attn", AttentionBridge),
+                    "ln1": ("ln1", LayerNormBridge),
+                    "ln2": ("ln2", LayerNormBridge),
+                    "attn": ("attn", AttentionBridge),
                     "mlp": ("mlp", MLPBridge),
                 },
             )
         }
+        self.bridge.bridge.component_mapping = mapping
 
         result = self.bridge._format_component_mapping(mapping, indent=1)
 
@@ -118,16 +81,18 @@ class TestTransformerBridge:
     def test_format_mixed_mapping(self):
         """Test formatting of a mapping with both RemoteImport and BlockMapping tuples."""
         mapping = {
-            "embed": ("model.embed_tokens", EmbeddingBridge),
+            "embed": ("embed", EmbeddingBridge),
             "blocks": (
-                "model.layers",
+                "blocks",
+                BlockBridge,
                 {
-                    "ln1": ("input_layernorm", LayerNormBridge),
-                    "attn": ("self_attn", AttentionBridge),
+                    "ln1": ("ln1", LayerNormBridge),
+                    "attn": ("attn", AttentionBridge),
                 },
             ),
-            "ln_final": ("model.norm", LayerNormBridge),
+            "ln_final": ("ln_final", LayerNormBridge),
         }
+        self.bridge.bridge.component_mapping = mapping
 
         result = self.bridge._format_component_mapping(mapping, indent=0)
 
@@ -142,8 +107,16 @@ class TestTransformerBridge:
     def test_format_with_prepend_path(self):
         """Test formatting with prepend path parameter."""
         mapping = {
-            "ln1": ("input_layernorm", LayerNormBridge),
-            "attn": ("self_attn", AttentionBridge),
+            "ln1": ("ln1", LayerNormBridge),
+            "attn": ("attn", AttentionBridge),
+        }
+        # To test prepending, we need a parent structure in the component mapping
+        self.bridge.bridge.component_mapping = {
+            "blocks": (
+                "blocks",
+                BlockBridge,
+                mapping,
+            )
         }
 
         result = self.bridge._format_component_mapping(mapping, indent=2, prepend="blocks.0")
@@ -156,6 +129,7 @@ class TestTransformerBridge:
     def test_format_empty_mapping(self):
         """Test formatting of an empty mapping."""
         mapping = {}
+        self.bridge.bridge.component_mapping = mapping
 
         result = self.bridge._format_component_mapping(mapping, indent=1)
 
@@ -166,6 +140,7 @@ class TestTransformerBridge:
         mapping = {
             "some_component": "simple_string_value",
         }
+        self.bridge.bridge.component_mapping = mapping
 
         result = self.bridge._format_component_mapping(mapping, indent=1)
 
@@ -176,17 +151,20 @@ class TestTransformerBridge:
         """Test formatting of nested block mappings."""
         mapping = {
             "outer_blocks": (
-                "model.outer_layers",
+                "outer_blocks",
+                BlockBridge,
                 {
                     "inner_blocks": (
-                        "inner_layers",
+                        "inner_blocks",
+                        BlockBridge,
                         {
-                            "ln": ("layernorm", LayerNormBridge),
+                            "ln": ("ln", LayerNormBridge),
                         },
                     )
                 },
             )
         }
+        self.bridge.bridge.component_mapping = mapping
 
         result = self.bridge._format_component_mapping(mapping, indent=0)
 
@@ -201,18 +179,21 @@ class TestTransformerBridge:
         mapping = {
             "nonexistent_component": ("path.to.nowhere", EmbeddingBridge),
         }
+        self.bridge.bridge.component_mapping = mapping
 
         # This should not raise an exception, but should handle the error in _format_single_component
         result = self.bridge._format_component_mapping(mapping, indent=1)
 
         assert len(result) == 1
         assert "nonexistent_component:" in result[0]
+        assert "<error:" in result[0]
 
     def test_indentation_levels(self):
         """Test that indentation is applied correctly at different levels."""
         mapping = {
-            "level0": ("path", EmbeddingBridge),
+            "level0": ("embed", EmbeddingBridge),
         }
+        self.bridge.bridge.component_mapping = mapping
 
         # Test different indentation levels
         result_0 = self.bridge._format_component_mapping(mapping, indent=0)
@@ -227,15 +208,17 @@ class TestTransformerBridge:
         """Regression test for the original bug where EmbeddingBridge was treated as a dict."""
         # This is the exact scenario that was causing the AttributeError
         mapping = {
-            "embed": ("model.embed_tokens", EmbeddingBridge),
+            "embed": ("embed", EmbeddingBridge),
             "blocks": (
-                "model.layers",
+                "blocks",
+                BlockBridge,
                 {
-                    "attn": ("self_attn", AttentionBridge),
+                    "attn": ("attn", AttentionBridge),
                 },
             ),
-            "unembed": ("model.embed_tokens", EmbeddingBridge),
+            "unembed": ("unembed", EmbeddingBridge),
         }
+        self.bridge.bridge.component_mapping = mapping
 
         # This should not raise AttributeError: type object 'EmbeddingBridge' has no attribute 'items'
         try:

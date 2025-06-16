@@ -6,6 +6,7 @@ from typing import Any
 import torch
 import torch.nn as nn
 
+from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.types import RemoteComponent
 
 
@@ -16,7 +17,12 @@ class GeneralizedComponent(nn.Module):
     and handles hook registration and execution.
     """
 
-    def __init__(self, original_component: RemoteComponent, name: str, architecture_adapter: Any):
+    def __init__(
+        self,
+        original_component: RemoteComponent,
+        name: str,
+        architecture_adapter: ArchitectureAdapter,
+    ):
         """Initialize the generalized component.
 
         Args:

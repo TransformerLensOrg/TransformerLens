@@ -9,6 +9,7 @@ from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
 )
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
+    BlockBridge,
     EmbeddingBridge,
     LayerNormBridge,
     MLPBridge,
@@ -19,80 +20,64 @@ from transformer_lens.model_bridge.generalized_components import (
 class Qwen2ArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for Qwen2 models."""
 
-    def __init__(self, cfg: Any) -> None:
-        """Initialize the Qwen2 architecture adapter.
-
-        Args:
-            cfg: The configuration object.
-        """
-        self.default_config = {"trust_remote_code": True}
-        super().__init__(cfg)
+    def __init__(self, user_cfg: Any) -> None:
+        """Initialize the Qwen2 architecture adapter."""
+        super().__init__(user_cfg)
 
         self.conversion_rules = WeightConversionSet(
             {
                 "embed.W_E": "model.embed_tokens.weight",
                 "blocks.{i}.ln1.w": "model.layers.{i}.input_layernorm.weight",
-                "blocks.{i}.ln1.b": "model.layers.{i}.input_layernorm.bias",
                 "blocks.{i}.ln2.w": "model.layers.{i}.post_attention_layernorm.weight",
-                "blocks.{i}.ln2.b": "model.layers.{i}.post_attention_layernorm.bias",
                 "blocks.{i}.attn.W_Q": (
                     "model.layers.{i}.self_attn.q_proj.weight",
-                    RearrangeWeightConversion("(h d_head) d_model -> h d_head d_model"),
+                    RearrangeWeightConversion(
+                        "(n h) m -> n m h", n=self.user_cfg.num_attention_heads
+                    ),
                 ),
                 "blocks.{i}.attn.W_K": (
                     "model.layers.{i}.self_attn.k_proj.weight",
-                    RearrangeWeightConversion("(h d_head) d_model -> h d_head d_model"),
+                    RearrangeWeightConversion(
+                        "(n h) m -> n m h",
+                        n=getattr(
+                            self.user_cfg, "num_key_value_heads", self.user_cfg.num_attention_heads
+                        ),
+                    ),
                 ),
                 "blocks.{i}.attn.W_V": (
                     "model.layers.{i}.self_attn.v_proj.weight",
-                    RearrangeWeightConversion("(h d_head) d_model -> h d_head d_model"),
-                ),
-                "blocks.{i}.attn.b_Q": (
-                    "model.layers.{i}.self_attn.q_proj.bias",
-                    RearrangeWeightConversion("(h d_head) -> h d_head"),
-                ),
-                "blocks.{i}.attn.b_K": (
-                    "model.layers.{i}.self_attn.k_proj.bias",
-                    RearrangeWeightConversion("(h d_head) -> h d_head"),
-                ),
-                "blocks.{i}.attn.b_V": (
-                    "model.layers.{i}.self_attn.v_proj.bias",
-                    RearrangeWeightConversion("(h d_head) -> h d_head"),
+                    RearrangeWeightConversion(
+                        "(n h) m -> n m h",
+                        n=getattr(
+                            self.user_cfg, "num_key_value_heads", self.user_cfg.num_attention_heads
+                        ),
+                    ),
                 ),
                 "blocks.{i}.attn.W_O": (
                     "model.layers.{i}.self_attn.o_proj.weight",
-                    RearrangeWeightConversion("d_model (h d_head) -> h d_head d_model"),
+                    RearrangeWeightConversion(
+                        "m (n h) -> n h m", n=self.user_cfg.num_attention_heads
+                    ),
                 ),
-                "blocks.{i}.attn.b_O": "model.layers.{i}.self_attn.o_proj.bias",
-                "blocks.{i}.mlp.W_in": "model.layers.{i}.mlp.gate_proj.weight",
-                "blocks.{i}.mlp.b_in": "model.layers.{i}.mlp.gate_proj.bias",
+                "blocks.{i}.mlp.W_in": "model.layers.{i}.mlp.up_proj.weight.T",
+                "blocks.{i}.mlp.W_gate": "model.layers.{i}.mlp.gate_proj.weight",
                 "blocks.{i}.mlp.W_out": "model.layers.{i}.mlp.down_proj.weight",
-                "blocks.{i}.mlp.b_out": "model.layers.{i}.mlp.down_proj.bias",
-                "unembed.W_U": "lm_head.weight",
-                "unembed.b_U": "lm_head.bias",
                 "ln_final.w": "model.norm.weight",
-                "ln_final.b": "model.norm.bias",
+                "unembed.W_U": "lm_head.weight",
             }
         )
-
-        # Set up component mapping
         self.component_mapping = {
-            "embed": ("model.embed_tokens", EmbeddingBridge),  # Word token embeddings
+            "embed": ("model.embed_tokens", EmbeddingBridge),
             "blocks": (
-                "model.layers",  # Base path for blocks
+                "model.layers",
+                BlockBridge,
                 {
-                    "ln1": ("input_layernorm", LayerNormBridge),  # Pre-attention layer norm
-                    "ln2": ("post_attention_layernorm", LayerNormBridge),  # Pre-MLP layer norm
-                    "attn": ("self_attn", AttentionBridge),  # Full attention module
-                    "attn.q_proj": ("self_attn.q_proj", AttentionBridge),  # Query projection
-                    "attn.k_proj": ("self_attn.k_proj", AttentionBridge),  # Key projection
-                    "attn.v_proj": ("self_attn.v_proj", AttentionBridge),  # Value projection
-                    "attn.o_proj": ("self_attn.o_proj", AttentionBridge),  # Output projection
-                    "mlp": ("mlp", MLPBridge),  # Full MLP module
-                    "mlp.gate_proj": ("mlp.gate_proj", MLPBridge),  # First linear layer
-                    "mlp.down_proj": ("mlp.down_proj", MLPBridge),  # Second linear layer
+                    "ln1": ("input_layernorm", LayerNormBridge),
+                    "ln2": ("post_attention_layernorm", LayerNormBridge),
+                    "attn": ("self_attn", AttentionBridge),
+                    "mlp": ("mlp", MLPBridge),
                 },
             ),
-            "ln_final": ("model.norm", LayerNormBridge),  # Final layer norm
-            "unembed": ("lm_head", UnembeddingBridge),  # Language model head
+            "ln_final": ("model.norm", LayerNormBridge),
+            "unembed": ("lm_head", UnembeddingBridge),
         }

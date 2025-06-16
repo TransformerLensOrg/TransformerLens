@@ -9,6 +9,7 @@ from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
 )
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
+    BlockBridge,
     EmbeddingBridge,
     LayerNormBridge,
     MLPBridge,
@@ -17,78 +18,70 @@ from transformer_lens.model_bridge.generalized_components import (
 
 
 class NeelSoluOldArchitectureAdapter(ArchitectureAdapter):
-    """Architecture adapter for Neel Solu Old models."""
+    """Architecture adapter for Neel's SOLU models (old style)."""
 
     def __init__(self, cfg: Any) -> None:
-        """Initialize the Neel Solu Old architecture adapter.
+        """Initialize the Neel SOLU old-style architecture adapter.
 
         Args:
             cfg: The configuration object.
         """
+        self.default_config: dict[str, Any] = {}
         super().__init__(cfg)
 
         self.conversion_rules = WeightConversionSet(
             {
-                "embed.W_E": "transformer.wte.weight",
-                "blocks.{i}.ln1.w": "transformer.h.{i}.ln_1.weight",
-                "blocks.{i}.ln1.b": "transformer.h.{i}.ln_1.bias",
-                "blocks.{i}.ln2.w": "transformer.h.{i}.ln_2.weight",
-                "blocks.{i}.ln2.b": "transformer.h.{i}.ln_2.bias",
+                "pos_embed.W_pos": "wpe.weight",
+                "embed.W_E": "wte.weight",
+                "blocks.{i}.ln1.w": "blocks.{i}.ln1.w",
+                "blocks.{i}.ln1.b": "blocks.{i}.ln1.b",
+                "blocks.{i}.ln2.w": "blocks.{i}.ln2.w",
+                "blocks.{i}.ln2.b": "blocks.{i}.ln2.b",
                 "blocks.{i}.attn.W_Q": (
-                    "transformer.h.{i}.attn.c_attn.weight",
-                    RearrangeWeightConversion("(3 h d_head) d_model -> 3 h d_head d_model"),
+                    "blocks.{i}.attn.W_Q",
+                    RearrangeWeightConversion("d_model n_head d_head -> n_head d_model d_head"),
                 ),
                 "blocks.{i}.attn.W_K": (
-                    "transformer.h.{i}.attn.c_attn.weight",
-                    RearrangeWeightConversion("(3 h d_head) d_model -> 3 h d_head d_model"),
+                    "blocks.{i}.attn.W_K",
+                    RearrangeWeightConversion("d_model n_head d_head -> n_head d_model d_head"),
                 ),
                 "blocks.{i}.attn.W_V": (
-                    "transformer.h.{i}.attn.c_attn.weight",
-                    RearrangeWeightConversion("(3 h d_head) d_model -> 3 h d_head d_model"),
-                ),
-                "blocks.{i}.attn.b_Q": (
-                    "transformer.h.{i}.attn.c_attn.bias",
-                    RearrangeWeightConversion("(3 h d_head) -> 3 h d_head"),
-                ),
-                "blocks.{i}.attn.b_K": (
-                    "transformer.h.{i}.attn.c_attn.bias",
-                    RearrangeWeightConversion("(3 h d_head) -> 3 h d_head"),
-                ),
-                "blocks.{i}.attn.b_V": (
-                    "transformer.h.{i}.attn.c_attn.bias",
-                    RearrangeWeightConversion("(3 h d_head) -> 3 h d_head"),
+                    "blocks.{i}.attn.W_V",
+                    RearrangeWeightConversion("d_model n_head d_head -> n_head d_model d_head"),
                 ),
                 "blocks.{i}.attn.W_O": (
-                    "transformer.h.{i}.attn.c_proj.weight",
-                    RearrangeWeightConversion("d_model (h d_head) -> h d_head d_model"),
+                    "blocks.{i}.attn.W_O",
+                    RearrangeWeightConversion("n_head d_head d_model -> n_head d_head d_model"),
                 ),
-                "blocks.{i}.attn.b_O": "transformer.h.{i}.attn.c_proj.bias",
-                "blocks.{i}.mlp.W_in": "transformer.h.{i}.mlp.c_fc.weight",
-                "blocks.{i}.mlp.b_in": "transformer.h.{i}.mlp.c_fc.bias",
-                "blocks.{i}.mlp.W_out": "transformer.h.{i}.mlp.c_proj.weight",
-                "blocks.{i}.mlp.b_out": "transformer.h.{i}.mlp.c_proj.bias",
-                "unembed.W_U": "lm_head.weight",
-                "unembed.b_U": "lm_head.bias",
-                "ln_final.w": "transformer.ln_f.weight",
-                "ln_final.b": "transformer.ln_f.bias",
+                "blocks.{i}.attn.b_Q": "blocks.{i}.attn.b_Q",
+                "blocks.{i}.attn.b_K": "blocks.{i}.attn.b_K",
+                "blocks.{i}.attn.b_V": "blocks.{i}.attn.b_V",
+                "blocks.{i}.attn.b_O": "blocks.{i}.attn.b_O",
+                "blocks.{i}.mlp.W_in": "blocks.{i}.mlp.W_in",
+                "blocks.{i}.mlp.b_in": "blocks.{i}.mlp.b_in",
+                "blocks.{i}.mlp.W_out": "blocks.{i}.mlp.W_out",
+                "blocks.{i}.mlp.b_out": "blocks.{i}.mlp.b_out",
+                "ln_final.w": "ln_f.w",
+                "ln_final.b": "ln_f.b",
+                "unembed.W_U": "unembed.W_U",
+                "unembed.b_U": "unembed.b_U",
             }
         )
-
-        # Set up component mapping
         self.component_mapping = {
-            "embed": ("transformer.wte", EmbeddingBridge),  # Word token embeddings
+            "embed": ("wte", EmbeddingBridge),
+            "pos_embed": ("wpe", EmbeddingBridge),
             "blocks": (
-                "transformer.h",  # Base path for blocks
+                "blocks",
+                BlockBridge,
                 {
-                    "ln1": ("ln_1", LayerNormBridge),  # Pre-attention layer norm
-                    "ln2": ("ln_2", LayerNormBridge),  # Pre-MLP layer norm
-                    "attn": ("attn", AttentionBridge),  # Full attention module
-                    "attn.c_attn": ("attn.c_attn", AttentionBridge),  # QKV projection
-                    "mlp": ("mlp", MLPBridge),  # Full MLP module
+                    "ln1": ("ln1", LayerNormBridge),
+                    "attn": ("attn", AttentionBridge),
+                    "ln2": ("ln2", LayerNormBridge),
+                    "mlp": ("mlp", MLPBridge),
                 },
             ),
-            "ln_final": ("transformer.ln_f", LayerNormBridge),  # Final layer norm
-            "unembed": ("lm_head", UnembeddingBridge),  # Language model head
+            "ln_final": ("ln_f", LayerNormBridge),
+            "unembed": ("unembed", UnembeddingBridge),
         }
 
 

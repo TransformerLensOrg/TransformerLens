@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 
 from transformer_lens.hook_points import HookPoint
+from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
@@ -21,7 +22,10 @@ class LayerNormBridge(GeneralizedComponent):
     """
 
     def __init__(
-        self, original_component: nn.Module, name: str, architecture_adapter: Any | None = None
+        self,
+        original_component: nn.Module,
+        name: str,
+        architecture_adapter: ArchitectureAdapter,
     ):
         """Initialize the layer norm bridge.
 
@@ -67,7 +71,7 @@ class LayerNormBridge(GeneralizedComponent):
 
     @classmethod
     def wrap_component(
-        cls, component: nn.Module, name: str, architecture_adapter: Any | None = None
+        cls, component: nn.Module, name: str, architecture_adapter: ArchitectureAdapter
     ) -> nn.Module:
         """Wrap a component with this bridge if it's a LayerNorm layer.
 

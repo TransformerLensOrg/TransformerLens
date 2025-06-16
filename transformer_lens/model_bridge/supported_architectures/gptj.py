@@ -9,6 +9,7 @@ from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
 )
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
+    BlockBridge,
     EmbeddingBridge,
     LayerNormBridge,
     MLPBridge,
@@ -19,21 +20,15 @@ from transformer_lens.model_bridge.generalized_components import (
 class GptjArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for GPTJ models."""
 
-    def __init__(self, cfg: Any) -> None:
-        """Initialize the GPTJ architecture adapter.
-
-        Args:
-            cfg: The configuration object.
-        """
-        super().__init__(cfg)
+    def __init__(self, user_cfg: Any) -> None:
+        """Initialize the GPT-J architecture adapter."""
+        super().__init__(user_cfg)
 
         self.conversion_rules = WeightConversionSet(
             {
                 "embed.W_E": "transformer.wte.weight",
                 "blocks.{i}.ln1.w": "transformer.h.{i}.ln_1.weight",
                 "blocks.{i}.ln1.b": "transformer.h.{i}.ln_1.bias",
-                "blocks.{i}.ln2.w": "transformer.h.{i}.ln_2.weight",
-                "blocks.{i}.ln2.b": "transformer.h.{i}.ln_2.bias",
                 "blocks.{i}.attn.W_Q": (
                     "transformer.h.{i}.attn.q_proj.weight",
                     RearrangeWeightConversion("d_model (n_head d_head) -> n_head d_head d_model"),
@@ -66,9 +61,9 @@ class GptjArchitectureAdapter(ArchitectureAdapter):
             "embed": ("transformer.wte", EmbeddingBridge),
             "blocks": (
                 "transformer.h",
+                BlockBridge,
                 {
                     "ln1": ("ln_1", LayerNormBridge),
-                    "ln2": ("ln_2", LayerNormBridge),
                     "attn": ("attn", AttentionBridge),
                     "mlp": ("mlp", MLPBridge),
                 },
