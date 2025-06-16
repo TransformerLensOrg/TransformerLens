@@ -10,7 +10,7 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 import torch
 from huggingface_hub import HfApi
@@ -127,7 +127,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
     if official_model_name.startswith(
         ("llama-7b", "meta-llama/Llama-2-7b")
     ):  # same architecture for LLaMA and Llama-2
-        cfg_dict: Dict[str, Any] = {
+        cfg_dict: dict[str, Any] = {
             "d_model": 4096,
             "d_head": 4096 // 32,
             "n_heads": 32,
@@ -1266,9 +1266,9 @@ def get_pretrained_state_dict(
                 )
 
             # Load model weights, and fold in layer norm weights
-
-        for param in hf_model.parameters():
-            param.requires_grad = False
+            if hf_model is not None:
+                for param in hf_model.parameters():
+                    param.requires_grad = False
 
         if cfg.original_architecture == "GPT2LMHeadModel":
             state_dict = convert_gpt2_weights(hf_model, cfg)
