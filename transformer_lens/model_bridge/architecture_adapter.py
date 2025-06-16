@@ -232,7 +232,10 @@ class ArchitectureAdapter:
         return flattened_state_dict
 
     def flatten_nested_dict(
-        self, input: dict[str, torch.Tensor], parent_key: str = "", sep: str = "."
+        self,
+        input: dict[str, torch.Tensor] | list[Any] | torch.Tensor,
+        parent_key: str = "",
+        sep: str = ".",
     ) -> dict[str, torch.Tensor]:
         """
         Flattens a nested dictionary/list structure into a flat dictionary with dot notation.
@@ -266,7 +269,6 @@ class ArchitectureAdapter:
             items[parent_key] = input
 
         return items
-        return self.conversion_rules.convert(input_value=hf_model)
 
     def get_remote_path_and_type(self, tl_path: str) -> RemoteImport:
         """Get the remote path and type for a given TransformerLens path.
