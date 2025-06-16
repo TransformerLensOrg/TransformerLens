@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Loading Pretrained Models Utilities.
 
 This module contains functions for loading pretrained models from the Hugging Face Hub.
@@ -12,7 +10,7 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any
 
 import torch
 from huggingface_hub import HfApi
@@ -129,7 +127,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
     if official_model_name.startswith(
         ("llama-7b", "meta-llama/Llama-2-7b")
     ):  # same architecture for LLaMA and Llama-2
-        cfg_dict: Dict[str, Any] = {
+        cfg_dict = {
             "d_model": 4096,
             "d_head": 4096 // 32,
             "n_heads": 32,
@@ -1268,9 +1266,9 @@ def get_pretrained_state_dict(
                 )
 
             # Load model weights, and fold in layer norm weights
-
-        for param in hf_model.parameters():
-            param.requires_grad = False
+            if hf_model is not None:
+                for param in hf_model.parameters():
+                    param.requires_grad = False
 
         if cfg.original_architecture == "GPT2LMHeadModel":
             state_dict = convert_gpt2_weights(hf_model, cfg)
@@ -1318,7 +1316,9 @@ def get_pretrained_state_dict(
         return state_dict
 
 
-def fill_missing_keys(model: torch.nn.Module, state_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
+def fill_missing_keys(
+    model: torch.nn.Module, state_dict: dict[str, torch.Tensor]
+) -> dict[str, torch.Tensor]:
     """Takes in a state dict from a pretrained model, and fills in any missing keys with the default initialization.
 
     This function is assumed to be run before weights are initialized.
