@@ -186,6 +186,7 @@ OFFICIAL_MODEL_NAMES = [
     "Qwen/Qwen3-14B",
     "Qwen/Qwen3-4B",
     "Qwen/Qwen3-8B",
+    "Qwen/QwQ-32B-Preview",
     "roneneldan/TinyStories-1Layer-21M",
     "roneneldan/TinyStories-1M",
     "roneneldan/TinyStories-28M",

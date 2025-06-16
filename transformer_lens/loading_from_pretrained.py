@@ -127,7 +127,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
     if official_model_name.startswith(
         ("llama-7b", "meta-llama/Llama-2-7b")
     ):  # same architecture for LLaMA and Llama-2
-        cfg_dict: dict[str, Any] = {
+        cfg_dict = {
             "d_model": 4096,
             "d_head": 4096 // 32,
             "n_heads": 32,
