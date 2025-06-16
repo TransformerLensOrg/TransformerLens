@@ -10,24 +10,37 @@ import logging
 import os
 from itertools import chain
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union, cast, overload
+from typing import (
+    Any,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    Type,
+    TypeVar,
+    Union,
+    cast,
+    overload,
+)
 
 import torch
 import tqdm
 from einops import repeat
 from jaxtyping import Float, Int
 from torch import nn
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, PreTrainedTokenizerBase
 from typing_extensions import Literal
 
 import transformer_lens.loading_from_pretrained as loading
 from transformer_lens.ActivationCache import ActivationCache
-from transformer_lens.components import Embed, RMSNorm, T5Block, Unembed
+from transformer_lens.components import MLP, Embed, GatedMLP, RMSNorm, T5Block, Unembed
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookedRootModule, HookPoint
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.utilities import devices
 from transformer_lens.utils import sample_logits
+
+T = TypeVar("T", bound="HookedEncoderDecoder")
 
 
 class HookedEncoderDecoder(HookedRootModule):
@@ -42,7 +55,15 @@ class HookedEncoderDecoder(HookedRootModule):
         - The model only accepts tokens as inputs, and not strings, or lists of strings
     """
 
-    def __init__(self, cfg, tokenizer=None, move_to_device=True, **kwargs):
+    tokenizer: Optional[PreTrainedTokenizerBase]
+
+    def __init__(
+        self,
+        cfg: Union[HookedTransformerConfig, Dict],
+        tokenizer: Optional[PreTrainedTokenizerBase] = None,
+        move_to_device: bool = True,
+        **kwargs: Any,
+    ):
         super().__init__()
         if isinstance(cfg, Dict):
             cfg = HookedTransformerConfig(**cfg)
@@ -50,7 +71,7 @@ class HookedEncoderDecoder(HookedRootModule):
             raise ValueError(
                 "Please pass in a config dictionary or HookedTransformerConfig object. If you want to load a pretrained model, use HookedEncoderDecoder.from_pretrained() instead."
             )
-        self.cfg = cfg
+        self.cfg: HookedTransformerConfig = cfg
 
         if self.cfg.n_devices != 1:
             raise ValueError("Multiple devices not supported for HookedEncoderDecoder")
@@ -70,7 +91,7 @@ class HookedEncoderDecoder(HookedRootModule):
             if self.tokenizer is None:
                 raise ValueError("Must provide a tokenizer if d_vocab is not provided")
 
-            self.cfg.d_vocab = max(self.tokenizer.vocab.values()) + 1
+            self.cfg.d_vocab = len(self.tokenizer)
         if self.cfg.d_vocab_out == -1:
             self.cfg.d_vocab_out = self.cfg.d_vocab
 
@@ -139,11 +160,7 @@ class HookedEncoderDecoder(HookedRootModule):
     @overload
     def forward(
         self,
-        input: Union[
-            str,
-            List[str],
-            Int[torch.Tensor, "batch pos"],
-        ],
+        input: Union[str, List[str], Int[torch.Tensor, "batch pos"]],
         decoder_input: Optional[Int[torch.Tensor, "batch decoder_pos"]] = None,
         return_type: Literal["logits"] = "logits",
         one_zero_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
@@ -153,24 +170,16 @@ class HookedEncoderDecoder(HookedRootModule):
     @overload
     def forward(
         self,
-        input: Union[
-            str,
-            List[str],
-            Int[torch.Tensor, "batch pos"],
-        ],
+        input: Union[str, List[str], Int[torch.Tensor, "batch pos"]],
         decoder_input: Optional[Int[torch.Tensor, "batch decoder_pos"]] = None,
-        return_type: Literal[None] = None,
+        return_type: Optional[Literal[None]] = None,
         one_zero_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
     ) -> Optional[Float[torch.Tensor, "batch pos d_vocab"]]:
         ...
 
     def forward(
         self,
-        input: Union[
-            str,
-            List[str],
-            Int[torch.Tensor, "batch pos"],
-        ],
+        input: Union[str, List[str], Int[torch.Tensor, "batch pos"]],
         decoder_input: Optional[Int[torch.Tensor, "batch decoder_pos"]] = None,
         return_type: Optional[str] = "logits",
         one_zero_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
@@ -202,7 +211,7 @@ class HookedEncoderDecoder(HookedRootModule):
                 If return_type=None: Returns None
         """
 
-        if isinstance(input, str) or isinstance(input, list):
+        if isinstance(input, (str, list)):
             tokens, attention_mask = self.to_tokens(input)
 
             # If attention mask is not provided, use the ones from the tokenizer
@@ -212,6 +221,7 @@ class HookedEncoderDecoder(HookedRootModule):
 
             # If decoder_input is not provided, start with tensor of PAD tokens of shape (batch, 1)
             if decoder_input is None:
+                assert self.tokenizer is not None
                 decoder_input = torch.full(
                     (tokens.shape[0], 1),
                     self.tokenizer.pad_token_id,
@@ -247,9 +257,9 @@ class HookedEncoderDecoder(HookedRootModule):
 
         query_len = key_len = tokens.shape[1]
 
-        encoder_positional_bias = self.encoder[0].attn.compute_relative_attention_bias(
-            query_len, key_len, device=self.cfg.device
-        )
+        encoder_positional_bias = cast(
+            T5Block, self.encoder[0]
+        ).attn.compute_relative_attention_bias(query_len, key_len, device=self.cfg.device)
 
         for encoder_block in self.encoder:
             resid = encoder_block(
@@ -260,9 +270,13 @@ class HookedEncoderDecoder(HookedRootModule):
 
         encoder_resid = self.encoder_final_ln(resid)
 
+        if decoder_input is None:
+            raise ValueError("decoder_input cannot be None when input is not a string")
         decoder_resid = self.embed(decoder_input)
         decoder_query_len = decoder_key_len = decoder_input.shape[1]
-        decoder_positional_bias = self.decoder[0].attn.compute_relative_attention_bias(
+        decoder_positional_bias = cast(
+            T5Block, self.decoder[0]
+        ).attn.compute_relative_attention_bias(
             decoder_query_len, decoder_key_len, device=self.cfg.device
         )
 
@@ -293,7 +307,7 @@ class HookedEncoderDecoder(HookedRootModule):
         one_zero_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
         max_new_tokens: int = 10,
         stop_at_eos: bool = True,
-        eos_token_id: Optional[int] = None,
+        eos_token_id: Optional[Union[int, List[int]]] = None,
         do_sample: bool = True,
         top_k: Optional[int] = None,
         top_p: Optional[float] = None,
@@ -347,7 +361,7 @@ class HookedEncoderDecoder(HookedRootModule):
                 (by default returns same type as input).
         """
 
-        if type(input) == str:
+        if isinstance(input, str):
             # If text, convert to tokens (batch_size=1)
             assert (
                 self.tokenizer is not None
@@ -369,7 +383,7 @@ class HookedEncoderDecoder(HookedRootModule):
                 )
 
         if return_type == "input":
-            if type(input) == str:
+            if isinstance(input, str):
                 return_type = "str"
             else:
                 return_type = "tensor"
@@ -379,30 +393,34 @@ class HookedEncoderDecoder(HookedRootModule):
         device = devices.get_device_for_block_index(0, self.cfg)
 
         # For the decoder input, we start with a tensor of PAD tokens of shape (batch, 1)
+        assert self.tokenizer is not None
         decoder_input = torch.full((batch_size, 1), self.tokenizer.pad_token_id).to(device)
 
         stop_tokens: List[int] = []
         eos_token_for_padding = 0
-        assert self.tokenizer is not None
         if stop_at_eos:
-            tokenizer_has_eos_token = (
-                self.tokenizer is not None and self.tokenizer.eos_token_id is not None
-            )
-            if eos_token_id is None:
+            tokenizer_has_eos_token = self.tokenizer.eos_token_id is not None
+
+            local_eos_token_id: Optional[Union[int, List[int]]] = eos_token_id
+            if local_eos_token_id is None:
                 assert (
                     tokenizer_has_eos_token
                 ), "Must pass a eos_token_id if stop_at_eos is True and tokenizer is None or has no eos_token_id"
 
-                eos_token_id = self.tokenizer.eos_token_id
+                local_eos_token_id = self.tokenizer.eos_token_id
 
-            if isinstance(eos_token_id, int):
-                stop_tokens = [eos_token_id]
-                eos_token_for_padding = eos_token_id
+            if isinstance(local_eos_token_id, int):
+                stop_tokens = [local_eos_token_id]
+                eos_token_for_padding = local_eos_token_id
             else:
                 # eos_token_id is a Sequence (e.g. list or tuple)
-                stop_tokens = eos_token_id
+                if local_eos_token_id is None:
+                    raise ValueError("eos_token_id cannot be None here")
+                stop_tokens = local_eos_token_id
                 eos_token_for_padding = (
-                    self.tokenizer.eos_token_id if tokenizer_has_eos_token else eos_token_id[0]
+                    self.tokenizer.eos_token_id
+                    if tokenizer_has_eos_token
+                    else local_eos_token_id[0]
                 )
 
         # An array to track which sequences in the batch have finished.
@@ -411,7 +429,7 @@ class HookedEncoderDecoder(HookedRootModule):
         # Currently nothing in HookedTransformer changes with eval, but this is here in case
         # that changes in the future.
         self.eval()
-        for index in tqdm.tqdm(range(max_new_tokens), disable=not verbose):
+        for _ in tqdm.tqdm(range(max_new_tokens), disable=not verbose):
             # While generating, we keep generating logits, throw away all but the final logits,
             # and then use those logits to sample from the distribution We keep adding the
             # sampled tokens to the end of tokens.
@@ -425,6 +443,7 @@ class HookedEncoderDecoder(HookedRootModule):
                 decoder_input=decoder_input,
                 one_zero_attention_mask=one_zero_attention_mask,
             )
+            assert logits is not None
             final_logits = logits[:, -1, :]
 
             if do_sample:
@@ -460,6 +479,7 @@ class HookedEncoderDecoder(HookedRootModule):
                 break
 
         if return_type == "str":
+            assert self.tokenizer is not None
             # Convert tokens to string
             return self.tokenizer.decode(decoder_input[0], skip_special_tokens=True)
 
@@ -468,22 +488,22 @@ class HookedEncoderDecoder(HookedRootModule):
 
     @overload
     def run_with_cache(
-        self, *model_args, return_cache_object: Literal[True] = True, **kwargs
+        self, *model_args: Any, return_cache_object: Literal[True] = True, **kwargs: Any
     ) -> Tuple[Float[torch.Tensor, "batch pos d_vocab"], ActivationCache]:
         ...
 
     @overload
     def run_with_cache(
-        self, *model_args, return_cache_object: Literal[False], **kwargs
+        self, *model_args: Any, return_cache_object: Literal[False] = False, **kwargs: Any
     ) -> Tuple[Float[torch.Tensor, "batch pos d_vocab"], Dict[str, torch.Tensor]]:
         ...
 
     def run_with_cache(
         self,
-        *model_args,
+        *model_args: Any,
         return_cache_object: bool = True,
         remove_batch_dim: bool = False,
-        **kwargs,
+        **kwargs: Any,
     ) -> Tuple[
         Float[torch.Tensor, "batch pos d_vocab"],
         Union[ActivationCache, Dict[str, torch.Tensor]],
@@ -500,38 +520,36 @@ class HookedEncoderDecoder(HookedRootModule):
         else:
             return out, cache_dict
 
-    def to(  # type: ignore
-        self,
-        device_or_dtype: Union[torch.device, str, torch.dtype],
-        print_details: bool = True,
-    ):
-        return devices.move_to_and_update_config(self, device_or_dtype, print_details)
+    def to(self: T, *args: Any, **kwargs: Any) -> T:
+        return super().to(*args, **kwargs)
 
-    def cuda(self):
-        # Wrapper around cuda that also changes self.cfg.device
-        return self.to("cuda")
+    def cuda(self: T, device: Optional[Union[int, torch.device]] = None) -> T:
+        if isinstance(device, int):
+            return self.to(f"cuda:{device}")
+        elif device is None:
+            return self.to("cuda")
+        else:
+            return self.to(device)
 
-    def cpu(self):
-        # Wrapper around cuda that also changes self.cfg.device
+    def cpu(self: T) -> T:
         return self.to("cpu")
 
-    def mps(self):
-        # Wrapper around cuda that also changes self.cfg.device
-        return self.to("mps")
+    def mps(self: T) -> T:
+        return self.to(torch.device("mps"))
 
     @classmethod
     def from_pretrained(
-        cls,
+        cls: Type[T],
         model_name: str,
         checkpoint_index: Optional[int] = None,
         checkpoint_value: Optional[int] = None,
-        hf_model=None,
+        hf_model: Optional[Any] = None,
         device: Optional[str] = None,
-        tokenizer=None,
-        move_to_device=True,
-        dtype=torch.float32,
-        **from_pretrained_kwargs,
-    ) -> HookedEncoderDecoder:
+        tokenizer: Optional[Any] = None,
+        move_to_device: bool = True,
+        dtype: Optional[torch.dtype] = torch.float32,
+        **from_pretrained_kwargs: Any,
+    ) -> T:
         """Loads in the pretrained weights from huggingface. Currently supports loading weight from HuggingFace BertForMaskedLM. Unlike HookedTransformer, this does not yet do any preprocessing on the model."""
         logging.warning(
             "Support for T5 in TransformerLens is currently experimental, until such a time when it has feature "
@@ -551,6 +569,9 @@ class HookedEncoderDecoder(HookedRootModule):
 
         if "torch_dtype" in from_pretrained_kwargs:
             dtype = from_pretrained_kwargs["torch_dtype"]
+
+        if dtype is None:
+            dtype = torch.float32
 
         name_or_path = (
             model_name if Path(model_name).exists() else loading.get_official_model_name(model_name)
@@ -616,56 +637,76 @@ class HookedEncoderDecoder(HookedRootModule):
     def W_K(self) -> Float[torch.Tensor, "n_layers n_heads d_model d_head"]:
         """Stacks the key weights across all layers"""
         return torch.stack(
-            [cast(T5Block, block).attn.W_K for block in chain(self.encoder, self.decoder)], dim=0
+            [cast(T5Block, block).attn.W_K for block in chain(self.encoder, self.decoder)],
+            dim=0,
         )
 
     @property
     def W_Q(self) -> Float[torch.Tensor, "n_layers n_heads d_model d_head"]:
         """Stacks the query weights across all layers"""
         return torch.stack(
-            [cast(T5Block, block).attn.W_Q for block in chain(self.encoder, self.decoder)], dim=0
+            [cast(T5Block, block).attn.W_Q for block in chain(self.encoder, self.decoder)],
+            dim=0,
         )
 
     @property
     def W_V(self) -> Float[torch.Tensor, "n_layers n_heads d_model d_head"]:
         """Stacks the value weights across all layers"""
         return torch.stack(
-            [cast(T5Block, block).attn.W_V for block in chain(self.encoder, self.decoder)], dim=0
+            [cast(T5Block, block).attn.W_V for block in chain(self.encoder, self.decoder)],
+            dim=0,
         )
 
     @property
     def W_O(self) -> Float[torch.Tensor, "n_layers n_heads d_head d_model"]:
         """Stacks the attn output weights across all layers"""
         return torch.stack(
-            [cast(T5Block, block).attn.W_O for block in chain(self.encoder, self.decoder)], dim=0
+            [cast(T5Block, block).attn.W_O for block in chain(self.encoder, self.decoder)],
+            dim=0,
         )
 
     @property
     def W_in(self) -> Float[torch.Tensor, "n_layers d_model d_mlp"]:
         """Stacks the MLP input weights across all layers"""
-        return torch.stack(
-            [cast(T5Block, block).mlp.W_in for block in chain(self.encoder, self.decoder)], dim=0
-        )
+        weights: List[torch.Tensor] = []
+        for block in chain(self.encoder, self.decoder):
+            mlp = cast(T5Block, block).mlp
+            if isinstance(mlp, (MLP, GatedMLP)):
+                weights.append(mlp.W_in)
+            else:
+                raise NotImplementedError(
+                    f"W_in property is not supported for MLP of type {type(mlp).__name__}"
+                )
+        return torch.stack(weights, dim=0)
 
     @property
     def W_out(self) -> Float[torch.Tensor, "n_layers d_mlp d_model"]:
         """Stacks the MLP output weights across all layers"""
-        return torch.stack(
-            [cast(T5Block, block).mlp.W_out for block in chain(self.encoder, self.decoder)], dim=0
-        )
+        weights: List[torch.Tensor] = []
+        for block in chain(self.encoder, self.decoder):
+            mlp = cast(T5Block, block).mlp
+            if isinstance(mlp, (MLP, GatedMLP)):
+                weights.append(mlp.W_out)
+            else:
+                raise NotImplementedError(
+                    f"W_out property is not supported for MLP of type {type(mlp).__name__}"
+                )
+        return torch.stack(weights, dim=0)
 
     @property
     def b_K(self) -> Float[torch.Tensor, "n_layers n_heads d_head"]:
         """Stacks the key biases across all layers"""
         return torch.stack(
-            [cast(T5Block, block).attn.b_K for block in chain(self.encoder, self.decoder)], dim=0
+            [cast(T5Block, block).attn.b_K for block in chain(self.encoder, self.decoder)],
+            dim=0,
         )
 
     @property
     def b_Q(self) -> Float[torch.Tensor, "n_layers n_heads d_head"]:
         """Stacks the query biases across all layers"""
         return torch.stack(
-            [cast(T5Block, block).attn.b_Q for block in chain(self.encoder, self.decoder)], dim=0
+            [cast(T5Block, block).attn.b_Q for block in chain(self.encoder, self.decoder)],
+            dim=0,
         )
 
     @property
@@ -680,22 +721,37 @@ class HookedEncoderDecoder(HookedRootModule):
     def b_O(self) -> Float[torch.Tensor, "n_layers d_model"]:
         """Stacks the attn output biases across all layers"""
         return torch.stack(
-            [cast(T5Block, block).attn.b_O for block in chain(self.encoder, self.decoder)], dim=0
+            [cast(T5Block, block).attn.b_O for block in chain(self.encoder, self.decoder)],
+            dim=0,
         )
 
     @property
     def b_in(self) -> Float[torch.Tensor, "n_layers d_mlp"]:
         """Stacks the MLP input biases across all layers"""
-        return torch.stack(
-            [cast(T5Block, block).mlp.b_in for block in chain(self.encoder, self.decoder)], dim=0
-        )
+        biases: List[torch.Tensor] = []
+        for block in chain(self.encoder, self.decoder):
+            mlp = cast(T5Block, block).mlp
+            if isinstance(mlp, (MLP, GatedMLP)):
+                biases.append(mlp.b_in)
+            else:
+                raise NotImplementedError(
+                    f"b_in property is not supported for MLP of type {type(mlp).__name__}"
+                )
+        return torch.stack(biases, dim=0)
 
     @property
     def b_out(self) -> Float[torch.Tensor, "n_layers d_model"]:
         """Stacks the MLP output biases across all layers"""
-        return torch.stack(
-            [cast(T5Block, block).mlp.b_out for block in chain(self.encoder, self.decoder)], dim=0
-        )
+        biases: List[torch.Tensor] = []
+        for block in chain(self.encoder, self.decoder):
+            mlp = cast(T5Block, block).mlp
+            if isinstance(mlp, (MLP, GatedMLP)):
+                biases.append(mlp.b_out)
+            else:
+                raise NotImplementedError(
+                    f"b_out property is not supported for MLP of type {type(mlp).__name__}"
+                )
+        return torch.stack(biases, dim=0)
 
     @property
     def QK(self) -> FactoredMatrix:  # [n_layers, n_heads, d_model, d_model]
