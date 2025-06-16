@@ -57,13 +57,13 @@
             jupyterlab=">=3.5.0"
 
         [tool.poetry.group.docs.dependencies]
-            furo={version=">=2022.12.7"}
-            myst-parser={version=">=0.18.1"}
+            furo={version=">=2023.3.27,<2024.0.0"}
+            myst-parser={version=">=2.0.0,<3.0.0"}
             nbconvert="^7.9.2"
             nbsphinx="^0.9.3"
             pandoc="^2.3"
             snowballstemmer="*"
-            sphinx={version=">=6.0.0,<7.0.0"}
+            sphinx={version=">=7.0.0,<8.0.0"}
             sphinx-autobuild={version=">=2021.3.14,<2022.12.7"}
             sphinxcontrib-napoleon={version=">=0.7"}
             tabulate={version=">=0.9.0"}
