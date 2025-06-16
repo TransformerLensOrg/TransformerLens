@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import os
 from copy import deepcopy
-from typing import Dict, List, Union, cast
 
 import einops
 import numpy as np
@@ -139,7 +138,9 @@ def get_tokenizer_with_bos(tokenizer: PreTrainedTokenizerBase) -> PreTrainedToke
     return tokenizer_with_bos
 
 
-def get_input_with_manually_prepended_bos(tokenizer: PreTrainedTokenizerBase, input: str | list[str]) -> str | list[str]:
+def get_input_with_manually_prepended_bos(
+    tokenizer: PreTrainedTokenizerBase, input: str | list[str]
+) -> str | list[str]:
     """
     Manually prepends the bos token to the input.
 
@@ -157,7 +158,9 @@ def get_input_with_manually_prepended_bos(tokenizer: PreTrainedTokenizerBase, in
     return input
 
 
-def get_tokens_with_bos_removed(tokenizer: PreTrainedTokenizerBase, tokens: torch.Tensor) -> torch.Tensor:
+def get_tokens_with_bos_removed(
+    tokenizer: PreTrainedTokenizerBase, tokens: torch.Tensor
+) -> torch.Tensor:
     """
     Removes the bos token from the beginning of each sequence in `tokens`.
     The last dimension of `tokens` must be the sequence length.
@@ -187,7 +190,9 @@ def get_tokens_with_bos_removed(tokenizer: PreTrainedTokenizerBase, tokens: torc
         return tokens[tokens != -100].view(*bos_removed_shape)
 
 
-def get_attention_mask(tokenizer: PreTrainedTokenizerBase, tokens: torch.Tensor, prepend_bos: bool) -> torch.Tensor:
+def get_attention_mask(
+    tokenizer: PreTrainedTokenizerBase, tokens: torch.Tensor, prepend_bos: bool
+) -> torch.Tensor:
     """
     Computes the attention mask for the tokenized input.
     NOTE: Only the leftmost leading pads (when `padding_side == left`)
