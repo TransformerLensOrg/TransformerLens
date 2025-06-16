@@ -11,6 +11,7 @@ from .bloom import convert_bloom_weights
 from .coder import convert_coder_weights
 from .qwen import convert_qwen_weights
 from .qwen2 import convert_qwen2_weights
+from .qwen3 import convert_qwen3_weights
 from .phi import convert_phi_weights
 from .phi3 import convert_phi3_weights
 from .gemma import convert_gemma_weights

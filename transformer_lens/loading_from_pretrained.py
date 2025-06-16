@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Loading Pretrained Models Utilities.
 
 This module contains functions for loading pretrained models from the Hugging Face Hub.
@@ -8,7 +10,7 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import Dict, Optional, Union
+from typing import Any, Optional, Union
 
 import torch
 from huggingface_hub import HfApi
@@ -39,6 +41,7 @@ from transformer_lens.pretrained.weight_conversions import (
     convert_phi3_weights,
     convert_phi_weights,
     convert_qwen2_weights,
+    convert_qwen3_weights,
     convert_qwen_weights,
     convert_t5_weights,
     convert_openelm_weights,
@@ -162,7 +165,10 @@ OFFICIAL_MODEL_NAMES = [
     "meta-llama/Llama-3.2-3B-Instruct",
     "meta-llama/Llama-3.3-70B-Instruct",
     "Baidicoot/Othello-GPT-Transformer-Lens",
-    "bert-base-cased",
+    "google-bert/bert-base-cased",
+    "google-bert/bert-base-uncased",
+    "google-bert/bert-large-cased",
+    "google-bert/bert-large-uncased",
     "roneneldan/TinyStories-1M",
     "roneneldan/TinyStories-3M",
     "roneneldan/TinyStories-8M",
@@ -183,6 +189,7 @@ OFFICIAL_MODEL_NAMES = [
     "stabilityai/stablelm-tuned-alpha-7b",
     "mistralai/Mistral-7B-v0.1",
     "mistralai/Mistral-7B-Instruct-v0.1",
+    "mistralai/Mistral-Small-24B-Base-2501",
     "mistralai/Mistral-Nemo-Base-2407",
     "mistralai/Mixtral-8x7B-v0.1",
     "mistralai/Mixtral-8x7B-Instruct-v0.1",
@@ -229,10 +236,16 @@ OFFICIAL_MODEL_NAMES = [
     "Qwen/Qwen2.5-72B",
     "Qwen/Qwen2.5-72B-Instruct",
     "Qwen/QwQ-32B-Preview",
+    "Qwen/Qwen3-0.6B",
+    "Qwen/Qwen3-1.7B",
+    "Qwen/Qwen3-4B",
+    "Qwen/Qwen3-8B",
+    "Qwen/Qwen3-14B",
     "microsoft/phi-1",
     "microsoft/phi-1_5",
     "microsoft/phi-2",
     "microsoft/Phi-3-mini-4k-instruct",
+    "microsoft/phi-4",
     "google/gemma-2b",
     "google/gemma-7b",
     "google/gemma-2b-it",
@@ -602,6 +615,10 @@ MODEL_ALIASES = {
         "codellama/CodeLlama-7b-Instruct-hf",
     ],
     "Baidicoot/Othello-GPT-Transformer-Lens": ["othello-gpt"],
+    "google-bert/bert-base-cased": ["bert-base-cased"],
+    "google-bert/bert-base-uncased": ["bert-base-uncased"],
+    "google-bert/bert-large-cased": ["bert-large-cased"],
+    "google-bert/bert-large-uncased": ["bert-large-uncased"],
     "roneneldan/TinyStories-1M": ["tiny-stories-1M"],
     "roneneldan/TinyStories-3M": ["tiny-stories-3M"],
     "roneneldan/TinyStories-8M": ["tiny-stories-8M"],
@@ -662,19 +679,46 @@ MODEL_ALIASES = {
     "Qwen/Qwen1.5-7B-Chat": ["qwen1.5-7b-chat"],
     "Qwen/Qwen1.5-14B": ["qwen1.5-14b"],
     "Qwen/Qwen1.5-14B-Chat": ["qwen1.5-14b-chat"],
+    "Qwen/Qwen2-0.5B": ["qwen2-0.5b"],
+    "Qwen/Qwen2-0.5B-Instruct": ["qwen2-0.5b-instruct"],
+    "Qwen/Qwen2-1.5B": ["qwen2-1.5b"],
+    "Qwen/Qwen2-1.5B-Instruct": ["qwen2-1.5b-instruct"],
+    "Qwen/Qwen2-7B": ["qwen2-7b"],
+    "Qwen/Qwen2-7B-Instruct": ["qwen2-7b-instruct"],
+    "Qwen/Qwen2.5-0.5B": ["qwen2.5-0.5b"],
+    "Qwen/Qwen2.5-0.5B-Instruct": ["qwen2.5-0.5b-instruct"],
+    "Qwen/Qwen2.5-1.5B": ["qwen2.5-1.5b"],
+    "Qwen/Qwen2.5-1.5B-Instruct": ["qwen2.5-1.5b-instruct"],
+    "Qwen/Qwen2.5-3B": ["qwen2.5-3b"],
+    "Qwen/Qwen2.5-3B-Instruct": ["qwen2.5-3b-instruct"],
+    "Qwen/Qwen2.5-7B": ["qwen2.5-7b"],
+    "Qwen/Qwen2.5-7B-Instruct": ["qwen2.5-7b-instruct"],
+    "Qwen/Qwen2.5-14B": ["qwen2.5-14b"],
+    "Qwen/Qwen2.5-14B-Instruct": ["qwen2.5-14b-instruct"],
+    "Qwen/Qwen2.5-32B": ["qwen2.5-32b"],
+    "Qwen/Qwen2.5-32B-Instruct": ["qwen2.5-32b-instruct"],
+    "Qwen/Qwen2.5-72B": ["qwen2.5-72b"],
+    "Qwen/Qwen2.5-72B-Instruct": ["qwen2.5-72b-instruct"],
+    "Qwen/QwQ-32B-Preview": ["qwen-32b-preview"],
+    "Qwen/Qwen3-0.6B": ["qwen3-0.6b"],
+    "Qwen/Qwen3-1.7B": ["qwen3-1.7b"],
+    "Qwen/Qwen3-4B": ["qwen3-4b"],
+    "Qwen/Qwen3-8B": ["qwen3-8b"],
+    "Qwen/Qwen3-14B": ["qwen3-14b"],
     "microsoft/phi-1": ["phi-1"],
     "microsoft/phi-1_5": ["phi-1_5"],
     "microsoft/phi-2": ["phi-2"],
     "microsoft/Phi-3-mini-4k-instruct": ["phi-3"],
+    "microsoft/phi-4": ["phi-4"],
     "google/gemma-2b": ["gemma-2b"],
     "google/gemma-7b": ["gemma-7b"],
     "google/gemma-2b-it": ["gemma-2b-it"],
     "google/gemma-7b-it": ["gemma-7b-it"],
     "google/gemma-2-2b": ["gemma-2-2b"],
-    "google/gemma-2-9b": ["gemma-2-9b"],
-    "google/gemma-2-27b": ["gemma-2-27b"],
     "google/gemma-2-2b-it": ["gemma-2-2b-it"],
+    "google/gemma-2-9b": ["gemma-2-9b"],
     "google/gemma-2-9b-it": ["gemma-2-9b-it"],
+    "google/gemma-2-27b": ["gemma-2-27b"],
     "google/gemma-2-27b-it": ["gemma-2-27b-it"],
     "01-ai/Yi-6B": ["yi-6b", "Yi-6B"],
     "01-ai/Yi-34B": ["yi-34b", "Yi-34B"],
@@ -703,8 +747,10 @@ DEFAULT_MODEL_ALIASES = [
 NEED_REMOTE_CODE_MODELS = (
     "bigcode/santacoder",
     "Qwen/Qwen-",
+    "Qwen/Qwen3-",
     "microsoft/phi-2",
     "microsoft/Phi-3-mini-4k-instruct",
+    "microsoft/phi-4",
 )
 
 
@@ -736,7 +782,7 @@ def get_official_model_name(model_name: str):
     return official_model_name
 
 
-def convert_hf_model_config(model_name: str, **kwargs):
+def convert_hf_model_config(model_name: str, **kwargs: Any):
     """
     Returns the model config for a HuggingFace model, converted to a dictionary
     in the HookedTransformerConfig format.
@@ -758,14 +804,15 @@ def convert_hf_model_config(model_name: str, **kwargs):
     elif "gemma" in official_model_name.lower():
         architecture = "GemmaForCausalLM"
     else:
-        huggingface_token = os.environ.get("HF_TOKEN", None)
+        huggingface_token = os.environ.get("HF_TOKEN", "")
         hf_config = AutoConfig.from_pretrained(
             official_model_name,
-            token=huggingface_token,
+            token=huggingface_token if len(huggingface_token) > 0 else None,
             **kwargs,
         )
         architecture = hf_config.architectures[0]
 
+    cfg_dict: dict[str, Any]
     if official_model_name.startswith(
         ("llama-7b", "meta-llama/Llama-2-7b")
     ):  # same architecture for LLaMA and Llama-2
@@ -945,6 +992,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "NTK_by_parts_low_freq_factor": 1.0,
             "NTK_by_parts_high_freq_factor": 4.0,
             "NTK_by_parts_factor": 32.0,
+            "NTK_original_ctx_len": 8192,
         }
     elif "Llama-3.2-3B" in official_model_name:
         cfg_dict = {
@@ -969,6 +1017,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "NTK_by_parts_low_freq_factor": 1.0,
             "NTK_by_parts_high_freq_factor": 4.0,
             "NTK_by_parts_factor": 32.0,
+            "NTK_original_ctx_len": 8192,
         }
     elif "Llama-3.3-70B" in official_model_name:
         cfg_dict = {
@@ -985,7 +1034,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "normalization_type": "RMS",
             "positional_embedding_type": "rotary",
             "rotary_adjacent_pairs": False,
-            "rotary_dim": 32,
+            "rotary_dim": 128,
             "final_rms": True,
             "gated_mlp": True,
             "rotary_base": 500000.0,
@@ -993,6 +1042,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "NTK_by_parts_low_freq_factor": 1.0,
             "NTK_by_parts_high_freq_factor": 4.0,
             "NTK_by_parts_factor": 8.0,
+            "NTK_original_ctx_len": 8192,
         }
     elif "Llama-3.1-8B" in official_model_name:
         cfg_dict = {
@@ -1017,6 +1067,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "NTK_by_parts_low_freq_factor": 1.0,
             "NTK_by_parts_high_freq_factor": 4.0,
             "NTK_by_parts_factor": 8.0,
+            "NTK_original_ctx_len": 8192,
         }
     elif "Llama-3.1-70B" in official_model_name:
         cfg_dict = {
@@ -1041,6 +1092,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "NTK_by_parts_low_freq_factor": 1.0,
             "NTK_by_parts_high_freq_factor": 4.0,
             "NTK_by_parts_factor": 8.0,
+            "NTK_original_ctx_len": 8192,
         }
     elif architecture == "GPTNeoForCausalLM":
         cfg_dict = {
@@ -1134,6 +1186,8 @@ def convert_hf_model_config(model_name: str, **kwargs):
         rotary_pct = hf_config.rotary_pct
         cfg_dict["rotary_dim"] = round(rotary_pct * cfg_dict["d_head"])
     elif architecture == "BertForMaskedLM":
+        # All supported Bert architectures have the same config,
+        # so we can use the BertForMaskedLM config for all of them
         cfg_dict = {
             "d_model": hf_config.hidden_size,
             "d_head": hf_config.hidden_size // hf_config.num_attention_heads,
@@ -1150,9 +1204,13 @@ def convert_hf_model_config(model_name: str, **kwargs):
         use_local_attn = True if hf_config.sliding_window else False
         cfg_dict = {
             "d_model": hf_config.hidden_size,
-            "d_head": hf_config.head_dim
-            if hasattr(hf_config, "head_dim") and hf_config.head_dim > 0
-            else hf_config.hidden_size // hf_config.num_attention_heads,
+            "d_head": (
+                hf_config.head_dim
+                if hasattr(hf_config, "head_dim")
+                and hf_config.head_dim is not None
+                and hf_config.head_dim > 0
+                else hf_config.hidden_size // hf_config.num_attention_heads
+            ),
             "n_heads": hf_config.num_attention_heads,
             "d_mlp": hf_config.intermediate_size,
             "n_layers": hf_config.num_hidden_layers,
@@ -1302,6 +1360,42 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "gated_mlp": True,
             "default_prepend_bos": False,
         }
+    elif architecture == "Qwen3ForCausalLM":
+        cfg_dict = {
+            "d_model": hf_config.hidden_size,
+            "d_head": hf_config.head_dim
+            if hasattr(hf_config, "head_dim")
+            and hf_config.head_dim is not None
+            and hf_config.head_dim > 0
+            else hf_config.hidden_size // hf_config.num_attention_heads,
+            "n_heads": hf_config.num_attention_heads,
+            "n_key_value_heads": (
+                hf_config.num_key_value_heads
+                if hf_config.num_key_value_heads != hf_config.num_attention_heads
+                else None
+            ),
+            "d_mlp": hf_config.intermediate_size,
+            "n_layers": hf_config.num_hidden_layers,
+            "n_ctx": 2048,
+            "eps": hf_config.rms_norm_eps,
+            "d_vocab": hf_config.vocab_size,
+            "act_fn": hf_config.hidden_act,
+            "use_attn_scale": True,
+            "initializer_range": hf_config.initializer_range,
+            "normalization_type": "RMS",
+            "positional_embedding_type": "rotary",
+            "rotary_base": int(hf_config.rope_theta),
+            "rotary_adjacent_pairs": False,
+            "rotary_dim": hf_config.head_dim
+            if hasattr(hf_config, "head_dim") and hf_config.head_dim > 0
+            else hf_config.hidden_size // hf_config.num_attention_heads,
+            "tokenizer_prepends_bos": True,
+            "final_rms": True,
+            "gated_mlp": True,
+            "default_prepend_bos": False,
+            "use_qk_norm": True,
+            "trust_remote_code": True,
+        }
     elif architecture == "PhiForCausalLM":
         # Architecture for microsoft/phi models
         cfg_dict = {
@@ -1332,6 +1426,11 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "n_heads": hf_config.num_attention_heads,
             "d_mlp": hf_config.intermediate_size,
             "n_layers": hf_config.num_hidden_layers,
+            "n_key_value_heads": (
+                hf_config.num_key_value_heads
+                if hf_config.num_key_value_heads != hf_config.num_attention_heads
+                else None
+            ),
             "n_ctx": hf_config.max_position_embeddings,
             "eps": hf_config.rms_norm_eps,
             "d_vocab": hf_config.vocab_size,
@@ -1549,7 +1648,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
     return cfg_dict
 
 
-def convert_neel_model_config(official_model_name: str, **kwargs):
+def convert_neel_model_config(official_model_name: str, **kwargs: Any):
     """
     Loads the config for a model trained by me (NeelNanda), converted to a dictionary
     in the HookedTransformerConfig format.
@@ -1599,7 +1698,7 @@ def get_pretrained_model_config(
     default_prepend_bos: Optional[bool] = None,
     dtype: torch.dtype = torch.float32,
     first_n_layers: Optional[int] = None,
-    **kwargs,
+    **kwargs: Any,
 ):
     """Returns the pretrained model config as an HookedTransformerConfig object.
 
@@ -1722,6 +1821,9 @@ def get_pretrained_model_config(
 
     if hf_cfg is not None:
         cfg_dict["load_in_4bit"] = hf_cfg.get("quantization_config", {}).get("load_in_4bit", False)
+        cfg_dict["d_vocab"] = hf_cfg.get("vocab_size", cfg_dict["d_vocab"])
+        if cfg_dict["original_architecture"] == "Qwen2ForCausalLM":
+            cfg_dict["rotary_base"] = hf_cfg.get("rope_theta", cfg_dict["rotary_base"])
     if first_n_layers is not None:
         cfg_dict["n_layers"] = first_n_layers
 
@@ -1729,7 +1831,7 @@ def get_pretrained_model_config(
     return cfg
 
 
-def get_num_params_of_pretrained(model_name):
+def get_num_params_of_pretrained(model_name: str):
     """
     Returns the number of parameters of a pretrained model, used to filter to only run code for sufficiently small models.
     """
@@ -1755,7 +1857,7 @@ PYTHIA_CHECKPOINTS = [0, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512] + list(
 PYTHIA_V0_CHECKPOINTS = list(range(1000, 143000 + 1, 1000))
 
 
-def get_checkpoint_labels(model_name: str, **kwargs):
+def get_checkpoint_labels(model_name: str, **kwargs: Any):
     """Returns the checkpoint labels for a given model, and the label_type
     (step or token). Raises an error for models that are not checkpointed."""
     official_model_name = get_official_model_name(model_name)
@@ -1793,10 +1895,10 @@ def get_checkpoint_labels(model_name: str, **kwargs):
 def get_pretrained_state_dict(
     official_model_name: str,
     cfg: HookedTransformerConfig,
-    hf_model=None,
+    hf_model: Optional[Any] = None,
     dtype: torch.dtype = torch.float32,
-    **kwargs,
-) -> Dict[str, torch.Tensor]:
+    **kwargs: Any,
+) -> dict[str, torch.Tensor]:
     """
     Loads in the model weights for a pretrained model, and processes them to
     have the HookedTransformer parameter names and shapes. Supports checkpointed
@@ -1851,13 +1953,13 @@ def get_pretrained_state_dict(
         return state_dict
     else:
         if cfg.from_checkpoint:
-            huggingface_token = os.environ.get("HF_TOKEN", None)
+            huggingface_token = os.environ.get("HF_TOKEN", "")
             if official_model_name.startswith("stanford-crfm"):
                 hf_model = AutoModelForCausalLM.from_pretrained(
                     official_model_name,
                     revision=f"checkpoint-{cfg.checkpoint_value}",
                     torch_dtype=dtype,
-                    token=huggingface_token,
+                    token=huggingface_token if len(huggingface_token) > 0 else None,
                     **kwargs,
                 )
             elif official_model_name.startswith("EleutherAI/pythia"):
@@ -1871,28 +1973,28 @@ def get_pretrained_state_dict(
             else:
                 raise ValueError(f"Checkpoints for model {official_model_name} are not supported")
         elif hf_model is None:
-            huggingface_token = os.environ.get("HF_TOKEN", None)
+            huggingface_token = os.environ.get("HF_TOKEN", "")
             if official_model_name in NON_HF_HOSTED_MODEL_NAMES:
                 raise NotImplementedError("Model not hosted on HuggingFace, must pass in hf_model")
             elif "bert" in official_model_name:
                 hf_model = BertForPreTraining.from_pretrained(
                     official_model_name,
                     torch_dtype=dtype,
-                    token=huggingface_token,
+                    token=huggingface_token if len(huggingface_token) > 0 else None,
                     **kwargs,
                 )
             elif "t5" in official_model_name:
                 hf_model = T5ForConditionalGeneration.from_pretrained(
                     official_model_name,
                     torch_dtype=dtype,
-                    token=huggingface_token,
+                    token=huggingface_token if len(huggingface_token) > 0 else None,
                     **kwargs,
                 )
             else:
                 hf_model = AutoModelForCausalLM.from_pretrained(
                     official_model_name,
                     torch_dtype=dtype,
-                    token=huggingface_token,
+                    token=huggingface_token if len(huggingface_token) > 0 else None,
                     **kwargs,
                 )
 
@@ -1929,6 +2031,8 @@ def get_pretrained_state_dict(
             state_dict = convert_qwen_weights(hf_model, cfg)
         elif cfg.original_architecture == "Qwen2ForCausalLM":
             state_dict = convert_qwen2_weights(hf_model, cfg)
+        elif cfg.original_architecture == "Qwen3ForCausalLM":
+            state_dict = convert_qwen3_weights(hf_model, cfg)
         elif cfg.original_architecture == "PhiForCausalLM":
             state_dict = convert_phi_weights(hf_model, cfg)
         elif cfg.original_architecture == "Phi3ForCausalLM":
@@ -1947,7 +2051,7 @@ def get_pretrained_state_dict(
         return state_dict
 
 
-def fill_missing_keys(model, state_dict):
+def fill_missing_keys(model: torch.nn.Module, state_dict: dict[str, torch.Tensor]):
     """Takes in a state dict from a pretrained model, and fills in any missing keys with the default initialization.
 
     This function is assumed to be run before weights are initialized.
@@ -1992,7 +2096,7 @@ class Config:
 
 
 # Returns the configuration parameters of the model as a basic Config dataclass
-def get_basic_config(model_name: str, **kwargs) -> Config:
+def get_basic_config(model_name: str, **kwargs: Any) -> Config:
     return Config(
         **{
             k: v

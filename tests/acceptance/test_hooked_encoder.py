@@ -5,7 +5,7 @@ import torch
 import torch.nn.functional as F
 from jaxtyping import Float
 from torch.testing import assert_close
-from transformers import AutoTokenizer, BertForMaskedLM
+from transformers import AutoTokenizer, BertForPreTraining
 
 from transformer_lens import HookedEncoder
 
@@ -19,7 +19,7 @@ def our_bert():
 
 @pytest.fixture(scope="module")
 def huggingface_bert():
-    return BertForMaskedLM.from_pretrained(MODEL_NAME)
+    return BertForPreTraining.from_pretrained(MODEL_NAME)
 
 
 @pytest.fixture(scope="module")
@@ -28,35 +28,41 @@ def tokenizer():
 
 
 @pytest.fixture
-def hello_world_tokens(tokenizer):
-    return tokenizer("Hello, world!", return_tensors="pt")["input_ids"]
+def tokens(tokenizer):
+    return tokenizer("The [MASK] sat on the mat", return_tensors="pt")["input_ids"]
 
 
 def test_full_model(our_bert, huggingface_bert, tokenizer):
     sequences = [
-        "Hello, world!",
-        "this is another sequence of tokens",
+        "Hello, my [MASK] is Bert.",
+        "I went to the [MASK] to buy some groceries.",
     ]
     tokenized = tokenizer(sequences, return_tensors="pt", padding=True)
     input_ids = tokenized["input_ids"]
     attention_mask = tokenized["attention_mask"]
 
-    huggingface_bert_out = huggingface_bert(input_ids, attention_mask=attention_mask).logits
-    our_bert_out = our_bert(input_ids, one_zero_attention_mask=attention_mask)
-    assert_close(huggingface_bert_out, our_bert_out, rtol=1.3e-6, atol=4e-5)
+    huggingface_bert_logits = huggingface_bert(
+        input_ids, attention_mask=attention_mask
+    ).prediction_logits
+    our_bert_logits = our_bert(input_ids, one_zero_attention_mask=attention_mask)
+    assert_close(huggingface_bert_logits, our_bert_logits, rtol=1.3e-6, atol=4e-5)
 
 
-def test_embed_one_sentence(our_bert, huggingface_bert, hello_world_tokens):
+def test_embed_one_prediction(our_bert, huggingface_bert, tokens):
     huggingface_embed = huggingface_bert.bert.embeddings
     our_embed = our_bert.embed
 
-    huggingface_embed_out = huggingface_embed(hello_world_tokens)[0]
-    our_embed_out = our_embed(hello_world_tokens).squeeze(0)
+    huggingface_embed_out = huggingface_embed(tokens)[0]
+    our_embed_out = our_embed(tokens).squeeze(0)
     assert_close(huggingface_embed_out, our_embed_out)
 
 
-def test_embed_two_sentences(our_bert, huggingface_bert, tokenizer):
-    encoding = tokenizer("First sentence.", "Second sentence.", return_tensors="pt")
+def test_embed_two_predictions(our_bert, huggingface_bert, tokenizer):
+    encoding = tokenizer(
+        "Hello, my [MASK] is Bert.",
+        "I went to the [MASK] to buy some groceries.",
+        return_tensors="pt",
+    )
     input_ids = encoding["input_ids"]
     token_type_ids = encoding["token_type_ids"]
 
@@ -67,11 +73,11 @@ def test_embed_two_sentences(our_bert, huggingface_bert, tokenizer):
     assert_close(huggingface_embed_out, our_embed_out)
 
 
-def test_attention(our_bert, huggingface_bert, hello_world_tokens):
+def test_attention(our_bert, huggingface_bert, tokens):
     huggingface_embed = huggingface_bert.bert.embeddings
     huggingface_attn = huggingface_bert.bert.encoder.layer[0].attention
 
-    embed_out = huggingface_embed(hello_world_tokens)
+    embed_out = huggingface_embed(tokens)
 
     our_attn = our_bert.blocks[0].attn
 
@@ -81,11 +87,11 @@ def test_attention(our_bert, huggingface_bert, hello_world_tokens):
     assert_close(our_attn_out, huggingface_attn_out)
 
 
-def test_bert_block(our_bert, huggingface_bert, hello_world_tokens):
+def test_bert_block(our_bert, huggingface_bert, tokens):
     huggingface_embed = huggingface_bert.bert.embeddings
     huggingface_block = huggingface_bert.bert.encoder.layer[0]
 
-    embed_out = huggingface_embed(hello_world_tokens)
+    embed_out = huggingface_embed(tokens)
 
     our_block = our_bert.blocks[0]
 
@@ -94,18 +100,26 @@ def test_bert_block(our_bert, huggingface_bert, hello_world_tokens):
     assert_close(our_block_out, huggingface_block_out)
 
 
-def test_mlm_head(our_bert, huggingface_bert, hello_world_tokens):
-    huggingface_bert_core_outputs = huggingface_bert.bert(hello_world_tokens).last_hidden_state
+def test_bert_pooler(our_bert, huggingface_bert, tokens):
+    huggingface_embed_out = huggingface_bert.bert.embeddings(tokens)
+    huggingface_encoder_out = huggingface_bert.bert.encoder(huggingface_embed_out)
+    cls_token_representation = huggingface_encoder_out[0]
 
-    our_mlm_head_out = our_bert.mlm_head(huggingface_bert_core_outputs)
-    our_unembed_out = our_bert.unembed(our_mlm_head_out)
-    huggingface_predictions_out = huggingface_bert.cls.predictions(huggingface_bert_core_outputs)
-
-    assert_close(our_unembed_out, huggingface_predictions_out, rtol=1.3e-6, atol=4e-5)
+    our_pooler_out = our_bert.pooler(cls_token_representation)
+    huggingface_pooler_out = huggingface_bert.bert.pooler(cls_token_representation)
+    assert_close(our_pooler_out, huggingface_pooler_out)
 
 
-def test_unembed(our_bert, huggingface_bert, hello_world_tokens):
-    huggingface_bert_core_outputs = huggingface_bert.bert(hello_world_tokens).last_hidden_state
+def test_nsp_head(our_bert, huggingface_bert, tokens):
+    huggingface_bert_pooler_output = huggingface_bert.bert(tokens).pooler_output
+    our_nsp_head_out = our_bert.nsp_head(huggingface_bert_pooler_output)
+    huggingface_nsp_head_out = huggingface_bert.cls.seq_relationship(huggingface_bert_pooler_output)
+
+    assert_close(our_nsp_head_out, huggingface_nsp_head_out)
+
+
+def test_mlm_head(our_bert, huggingface_bert, tokens):
+    huggingface_bert_core_outputs = huggingface_bert.bert(tokens).last_hidden_state
 
     our_mlm_head_out = our_bert.mlm_head(huggingface_bert_core_outputs)
     huggingface_predictions_out = huggingface_bert.cls.predictions.transform(
@@ -116,9 +130,18 @@ def test_unembed(our_bert, huggingface_bert, hello_world_tokens):
     assert_close(our_mlm_head_out, huggingface_predictions_out, rtol=1.3e-3, atol=1e-5)
 
 
-def test_run_with_cache(our_bert, huggingface_bert, hello_world_tokens):
-    model = HookedEncoder.from_pretrained("bert-base-cased")
-    logits, cache = model.run_with_cache(hello_world_tokens)
+def test_unembed(our_bert, huggingface_bert, tokens):
+    huggingface_bert_core_outputs = huggingface_bert.bert(tokens).last_hidden_state
+
+    our_mlm_head_out = our_bert.mlm_head(huggingface_bert_core_outputs)
+    our_unembed_out = our_bert.unembed(our_mlm_head_out)
+    huggingface_predictions_out = huggingface_bert.cls.predictions(huggingface_bert_core_outputs)
+
+    assert_close(our_unembed_out, huggingface_predictions_out, rtol=1.3e-6, atol=4e-5)
+
+
+def test_run_with_cache(our_bert, tokens):
+    _, cache = our_bert.run_with_cache(tokens)
 
     # check that an arbitrary subset of the keys exist
     assert "embed.hook_embed" in cache
@@ -156,24 +179,49 @@ def test_half_precision(dtype):
     _ = model(model.tokenizer("Hello, world", return_tensors="pt")["input_ids"])
 
 
-def test_predictions(our_bert, huggingface_bert, tokenizer):
+def _get_predictions(
+    logits: Float[torch.Tensor, "batch pos d_vocab"], positions: List[int], tokenizer
+):
+    logits_at_position = logits.squeeze(0)[positions]
+    predicted_tokens = F.softmax(logits_at_position, dim=-1).argmax(dim=-1)
+    return tokenizer.batch_decode(predicted_tokens)
+
+
+def test_predictions_mlm(our_bert, huggingface_bert, tokenizer):
     input_ids = tokenizer("The [MASK] sat on the mat", return_tensors="pt")["input_ids"]
 
-    def get_predictions(logits: Float[torch.Tensor, "batch pos d_vocab"], positions: List[int]):
-        logits_at_position = logits.squeeze(0)[positions]
-        predicted_tokens = F.softmax(logits_at_position, dim=-1).argmax(dim=-1)
-        return tokenizer.batch_decode(predicted_tokens)
+    our_bert_logits = our_bert(input_ids)
+    our_prediction = _get_predictions(our_bert_logits, [2], tokenizer)
 
-    our_bert_out = our_bert(input_ids)
-    our_prediction = get_predictions(our_bert_out, [2])
-
-    huggingface_bert_out = huggingface_bert(input_ids).logits
-    huggingface_prediction = get_predictions(huggingface_bert_out, [2])
+    huggingface_bert_out = huggingface_bert(input_ids).prediction_logits
+    huggingface_prediction = _get_predictions(huggingface_bert_out, [2], tokenizer)
 
     assert our_prediction == huggingface_prediction
 
 
+def test_predictions_from_forward_function_mlm(our_bert, huggingface_bert, tokenizer):
+    input_ids = tokenizer("The [MASK] sat on the mat", return_tensors="pt")["input_ids"]
+    our_prediction = our_bert(input_ids, return_type="predictions")
+
+    huggingface_bert_out = huggingface_bert(input_ids).prediction_logits
+    huggingface_prediction = _get_predictions(huggingface_bert_out, [2], tokenizer)[
+        0
+    ]  # prediction is returned as a list
+
+    assert our_prediction == huggingface_prediction
+
+
+def test_input_list_of_strings_mlm(our_bert, huggingface_bert, tokenizer):
+    prompts = ["The [MASK] sat on the mat", "She [MASK] to the store", "The dog [MASK] the ball"]
+    encodings = tokenizer(prompts, return_tensors="pt", truncation=True, padding=True)
+    our_bert_logits = our_bert(prompts)
+
+    huggingface_bert_logits = huggingface_bert(**encodings).prediction_logits
+
+    assert_close(our_bert_logits, huggingface_bert_logits, rtol=1.3e-6, atol=4e-5)
+
+
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="Requires a CUDA device")
-def test_cuda(hello_world_tokens):
+def test_cuda(mlm_tokens):
     model = HookedEncoder.from_pretrained(MODEL_NAME)
-    model(hello_world_tokens)
+    model(mlm_tokens)

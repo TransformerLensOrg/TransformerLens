@@ -212,6 +212,7 @@ class HookedTransformerConfig:
     use_split_qkv_input: bool = False
     use_hook_mlp_in: bool = False
     use_attn_in: bool = False
+    use_qk_norm: bool = False
     use_local_attn: bool = False
     ungroup_grouped_query_attention: bool = False
     original_architecture: Optional[str] = None
@@ -243,7 +244,7 @@ class HookedTransformerConfig:
     default_prepend_bos: bool = True
     dtype: torch.dtype = torch.float32
     tokenizer_prepends_bos: Optional[bool] = None
-    n_key_value_heads: Optional[List[int]] = None
+    n_key_value_heads: Optional[int] = None
     post_embedding_ln: bool = False
     rotary_base: int = 10000
     trust_remote_code: bool = False
@@ -262,6 +263,7 @@ class HookedTransformerConfig:
     NTK_by_parts_low_freq_factor: float = 1.0
     NTK_by_parts_high_freq_factor: float = 4.0
     NTK_by_parts_factor: float = 8.0
+    NTK_original_ctx_len: int = 8192
     n_query_heads: Optional[List[int]] = None
     d_mlps: Optional[List[int]] = None
 

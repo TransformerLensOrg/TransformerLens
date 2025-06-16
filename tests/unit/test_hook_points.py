@@ -1,7 +1,5 @@
 from unittest import mock
 
-from torch.utils.hooks import RemovableHandle
-
 from transformer_lens.hook_points import HookPoint
 
 
@@ -46,15 +44,10 @@ def test_add_hook_with_level(mock_handle):
     assert hook_point.fwd_hooks[0].context_level == 5
 
 
-@mock.patch("torch.utils.hooks.RemovableHandle", autospec=True)
+@mock.patch("torch.utils.hooks.RemovableHandle")
 def test_add_hook_prepend(mock_handle):
-    mock_handle1 = mock.Mock(spec=RemovableHandle)
-    mock_handle1.id = 1
-    mock_handle2 = mock.Mock(spec=RemovableHandle)
-    mock_handle2.id = 2
-
-    # Set the side effect to return different mocks on subsequent calls
-    mock_handle.side_effect = [mock_handle1, mock_handle2]
+    mock_handle.id = 0
+    mock_handle.next_id = 1
 
     hook_point, _ = setup_hook_point_and_hook()
 
