@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Loading Pretrained Models Utilities.
 
 This module contains functions for loading pretrained models from the Hugging Face Hub.
@@ -10,7 +12,7 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Optional, Union
 
 import torch
 from huggingface_hub import HfApi
@@ -41,6 +43,7 @@ from transformer_lens.pretrained.weight_conversions import (
     convert_phi3_weights,
     convert_phi_weights,
     convert_qwen2_weights,
+    convert_qwen3_weights,
     convert_qwen_weights,
     convert_t5_weights,
 )
@@ -57,6 +60,7 @@ NON_HF_HOSTED_MODEL_NAMES = [
 NEED_REMOTE_CODE_MODELS = (
     "bigcode/santacoder",
     "Qwen/Qwen-",
+    "Qwen/Qwen3-",
     "microsoft/phi-2",
     "microsoft/Phi-3-mini-4k-instruct",
     "microsoft/phi-4",
@@ -121,6 +125,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
         )
         architecture = hf_config.architectures[0]
 
+    cfg_dict: dict[str, Any]
     if official_model_name.startswith(
         ("llama-7b", "meta-llama/Llama-2-7b")
     ):  # same architecture for LLaMA and Llama-2
@@ -512,9 +517,13 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
         use_local_attn = True if hf_config.sliding_window else False
         cfg_dict = {
             "d_model": hf_config.hidden_size,
-            "d_head": hf_config.head_dim
-            if hasattr(hf_config, "head_dim") and hf_config.head_dim > 0
-            else hf_config.hidden_size // hf_config.num_attention_heads,
+            "d_head": (
+                hf_config.head_dim
+                if hasattr(hf_config, "head_dim")
+                and hf_config.head_dim is not None
+                and hf_config.head_dim > 0
+                else hf_config.hidden_size // hf_config.num_attention_heads
+            ),
             "n_heads": hf_config.num_attention_heads,
             "d_mlp": hf_config.intermediate_size,
             "n_layers": hf_config.num_hidden_layers,
@@ -663,6 +672,42 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "final_rms": True,
             "gated_mlp": True,
             "default_prepend_bos": False,
+        }
+    elif architecture == "Qwen3ForCausalLM":
+        cfg_dict = {
+            "d_model": hf_config.hidden_size,
+            "d_head": hf_config.head_dim
+            if hasattr(hf_config, "head_dim")
+            and hf_config.head_dim is not None
+            and hf_config.head_dim > 0
+            else hf_config.hidden_size // hf_config.num_attention_heads,
+            "n_heads": hf_config.num_attention_heads,
+            "n_key_value_heads": (
+                hf_config.num_key_value_heads
+                if hf_config.num_key_value_heads != hf_config.num_attention_heads
+                else None
+            ),
+            "d_mlp": hf_config.intermediate_size,
+            "n_layers": hf_config.num_hidden_layers,
+            "n_ctx": 2048,
+            "eps": hf_config.rms_norm_eps,
+            "d_vocab": hf_config.vocab_size,
+            "act_fn": hf_config.hidden_act,
+            "use_attn_scale": True,
+            "initializer_range": hf_config.initializer_range,
+            "normalization_type": "RMS",
+            "positional_embedding_type": "rotary",
+            "rotary_base": int(hf_config.rope_theta),
+            "rotary_adjacent_pairs": False,
+            "rotary_dim": hf_config.head_dim
+            if hasattr(hf_config, "head_dim") and hf_config.head_dim > 0
+            else hf_config.hidden_size // hf_config.num_attention_heads,
+            "tokenizer_prepends_bos": True,
+            "final_rms": True,
+            "gated_mlp": True,
+            "default_prepend_bos": False,
+            "use_qk_norm": True,
+            "trust_remote_code": True,
         }
     elif architecture == "PhiForCausalLM":
         # Architecture for microsoft/phi models
@@ -1044,6 +1089,8 @@ def get_pretrained_model_config(
     if hf_cfg is not None:
         cfg_dict["load_in_4bit"] = hf_cfg.get("quantization_config", {}).get("load_in_4bit", False)
         cfg_dict["d_vocab"] = hf_cfg.get("vocab_size", cfg_dict["d_vocab"])
+        if cfg_dict["original_architecture"] == "Qwen2ForCausalLM":
+            cfg_dict["rotary_base"] = hf_cfg.get("rope_theta", cfg_dict["rotary_base"])
     if first_n_layers is not None:
         cfg_dict["n_layers"] = first_n_layers
 
@@ -1253,6 +1300,8 @@ def get_pretrained_state_dict(
             state_dict = convert_qwen_weights(hf_model, cfg)
         elif cfg.original_architecture == "Qwen2ForCausalLM":
             state_dict = convert_qwen2_weights(hf_model, cfg)
+        elif cfg.original_architecture == "Qwen3ForCausalLM":
+            state_dict = convert_qwen3_weights(hf_model, cfg)
         elif cfg.original_architecture == "PhiForCausalLM":
             state_dict = convert_phi_weights(hf_model, cfg)
         elif cfg.original_architecture == "Phi3ForCausalLM":
@@ -1269,7 +1318,7 @@ def get_pretrained_state_dict(
         return state_dict
 
 
-def fill_missing_keys(model: Any, state_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
+def fill_missing_keys(model: torch.nn.Module, state_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
     """Takes in a state dict from a pretrained model, and fills in any missing keys with the default initialization.
 
     This function is assumed to be run before weights are initialized.

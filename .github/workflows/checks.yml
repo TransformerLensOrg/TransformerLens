@@ -6,27 +6,27 @@ on:
       - main
       - dev*
       - refactor*
-    paths:
-      - "**" # Include all files by default
-      - "!.devcontainer/**"
-      - "!.vscode/**"
-      - "!.git*"
-      - "!*.md"
-      - "!.github/**"
-      - ".github/workflows/checks.yml" # Still include current workflow
+    tags:
+      - "v*.*.*"
+    paths-ignore:
+      - ".devcontainer/**"
+      - ".vscode/**"
+      - ".git*"
+      - "*.md"
+      - ".github/**"
+      - "!.github/workflows/checks.yml"
   pull_request:
     branches:
       - main
       - dev*
       - refactor*
-    paths:
-      - "**"
-      - "!.devcontainer/**"
-      - "!.vscode/**"
-      - "!.git*"
-      - "!*.md"
-      - "!.github/**"
-      - ".github/workflows/checks.yml"
+    paths-ignore:
+      - ".devcontainer/**"
+      - ".vscode/**"
+      - ".git*"
+      - "*.md"
+      - ".github/**"
+      - "!.github/workflows/checks.yml"
   # Allow this workflow to be called from other workflows
   workflow_call:
     inputs:
@@ -34,6 +34,9 @@ on:
       dummy:
         type: string
         required: false
+    secrets:
+      HF_TOKEN:
+        required: false 
 
 permissions:
   actions: write
@@ -48,6 +51,7 @@ jobs:
         python-version:
           - "3.10"
           - "3.11"
+          - "3.12"
     steps:
       - uses: actions/checkout@v3
       - name: Install Poetry
@@ -73,7 +77,7 @@ jobs:
         if: env.HF_TOKEN != ''
         run: |
           pip install huggingface_hub
-          huggingface-cli login --token $HF_TOKEN
+          huggingface-cli login --token "$HF_TOKEN"
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
       - name: Unit Test
@@ -95,7 +99,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: "3.12"
+          python-version: "3.13"
           cache: "poetry"
       - name: Cache Models used with Tests
         uses: actions/cache@v3
@@ -119,7 +123,7 @@ jobs:
         if: env.HF_TOKEN != ''
         run: |
           pip install huggingface_hub
-          huggingface-cli login --token $HF_TOKEN
+          huggingface-cli login --token "$HF_TOKEN"
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
       - name: Test Suite with Coverage Report
@@ -216,7 +220,7 @@ jobs:
         if: env.HF_TOKEN != ''
         run: |
           pip install huggingface_hub
-          huggingface-cli login --token $HF_TOKEN
+          huggingface-cli login --token "$HF_TOKEN"
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
       - name: Build Docs
