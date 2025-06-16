@@ -10,7 +10,7 @@ import logging
 import os
 from itertools import chain
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union, cast, overload
+from typing import Dict, List, Optional, Tuple, TypeVar, Union, cast, overload
 
 import torch
 import tqdm
@@ -28,6 +28,8 @@ from transformer_lens.hook_points import HookedRootModule, HookPoint
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.utilities import devices
 from transformer_lens.utils import sample_logits
+
+T = TypeVar("T", bound="HookedEncoderDecoder")
 
 
 class HookedEncoderDecoder(HookedRootModule):
@@ -94,7 +96,7 @@ class HookedEncoderDecoder(HookedRootModule):
 
         self.hook_embed = HookPoint()
 
-        if move_to_device:
+        if move_to_device and self.cfg.device is not None:
             self.to(self.cfg.device)
 
         self.setup()
@@ -509,17 +511,19 @@ class HookedEncoderDecoder(HookedRootModule):
     ):
         return devices.move_to_and_update_config(self, device_or_dtype, print_details)
 
-    def cuda(self, device: Union[int, torch.device, None] = None):
-        # Wrapper around cuda that also changes self.cfg.device
-        return self.to("cuda")
+    def cuda(self: T, device: Optional[Union[int, torch.device]] = None) -> T:
+        if isinstance(device, int):
+            return self.to(f"cuda:{device}")
+        elif device is None:
+            return self.to("cuda")
+        else:
+            return self.to(device)
 
-    def cpu(self):
-        # Wrapper around cuda that also changes self.cfg.device
+    def cpu(self: T) -> T:
         return self.to("cpu")
 
-    def mps(self):
-        # Wrapper around cuda that also changes self.cfg.device
-        return self.to("mps")
+    def mps(self: T) -> T:
+        return self.to(torch.device("mps"))
 
     @classmethod
     def from_pretrained(
@@ -577,7 +581,7 @@ class HookedEncoderDecoder(HookedRootModule):
 
         model.load_state_dict(state_dict, strict=False)
 
-        if move_to_device:
+        if move_to_device and cfg.device is not None:
             model.to(cfg.device)
 
         print(f"Loaded pretrained model {model_name} into HookedTransformer")

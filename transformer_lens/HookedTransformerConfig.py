@@ -15,7 +15,7 @@ from typing import Any, Dict, List, Optional, Union
 import numpy as np
 import torch
 
-import transformer_lens.utilities.devices as device_utils
+from transformer_lens import utils
 from transformer_lens.utilities.activation_functions import SUPPORTED_ACTIVATIONS
 
 
@@ -192,8 +192,6 @@ class HookedTransformerConfig:
         NTK_by_parts_factor (float): The overall factor used in the "NTK-by-parts" method that
             affects the rate of change between low and high-frequency interpolation strategies.
             Defaults to 8.0.
-
-
     """
 
     n_layers: int
@@ -212,6 +210,7 @@ class HookedTransformerConfig:
     use_split_qkv_input: bool = False
     use_hook_mlp_in: bool = False
     use_attn_in: bool = False
+    use_qk_norm: bool = False
     use_local_attn: bool = False
     ungroup_grouped_query_attention: bool = False
     original_architecture: Optional[str] = None
@@ -262,6 +261,7 @@ class HookedTransformerConfig:
     NTK_by_parts_low_freq_factor: float = 1.0
     NTK_by_parts_high_freq_factor: float = 4.0
     NTK_by_parts_factor: float = 8.0
+    NTK_original_ctx_len: int = 8192
 
     def __post_init__(self):
         if self.n_heads == -1:
@@ -327,7 +327,7 @@ class HookedTransformerConfig:
             self.n_params += self.n_layers * mlp_params_per_layer
 
         if self.device is None:
-            self.device = device_utils.get_device()
+            self.device = str(utils.get_device())
 
         if self.n_devices > 1:
             assert (

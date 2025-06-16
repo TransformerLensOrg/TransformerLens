@@ -1,10 +1,9 @@
 """Next Sentence Prediction.
 
-Contains a BERT style model specifically for Next Sentence Prediction. This is separate from 
-:class:`transformer_lens.HookedTransformer` because it has a significantly different architecture 
+Contains a BERT style model specifically for Next Sentence Prediction. This is separate from
+:class:`transformer_lens.HookedTransformer` because it has a significantly different architecture
 to e.g. GPT style transformers.
 """
-
 
 from typing import Dict, List, Optional, Tuple, Union, overload
 
@@ -94,11 +93,13 @@ class BertNextSentencePrediction:
         )
 
         tokens = encodings["input_ids"]
+        token_type_ids = encodings["token_type_ids"]
+        attention_mask = encodings["attention_mask"]
 
         if move_to_device:
             tokens = tokens.to(self.model.cfg.device)
-            token_type_ids = encodings["token_type_ids"].to(self.model.cfg.device)
-            attention_mask = encodings["attention_mask"].to(self.model.cfg.device)
+            token_type_ids = token_type_ids.to(self.model.cfg.device)
+            attention_mask = attention_mask.to(self.model.cfg.device)
 
         return tokens, token_type_ids, attention_mask
 

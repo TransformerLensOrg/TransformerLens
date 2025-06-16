@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Dict, List, Optional, Tuple, Union, cast, overload
+from typing import Dict, List, Optional, Tuple, TypeVar, Union, cast, overload
 
 import torch
 from einops import repeat
@@ -31,6 +31,8 @@ from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookedRootModule, HookPoint
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.utilities import devices
+
+T = TypeVar("T", bound="HookedEncoder")
 
 
 class HookedEncoder(HookedRootModule):
@@ -119,11 +121,13 @@ class HookedEncoder(HookedRootModule):
         )
 
         tokens = encodings.input_ids
+        token_type_ids = encodings.token_type_ids
+        attention_mask = encodings.attention_mask
 
         if move_to_device:
             tokens = tokens.to(self.cfg.device)
-            token_type_ids = encodings.token_type_ids.to(self.cfg.device)
-            attention_mask = encodings.attention_mask.to(self.cfg.device)
+            token_type_ids = token_type_ids.to(self.cfg.device)
+            attention_mask = attention_mask.to(self.cfg.device)
 
         return tokens, token_type_ids, attention_mask
 
@@ -332,17 +336,19 @@ class HookedEncoder(HookedRootModule):
     ):
         return devices.move_to_and_update_config(self, device_or_dtype, print_details)
 
-    def cuda(self, device: Union[int, torch.device, None] = None):
-        # Wrapper around cuda that also changes self.cfg.device
-        return self.to("cuda")
+    def cuda(self: T, device: Optional[Union[int, torch.device]] = None) -> T:
+        if isinstance(device, int):
+            return self.to(f"cuda:{device}")
+        elif device is None:
+            return self.to("cuda")
+        else:
+            return self.to(device)
 
-    def cpu(self):
-        # Wrapper around cuda that also changes self.cfg.device
+    def cpu(self: T) -> T:
         return self.to("cpu")
 
-    def mps(self):
-        # Wrapper around cuda that also changes self.cfg.device
-        return self.to("mps")
+    def mps(self: T) -> T:
+        return self.to(torch.device("mps"))
 
     @classmethod
     def from_pretrained(
@@ -399,7 +405,8 @@ class HookedEncoder(HookedRootModule):
         model.load_state_dict(state_dict, strict=False)
 
         if move_to_device:
-            model.to(cfg.device)
+            if cfg.device is not None:
+                model.to(cfg.device)
 
         print(f"Loaded pretrained model {model_name} into HookedEncoder")
 

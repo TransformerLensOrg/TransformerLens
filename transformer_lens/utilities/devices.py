@@ -11,6 +11,8 @@ from typing import Optional, Union
 import torch
 from torch import nn
 
+import transformer_lens
+
 AvailableDeviceMemory = list[tuple[int, int]]
 """
 This type is passed around between different CUDA memory operations.
@@ -81,11 +83,28 @@ def get_best_available_cuda_device(max_devices: Optional[int] = None) -> torch.d
     return torch.device("cuda", sorted_devices[0][0])
 
 
-def get_best_available_device(cfg: "HookedTransformerConfig") -> torch.device:
+def get_device() -> torch.device:
+    """Get the best available device for the current system.
+
+    Returns:
+        torch.device: The best available device (cuda, mps, or cpu)
+    """
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    if torch.backends.mps.is_available() and torch.backends.mps.is_built():
+        # Parse the PyTorch version to check if it's below version 2.0
+        major_version = int(torch.__version__.split(".")[0])
+        if major_version >= 2:
+            return torch.device("mps")
+
+    return torch.device("cpu")
+
+
+def get_best_available_device(cfg: "transformer_lens.HookedTransformerConfig") -> torch.device:
     """Gets the best available device to be used based on the passed in arguments
 
     Args:
-        device (Union[torch.device, str]): Either the existing torch device or the string identifier
+        cfg: The HookedTransformerConfig object containing device configuration
 
     Returns:
         torch.device: The best available device
@@ -93,7 +112,7 @@ def get_best_available_device(cfg: "HookedTransformerConfig") -> torch.device:
     assert cfg.device is not None
     device = torch.device(cfg.device)
 
-    if device.type == "cuda":
+    if device.type == "cuda" and cfg.n_devices > 1:
         return get_best_available_cuda_device(cfg.n_devices)
     else:
         return device
@@ -101,7 +120,7 @@ def get_best_available_device(cfg: "HookedTransformerConfig") -> torch.device:
 
 def get_device_for_block_index(
     index: int,
-    cfg: "HookedTransformerConfig",
+    cfg: "transformer_lens.HookedTransformerConfig",
     device: Optional[Union[torch.device, str]] = None,
 ):
     """
@@ -113,7 +132,7 @@ def get_device_for_block_index(
 
     Args:
         index (int): Model layer index.
-        cfg (HookedTransformerConfig): Model and device configuration.
+        cfg: Model and device configuration.
         device (Optional[Union[torch.device, str]], optional): Initial device used for determining the target device.
             If not provided, the function uses the device specified in the configuration (cfg.device).
 
@@ -136,23 +155,11 @@ def get_device_for_block_index(
     return torch.device(device.type, device_index)
 
 
-def get_device():
-    if torch.cuda.is_available():
-        return torch.device("cuda")
-    if torch.backends.mps.is_available() and torch.backends.mps.is_built():
-        # Parse the PyTorch version to check if it's below version 2.0
-        major_version = int(torch.__version__.split(".")[0])
-        if major_version >= 2:
-            return torch.device("mps")
-
-    return torch.device("cpu")
-
-
 def move_to_and_update_config(
     model: Union[
-        "HookedTransformer",
-        "HookedEncoder",
-        "HookedEncoderDecoder",
+        "transformer_lens.HookedTransformer",
+        "transformer_lens.HookedEncoder",
+        "transformer_lens.HookedEncoderDecoder",
     ],
     device_or_dtype: Union[torch.device, str, torch.dtype],
     print_details=True,
