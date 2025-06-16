@@ -12,7 +12,7 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any
 
 import torch
 from huggingface_hub import HfApi
@@ -1314,7 +1314,9 @@ def get_pretrained_state_dict(
         return state_dict
 
 
-def fill_missing_keys(model: torch.nn.Module, state_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
+def fill_missing_keys(
+    model: torch.nn.Module, state_dict: dict[str, torch.Tensor]
+) -> dict[str, torch.Tensor]:
     """Takes in a state dict from a pretrained model, and fills in any missing keys with the default initialization.
 
     This function is assumed to be run before weights are initialized.
