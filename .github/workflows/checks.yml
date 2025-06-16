@@ -5,26 +5,26 @@ on:
     branches:
       - main
       - dev*
-    paths:
-      - "**" # Include all files by default
-      - "!.devcontainer/**"
-      - "!.vscode/**"
-      - "!.git*"
-      - "!*.md"
-      - "!.github/**"
-      - ".github/workflows/checks.yml" # Still include current workflow
+    tags:
+      - "v*.*.*"
+    paths-ignore:
+      - ".devcontainer/**"
+      - ".vscode/**"
+      - ".git*"
+      - "*.md"
+      - ".github/**"
+      - "!.github/workflows/checks.yml"
   pull_request:
     branches:
       - main
       - dev*
-    paths:
-      - "**"
-      - "!.devcontainer/**"
-      - "!.vscode/**"
-      - "!.git*"
-      - "!*.md"
-      - "!.github/**"
-      - ".github/workflows/checks.yml"
+    paths-ignore:
+      - ".devcontainer/**"
+      - ".vscode/**"
+      - ".git*"
+      - "*.md"
+      - ".github/**"
+      - "!.github/workflows/checks.yml"
   # Allow this workflow to be called from other workflows
   workflow_call:
     inputs:
@@ -32,6 +32,9 @@ on:
       dummy:
         type: string
         required: false
+    secrets:
+      HF_TOKEN:
+        required: false 
 
 permissions:
   actions: write
@@ -65,12 +68,19 @@ jobs:
           key: ${{ runner.os }}-huggingface-models
       - name: Install dependencies
         run: |
-          poetry lock --check
+          poetry check --lock
           poetry install --with dev
+      - name: Authenticate HuggingFace CLI
+        if: env.HF_TOKEN != ''
+        run: |
+          pip install huggingface_hub
+          huggingface-cli login --token "$HF_TOKEN"
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
       - name: Unit Test
         run: make unit-test
         env:
-          HF_TOKEN:  ${{ vars.HF_TOKEN }}
+          HF_TOKEN:  ${{ secrets.HF_TOKEN }}
       - name: Acceptance Test
         run: make acceptance-test
       - name: Build check
@@ -98,7 +108,7 @@ jobs:
           key: ${{ runner.os }}-huggingface-models
       - name: Install dependencies
         run: |
-          poetry lock --check
+          poetry check --lock
           poetry install --with dev
       - name: Check format
         run: make check-format
@@ -106,14 +116,21 @@ jobs:
         run: make docstring-test
       - name: Type check
         run: poetry run mypy .
+      - name: Authenticate HuggingFace CLI
+        if: env.HF_TOKEN != ''
+        run: |
+          pip install huggingface_hub
+          huggingface-cli login --token "$HF_TOKEN"
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
       - name: Test Suite with Coverage Report
         run: make coverage-report-test
         env:
-          HF_TOKEN:  ${{ vars.HF_TOKEN }}
+          HF_TOKEN:  ${{ secrets.HF_TOKEN }}
       - name: Build check
         run: poetry build
       - name: Upload Coverage Report Artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: test-coverage
           path: htmlcov
@@ -156,7 +173,7 @@ jobs:
           key: ${{ runner.os }}-huggingface-models
       - name: Install dependencies
         run: |
-          poetry lock --check
+          poetry check --lock
           poetry install --with dev,jupyter
       - name: Install pandoc
         uses: awalsh128/cache-apt-pkgs-action@latest
@@ -192,16 +209,23 @@ jobs:
       - name: Install dependencies
         run: poetry install --with docs
       - name: Download Test Coverage Artifact
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: test-coverage
           path: docs/source/_static/coverage
+      - name: Authenticate HuggingFace CLI
+        if: env.HF_TOKEN != ''
+        run: |
+          pip install huggingface_hub
+          huggingface-cli login --token "$HF_TOKEN"
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
       - name: Build Docs
         run: poetry run build-docs
         env:
-          HF_TOKEN:  ${{ vars.HF_TOKEN }}
+          HF_TOKEN:  ${{ secrets.HF_TOKEN }}
       - name: Upload Docs Artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: documentation
           path: docs/build
@@ -215,7 +239,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Download Docs Artifact
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: documentation
           path: docs/build

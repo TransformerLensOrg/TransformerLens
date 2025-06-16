@@ -107,6 +107,7 @@ functions_to_ignore = [
 # https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html#confval-autodoc_default_options
 autodoc_default_options = {
     "exclude-members": ", ".join(functions_to_ignore),
+    "special-members": "__getitem__, __len__, __iter__",
 }
 
 
