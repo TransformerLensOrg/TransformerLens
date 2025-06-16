@@ -1301,7 +1301,7 @@ class HookedTransformer(HookedRootModule):
         ), "Quantization not supported"
 
         if hf_model is not None:
-            assert hf_model.config is not None
+            assert hasattr(hf_model, "config"), "PreTrainedModel must have a config attribute"
             hf_cfg = hf_model.config.to_dict()
             qc = hf_cfg.get("quantization_config", {})
             load_in_4bit = qc.get("load_in_4bit", False)
