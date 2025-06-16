@@ -28,7 +28,7 @@ import tqdm
 from einops import repeat
 from jaxtyping import Float, Int
 from torch import nn
-from transformers.models.auto.tokenization_auto import AutoTokenizer
+from transformers import AutoTokenizer, PreTrainedTokenizerBase
 from typing_extensions import Literal
 
 import transformer_lens.loading_from_pretrained as loading
@@ -55,10 +55,12 @@ class HookedEncoderDecoder(HookedRootModule):
         - The model only accepts tokens as inputs, and not strings, or lists of strings
     """
 
+    tokenizer: Optional[PreTrainedTokenizerBase]
+
     def __init__(
         self,
         cfg: Union[HookedTransformerConfig, Dict],
-        tokenizer: Optional[AutoTokenizer] = None,
+        tokenizer: Optional[PreTrainedTokenizerBase] = None,
         move_to_device: bool = True,
         **kwargs: Any,
     ):
@@ -89,7 +91,7 @@ class HookedEncoderDecoder(HookedRootModule):
             if self.tokenizer is None:
                 raise ValueError("Must provide a tokenizer if d_vocab is not provided")
 
-            self.cfg.d_vocab = max(self.tokenizer.vocab.values()) + 1
+            self.cfg.d_vocab = len(self.tokenizer)
         if self.cfg.d_vocab_out == -1:
             self.cfg.d_vocab_out = self.cfg.d_vocab
 
@@ -397,25 +399,28 @@ class HookedEncoderDecoder(HookedRootModule):
         stop_tokens: List[int] = []
         eos_token_for_padding = 0
         if stop_at_eos:
-            tokenizer_has_eos_token = (
-                self.tokenizer is not None and self.tokenizer.eos_token_id is not None
-            )
-            if eos_token_id is None:
+            tokenizer_has_eos_token = self.tokenizer.eos_token_id is not None
+
+            local_eos_token_id: Optional[Union[int, List[int]]] = eos_token_id
+            if local_eos_token_id is None:
                 assert (
                     tokenizer_has_eos_token
                 ), "Must pass a eos_token_id if stop_at_eos is True and tokenizer is None or has no eos_token_id"
 
-                assert self.tokenizer is not None
-                eos_token_id = self.tokenizer.eos_token_id
+                local_eos_token_id = self.tokenizer.eos_token_id
 
-            if isinstance(eos_token_id, int):
-                stop_tokens = [eos_token_id]
-                eos_token_for_padding = eos_token_id
+            if isinstance(local_eos_token_id, int):
+                stop_tokens = [local_eos_token_id]
+                eos_token_for_padding = local_eos_token_id
             else:
                 # eos_token_id is a Sequence (e.g. list or tuple)
-                stop_tokens = eos_token_id
+                if local_eos_token_id is None:
+                    raise ValueError("eos_token_id cannot be None here")
+                stop_tokens = local_eos_token_id
                 eos_token_for_padding = (
-                    self.tokenizer.eos_token_id if tokenizer_has_eos_token else eos_token_id[0]
+                    self.tokenizer.eos_token_id
+                    if tokenizer_has_eos_token
+                    else local_eos_token_id[0]
                 )
 
         # An array to track which sequences in the batch have finished.

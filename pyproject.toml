@@ -29,13 +29,19 @@
         python=">=3.10,<4.0"
         rich=">=12.6.0"
         sentencepiece="*"
-        torch=[{version="<2.6", python=">=3.8,<3.9"}, {version=">=2.6", python=">=3.9"}]
+        torch=[
+            {version="<2.6", python=">=3.8,<3.9"},
+            {version=">=2.6", python=">=3.9"},
+        ]
         tqdm=">=4.64.1"
-        transformers=">=4.43"
-        transformers-stream-generator="^0.0.5"
-        typeguard="^4.2"
+        transformers=[
+            {version="<4.51", python=">=3.8,<3.9"},
+            {version=">=4.51", python=">=3.9"},
+        ]
         typing-extensions="*"
         wandb=">=0.13.5"
+        typeguard = "^4.2"
+        transformers-stream-generator = "^0.0.5"
 
     [tool.poetry.group]
         [tool.poetry.group.dev.dependencies]
@@ -43,7 +49,7 @@
             circuitsvis=">=1.38.1"
             isort="5.8.0"
             jupyter=">=1.0.0"
-            mypy=">=1.8.0"
+            mypy=">=1.10.0"
             nbval="^0.10.0"
             plotly=">=5.12.0"
             pycln="^2.1.3"
@@ -128,7 +134,10 @@
     # All rules apart from base are shown explicitly below
     deprecateTypingAliases=true
     disableBytesTypePromotions=true
-    exclude=["!/transformer_lens/hook_points.py", "*/**/*.py"]
+    exclude = [
+        "*/**/*.py",
+        "!/transformer_lens/hook_points.py"
+    ]
     reportAssertAlwaysTrue=true
     reportConstantRedefinition=true
     reportDeprecated=true

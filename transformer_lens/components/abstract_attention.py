@@ -598,7 +598,7 @@ class AbstractAttention(ABC, nn.Module):
     def apply_rotary(
         self,
         x: Float[torch.Tensor, "batch pos head_index d_head"],
-        past_kv_pos_offset=0,
+        past_kv_pos_offset: int = 0,
         attention_mask: Optional[Int[torch.Tensor, "batch offset_pos"]] = None,
     ) -> Float[torch.Tensor, "batch pos head_index d_head"]:
         # Only apply rotary to first rotary_dim dimensions (eg, if rotary_dim=64 and d_head=256, only apply to first 1/4 of dimensions)

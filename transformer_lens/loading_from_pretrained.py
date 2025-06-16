@@ -517,7 +517,9 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "d_model": hf_config.hidden_size,
             "d_head": (
                 hf_config.head_dim
-                if hasattr(hf_config, "head_dim") and hf_config.head_dim > 0
+                if hasattr(hf_config, "head_dim")
+                and hf_config.head_dim is not None
+                and hf_config.head_dim > 0
                 else hf_config.hidden_size // hf_config.num_attention_heads
             ),
             "n_heads": hf_config.num_attention_heads,
@@ -673,7 +675,9 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
         cfg_dict = {
             "d_model": hf_config.hidden_size,
             "d_head": hf_config.head_dim
-            if hasattr(hf_config, "head_dim") and hf_config.head_dim > 0
+            if hasattr(hf_config, "head_dim")
+            and hf_config.head_dim is not None
+            and hf_config.head_dim > 0
             else hf_config.hidden_size // hf_config.num_attention_heads,
             "n_heads": hf_config.num_attention_heads,
             "n_key_value_heads": (
