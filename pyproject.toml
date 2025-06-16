@@ -22,16 +22,23 @@
         jaxtyping=">=0.2.11"
         numpy=[
             {version=">=1.20,<1.25", python=">=3.8,<3.9"},
-            {version=">=1.24", python=">=3.9,<3.12"},
-            {version=">=1.26", python=">=3.12,<3.13"},
+            {version=">=1.24,<2", python=">=3.9,<3.12"},
+            {version=">=1.26,<2", python=">=3.12,<3.13"},
         ]
         pandas=">=1.1.5"
+        protobuf="3.20.1"
         python=">=3.8,<4.0"
         rich=">=12.6.0"
         sentencepiece="*"
-        torch=">=2.2,<2.5"
+        torch=[
+            {version="<2.6", python=">=3.8,<3.9"},
+            {version=">=2.6", python=">=3.9"},
+        ]
         tqdm=">=4.64.1"
-        transformers=">=4.43"
+        transformers=[
+            {version="<4.51", python=">=3.8,<3.9"},
+            {version=">=4.51", python=">=3.9"},
+        ]
         typing-extensions="*"
         wandb=">=0.13.5"
         typeguard = "^4.2"
@@ -43,7 +50,7 @@
             circuitsvis=">=1.38.1"
             isort="5.8.0"
             jupyter=">=1.0.0"
-            mypy=">=1.8.0"
+            mypy=">=1.10.0"
             nbval="^0.10.0"
             plotly=">=5.12.0"
             pycln="^2.1.3"
@@ -187,4 +194,3 @@
     strictListInference=true
     strictParameterNoneValue=true
     strictSetInference=true
-    

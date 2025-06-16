@@ -15,8 +15,15 @@ def simple_attn_linear(
     b: Float[torch.Tensor, "head_index d_head"],
 ) -> Float[torch.Tensor, "batch pos head_index d_head"]:
     """Linear layer for attention calculation."""
+
+    if input.device != w.device:
+        w = w.to(input.device)
+    if input.device != b.device:
+        b = b.to(input.device)
+
     w = einops.rearrange(w, "head_index d_model d_head -> (head_index d_head) d_model")
     b_ = einops.rearrange(b, "head_index d_head -> (head_index d_head)")
+
     return F.linear(input, w, b_).reshape(input.shape[0], input.shape[1], b.shape[0], b.shape[1])
 
 
@@ -30,13 +37,9 @@ def complex_attn_linear(
     This is almost the same as simple_attn_linear, but the input tensor has an extra head_index dimension, used when calculating the input of each attention head separately.
     """
 
-    # Add singleton dimensions for broadcasting
-    input = einops.rearrange(
-        input, "batch pos head_index d_model -> batch pos head_index d_model 1"
+    result = einops.einsum(
+        input,
+        w,
+        "batch pos head_index d_model, head_index d_model d_head -> batch pos head_index d_head",
     )
-    w = einops.rearrange(w, "head_index d_model d_head -> 1 1 head_index d_model d_head")
-
-    # Element-wise multiplication and sum over the d_model dimension
-    result = input * w
-    result = result.sum(dim=-2)
     return result + b

@@ -5,13 +5,14 @@ This module contains varied utility functions used throughout the library.
 
 from __future__ import annotations
 
+import collections.abc
 import inspect
 import json
 import os
 import re
 import shutil
 from copy import deepcopy
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union, cast
+from typing import Any, List, Optional, Tuple, Union, cast
 
 import einops
 import numpy as np
@@ -21,29 +22,32 @@ import torch.nn.functional as F
 import transformers
 from datasets.arrow_dataset import Dataset
 from datasets.load import load_dataset
-from huggingface_hub import hf_hub_download
+from huggingface_hub import constants, hf_hub_download
 from jaxtyping import Float, Int
 from rich import print as rprint
 from transformers import AutoTokenizer
+from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 
 from transformer_lens.FactoredMatrix import FactoredMatrix
 
-CACHE_DIR = transformers.TRANSFORMERS_CACHE
+CACHE_DIR = constants.HUGGINGFACE_HUB_CACHE
 USE_DEFAULT_VALUE = None
 
 
-def select_compatible_kwargs(kwargs_dict: Dict[str, Any], callable: Callable) -> Dict[str, Any]:
+def select_compatible_kwargs(
+    kwargs_dict: dict[str, Any], callable: collections.abc.Callable
+) -> dict[str, Any]:
     """Return a dict with the elements kwargs_dict that are parameters of callable"""
     return {k: v for k, v in kwargs_dict.items() if k in inspect.getfullargspec(callable).args}
 
 
 def download_file_from_hf(
-    repo_name,
-    file_name,
-    subfolder=".",
-    cache_dir=CACHE_DIR,
-    force_is_torch=False,
-    **kwargs,
+    repo_name: str,
+    file_name: str,
+    subfolder: str = ".",
+    cache_dir: Optional[str] = CACHE_DIR,
+    force_is_torch: bool = False,
+    **kwargs: Any,
 ):
     """
     Helper function to download files from the HuggingFace Hub, from subfolder/file_name in repo_name, saving locally to cache_dir and returning the loaded file (if a json or Torch object) and the file path otherwise.
@@ -83,11 +87,11 @@ def clear_huggingface_cache():
     shutil.rmtree(CACHE_DIR)
 
 
-def print_gpu_mem(step_name=""):
+def print_gpu_mem(step_name: str = ""):
     print(f"{step_name} ~ {np.round(torch.cuda.memory_allocated()/2e30, 2)} GiB allocated on GPU.")
 
 
-def get_corner(tensor, n=3):
+def get_corner(tensor: Any, n: int = 3):
     # Prints the top left corner of the tensor
     if isinstance(tensor, torch.Tensor):
         return tensor[tuple(slice(n) for _ in range(tensor.ndim))]
@@ -95,7 +99,7 @@ def get_corner(tensor, n=3):
         return tensor[tuple(slice(n) for _ in range(tensor.ndim))].AB
 
 
-def to_numpy(tensor):
+def to_numpy(tensor: Any):
     """
     Helper function to convert a tensor to a numpy array. Also works on lists, tuples, and numpy arrays.
     """
@@ -182,6 +186,13 @@ def gelu_fast(
     return 0.5 * input * (1.0 + torch.tanh(input * 0.7978845608 * (1.0 + 0.044715 * input * input)))
 
 
+def gelu_pytorch_tanh(input: torch.Tensor) -> torch.Tensor:
+    """
+    Approximation of the gelu activation function, used in some older models.
+    """
+    return F.gelu(input, approximate="tanh")
+
+
 def solu(input: Float[torch.Tensor, "batch pos d_mlp"]) -> Float[torch.Tensor, "batch pos d_mlp"]:
     """
     SoLU activation function as described by
@@ -200,11 +211,11 @@ ACTIVATION_FN_DICT = {
     "silu": F.silu,
     "relu": F.relu,
     "gelu": F.gelu,
-    "gelu_pytorch_tanh": lambda tensor: F.gelu(tensor, approximate="tanh"),
+    "gelu_pytorch_tanh": gelu_pytorch_tanh,
 }
 
 
-def calc_fan_in_and_fan_out(tensor):
+def calc_fan_in_and_fan_out(tensor: torch.Tensor) -> tuple[int, int]:
     """
     Calculate the fan in and fan out of a tensor. We define it ourselves because Torch uses a
     different convention for weights (e.g. for an MLP they use d_out x d_in, and we use d_in x
@@ -229,7 +240,7 @@ def calc_fan_in_and_fan_out(tensor):
     return fan_in, fan_out
 
 
-def init_xavier_uniform_(param, gain=1.0):
+def init_xavier_uniform_(param: torch.Tensor, gain: float = 1.0) -> torch.Tensor:
     """
     Initializes the input tensor using the Xavier initialization method.
     """
@@ -238,7 +249,7 @@ def init_xavier_uniform_(param, gain=1.0):
     return nn.init.uniform_(param, -max, max)
 
 
-def init_xavier_normal_(param, gain=1.0):
+def init_xavier_normal_(param: torch.Tensor, gain: float = 1.0) -> torch.Tensor:
     """
     Initializes the input tensor using the Xavier initialization method.
     """
@@ -247,7 +258,13 @@ def init_xavier_normal_(param, gain=1.0):
     return nn.init.normal_(param, mean=0.0, std=std)
 
 
-def init_kaiming_uniform_(param, a=0, nonlinearity="relu", gain=1.0, mode="fan_in"):
+def init_kaiming_uniform_(
+    param: torch.Tensor,
+    a: float = 0,
+    nonlinearity: str = "relu",
+    gain: float = 1.0,
+    mode: str = "fan_in",
+) -> torch.Tensor:
     """
     Initializes the input tensor using the Kaiming initialization method.
 
@@ -263,7 +280,13 @@ def init_kaiming_uniform_(param, a=0, nonlinearity="relu", gain=1.0, mode="fan_i
     return nn.init.uniform_(param, -max, max)
 
 
-def init_kaiming_normal_(param, a=0, nonlinearity="relu", gain=1.0, mode="fan_in"):
+def init_kaiming_normal_(
+    param: torch.Tensor,
+    a: float = 0,
+    nonlinearity: str = "relu",
+    gain: float = 1.0,
+    mode: str = "fan_in",
+) -> torch.Tensor:
     """
     Initializes the input tensor using the Kaiming initialization method.
 
@@ -291,7 +314,7 @@ def keep_single_column(dataset: Dataset, col_name: str):
 
 def tokenize_and_concatenate(
     dataset: Dataset,
-    tokenizer: AutoTokenizer,
+    tokenizer: PreTrainedTokenizerBase,
     streaming: bool = False,
     max_length: int = 1024,
     column_name: str = "text",
@@ -304,7 +327,7 @@ def tokenize_and_concatenate(
 
     Args:
         dataset (Dataset): The dataset to tokenize, assumed to be a HuggingFace text dataset.
-        tokenizer (AutoTokenizer): The tokenizer. Assumed to have a bos_token_id and an eos_token_id.
+        tokenizer (transformers.PreTrainedTokenizerBase): The tokenizer. Assumed to have a bos_token_id and an eos_token_id.
         streaming (bool, optional): Whether the dataset is being streamed. If True, avoids using parallelism. Defaults to False.
         max_length (int, optional): The length of the context window of the sequence. Defaults to 1024.
         column_name (str, optional): The name of the text column in the dataset. Defaults to 'text'.
@@ -323,9 +346,10 @@ def tokenize_and_concatenate(
     else:
         seq_len = max_length
 
-    def tokenize_function(examples: Dict[str, List[str]]) -> Dict[str, np.ndarray]:
+    def tokenize_function(examples: dict[str, list[str]]) -> dict[str, np.ndarray]:
         text = examples[column_name]
         # Concatenate it all into an enormous string, separated by eos_tokens
+        assert tokenizer.eos_token is not None, "Tokenizer must have an EOS token."
         full_text = tokenizer.eos_token.join(text)
 
         # Handle the case when full_text is empty
@@ -417,7 +441,7 @@ def sample_logits(
                 )
         if top_k is not None:
             assert top_k > 0, "top_k has to be greater than 0"
-            top_logits, top_idx = final_logits.topk(top_k, dim=-1)
+            top_logits, _ = final_logits.topk(top_k, dim=-1)
             indices_to_remove = final_logits < top_logits[..., -1].unsqueeze(-1)
             final_logits = final_logits.masked_fill(indices_to_remove, -float("inf"))
         elif top_p is not None:
@@ -543,13 +567,14 @@ class Slice:
         max_ctx: Optional[int] = None,
     ) -> Union[np.ndarray, np.int32, np.int64]:
         """
-        Returns the indices when this slice is applied to an axis of size max_ctx. Returns them as a numpy array, for integer slicing it is eg array([4])
+        Returns the indices of the slice, as a numpy array or an int.
+        If max_ctx is given, slices relative to the end (e.g. slice(-5, None)) are converted to absolute indices.
 
         Args:
             max_ctx (int, optional): The size of the axis to slice. Only used if the slice is not an integer.
 
         Returns:
-            np.ndarray: The indices that this slice will select.
+            Union[np.ndarray, np.int32, np.int64]: The indices that this slice will select.
 
         Raises:
             ValueError: If the slice is not an integer and max_ctx is not specified.
@@ -601,30 +626,25 @@ def get_act_name(
 
     Args:
          name (str): Takes in the name of the activation. This can be used to specify any activation name by itself.
-         The code assumes the first sequence of digits passed to it (if any) is the layer number, and anything after
-         that is the layer type.
+            The code assumes the first sequence of digits passed to it (if any) is the layer number, and anything after
+            that is the layer type.
 
-         Given only a word and number, it leaves layer_type as is.
-         Given only a word, it leaves layer and layer_type as is.
-
-         Examples:
-             get_act_name('embed') = get_act_name('embed', None, None)
-             get_act_name('k6') = get_act_name('k', 6, None)
-             get_act_name('scale4ln1') = get_act_name('scale', 4, 'ln1')
+            Given only a word and number, it leaves layer_type as is.
+            Given only a word, it leaves layer and layer_type as is.
 
          layer (int, optional): Takes in the layer number. Used for activations that appear in every block.
 
          layer_type (string, optional): Used to distinguish between activations that appear multiple times in one block.
 
-    Full Examples:
+    Examples::
 
-    get_act_name('k', 6, 'a')=='blocks.6.attn.hook_k'
-    get_act_name('pre', 2)=='blocks.2.mlp.hook_pre'
-    get_act_name('embed')=='hook_embed'
-    get_act_name('normalized', 27, 'ln2')=='blocks.27.ln2.hook_normalized'
-    get_act_name('k6')=='blocks.6.attn.hook_k'
-    get_act_name('scale4ln1')=='blocks.4.ln1.hook_scale'
-    get_act_name('pre5')=='blocks.5.mlp.hook_pre'
+        get_act_name('k', 6, 'a')=='blocks.6.attn.hook_k'
+        get_act_name('pre', 2)=='blocks.2.mlp.hook_pre'
+        get_act_name('embed')=='hook_embed'
+        get_act_name('normalized', 27, 'ln2')=='blocks.27.ln2.hook_normalized'
+        get_act_name('k6')=='blocks.6.attn.hook_k'
+        get_act_name('scale4ln1')=='blocks.4.ln1.hook_scale'
+        get_act_name('pre5')=='blocks.5.mlp.hook_pre'
     """
     if ("." in name or name.startswith("hook_")) and layer is None and layer_type is None:
         # If this was called on a full name, just return it
@@ -854,8 +874,7 @@ def transpose(tensor: Float[torch.Tensor, "... a b"]) -> Float[torch.Tensor, "..
 def composition_scores(
     left: "FactoredMatrix", right: "FactoredMatrix", broadcast_dims=True
 ) -> Union[
-    Float[torch.Tensor, "*leading_dims"],
-    Float[torch.Tensor, "*leading_dims_left_and_right"],
+    Float[torch.Tensor, "*leading_dims"], Float[torch.Tensor, "*leading_dims_left_and_right"]
 ]:
     """
     See `HookedTransformer.all_composition_scores` for documentation.
@@ -1022,7 +1041,11 @@ def get_cumsum_along_dim(tensor, dim, reverse=False):
     return cumsum
 
 
-def get_attention_mask(tokenizer, tokens: torch.Tensor, prepend_bos: bool) -> torch.Tensor:
+def get_attention_mask(
+    tokenizer: transformers.PreTrainedTokenizerBase,
+    tokens: torch.Tensor,
+    prepend_bos: bool,
+) -> torch.Tensor:
     """
     Computes the attention mask for the tokenized input.
     NOTE: Only the leftmost leading pads (when `padding_side == left`)
@@ -1030,7 +1053,7 @@ def get_attention_mask(tokenizer, tokens: torch.Tensor, prepend_bos: bool) -> to
     considered as real pad tokens that should not be attended.
 
     Args:
-        tokenizer: The tokenizer used for tokenization.
+        tokenizer (transformers.PreTrainedTokenizerBase): The tokenizer used for tokenization.
         tokens (torch.Tensor): The tokenized input.
         prepend_bos (bool): If True, a BOS token is prepended to the input.
 
@@ -1204,7 +1227,9 @@ class LocallyOverridenDefaults:
             set_nested_attr(self, default_location, default_value)
 
 
-def get_tokenizer_with_bos(tokenizer):
+def get_tokenizer_with_bos(
+    tokenizer: transformers.PreTrainedTokenizerBase,
+) -> transformers.PreTrainedTokenizerBase:
     """
     Returns the tokenizer initialized with add_bos_token=True.
     Such a tokenizer should be set as the default tokenizer because the tokenization of some
@@ -1212,10 +1237,10 @@ def get_tokenizer_with_bos(tokenizer):
     prepended.
 
     Args:
-        tokenizer (AutoTokenizer): The tokenizer to initialize with add_bos_token=True.
+        tokenizer (transformers.PreTrainedTokenizerBase): The tokenizer to initialize with add_bos_token=True.
 
     Returns:
-        AutoTokenizer: The tokenizer initialized with add_bos_token=True.
+        transformers.PreTrainedTokenizerBase: The tokenizer initialized with add_bos_token=True.
     """
     init_kwargs = deepcopy(tokenizer.init_kwargs)
     pretrained_model_name_or_path = init_kwargs.pop("name_or_path")
@@ -1237,16 +1262,18 @@ def get_tokenizer_with_bos(tokenizer):
     return tokenizer_with_bos
 
 
-def get_input_with_manually_prepended_bos(tokenizer, input):
+def get_input_with_manually_prepended_bos(
+    tokenizer: transformers.PreTrainedTokenizerBase, input: Union[str, list[str]]
+):
     """
-    Manually prepends the bos token to the input.
+    Prepends a BOS token to the input, in a way that is compatible with the model's tokenizer.
 
     Args:
-        tokenizer (AutoTokenizer): The tokenizer to use for prepending the bos token.
-        input (Union[str, List[str]]): The input to prepend the bos token to.
+        tokenizer (transformers.PreTrainedTokenizerBase): The tokenizer to use for prepending the bos token.
+        input (Union[str, list[str]]): The input to prepend the bos token to.
 
     Returns:
-        Union[str, List[str]]: The input with the bos token manually prepended.
+        Union[str, list[str]]: The input with the bos token manually prepended.
     """
     if isinstance(input, str):
         input = tokenizer.bos_token + input
@@ -1255,13 +1282,16 @@ def get_input_with_manually_prepended_bos(tokenizer, input):
     return input
 
 
-def get_tokens_with_bos_removed(tokenizer, tokens):
+def get_tokens_with_bos_removed(
+    tokenizer: transformers.PreTrainedTokenizerBase,
+    tokens: Int[torch.Tensor, "batch pos"],
+):
     """
     Removes the bos token from the beginning of each sequence in `tokens`.
     The last dimension of `tokens` must be the sequence length.
 
     Args:
-        tokenizer (AutoTokenizer): The tokenizer used to tokenize the input.
+        tokenizer (transformers.PreTrainedTokenizerBase): The tokenizer used to tokenize the input.
         tokens (torch.Tensor): The tokenized input.
 
     Returns:

@@ -36,11 +36,11 @@ class ActivationCache:
     The :class:`ActivationCache` is at the core of Transformer Lens. It is a wrapper that stores all
     important activations from a forward pass of the model, and provides a variety of helper
     functions to investigate them. The common way to access it is to run the model with
-    :meth:`transformer_lens.HookedTransformer.run_with_cache`.
+    :meth:`transformer_lens.HookedTransformer.HookedTransformer.run_with_cache`.
 
     Examples:
 
-    When investigating a particular behaviour of a modal, a very common first step is to try and
+    When investigating a particular behaviour of a model, a very common first step is to try and
     understand which components of the model are most responsible for that behaviour. For example,
     if you're investigating the prompt "Why did the chicken cross the" -> " road", you might want to
     understand if there is a specific sublayer (mlp or multi-head attention) that is responsible for
@@ -151,8 +151,11 @@ class ActivationCache:
         """Retrieve Cached Activations by Key or Shorthand.
 
         Enables direct access to cached activations via dictionary-style indexing using keys or
-        shorthand naming conventions. It also supports tuples for advanced indexing, with the
-        dimension order as (get_act_name, layer_index, layer_type).
+        shorthand naming conventions.
+
+        It also supports tuples for advanced indexing, with the dimension order as (name, layer_index, layer_type).
+        See :func:`transformer_lens.utils.get_act_name` for how shorthand is converted to a full name.
+
 
         Args:
             key:
@@ -273,7 +276,7 @@ class ActivationCache:
     def __iter__(self) -> Iterator[str]:
         """ActivationCache Iterator.
 
-        Special method that returns an iterator over the ActivationCache. Allows looping over the
+        Special method that returns an iterator over the keys in the ActivationCache. Allows looping over the
         cache.
 
         Examples:
@@ -887,11 +890,12 @@ class ActivationCache:
         if not isinstance(pos_slice, Slice):
             pos_slice = Slice(pos_slice)
 
-        neuron_labels: torch.Tensor | np.ndarray = neuron_slice.apply(
+        neuron_labels: Union[torch.Tensor, np.ndarray] = neuron_slice.apply(
             torch.arange(self.model.cfg.d_mlp), dim=0
         )
-        if type(neuron_labels) == int:
+        if isinstance(neuron_labels, int):
             neuron_labels = np.array([neuron_labels])
+
         for l in range(layer):
             # Note that this has shape batch x pos x head_index x d_model
             components.append(
