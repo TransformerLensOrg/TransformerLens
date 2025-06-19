@@ -1854,7 +1854,7 @@ def get_pretrained_state_dict(
     dtype: torch.dtype = torch.float32,
     force_unsupported_model=False,
     **kwargs: Any,
-) -> Dict[str, torch.Tensor]:
+) -> dict[str, torch.Tensor]:
     """
     Loads in the model weights for a pretrained model, and processes them to
     have the HookedTransformer parameter names and shapes. Supports checkpointed
