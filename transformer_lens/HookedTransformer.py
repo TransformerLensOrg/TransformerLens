@@ -1134,7 +1134,7 @@ class HookedTransformer(HookedRootModule):
         default_padding_side: Literal["left", "right"] = "right",
         dtype="float32",
         first_n_layers: Optional[int] = None,
-        force_unsupported_model=False,  
+        force_unsupported_model=False,
         **from_pretrained_kwargs,
     ) -> T:
         """Load in a Pretrained Model.
@@ -1323,12 +1323,14 @@ class HookedTransformer(HookedRootModule):
             logging.warning("float16 models may not work on CPU. Consider using a GPU or bfloat16.")
 
         if force_unsupported_model:
-               #Force the loading of an unsupported model
-               logging.warning("You may be loading an unsupported model. Please be sure you know what you are doing and that you can expect unwanted behaviour")
-               official_model_name=model_name
+            # Force the loading of an unsupported model
+            logging.warning(
+                "You may be loading an unsupported model. Please be sure you know what you are doing and that you can expect unwanted behaviour"
+            )
+            official_model_name = model_name
         else:
-               # Get the model name used in HuggingFace, rather than the alias.
-               official_model_name = loading.get_official_model_name(model_name)
+            # Get the model name used in HuggingFace, rather than the alias.
+            official_model_name = loading.get_official_model_name(model_name)
 
         # Load the config into an HookedTransformerConfig object. If loading from a
         # checkpoint, the config object will contain the information about the
@@ -1377,9 +1379,13 @@ class HookedTransformer(HookedRootModule):
         # Get the state dict of the model (ie a mapping of parameter names to tensors), processed to
         # match the HookedTransformer parameter names.
         state_dict = loading.get_pretrained_state_dict(
-            official_model_name, cfg, hf_model, dtype=dtype, force_unsupported_model=force_unsupported_model, **from_pretrained_kwargs
+            official_model_name,
+            cfg,
+            hf_model,
+            dtype=dtype,
+            force_unsupported_model=force_unsupported_model,
+            **from_pretrained_kwargs,
         )
-
 
         # Create the HookedTransformer object
         model = cls(

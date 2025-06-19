@@ -785,7 +785,7 @@ def convert_hf_model_config(model_name: str, force_unsupported_model=False, **kw
         logging.info("Loading model config from local directory")
         official_model_name = model_name
     else:
-        if force_unsupported_model==False:
+        if force_unsupported_model == False:
             official_model_name = get_official_model_name(model_name)
         else:
             official_model_name = model_name
@@ -1693,14 +1693,16 @@ def get_pretrained_model_config(
     """
     if Path(model_name).exists():
         # If the model_name is a path, it's a local model
-        cfg_dict = convert_hf_model_config(model_name, force_unsupported_model=force_unsupported_model, **kwargs)
+        cfg_dict = convert_hf_model_config(
+            model_name, force_unsupported_model=force_unsupported_model, **kwargs
+        )
         official_model_name = model_name
     else:
-        if force_unsupported_model==False:
-             official_model_name = get_official_model_name(model_name)
+        if force_unsupported_model == False:
+            official_model_name = get_official_model_name(model_name)
         else:
-             #Forcing an unsupported model
-             official_model_name=model_name
+            # Forcing an unsupported model
+            official_model_name = model_name
     if (
         official_model_name.startswith("NeelNanda")
         or official_model_name.startswith("ArthurConmy")
@@ -1715,7 +1717,9 @@ def get_pretrained_model_config(
                 f"Loading model {official_model_name} requires setting trust_remote_code=True"
             )
             kwargs["trust_remote_code"] = True
-        cfg_dict = convert_hf_model_config(official_model_name, force_unsupported_model=force_unsupported_model, **kwargs)
+        cfg_dict = convert_hf_model_config(
+            official_model_name, force_unsupported_model=force_unsupported_model, **kwargs
+        )
     # Processing common to both model types
     # Remove any prefix, saying the organization who made a model.
     cfg_dict["model_name"] = official_model_name.split("/")[-1]
@@ -1873,7 +1877,7 @@ def get_pretrained_state_dict(
         official_model_name = str(Path(official_model_name).resolve())
         logging.info(f"Loading model from local path {official_model_name}")
     else:
-        if force_unsupported_model==False:
+        if force_unsupported_model == False:
             official_model_name = get_official_model_name(official_model_name)
         else:
             official_model_name = official_model_name
