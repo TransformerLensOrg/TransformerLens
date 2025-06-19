@@ -26,23 +26,16 @@
             {version=">=1.26,<2", python=">=3.12,<3.13"},
         ]
         pandas=">=1.1.5"
-        protobuf="3.20.1"
         python=">=3.8,<4.0"
         rich=">=12.6.0"
         sentencepiece="*"
-        torch=[
-            {version="<2.6", python=">=3.8,<3.9"},
-            {version=">=2.6", python=">=3.9"},
-        ]
+        torch=[{version="<2.6", python=">=3.8,<3.9"}, {version=">=2.6", python=">=3.9"}]
         tqdm=">=4.64.1"
-        transformers=[
-            {version="<4.51", python=">=3.8,<3.9"},
-            {version=">=4.51", python=">=3.9"},
-        ]
+        transformers=[{version="<4.51", python=">=3.8,<3.9"}, {version=">=4.51", python=">=3.9"}]
+        transformers-stream-generator="^0.0.5"
+        typeguard="^4.2"
         typing-extensions="*"
         wandb=">=0.13.5"
-        typeguard = "^4.2"
-        transformers-stream-generator = "^0.0.5"
 
     [tool.poetry.group]
         [tool.poetry.group.dev.dependencies]
@@ -63,14 +56,14 @@
             jupyterlab=">=3.5.0"
 
         [tool.poetry.group.docs.dependencies]
-            furo={version=">=2022.12.7"}
-            myst-parser={version=">=0.18.1"}
+            furo={version=">=2023.3.27,<2024.0.0"}
+            myst-parser={version=">=2.0.0,<3.0.0"}
             nbconvert="^7.9.2"
             nbsphinx="^0.9.3"
             pandoc="^2.3"
             snowballstemmer="*"
-            sphinx={version="5.2.3"}
-            sphinx-autobuild={version=">=2021.3.14"}
+            sphinx={version=">=7.0.0,<8.0.0"}
+            sphinx-autobuild={version=">=2021.3.14,<2022.12.7"}
             sphinxcontrib-napoleon={version=">=0.7"}
             tabulate={version=">=0.9.0"}
 
@@ -135,10 +128,7 @@
     # All rules apart from base are shown explicitly below
     deprecateTypingAliases=true
     disableBytesTypePromotions=true
-    exclude = [
-        "*/**/*.py",
-        "!/transformer_lens/hook_points.py"
-    ]
+    exclude=["!/transformer_lens/hook_points.py", "*/**/*.py"]
     reportAssertAlwaysTrue=true
     reportConstantRedefinition=true
     reportDeprecated=true
