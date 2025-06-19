@@ -37,6 +37,7 @@ from transformer_lens.pretrained.weight_conversions import (
     convert_neel_solu_old_weights,
     convert_neo_weights,
     convert_neox_weights,
+    convert_openelm_weights,
     convert_opt_weights,
     convert_phi3_weights,
     convert_phi_weights,
@@ -44,7 +45,6 @@ from transformer_lens.pretrained.weight_conversions import (
     convert_qwen3_weights,
     convert_qwen_weights,
     convert_t5_weights,
-    convert_openelm_weights,
 )
 
 OFFICIAL_MODEL_NAMES = [
@@ -1446,6 +1446,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any):
             "rotary_dim": hf_config.hidden_size // hf_config.num_attention_heads,
         }
     elif architecture == "OpenELMForCausalLM":
+
         def make_divisible(
             v: Union[float, int],
             divisor: Optional[int] = 8,
@@ -1470,23 +1471,26 @@ def convert_hf_model_config(model_name: str, **kwargs: Any):
             if new_v < 0.9 * v:
                 new_v += divisor
             return new_v
-            
+
         cfg_dict = {
             "d_model": hf_config.model_dim,
             "d_head": hf_config.head_dim,
-            "n_heads": 64,# is this variable too? ,
+            "n_heads": 64,  # is this variable too? ,
             "n_layers": hf_config.num_transformer_layers,
             "n_ctx": hf_config.max_context_length,
-            "eps": 23, # what is going on here?? 
+            "eps": 23,  # what is going on here??
             "d_vocab": hf_config.vocab_size,
             "act_fn": "silu",
-            "initializer_range": hf_config.initializer_range, 
+            "initializer_range": hf_config.initializer_range,
             "normalization_type": "RMS",
-            "positional_embedding_type": "rotary", 
+            "positional_embedding_type": "rotary",
             "trust_remote_code": True,
             "n_key_value_heads": hf_config.num_kv_heads,
             "n_query_heads": hf_config.num_query_heads,
-            "d_mlps": [(2 *  int(make_divisible(val * hf_config.model_dim, hf_config.ffn_dim_divisor))) for val in hf_config.ffn_multipliers], 
+            "d_mlps": [
+                (2 * int(make_divisible(val * hf_config.model_dim, hf_config.ffn_dim_divisor)))
+                for val in hf_config.ffn_multipliers
+            ],
         }
 
     elif official_model_name.startswith("google/gemma-2b"):
