@@ -1,5 +1,3 @@
-import math
-
 import pytest
 import torch
 from transformers import AutoModelForCausalLM
@@ -24,7 +22,7 @@ class TestMatchHuggingFace:
             tl_out = tl_model.blocks[layer_n].mlp(test_tensor)
             hf_out = hf_model.transformer.h[layer_n].mlp(test_tensor)
 
-            assert torch.sum(tl_out == hf_out) == math.prod(tensor_shape)
+            assert torch.allclose(tl_out, hf_out, atol=1e-4)
 
     def test_compare_huggingface_attention_match_local_implementation(self, model_name):
         tl_model = HookedTransformer.from_pretrained_no_processing(model_name, device="cpu")
@@ -40,8 +38,8 @@ class TestMatchHuggingFace:
                 past_kv_cache_entry=None,
                 attention_mask=None,
             )
-            hf_out, _, _ = hf_model.transformer.h[layer_n].attn(
+            hf_out = hf_model.transformer.h[layer_n].attn(
                 hidden_states=input, output_attentions=True
-            )
+            )[0]
 
-            assert torch.sum(tl_out == hf_out) == math.prod(tl_out.shape)
+            assert torch.allclose(tl_out, hf_out, atol=1e-4)

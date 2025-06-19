@@ -21,7 +21,29 @@ TINY_STORIES_MODEL_NAMES = [
 
 PYTHIA_MODEL_NAMES = [name for name in OFFICIAL_MODEL_NAMES if name.startswith("EleutherAI/pythia")]
 
-model_names = [
+# Small subsets for basic testing
+TINY_STORIES_SMALL_MODELS = ["roneneldan/TinyStories-1M"]
+PYTHIA_SMALL_MODELS = ["EleutherAI/pythia-70m"]
+
+# Use full lists if HF_TOKEN is available, otherwise use small subsets
+TINY_STORIES_TEST_MODELS = (
+    TINY_STORIES_MODEL_NAMES if os.environ.get("HF_TOKEN", "") else TINY_STORIES_SMALL_MODELS
+)
+PYTHIA_TEST_MODELS = PYTHIA_MODEL_NAMES if os.environ.get("HF_TOKEN", "") else PYTHIA_SMALL_MODELS
+
+# Small models for basic testing
+PUBLIC_MODEL_NAMES = [
+    "attn-only-demo",
+    "gpt2-small",
+    "opt-125m",
+    "pythia-70m",
+    "tiny-stories-33M",
+    "microsoft/phi-1",
+    "google/gemma-2b",
+]
+
+# Full set of models to test
+FULL_MODEL_NAMES = [
     "attn-only-demo",
     "gpt2-small",
     "opt-125m",
@@ -42,7 +64,12 @@ model_names = [
     "google/gemma-2b",
     "google/gemma-7b",
 ]
+
+# Use full model list if HF_TOKEN is available, otherwise use public models only
+model_names = FULL_MODEL_NAMES if os.environ.get("HF_TOKEN", "") else PUBLIC_MODEL_NAMES
+
 text = "Hello world!"
+
 """ 
 # Code to regenerate loss store
 store = {}
@@ -52,7 +79,15 @@ for name in model_names:
     store[name] = loss.item()
 print(store)
 """
-loss_store = {
+
+# Loss values for minimal testing
+SMALL_LOSS_STORE = {
+    "gpt2-small": 5.331855773925781,
+    "pythia-70m": 4.659344673156738,
+}
+
+# Full set of loss values
+FULL_LOSS_STORE = {
     "attn-only-demo": 5.701841354370117,
     "gpt2-small": 5.331855773925781,
     "opt-125m": 6.159054279327393,
@@ -68,6 +103,9 @@ loss_store = {
     "tiny-stories-33M": 12.203617095947266,
     "bloom-560m": 5.237126350402832,
 }
+
+# Use full store if HF_TOKEN is available, otherwise use small store
+loss_store = FULL_LOSS_STORE if os.environ.get("HF_TOKEN", "") else SMALL_LOSS_STORE
 
 no_processing = [
     ("solu-1l", 5.256411552429199),
@@ -534,7 +572,7 @@ def test_pos_embed_hook():
 
 
 def test_all_tinystories_models_exist():
-    for model in TINY_STORIES_MODEL_NAMES:
+    for model in TINY_STORIES_TEST_MODELS:
         try:
             AutoConfig.from_pretrained(model)
         except OSError:
@@ -545,7 +583,7 @@ def test_all_tinystories_models_exist():
 
 
 def test_all_pythia_models_exist():
-    for model in PYTHIA_MODEL_NAMES:
+    for model in PYTHIA_TEST_MODELS:
         try:
             AutoConfig.from_pretrained(model)
         except OSError:
