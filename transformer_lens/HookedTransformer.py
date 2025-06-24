@@ -2438,6 +2438,7 @@ class HookedTransformer(HookedRootModule):
                 ), "Must provide a tokenizer if passing a string to the model"
                 tokens = self.to_tokens(input, prepend_bos=prepend_bos, padding_side=padding_side)
             else:
+                assert isinstance(input, torch.Tensor), "Input must be a tensor when not a string"
                 tokens = input
 
             if return_type == "input":
@@ -2483,6 +2484,9 @@ class HookedTransformer(HookedRootModule):
 
             # An array to track which sequences in the batch have finished.
             finished_sequences = torch.zeros(batch_size, dtype=torch.bool, device=self.cfg.device)
+
+            accumulated_tokens: Optional[torch.Tensor] = None
+            tokens_since_last_yield = 0
 
             # Currently nothing in HookedTransformer changes with eval, but this is here in case
             # that changes in the future.
@@ -2575,16 +2579,6 @@ class HookedTransformer(HookedRootModule):
             # Only yield remaining tokens if we didn't already yield them in the break case
             if accumulated_tokens is not None and not (stop_at_eos and finished_sequences.all()):
                 yield accumulated_tokens
-
-            if return_type == "str":
-                if self.cfg.default_prepend_bos:
-                    # If we prepended a BOS token, remove it when returning output.
-                    return self.tokenizer.decode(tokens[0, 1:])
-                else:
-                    return self.tokenizer.decode(tokens[0])
-
-            else:
-                return tokens
 
     # Give access to all weights as properties.
     @property

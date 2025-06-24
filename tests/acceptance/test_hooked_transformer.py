@@ -241,22 +241,16 @@ def test_bloom_similarity_with_hf_model_with_kv_cache_activated_stream():
     hf_model = AutoModelForCausalLM.from_pretrained("bigscience/bloom-560m")
     hf_tokenizer = AutoTokenizer.from_pretrained("bigscience/bloom-560m")
 
-    gen = tf_model.generate_stream(
+    final_output = ""
+    for result in tf_model.generate_stream(
         text,
         do_sample=False,
         use_past_kv_cache=True,
         verbose=False,
         max_new_tokens=10,
         max_tokens_per_yield=10,
-    )
-
-    # Exhaust the generator to capture its final return value.
-    while True:
-        try:
-            next(gen)
-        except StopIteration as e:
-            final_output = e.value
-            break
+    ):
+        final_output += tf_model.to_string(result[0])
 
     hf_input_ids = hf_tokenizer(text, return_tensors="pt").input_ids
     output_hf_tokens = hf_model.generate(
