@@ -285,3 +285,8 @@ class TransformerBridge(nn.Module):
             for hp, _ in hooks:
                 hp.remove_hooks()
         return output, cache
+
+    @property
+    def blocks(self):
+        # Use the adapter to get the blocks component, for flexibility
+        return self.bridge.get_component(self.original_model, "blocks")
