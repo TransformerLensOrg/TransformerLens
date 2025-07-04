@@ -16,7 +16,7 @@ from transformer_lens.model_bridge.component_creation import (
 )
 
 
-class TransformerBridge:
+class TransformerBridge(nn.Module):
     """Bridge between HuggingFace and HookedTransformer models.
 
     This class provides a standardized interface to access components of a transformer
@@ -35,7 +35,7 @@ class TransformerBridge:
             tokenizer: The tokenizer to use (required)
         """
         super().__init__()
-        self.model = model
+        self.original_model = model
         self.bridge = adapter
         self.cfg = adapter.user_cfg
         self.tokenizer = tokenizer
@@ -45,15 +45,15 @@ class TransformerBridge:
 
         # Create and replace components
         create_and_replace_components_from_mapping(
-            self.bridge.get_component_mapping(), self.model, self.bridge, bridge=self
+            self.bridge.get_component_mapping(), self.original_model, self.bridge, bridge=self
         )
 
     def __getattr__(self, name: str) -> Any:
         """Provide a clear error message for missing attributes."""
-        raise AttributeError(
-            f"'{type(self).__name__}' object has no attribute '{name}'. "
-            f"Check the component mapping in your architecture adapter."
-        )
+        if name in self.__dict__:
+            return self.__dict__[name]
+
+        return super().__getattr__(name)
 
     def _format_single_component(self, name: str, path: str, indent: int = 0) -> str:
         """Format a single component's string representation.
@@ -68,7 +68,7 @@ class TransformerBridge:
         """
         indent_str = "  " * indent
         try:
-            comp = self.bridge.get_component(self.model, path)
+            comp = self.bridge.get_component(self.original_model, path)
             if hasattr(comp, "original_component"):
                 return f"{indent_str}{name}: {type(comp).__name__}({type(comp.original_component).__name__})"
             return f"{indent_str}{name}: {type(comp).__name__}"
@@ -164,7 +164,7 @@ class TransformerBridge:
             input_ids = input
         if input_ids.ndim == 1:
             input_ids = input_ids.unsqueeze(0)
-        input_ids = input_ids.to(next(self.model.parameters()).device)
+        input_ids = input_ids.to(next(self.original_model.parameters()).device)
 
         # Set up generation kwargs
         gen_kwargs = {
@@ -179,8 +179,8 @@ class TransformerBridge:
         if eos_token_id is not None:
             gen_kwargs["eos_token_id"] = eos_token_id
         # Note: freq_penalty and use_past_kv_cache are not always supported by all models
-        if hasattr(self.model, "generate"):
-            output_ids = self.model.generate(input_ids, **gen_kwargs)  # type: ignore[operator,arg-type]
+        if hasattr(self.original_model, "generate"):
+            output_ids = self.original_model.generate(input_ids, **gen_kwargs)  # type: ignore[operator,arg-type]
         else:
             raise RuntimeError("Underlying model does not support generate method.")
 
@@ -205,7 +205,7 @@ class TransformerBridge:
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         """Forward pass through the underlying HuggingFace model, with all arguments passed through."""
         # Pre-processing (if needed)
-        output = self.model(*args, **kwargs)
+        output = self.original_model(*args, **kwargs)
         # Post-processing (if needed)
         return output
 
@@ -248,7 +248,7 @@ class TransformerBridge:
                         if isinstance(item, nn.Module):
                             collect_hookpoints(item, f"{name}[{i}]")
 
-        collect_hookpoints(self.model)
+        collect_hookpoints(self.original_model)
 
         # Register hooks
         for hp, name in hooks:
@@ -270,11 +270,11 @@ class TransformerBridge:
                     padding=True,
                     truncation=True,
                 )["input_ids"]
-                input_ids = input_ids.to(next(self.model.parameters()).device)
+                input_ids = input_ids.to(next(self.original_model.parameters()).device)
                 processed_args[0] = input_ids
 
             # Run the underlying model's forward method
-            output = self.model(*processed_args, **kwargs)
+            output = self.original_model(*processed_args, **kwargs)
 
             # Extract logits if output is a HuggingFace model output object
             if hasattr(output, "logits"):
@@ -288,4 +288,4 @@ class TransformerBridge:
 
     def blocks(self):
         # Use the adapter to get the blocks component, for flexibility
-        return self.bridge.get_component(self.model, "blocks")
+        return self.bridge.get_component(self.original_model, "blocks")
