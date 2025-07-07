@@ -24,9 +24,7 @@ class TransformerBridge:
     to map between the HookedTransformer and HuggingFace model structures.
     """
 
-    def __init__(
-        self, model: nn.Module, adapter: ArchitectureAdapter, tokenizer: Any
-    ):
+    def __init__(self, model: nn.Module, adapter: ArchitectureAdapter, tokenizer: Any):
         """Initialize the bridge.
 
         Args:
@@ -151,28 +149,28 @@ class TransformerBridge:
             Token tensor of shape [batch, pos]
         """
         assert self.tokenizer is not None, "Cannot use to_tokens without a tokenizer"
-        
+
         # Handle prepend_bos logic
         if prepend_bos is None:
-            prepend_bos = getattr(self.cfg, 'default_prepend_bos', True)
-        
+            prepend_bos = getattr(self.cfg, "default_prepend_bos", True)
+
         # Handle padding_side logic
         if padding_side is None:
-            padding_side = getattr(self.tokenizer, 'padding_side', 'right')
-        
+            padding_side = getattr(self.tokenizer, "padding_side", "right")
+
         # Tokenize
         tokens = self.tokenizer(
             input,
             return_tensors="pt",
             padding=True,
             truncation=truncate,
-            max_length=getattr(self.cfg, 'n_ctx', None) if truncate else None,
+            max_length=getattr(self.cfg, "n_ctx", None) if truncate else None,
         )["input_ids"]
 
         if move_to_device:
             device = next(self.model.parameters()).device
             tokens = tokens.to(device)
-        
+
         return tokens
 
     def to_string(
@@ -216,7 +214,7 @@ class TransformerBridge:
             List of token strings
         """
         assert self.tokenizer is not None, "Cannot use to_str_tokens without a tokenizer"
-        
+
         if isinstance(input, list):
             return [self.to_str_tokens(item, prepend_bos, padding_side) for item in input]
         elif isinstance(input, str):
@@ -225,16 +223,20 @@ class TransformerBridge:
             tokens = input.squeeze()
             if tokens.dim() == 0:
                 tokens = tokens.unsqueeze(0)
-            assert tokens.dim() == 1, f"Invalid tokens input to to_str_tokens, has shape: {tokens.shape}"
+            assert (
+                tokens.dim() == 1
+            ), f"Invalid tokens input to to_str_tokens, has shape: {tokens.shape}"
         elif isinstance(input, np.ndarray):
             tokens = input.squeeze()
             if tokens.ndim == 0:
                 tokens = np.expand_dims(tokens, axis=0)
-            assert tokens.ndim == 1, f"Invalid tokens input to to_str_tokens, has shape: {tokens.shape}"
+            assert (
+                tokens.ndim == 1
+            ), f"Invalid tokens input to to_str_tokens, has shape: {tokens.shape}"
             tokens = torch.tensor(tokens)
         else:
             raise ValueError(f"Invalid input type to to_str_tokens: {type(input)}")
-        
+
         str_tokens = self.tokenizer.batch_decode(tokens, clean_up_tokenization_spaces=False)
         return str_tokens
 
@@ -277,7 +279,7 @@ class TransformerBridge:
         loss_per_token: bool = False,
         prepend_bos: Optional[bool] = None,
         padding_side: Optional[str] = None,
-        **kwargs
+        **kwargs,
     ) -> Any:
         """Forward pass through the model.
 
@@ -299,24 +301,24 @@ class TransformerBridge:
             input_ids = input
 
         # Run model
-        if hasattr(self.model, 'forward'):
+        if hasattr(self.model, "forward"):
             output = self.model.forward(input_ids, **kwargs)
         else:
             output = self.model(input_ids, **kwargs)
 
         # Handle different return types
         if return_type == "logits":
-            if hasattr(output, 'logits'):
+            if hasattr(output, "logits"):
                 return output.logits
             return output
         elif return_type == "loss":
-            if hasattr(output, 'loss'):
+            if hasattr(output, "loss"):
                 return output.loss
             # Calculate loss manually if needed
-            return self.loss_fn(output.logits if hasattr(output, 'logits') else output, input_ids)
+            return self.loss_fn(output.logits if hasattr(output, "logits") else output, input_ids)
         elif return_type == "both":
-            logits = output.logits if hasattr(output, 'logits') else output
-            loss = output.loss if hasattr(output, 'loss') else self.loss_fn(logits, input_ids)
+            logits = output.logits if hasattr(output, "logits") else output
+            loss = output.loss if hasattr(output, "loss") else self.loss_fn(logits, input_ids)
             return logits, loss
         else:
             return output
@@ -342,17 +344,17 @@ class TransformerBridge:
         # Simple cross-entropy loss implementation
         if tokens.device != logits.device:
             tokens = tokens.to(logits.device)
-        
+
         # Shift tokens for next-token prediction
         target_tokens = tokens[:, 1:]
         pred_logits = logits[:, :-1]
-        
+
         loss = torch.nn.functional.cross_entropy(
             pred_logits.reshape(-1, pred_logits.size(-1)),
             target_tokens.reshape(-1),
-            reduction='none'
+            reduction="none",
         )
-        
+
         if per_token:
             return loss.reshape(target_tokens.shape)
         else:
@@ -365,7 +367,7 @@ class TransformerBridge:
         input: Union[str, List[str], torch.Tensor],
         return_cache_object: bool = True,
         remove_batch_dim: bool = False,
-        **kwargs
+        **kwargs,
     ) -> Tuple[Any, Union[Dict[str, torch.Tensor], "ActivationCache"]]:
         """Run the model and cache all activations.
 
@@ -388,6 +390,7 @@ class TransformerBridge:
             def cache_hook(tensor: torch.Tensor, *, hook: Any) -> torch.Tensor:
                 cache[name] = tensor.detach().cpu()
                 return tensor
+
             return cache_hook
 
         # Recursively collect all HookPoint objects
@@ -396,7 +399,7 @@ class TransformerBridge:
             if obj_id in visited:
                 return
             visited.add(obj_id)
-            
+
             for attr_name in dir(module):
                 if attr_name.startswith("_"):
                     continue
@@ -404,7 +407,7 @@ class TransformerBridge:
                     attr = getattr(module, attr_name)
                 except Exception:
                     continue
-                
+
                 name = f"{prefix}.{attr_name}" if prefix else attr_name
                 if isinstance(attr, HookPoint):
                     hooks.append((attr, name))
@@ -432,7 +435,7 @@ class TransformerBridge:
             output = self.forward(input_ids, **kwargs)
 
             # Extract logits if needed
-            if hasattr(output, 'logits'):
+            if hasattr(output, "logits"):
                 output = output.logits
 
         finally:
@@ -442,6 +445,7 @@ class TransformerBridge:
 
         if return_cache_object:
             from transformer_lens.ActivationCache import ActivationCache
+
             cache_obj = ActivationCache(cache, self, has_batch_dim=not remove_batch_dim)
             return output, cache_obj
         else:
@@ -488,10 +492,12 @@ class TransformerBridge:
             Generated text or tokens
         """
         # Use the underlying model's generate method if available
-        if hasattr(self.model, 'generate'):
+        if hasattr(self.model, "generate"):
             # Tokenize input if needed
             if isinstance(input, (str, list)):
-                input_ids = self.to_tokens(input, prepend_bos=prepend_bos, padding_side=padding_side)
+                input_ids = self.to_tokens(
+                    input, prepend_bos=prepend_bos, padding_side=padding_side
+                )
             else:
                 input_ids = input
 
