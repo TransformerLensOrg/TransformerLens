@@ -4,12 +4,24 @@ This module provides the bridge components that wrap remote model components and
 a consistent interface for accessing their weights and performing operations.
 """
 
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union, cast
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    List,
+    Literal,
+    Optional,
+    Tuple,
+    Union,
+    cast,
+    overload,
+)
 
 import numpy as np
 import torch
 import torch.nn as nn
 
+from transformer_lens.ActivationCache import ActivationCache
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.component_creation import (
     create_and_replace_components_from_mapping,
@@ -371,13 +383,33 @@ class TransformerBridge(nn.Module):
 
     # ==================== CACHING METHODS ====================
 
+    @overload
+    def run_with_cache(
+        self,
+        input: Union[str, List[str], torch.Tensor],
+        return_cache_object: Literal[True] = True,
+        remove_batch_dim: bool = False,
+        **kwargs,
+    ) -> Tuple[Any, ActivationCache]:
+        ...
+
+    @overload
+    def run_with_cache(
+        self,
+        input: Union[str, List[str], torch.Tensor],
+        return_cache_object: Literal[False],
+        remove_batch_dim: bool = False,
+        **kwargs,
+    ) -> Tuple[Any, Dict[str, torch.Tensor]]:
+        ...
+
     def run_with_cache(
         self,
         input: Union[str, List[str], torch.Tensor],
         return_cache_object: bool = True,
         remove_batch_dim: bool = False,
         **kwargs,
-    ) -> Tuple[Any, Union[Dict[str, torch.Tensor], "ActivationCache"]]:
+    ) -> Tuple[Any, Union[ActivationCache, Dict[str, torch.Tensor]]]:
         """Run the model and cache all activations.
 
         Args:
@@ -434,15 +466,25 @@ class TransformerBridge(nn.Module):
             hp.add_hook(make_cache_hook(name))
 
         try:
-            # Process input - if it's a string, tokenize it first
-            processed_args = list(kwargs.values())
-            if len(kwargs) > 0 and isinstance(kwargs["input"], str):
+            processed_args = [input]
+            # Handle string input whether passed positionally or as a kwarg
+            if processed_args and isinstance(processed_args[0], str):
                 assert self.tokenizer is not None, "Tokenizer must be set to pass string input."
-
-                # Fix padding token issue for GPT2 tokenizers
                 if self.tokenizer.pad_token is None:
                     self.tokenizer.pad_token = self.tokenizer.eos_token
-
+                input_ids = self.tokenizer(
+                    processed_args[0],
+                    return_tensors="pt",
+                    padding=True,
+                    truncation=True,
+                )["input_ids"]
+                input_ids = input_ids.to(next(self.original_model.parameters()).device)
+                kwargs["input_ids"] = input_ids
+                processed_args = processed_args[1:]
+            elif "input" in kwargs and isinstance(kwargs["input"], str):
+                assert self.tokenizer is not None, "Tokenizer must be set to pass string input."
+                if self.tokenizer.pad_token is None:
+                    self.tokenizer.pad_token = self.tokenizer.eos_token
                 input_ids = self.tokenizer(
                     kwargs["input"],
                     return_tensors="pt",
@@ -450,7 +492,8 @@ class TransformerBridge(nn.Module):
                     truncation=True,
                 )["input_ids"]
                 input_ids = input_ids.to(next(self.original_model.parameters()).device)
-                processed_args[0] = input_ids
+                kwargs["input_ids"] = input_ids
+                del kwargs["input"]
 
             # Run the underlying model's forward method
             output = self.original_model(*processed_args, **kwargs)
@@ -465,8 +508,6 @@ class TransformerBridge(nn.Module):
                 hp.remove_hooks()
 
         if return_cache_object:
-            from transformer_lens.ActivationCache import ActivationCache
-
             cache_obj = ActivationCache(cache, self, has_batch_dim=not remove_batch_dim)
             return output, cache_obj
         else:

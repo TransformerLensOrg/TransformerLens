@@ -7,6 +7,7 @@ including model initialization, text generation, hooks, and caching.
 import pytest
 import torch
 
+from transformer_lens.ActivationCache import ActivationCache
 from transformer_lens.boot import boot
 
 
@@ -25,6 +26,9 @@ def test_text_generation():
     model_name = "gpt2"  # Use a smaller model for testing
     bridge = boot(model_name)
 
+    if bridge.tokenizer.pad_token is None:
+        bridge.tokenizer.pad_token = bridge.tokenizer.eos_token
+
     prompt = "The quick brown fox jumps over the lazy dog"
     output = bridge.generate(prompt, max_new_tokens=10)
 
@@ -36,6 +40,9 @@ def test_hooks():
     """Test that hooks can be added and removed correctly."""
     model_name = "gpt2"  # Use a smaller model for testing
     bridge = boot(model_name)
+
+    if bridge.tokenizer.pad_token is None:
+        bridge.tokenizer.pad_token = bridge.tokenizer.eos_token
 
     # Track if hook was called
     hook_called = False
@@ -72,12 +79,15 @@ def test_cache():
     model_name = "gpt2"  # Use a smaller model for testing
     bridge = boot(model_name)
 
+    if bridge.tokenizer.pad_token is None:
+        bridge.tokenizer.pad_token = bridge.tokenizer.eos_token
+
     prompt = "Test prompt"
     output, cache = bridge.run_with_cache(prompt)
 
     # Verify output and cache
     assert isinstance(output, torch.Tensor), "Output should be a tensor"
-    assert isinstance(cache, dict), "Cache should be a dictionary"
+    assert isinstance(cache, ActivationCache), "Cache should be an ActivationCache object"
     assert len(cache) > 0, "Cache should contain activations"
 
     # Verify cache contains some expected keys (using actual HuggingFace model structure)
