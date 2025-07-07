@@ -538,7 +538,9 @@ class TransformerBridge(nn.Module):
             if eos_token_id is not None:
                 gen_kwargs["eos_token_id"] = eos_token_id
 
-            output_ids = self.original_model.generate(input_ids, **gen_kwargs)
+            if not hasattr(self.original_model, "generate"):
+                raise RuntimeError("Underlying model does not support generate method.")
+            output_ids = self.original_model.generate(input_ids, **gen_kwargs)  # type: ignore[operator]
 
             # Handle return type
             if return_type == "input":
