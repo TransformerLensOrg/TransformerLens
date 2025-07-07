@@ -36,7 +36,7 @@ class TransformerBridge(nn.Module):
             tokenizer: The tokenizer to use (required)
         """
         super().__init__()
-        self.original_model = model
+        self.original_model: nn.Module = model
         self.bridge = adapter
         self.cfg = adapter.user_cfg
         self.tokenizer = tokenizer
