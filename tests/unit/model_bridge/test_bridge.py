@@ -25,10 +25,7 @@ class TestTransformerBridge:
     @pytest.fixture(autouse=True)
     def setup_method(self, mock_adapter, mock_model_adapter):
         """Set up test fixtures."""
-        self.bridge = TransformerBridge.__new__(TransformerBridge)
-        self.bridge.model = mock_model_adapter
-        self.bridge.bridge = mock_adapter
-        self.bridge.tokenizer = MagicMock()
+        self.bridge = TransformerBridge(mock_model_adapter, mock_adapter, MagicMock())
         mock_adapter.user_cfg = MagicMock()
         self.bridge.cfg = mock_adapter.user_cfg
 

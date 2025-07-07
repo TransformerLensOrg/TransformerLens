@@ -16,7 +16,7 @@ from transformer_lens.model_bridge.component_creation import (
 )
 
 
-class TransformerBridge:
+class TransformerBridge(nn.Module):
     """Bridge between HuggingFace and HookedTransformer models.
 
     This class provides a standardized interface to access components of a transformer
@@ -33,7 +33,7 @@ class TransformerBridge:
             tokenizer: The tokenizer to use (required)
         """
         super().__init__()
-        self.model = model
+        self.original_model = model
         self.bridge = adapter
         self.cfg = adapter.user_cfg
         self.tokenizer = tokenizer
@@ -43,15 +43,15 @@ class TransformerBridge:
 
         # Create and replace components
         create_and_replace_components_from_mapping(
-            self.bridge.get_component_mapping(), self.model, self.bridge, bridge=self
+            self.bridge.get_component_mapping(), self.original_model, self.bridge, bridge=self
         )
 
     def __getattr__(self, name: str) -> Any:
         """Provide a clear error message for missing attributes."""
-        raise AttributeError(
-            f"'{type(self).__name__}' object has no attribute '{name}'. "
-            f"Check the component mapping in your architecture adapter."
-        )
+        if name in self.__dict__:
+            return self.__dict__[name]
+
+        return super().__getattr__(name)
 
     def _format_single_component(self, name: str, path: str, indent: int = 0) -> str:
         """Format a single component's string representation.
@@ -66,7 +66,7 @@ class TransformerBridge:
         """
         indent_str = "  " * indent
         try:
-            comp = self.bridge.get_component(self.model, path)
+            comp = self.bridge.get_component(self.original_model, path)
             if hasattr(comp, "original_component"):
                 return f"{indent_str}{name}: {type(comp).__name__}({type(comp.original_component).__name__})"
             return f"{indent_str}{name}: {type(comp).__name__}"
@@ -168,7 +168,7 @@ class TransformerBridge:
         )["input_ids"]
 
         if move_to_device:
-            device = next(self.model.parameters()).device
+            device = next(self.original_model.parameters()).device
             tokens = tokens.to(device)
 
         return tokens
@@ -301,10 +301,10 @@ class TransformerBridge:
             input_ids = input
 
         # Run model
-        if hasattr(self.model, "forward"):
-            output = self.model.forward(input_ids, **kwargs)
+        if hasattr(self.original_model, "forward"):
+            output = self.original_model.forward(input_ids, **kwargs)
         else:
-            output = self.model(input_ids, **kwargs)
+            output = self.original_model(input_ids, **kwargs)
 
         # Handle different return types
         if return_type == "logits":
@@ -418,23 +418,35 @@ class TransformerBridge:
                         if isinstance(item, nn.Module):
                             collect_hookpoints(item, f"{name}[{i}]")
 
-        collect_hookpoints(self.model)
+        collect_hookpoints(self.original_model)
 
         # Register hooks
         for hp, name in hooks:
             hp.add_hook(make_cache_hook(name))
 
         try:
-            # Process input
-            if isinstance(input, (str, list)):
-                input_ids = self.to_tokens(input)
-            else:
-                input_ids = input
+            # Process input - if it's a string, tokenize it first
+            processed_args = list(args)
+            if len(args) > 0 and isinstance(args[0], str):
+                assert self.tokenizer is not None, "Tokenizer must be set to pass string input."
 
-            # Run model
-            output = self.forward(input_ids, **kwargs)
+                # Fix padding token issue for GPT2 tokenizers
+                if self.tokenizer.pad_token is None:
+                    self.tokenizer.pad_token = self.tokenizer.eos_token
 
-            # Extract logits if needed
+                input_ids = self.tokenizer(
+                    args[0],
+                    return_tensors="pt",
+                    padding=True,
+                    truncation=True,
+                )["input_ids"]
+                input_ids = input_ids.to(next(self.original_model.parameters()).device)
+                processed_args[0] = input_ids
+
+            # Run the underlying model's forward method
+            output = self.original_model(*processed_args, **kwargs)
+
+            # Extract logits if output is a HuggingFace model output object
             if hasattr(output, "logits"):
                 output = output.logits
 
@@ -492,7 +504,7 @@ class TransformerBridge:
             Generated text or tokens
         """
         # Use the underlying model's generate method if available
-        if hasattr(self.model, "generate"):
+        if hasattr(self.original_model, "generate"):
             # Tokenize input if needed
             if isinstance(input, (str, list)):
                 input_ids = self.to_tokens(
@@ -517,7 +529,7 @@ class TransformerBridge:
             if eos_token_id is not None:
                 gen_kwargs["eos_token_id"] = eos_token_id
 
-            output_ids = self.model.generate(input_ids, **gen_kwargs)
+            output_ids = self.original_model.generate(input_ids, **gen_kwargs)
 
             # Handle return type
             if return_type == "input":
@@ -549,7 +561,7 @@ class TransformerBridge:
         Returns:
             Self for chaining
         """
-        self.model = self.model.to(device_or_dtype)
+        self.original_model = self.original_model.to(device_or_dtype)
         return self
 
     def cuda(self, device: Optional[Union[int, torch.device]] = None) -> "TransformerBridge":
@@ -584,106 +596,7 @@ class TransformerBridge:
         """
         return self.to(torch.device("mps"))
 
+    @property
     def blocks(self):
-        """Get the blocks component from the adapter."""
-        return self.bridge.get_component(self.model, "blocks")
-
-    # ==================== WEIGHT ACCESS PROPERTIES ====================
-
-    @property
-    def W_U(self) -> torch.Tensor:
-        """Get the unembedding matrix."""
-        return self.bridge.get_component(self.model, "unembed").W_U
-
-    @property
-    def b_U(self) -> torch.Tensor:
-        """Get the unembedding bias."""
-        return self.bridge.get_component(self.model, "unembed").b_U
-
-    @property
-    def W_E(self) -> torch.Tensor:
-        """Get the embedding matrix."""
-        return self.bridge.get_component(self.model, "embed").W_E
-
-    @property
-    def W_pos(self) -> torch.Tensor:
-        """Get the positional embedding matrix."""
-        return self.bridge.get_component(self.model, "pos_embed").W_pos
-
-    @property
-    def W_E_pos(self) -> torch.Tensor:
-        """Get concatenated W_E and W_pos."""
-        return torch.cat([self.W_E, self.W_pos], dim=0)
-
-    # Layer-specific weight properties
-    @property
-    def W_K(self) -> torch.Tensor:
-        """Stack the key weights across all layers."""
-        blocks = self.blocks()
-        return torch.stack([block.attn.W_K for block in blocks], dim=0)
-
-    @property
-    def W_Q(self) -> torch.Tensor:
-        """Stack the query weights across all layers."""
-        blocks = self.blocks()
-        return torch.stack([block.attn.W_Q for block in blocks], dim=0)
-
-    @property
-    def W_V(self) -> torch.Tensor:
-        """Stack the value weights across all layers."""
-        blocks = self.blocks()
-        return torch.stack([block.attn.W_V for block in blocks], dim=0)
-
-    @property
-    def W_O(self) -> torch.Tensor:
-        """Stack the attention output weights across all layers."""
-        blocks = self.blocks()
-        return torch.stack([block.attn.W_O for block in blocks], dim=0)
-
-    @property
-    def W_in(self) -> torch.Tensor:
-        """Stack the MLP input weights across all layers."""
-        blocks = self.blocks()
-        return torch.stack([block.mlp.W_in for block in blocks], dim=0)
-
-    @property
-    def W_out(self) -> torch.Tensor:
-        """Stack the MLP output weights across all layers."""
-        blocks = self.blocks()
-        return torch.stack([block.mlp.W_out for block in blocks], dim=0)
-
-    @property
-    def b_K(self) -> torch.Tensor:
-        """Stack the key biases across all layers."""
-        blocks = self.blocks()
-        return torch.stack([block.attn.b_K for block in blocks], dim=0)
-
-    @property
-    def b_Q(self) -> torch.Tensor:
-        """Stack the query biases across all layers."""
-        blocks = self.blocks()
-        return torch.stack([block.attn.b_Q for block in blocks], dim=0)
-
-    @property
-    def b_V(self) -> torch.Tensor:
-        """Stack the value biases across all layers."""
-        blocks = self.blocks()
-        return torch.stack([block.attn.b_V for block in blocks], dim=0)
-
-    @property
-    def b_O(self) -> torch.Tensor:
-        """Stack the attention output biases across all layers."""
-        blocks = self.blocks()
-        return torch.stack([block.attn.b_O for block in blocks], dim=0)
-
-    @property
-    def b_in(self) -> torch.Tensor:
-        """Stack the MLP input biases across all layers."""
-        blocks = self.blocks()
-        return torch.stack([block.mlp.b_in for block in blocks], dim=0)
-
-    @property
-    def b_out(self) -> torch.Tensor:
-        """Stack the MLP output biases across all layers."""
-        blocks = self.blocks()
-        return torch.stack([block.mlp.b_out for block in blocks], dim=0)
+        # Use the adapter to get the blocks component, for flexibility
+        return self.bridge.get_component(self.original_model, "blocks")

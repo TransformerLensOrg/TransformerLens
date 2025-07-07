@@ -17,7 +17,7 @@ def test_model_initialization():
 
     assert bridge is not None, "Bridge should be initialized"
     assert bridge.tokenizer is not None, "Tokenizer should be initialized"
-    assert isinstance(bridge.model, torch.nn.Module), "Model should be a PyTorch module"
+    assert isinstance(bridge.original_model, torch.nn.Module), "Model should be a PyTorch module"
 
 
 def test_text_generation():
