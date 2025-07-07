@@ -4,7 +4,7 @@ This module provides the bridge components that wrap remote model components and
 a consistent interface for accessing their weights and performing operations.
 """
 
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union, cast
 
 import numpy as np
 import torch
@@ -15,6 +15,8 @@ from transformer_lens.model_bridge.component_creation import (
     create_and_replace_components_from_mapping,
 )
 
+if TYPE_CHECKING:
+    from transformer_lens.ActivationCache import ActivationCache
 
 class TransformerBridge(nn.Module):
     """Bridge between HuggingFace and HookedTransformer models.
@@ -216,7 +218,8 @@ class TransformerBridge(nn.Module):
         assert self.tokenizer is not None, "Cannot use to_str_tokens without a tokenizer"
 
         if isinstance(input, list):
-            return [self.to_str_tokens(item, prepend_bos, padding_side) for item in input]
+            # Use cast to help mypy understand the recursive return type
+            return cast(List[List[str]], [self.to_str_tokens(item, prepend_bos, padding_side) for item in input])
         elif isinstance(input, str):
             tokens = self.to_tokens(input, prepend_bos=prepend_bos, padding_side=padding_side)[0]
         elif isinstance(input, torch.Tensor):
@@ -227,13 +230,13 @@ class TransformerBridge(nn.Module):
                 tokens.dim() == 1
             ), f"Invalid tokens input to to_str_tokens, has shape: {tokens.shape}"
         elif isinstance(input, np.ndarray):
-            tokens = input.squeeze()
-            if tokens.ndim == 0:
-                tokens = np.expand_dims(tokens, axis=0)
+            tokens_np = input.squeeze()
+            if tokens_np.ndim == 0:
+                tokens_np = np.expand_dims(tokens_np, axis=0)
             assert (
-                tokens.ndim == 1
-            ), f"Invalid tokens input to to_str_tokens, has shape: {tokens.shape}"
-            tokens = torch.tensor(tokens)
+                tokens_np.ndim == 1
+            ), f"Invalid tokens input to to_str_tokens, has shape: {tokens_np.shape}"
+            tokens = torch.tensor(tokens_np)
         else:
             raise ValueError(f"Invalid input type to to_str_tokens: {type(input)}")
 
@@ -253,8 +256,9 @@ class TransformerBridge(nn.Module):
             AssertionError: If string is not a single token
         """
         token = self.to_tokens(string, prepend_bos=False).squeeze()
-        assert not token.shape, f"Input string: {string} is not a single token!"
-        return token.item()
+        if token.numel() != 1:
+            raise AssertionError(f"Input string: {string} is not a single token!")
+        return int(token.item())
 
     def to_single_str_token(self, int_token: int) -> str:
         """Get the single token corresponding to an int in string form.
@@ -267,8 +271,9 @@ class TransformerBridge(nn.Module):
         """
         assert isinstance(int_token, int)
         token = self.to_str_tokens(torch.tensor([int_token]))
-        assert len(token) == 1
-        return token[0]
+        if isinstance(token, list) and len(token) == 1:
+            return str(token[0])
+        raise AssertionError("Expected a single string token.")
 
     # ==================== FORWARD PASS METHODS ====================
 
@@ -426,8 +431,8 @@ class TransformerBridge(nn.Module):
 
         try:
             # Process input - if it's a string, tokenize it first
-            processed_args = list(args)
-            if len(args) > 0 and isinstance(args[0], str):
+            processed_args = list(kwargs.values())
+            if len(kwargs) > 0 and isinstance(kwargs['input'], str):
                 assert self.tokenizer is not None, "Tokenizer must be set to pass string input."
 
                 # Fix padding token issue for GPT2 tokenizers
@@ -435,7 +440,7 @@ class TransformerBridge(nn.Module):
                     self.tokenizer.pad_token = self.tokenizer.eos_token
 
                 input_ids = self.tokenizer(
-                    args[0],
+                    kwargs['input'],
                     return_tensors="pt",
                     padding=True,
                     truncation=True,
@@ -552,16 +557,17 @@ class TransformerBridge(nn.Module):
 
     # ==================== UTILITY METHODS ====================
 
-    def to(self, device_or_dtype: Union[torch.device, str, torch.dtype]) -> "TransformerBridge":
+    def to(self, *args, **kwargs) -> "TransformerBridge":
         """Move model to device or change dtype.
 
         Args:
-            device_or_dtype: Device or dtype to move to
+            args: Positional arguments for nn.Module.to
+            kwargs: Keyword arguments for nn.Module.to
 
         Returns:
             Self for chaining
         """
-        self.original_model = self.original_model.to(device_or_dtype)
+        self.original_model = self.original_model.to(*args, **kwargs)
         return self
 
     def cuda(self, device: Optional[Union[int, torch.device]] = None) -> "TransformerBridge":
@@ -586,7 +592,7 @@ class TransformerBridge(nn.Module):
         Returns:
             Self for chaining
         """
-        return self.to(torch.device("cpu"))
+        return self.to(torch.device("cpu"))  # type: ignore
 
     def mps(self) -> "TransformerBridge":
         """Move model to MPS.
@@ -594,7 +600,7 @@ class TransformerBridge(nn.Module):
         Returns:
             Self for chaining
         """
-        return self.to(torch.device("mps"))
+        return self.to(torch.device("mps"))  # type: ignore
 
     @property
     def blocks(self):
