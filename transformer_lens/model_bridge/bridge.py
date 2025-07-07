@@ -18,6 +18,7 @@ from transformer_lens.model_bridge.component_creation import (
 if TYPE_CHECKING:
     from transformer_lens.ActivationCache import ActivationCache
 
+
 class TransformerBridge(nn.Module):
     """Bridge between HuggingFace and HookedTransformer models.
 
@@ -219,7 +220,10 @@ class TransformerBridge(nn.Module):
 
         if isinstance(input, list):
             # Use cast to help mypy understand the recursive return type
-            return cast(List[List[str]], [self.to_str_tokens(item, prepend_bos, padding_side) for item in input])
+            return cast(
+                List[List[str]],
+                [self.to_str_tokens(item, prepend_bos, padding_side) for item in input],
+            )
         elif isinstance(input, str):
             tokens = self.to_tokens(input, prepend_bos=prepend_bos, padding_side=padding_side)[0]
         elif isinstance(input, torch.Tensor):
@@ -432,7 +436,7 @@ class TransformerBridge(nn.Module):
         try:
             # Process input - if it's a string, tokenize it first
             processed_args = list(kwargs.values())
-            if len(kwargs) > 0 and isinstance(kwargs['input'], str):
+            if len(kwargs) > 0 and isinstance(kwargs["input"], str):
                 assert self.tokenizer is not None, "Tokenizer must be set to pass string input."
 
                 # Fix padding token issue for GPT2 tokenizers
@@ -440,7 +444,7 @@ class TransformerBridge(nn.Module):
                     self.tokenizer.pad_token = self.tokenizer.eos_token
 
                 input_ids = self.tokenizer(
-                    kwargs['input'],
+                    kwargs["input"],
                     return_tensors="pt",
                     padding=True,
                     truncation=True,
