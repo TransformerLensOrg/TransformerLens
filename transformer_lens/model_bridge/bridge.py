@@ -23,10 +23,6 @@ import torch.nn as nn
 
 from transformer_lens.ActivationCache import ActivationCache
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
-from transformer_lens.model_bridge.component_creation import (
-    create_and_replace_components_from_mapping,
-    set_original_components_from_mapping,
-)
 
 if TYPE_CHECKING:
     from transformer_lens.ActivationCache import ActivationCache
@@ -689,24 +685,70 @@ class TransformerBridge(nn.Module):
 
     @property
     def blocks(self):
-        # Use the adapter to get the blocks component, for flexibility
-        return self.bridge.get_component(self.original_model, "blocks")
+        # Return the blocks that were set up during initialization
+        return getattr(self, "_blocks", None) or self.bridge.get_component(self.original_model, "blocks")
 
     def _set_original_components(self) -> None:
         """Set original components on the pre-created bridge components."""
         component_mapping = self.bridge.get_component_mapping()
         
+        # Modern bridge instance mapping - set original components directly
         for tl_path, bridge_component in component_mapping.items():
-            # Get the remote path from the bridge component name
-            remote_path = bridge_component.name
-            original_component = self.bridge.get_remote_component(self.original_model, remote_path)
-            bridge_component.set_original_component(original_component)
+            if tl_path == "blocks":
+                # Special handling for blocks - create a ModuleList of bridge components
+                self._setup_blocks_bridge(bridge_component)
+            else:
+                # Regular component handling
+                remote_path = bridge_component.name
+                original_component = self.bridge.get_remote_component(self.original_model, remote_path)
+                bridge_component.set_original_component(original_component)
+                
+                # Set the bridge component on self
+                setattr(self, tl_path, bridge_component)
+                
+                # Replace the original component with the bridge component
+                self._replace_component(remote_path, bridge_component)
+
+    def _setup_blocks_bridge(self, blocks_template: Any) -> None:
+        """Set up blocks bridge with proper ModuleList structure."""
+        import copy
+
+        # Get the original blocks container
+        original_blocks = self.bridge.get_remote_component(self.original_model, blocks_template.name)
+        
+        # Create a new ModuleList of bridge components
+        bridged_blocks = nn.ModuleList()
+        
+        for i, original_block in enumerate(original_blocks):
+            # Create a copy of the template bridge for this block
+            block_bridge = copy.deepcopy(blocks_template)
+            block_bridge.name = f"{blocks_template.name}.{i}"
             
-            # Set the bridge component on self
-            setattr(self, tl_path, bridge_component)
+            # Set the original component for this block
+            block_bridge.set_original_component(original_block)
             
-            # Replace the original component with the bridge component
-            self._replace_component(remote_path, bridge_component)
+            # Set original components for all submodules
+            if hasattr(block_bridge, '_modules'):
+                for submodule_name, submodule in block_bridge._modules.items():
+                    if hasattr(submodule, 'set_original_component') and submodule_name != 'hook_in' and submodule_name != 'hook_out':
+                        # Get the original subcomponent
+                        original_subcomponent = getattr(original_block, submodule.name)
+                        submodule.set_original_component(original_subcomponent)
+                        
+                        # Handle nested submodules (like attention projections)
+                        if hasattr(submodule, '_modules'):
+                            for nested_name, nested_module in submodule._modules.items():
+                                if hasattr(nested_module, 'set_original_component') and nested_name != 'hook_in' and nested_name != 'hook_out':
+                                    original_nested = getattr(original_subcomponent, nested_module.name)
+                                    nested_module.set_original_component(original_nested)
+            
+            bridged_blocks.append(block_bridge)
+        
+        # Replace the original blocks with the bridged blocks
+        self._replace_component(blocks_template.name, bridged_blocks)
+        
+        # Set the blocks on self
+        setattr(self, "_blocks", bridged_blocks)
 
     def _replace_component(self, remote_path: str, replacement_component):
         """Replace a component in the original model."""

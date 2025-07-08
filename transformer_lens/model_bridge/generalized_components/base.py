@@ -227,6 +227,10 @@ class GeneralizedComponent(nn.Module):
 
     def __getattr__(self, name: str):
         # Only called if attribute not found through normal lookup
+        # First check if it's a module attribute (like hook_in, hook_out)
+        if hasattr(self, '_modules') and name in self._modules:
+            return self._modules[name]
+        
         # Avoid recursion by checking if we're looking for original_component
         if name == "original_component":
             # This should not happen since original_component is a property

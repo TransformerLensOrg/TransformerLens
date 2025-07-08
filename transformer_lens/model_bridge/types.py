@@ -1,6 +1,6 @@
 """Type definitions for architecture adapters."""
 
-from typing import Any, Callable, Dict, Optional, TypeAlias, Union
+from typing import Any, Callable, Dict, Optional, TypeAlias
 
 import torch
 import torch.nn as nn
@@ -16,44 +16,10 @@ RemotePath: TypeAlias = str  # Path in the remote model format (e.g. "transforme
 # Component types
 RemoteModel: TypeAlias = nn.Module
 RemoteComponent: TypeAlias = nn.Module
-BridgeComponent: TypeAlias = GeneralizedComponent
 
-# Configuration types
-BridgeConfig: TypeAlias = Any  # Configuration object for bridge components
-ComponentConfig: TypeAlias = Union[BridgeConfig, Dict[str, Any], None]
-
-# Component mapping types
-RemoteImport: TypeAlias = tuple[RemotePath, type[BridgeComponent]]  # Path and bridge component class
-RemoteImportWithConfig: TypeAlias = tuple[RemotePath, tuple[type[BridgeComponent], ComponentConfig]]  # Path, bridge class, and config
-
-# Block mapping types - for handling transformer blocks with sub-components
-BlockMapping: TypeAlias = tuple[
-    RemotePath,  # Path to the block container (e.g. "transformer.h")
-    type[BridgeComponent],  # Bridge component class for the block
-    Dict[str, Union[RemoteImport, RemoteImportWithConfig]]  # Sub-component mapping
-]
-BlockMappingWithConfig: TypeAlias = tuple[
-    RemotePath,  # Path to the block container
-    tuple[type[BridgeComponent], ComponentConfig],  # Bridge class and config
-    Dict[str, Union[RemoteImport, RemoteImportWithConfig]]  # Sub-component mapping
-]
-
-# Complete component mapping
-ComponentMapping: TypeAlias = Dict[
-    TransformerLensPath,
-    Union[
-        RemoteImport,
-        RemoteImportWithConfig,
-        BlockMapping,
-        BlockMappingWithConfig
-    ]
-]
-
-# Function signatures for component creation
-ComponentCreationFunction: TypeAlias = Callable[
-    [RemoteImport, RemoteModel, Any, str, Optional[ComponentConfig]],
-    BridgeComponent
-]
+# Modern component mapping (instance-based)
+# Each bridge component instance contains its remote path as the 'name' attribute
+ComponentMapping: TypeAlias = Dict[TransformerLensPath, GeneralizedComponent]
 
 # Hook-related types
 HookFunction: TypeAlias = Callable[[torch.Tensor, Any], torch.Tensor]
