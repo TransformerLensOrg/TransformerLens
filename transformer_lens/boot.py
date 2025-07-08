@@ -6,6 +6,7 @@ This module provides functionality to load and convert models from HuggingFace t
 
 import torch
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
+from transformer_lens import loading
 
 from transformer_lens.model_bridge import ArchitectureAdapterFactory
 from transformer_lens.model_bridge.bridge import TransformerBridge
@@ -30,21 +31,23 @@ def boot(
     Returns:
         The bridge to the loaded model.
     """
-    hf_config = AutoConfig.from_pretrained(model_name, **kwargs)
+
+    official_model_name = loading.get_official_model_name(model_name)
+    hf_config = AutoConfig.from_pretrained(official_model_name, **kwargs)
     adapter = ArchitectureAdapterFactory.select_architecture_adapter(hf_config)
     default_config = adapter.default_cfg
     merged_config = {**default_config, **(config or {})}
 
     # Load the model from HuggingFace using the original config
     hf_model = AutoModelForCausalLM.from_pretrained(
-        model_name,
+        official_model_name,
         config=hf_config,
         torch_dtype=dtype,
         **merged_config,
     )
 
     # Load the tokenizer
-    tokenizer = AutoTokenizer.from_pretrained(model_name, **kwargs)
+    tokenizer = kwargs.get("tokenizer", None)
 
     return TransformerBridge(
         hf_model,
