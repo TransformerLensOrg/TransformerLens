@@ -474,6 +474,8 @@ class TransformerBridge(nn.Module):
 
                 name = f"{prefix}.{attr_name}" if prefix else attr_name
                 if isinstance(attr, HookPoint):
+                    # Set the name on the HookPoint so it can be used in caching
+                    attr.name = name
                     hooks.append((attr, name))
                 elif isinstance(attr, nn.Module):
                     collect_hookpoints(attr, name)
@@ -487,12 +489,7 @@ class TransformerBridge(nn.Module):
                 child_path = f"{prefix}.{child_name}" if prefix else child_name
                 collect_hookpoints(child_module, child_path)
 
-        # Collect hooks from both the original model AND the bridge components
-        collect_hookpoints(self.original_model)
-        
-        # Also collect hooks from bridge components (like blocks)
-        # Reset visited set to allow collecting from bridge components
-        visited.clear()
+        # Collect hooks from bridge components (these have the clean TransformerLens paths)
         collect_hookpoints(self, "")
 
         # Register hooks
@@ -683,10 +680,7 @@ class TransformerBridge(nn.Module):
         """
         return self.to(torch.device("mps"))  # type: ignore
 
-    @property
-    def blocks(self):
-        # Return the blocks that were set up during initialization
-        return getattr(self, "_blocks", None) or self.bridge.get_component(self.original_model, "blocks")
+    # Remove the blocks property since we're now using a proper module
 
     def _set_original_components(self) -> None:
         """Set original components on the pre-created bridge components."""
@@ -703,8 +697,8 @@ class TransformerBridge(nn.Module):
                 original_component = self.bridge.get_remote_component(self.original_model, remote_path)
                 bridge_component.set_original_component(original_component)
                 
-                # Set the bridge component on self
-                setattr(self, tl_path, bridge_component)
+                # Set the bridge component on self as a proper module
+                self.add_module(tl_path, bridge_component)
                 
                 # Replace the original component with the bridge component
                 self._replace_component(remote_path, bridge_component)
@@ -747,8 +741,8 @@ class TransformerBridge(nn.Module):
         # Replace the original blocks with the bridged blocks
         self._replace_component(blocks_template.name, bridged_blocks)
         
-        # Set the blocks on self
-        setattr(self, "_blocks", bridged_blocks)
+        # Set the blocks on self as a proper module
+        self.add_module("blocks", bridged_blocks)
 
     def _replace_component(self, remote_path: str, replacement_component):
         """Replace a component in the original model."""
