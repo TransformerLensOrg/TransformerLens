@@ -1,13 +1,12 @@
 """Base class for generalized transformer components."""
 
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Optional
 
 import torch
 import torch.nn as nn
 
 from transformer_lens.hook_points import HookPoint
-from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.types import RemoteComponent
 
 
@@ -20,27 +19,41 @@ class GeneralizedComponent(nn.Module):
 
     def __init__(
         self,
-        original_component: RemoteComponent,
         name: str,
-        architecture_adapter: ArchitectureAdapter,
+        config: Optional[Any] = None,
     ):
         """Initialize the generalized component.
 
         Args:
-            original_component: The original transformer component to wrap
             name: The name of this component
-            architecture_adapter: Architecture adapter for component-specific operations
+            config: Optional configuration object for the component
         """
         super().__init__()
-        self.original_component = original_component
         self.name = name
-        self.architecture_adapter = architecture_adapter
+        self.config = config
+        # Use object.__setattr__ to avoid PyTorch's module system
+        object.__setattr__(self, '_original_component', None)
         self.hooks: dict[str, list[Callable[..., torch.Tensor]]] = {}
         self.hook_outputs: dict[str, Any] = {}
         self._hook_tracker = None
-        # Standardized hooks for all bridge components
-        self.hook_in = HookPoint()  # Input to the component
-        self.hook_out = HookPoint()  # Output from the component
+        
+        # Standardized hooks for all bridge components - use add_module to ensure proper registration
+        self.add_module('hook_in', HookPoint())
+        self.add_module('hook_out', HookPoint())
+
+    def set_original_component(self, original_component: RemoteComponent) -> None:
+        """Set the original component that this bridge wraps.
+        
+        Args:
+            original_component: The original transformer component to wrap
+        """
+        # Use object.__setattr__ to avoid PyTorch's module system
+        object.__setattr__(self, '_original_component', original_component)
+
+    @property
+    def original_component(self) -> Optional[RemoteComponent]:
+        """Get the original component."""
+        return object.__getattribute__(self, '_original_component')
 
     def set_hook_tracker(self, tracker: Any) -> None:
         """Set the hook tracker for this component.
@@ -155,6 +168,10 @@ class GeneralizedComponent(nn.Module):
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         """Generic forward pass for bridge components with input/output hooks."""
+        original_component = object.__getattribute__(self, '_original_component')
+        if original_component is None:
+            raise RuntimeError(f"Original component not set for {self.name}. Call set_original_component() first.")
+        
         # Try to find the main input
         input_arg_names = [
             'input', 'hidden_states', 'input_ids', 'query_input', 'x', 'inputs_embeds'
@@ -172,7 +189,7 @@ class GeneralizedComponent(nn.Module):
             args = (hooked_input,) + args[1:]
             input_found = True
         # Call the original component's forward
-        output = self.original_component(*args, **kwargs)
+        output = original_component(*args, **kwargs)
         # Pass output through hook_out
         output = self.hook_out(output)
         self.hook_outputs.update({"output": output})
@@ -206,29 +223,22 @@ class GeneralizedComponent(nn.Module):
 
     def __getattr__(self, name: str):
         # Only called if attribute not found through normal lookup
-        # Try to get from original_component
-        if "original_component" in self._modules:
-            try:
-                return getattr(self._modules["original_component"], name)
-            except AttributeError:
-                # If direct attribute lookup fails, try translating the path
-                # Get the current component's path and append the requested name
-
-                current_path = self.name
-                full_path = f"{current_path}.{name}"
+        # Avoid recursion by checking if we're looking for original_component
+        if name == "original_component":
+            # This should not happen since original_component is a property
+            raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+        
+        # Try to get from original_component if it exists
+        try:
+            original_component = object.__getattribute__(self, '_original_component')
+            if original_component is not None:
                 try:
-                    # Get the last component of the translated path
-                    translated_name = self.architecture_adapter.translate_transformer_lens_path(
-                        full_path, last_component_only=True
-                    )
-                    return getattr(self._modules["original_component"], translated_name)
-                    # Try to get the attribute using the translated name
-                except ValueError:
-                    # If translation fails, continue to raise the original AttributeError
-                    pass
+                    return getattr(original_component, name)
                 except AttributeError:
-                    # If translation fails, continue to raise the original AttributeError
                     pass
-        return super().__getattr__(name)
+        except AttributeError:
+            # _original_component doesn't exist
+            pass
+        
         # If we get here, the attribute wasn't found anywhere
-        # raise AttributeError(f"{type(self).__name__} has no attribute {name}")
+        raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")

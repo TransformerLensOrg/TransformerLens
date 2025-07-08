@@ -25,6 +25,7 @@ from transformer_lens.ActivationCache import ActivationCache
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.component_creation import (
     create_and_replace_components_from_mapping,
+    set_original_components_from_mapping,
 )
 
 if TYPE_CHECKING:
@@ -56,10 +57,8 @@ class TransformerBridge(nn.Module):
         if not hasattr(adapter, "component_mapping") or adapter.component_mapping is None:
             raise ValueError("Adapter must have a component_mapping attribute")
 
-        # Create and replace components
-        create_and_replace_components_from_mapping(
-            self.bridge.get_component_mapping(), self.original_model, self.bridge, bridge=self
-        )
+        # Set original components on the pre-created bridge components
+        self._set_original_components()
 
     def __getattr__(self, name: str) -> Any:
         """Provide a clear error message for missing attributes."""
@@ -183,7 +182,16 @@ class TransformerBridge(nn.Module):
         )["input_ids"]
 
         if move_to_device:
-            device = next(self.original_model.parameters()).device
+            # Try to get device from original model parameters, fallback to bridge components
+            try:
+                device = next(self.original_model.parameters()).device
+            except StopIteration:
+                # If original model has no parameters, try to get from bridge components
+                try:
+                    device = next(self.parameters()).device
+                except StopIteration:
+                    # If no parameters at all, default to CPU
+                    device = torch.device("cpu")
             tokens = tokens.to(device)
 
         return tokens
@@ -429,7 +437,26 @@ class TransformerBridge(nn.Module):
 
         def make_cache_hook(name: str):
             def cache_hook(tensor: torch.Tensor, *, hook: Any) -> torch.Tensor:
-                cache[name] = tensor.detach().cpu()
+                # Handle different types of outputs from bridge components
+                if tensor is None:
+                    cache[name] = None
+                elif isinstance(tensor, torch.Tensor):
+                    cache[name] = tensor.detach().cpu()
+                elif isinstance(tensor, tuple):
+                    # For tuple outputs, cache the first element (usually hidden states)
+                    # and store the full tuple structure
+                    if len(tensor) > 0 and isinstance(tensor[0], torch.Tensor):
+                        cache[name] = tensor[0].detach().cpu()
+                        # Also cache the full tuple structure with a special key
+                        cache[f"{name}_full_tuple"] = tuple(
+                            t.detach().cpu() if isinstance(t, torch.Tensor) else t
+                            for t in tensor
+                        )
+                    else:
+                        cache[name] = tensor
+                else:
+                    # For other types, store as-is
+                    cache[name] = tensor
                 return tensor
 
             return cache_hook
@@ -458,8 +485,19 @@ class TransformerBridge(nn.Module):
                     for i, item in enumerate(attr):
                         if isinstance(item, nn.Module):
                             collect_hookpoints(item, f"{name}[{i}]")
+            
+            # Also traverse named_children() to catch ModuleList and other containers
+            for child_name, child_module in module.named_children():
+                child_path = f"{prefix}.{child_name}" if prefix else child_name
+                collect_hookpoints(child_module, child_path)
 
+        # Collect hooks from both the original model AND the bridge components
         collect_hookpoints(self.original_model)
+        
+        # Also collect hooks from bridge components (like blocks)
+        # Reset visited set to allow collecting from bridge components
+        visited.clear()
+        collect_hookpoints(self, "")
 
         # Register hooks
         for hp, name in hooks:
@@ -653,3 +691,38 @@ class TransformerBridge(nn.Module):
     def blocks(self):
         # Use the adapter to get the blocks component, for flexibility
         return self.bridge.get_component(self.original_model, "blocks")
+
+    def _set_original_components(self) -> None:
+        """Set original components on the pre-created bridge components."""
+        component_mapping = self.bridge.get_component_mapping()
+        
+        for tl_path, bridge_component in component_mapping.items():
+            # Get the remote path from the bridge component name
+            remote_path = bridge_component.name
+            original_component = self.bridge.get_remote_component(self.original_model, remote_path)
+            bridge_component.set_original_component(original_component)
+            
+            # Set the bridge component on self
+            setattr(self, tl_path, bridge_component)
+            
+            # Replace the original component with the bridge component
+            self._replace_component(remote_path, bridge_component)
+
+    def _replace_component(self, remote_path: str, replacement_component):
+        """Replace a component in the original model."""
+        path_parts = remote_path.split(".")
+        
+        # Navigate to the parent of the target component
+        current = self.original_model
+        for part in path_parts[:-1]:
+            if hasattr(current, part):
+                current = getattr(current, part)
+            else:
+                raise ValueError(f"Path {remote_path} not found in model")
+        
+        # Replace the target component
+        target_attr = path_parts[-1]
+        if hasattr(current, target_attr):
+            setattr(current, target_attr, replacement_component)
+        else:
+            raise ValueError(f"Attribute {target_attr} not found in {current}")

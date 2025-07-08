@@ -1,6 +1,6 @@
 """Linear bridge component for wrapping linear layers with hook points."""
 
-from typing import Any
+from typing import Any, Optional
 
 import torch
 import torch.nn as nn
@@ -18,21 +18,14 @@ class LinearBridge(GeneralizedComponent):
     for intercepting the input and output activations.
     """
 
-    def __init__(self, original_component: nn.Linear, name: str, architecture_adapter: Any, **kwargs: Any) -> None:
+    def __init__(self, name: str, config: Optional[Any] = None) -> None:
         """Initialize the LinearBridge.
         
         Args:
-            original_component: The original nn.Linear layer to wrap
             name: The name of this component
-            architecture_adapter: Architecture adapter for component-specific operations
-            **kwargs: Additional keyword arguments
+            config: Optional configuration (unused for LinearBridge)
         """
-        super().__init__(original_component, name, architecture_adapter)
-        
-        # Store linear layer properties for easy access
-        self.in_features = original_component.in_features
-        self.out_features = original_component.out_features
-        self.bias = original_component.bias is not None
+        super().__init__(name, config)
 
     def forward(self, input: torch.Tensor, *args: Any, **kwargs: Any) -> torch.Tensor:
         """Forward pass through the linear layer with hooks.
@@ -45,6 +38,9 @@ class LinearBridge(GeneralizedComponent):
         Returns:
             Output tensor after linear transformation
         """
+        if self.original_component is None:
+            raise RuntimeError(f"Original component not set for {self.name}. Call set_original_component() first.")
+        
         # Apply input hook
         input = self.hook_in(input)
         
@@ -56,6 +52,30 @@ class LinearBridge(GeneralizedComponent):
         
         return output
 
+    @property
+    def in_features(self) -> int:
+        """Get input features from the original component."""
+        if self.original_component is None:
+            raise RuntimeError(f"Original component not set for {self.name}")
+        return self.original_component.in_features
+
+    @property
+    def out_features(self) -> int:
+        """Get output features from the original component."""
+        if self.original_component is None:
+            raise RuntimeError(f"Original component not set for {self.name}")
+        return self.original_component.out_features
+
+    @property
+    def bias(self) -> bool:
+        """Check if the original component has bias."""
+        if self.original_component is None:
+            raise RuntimeError(f"Original component not set for {self.name}")
+        return self.original_component.bias is not None
+
     def __repr__(self) -> str:
         """String representation of the LinearBridge."""
-        return f"LinearBridge({self.in_features} -> {self.out_features}, bias={self.bias})" 
+        if self.original_component is not None:
+            return f"LinearBridge({self.in_features} -> {self.out_features}, bias={self.bias})"
+        else:
+            return f"LinearBridge(name={self.name}, original_component=None)" 

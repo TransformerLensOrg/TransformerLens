@@ -4,11 +4,12 @@ This module contains the bridge component for MLP layers.
 """
 
 
+from typing import Any, Dict, Optional
+
 import torch
 import torch.nn as nn
 
 from transformer_lens.hook_points import HookPoint
-from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
@@ -23,18 +24,24 @@ class MLPBridge(GeneralizedComponent):
 
     def __init__(
         self,
-        original_component: nn.Module,
         name: str,
-        architecture_adapter: ArchitectureAdapter,
+        config: Optional[Any] = None,
+        submodules: Optional[Dict[str, Any]] = None,
     ):
         """Initialize the MLP bridge.
 
         Args:
-            original_component: The original MLP component to wrap
             name: The name of the component in the model
-            architecture_adapter: The architecture adapter instance
+            config: Optional configuration (unused for MLPBridge)
+            submodules: Dictionary of submodules to register (e.g., gate_proj, up_proj, down_proj)
         """
-        super().__init__(original_component, name, architecture_adapter)
+        super().__init__(name, config)
+        
+        # Register submodules from dictionary
+        if submodules is not None:
+            for module_name, module in submodules.items():
+                self.add_module(module_name, module)
+        
         # No extra hooks; use only hook_in and hook_out
 
     def forward(self, *args, **kwargs) -> torch.Tensor:
@@ -47,6 +54,9 @@ class MLPBridge(GeneralizedComponent):
         Returns:
             Output hidden states
         """
+        if self.original_component is None:
+            raise RuntimeError(f"Original component not set for {self.name}. Call set_original_component() first.")
+        
         hidden_states = args[0]
         hidden_states = self.hook_in(hidden_states)
         new_args = (hidden_states,) + args[1:]
@@ -54,21 +64,3 @@ class MLPBridge(GeneralizedComponent):
         output = self.hook_out(output)
         self.hook_outputs.update({"output": output})
         return output
-
-    @classmethod
-    def wrap_component(
-        cls, component: nn.Module, name: str, architecture_adapter: ArchitectureAdapter
-    ) -> nn.Module:
-        """Wrap a component with this bridge if it's an MLP layer.
-
-        Args:
-            component: The component to wrap
-            name: The name of the component
-            architecture_adapter: The architecture adapter instance
-
-        Returns:
-            The wrapped component if it's an MLP layer, otherwise the original component
-        """
-        if name.endswith(".mlp"):
-            return cls(component, name, architecture_adapter)
-        return component

@@ -2,6 +2,7 @@
 
 from transformer_lens.model_bridge.generalized_components.attention import (
     AttentionBridge,
+    AttentionConfig,
 )
 from transformer_lens.model_bridge.generalized_components.block import (
     BlockBridge,
@@ -12,6 +13,9 @@ from transformer_lens.model_bridge.generalized_components.embedding import (
 from transformer_lens.model_bridge.generalized_components.layer_norm import (
     LayerNormBridge,
 )
+from transformer_lens.model_bridge.generalized_components.linear import (
+    LinearBridge,
+)
 from transformer_lens.model_bridge.generalized_components.mlp import MLPBridge
 from transformer_lens.model_bridge.generalized_components.moe import MoEBridge
 from transformer_lens.model_bridge.generalized_components.unembedding import (
@@ -20,9 +24,11 @@ from transformer_lens.model_bridge.generalized_components.unembedding import (
 
 __all__ = [
     "AttentionBridge",
+    "AttentionConfig",
     "BlockBridge",
     "EmbeddingBridge",
     "LayerNormBridge",
+    "LinearBridge",
     "MLPBridge",
     "MoEBridge",
     "UnembeddingBridge",

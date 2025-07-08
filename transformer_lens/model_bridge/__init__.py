@@ -18,9 +18,11 @@ from transformer_lens.model_bridge.component_creation import (
 )
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
+    AttentionConfig,
     BlockBridge,
     EmbeddingBridge,
     LayerNormBridge,
+    LinearBridge,
     MLPBridge,
     MoEBridge,
     UnembeddingBridge,
@@ -31,9 +33,11 @@ __all__ = [
     "ArchitectureAdapterFactory",
     "TransformerBridge",
     "AttentionBridge",
+    "AttentionConfig",
     "BlockBridge",
     "EmbeddingBridge",
     "LayerNormBridge",
+    "LinearBridge",
     "MLPBridge",
     "MoEBridge",
     "UnembeddingBridge",
