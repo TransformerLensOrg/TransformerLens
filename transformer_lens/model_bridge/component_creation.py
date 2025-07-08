@@ -7,19 +7,25 @@ from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Union
 import torch.nn as nn
 
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
-from transformer_lens.model_bridge.types import ComponentMapping, RemoteModel
+from transformer_lens.model_bridge.types import (
+    BridgeComponent,
+    ComponentConfig,
+    ComponentMapping,
+    RemoteImport,
+    RemoteModel,
+)
 
 if TYPE_CHECKING:
     pass
 
 
 def create_bridged_component(
-    remote_import: Tuple[str, type],
+    remote_import: RemoteImport,
     remote_model: RemoteModel,
     architecture_adapter: "ArchitectureAdapter",
     name: str,
-    config: Optional[Any] = None,
-) -> nn.Module:
+    config: Optional[ComponentConfig] = None,
+) -> BridgeComponent:
     """Create a bridged component from a RemoteImport.
     
     Args:
@@ -48,7 +54,7 @@ def create_bridged_component(
 
 
 def replace_remote_component(
-    replacement_component: nn.Module,
+    replacement_component: BridgeComponent,
     remote_path: str,
     remote_model: RemoteModel,
 ) -> None:

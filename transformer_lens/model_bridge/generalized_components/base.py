@@ -1,13 +1,17 @@
 """Base class for generalized transformer components."""
 
+from __future__ import annotations
+
 from collections.abc import Callable
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 import torch
 import torch.nn as nn
 
 from transformer_lens.hook_points import HookPoint
-from transformer_lens.model_bridge.types import RemoteComponent
+
+if TYPE_CHECKING:
+    from transformer_lens.model_bridge.types import RemoteComponent
 
 
 class GeneralizedComponent(nn.Module):

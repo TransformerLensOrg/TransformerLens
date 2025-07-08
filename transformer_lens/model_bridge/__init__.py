@@ -27,6 +27,20 @@ from transformer_lens.model_bridge.generalized_components import (
     MoEBridge,
     UnembeddingBridge,
 )
+from transformer_lens.model_bridge.types import (
+    BridgeComponent,
+    BridgeConfig,
+    ComponentConfig,
+    ComponentMapping,
+    HookFunction,
+    HookRegistry,
+    RemoteComponent,
+    RemoteImport,
+    RemoteImportWithConfig,
+    RemoteModel,
+    RemotePath,
+    TransformerLensPath,
+)
 
 __all__ = [
     "ArchitectureAdapter",
@@ -43,4 +57,17 @@ __all__ = [
     "UnembeddingBridge",
     "create_bridged_component",
     "replace_remote_component",
+    # Type definitions
+    "BridgeComponent",
+    "BridgeConfig",
+    "ComponentConfig",
+    "ComponentMapping",
+    "HookFunction",
+    "HookRegistry",
+    "RemoteComponent",
+    "RemoteImport",
+    "RemoteImportWithConfig",
+    "RemoteModel",
+    "RemotePath",
+    "TransformerLensPath",
 ]

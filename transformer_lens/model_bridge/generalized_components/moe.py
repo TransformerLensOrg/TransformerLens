@@ -3,14 +3,18 @@
 This module contains the bridge component for Mixture of Experts layers.
 """
 
-from typing import Any
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any, Optional
 
 import torch.nn as nn
 
-from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
+
+if TYPE_CHECKING:
+    from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 
 
 class MoEBridge(GeneralizedComponent):
@@ -22,36 +26,19 @@ class MoEBridge(GeneralizedComponent):
 
     def __init__(
         self,
-        original_component: nn.Module,
         name: str,
-        architecture_adapter: ArchitectureAdapter,
+        config: Optional[Any] = None,
     ):
         """Initialize the MoE bridge.
 
         Args:
-            original_component: The original MoE component to wrap
             name: The name of the component in the model
-            architecture_adapter: The architecture adapter instance
+            config: Optional configuration (unused for MoEBridge)
         """
-        super().__init__(original_component, name, architecture_adapter)
+        super().__init__(name, config)
 
-    @classmethod
-    def wrap_component(
-        cls, component: nn.Module, name: str, architecture_adapter: ArchitectureAdapter
-    ) -> nn.Module:
-        """Wrap a component with this bridge if it's a MoE layer.
-
-        Args:
-            component: The component to wrap
-            name: The name of the component
-            architecture_adapter: The architecture adapter instance
-
-        Returns:
-            The wrapped component if it's a MoE layer, otherwise the original component
-        """
-        if name.endswith(".moe"):
-            return cls(component, name, architecture_adapter)
-        return component
+    # Remove the old wrap_component method as it's no longer needed
+    # The new system uses set_original_component() instead
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         """Forward pass through the MoE bridge.
@@ -63,4 +50,12 @@ class MoEBridge(GeneralizedComponent):
         Returns:
             The output from the original component
         """
-        return self.original_component(*args, **kwargs)
+        if self.original_component is None:
+            raise RuntimeError(f"Original component not set for {self.name}. Call set_original_component() first.")
+        
+        if len(args) > 0:
+            args = (self.hook_in(args[0]),) + args[1:]
+        output = self.original_component(*args, **kwargs)
+        output = self.hook_out(output)
+        self.hook_outputs.update({"output": output})
+        return output
