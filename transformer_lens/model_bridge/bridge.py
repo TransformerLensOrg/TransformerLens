@@ -20,7 +20,12 @@ from typing import (
 import numpy as np
 import torch
 import torch.nn as nn
+import os
+import logging
 
+from transformer_lens import utils
+
+from transformers import PreTrainedTokenizerBase, AutoTokenizer
 from transformer_lens.ActivationCache import ActivationCache
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.component_creation import (
@@ -53,6 +58,46 @@ class TransformerBridge(nn.Module):
         self.cfg = adapter.user_cfg
         self.tokenizer = tokenizer
 
+        tokenizer_name = self.cfg.model_type
+        default_padding_side = None # TODO figure out
+
+        if self.tokenizer is not None:
+            self.set_tokenizer(self.tokenizer, default_padding_side=default_padding_side)
+        elif tokenizer_name is not None:
+            # If we have a tokenizer name, we can load it from HuggingFace
+            if tokenizer_name in "":
+                logging.warning(
+                    "%s tokenizer not loaded. Please load manually.",
+                    tokenizer_name,
+                )
+            else:
+                # Hugging Face defaults to use_fast to True
+                use_fast = True
+                # Phi model's fast tokenizer does not support adding a BOS token, use_fast
+                # should be False
+                if "phi" in tokenizer_name.lower():
+                    use_fast = False
+                huggingface_token = os.environ.get("HF_TOKEN", "")
+                self.set_tokenizer(
+                    AutoTokenizer.from_pretrained(
+                        tokenizer_name,
+                        add_bos_token=True,
+                        trust_remote_code=True,  # TODO figure out,
+                        use_fast=use_fast,
+                        token=huggingface_token if len(huggingface_token) > 0 else None,
+                    ),
+                    default_padding_side=default_padding_side,
+                )
+        else:
+            # If no tokenizer name is provided, we assume we're training on an algorithmic task and
+            # will pass in tokens directly. In this case, we don't need a tokenizer.
+            assert self.cfg.d_vocab != -1, "Must provide a tokenizer if d_vocab is not provided"
+            self.tokenizer = None
+            if default_padding_side != None:
+                logging.warning(
+                    "default_padding_side is explicitly given but ignored because tokenizer is not set."
+                )
+
         if not hasattr(adapter, "component_mapping") or adapter.component_mapping is None:
             raise ValueError("Adapter must have a component_mapping attribute")
 
@@ -60,6 +105,56 @@ class TransformerBridge(nn.Module):
         create_and_replace_components_from_mapping(
             self.bridge.get_component_mapping(), self.original_model, self.bridge, bridge=self
         )
+
+    def set_tokenizer(
+        self,
+        tokenizer,
+        default_padding_side=None,
+    ):
+        """Set the tokenizer to use for this model.
+
+        Args:
+            tokenizer (PreTrainedTokenizer): a pretrained HuggingFace tokenizer.
+            default_padding_side (str): "right" or "left", which side to pad on.
+
+        """
+        assert isinstance(
+            tokenizer, PreTrainedTokenizerBase
+        ), f"{type(tokenizer)} is not a supported tokenizer, please use PreTrainedTokenizer or PreTrainedTokenizerFast"
+
+        assert default_padding_side in [
+            "right",
+            "left",
+            None,
+        ], f"padding_side must be 'right', 'left' or 'None', got {default_padding_side}"
+
+        # Use a tokenizer that is initialized with add_bos_token=True as the default tokenizer.
+        # Such a tokenizer should be set as the default tokenizer because the tokenization of some
+        # tokenizers like LlamaTokenizer are different when bos token is automatically/manually
+        # prepended, and add_bos_token cannot be dynamically controlled after initialization
+        # (https://github.com/huggingface/transformers/issues/25886).
+        tokenizer_with_bos = utils.get_tokenizer_with_bos(tokenizer)
+        self.tokenizer = tokenizer_with_bos
+        assert self.tokenizer is not None  # keep mypy happy
+
+        # If user passes default_padding_side explicitly, use that value
+        if default_padding_side is not None:
+            self.tokenizer.padding_side = default_padding_side
+        # If not, then use the tokenizer's default padding side
+        # If the tokenizer doesn't have a default padding side, use the global default "right"
+        if self.tokenizer.padding_side is None:
+            self.tokenizer.padding_side = "right"
+
+        # Some tokenizers doesn't automatically prepend the BOS token even when they are initialized
+        # with add_bos_token=True. Therefore, we need this information to dynamically control prepend_bos.
+        self.cfg.tokenizer_prepends_bos = len(self.tokenizer.encode("")) > 0
+
+        if self.tokenizer.eos_token is None:
+            self.tokenizer.eos_token = "<|endoftext|>"
+        if self.tokenizer.pad_token is None:
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+        if self.tokenizer.bos_token is None:
+            self.tokenizer.bos_token = self.tokenizer.eos_token
 
     def __getattr__(self, name: str) -> Any:
         """Provide a clear error message for missing attributes."""
@@ -172,6 +267,10 @@ class TransformerBridge(nn.Module):
         # Handle padding_side logic
         if padding_side is None:
             padding_side = getattr(self.tokenizer, "padding_side", "right")
+
+        if prepend_bos and not self.cfg.tokenizer_prepends_bos:
+                # We want to prepend bos but the tokenizer doesn't automatically do it, so we add it manually
+                input = utils.get_input_with_manually_prepended_bos(self.tokenizer, input)
 
         # Tokenize
         tokens = self.tokenizer(
