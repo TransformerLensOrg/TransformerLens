@@ -88,19 +88,18 @@ class BertArchitectureAdapter(ArchitectureAdapter):
 
         # Set up component mapping
         self.component_mapping = {
-            "embed": ("bert.embeddings", EmbeddingBridge),
-            "pos_embed": ("bert.embeddings.position_embeddings", EmbeddingBridge),
-            "blocks": (
-                "bert.encoder.layer",
-                BlockBridge,
-                {
-                    "ln1": ("attention.output.LayerNorm", LayerNormBridge),
-                    "ln2": ("output.LayerNorm", LayerNormBridge),
-                    "attn": ("attention", AttentionBridge),
-                    "mlp": ("intermediate", MLPBridge),
+            "embed": EmbeddingBridge(name="bert.embeddings"),
+            "pos_embed": EmbeddingBridge(name="bert.embeddings.position_embeddings"),
+            "blocks": BlockBridge(
+                name="bert.encoder.layer",
+                submodules={
+                    "ln1": LayerNormBridge(name="attention.output.LayerNorm"),
+                    "ln2": LayerNormBridge(name="output.LayerNorm"),
+                    "attn": AttentionBridge(name="attention"),
+                    "mlp": MLPBridge(name="intermediate"),
                 },
             ),
-            "unembed": ("cls.predictions", UnembeddingBridge),
+            "unembed": UnembeddingBridge(name="cls.predictions"),
         }
         if hasattr(self.user_cfg, "add_pooling_layer") and self.user_cfg.add_pooling_layer:
-            self.component_mapping["ln_final"] = ("bert.pooler.dense", LayerNormBridge)
+            self.component_mapping["ln_final"] = LayerNormBridge(name="bert.pooler.dense")

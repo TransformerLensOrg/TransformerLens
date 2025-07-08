@@ -46,23 +46,13 @@ class MistralArchitectureAdapter(ArchitectureAdapter):
                 "blocks.{i}.attn.W_K": (
                     "model.layers.{i}.self_attn.k_proj.weight",
                     RearrangeWeightConversion(
-                        "(n h) m -> n m h",
-                        n=getattr(
-                            self.user_cfg,
-                            "num_key_value_heads",
-                            self.user_cfg.num_attention_heads,
-                        ),
+                        "(n h) m -> n m h", n=self.user_cfg.num_key_value_heads
                     ),
                 ),
                 "blocks.{i}.attn.W_V": (
                     "model.layers.{i}.self_attn.v_proj.weight",
                     RearrangeWeightConversion(
-                        "(n h) m -> n m h",
-                        n=getattr(
-                            self.user_cfg,
-                            "num_key_value_heads",
-                            self.user_cfg.num_attention_heads,
-                        ),
+                        "(n h) m -> n m h", n=self.user_cfg.num_key_value_heads
                     ),
                 ),
                 "blocks.{i}.attn.W_O": (
@@ -80,17 +70,16 @@ class MistralArchitectureAdapter(ArchitectureAdapter):
         )
 
         self.component_mapping = {
-            "embed": ("model.embed_tokens", EmbeddingBridge),
-            "blocks": (
-                "model.layers",
-                BlockBridge,
-                {
-                    "ln1": ("input_layernorm", LayerNormBridge),
-                    "ln2": ("post_attention_layernorm", LayerNormBridge),
-                    "attn": ("self_attn", AttentionBridge),
-                    "mlp": ("mlp", MLPBridge),
+            "embed": EmbeddingBridge(name="model.embed_tokens"),
+            "blocks": BlockBridge(
+                name="model.layers",
+                submodules={
+                    "ln1": LayerNormBridge(name="input_layernorm"),
+                    "ln2": LayerNormBridge(name="post_attention_layernorm"),
+                    "attn": AttentionBridge(name="self_attn"),
+                    "mlp": MLPBridge(name="mlp"),
                 },
             ),
-            "ln_final": ("model.norm", LayerNormBridge),
-            "unembed": ("lm_head", UnembeddingBridge),
+            "ln_final": LayerNormBridge(name="model.norm"),
+            "unembed": UnembeddingBridge(name="lm_head"),
         }

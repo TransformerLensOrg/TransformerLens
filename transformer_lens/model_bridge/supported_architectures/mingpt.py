@@ -84,19 +84,19 @@ class MingptArchitectureAdapter(ArchitectureAdapter):
 
         # Set up component mapping
         self.component_mapping = {
-            "embed": ("transformer.wte", EmbeddingBridge),  # Word token embeddings
-            "pos_embed": ("transformer.wpe", EmbeddingBridge),  # Positional embeddings
+            "embed": EmbeddingBridge(name="transformer.wte"),  # Word token embeddings
+            "pos_embed": EmbeddingBridge(name="transformer.wpe"),  # Positional embeddings
             "blocks": (
                 "transformer.h",  # Base path for blocks
                 BlockBridge,
                 {
-                    "ln1": ("ln_1", LayerNormBridge),  # Pre-attention layer norm
-                    "ln2": ("ln_2", LayerNormBridge),  # Pre-MLP layer norm
-                    "attn": ("attn", AttentionBridge),  # Full attention module
-                    "attn.c_attn": ("attn.c_attn", AttentionBridge),  # QKV projection
-                    "mlp": ("mlp", MLPBridge),  # Full MLP module
+                    "ln1": LayerNormBridge(name="ln_1"),  # Pre-attention layer norm
+                    "ln2": LayerNormBridge(name="ln_2"),  # Pre-MLP layer norm
+                    "attn": AttentionBridge(name="attn"),  # Full attention module
+                    "attn.c_attn": AttentionBridge(name="attn.c_attn"),  # QKV projection
+                    "mlp": MLPBridge(name="mlp"),  # Full MLP module
                 },
             ),
-            "ln_final": ("transformer.ln_f", LayerNormBridge),  # Final layer norm
-            "unembed": ("lm_head", UnembeddingBridge),  # Language model head
+            "ln_final": LayerNormBridge(name="transformer.ln_f"),  # Final layer norm
+            "unembed": UnembeddingBridge(name="lm_head"),  # Language model head
         }

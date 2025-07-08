@@ -32,32 +32,31 @@ class OptArchitectureAdapter(ArchitectureAdapter):
                 "blocks.{i}.ln1.b": "model.decoder.layers.{i}.self_attn_layer_norm.bias",
                 "blocks.{i}.attn.W_Q": (
                     "model.decoder.layers.{i}.self_attn.q_proj.weight",
-                    RearrangeWeightConversion("d_model (h d_head) -> h d_head d_model"),
+                    RearrangeWeightConversion(
+                        "(n h) m -> n m h", n=self.user_cfg.num_attention_heads
+                    ),
                 ),
                 "blocks.{i}.attn.W_K": (
                     "model.decoder.layers.{i}.self_attn.k_proj.weight",
-                    RearrangeWeightConversion("d_model (h d_head) -> h d_head d_model"),
+                    RearrangeWeightConversion(
+                        "(n h) m -> n m h", n=self.user_cfg.num_attention_heads
+                    ),
                 ),
                 "blocks.{i}.attn.W_V": (
                     "model.decoder.layers.{i}.self_attn.v_proj.weight",
-                    RearrangeWeightConversion("d_model (h d_head) -> h d_head d_model"),
-                ),
-                "blocks.{i}.attn.b_Q": (
-                    "model.decoder.layers.{i}.self_attn.q_proj.bias",
-                    RearrangeWeightConversion("(h d_head) -> h d_head"),
-                ),
-                "blocks.{i}.attn.b_K": (
-                    "model.decoder.layers.{i}.self_attn.k_proj.bias",
-                    RearrangeWeightConversion("(h d_head) -> h d_head"),
-                ),
-                "blocks.{i}.attn.b_V": (
-                    "model.decoder.layers.{i}.self_attn.v_proj.bias",
-                    RearrangeWeightConversion("(h d_head) -> h d_head"),
+                    RearrangeWeightConversion(
+                        "(n h) m -> n m h", n=self.user_cfg.num_attention_heads
+                    ),
                 ),
                 "blocks.{i}.attn.W_O": (
                     "model.decoder.layers.{i}.self_attn.out_proj.weight",
-                    RearrangeWeightConversion("d_model (h d_head) -> h d_head d_model"),
+                    RearrangeWeightConversion(
+                        "m (n h) -> n h m", n=self.user_cfg.num_attention_heads
+                    ),
                 ),
+                "blocks.{i}.attn.b_Q": "model.decoder.layers.{i}.self_attn.q_proj.bias",
+                "blocks.{i}.attn.b_K": "model.decoder.layers.{i}.self_attn.k_proj.bias",
+                "blocks.{i}.attn.b_V": "model.decoder.layers.{i}.self_attn.v_proj.bias",
                 "blocks.{i}.attn.b_O": "model.decoder.layers.{i}.self_attn.out_proj.bias",
                 "blocks.{i}.ln2.w": "model.decoder.layers.{i}.final_layer_norm.weight",
                 "blocks.{i}.ln2.b": "model.decoder.layers.{i}.final_layer_norm.bias",
@@ -72,18 +71,17 @@ class OptArchitectureAdapter(ArchitectureAdapter):
         )
 
         self.component_mapping = {
-            "embed": ("model.decoder.embed_tokens", EmbeddingBridge),
-            "pos_embed": ("model.decoder.embed_positions", EmbeddingBridge),
-            "blocks": (
-                "model.decoder.layers",
-                BlockBridge,
-                {
-                    "ln1": ("self_attn_layer_norm", LayerNormBridge),
-                    "attn": ("self_attn", AttentionBridge),
-                    "ln2": ("final_layer_norm", LayerNormBridge),
-                    "mlp": ("mlp", MLPBridge),
+            "embed": EmbeddingBridge(name="model.decoder.embed_tokens"),
+            "pos_embed": EmbeddingBridge(name="model.decoder.embed_positions"),
+            "blocks": BlockBridge(
+                name="model.decoder.layers",
+                submodules={
+                    "ln1": LayerNormBridge(name="self_attn_layer_norm"),
+                    "attn": AttentionBridge(name="self_attn"),
+                    "ln2": LayerNormBridge(name="final_layer_norm"),
+                    "mlp": MLPBridge(name="mlp"),
                 },
             ),
-            "ln_final": ("model.decoder.final_layer_norm", LayerNormBridge),
-            "unembed": ("lm_head", UnembeddingBridge),
+            "ln_final": LayerNormBridge(name="model.decoder.final_layer_norm"),
+            "unembed": UnembeddingBridge(name="lm_head"),
         }

@@ -74,18 +74,18 @@ class Gpt2LmHeadCustomArchitectureAdapter(ArchitectureAdapter):
 
         # Set up component mapping
         self.component_mapping = {
-            "embed": ("transformer.wte", EmbeddingBridge),
-            "pos_embed": ("transformer.wpe", EmbeddingBridge),
+            "embed": EmbeddingBridge(name="transformer.wte"),
+            "pos_embed": EmbeddingBridge(name="transformer.wpe"),
             "blocks": (
                 "transformer.h",
                 BlockBridge,
                 {
-                    "ln1": ("ln_1", LayerNormBridge),
-                    "attn": ("attn", AttentionBridge),
-                    "ln2": ("ln_2", LayerNormBridge),
-                    "mlp": ("mlp", MLPBridge),
+                    "ln1": LayerNormBridge(name="ln_1"),
+                    "attn": AttentionBridge(name="attn"),
+                    "ln2": LayerNormBridge(name="ln_2"),
+                    "mlp": MLPBridge(name="mlp"),
                 },
             ),
-            "ln_final": ("transformer.ln_f", LayerNormBridge),
-            "unembed": ("lm_head", UnembeddingBridge),
+            "ln_final": LayerNormBridge(name="transformer.ln_f"),
+            "unembed": UnembeddingBridge(name="lm_head"),
         }

@@ -133,18 +133,18 @@ class NeoxArchitectureAdapter(ArchitectureAdapter):
         )
 
         self.component_mapping = {
-            "embed": ("gpt_neox.embed_in", EmbeddingBridge),
-            "pos_embed": ("gpt_neox.embed_pos", EmbeddingBridge),
+            "embed": EmbeddingBridge(name="gpt_neox.embed_in"),
+            "pos_embed": EmbeddingBridge(name="gpt_neox.embed_pos"),
             "blocks": (
                 "gpt_neox.layers",
                 BlockBridge,
                 {
-                    "ln1": ("input_layernorm", LayerNormBridge),
-                    "ln2": ("post_attention_layernorm", LayerNormBridge),
-                    "attn": ("attention", AttentionBridge),
-                    "mlp": ("mlp", MLPBridge),
+                    "ln1": LayerNormBridge(name="input_layernorm"),
+                    "ln2": LayerNormBridge(name="post_attention_layernorm"),
+                    "attn": AttentionBridge(name="attention"),
+                    "mlp": MLPBridge(name="mlp"),
                 },
             ),
-            "ln_final": ("gpt_neox.final_layer_norm", LayerNormBridge),
-            "unembed": ("embed_out", UnembeddingBridge),
+            "ln_final": LayerNormBridge(name="gpt_neox.final_layer_norm"),
+            "unembed": UnembeddingBridge(name="embed_out"),
         }

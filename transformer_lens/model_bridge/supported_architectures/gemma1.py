@@ -39,31 +39,25 @@ class Gemma1ArchitectureAdapter(ArchitectureAdapter):
                 "blocks.{i}.attn.W_Q": (
                     "model.layers.{i}.self_attn.q_proj.weight",
                     RearrangeWeightConversion(
-                        "(n h) m->n m h", n=self.user_cfg.num_attention_heads
+                        "(n h) m -> n m h", n=self.user_cfg.num_attention_heads
                     ),
                 ),
                 "blocks.{i}.attn.W_K": (
                     "model.layers.{i}.self_attn.k_proj.weight",
                     RearrangeWeightConversion(
-                        "(n h) m->n m h",
-                        n=getattr(
-                            self.user_cfg, "num_key_value_heads", self.user_cfg.num_attention_heads
-                        ),
+                        "(n h) m -> n m h", n=self.user_cfg.num_attention_heads
                     ),
                 ),
                 "blocks.{i}.attn.W_V": (
                     "model.layers.{i}.self_attn.v_proj.weight",
                     RearrangeWeightConversion(
-                        "(n h) m->n m h",
-                        n=getattr(
-                            self.user_cfg, "num_key_value_heads", self.user_cfg.num_attention_heads
-                        ),
+                        "(n h) m -> n m h", n=self.user_cfg.num_attention_heads
                     ),
                 ),
                 "blocks.{i}.attn.W_O": (
                     "model.layers.{i}.self_attn.o_proj.weight",
                     RearrangeWeightConversion(
-                        "m (n h)->n h m", n=self.user_cfg.num_attention_heads
+                        "m (n h) -> n h m", n=self.user_cfg.num_attention_heads
                     ),
                 ),
                 "blocks.{i}.mlp.W_in": "model.layers.{i}.mlp.up_proj.weight.T",
@@ -74,24 +68,17 @@ class Gemma1ArchitectureAdapter(ArchitectureAdapter):
             }
         )
 
-        # Set up component mapping
         self.component_mapping = {
-            "embed": ("model.embed_tokens", EmbeddingBridge),
-            "blocks": (
-                "model.layers",
-                BlockBridge,
-                {
-                    "ln1": ("input_layernorm", LayerNormBridge),
-                    "ln2": (
-                        "post_attention_layernorm",
-                        LayerNormBridge,
-                    ),
-                    "attn": ("self_attn", AttentionBridge),
-                    "mlp": ("mlp", MLPBridge),
+            "embed": EmbeddingBridge(name="model.embed_tokens"),
+            "blocks": BlockBridge(
+                name="model.layers",
+                submodules={
+                    "ln1": LayerNormBridge(name="input_layernorm"),
+                    "ln2": LayerNormBridge(name="post_attention_layernorm"),
+                    "attn": AttentionBridge(name="self_attn"),
+                    "mlp": MLPBridge(name="mlp"),
                 },
             ),
-            "ln_final": ("model.norm", LayerNormBridge),
-            "unembed": ("lm_head", UnembeddingBridge),
+            "ln_final": LayerNormBridge(name="model.norm"),
+            "unembed": UnembeddingBridge(name="lm_head"),
         }
-
-    # Remove the get_component method (from line 95 to the end of the method)

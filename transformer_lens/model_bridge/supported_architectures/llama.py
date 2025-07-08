@@ -69,17 +69,16 @@ class LlamaArchitectureAdapter(ArchitectureAdapter):
         )
 
         self.component_mapping = {
-            "embed": ("model.embed_tokens", EmbeddingBridge),
-            "blocks": (
-                "model.layers",
-                BlockBridge,
-                {
-                    "ln1": ("input_layernorm", LayerNormBridge),
-                    "ln2": ("post_attention_layernorm", LayerNormBridge),
-                    "attn": ("self_attn", AttentionBridge),
-                    "mlp": ("mlp", MLPBridge),
+            "embed": EmbeddingBridge(name="model.embed_tokens"),
+            "blocks": BlockBridge(
+                name="model.layers",
+                submodules={
+                    "ln1": LayerNormBridge(name="input_layernorm"),
+                    "ln2": LayerNormBridge(name="post_attention_layernorm"),
+                    "attn": AttentionBridge(name="self_attn"),
+                    "mlp": MLPBridge(name="mlp"),
                 },
             ),
-            "ln_final": ("model.norm", LayerNormBridge),
-            "unembed": ("lm_head", UnembeddingBridge),
+            "ln_final": LayerNormBridge(name="model.norm"),
+            "unembed": UnembeddingBridge(name="lm_head"),
         }
