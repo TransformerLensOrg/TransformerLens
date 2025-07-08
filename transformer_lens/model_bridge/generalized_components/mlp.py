@@ -35,14 +35,7 @@ class MLPBridge(GeneralizedComponent):
             architecture_adapter: The architecture adapter instance
         """
         super().__init__(original_component, name, architecture_adapter)
-
-        # Initialize hook points
-        self.hook_pre = HookPoint()  # Input to MLP
-        self.hook_post = HookPoint()  # Final output
-
-        # Set hook names
-        self.hook_pre.name = f"{name}.pre"
-        self.hook_post.name = f"{name}.post"
+        # No extra hooks; use only hook_in and hook_out
 
     def forward(self, *args, **kwargs) -> torch.Tensor:
         """Forward pass through the MLP bridge.
@@ -54,24 +47,12 @@ class MLPBridge(GeneralizedComponent):
         Returns:
             Output hidden states
         """
-        # The first argument is always the hidden state
         hidden_states = args[0]
-
-        # Apply pre hook
-        hidden_states = self.hook_pre(hidden_states)
-
-        # Reconstruct args
+        hidden_states = self.hook_in(hidden_states)
         new_args = (hidden_states,) + args[1:]
-
-        # Forward through original component
         output = self.original_component(*new_args, **kwargs)
-
-        # Apply post hook
-        output = self.hook_post(output)
-
-        # Store hook outputs
+        output = self.hook_out(output)
         self.hook_outputs.update({"output": output})
-
         return output
 
     @classmethod

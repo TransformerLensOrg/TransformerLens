@@ -21,8 +21,7 @@ if TYPE_CHECKING:
 class BlockBridge(GeneralizedComponent):
     """Bridge component for transformer blocks.
 
-    This component wraps a transformer block from a remote model and provides a consistent interface
-    for accessing its weights and performing block operations.
+    This component provides standardized input/output hooks.
     """
 
     def __init__(
@@ -39,6 +38,7 @@ class BlockBridge(GeneralizedComponent):
             architecture_adapter: The architecture adapter instance
         """
         super().__init__(original_component, name, architecture_adapter)
+        # No extra hooks; use only hook_in and hook_out
 
     @classmethod
     def wrap_component(
@@ -68,4 +68,9 @@ class BlockBridge(GeneralizedComponent):
         Returns:
             The output from the original component
         """
-        return self.original_component(*args, **kwargs)
+        if len(args) > 0:
+            args = (self.hook_in(args[0]),) + args[1:]
+        output = self.original_component(*args, **kwargs)
+        output = self.hook_out(output)
+        self.hook_outputs.update({"output": output})
+        return output

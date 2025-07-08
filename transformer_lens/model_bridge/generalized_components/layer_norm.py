@@ -15,10 +15,7 @@ from transformer_lens.model_bridge.generalized_components.base import (
 class LayerNormBridge(GeneralizedComponent):
     """Layer norm bridge that wraps transformer layer normalization layers.
 
-    This component provides hook points for:
-    - Input to normalization
-    - Scale factor
-    - Normalized output
+    This component provides standardized input/output hooks.
     """
 
     def __init__(
@@ -35,14 +32,7 @@ class LayerNormBridge(GeneralizedComponent):
             architecture_adapter: Optional architecture adapter for component-specific operations
         """
         super().__init__(original_component, name, architecture_adapter)
-
-        # Initialize hook points
-        self.hook_scale = HookPoint()  # Scale factor
-        self.hook_normalized = HookPoint()  # Normalized output
-
-        # Set hook names
-        self.hook_scale.name = f"{name}.scale"
-        self.hook_normalized.name = f"{name}.normalized"
+        # No extra hooks; use only hook_in and hook_out
 
     def forward(
         self,
@@ -58,15 +48,10 @@ class LayerNormBridge(GeneralizedComponent):
         Returns:
             Normalized output
         """
-        # Forward through original component
+        hidden_states = self.hook_in(hidden_states)
         output = self.original_component(hidden_states, **kwargs)
-
-        # Apply hook to normalized output
-        output = self.hook_normalized(output)
-
-        # Store hook outputs
+        output = self.hook_out(output)
         self.hook_outputs.update({"output": output})
-
         return output
 
     @classmethod

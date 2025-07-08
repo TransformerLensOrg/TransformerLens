@@ -37,6 +37,9 @@ class ArchitectureAdapter:
             user_cfg: The user-provided configuration object.
         """
         self.user_cfg = user_cfg
+        # Ensure d_mlp is set if intermediate_size is present
+        if not hasattr(self.user_cfg, "d_mlp") and hasattr(self.user_cfg, "intermediate_size"):
+            self.user_cfg.d_mlp = self.user_cfg.intermediate_size
         self.default_cfg: dict[str, Any] = {}
         self.component_mapping: ComponentMapping | None = None
         self.conversion_rules: WeightConversionSet | None = None

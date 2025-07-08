@@ -6,6 +6,7 @@ from typing import Any
 import torch
 import torch.nn as nn
 
+from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.types import RemoteComponent
 
@@ -37,6 +38,9 @@ class GeneralizedComponent(nn.Module):
         self.hooks: dict[str, list[Callable[..., torch.Tensor]]] = {}
         self.hook_outputs: dict[str, Any] = {}
         self._hook_tracker = None
+        # Standardized hooks for all bridge components
+        self.hook_in = HookPoint()  # Input to the component
+        self.hook_out = HookPoint()  # Output from the component
 
     def set_hook_tracker(self, tracker: Any) -> None:
         """Set the hook tracker for this component.
@@ -150,20 +154,29 @@ class GeneralizedComponent(nn.Module):
                 del self.hook_outputs[hook_name]
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:
-        """Forward pass through the component.
-
-        This should be implemented by subclasses to define the specific
-        behavior of the component. The return type should match the original
-        component's forward method.
-
-        Args:
-            *args: Input arguments
-            **kwargs: Input keyword arguments
-
-        Returns:
-            The output from the original component, with hooks applied
-        """
-        raise NotImplementedError("Subclasses must implement forward()")
+        """Generic forward pass for bridge components with input/output hooks."""
+        # Try to find the main input
+        input_arg_names = [
+            'input', 'hidden_states', 'input_ids', 'query_input', 'x', 'inputs_embeds'
+        ]
+        input_found = False
+        # Try kwargs first
+        for name in input_arg_names:
+            if name in kwargs:
+                kwargs[name] = self.hook_in(kwargs[name])
+                input_found = True
+                break
+        # If not in kwargs, try first positional arg
+        if not input_found and len(args) > 0 and isinstance(args[0], torch.Tensor):
+            hooked_input = self.hook_in(args[0])
+            args = (hooked_input,) + args[1:]
+            input_found = True
+        # Call the original component's forward
+        output = self.original_component(*args, **kwargs)
+        # Pass output through hook_out
+        output = self.hook_out(output)
+        self.hook_outputs.update({"output": output})
+        return output
 
     def _apply_hooks_to_outputs(self, outputs: Any, hook_map: dict[str | int, str]) -> Any:
         """Apply hooks to outputs from the original component.

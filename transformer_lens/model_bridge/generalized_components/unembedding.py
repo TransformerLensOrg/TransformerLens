@@ -18,8 +18,7 @@ from transformer_lens.model_bridge.generalized_components.base import (
 class UnembeddingBridge(GeneralizedComponent):
     """Bridge component for unembedding layers.
 
-    This component wraps an unembedding layer from a remote model and provides a consistent interface
-    for accessing its weights and performing unembedding operations.
+    This component provides standardized input/output hooks.
     """
 
     def __init__(
@@ -36,14 +35,7 @@ class UnembeddingBridge(GeneralizedComponent):
             architecture_adapter: The architecture adapter instance
         """
         super().__init__(original_component, name, architecture_adapter)
-
-        # Initialize hook points
-        self.hook_input = HookPoint()  # Input to projection
-        self.hook_logits = HookPoint()  # Logits output
-
-        # Set hook names
-        self.hook_input.name = f"{name}.input"
-        self.hook_logits.name = f"{name}.logits"
+        # No extra hooks; use only hook_in and hook_out
 
     def forward(
         self,
@@ -59,18 +51,10 @@ class UnembeddingBridge(GeneralizedComponent):
         Returns:
             Logits output
         """
-        # Apply input hook
-        hidden_states = self.hook_input(hidden_states)
-
-        # Forward through original component
+        hidden_states = self.hook_in(hidden_states)
         output = self.original_component(hidden_states, **kwargs)
-
-        # Apply logits hook
-        output = self.hook_logits(output)
-
-        # Store hook outputs
+        output = self.hook_out(output)
         self.hook_outputs.update({"output": output})
-
         return output
 
     @classmethod

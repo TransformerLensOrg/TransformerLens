@@ -18,10 +18,7 @@ from transformer_lens.model_bridge.generalized_components.base import (
 class EmbeddingBridge(GeneralizedComponent):
     """Embedding bridge that wraps transformer embedding layers.
 
-    This component provides hook points for:
-    - Token embeddings
-    - Position embeddings
-    - Combined embeddings
+    This component provides standardized input/output hooks.
     """
 
     def __init__(
@@ -38,16 +35,7 @@ class EmbeddingBridge(GeneralizedComponent):
             architecture_adapter: Optional architecture adapter for component-specific operations
         """
         super().__init__(original_component, name, architecture_adapter)
-
-        # Initialize hook points
-        self.hook_embed = HookPoint()  # Token embeddings
-        self.hook_pos = HookPoint()  # Position embeddings
-        self.hook_output = HookPoint()  # Combined embeddings
-
-        # Set hook names
-        self.hook_embed.name = f"{name}.embed"
-        self.hook_pos.name = f"{name}.pos"
-        self.hook_output.name = f"{name}.output"
+        # No extra hooks; use only hook_in and hook_out
 
     def forward(
         self,
@@ -65,7 +53,7 @@ class EmbeddingBridge(GeneralizedComponent):
         Returns:
             Embedded output
         """
-        # Forward through original component
+        input_ids = self.hook_in(input_ids)
         # Remove position_ids if not supported
         if (
             not hasattr(self.original_component, "forward")
@@ -75,13 +63,8 @@ class EmbeddingBridge(GeneralizedComponent):
             output = self.original_component(input_ids, **kwargs)
         else:
             output = self.original_component(input_ids, position_ids=position_ids, **kwargs)
-
-        # Apply hook to final output
-        output = self.hook_output(output)
-
-        # Store hook outputs
+        output = self.hook_out(output)
         self.hook_outputs.update({"output": output})
-
         return output
 
     @classmethod
