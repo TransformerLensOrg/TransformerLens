@@ -2,7 +2,6 @@
 
 from transformer_lens.model_bridge.generalized_components.attention import (
     AttentionBridge,
-    AttentionConfig,
 )
 from transformer_lens.model_bridge.generalized_components.block import (
     BlockBridge,
@@ -24,7 +23,6 @@ from transformer_lens.model_bridge.generalized_components.unembedding import (
 
 __all__ = [
     "AttentionBridge",
-    "AttentionConfig",
     "BlockBridge",
     "EmbeddingBridge",
     "LayerNormBridge",

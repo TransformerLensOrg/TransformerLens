@@ -7,14 +7,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Optional
 
-import torch.nn as nn
-
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
 
 if TYPE_CHECKING:
-    from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
+    pass
 
 
 class MoEBridge(GeneralizedComponent):
@@ -51,8 +49,10 @@ class MoEBridge(GeneralizedComponent):
             The output from the original component
         """
         if self.original_component is None:
-            raise RuntimeError(f"Original component not set for {self.name}. Call set_original_component() first.")
-        
+            raise RuntimeError(
+                f"Original component not set for {self.name}. Call set_original_component() first."
+            )
+
         if len(args) > 0:
             args = (self.hook_in(args[0]),) + args[1:]
         output = self.original_component(*args, **kwargs)

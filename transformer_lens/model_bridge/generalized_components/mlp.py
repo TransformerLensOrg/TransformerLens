@@ -7,9 +7,7 @@ This module contains the bridge component for MLP layers.
 from typing import Any, Dict, Optional
 
 import torch
-import torch.nn as nn
 
-from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
@@ -36,12 +34,12 @@ class MLPBridge(GeneralizedComponent):
             submodules: Dictionary of submodules to register (e.g., gate_proj, up_proj, down_proj)
         """
         super().__init__(name, config)
-        
+
         # Register submodules from dictionary
         if submodules is not None:
             for module_name, module in submodules.items():
                 self.add_module(module_name, module)
-        
+
         # No extra hooks; use only hook_in and hook_out
 
     def forward(self, *args, **kwargs) -> torch.Tensor:
@@ -55,8 +53,10 @@ class MLPBridge(GeneralizedComponent):
             Output hidden states
         """
         if self.original_component is None:
-            raise RuntimeError(f"Original component not set for {self.name}. Call set_original_component() first.")
-        
+            raise RuntimeError(
+                f"Original component not set for {self.name}. Call set_original_component() first."
+            )
+
         hidden_states = args[0]
         hidden_states = self.hook_in(hidden_states)
         new_args = (hidden_states,) + args[1:]

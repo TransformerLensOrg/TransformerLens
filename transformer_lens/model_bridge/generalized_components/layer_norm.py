@@ -3,9 +3,7 @@
 from typing import Any, Optional
 
 import torch
-import torch.nn as nn
 
-from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
@@ -46,8 +44,10 @@ class LayerNormBridge(GeneralizedComponent):
             Normalized output
         """
         if self.original_component is None:
-            raise RuntimeError(f"Original component not set for {self.name}. Call set_original_component() first.")
-        
+            raise RuntimeError(
+                f"Original component not set for {self.name}. Call set_original_component() first."
+            )
+
         hidden_states = self.hook_in(hidden_states)
         output = self.original_component(hidden_states, **kwargs)
         output = self.hook_out(output)

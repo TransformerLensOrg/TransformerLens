@@ -45,7 +45,9 @@ class T5ArchitectureAdapter(ArchitectureAdapter):
         )
         self.component_mapping = {
             "embed": EmbeddingBridge(name="shared"),
-            "pos_embed": EmbeddingBridge(name="encoder.block.0.layer.0.SelfAttention.relative_attention_bias"),
+            "pos_embed": EmbeddingBridge(
+                name="encoder.block.0.layer.0.SelfAttention.relative_attention_bias"
+            ),
             "blocks": BlockBridge(
                 name="encoder.block",
                 submodules={

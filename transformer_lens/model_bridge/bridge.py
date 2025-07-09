@@ -445,8 +445,7 @@ class TransformerBridge(nn.Module):
                         cache[name] = tensor[0].detach().cpu()
                         # Also cache the full tuple structure with a special key
                         cache[f"{name}_full_tuple"] = tuple(
-                            t.detach().cpu() if isinstance(t, torch.Tensor) else t
-                            for t in tensor
+                            t.detach().cpu() if isinstance(t, torch.Tensor) else t for t in tensor
                         )
                     else:
                         cache[name] = tensor
@@ -483,7 +482,7 @@ class TransformerBridge(nn.Module):
                     for i, item in enumerate(attr):
                         if isinstance(item, nn.Module):
                             collect_hookpoints(item, f"{name}[{i}]")
-            
+
             # Also traverse named_children() to catch ModuleList and other containers
             for child_name, child_module in module.named_children():
                 child_path = f"{prefix}.{child_name}" if prefix else child_name
@@ -685,7 +684,7 @@ class TransformerBridge(nn.Module):
     def _set_original_components(self) -> None:
         """Set original components on the pre-created bridge components."""
         component_mapping = self.bridge.get_component_mapping()
-        
+
         # Modern bridge instance mapping - set original components directly
         for tl_path, bridge_component in component_mapping.items():
             if tl_path == "blocks":
@@ -694,12 +693,14 @@ class TransformerBridge(nn.Module):
             else:
                 # Regular component handling
                 remote_path = bridge_component.name
-                original_component = self.bridge.get_remote_component(self.original_model, remote_path)
+                original_component = self.bridge.get_remote_component(
+                    self.original_model, remote_path
+                )
                 bridge_component.set_original_component(original_component)
-                
+
                 # Set the bridge component on self as a proper module
                 self.add_module(tl_path, bridge_component)
-                
+
                 # Replace the original component with the bridge component
                 self._replace_component(remote_path, bridge_component)
 
@@ -708,46 +709,58 @@ class TransformerBridge(nn.Module):
         import copy
 
         # Get the original blocks container
-        original_blocks = self.bridge.get_remote_component(self.original_model, blocks_template.name)
-        
+        original_blocks = self.bridge.get_remote_component(
+            self.original_model, blocks_template.name
+        )
+
         # Create a new ModuleList of bridge components
         bridged_blocks = nn.ModuleList()
-        
+
         for i, original_block in enumerate(original_blocks):
             # Create a copy of the template bridge for this block
             block_bridge = copy.deepcopy(blocks_template)
             block_bridge.name = f"{blocks_template.name}.{i}"
-            
+
             # Set the original component for this block
             block_bridge.set_original_component(original_block)
-            
+
             # Set original components for all submodules
-            if hasattr(block_bridge, '_modules'):
+            if hasattr(block_bridge, "_modules"):
                 for submodule_name, submodule in block_bridge._modules.items():
-                    if hasattr(submodule, 'set_original_component') and submodule_name != 'hook_in' and submodule_name != 'hook_out':
+                    if (
+                        hasattr(submodule, "set_original_component")
+                        and submodule_name != "hook_in"
+                        and submodule_name != "hook_out"
+                    ):
                         # Get the original subcomponent
                         original_subcomponent = getattr(original_block, submodule.name)
                         submodule.set_original_component(original_subcomponent)
-                        
+
                         # Handle nested submodules (like attention projections)
-                        if hasattr(submodule, '_modules'):
+                        if hasattr(submodule, "_modules"):
                             for nested_name, nested_module in submodule._modules.items():
-                                if hasattr(nested_module, 'set_original_component') and nested_name != 'hook_in' and nested_name != 'hook_out':
-                                    original_nested = getattr(original_subcomponent, nested_module.name)
+                                if (
+                                    hasattr(nested_module, "set_original_component")
+                                    and nested_name != "hook_in"
+                                    and nested_name != "hook_out"
+                                ):
+                                    original_nested = getattr(
+                                        original_subcomponent, nested_module.name
+                                    )
                                     nested_module.set_original_component(original_nested)
-            
+
             bridged_blocks.append(block_bridge)
-        
+
         # Replace the original blocks with the bridged blocks
         self._replace_component(blocks_template.name, bridged_blocks)
-        
+
         # Set the blocks on self as a proper module
         self.add_module("blocks", bridged_blocks)
 
     def _replace_component(self, remote_path: str, replacement_component):
         """Replace a component in the original model."""
         path_parts = remote_path.split(".")
-        
+
         # Navigate to the parent of the target component
         current = self.original_model
         for part in path_parts[:-1]:
@@ -755,7 +768,7 @@ class TransformerBridge(nn.Module):
                 current = getattr(current, part)
             else:
                 raise ValueError(f"Path {remote_path} not found in model")
-        
+
         # Replace the target component
         target_attr = path_parts[-1]
         if hasattr(current, target_attr):

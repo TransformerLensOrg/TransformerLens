@@ -7,8 +7,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
-import torch.nn as nn
-
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
@@ -37,12 +35,12 @@ class BlockBridge(GeneralizedComponent):
             submodules: Dictionary of submodules to register
         """
         super().__init__(name, config)
-        
+
         # Register submodules from dictionary
         if submodules is not None:
             for module_name, module in submodules.items():
                 self.add_module(module_name, module)
-        
+
         # No extra hooks; use only hook_in and hook_out
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:
@@ -56,8 +54,10 @@ class BlockBridge(GeneralizedComponent):
             The output from the original component
         """
         if self.original_component is None:
-            raise RuntimeError(f"Original component not set for {self.name}. Call set_original_component() first.")
-        
+            raise RuntimeError(
+                f"Original component not set for {self.name}. Call set_original_component() first."
+            )
+
         if len(args) > 0:
             args = (self.hook_in(args[0]),) + args[1:]
         output = self.original_component(*args, **kwargs)

@@ -142,22 +142,22 @@ class ArchitectureAdapter:
             raise ValueError(f"Component {parts[0]} not found in component mapping")
 
         bridge_component = self.component_mapping[parts[0]]
-        
+
         if len(parts) == 1:
             # Simple case: just return the component at the bridge's remote path
             return self.get_remote_component(model, bridge_component.name)
-        
+
         # For nested paths like "blocks.0.attn", we need to handle the indexing
         if parts[0] == "blocks" and len(parts) >= 2:
             # Handle blocks indexing
             block_index = parts[1]
             if not block_index.isdigit():
                 raise ValueError(f"Expected block index, got {block_index}")
-            
+
             # Get the block container
             block_container = self.get_remote_component(model, bridge_component.name)
             block = block_container[int(block_index)]
-            
+
             if len(parts) == 2:
                 # Just return the block
                 return block
@@ -168,12 +168,12 @@ class ArchitectureAdapter:
                 for part in subcomponent_path.split("."):
                     current = getattr(current, part)
                 return current
-        
+
         # For other nested paths, navigate through the remote model
         remote_path = bridge_component.name
         if len(parts) > 1:
             remote_path = f"{remote_path}.{'.'.join(parts[1:])}"
-        
+
         return self.get_remote_component(model, remote_path)
 
     def convert_weights(self, hf_model: PreTrainedModel) -> dict[str, torch.Tensor]:
@@ -231,5 +231,3 @@ class ArchitectureAdapter:
             items[parent_key] = input
 
         return items
-
-

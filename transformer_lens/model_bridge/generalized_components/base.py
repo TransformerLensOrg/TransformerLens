@@ -36,28 +36,28 @@ class GeneralizedComponent(nn.Module):
         self.name = name
         self.config = config
         # Use object.__setattr__ to avoid PyTorch's module system
-        object.__setattr__(self, '_original_component', None)
+        object.__setattr__(self, "_original_component", None)
         self.hooks: dict[str, list[Callable[..., torch.Tensor]]] = {}
         self.hook_outputs: dict[str, Any] = {}
         self._hook_tracker = None
-        
+
         # Standardized hooks for all bridge components - use add_module to ensure proper registration
-        self.add_module('hook_in', HookPoint())
-        self.add_module('hook_out', HookPoint())
+        self.add_module("hook_in", HookPoint())
+        self.add_module("hook_out", HookPoint())
 
     def set_original_component(self, original_component: RemoteComponent) -> None:
         """Set the original component that this bridge wraps.
-        
+
         Args:
             original_component: The original transformer component to wrap
         """
         # Use object.__setattr__ to avoid PyTorch's module system
-        object.__setattr__(self, '_original_component', original_component)
+        object.__setattr__(self, "_original_component", original_component)
 
     @property
     def original_component(self) -> Optional[RemoteComponent]:
         """Get the original component."""
-        return object.__getattribute__(self, '_original_component')
+        return object.__getattribute__(self, "_original_component")
 
     def set_hook_tracker(self, tracker: Any) -> None:
         """Set the hook tracker for this component.
@@ -172,13 +172,20 @@ class GeneralizedComponent(nn.Module):
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         """Generic forward pass for bridge components with input/output hooks."""
-        original_component = object.__getattribute__(self, '_original_component')
+        original_component = object.__getattribute__(self, "_original_component")
         if original_component is None:
-            raise RuntimeError(f"Original component not set for {self.name}. Call set_original_component() first.")
-        
+            raise RuntimeError(
+                f"Original component not set for {self.name}. Call set_original_component() first."
+            )
+
         # Try to find the main input
         input_arg_names = [
-            'input', 'hidden_states', 'input_ids', 'query_input', 'x', 'inputs_embeds'
+            "input",
+            "hidden_states",
+            "input_ids",
+            "query_input",
+            "x",
+            "inputs_embeds",
         ]
         input_found = False
         # Try kwargs first
@@ -228,17 +235,17 @@ class GeneralizedComponent(nn.Module):
     def __getattr__(self, name: str):
         # Only called if attribute not found through normal lookup
         # First check if it's a module attribute (like hook_in, hook_out)
-        if hasattr(self, '_modules') and name in self._modules:
+        if hasattr(self, "_modules") and name in self._modules:
             return self._modules[name]
-        
+
         # Avoid recursion by checking if we're looking for original_component
         if name == "original_component":
             # This should not happen since original_component is a property
             raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
-        
+
         # Try to get from original_component if it exists
         try:
-            original_component = object.__getattribute__(self, '_original_component')
+            original_component = object.__getattribute__(self, "_original_component")
             if original_component is not None:
                 try:
                     return getattr(original_component, name)
@@ -247,6 +254,6 @@ class GeneralizedComponent(nn.Module):
         except AttributeError:
             # _original_component doesn't exist
             pass
-        
+
         # If we get here, the attribute wasn't found anywhere
         raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")

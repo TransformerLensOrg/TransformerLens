@@ -10,7 +10,6 @@ from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
 )
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
-    AttentionConfig,
     BlockBridge,
     EmbeddingBridge,
     LayerNormBridge,
@@ -77,18 +76,6 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
             }
         )
 
-        # Create attention configuration for Gemma3
-        # Gemma3 attention returns (hidden_states, attention_weights) tuple
-        gemma3_attention_config = AttentionConfig(
-            output_type="tuple",
-            tuple_output_mapping={
-                0: "hidden_states",  # First element is hidden states
-                1: "attention_weights"  # Second element is attention weights (or None)
-            },
-            cache_attention_weights=True,
-            cache_attention_patterns=True
-        )
-
         # Set up component mapping with actual bridge instances
         self.component_mapping = {
             "embed": EmbeddingBridge(name="model.embed_tokens"),
@@ -99,23 +86,22 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
                     "ln2": LayerNormBridge(name="post_attention_layernorm"),
                     "attn": AttentionBridge(
                         name="self_attn",
-                        config=gemma3_attention_config,
                         submodules={
                             "q_proj": LinearBridge(name="q_proj"),
                             "k_proj": LinearBridge(name="k_proj"),
                             "v_proj": LinearBridge(name="v_proj"),
-                            "o_proj": LinearBridge(name="o_proj")
-                        }
+                            "o_proj": LinearBridge(name="o_proj"),
+                        },
                     ),
                     "mlp": MLPBridge(
                         name="mlp",
                         submodules={
                             "gate_proj": LinearBridge(name="gate_proj"),
                             "up_proj": LinearBridge(name="up_proj"),
-                            "down_proj": LinearBridge(name="down_proj")
-                        }
-                    )
-                }
+                            "down_proj": LinearBridge(name="down_proj"),
+                        },
+                    ),
+                },
             ),
             "ln_final": LayerNormBridge(name="model.norm"),
             "unembed": UnembeddingBridge(name="lm_head"),

@@ -1,6 +1,6 @@
 """Type definitions for architecture adapters."""
 
-from typing import Any, Callable, Dict, Optional, TypeAlias
+from typing import Any, Callable, Dict, TypeAlias
 
 import torch
 import torch.nn as nn
