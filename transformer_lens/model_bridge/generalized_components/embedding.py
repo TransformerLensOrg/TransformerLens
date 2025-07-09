@@ -53,18 +53,10 @@ class EmbeddingBridge(GeneralizedComponent):
                 f"Original component not set for {self.name}. Call set_original_component() first."
             )
 
-        print(f"DEBUG: EmbeddingBridge {self.name} modules: {list(self._modules.keys())}")
-        print(
-            f"DEBUG: EmbeddingBridge {self.name} has hook_in in _modules: {'hook_in' in self._modules}"
-        )
-        print(f"DEBUG: EmbeddingBridge {self.name} hasattr hook_in: {hasattr(self, 'hook_in')}")
-
         # Try to access hook_in directly from _modules
         hook_in = self._modules.get("hook_in", None)
         if hook_in is not None:
             input_ids = hook_in(input_ids)
-        else:
-            print(f"DEBUG: No hook_in found, skipping input hook")
 
         # Remove position_ids if not supported
         if (
@@ -80,8 +72,6 @@ class EmbeddingBridge(GeneralizedComponent):
         hook_out = self._modules.get("hook_out", None)
         if hook_out is not None:
             output = hook_out(output)
-        else:
-            print(f"DEBUG: No hook_out found, skipping output hook")
 
         self.hook_outputs.update({"output": output})
         return output
