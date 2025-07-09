@@ -4,9 +4,15 @@ This module provides functionality to load and convert models from HuggingFace t
 """
 
 
-import torch
 import os
-from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer, PreTrainedTokenizerBase
+
+import torch
+from transformers import (
+    AutoConfig,
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    PreTrainedTokenizerBase,
+)
 
 from transformer_lens.model_bridge import ArchitectureAdapterFactory
 from transformer_lens.model_bridge.bridge import TransformerBridge
@@ -68,49 +74,50 @@ def boot(
         tokenizer,
     )
 
+
 def setup_tokenizer(
-        tokenizer,
-        default_padding_side=None,
-    ):
-        """Set's up the tokenizer.
+    tokenizer,
+    default_padding_side=None,
+):
+    """Set's up the tokenizer.
 
-        Args:
-            tokenizer (PreTrainedTokenizer): a pretrained HuggingFace tokenizer.
-            default_padding_side (str): "right" or "left", which side to pad on.
+    Args:
+        tokenizer (PreTrainedTokenizer): a pretrained HuggingFace tokenizer.
+        default_padding_side (str): "right" or "left", which side to pad on.
 
-        """
-        assert isinstance(
-            tokenizer, PreTrainedTokenizerBase
-        ), f"{type(tokenizer)} is not a supported tokenizer, please use PreTrainedTokenizer or PreTrainedTokenizerFast"
+    """
+    assert isinstance(
+        tokenizer, PreTrainedTokenizerBase
+    ), f"{type(tokenizer)} is not a supported tokenizer, please use PreTrainedTokenizer or PreTrainedTokenizerFast"
 
-        assert default_padding_side in [
-            "right",
-            "left",
-            None,
-        ], f"padding_side must be 'right', 'left' or 'None', got {default_padding_side}"
+    assert default_padding_side in [
+        "right",
+        "left",
+        None,
+    ], f"padding_side must be 'right', 'left' or 'None', got {default_padding_side}"
 
-        # Use a tokenizer that is initialized with add_bos_token=True as the default tokenizer.
-        # Such a tokenizer should be set as the default tokenizer because the tokenization of some
-        # tokenizers like LlamaTokenizer are different when bos token is automatically/manually
-        # prepended, and add_bos_token cannot be dynamically controlled after initialization
-        # (https://github.com/huggingface/transformers/issues/25886).
-        tokenizer_with_bos = get_tokenizer_with_bos(tokenizer)
-        tokenizer = tokenizer_with_bos
-        assert tokenizer is not None  # keep mypy happy
+    # Use a tokenizer that is initialized with add_bos_token=True as the default tokenizer.
+    # Such a tokenizer should be set as the default tokenizer because the tokenization of some
+    # tokenizers like LlamaTokenizer are different when bos token is automatically/manually
+    # prepended, and add_bos_token cannot be dynamically controlled after initialization
+    # (https://github.com/huggingface/transformers/issues/25886).
+    tokenizer_with_bos = get_tokenizer_with_bos(tokenizer)
+    tokenizer = tokenizer_with_bos
+    assert tokenizer is not None  # keep mypy happy
 
-        # If user passes default_padding_side explicitly, use that value
-        if default_padding_side is not None:
-            tokenizer.padding_side = default_padding_side
-        # If not, then use the tokenizer's default padding side
-        # If the tokenizer doesn't have a default padding side, use the global default "right"
-        if tokenizer.padding_side is None:
-            tokenizer.padding_side = "right"
+    # If user passes default_padding_side explicitly, use that value
+    if default_padding_side is not None:
+        tokenizer.padding_side = default_padding_side
+    # If not, then use the tokenizer's default padding side
+    # If the tokenizer doesn't have a default padding side, use the global default "right"
+    if tokenizer.padding_side is None:
+        tokenizer.padding_side = "right"
 
-        if tokenizer.eos_token is None:
-            tokenizer.eos_token = "<|endoftext|>"
-        if tokenizer.pad_token is None:
-            tokenizer.pad_token = tokenizer.eos_token
-        if tokenizer.bos_token is None:
-            tokenizer.bos_token = tokenizer.eos_token
+    if tokenizer.eos_token is None:
+        tokenizer.eos_token = "<|endoftext|>"
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    if tokenizer.bos_token is None:
+        tokenizer.bos_token = tokenizer.eos_token
 
-        return tokenizer
+    return tokenizer

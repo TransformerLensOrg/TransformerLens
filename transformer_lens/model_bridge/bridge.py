@@ -20,16 +20,13 @@ from typing import (
 import numpy as np
 import torch
 import torch.nn as nn
-import os
-import logging
 
+from transformer_lens import utils
 from transformer_lens.ActivationCache import ActivationCache
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.component_creation import (
     create_and_replace_components_from_mapping,
 )
-from transformer_lens import utils
-from transformer_lens.loading_from_pretrained import NON_HF_HOSTED_MODEL_NAMES
 
 if TYPE_CHECKING:
     from transformer_lens.ActivationCache import ActivationCache
@@ -182,8 +179,8 @@ class TransformerBridge(nn.Module):
         tokenizer_prepends_bos = len(self.tokenizer.encode("")) > 0
 
         if prepend_bos and not tokenizer_prepends_bos:
-                # We want to prepend bos but the tokenizer doesn't automatically do it, so we add it manually
-                input = utils.get_input_with_manually_prepended_bos(self.tokenizer, input)
+            # We want to prepend bos but the tokenizer doesn't automatically do it, so we add it manually
+            input = utils.get_input_with_manually_prepended_bos(self.tokenizer, input)
 
         # Tokenize
         tokens = self.tokenizer(
