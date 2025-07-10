@@ -99,7 +99,28 @@ class TransformerBridge(nn.Module):
         lines = []
         for name, value in mapping.items():
             path = f"{prepend}.{name}" if prepend else name
-            if isinstance(value, tuple):
+            
+            # Handle bridge instances (new format)
+            if hasattr(value, '_modules') and hasattr(value, 'name'):
+                # This is a bridge component instance
+                lines.append(self._format_single_component(name, path, indent))
+                
+                # Check if it has submodules (like BlockBridge)
+                if hasattr(value, '_modules'):
+                    submodules = {}
+                    for submodule_name, submodule in value._modules.items():
+                        if submodule_name not in ['hook_in', 'hook_out']:  # Skip standard hooks
+                            submodules[submodule_name] = submodule
+                    
+                    if submodules:
+                        # For blocks, add .0 to the path to indicate the first block
+                        subpath = f"{path}.0" if name == "blocks" else path
+                        # Recursively format submodules
+                        sub_lines = self._format_component_mapping(submodules, indent + 1, subpath)
+                        lines.extend(sub_lines)
+            
+            # Handle legacy tuple format (for backward compatibility)
+            elif isinstance(value, tuple):
                 # Handle both 2-tuple (RemoteImport) and 3-tuple (BlockMapping) structures
                 if len(value) == 3:
                     # This is a BlockMapping (path, bridge_type, sub_mapping)
@@ -121,7 +142,7 @@ class TransformerBridge(nn.Module):
                     # Unknown tuple structure
                     lines.append(self._format_single_component(name, path, indent))
             else:
-                # For regular components, use prepend if provided
+                # For other types, use prepend if provided
                 lines.append(self._format_single_component(name, path, indent))
         return lines
 

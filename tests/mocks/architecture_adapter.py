@@ -17,28 +17,26 @@ class MockArchitectureAdapter(ArchitectureAdapter):
 
     def __init__(self, cfg=None):
         super().__init__(cfg)
+        # Use actual bridge instances instead of tuples
         self.component_mapping = {
-            "embed": ("embed", EmbeddingBridge),
-            "unembed": ("unembed", EmbeddingBridge),
-            "ln_final": ("ln_final", LayerNormBridge),
-            "blocks": (
-                "blocks",
-                BlockBridge,
-                {
-                    "ln1": ("ln1", LayerNormBridge),
-                    "ln2": ("ln2", LayerNormBridge),
-                    "attn": ("attn", AttentionBridge),
-                    "mlp": ("mlp", MLPBridge),
+            "embed": EmbeddingBridge(name="embed"),
+            "unembed": EmbeddingBridge(name="unembed"),
+            "ln_final": LayerNormBridge(name="ln_final"),
+            "blocks": BlockBridge(
+                name="blocks",
+                submodules={
+                    "ln1": LayerNormBridge(name="ln1"),
+                    "ln2": LayerNormBridge(name="ln2"),
+                    "attn": AttentionBridge(name="attn"),
+                    "mlp": MLPBridge(name="mlp"),
                 },
             ),
-            "outer_blocks": (
-                "outer_blocks",
-                BlockBridge,
-                {
-                    "inner_blocks": (
-                        "inner_blocks",
-                        BlockBridge,
-                        {"ln": ("ln", LayerNormBridge)},
+            "outer_blocks": BlockBridge(
+                name="outer_blocks",
+                submodules={
+                    "inner_blocks": BlockBridge(
+                        name="inner_blocks",
+                        submodules={"ln": LayerNormBridge(name="ln")},
                     )
                 },
             ),
