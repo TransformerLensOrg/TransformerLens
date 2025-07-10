@@ -21,6 +21,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
+from transformer_lens import utils
 from transformer_lens.ActivationCache import ActivationCache
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 
@@ -188,6 +189,14 @@ class TransformerBridge(nn.Module):
         # Handle padding_side logic
         if padding_side is None:
             padding_side = getattr(self.tokenizer, "padding_side", "right")
+
+        # Some tokenizers don't automatically prepend the BOS token even when they are initialized
+        # with add_bos_token=True. Therefore, we need this information to dynamically control prepend_bos.
+        tokenizer_prepends_bos = len(self.tokenizer.encode("")) > 0
+
+        if prepend_bos and not tokenizer_prepends_bos:
+            # We want to prepend bos but the tokenizer doesn't automatically do it, so we add it manually
+            input = utils.get_input_with_manually_prepended_bos(self.tokenizer, input)
 
         # Tokenize
         tokens = self.tokenizer(
