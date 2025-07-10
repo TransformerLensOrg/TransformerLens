@@ -218,9 +218,7 @@ class TestTransformerBridge:
             assert len(result) == 4  # embed + blocks + attn + unembed
         except AttributeError as e:
             if "has no attribute 'items'" in str(e):
-                pytest.fail(
-                    "Original bug still present: bridge instances being treated as dicts"
-                )
+                pytest.fail("Original bug still present: bridge instances being treated as dicts")
             else:
                 raise  # Re-raise if it's a different AttributeError
 

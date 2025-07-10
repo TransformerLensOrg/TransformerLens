@@ -8,11 +8,7 @@ from transformer_lens.model_bridge.component_creation import (
     create_bridged_component,
     replace_remote_component,
 )
-from transformer_lens.model_bridge.generalized_components import (
-    AttentionBridge,
-    BlockBridge,
-    LayerNormBridge,
-)
+from transformer_lens.model_bridge.generalized_components import LayerNormBridge
 
 
 class TestComponentCreation:
@@ -36,5 +32,3 @@ class TestComponentCreation:
         new_ln = nn.LayerNorm(10)
         replace_remote_component(new_ln, "ln_final", mock_model_adapter)
         assert mock_model_adapter.ln_final is new_ln
-
-
