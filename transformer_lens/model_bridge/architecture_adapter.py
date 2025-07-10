@@ -176,6 +176,93 @@ class ArchitectureAdapter:
 
         return self.get_remote_component(model, remote_path)
 
+    def translate_transformer_lens_path(
+        self, path: TransformerLensPath, last_component_only: bool = False
+    ) -> RemotePath:
+        """Translate a TransformerLens path to a remote model path.
+
+        Args:
+            path: The TransformerLens path to translate
+            last_component_only: If True, return only the last component of the path
+
+        Returns:
+            The corresponding remote model path
+
+        Raises:
+            ValueError: If the path is not found in the component mapping
+
+        Examples:
+            >>> adapter.translate_transformer_lens_path("embed")
+            "model.embed_tokens"
+            >>> adapter.translate_transformer_lens_path("blocks.0.ln1")
+            "model.layers.0.input_layernorm"
+            >>> adapter.translate_transformer_lens_path("embed", last_component_only=True)
+            "embed_tokens"
+        """
+        if self.component_mapping is None:
+            raise ValueError(
+                "component_mapping must be set before calling translate_transformer_lens_path"
+            )
+
+        parts = path.split(".")
+        if not parts:
+            raise ValueError("Empty path")
+
+        # Get the top-level component from the mapping
+        if parts[0] not in self.component_mapping:
+            raise ValueError(f"Component {parts[0]} not found in component mapping")
+
+        bridge_component = self.component_mapping[parts[0]]
+
+        if len(parts) == 1:
+            # Simple case: just return the bridge's remote path
+            remote_path = bridge_component.name
+            if last_component_only:
+                return remote_path.split(".")[-1]
+            return remote_path
+
+        # For nested paths like "blocks.0.attn", we need to handle the indexing
+        if parts[0] == "blocks" and len(parts) >= 2:
+            # Handle blocks indexing
+            block_index = parts[1]
+            if not block_index.isdigit():
+                raise ValueError(f"Expected block index, got {block_index}")
+
+            # Get the base blocks path
+            blocks_path = bridge_component.name
+
+            if len(parts) == 2:
+                # Just return the indexed block path
+                remote_path = f"{blocks_path}.{block_index}"
+                if last_component_only:
+                    return block_index
+                return remote_path
+            else:
+                # Get subcomponent from the block bridge
+                subcomponent_name = parts[2]
+                if (
+                    hasattr(bridge_component, "_modules")
+                    and subcomponent_name in bridge_component._modules
+                ):
+                    subcomponent_bridge = bridge_component._modules[subcomponent_name]
+                    remote_path = f"{blocks_path}.{block_index}.{subcomponent_bridge.name}"
+                    if last_component_only:
+                        return subcomponent_bridge.name
+                    return remote_path
+                else:
+                    raise ValueError(
+                        f"Component {subcomponent_name} not found in blocks components"
+                    )
+
+        # For other nested paths, navigate through the bridge components
+        remote_path = bridge_component.name
+        if len(parts) > 1:
+            remote_path = f"{remote_path}.{'.'.join(parts[1:])}"
+
+        if last_component_only:
+            return remote_path.split(".")[-1]
+        return remote_path
+
     def convert_weights(self, hf_model: PreTrainedModel) -> dict[str, torch.Tensor]:
         """Convert the weights from the HuggingFace format to the HookedTransformer format.
 

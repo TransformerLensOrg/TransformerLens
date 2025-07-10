@@ -16,6 +16,13 @@ class MockArchitectureAdapter(ArchitectureAdapter):
     """Mock architecture adapter for testing."""
 
     def __init__(self, cfg=None):
+        if cfg is None:
+            # Create a minimal config for testing
+            cfg = type(
+                "MockConfig",
+                (),
+                {"d_mlp": 512, "intermediate_size": 512, "default_prepend_bos": True},
+            )()
         super().__init__(cfg)
         # Use actual bridge instances instead of tuples
         self.component_mapping = {

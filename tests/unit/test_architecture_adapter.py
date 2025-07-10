@@ -118,6 +118,38 @@ def test_translate_transformer_lens_path_last_component(adapter: Gemma3Architect
     )
 
 
+def test_component_mapping_structure(adapter: Gemma3ArchitectureAdapter) -> None:
+    """Test that the component mapping has the expected structure."""
+    mapping = adapter.get_component_mapping()
+
+    # Test that we have the expected top-level components
+    assert "embed" in mapping
+    assert "blocks" in mapping
+    assert "ln_final" in mapping
+    assert "unembed" in mapping
+
+    # Test that components are bridge instances
+    from transformer_lens.model_bridge.generalized_components import (
+        BlockBridge,
+        EmbeddingBridge,
+        LayerNormBridge,
+        UnembeddingBridge,
+    )
+
+    assert isinstance(mapping["embed"], EmbeddingBridge)
+    assert isinstance(mapping["blocks"], BlockBridge)
+    assert isinstance(mapping["ln_final"], LayerNormBridge)
+    assert isinstance(mapping["unembed"], UnembeddingBridge)
+
+    # Test that blocks has submodules
+    blocks_bridge = mapping["blocks"]
+    assert hasattr(blocks_bridge, "_modules")
+    assert "ln1" in blocks_bridge._modules
+    assert "ln2" in blocks_bridge._modules
+    assert "attn" in blocks_bridge._modules
+    assert "mlp" in blocks_bridge._modules
+
+
 def test_get_component(adapter: Gemma3ArchitectureAdapter, model: MockGemma3Model) -> None:
     """Test getting components from the model."""
     # Test direct mapping
@@ -143,8 +175,19 @@ def test_invalid_paths(adapter: Gemma3ArchitectureAdapter) -> None:
     with pytest.raises(ValueError, match="Component not_found not found in component mapping"):
         adapter.translate_transformer_lens_path("not_found")
 
-    with pytest.raises(ValueError, match="Expected index, got invalid"):
+    with pytest.raises(ValueError, match="Expected block index, got invalid"):
         adapter.translate_transformer_lens_path("blocks.invalid")
 
     with pytest.raises(ValueError, match="Component not_found not found in blocks components"):
         adapter.translate_transformer_lens_path("blocks.0.not_found")
+
+
+def test_get_component_invalid_paths(
+    adapter: Gemma3ArchitectureAdapter, model: MockGemma3Model
+) -> None:
+    """Test handling of invalid paths in get_component."""
+    with pytest.raises(ValueError, match="Component not_found not found in component mapping"):
+        adapter.get_component(model, "not_found")
+
+    with pytest.raises(ValueError, match="Expected block index, got invalid"):
+        adapter.get_component(model, "blocks.invalid")

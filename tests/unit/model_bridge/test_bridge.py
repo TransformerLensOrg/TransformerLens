@@ -25,6 +25,48 @@ class TestTransformerBridge:
     @pytest.fixture(autouse=True)
     def setup_method(self, mock_adapter, mock_model_adapter):
         """Set up test fixtures."""
+
+        # Mock the get_component method to return expected components for formatting tests
+        def mock_get_component(model, path):
+            # Return mock bridge components for testing
+            if "embed" in path:
+                comp = EmbeddingBridge(name="embed")
+                comp.set_original_component(model.embed)
+                return comp
+            elif "ln_final" in path:
+                comp = LayerNormBridge(name="ln_final")
+                comp.set_original_component(model.ln_final)
+                return comp
+            elif "unembed" in path:
+                comp = EmbeddingBridge(name="unembed")
+                comp.set_original_component(model.unembed)
+                return comp
+            elif "blocks" in path and "attn" in path:
+                comp = AttentionBridge(name="attn")
+                comp.set_original_component(model.blocks[0].attn)
+                return comp
+            elif "blocks" in path and "mlp" in path:
+                comp = MLPBridge(name="mlp")
+                comp.set_original_component(model.blocks[0].mlp)
+                return comp
+            elif "blocks" in path and "ln1" in path:
+                comp = LayerNormBridge(name="ln1")
+                comp.set_original_component(model.blocks[0].ln1)
+                return comp
+            elif "blocks" in path and "ln2" in path:
+                comp = LayerNormBridge(name="ln2")
+                comp.set_original_component(model.blocks[0].ln2)
+                return comp
+            elif "blocks" in path:
+                comp = BlockBridge(name="blocks")
+                comp.set_original_component(model.blocks[0])
+                return comp
+            else:
+                # Return a generic component for unknown paths
+                comp = EmbeddingBridge(name="unknown")
+                return comp
+
+        mock_adapter.get_component = mock_get_component
         self.bridge = TransformerBridge(mock_model_adapter, mock_adapter, MagicMock())
         mock_adapter.user_cfg = MagicMock()
         self.bridge.cfg = mock_adapter.user_cfg
