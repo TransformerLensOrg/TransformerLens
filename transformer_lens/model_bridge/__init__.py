@@ -26,6 +26,8 @@ from transformer_lens.model_bridge.generalized_components import (
     UnembeddingBridge,
 )
 
+from transformer_lens.model_bridge.sources import transformers
+
 __all__ = [
     "ArchitectureAdapter",
     "ArchitectureAdapterFactory",
@@ -39,4 +41,5 @@ __all__ = [
     "UnembeddingBridge",
     "create_bridged_component",
     "replace_remote_component",
+    "transformers",
 ]
