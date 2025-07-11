@@ -139,22 +139,22 @@ def get_tokenizer_with_bos(tokenizer: PreTrainedTokenizerBase) -> PreTrainedToke
 
 
 def get_input_with_manually_prepended_bos(
-    tokenizer: PreTrainedTokenizerBase, input: str | list[str]
+    bos_token: str, input: str | list[str]
 ) -> str | list[str]:
     """
     Manually prepends the bos token to the input.
 
     Args:
-        tokenizer (PreTrainedTokenizerBase): The tokenizer to use for prepending the bos token.
+        bos_token (str): The BOS token to prepend.
         input (str | list[str]): The input to prepend the bos token to.
 
     Returns:
         str | list[str]: The input with the bos token manually prepended.
     """
     if isinstance(input, str):
-        input = tokenizer.bos_token + input
+        input = bos_token + input
     else:
-        input = [tokenizer.bos_token + string for string in input]
+        input = [bos_token + string for string in input]
     return input
 
 
