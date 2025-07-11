@@ -238,5 +238,6 @@ class TestTransformerBridge:
         assert result_1[0].startswith("  ")  # 1 level (2 spaces)
         assert result_2[0].startswith("    ")  # 2 levels (4 spaces)
 
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
