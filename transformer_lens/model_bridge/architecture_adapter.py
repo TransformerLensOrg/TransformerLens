@@ -244,11 +244,37 @@ class ArchitectureAdapter:
                     hasattr(bridge_component, "_modules")
                     and subcomponent_name in bridge_component._modules
                 ):
-                    subcomponent_bridge = bridge_component._modules[subcomponent_name]
-                    remote_path = f"{blocks_path}.{block_index}.{subcomponent_bridge.name}"
-                    if last_component_only:
-                        return subcomponent_bridge.name
-                    return remote_path
+                    subcomponent_bridge = getattr(bridge_component, subcomponent_name)
+                    
+                    # If there are more parts (like blocks.0.attn.q_proj), navigate deeper
+                    if len(parts) > 3:
+                        # Navigate through the deeper subcomponents
+                        current_bridge = subcomponent_bridge
+                        remote_path_parts = [blocks_path, block_index, subcomponent_bridge.name]
+                        
+                        for i in range(3, len(parts)):
+                            deeper_component_name = parts[i]
+                            if (
+                                hasattr(current_bridge, "_modules")
+                                and deeper_component_name in current_bridge._modules
+                            ):
+                                current_bridge = getattr(current_bridge, deeper_component_name)
+                                remote_path_parts.append(current_bridge.name)
+                            else:
+                                raise ValueError(
+                                    f"Component {deeper_component_name} not found in {'.'.join(parts[:i])} components"
+                                )
+                        
+                        remote_path = ".".join(remote_path_parts)
+                        if last_component_only:
+                            return current_bridge.name
+                        return remote_path
+                    else:
+                        # Just the 3-level path
+                        remote_path = f"{blocks_path}.{block_index}.{subcomponent_bridge.name}"
+                        if last_component_only:
+                            return subcomponent_bridge.name
+                        return remote_path
                 else:
                     raise ValueError(
                         f"Component {subcomponent_name} not found in blocks components"

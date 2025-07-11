@@ -87,18 +87,18 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
                     "attn": AttentionBridge(
                         name="self_attn",
                         submodules={
-                            "q_proj": LinearBridge(name="q_proj"),
-                            "k_proj": LinearBridge(name="k_proj"),
-                            "v_proj": LinearBridge(name="v_proj"),
-                            "o_proj": LinearBridge(name="o_proj"),
+                            "W_Q": LinearBridge(name="q_proj"),
+                            "W_K": LinearBridge(name="k_proj"),
+                            "W_V": LinearBridge(name="v_proj"),
+                            "W_O": LinearBridge(name="o_proj"),
                         },
                     ),
                     "mlp": MLPBridge(
                         name="mlp",
                         submodules={
-                            "gate_proj": LinearBridge(name="gate_proj"),
-                            "up_proj": LinearBridge(name="up_proj"),
-                            "down_proj": LinearBridge(name="down_proj"),
+                            "W_gate": LinearBridge(name="gate_proj"),
+                            "W_in": LinearBridge(name="up_proj"),
+                            "W_out": LinearBridge(name="down_proj"),
                         },
                     ),
                 },

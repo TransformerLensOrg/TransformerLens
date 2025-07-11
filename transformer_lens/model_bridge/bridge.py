@@ -110,7 +110,7 @@ class TransformerBridge(nn.Module):
                 if hasattr(value, "_modules"):
                     submodules = {}
                     for submodule_name, submodule in value._modules.items():
-                        if submodule_name not in ["hook_in", "hook_out"]:  # Skip standard hooks
+                        if submodule_name not in ["hook_in", "hook_out", "hook_hidden_states", "hook_attention_weights"]:  # Skip all hooks
                             submodules[submodule_name] = submodule
 
                     if submodules:

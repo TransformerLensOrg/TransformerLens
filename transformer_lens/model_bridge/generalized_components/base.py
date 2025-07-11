@@ -45,7 +45,7 @@ class GeneralizedComponent(nn.Module):
         self.add_module("hook_in", HookPoint())
         self.add_module("hook_out", HookPoint())
 
-    def set_original_component(self, original_component: RemoteComponent) -> None:
+    def set_original_component(self, original_component: nn.Module) -> None:
         """Set the original component that this bridge wraps.
 
         Args:
@@ -55,7 +55,7 @@ class GeneralizedComponent(nn.Module):
         object.__setattr__(self, "_original_component", original_component)
 
     @property
-    def original_component(self) -> Optional[RemoteComponent]:
+    def original_component(self) -> Optional[nn.Module]:
         """Get the original component."""
         return object.__getattribute__(self, "_original_component")
 
