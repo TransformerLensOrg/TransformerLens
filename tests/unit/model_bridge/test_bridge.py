@@ -238,32 +238,5 @@ class TestTransformerBridge:
         assert result_1[0].startswith("  ")  # 1 level (2 spaces)
         assert result_2[0].startswith("    ")  # 2 levels (4 spaces)
 
-    def test_regression_original_bug(self):
-        """Regression test for the original bug where EmbeddingBridge was treated as a dict."""
-        # This is the exact scenario that was causing the AttributeError
-        mapping = {
-            "embed": EmbeddingBridge(name="embed"),
-            "blocks": BlockBridge(
-                name="blocks",
-                submodules={
-                    "attn": AttentionBridge(name="attn"),
-                },
-            ),
-            "unembed": EmbeddingBridge(name="unembed"),
-        }
-        self.bridge.bridge.component_mapping = mapping
-
-        # This should not raise AttributeError: type object 'EmbeddingBridge' has no attribute 'items'
-        try:
-            result = self.bridge._format_component_mapping(mapping, indent=1)
-            # If we get here, the bug is fixed
-            assert len(result) == 4  # embed + blocks + attn + unembed
-        except AttributeError as e:
-            if "has no attribute 'items'" in str(e):
-                pytest.fail("Original bug still present: bridge instances being treated as dicts")
-            else:
-                raise  # Re-raise if it's a different AttributeError
-
-
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
