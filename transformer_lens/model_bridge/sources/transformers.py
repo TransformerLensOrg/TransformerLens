@@ -1,4 +1,4 @@
-"""Boot module for TransformerLens.
+"""Transformers module for TransformerLens.
 
 This module provides functionality to load and convert models from HuggingFace to TransformerLens format.
 """
@@ -121,3 +121,6 @@ def setup_tokenizer(
         tokenizer.bos_token = tokenizer.eos_token
 
     return tokenizer
+
+
+TransformerBridge.boot_transformers = staticmethod(boot)
