@@ -162,12 +162,41 @@ class ArchitectureAdapter:
                 # Just return the block
                 return block
             else:
-                # Get subcomponent from the block
-                subcomponent_path = ".".join(parts[2:])
-                current = block
-                for part in subcomponent_path.split("."):
-                    current = getattr(current, part)
-                return current
+                # Get subcomponent from the block using bridge mapping
+                subcomponent_name = parts[2]
+                if (
+                    hasattr(bridge_component, "_modules")
+                    and subcomponent_name in bridge_component._modules
+                ):
+                    subcomponent_bridge = getattr(bridge_component, subcomponent_name)
+
+                    # If there are more parts (like blocks.0.attn.W_Q), navigate deeper
+                    if len(parts) > 3:
+                        # Navigate through the deeper subcomponents
+                        current_bridge = subcomponent_bridge
+                        current = getattr(block, subcomponent_bridge.name)
+
+                        for i in range(3, len(parts)):
+                            deeper_component_name = parts[i]
+                            if (
+                                hasattr(current_bridge, "_modules")
+                                and deeper_component_name in current_bridge._modules
+                            ):
+                                current_bridge = getattr(current_bridge, deeper_component_name)
+                                current = getattr(current, current_bridge.name)
+                            else:
+                                raise ValueError(
+                                    f"Component {deeper_component_name} not found in {'.'.join(parts[:i])} components"
+                                )
+
+                        return current
+                    else:
+                        # Just the 3-level path
+                        return getattr(block, subcomponent_bridge.name)
+                else:
+                    raise ValueError(
+                        f"Component {subcomponent_name} not found in blocks components"
+                    )
 
         # For other nested paths, navigate through the remote model
         remote_path = bridge_component.name
@@ -245,13 +274,13 @@ class ArchitectureAdapter:
                     and subcomponent_name in bridge_component._modules
                 ):
                     subcomponent_bridge = getattr(bridge_component, subcomponent_name)
-                    
+
                     # If there are more parts (like blocks.0.attn.q_proj), navigate deeper
                     if len(parts) > 3:
                         # Navigate through the deeper subcomponents
                         current_bridge = subcomponent_bridge
                         remote_path_parts = [blocks_path, block_index, subcomponent_bridge.name]
-                        
+
                         for i in range(3, len(parts)):
                             deeper_component_name = parts[i]
                             if (
@@ -264,7 +293,7 @@ class ArchitectureAdapter:
                                 raise ValueError(
                                     f"Component {deeper_component_name} not found in {'.'.join(parts[:i])} components"
                                 )
-                        
+
                         remote_path = ".".join(remote_path_parts)
                         if last_component_only:
                             return current_bridge.name

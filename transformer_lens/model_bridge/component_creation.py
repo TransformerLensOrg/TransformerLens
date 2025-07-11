@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Optional
 
+import torch.nn as nn
+
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
@@ -46,7 +48,7 @@ def create_bridged_component(
 
 
 def replace_remote_component(
-    replacement_component: GeneralizedComponent,
+    replacement_component: nn.Module,
     remote_path: str,
     remote_model: RemoteModel,
 ) -> None:

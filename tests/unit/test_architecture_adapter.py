@@ -84,15 +84,35 @@ def test_translate_transformer_lens_path(adapter: Gemma3ArchitectureAdapter) -> 
     )
     assert adapter.translate_transformer_lens_path("blocks.0.attn") == "model.layers.0.self_attn"
     assert adapter.translate_transformer_lens_path("blocks.0.mlp") == "model.layers.0.mlp"
-    
+
     # Test deeper subcomponent paths
-    assert adapter.translate_transformer_lens_path("blocks.0.attn.q_proj") == "model.layers.0.self_attn.q_proj"
-    assert adapter.translate_transformer_lens_path("blocks.0.attn.k_proj") == "model.layers.0.self_attn.k_proj"
-    assert adapter.translate_transformer_lens_path("blocks.0.attn.v_proj") == "model.layers.0.self_attn.v_proj"
-    assert adapter.translate_transformer_lens_path("blocks.0.attn.o_proj") == "model.layers.0.self_attn.o_proj"
-    assert adapter.translate_transformer_lens_path("blocks.0.mlp.gate_proj") == "model.layers.0.mlp.gate_proj"
-    assert adapter.translate_transformer_lens_path("blocks.0.mlp.up_proj") == "model.layers.0.mlp.up_proj"
-    assert adapter.translate_transformer_lens_path("blocks.0.mlp.down_proj") == "model.layers.0.mlp.down_proj"
+    assert (
+        adapter.translate_transformer_lens_path("blocks.0.attn.W_Q")
+        == "model.layers.0.self_attn.q_proj"
+    )
+    assert (
+        adapter.translate_transformer_lens_path("blocks.0.attn.W_K")
+        == "model.layers.0.self_attn.k_proj"
+    )
+    assert (
+        adapter.translate_transformer_lens_path("blocks.0.attn.W_V")
+        == "model.layers.0.self_attn.v_proj"
+    )
+    assert (
+        adapter.translate_transformer_lens_path("blocks.0.attn.W_O")
+        == "model.layers.0.self_attn.o_proj"
+    )
+    assert (
+        adapter.translate_transformer_lens_path("blocks.0.mlp.W_gate")
+        == "model.layers.0.mlp.gate_proj"
+    )
+    assert (
+        adapter.translate_transformer_lens_path("blocks.0.mlp.W_in") == "model.layers.0.mlp.up_proj"
+    )
+    assert (
+        adapter.translate_transformer_lens_path("blocks.0.mlp.W_out")
+        == "model.layers.0.mlp.down_proj"
+    )
 
 
 def test_translate_transformer_lens_path_last_component(adapter: Gemma3ArchitectureAdapter) -> None:
@@ -125,15 +145,36 @@ def test_translate_transformer_lens_path_last_component(adapter: Gemma3Architect
     assert (
         adapter.translate_transformer_lens_path("blocks.0.mlp", last_component_only=True) == "mlp"
     )
-    
+
     # Test deeper subcomponent paths with last_component_only
-    assert adapter.translate_transformer_lens_path("blocks.0.attn.q_proj", last_component_only=True) == "q_proj"
-    assert adapter.translate_transformer_lens_path("blocks.0.attn.k_proj", last_component_only=True) == "k_proj"
-    assert adapter.translate_transformer_lens_path("blocks.0.attn.v_proj", last_component_only=True) == "v_proj"
-    assert adapter.translate_transformer_lens_path("blocks.0.attn.o_proj", last_component_only=True) == "o_proj"
-    assert adapter.translate_transformer_lens_path("blocks.0.mlp.gate_proj", last_component_only=True) == "gate_proj"
-    assert adapter.translate_transformer_lens_path("blocks.0.mlp.up_proj", last_component_only=True) == "up_proj"
-    assert adapter.translate_transformer_lens_path("blocks.0.mlp.down_proj", last_component_only=True) == "down_proj"
+    assert (
+        adapter.translate_transformer_lens_path("blocks.0.attn.W_Q", last_component_only=True)
+        == "q_proj"
+    )
+    assert (
+        adapter.translate_transformer_lens_path("blocks.0.attn.W_K", last_component_only=True)
+        == "k_proj"
+    )
+    assert (
+        adapter.translate_transformer_lens_path("blocks.0.attn.W_V", last_component_only=True)
+        == "v_proj"
+    )
+    assert (
+        adapter.translate_transformer_lens_path("blocks.0.attn.W_O", last_component_only=True)
+        == "o_proj"
+    )
+    assert (
+        adapter.translate_transformer_lens_path("blocks.0.mlp.W_gate", last_component_only=True)
+        == "gate_proj"
+    )
+    assert (
+        adapter.translate_transformer_lens_path("blocks.0.mlp.W_in", last_component_only=True)
+        == "up_proj"
+    )
+    assert (
+        adapter.translate_transformer_lens_path("blocks.0.mlp.W_out", last_component_only=True)
+        == "down_proj"
+    )
 
 
 def test_component_mapping_structure(adapter: Gemma3ArchitectureAdapter) -> None:
@@ -169,34 +210,34 @@ def test_component_mapping_structure(adapter: Gemma3ArchitectureAdapter) -> None
     assert "ln2" in blocks_bridge._modules
     assert "attn" in blocks_bridge._modules
     assert "mlp" in blocks_bridge._modules
-    
+
     # Test the types of submodules (accessed as attributes)
     assert isinstance(blocks_bridge.ln1, LayerNormBridge)
     assert isinstance(blocks_bridge.ln2, LayerNormBridge)
     assert isinstance(blocks_bridge.attn, AttentionBridge)
     assert isinstance(blocks_bridge.mlp, MLPBridge)
-    
+
     # Test that attention has submodules
     attn_bridge = blocks_bridge.attn
     assert hasattr(attn_bridge, "_modules")
-    assert "q_proj" in attn_bridge._modules
-    assert "k_proj" in attn_bridge._modules
-    assert "v_proj" in attn_bridge._modules
-    assert "o_proj" in attn_bridge._modules
-    assert isinstance(attn_bridge.q_proj, LinearBridge)
-    assert isinstance(attn_bridge.k_proj, LinearBridge)
-    assert isinstance(attn_bridge.v_proj, LinearBridge)
-    assert isinstance(attn_bridge.o_proj, LinearBridge)
-    
+    assert "W_Q" in attn_bridge._modules
+    assert "W_K" in attn_bridge._modules
+    assert "W_V" in attn_bridge._modules
+    assert "W_O" in attn_bridge._modules
+    assert isinstance(attn_bridge.W_Q, LinearBridge)
+    assert isinstance(attn_bridge.W_K, LinearBridge)
+    assert isinstance(attn_bridge.W_V, LinearBridge)
+    assert isinstance(attn_bridge.W_O, LinearBridge)
+
     # Test that MLP has submodules
     mlp_bridge = blocks_bridge.mlp
     assert hasattr(mlp_bridge, "_modules")
-    assert "gate_proj" in mlp_bridge._modules
-    assert "up_proj" in mlp_bridge._modules
-    assert "down_proj" in mlp_bridge._modules
-    assert isinstance(mlp_bridge.gate_proj, LinearBridge)
-    assert isinstance(mlp_bridge.up_proj, LinearBridge)
-    assert isinstance(mlp_bridge.down_proj, LinearBridge)
+    assert "W_gate" in mlp_bridge._modules
+    assert "W_in" in mlp_bridge._modules
+    assert "W_out" in mlp_bridge._modules
+    assert isinstance(mlp_bridge.W_gate, LinearBridge)
+    assert isinstance(mlp_bridge.W_in, LinearBridge)
+    assert isinstance(mlp_bridge.W_out, LinearBridge)
 
 
 def test_get_component(adapter: Gemma3ArchitectureAdapter, model: MockGemma3Model) -> None:

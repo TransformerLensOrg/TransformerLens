@@ -79,6 +79,8 @@ class TransformerBridge(nn.Module):
         try:
             comp = self.bridge.get_component(self.original_model, path)
             if hasattr(comp, "original_component"):
+                if comp.original_component is None:
+                    return f"{indent_str}{name}: <error: original component not set>"
                 return f"{indent_str}{name}: {type(comp).__name__}({type(comp.original_component).__name__})"
             return f"{indent_str}{name}: {type(comp).__name__}"
         except Exception as e:
@@ -110,7 +112,12 @@ class TransformerBridge(nn.Module):
                 if hasattr(value, "_modules"):
                     submodules = {}
                     for submodule_name, submodule in value._modules.items():
-                        if submodule_name not in ["hook_in", "hook_out", "hook_hidden_states", "hook_attention_weights"]:  # Skip all hooks
+                        if submodule_name not in [
+                            "hook_in",
+                            "hook_out",
+                            "hook_hidden_states",
+                            "hook_attention_weights",
+                        ]:  # Skip all hooks
                             submodules[submodule_name] = submodule
 
                     if submodules:

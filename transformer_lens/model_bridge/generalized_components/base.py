@@ -11,7 +11,7 @@ import torch.nn as nn
 from transformer_lens.hook_points import HookPoint
 
 if TYPE_CHECKING:
-    from transformer_lens.model_bridge.types import RemoteComponent
+    pass
 
 
 class GeneralizedComponent(nn.Module):
