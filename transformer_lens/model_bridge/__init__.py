@@ -3,9 +3,6 @@
 This module provides functionality to bridge between different model architectures.
 """
 
-from transformer_lens.factories.architecture_adapter_factory import (
-    ArchitectureAdapterFactory,
-)
 from transformer_lens.model_bridge.architecture_adapter import (
     ArchitectureAdapter,
 )
@@ -30,7 +27,6 @@ from transformer_lens.model_bridge.sources import transformers
 
 __all__ = [
     "ArchitectureAdapter",
-    "ArchitectureAdapterFactory",
     "TransformerBridge",
     "AttentionBridge",
     "BlockBridge",
