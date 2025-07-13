@@ -8,13 +8,13 @@ import pytest
 import torch
 
 from transformer_lens.ActivationCache import ActivationCache
-from transformer_lens.boot import boot
+from transformer_lens.model_bridge import TransformerBridge
 
 
 def test_model_initialization():
     """Test that the model can be initialized correctly."""
     model_name = "gpt2"  # Use a smaller model for testing
-    bridge = boot(model_name)
+    bridge = TransformerBridge.boot_transformers(model_name)
 
     assert bridge is not None, "Bridge should be initialized"
     assert bridge.tokenizer is not None, "Tokenizer should be initialized"
@@ -24,7 +24,7 @@ def test_model_initialization():
 def test_text_generation():
     """Test basic text generation functionality."""
     model_name = "gpt2"  # Use a smaller model for testing
-    bridge = boot(model_name)
+    bridge = TransformerBridge.boot_transformers(model_name)
 
     if bridge.tokenizer.pad_token is None:
         bridge.tokenizer.pad_token = bridge.tokenizer.eos_token
@@ -39,7 +39,7 @@ def test_text_generation():
 def test_hooks():
     """Test that hooks can be added and removed correctly."""
     model_name = "gpt2"  # Use a smaller model for testing
-    bridge = boot(model_name)
+    bridge = TransformerBridge.boot_transformers(model_name)
 
     if bridge.tokenizer.pad_token is None:
         bridge.tokenizer.pad_token = bridge.tokenizer.eos_token
@@ -77,7 +77,7 @@ def test_hooks():
 def test_cache():
     """Test that the cache functionality works correctly."""
     model_name = "gpt2"  # Use a smaller model for testing
-    bridge = boot(model_name)
+    bridge = TransformerBridge.boot_transformers(model_name)
 
     if bridge.tokenizer.pad_token is None:
         bridge.tokenizer.pad_token = bridge.tokenizer.eos_token
@@ -105,7 +105,7 @@ def test_cache():
 def test_component_access():
     """Test that model components can be accessed correctly."""
     model_name = "gpt2"  # Use a smaller model for testing
-    bridge = boot(model_name)
+    bridge = TransformerBridge.boot_transformers(model_name)
 
     # Test accessing various components
     assert hasattr(bridge, "embed"), "Bridge should have embed component"
