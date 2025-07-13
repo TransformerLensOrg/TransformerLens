@@ -126,4 +126,4 @@ def setup_tokenizer(
     return tokenizer
 
 
-TransformerBridge.boot_transformers = staticmethod(boot)
+setattr(TransformerBridge, "boot_transformers", staticmethod(boot))
