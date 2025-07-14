@@ -28,16 +28,13 @@ class ArchitectureAdapter:
     (for initializing weights from one format to another).
     """
 
-    def __init__(self, user_cfg: Any) -> None:
+    def __init__(self, cfg: Any) -> None:
         """Initialize the architecture adapter.
 
         Args:
-            user_cfg: The user-provided configuration object.
+            cfg: The user-provided configuration object.
         """
-        self.user_cfg = user_cfg
-        # Ensure d_mlp is set if intermediate_size is present
-        if not hasattr(self.user_cfg, "d_mlp") and hasattr(self.user_cfg, "intermediate_size"):
-            self.user_cfg.d_mlp = self.user_cfg.intermediate_size
+        self.cfg = cfg
         self.default_cfg: dict[str, Any] = {}
         self.component_mapping: ComponentMapping | None = None
         self.conversion_rules: WeightConversionSet | None = None

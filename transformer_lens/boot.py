@@ -43,6 +43,10 @@ def boot(
     default_config = adapter.default_cfg
     merged_config = {**default_config, **(config or {})}
 
+    # Ensure d_mlp is set if intermediate_size is present
+    if "d_mlp" not in merged_config and "intermediate_size" in merged_config:
+        merged_config["d_mlp"] = merged_config["intermediate_size"]
+
     # Load the model from HuggingFace using the original config
     hf_model = AutoModelForCausalLM.from_pretrained(
         model_name,
