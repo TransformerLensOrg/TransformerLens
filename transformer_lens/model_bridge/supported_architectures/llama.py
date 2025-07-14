@@ -38,27 +38,19 @@ class LlamaArchitectureAdapter(ArchitectureAdapter):
                 "blocks.{i}.ln2.w": "model.layers.{i}.post_attention_layernorm.weight",
                 "blocks.{i}.attn.W_Q": (
                     "model.layers.{i}.self_attn.q_proj.weight",
-                    RearrangeWeightConversion(
-                        "(n h) m -> n m h", n=self.cfg.num_attention_heads
-                    ),
+                    RearrangeWeightConversion("(n h) m -> n m h", n=self.cfg.num_attention_heads),
                 ),
                 "blocks.{i}.attn.W_K": (
                     "model.layers.{i}.self_attn.k_proj.weight",
-                    RearrangeWeightConversion(
-                        "(n h) m -> n m h", n=self.cfg.num_attention_heads
-                    ),
+                    RearrangeWeightConversion("(n h) m -> n m h", n=self.cfg.num_attention_heads),
                 ),
                 "blocks.{i}.attn.W_V": (
                     "model.layers.{i}.self_attn.v_proj.weight",
-                    RearrangeWeightConversion(
-                        "(n h) m -> n m h", n=self.cfg.num_attention_heads
-                    ),
+                    RearrangeWeightConversion("(n h) m -> n m h", n=self.cfg.num_attention_heads),
                 ),
                 "blocks.{i}.attn.W_O": (
                     "model.layers.{i}.self_attn.o_proj.weight",
-                    RearrangeWeightConversion(
-                        "m (n h) -> n h m", n=self.cfg.num_attention_heads
-                    ),
+                    RearrangeWeightConversion("m (n h) -> n h m", n=self.cfg.num_attention_heads),
                 ),
                 "blocks.{i}.mlp.W_in": "model.layers.{i}.mlp.up_proj.weight.T",
                 "blocks.{i}.mlp.W_gate": "model.layers.{i}.mlp.gate_proj.weight.T",
