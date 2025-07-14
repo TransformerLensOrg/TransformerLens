@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 import torch
 import torch.nn as nn
@@ -25,12 +25,14 @@ class GeneralizedComponent(nn.Module):
         self,
         name: str,
         config: Optional[Any] = None,
+        submodules: Optional[Dict[str, "GeneralizedComponent"]] = None,
     ):
         """Initialize the generalized component.
 
         Args:
             name: The name of this component
             config: Optional configuration object for the component
+            submodules: Dictionary of GeneralizedComponent submodules to register
         """
         super().__init__()
         self.name = name
@@ -40,6 +42,11 @@ class GeneralizedComponent(nn.Module):
         self.hooks: dict[str, list[Callable[..., torch.Tensor]]] = {}
         self.hook_outputs: dict[str, Any] = {}
         self._hook_tracker = None
+
+        # Register submodules from dictionary
+        if submodules is not None:
+            for module_name, module in submodules.items():
+                self.add_module(module_name, module)
 
         # Standardized hooks for all bridge components - use add_module to ensure proper registration
         self.add_module("hook_in", HookPoint())

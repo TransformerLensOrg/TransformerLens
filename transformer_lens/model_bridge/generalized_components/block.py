@@ -25,7 +25,7 @@ class BlockBridge(GeneralizedComponent):
         self,
         name: str,
         config: Optional[Any] = None,
-        submodules: Optional[Dict[str, Any]] = None,
+        submodules: Optional[Dict[str, GeneralizedComponent]] = None,
     ):
         """Initialize the block bridge.
 
@@ -34,12 +34,7 @@ class BlockBridge(GeneralizedComponent):
             config: Optional configuration (unused for BlockBridge)
             submodules: Dictionary of submodules to register
         """
-        super().__init__(name, config)
-
-        # Register submodules from dictionary
-        if submodules is not None:
-            for module_name, module in submodules.items():
-                self.add_module(module_name, module)
+        super().__init__(name, config, submodules=submodules)
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         """Forward pass through the block bridge.

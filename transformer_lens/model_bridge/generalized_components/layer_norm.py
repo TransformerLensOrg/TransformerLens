@@ -1,6 +1,6 @@
 """Layer norm bridge component implementation."""
 
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 
 import torch
 
@@ -19,14 +19,16 @@ class LayerNormBridge(GeneralizedComponent):
         self,
         name: str,
         config: Optional[Any] = None,
+        submodules: Optional[Dict[str, GeneralizedComponent]] = None,
     ):
         """Initialize the layer norm bridge.
 
         Args:
             name: The name of this component
             config: Optional configuration (unused for LayerNormBridge)
+            submodules: Dictionary of GeneralizedComponent submodules to register
         """
-        super().__init__(name, config)
+        super().__init__(name, config, submodules=submodules)
         # No extra hooks; use only hook_in and hook_out
 
     def forward(

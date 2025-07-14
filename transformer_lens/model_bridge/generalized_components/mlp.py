@@ -24,7 +24,7 @@ class MLPBridge(GeneralizedComponent):
         self,
         name: str,
         config: Optional[Any] = None,
-        submodules: Optional[Dict[str, Any]] = None,
+        submodules: Optional[Dict[str, GeneralizedComponent]] = None,
     ):
         """Initialize the MLP bridge.
 
@@ -33,12 +33,7 @@ class MLPBridge(GeneralizedComponent):
             config: Optional configuration (unused for MLPBridge)
             submodules: Dictionary of submodules to register (e.g., gate_proj, up_proj, down_proj)
         """
-        super().__init__(name, config)
-
-        # Register submodules from dictionary
-        if submodules is not None:
-            for module_name, module in submodules.items():
-                self.add_module(module_name, module)
+        super().__init__(name, config, submodules=submodules)
 
         # No extra hooks; use only hook_in and hook_out
 

@@ -1,6 +1,6 @@
 """Linear bridge component for wrapping linear layers with hook points."""
 
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 
 import torch
 
@@ -16,14 +16,20 @@ class LinearBridge(GeneralizedComponent):
     for intercepting the input and output activations.
     """
 
-    def __init__(self, name: str, config: Optional[Any] = None) -> None:
+    def __init__(
+        self, 
+        name: str, 
+        config: Optional[Any] = None,
+        submodules: Optional[Dict[str, GeneralizedComponent]] = None,
+    ) -> None:
         """Initialize the LinearBridge.
 
         Args:
             name: The name of this component
             config: Optional configuration (unused for LinearBridge)
+            submodules: Dictionary of GeneralizedComponent submodules to register
         """
-        super().__init__(name, config)
+        super().__init__(name, config, submodules=submodules)
 
     def forward(self, input: torch.Tensor, *args: Any, **kwargs: Any) -> torch.Tensor:
         """Forward pass through the linear layer with hooks.

@@ -5,7 +5,7 @@ This module contains the bridge component for Mixture of Experts layers.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
@@ -26,14 +26,16 @@ class MoEBridge(GeneralizedComponent):
         self,
         name: str,
         config: Optional[Any] = None,
+        submodules: Optional[Dict[str, GeneralizedComponent]] = None,
     ):
         """Initialize the MoE bridge.
 
         Args:
             name: The name of the component in the model
             config: Optional configuration (unused for MoEBridge)
+            submodules: Dictionary of GeneralizedComponent submodules to register
         """
-        super().__init__(name, config)
+        super().__init__(name, config, submodules=submodules)
 
     # Remove the old wrap_component method as it's no longer needed
     # The new system uses set_original_component() instead

@@ -3,7 +3,7 @@
 This module contains the bridge component for embedding layers.
 """
 
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 
 import torch
 
@@ -22,14 +22,16 @@ class EmbeddingBridge(GeneralizedComponent):
         self,
         name: str,
         config: Optional[Any] = None,
+        submodules: Optional[Dict[str, GeneralizedComponent]] = None,
     ):
         """Initialize the embedding bridge.
 
         Args:
             name: The name of this component
             config: Optional configuration (unused for EmbeddingBridge)
+            submodules: Dictionary of GeneralizedComponent submodules to register
         """
-        super().__init__(name, config)
+        super().__init__(name, config, submodules=submodules)
         # No extra hooks; use only hook_in and hook_out
 
     def forward(

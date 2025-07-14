@@ -23,7 +23,7 @@ class AttentionBridge(GeneralizedComponent):
     def __init__(
         self,
         name: str,
-        submodules: Optional[Dict[str, Any]] = None,
+        submodules: Optional[Dict[str, GeneralizedComponent]] = None,
     ):
         """Initialize the attention bridge.
 
@@ -31,12 +31,7 @@ class AttentionBridge(GeneralizedComponent):
             name: The name of this component
             submodules: Dictionary of submodules to register (e.g., q_proj, k_proj, etc.)
         """
-        super().__init__(name)
-
-        # Register submodules from dictionary
-        if submodules is not None:
-            for module_name, module in submodules.items():
-                self.add_module(module_name, module)
+        super().__init__(name, submodules=submodules)
 
         # Create hooks for common attention outputs
         self.hook_hidden_states = HookPoint()
