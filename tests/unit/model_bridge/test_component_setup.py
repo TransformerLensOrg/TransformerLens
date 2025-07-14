@@ -1,6 +1,5 @@
 """Tests for component setup utilities."""
 
-import copy
 
 import pytest
 import torch
@@ -53,23 +52,23 @@ class TestComponentSetup:
     def test_setup_submodules_basic(self, mock_model_adapter):
         """Test setting up submodules for a component."""
         adapter = MockArchitectureAdapter()
-        
+
         # Create a component with submodules
         component = AttentionBridge(
             name="self_attn",
             submodules={
                 "q_proj": EmbeddingBridge(name="q_proj"),
                 "k_proj": EmbeddingBridge(name="k_proj"),
-            }
+            },
         )
-        
+
         # Mock the original component with the expected attributes
         original_attn = nn.Module()
         original_attn.q_proj = nn.Linear(10, 10)
         original_attn.k_proj = nn.Linear(10, 10)
-        
+
         setup_submodules(component, adapter, original_attn)
-        
+
         # Check that submodules were registered and have original components set
         assert hasattr(component, "q_proj")
         assert hasattr(component, "k_proj")
@@ -79,25 +78,24 @@ class TestComponentSetup:
     def test_setup_submodules_nested(self):
         """Test setting up nested submodules."""
         adapter = MockArchitectureAdapter()
-        
-        # Create a component with nested submodules  
+
+        # Create a component with nested submodules
         inner_component = AttentionBridge(
-            name="q_proj",  # This should match a real path
-            submodules={}
+            name="q_proj", submodules={}  # This should match a real path
         )
         component = AttentionBridge(
             name="attn",
             submodules={
                 "q_proj": inner_component,
-            }
+            },
         )
-        
+
         # Mock the original nested structure
         original_attn = nn.Module()
         original_attn.q_proj = nn.Linear(10, 10)
-        
+
         setup_submodules(component, adapter, original_attn)
-        
+
         # Check that nested submodules were set up correctly
         assert hasattr(component, "q_proj")
         assert component.q_proj.original_component is original_attn.q_proj
@@ -107,7 +105,7 @@ class TestComponentSetup:
         adapter = MockArchitectureAdapter()
         component = LayerNormBridge(name="ln1")  # No submodules
         original_ln = nn.LayerNorm(10)
-        
+
         # Should not raise any errors
         setup_submodules(component, adapter, original_ln)
 
@@ -116,18 +114,18 @@ class TestComponentSetup:
         adapter = MockArchitectureAdapter()
         bridge_module = nn.Module()
         mock_model = self._create_fresh_mock_model()
-        
+
         components = {
             "embed": EmbeddingBridge(name="embed"),
             "ln_final": LayerNormBridge(name="ln_final"),
         }
-        
+
         # Store original components before setup
         original_embed = mock_model.embed
         original_ln_final = mock_model.ln_final
-        
+
         setup_components(components, bridge_module, adapter, mock_model)
-        
+
         # Check that components were added to bridge module and have original components set
         assert hasattr(bridge_module, "embed")
         assert hasattr(bridge_module, "ln_final")
@@ -139,22 +137,19 @@ class TestComponentSetup:
         adapter = MockArchitectureAdapter()
         bridge_module = nn.Module()
         mock_model = self._create_fresh_mock_model()
-        
+
         components = {
             "embed": EmbeddingBridge(
-                name="embed",
-                submodules={
-                    "weight": EmbeddingBridge(name="weight")
-                }
+                name="embed", submodules={"weight": EmbeddingBridge(name="weight")}
             ),
         }
-        
+
         # Mock the embed to have a weight attribute
         mock_model.embed.weight = nn.Parameter(torch.randn(100, 10))
         original_embed = mock_model.embed
-        
+
         setup_components(components, bridge_module, adapter, mock_model)
-        
+
         # Check that component and its submodules were set up
         assert hasattr(bridge_module, "embed")
         assert hasattr(bridge_module.embed, "weight")
@@ -164,7 +159,7 @@ class TestComponentSetup:
         """Test setting up blocks bridge with ModuleList structure."""
         adapter = MockArchitectureAdapter()
         mock_model = self._create_fresh_mock_model()
-        
+
         blocks_template = BlockBridge(
             name="blocks",
             submodules={
@@ -172,29 +167,29 @@ class TestComponentSetup:
                 "ln2": LayerNormBridge(name="ln2"),
                 "attn": AttentionBridge(name="attn"),
                 "mlp": MLPBridge(name="mlp"),
-            }
+            },
         )
-        
+
         # Store original blocks before setup
         original_blocks = mock_model.blocks
-        
+
         bridged_blocks = setup_blocks_bridge(blocks_template, adapter, mock_model)
-        
+
         # Check that we got a ModuleList with the right number of blocks
         assert isinstance(bridged_blocks, nn.ModuleList)
         assert len(bridged_blocks) == len(original_blocks)
-        
+
         # Check that each block has the correct original component and basic setup
         for i, block_bridge in enumerate(bridged_blocks):
             assert block_bridge.original_component is original_blocks[i]
             assert block_bridge.name == f"blocks.{i}"
-            
+
             # Check that submodules were set up (they exist as attributes)
             assert hasattr(block_bridge, "ln1")
-            assert hasattr(block_bridge, "ln2") 
+            assert hasattr(block_bridge, "ln2")
             assert hasattr(block_bridge, "attn")
             assert hasattr(block_bridge, "mlp")
-            
+
             # The submodules should be accessible and functional
             # (Whether they're bridge components or original components depends on implementation)
             assert block_bridge.ln1 is not None
@@ -206,26 +201,27 @@ class TestComponentSetup:
         """Test that blocks bridge templates are properly copied (no shared state)."""
         adapter = MockArchitectureAdapter()
         mock_model = self._create_fresh_mock_model()
-        
+
         blocks_template = BlockBridge(
             name="blocks",
             submodules={
                 "ln1": LayerNormBridge(name="ln1"),
-            }
+            },
         )
-        
+
         bridged_blocks = setup_blocks_bridge(blocks_template, adapter, mock_model)
-        
+
         # Verify that each block is a separate instance
         assert bridged_blocks[0] is not bridged_blocks[1]
         assert bridged_blocks[0].ln1 is not bridged_blocks[1].ln1
-        
+
         # Verify that the original template wasn't modified
         assert blocks_template.name == "blocks"
         assert not hasattr(blocks_template, "ln1")  # Submodules not registered on template
 
     def test_set_original_components_integration(self):
         """Test the full set_original_components integration."""
+
         # Create a simpler adapter without outer_blocks for this test
         class SimpleAdapter(MockArchitectureAdapter):
             def __init__(self):
@@ -245,14 +241,14 @@ class TestComponentSetup:
                         },
                     ),
                 }
-                
+
         adapter = SimpleAdapter()
         bridge_module = nn.Module()
         mock_model = self._create_fresh_mock_model()
-        
+
         # This should set up all components from the adapter's component mapping
         set_original_components(bridge_module, adapter, mock_model)
-        
+
         # Check that the components are correctly bridged
         assert isinstance(bridge_module.ln_final, LayerNormBridge)
         assert isinstance(bridge_module.blocks, nn.ModuleList)
@@ -268,7 +264,7 @@ class TestComponentSetup:
 
         model.ln_final = nn.LayerNorm(10)
         model.blocks = nn.ModuleList()
-        
+
         # Create two blocks for testing
         for i in range(2):
             block = nn.Module()
