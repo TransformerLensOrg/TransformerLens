@@ -43,10 +43,7 @@ class TestEndToEndBridge:
         # Create the bridge
         bridge = TransformerBridge(model, adapter, tokenizer=MagicMock())
 
-        # Check that the components are correctly bridged through the adapter
-        ln_final = adapter.get_component(model, "ln_final")
-        assert isinstance(ln_final, LayerNormBridge)
-
-        blocks = adapter.get_component(model, "blocks")
-        assert isinstance(blocks, nn.ModuleList)
-        assert len(blocks) == 2
+        # Check that the components are correctly bridged
+        assert isinstance(bridge.ln_final, LayerNormBridge)
+        assert isinstance(bridge.blocks, nn.ModuleList)
+        assert len(bridge.blocks) == 2
