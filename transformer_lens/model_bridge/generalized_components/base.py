@@ -40,16 +40,12 @@ class GeneralizedComponent(nn.Module):
         super().__init__()
         self.name = name
         self.config = config
+        self.submodules = submodules
         # Use object.__setattr__ to avoid PyTorch's module system
         object.__setattr__(self, "_original_component", None)
         self.hooks: dict[str, list[Callable[..., torch.Tensor]]] = {}
         self.hook_outputs: dict[str, Any] = {}
         self._hook_tracker = None
-
-        # Register submodules from dictionary
-        if submodules is not None:
-            for module_name, module in submodules.items():
-                self.add_module(module_name, module)
 
         # Standardized hooks for all bridge components - use add_module to ensure proper registration
         self.add_module("hook_in", HookPoint())

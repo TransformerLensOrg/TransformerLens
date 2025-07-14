@@ -61,9 +61,55 @@ def set_original_components(
         original_model: The original model to get components from
     """
     component_mapping = architecture_adapter.get_component_mapping()
+    setup_components(component_mapping, bridge_module, architecture_adapter, original_model)
 
-    # Modern bridge instance mapping - set original components directly
-    for tl_path, bridge_component in component_mapping.items():
+
+def setup_submodules(
+    component: GeneralizedComponent,
+    architecture_adapter: ArchitectureAdapter,
+    original_model: RemoteModel,
+) -> None:
+    """Set up submodules for a bridge component using proper component setup.
+    
+    Args:
+        component: The bridge component to set up submodules for
+        architecture_adapter: The architecture adapter
+        original_model: The original model to get components from
+    """
+    for module_name, submodule in component.submodules.items():
+        # Only add if not already registered
+        if not hasattr(component, module_name):
+            # Get the original component for this submodule
+            remote_path = submodule.name
+            original_subcomponent = architecture_adapter.get_remote_component(
+                original_model, remote_path
+            )
+            
+            # Set the original component
+            submodule.set_original_component(original_subcomponent)
+            
+            # Recursively set up submodules of this submodule
+            setup_submodules(submodule, architecture_adapter, original_model)
+            
+            # Add the submodule to the parent component
+            component.add_module(module_name, submodule)
+
+
+def setup_components(
+    components: dict[str, Any],
+    bridge_module: nn.Module,
+    architecture_adapter: ArchitectureAdapter,
+    original_model: RemoteModel,
+) -> None:
+    """Set up components on the bridge module.
+    
+    Args:
+        components: Dictionary of component name to bridge component mappings
+        bridge_module: The bridge module to configure
+        architecture_adapter: The architecture adapter
+        original_model: The original model to get components from
+    """
+    for tl_path, bridge_component in components.items():
         remote_path = bridge_component.name
         if bridge_component.is_list_item:
             # Special handling for list items - create a ModuleList of bridge components
@@ -79,6 +125,9 @@ def set_original_components(
                 original_model, remote_path
             )
             bridge_component.set_original_component(original_component)
+
+            # Set up submodules for this component
+            setup_submodules(bridge_component, architecture_adapter, original_model)
 
             # Set the bridge component on the bridge module as a proper module
             bridge_module.add_module(tl_path, bridge_component)
@@ -118,30 +167,8 @@ def setup_blocks_bridge(
         # Set the original component for this block
         block_bridge.set_original_component(original_block)
 
-        # Set original components for all submodules
-        if hasattr(block_bridge, "_modules"):
-            for submodule_name, submodule in block_bridge._modules.items():
-                if (
-                    hasattr(submodule, "set_original_component")
-                    and submodule_name != "hook_in"
-                    and submodule_name != "hook_out"
-                ):
-                    # Get the original subcomponent
-                    original_subcomponent = getattr(original_block, submodule.name)
-                    submodule.set_original_component(original_subcomponent)
-
-                    # Handle nested submodules (like attention projections)
-                    if hasattr(submodule, "_modules"):
-                        for nested_name, nested_module in submodule._modules.items():
-                            if (
-                                hasattr(nested_module, "set_original_component")
-                                and nested_name != "hook_in"
-                                and nested_name != "hook_out"
-                            ):
-                                original_nested = getattr(
-                                    original_subcomponent, nested_module.name
-                                )
-                                nested_module.set_original_component(original_nested)
+        # Set up submodules for this block component
+        setup_submodules(block_bridge, architecture_adapter, original_model)
 
         bridged_blocks.append(block_bridge)
 

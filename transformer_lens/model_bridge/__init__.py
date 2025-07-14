@@ -16,6 +16,8 @@ from transformer_lens.model_bridge.component_setup import (
     replace_remote_component,
     set_original_components,
     setup_blocks_bridge,
+    setup_components,
+    setup_submodules,
 )
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
@@ -52,6 +54,8 @@ __all__ = [
     "replace_remote_component",
     "set_original_components",
     "setup_blocks_bridge",
+    "setup_components",
+    "setup_submodules",
     # Type definitions
     "ComponentMapping",
     "HookFunction",
