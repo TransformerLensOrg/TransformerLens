@@ -63,6 +63,7 @@ class LinearBridge(GeneralizedComponent):
         """Get input features from the original component."""
         if self.original_component is None:
             raise RuntimeError(f"Original component not set for {self.name}")
+        assert isinstance(self.original_component, torch.nn.Linear)
         return self.original_component.in_features
 
     @property
@@ -70,6 +71,7 @@ class LinearBridge(GeneralizedComponent):
         """Get output features from the original component."""
         if self.original_component is None:
             raise RuntimeError(f"Original component not set for {self.name}")
+        assert isinstance(self.original_component, torch.nn.Linear)
         return self.original_component.out_features
 
     @property

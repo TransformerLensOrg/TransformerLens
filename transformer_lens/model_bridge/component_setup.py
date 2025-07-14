@@ -3,7 +3,7 @@ from __future__ import annotations
 """Component setup utilities for creating and configuring bridged components."""
 
 import copy
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import torch.nn as nn
 
@@ -153,11 +153,17 @@ def setup_blocks_bridge(
     original_blocks = architecture_adapter.get_remote_component(
         original_model, blocks_template.name
     )
+    
+    # Ensure the original blocks container is iterable
+    if not hasattr(original_blocks, '__iter__'):
+        raise TypeError(f"Component {blocks_template.name} is not iterable")
 
     # Create a new ModuleList of bridge components
     bridged_blocks = nn.ModuleList()
 
-    for i, original_block in enumerate(original_blocks):
+    # Cast to indicate to mypy that original_blocks is iterable after the check
+    iterable_blocks = cast(Any, original_blocks)
+    for i, original_block in enumerate(iterable_blocks):
         # Create a copy of the template bridge for this block
         block_bridge = copy.deepcopy(blocks_template)
         block_bridge.name = f"{blocks_template.name}.{i}"

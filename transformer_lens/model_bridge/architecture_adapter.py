@@ -3,7 +3,7 @@
 This module contains the base class for architecture adapters that map between different model architectures.
 """
 
-from typing import Any
+from typing import Any, cast
 
 import torch
 from transformers.modeling_utils import PreTrainedModel
@@ -156,7 +156,11 @@ class ArchitectureAdapter:
 
             # Get the item container
             item_container = self.get_remote_component(model, bridge_component.name)
-            item = item_container[int(item_index)]
+            if not hasattr(item_container, '__getitem__'):
+                raise TypeError(f"Component {bridge_component.name} is not indexable")
+            # Cast to indicate to mypy that item_container is indexable after the check
+            indexable_container = cast(Any, item_container)
+            item = indexable_container[int(item_index)]
 
             if len(parts) == 2:
                 # Just return the item

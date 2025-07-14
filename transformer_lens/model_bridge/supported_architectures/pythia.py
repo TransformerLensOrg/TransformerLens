@@ -135,10 +135,9 @@ class PythiaArchitectureAdapter(ArchitectureAdapter):
 
         self.component_mapping = {
             "embed": EmbeddingBridge(name="gpt_neox.embed_in"),
-            "blocks": (
-                "gpt_neox.layers",
-                BlockBridge,
-                {
+            "blocks": BlockBridge(
+                name="gpt_neox.layers",
+                submodules={
                     "ln1": LayerNormBridge(name="input_layernorm"),
                     "ln2": LayerNormBridge(name="post_attention_layernorm"),
                     "attn": AttentionBridge(name="attention"),

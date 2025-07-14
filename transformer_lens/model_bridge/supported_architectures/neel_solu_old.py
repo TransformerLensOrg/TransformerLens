@@ -70,10 +70,9 @@ class NeelSoluOldArchitectureAdapter(ArchitectureAdapter):
         self.component_mapping = {
             "embed": EmbeddingBridge(name="wte"),
             "pos_embed": EmbeddingBridge(name="wpe"),
-            "blocks": (
-                "blocks",
-                BlockBridge,
-                {
+            "blocks": BlockBridge(
+                name="blocks",
+                submodules={
                     "ln1": LayerNormBridge(name="ln1"),
                     "attn": AttentionBridge(name="attn"),
                     "ln2": LayerNormBridge(name="ln2"),

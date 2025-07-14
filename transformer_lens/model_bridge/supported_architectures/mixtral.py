@@ -74,10 +74,9 @@ class MixtralArchitectureAdapter(ArchitectureAdapter):
         # Set up component mapping
         self.component_mapping = {
             "embed": EmbeddingBridge(name="model.embed_tokens"),
-            "blocks": (
-                "model.layers",
-                BlockBridge,
-                {
+            "blocks": BlockBridge(
+                name="model.layers",
+                submodules={
                     "ln1": LayerNormBridge(name="input_layernorm"),
                     "ln2": LayerNormBridge(name="post_attention_layernorm"),
                     "attn": AttentionBridge(name="self_attn"),

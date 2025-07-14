@@ -76,10 +76,9 @@ class Gpt2LmHeadCustomArchitectureAdapter(ArchitectureAdapter):
         self.component_mapping = {
             "embed": EmbeddingBridge(name="transformer.wte"),
             "pos_embed": EmbeddingBridge(name="transformer.wpe"),
-            "blocks": (
-                "transformer.h",
-                BlockBridge,
-                {
+            "blocks": BlockBridge(
+                name="transformer.h",
+                submodules={
                     "ln1": LayerNormBridge(name="ln_1"),
                     "attn": AttentionBridge(name="attn"),
                     "ln2": LayerNormBridge(name="ln_2"),

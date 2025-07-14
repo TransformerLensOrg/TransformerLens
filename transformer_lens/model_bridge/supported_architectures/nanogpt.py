@@ -9,6 +9,7 @@ from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
 )
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
+    BlockBridge,
     EmbeddingBridge,
     LayerNormBridge,
     MLPBridge,
@@ -85,10 +86,9 @@ class NanogptArchitectureAdapter(ArchitectureAdapter):
         self.component_mapping = {
             "embed": EmbeddingBridge(name="transformer.wte"),  # Word token embeddings
             "pos_embed": EmbeddingBridge(name="transformer.wpe"),  # Positional embeddings
-            "blocks": (
-                "transformer.h",  # Base path for blocks
-                AttentionBridge,
-                {
+            "blocks": BlockBridge(
+                name="transformer.h",  # Base path for blocks
+                submodules={
                     "ln1": LayerNormBridge(name="ln_1"),  # Pre-attention layer norm
                     "ln2": LayerNormBridge(name="ln_2"),  # Pre-MLP layer norm
                     "attn": AttentionBridge(name="attn"),  # Full attention module

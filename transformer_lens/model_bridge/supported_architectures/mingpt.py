@@ -86,10 +86,9 @@ class MingptArchitectureAdapter(ArchitectureAdapter):
         self.component_mapping = {
             "embed": EmbeddingBridge(name="transformer.wte"),  # Word token embeddings
             "pos_embed": EmbeddingBridge(name="transformer.wpe"),  # Positional embeddings
-            "blocks": (
-                "transformer.h",  # Base path for blocks
-                BlockBridge,
-                {
+            "blocks": BlockBridge(
+                name="transformer.h",  # Base path for blocks
+                submodules={
                     "ln1": LayerNormBridge(name="ln_1"),  # Pre-attention layer norm
                     "ln2": LayerNormBridge(name="ln_2"),  # Pre-MLP layer norm
                     "attn": AttentionBridge(name="attn"),  # Full attention module
