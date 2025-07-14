@@ -89,7 +89,7 @@ def setup_submodules(
             submodule.set_original_component(original_subcomponent)
             
             # Recursively set up submodules of this submodule
-            setup_submodules(submodule, architecture_adapter, original_model)
+            setup_submodules(submodule, architecture_adapter, original_subcomponent)
             
             # Add the submodule to the parent component
             component.add_module(module_name, submodule)
@@ -127,7 +127,7 @@ def setup_components(
             bridge_component.set_original_component(original_component)
 
             # Set up submodules for this component
-            setup_submodules(bridge_component, architecture_adapter, original_model)
+            setup_submodules(bridge_component, architecture_adapter, original_component)
 
             # Set the bridge component on the bridge module as a proper module
             bridge_module.add_module(tl_path, bridge_component)
@@ -168,7 +168,7 @@ def setup_blocks_bridge(
         block_bridge.set_original_component(original_block)
 
         # Set up submodules for this block component
-        setup_submodules(block_bridge, architecture_adapter, original_model)
+        setup_submodules(block_bridge, architecture_adapter, original_block)
 
         bridged_blocks.append(block_bridge)
 

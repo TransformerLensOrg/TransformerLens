@@ -23,7 +23,7 @@ class AttentionBridge(GeneralizedComponent):
     def __init__(
         self,
         name: str,
-        submodules: Optional[Dict[str, GeneralizedComponent]] = None,
+        submodules: Optional[Dict[str, GeneralizedComponent]] = {},
     ):
         """Initialize the attention bridge.
 

@@ -20,7 +20,7 @@ class LinearBridge(GeneralizedComponent):
         self, 
         name: str, 
         config: Optional[Any] = None,
-        submodules: Optional[Dict[str, GeneralizedComponent]] = None,
+        submodules: Optional[Dict[str, GeneralizedComponent]] = {},
     ) -> None:
         """Initialize the LinearBridge.
 
