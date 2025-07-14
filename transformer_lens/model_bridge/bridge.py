@@ -28,6 +28,7 @@ from transformer_lens.model_bridge.component_setup import (
     replace_remote_component,
     set_original_components,
 )
+from transformer_lens.model_bridge.types import ComponentMapping
 
 if TYPE_CHECKING:
     from transformer_lens.ActivationCache import ActivationCache
@@ -91,7 +92,7 @@ class TransformerBridge(nn.Module):
             return f"{indent_str}{name}: <error: {e}>"
 
     def _format_component_mapping(
-        self, mapping: dict, indent: int = 0, prepend: str | None = None
+        self, mapping: ComponentMapping, indent: int = 0, prepend: str | None = None
     ) -> list[str]:
         """Format a component mapping dictionary.
 
@@ -113,46 +114,19 @@ class TransformerBridge(nn.Module):
                 lines.append(self._format_single_component(name, path, indent))
 
                 # Check if it has submodules (like BlockBridge)
-                if hasattr(value, "_modules"):
-                    submodules = {}
-                    for submodule_name, submodule in value._modules.items():
-                        if submodule_name not in [
-                            "hook_in",
-                            "hook_out",
-                            "hook_hidden_states",
-                            "hook_attention_weights",
-                        ]:  # Skip all hooks
-                            submodules[submodule_name] = submodule
+                submodules = {}
+                
+                # Check the submodules attribute for bridge submodules
+                if hasattr(value, "submodules") and value.submodules:
+                    submodules = value.submodules
 
-                    if submodules:
-                        # For blocks, add .0 to the path to indicate the first block
-                        subpath = f"{path}.0" if name == "blocks" else path
-                        # Recursively format submodules
-                        sub_lines = self._format_component_mapping(submodules, indent + 1, subpath)
-                        lines.extend(sub_lines)
+                if submodules:
+                    # For list items (like blocks), add .0 to the path to indicate the first item
+                    subpath = f"{path}.0" if value.is_list_item else path
+                    # Recursively format submodules
+                    sub_lines = self._format_component_mapping(submodules, indent + 1, subpath)
+                    lines.extend(sub_lines)
 
-            # Handle legacy tuple format (for backward compatibility)
-            elif isinstance(value, tuple):
-                # Handle both 2-tuple (RemoteImport) and 3-tuple (BlockMapping) structures
-                if len(value) == 3:
-                    # This is a BlockMapping (path, bridge_type, sub_mapping)
-                    _, _, sub_mapping = value
-                    if isinstance(sub_mapping, dict):
-                        # This is a BlockMapping (like blocks) - format recursively
-                        path = f"{path}.0"
-                        lines.append(self._format_single_component(name, path, indent))
-                        # Recursively format subcomponents with updated prepend
-                        sub_lines = self._format_component_mapping(sub_mapping, indent + 1, path)
-                        lines.extend(sub_lines)
-                    else:
-                        # This should not happen with BlockMapping
-                        lines.append(self._format_single_component(name, path, indent))
-                elif len(value) == 2:
-                    # This is a RemoteImport (path, bridge_type) - format as single component
-                    lines.append(self._format_single_component(name, path, indent))
-                else:
-                    # Unknown tuple structure
-                    lines.append(self._format_single_component(name, path, indent))
             else:
                 # For other types, use prepend if provided
                 lines.append(self._format_single_component(name, path, indent))
