@@ -156,7 +156,7 @@ class ArchitectureAdapter:
 
             # Get the item container
             item_container = self.get_remote_component(model, bridge_component.name)
-            if not hasattr(item_container, '__getitem__'):
+            if not hasattr(item_container, "__getitem__"):
                 raise TypeError(f"Component {bridge_component.name} is not indexable")
             # Cast to indicate to mypy that item_container is indexable after the check
             indexable_container = cast(Any, item_container)

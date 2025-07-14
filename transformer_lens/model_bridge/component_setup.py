@@ -153,9 +153,9 @@ def setup_blocks_bridge(
     original_blocks = architecture_adapter.get_remote_component(
         original_model, blocks_template.name
     )
-    
+
     # Ensure the original blocks container is iterable
-    if not hasattr(original_blocks, '__iter__'):
+    if not hasattr(original_blocks, "__iter__"):
         raise TypeError(f"Component {blocks_template.name} is not iterable")
 
     # Create a new ModuleList of bridge components
