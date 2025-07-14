@@ -105,7 +105,6 @@ class TransformerBridge(nn.Module):
         for name, value in mapping.items():
             path = f"{prepend}.{name}" if prepend else name
 
-            # Handle bridge instances (new format)
             if hasattr(value, "_modules") and hasattr(value, "name"):
                 # This is a bridge component instance
                 lines.append(self._format_single_component(name, path, indent))
