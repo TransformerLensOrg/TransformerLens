@@ -28,10 +28,10 @@ class PythiaArchitectureAdapter(ArchitectureAdapter):
         """Initialize the Pythia architecture adapter.
 
         Args:
-            user_cfg: The configuration object.
+            cfg: The configuration object.
         """
-        super().__init__(user_cfg)
-        self.user_cfg.positional_embedding_type = "rotary"
+        super().__init__(cfg)
+        self.cfg.positional_embedding_type = "rotary"
 
         self.conversion_rules = WeightConversionSet(
             {
@@ -47,9 +47,8 @@ class PythiaArchitectureAdapter(ArchitectureAdapter):
                             SplitWeightConversion(0, 3),
                             RearrangeWeightConversion(
                                 "(head d_head) d_model -> head d_model d_head",
-                                head=self.user_cfg.num_attention_heads,
-                                d_head=self.user_cfg.hidden_size
-                                // self.user_cfg.num_attention_heads,
+                                head=self.cfg.num_attention_heads,
+                                d_head=self.cfg.hidden_size // self.cfg.num_attention_heads,
                             ),
                         ]
                     ),
@@ -61,9 +60,8 @@ class PythiaArchitectureAdapter(ArchitectureAdapter):
                             SplitWeightConversion(1, 3),
                             RearrangeWeightConversion(
                                 "(head d_head) d_model -> head d_model d_head",
-                                head=self.user_cfg.num_attention_heads,
-                                d_head=self.user_cfg.hidden_size
-                                // self.user_cfg.num_attention_heads,
+                                head=self.cfg.num_attention_heads,
+                                d_head=self.cfg.hidden_size // self.cfg.num_attention_heads,
                             ),
                         ]
                     ),
@@ -75,9 +73,8 @@ class PythiaArchitectureAdapter(ArchitectureAdapter):
                             SplitWeightConversion(2, 3),
                             RearrangeWeightConversion(
                                 "(head d_head) d_model -> head d_model d_head",
-                                head=self.user_cfg.num_attention_heads,
-                                d_head=self.user_cfg.hidden_size
-                                // self.user_cfg.num_attention_heads,
+                                head=self.cfg.num_attention_heads,
+                                d_head=self.cfg.hidden_size // self.cfg.num_attention_heads,
                             ),
                         ]
                     ),
@@ -89,7 +86,7 @@ class PythiaArchitectureAdapter(ArchitectureAdapter):
                             SplitWeightConversion(0, 3),
                             RearrangeWeightConversion(
                                 "(head d_head) -> head d_head",
-                                head=self.user_cfg.num_attention_heads,
+                                head=self.cfg.num_attention_heads,
                             ),
                         ]
                     ),
@@ -101,7 +98,7 @@ class PythiaArchitectureAdapter(ArchitectureAdapter):
                             SplitWeightConversion(1, 3),
                             RearrangeWeightConversion(
                                 "(head d_head) -> head d_head",
-                                head=self.user_cfg.num_attention_heads,
+                                head=self.cfg.num_attention_heads,
                             ),
                         ]
                     ),
@@ -113,7 +110,7 @@ class PythiaArchitectureAdapter(ArchitectureAdapter):
                             SplitWeightConversion(2, 3),
                             RearrangeWeightConversion(
                                 "(head d_head) -> head d_head",
-                                head=self.user_cfg.num_attention_heads,
+                                head=self.cfg.num_attention_heads,
                             ),
                         ]
                     ),

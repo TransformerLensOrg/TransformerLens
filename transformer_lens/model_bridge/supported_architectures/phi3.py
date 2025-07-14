@@ -22,7 +22,7 @@ class Phi3ArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for Phi-3 models."""
 
     def __init__(self, cfg: Any) -> None:
-        super().__init__(user_cfg)
+        super().__init__(cfg)
 
         self.conversion_rules = WeightConversionSet(
             {
@@ -51,9 +51,7 @@ class Phi3ArchitectureAdapter(ArchitectureAdapter):
                 ),
                 "blocks.{i}.attn.W_O": (
                     "model.layers.{i}.self_attn.o_proj.weight",
-                    RearrangeWeightConversion(
-                        "m (n h) -> n h m", n=self.user_cfg.num_attention_heads
-                    ),
+                    RearrangeWeightConversion("m (n h) -> n h m", n=self.cfg.num_attention_heads),
                 ),
                 "blocks.{i}.ln2.w": "model.layers.{i}.post_attention_layernorm.weight",
                 "blocks.{i}.mlp.W_in": (

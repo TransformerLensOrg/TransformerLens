@@ -22,7 +22,7 @@ class BloomArchitectureAdapter(ArchitectureAdapter):
 
     def __init__(self, cfg: Any) -> None:
         """Initialize the Bloom architecture adapter."""
-        super().__init__(user_cfg)
+        super().__init__(cfg)
 
         self.conversion_rules = WeightConversionSet(
             {
@@ -34,7 +34,7 @@ class BloomArchitectureAdapter(ArchitectureAdapter):
                     RearrangeWeightConversion(
                         "(three n h) m -> three n m h",
                         three=3,
-                        n=self.user_cfg.num_attention_heads,
+                        n=self.cfg.num_attention_heads,
                     ),
                 ),
                 "blocks.{i}.attn.W_K": (
@@ -42,7 +42,7 @@ class BloomArchitectureAdapter(ArchitectureAdapter):
                     RearrangeWeightConversion(
                         "(three n h) m -> three n m h",
                         three=3,
-                        n=self.user_cfg.num_attention_heads,
+                        n=self.cfg.num_attention_heads,
                     ),
                 ),
                 "blocks.{i}.attn.W_V": (
@@ -50,14 +50,12 @@ class BloomArchitectureAdapter(ArchitectureAdapter):
                     RearrangeWeightConversion(
                         "(three n h) m -> three n m h",
                         three=3,
-                        n=self.user_cfg.num_attention_heads,
+                        n=self.cfg.num_attention_heads,
                     ),
                 ),
                 "blocks.{i}.attn.W_O": (
                     "transformer.h.{i}.self_attention.dense.weight",
-                    RearrangeWeightConversion(
-                        "m (n h) -> n h m", n=self.user_cfg.num_attention_heads
-                    ),
+                    RearrangeWeightConversion("m (n h) -> n h m", n=self.cfg.num_attention_heads),
                 ),
                 "blocks.{i}.attn.b_Q": "transformer.h.{i}.self_attention.query_key_value.bias",
                 "blocks.{i}.attn.b_K": "transformer.h.{i}.self_attention.query_key_value.bias",

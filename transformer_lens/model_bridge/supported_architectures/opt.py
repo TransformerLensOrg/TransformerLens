@@ -22,7 +22,7 @@ class OptArchitectureAdapter(ArchitectureAdapter):
 
     def __init__(self, cfg: Any) -> None:
         """Initialize the OPT architecture adapter."""
-        super().__init__(user_cfg)
+        super().__init__(cfg)
 
         self.conversion_rules = WeightConversionSet(
             {
@@ -32,27 +32,19 @@ class OptArchitectureAdapter(ArchitectureAdapter):
                 "blocks.{i}.ln1.b": "model.decoder.layers.{i}.self_attn_layer_norm.bias",
                 "blocks.{i}.attn.W_Q": (
                     "model.decoder.layers.{i}.self_attn.q_proj.weight",
-                    RearrangeWeightConversion(
-                        "(n h) m -> n m h", n=self.user_cfg.num_attention_heads
-                    ),
+                    RearrangeWeightConversion("(n h) m -> n m h", n=self.cfg.num_attention_heads),
                 ),
                 "blocks.{i}.attn.W_K": (
                     "model.decoder.layers.{i}.self_attn.k_proj.weight",
-                    RearrangeWeightConversion(
-                        "(n h) m -> n m h", n=self.user_cfg.num_attention_heads
-                    ),
+                    RearrangeWeightConversion("(n h) m -> n m h", n=self.cfg.num_attention_heads),
                 ),
                 "blocks.{i}.attn.W_V": (
                     "model.decoder.layers.{i}.self_attn.v_proj.weight",
-                    RearrangeWeightConversion(
-                        "(n h) m -> n m h", n=self.user_cfg.num_attention_heads
-                    ),
+                    RearrangeWeightConversion("(n h) m -> n m h", n=self.cfg.num_attention_heads),
                 ),
                 "blocks.{i}.attn.W_O": (
                     "model.decoder.layers.{i}.self_attn.out_proj.weight",
-                    RearrangeWeightConversion(
-                        "m (n h) -> n h m", n=self.user_cfg.num_attention_heads
-                    ),
+                    RearrangeWeightConversion("m (n h) -> n h m", n=self.cfg.num_attention_heads),
                 ),
                 "blocks.{i}.attn.b_Q": "model.decoder.layers.{i}.self_attn.q_proj.bias",
                 "blocks.{i}.attn.b_K": "model.decoder.layers.{i}.self_attn.k_proj.bias",

@@ -27,9 +27,9 @@ class BertArchitectureAdapter(ArchitectureAdapter):
         """Initialize the BERT architecture adapter.
 
         Args:
-            user_cfg: The configuration object.
+            cfg: The configuration object.
         """
-        super().__init__(user_cfg)
+        super().__init__(cfg)
 
         self.conversion_rules = WeightConversionSet(
             {
@@ -101,5 +101,5 @@ class BertArchitectureAdapter(ArchitectureAdapter):
             ),
             "unembed": UnembeddingBridge(name="cls.predictions"),
         }
-        if hasattr(self.user_cfg, "add_pooling_layer") and self.user_cfg.add_pooling_layer:
+        if hasattr(self.cfg, "add_pooling_layer") and self.cfg.add_pooling_layer:
             self.component_mapping["ln_final"] = LayerNormBridge(name="bert.pooler.dense")

@@ -22,7 +22,7 @@ class Gpt2LmHeadCustomArchitectureAdapter(ArchitectureAdapter):
 
     def __init__(self, cfg: Any) -> None:
         """Initialize the GPT-2 LM Head Custom architecture adapter."""
-        super().__init__(user_cfg)
+        super().__init__(cfg)
 
         self.conversion_rules = WeightConversionSet(
             {

@@ -24,9 +24,9 @@ class PhiArchitectureAdapter(ArchitectureAdapter):
         """Initialize the Phi architecture adapter.
 
         Args:
-            user_cfg: The configuration object.
+            cfg: The configuration object.
         """
-        super().__init__(user_cfg)
+        super().__init__(cfg)
 
         self.conversion_rules = WeightConversionSet(
             {

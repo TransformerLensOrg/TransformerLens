@@ -22,7 +22,7 @@ class MixtralArchitectureAdapter(ArchitectureAdapter):
 
     def __init__(self, cfg: Any) -> None:
         """Initialize the Mixtral architecture adapter."""
-        super().__init__(user_cfg)
+        super().__init__(cfg)
 
         self.conversion_rules = WeightConversionSet(
             {

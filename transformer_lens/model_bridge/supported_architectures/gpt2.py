@@ -22,7 +22,7 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
 
     def __init__(self, cfg: Any) -> None:
         """Initialize the GPT2 architecture adapter."""
-        super().__init__(user_cfg)
+        super().__init__(cfg)
 
         self.conversion_rules = WeightConversionSet(
             {
@@ -35,7 +35,7 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
                     RearrangeWeightConversion(
                         "m (three n h) -> three n m h",
                         three=3,
-                        n=self.user_cfg.num_attention_heads,
+                        n=self.cfg.num_attention_heads,
                     ),
                 ),
                 "blocks.{i}.attn.W_K": (
@@ -43,7 +43,7 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
                     RearrangeWeightConversion(
                         "m (three n h) -> three n m h",
                         three=3,
-                        n=self.user_cfg.num_attention_heads,
+                        n=self.cfg.num_attention_heads,
                     ),
                 ),
                 "blocks.{i}.attn.W_V": (
@@ -51,14 +51,12 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
                     RearrangeWeightConversion(
                         "m (three n h) -> three n m h",
                         three=3,
-                        n=self.user_cfg.num_attention_heads,
+                        n=self.cfg.num_attention_heads,
                     ),
                 ),
                 "blocks.{i}.attn.W_O": (
                     "transformer.h.{i}.attn.c_proj.weight",
-                    RearrangeWeightConversion(
-                        "(n h) m -> n h m", n=self.user_cfg.num_attention_heads
-                    ),
+                    RearrangeWeightConversion("(n h) m -> n h m", n=self.cfg.num_attention_heads),
                 ),
                 "blocks.{i}.attn.b_Q": "transformer.h.{i}.attn.c_attn.bias",
                 "blocks.{i}.attn.b_K": "transformer.h.{i}.attn.c_attn.bias",

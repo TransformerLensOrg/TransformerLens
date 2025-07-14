@@ -22,7 +22,7 @@ class NeoArchitectureAdapter(ArchitectureAdapter):
 
     def __init__(self, cfg: Any) -> None:
         """Initialize the Neo architecture adapter."""
-        super().__init__(user_cfg)
+        super().__init__(cfg)
 
         self.conversion_rules = WeightConversionSet(
             {
@@ -32,27 +32,19 @@ class NeoArchitectureAdapter(ArchitectureAdapter):
                 "blocks.{i}.ln1.b": "transformer.h.{i}.ln_1.bias",
                 "blocks.{i}.attn.W_Q": (
                     "transformer.h.{i}.attn.attention.q_proj.weight",
-                    RearrangeWeightConversion(
-                        "(n h) m -> n m h", n=self.user_cfg.num_attention_heads
-                    ),
+                    RearrangeWeightConversion("(n h) m -> n m h", n=self.cfg.num_attention_heads),
                 ),
                 "blocks.{i}.attn.W_K": (
                     "transformer.h.{i}.attn.attention.k_proj.weight",
-                    RearrangeWeightConversion(
-                        "(n h) m -> n m h", n=self.user_cfg.num_attention_heads
-                    ),
+                    RearrangeWeightConversion("(n h) m -> n m h", n=self.cfg.num_attention_heads),
                 ),
                 "blocks.{i}.attn.W_V": (
                     "transformer.h.{i}.attn.attention.v_proj.weight",
-                    RearrangeWeightConversion(
-                        "(n h) m -> n m h", n=self.user_cfg.num_attention_heads
-                    ),
+                    RearrangeWeightConversion("(n h) m -> n m h", n=self.cfg.num_attention_heads),
                 ),
                 "blocks.{i}.attn.W_O": (
                     "transformer.h.{i}.attn.attention.out_proj.weight",
-                    RearrangeWeightConversion(
-                        "m (n h) -> n h m", n=self.user_cfg.num_attention_heads
-                    ),
+                    RearrangeWeightConversion("m (n h) -> n h m", n=self.cfg.num_attention_heads),
                 ),
                 "blocks.{i}.ln2.w": "transformer.h.{i}.ln_2.weight",
                 "blocks.{i}.ln2.b": "transformer.h.{i}.ln_2.bias",

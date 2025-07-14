@@ -22,7 +22,7 @@ class GptjArchitectureAdapter(ArchitectureAdapter):
 
     def __init__(self, cfg: Any) -> None:
         """Initialize the GPTJ architecture adapter."""
-        super().__init__(user_cfg)
+        super().__init__(cfg)
 
         self.conversion_rules = WeightConversionSet(
             {
@@ -31,27 +31,19 @@ class GptjArchitectureAdapter(ArchitectureAdapter):
                 "blocks.{i}.ln1.b": "transformer.h.{i}.ln_1.bias",
                 "blocks.{i}.attn.W_Q": (
                     "transformer.h.{i}.attn.q_proj.weight",
-                    RearrangeWeightConversion(
-                        "(n h) m -> n m h", n=self.user_cfg.num_attention_heads
-                    ),
+                    RearrangeWeightConversion("(n h) m -> n m h", n=self.cfg.num_attention_heads),
                 ),
                 "blocks.{i}.attn.W_K": (
                     "transformer.h.{i}.attn.k_proj.weight",
-                    RearrangeWeightConversion(
-                        "(n h) m -> n m h", n=self.user_cfg.num_attention_heads
-                    ),
+                    RearrangeWeightConversion("(n h) m -> n m h", n=self.cfg.num_attention_heads),
                 ),
                 "blocks.{i}.attn.W_V": (
                     "transformer.h.{i}.attn.v_proj.weight",
-                    RearrangeWeightConversion(
-                        "(n h) m -> n m h", n=self.user_cfg.num_attention_heads
-                    ),
+                    RearrangeWeightConversion("(n h) m -> n m h", n=self.cfg.num_attention_heads),
                 ),
                 "blocks.{i}.attn.W_O": (
                     "transformer.h.{i}.attn.out_proj.weight",
-                    RearrangeWeightConversion(
-                        "m (n h) -> n h m", n=self.user_cfg.num_attention_heads
-                    ),
+                    RearrangeWeightConversion("m (n h) -> n h m", n=self.cfg.num_attention_heads),
                 ),
                 "blocks.{i}.mlp.W_in": "transformer.h.{i}.mlp.fc_in.weight",
                 "blocks.{i}.mlp.b_in": "transformer.h.{i}.mlp.fc_in.bias",
