@@ -219,14 +219,6 @@ class ArchitectureAdapter:
 
         Raises:
             ValueError: If the path is not found in the component mapping
-
-        Examples:
-            >>> adapter.translate_transformer_lens_path("embed")
-            "model.embed_tokens"
-            >>> adapter.translate_transformer_lens_path("blocks.0.ln1")
-            "model.layers.0.input_layernorm"
-            >>> adapter.translate_transformer_lens_path("embed", last_component_only=True)
-            "embed_tokens"
         """
         if self.component_mapping is None:
             raise ValueError(
