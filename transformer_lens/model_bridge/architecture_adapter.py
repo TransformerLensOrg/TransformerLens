@@ -148,41 +148,45 @@ class ArchitectureAdapter:
             return self.get_remote_component(model, bridge_component.name)
 
         # For nested paths like "blocks.0.attn", we need to handle the indexing
-        if parts[0] == "blocks" and len(parts) >= 2:
-            # Handle blocks indexing
-            block_index = parts[1]
-            if not block_index.isdigit():
-                raise ValueError(f"Expected block index, got {block_index}")
+        if bridge_component.is_list_item and len(parts) >= 2:
+            # Handle list item indexing (like blocks)
+            item_index = parts[1]
+            if not item_index.isdigit():
+                raise ValueError(f"Expected item index, got {item_index}")
 
-            # Get the block container
-            block_container = self.get_remote_component(model, bridge_component.name)
-            block = block_container[int(block_index)]
+            # Get the item container
+            item_container = self.get_remote_component(model, bridge_component.name)
+            item = item_container[int(item_index)]
 
             if len(parts) == 2:
-                # Just return the block
-                return block
+                # Just return the item
+                return item
             else:
-                # Get subcomponent from the block using bridge mapping
+                # Get subcomponent from the item using bridge mapping
                 subcomponent_name = parts[2]
+                
+                # Check the submodules attribute for bridge submodules
                 if (
-                    hasattr(bridge_component, "_modules")
-                    and subcomponent_name in bridge_component._modules
+                    hasattr(bridge_component, "submodules")
+                    and subcomponent_name in bridge_component.submodules
                 ):
-                    subcomponent_bridge = getattr(bridge_component, subcomponent_name)
+                    subcomponent_bridge = bridge_component.submodules[subcomponent_name]
 
                     # If there are more parts (like blocks.0.attn.W_Q), navigate deeper
                     if len(parts) > 3:
                         # Navigate through the deeper subcomponents
                         current_bridge = subcomponent_bridge
-                        current = getattr(block, subcomponent_bridge.name)
+                        current = getattr(item, subcomponent_bridge.name)
 
                         for i in range(3, len(parts)):
                             deeper_component_name = parts[i]
+                            
+                            # Check submodules for deeper components
                             if (
-                                hasattr(current_bridge, "_modules")
-                                and deeper_component_name in current_bridge._modules
+                                hasattr(current_bridge, "submodules")
+                                and deeper_component_name in current_bridge.submodules
                             ):
-                                current_bridge = getattr(current_bridge, deeper_component_name)
+                                current_bridge = current_bridge.submodules[deeper_component_name]
                                 current = getattr(current, current_bridge.name)
                             else:
                                 raise ValueError(
@@ -192,10 +196,10 @@ class ArchitectureAdapter:
                         return current
                     else:
                         # Just the 3-level path
-                        return getattr(block, subcomponent_bridge.name)
+                        return getattr(item, subcomponent_bridge.name)
                 else:
                     raise ValueError(
-                        f"Component {subcomponent_name} not found in blocks components"
+                        f"Component {subcomponent_name} not found in {parts[0]} components"
                     )
 
         # For other nested paths, navigate through the remote model
@@ -243,43 +247,47 @@ class ArchitectureAdapter:
             return remote_path
 
         # For nested paths like "blocks.0.attn", we need to handle the indexing
-        if parts[0] == "blocks" and len(parts) >= 2:
-            # Handle blocks indexing
-            block_index = parts[1]
-            if not block_index.isdigit():
-                raise ValueError(f"Expected block index, got {block_index}")
+        if bridge_component.is_list_item and len(parts) >= 2:
+            # Handle list item indexing (like blocks)
+            item_index = parts[1]
+            if not item_index.isdigit():
+                raise ValueError(f"Expected item index, got {item_index}")
 
-            # Get the base blocks path
-            blocks_path = bridge_component.name
+            # Get the base items path
+            items_path = bridge_component.name
 
             if len(parts) == 2:
-                # Just return the indexed block path
-                remote_path = f"{blocks_path}.{block_index}"
+                # Just return the indexed item path
+                remote_path = f"{items_path}.{item_index}"
                 if last_component_only:
-                    return block_index
+                    return item_index
                 return remote_path
             else:
-                # Get subcomponent from the block bridge
+                # Get subcomponent from the item bridge
                 subcomponent_name = parts[2]
+                
+                # Check the submodules attribute for bridge submodules
                 if (
-                    hasattr(bridge_component, "_modules")
-                    and subcomponent_name in bridge_component._modules
+                    hasattr(bridge_component, "submodules")
+                    and subcomponent_name in bridge_component.submodules
                 ):
-                    subcomponent_bridge = getattr(bridge_component, subcomponent_name)
+                    subcomponent_bridge = bridge_component.submodules[subcomponent_name]
 
                     # If there are more parts (like blocks.0.attn.q_proj), navigate deeper
                     if len(parts) > 3:
                         # Navigate through the deeper subcomponents
                         current_bridge = subcomponent_bridge
-                        remote_path_parts = [blocks_path, block_index, subcomponent_bridge.name]
+                        remote_path_parts = [items_path, item_index, subcomponent_bridge.name]
 
                         for i in range(3, len(parts)):
                             deeper_component_name = parts[i]
+                            
+                            # Check submodules for deeper components
                             if (
-                                hasattr(current_bridge, "_modules")
-                                and deeper_component_name in current_bridge._modules
+                                hasattr(current_bridge, "submodules")
+                                and deeper_component_name in current_bridge.submodules
                             ):
-                                current_bridge = getattr(current_bridge, deeper_component_name)
+                                current_bridge = current_bridge.submodules[deeper_component_name]
                                 remote_path_parts.append(current_bridge.name)
                             else:
                                 raise ValueError(
@@ -292,13 +300,13 @@ class ArchitectureAdapter:
                         return remote_path
                     else:
                         # Just the 3-level path
-                        remote_path = f"{blocks_path}.{block_index}.{subcomponent_bridge.name}"
+                        remote_path = f"{items_path}.{item_index}.{subcomponent_bridge.name}"
                         if last_component_only:
                             return subcomponent_bridge.name
                         return remote_path
                 else:
                     raise ValueError(
-                        f"Component {subcomponent_name} not found in blocks components"
+                        f"Component {subcomponent_name} not found in {parts[0]} components"
                     )
 
         # For other nested paths, navigate through the bridge components

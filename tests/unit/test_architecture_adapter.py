@@ -205,39 +205,39 @@ def test_component_mapping_structure(adapter: Gemma3ArchitectureAdapter) -> None
 
     # Test that blocks has submodules
     blocks_bridge = mapping["blocks"]
-    assert hasattr(blocks_bridge, "_modules")
-    assert "ln1" in blocks_bridge._modules
-    assert "ln2" in blocks_bridge._modules
-    assert "attn" in blocks_bridge._modules
-    assert "mlp" in blocks_bridge._modules
+    assert hasattr(blocks_bridge, "submodules")
+    assert "ln1" in blocks_bridge.submodules
+    assert "ln2" in blocks_bridge.submodules
+    assert "attn" in blocks_bridge.submodules
+    assert "mlp" in blocks_bridge.submodules
 
-    # Test the types of submodules (accessed as attributes)
-    assert isinstance(blocks_bridge.ln1, LayerNormBridge)
-    assert isinstance(blocks_bridge.ln2, LayerNormBridge)
-    assert isinstance(blocks_bridge.attn, AttentionBridge)
-    assert isinstance(blocks_bridge.mlp, MLPBridge)
+    # Test that the submodules are the expected types
+    assert isinstance(blocks_bridge.submodules["ln1"], LayerNormBridge)
+    assert isinstance(blocks_bridge.submodules["ln2"], LayerNormBridge)
+    assert isinstance(blocks_bridge.submodules["attn"], AttentionBridge)
+    assert isinstance(blocks_bridge.submodules["mlp"], MLPBridge)
 
     # Test that attention has submodules
-    attn_bridge = blocks_bridge.attn
-    assert hasattr(attn_bridge, "_modules")
-    assert "W_Q" in attn_bridge._modules
-    assert "W_K" in attn_bridge._modules
-    assert "W_V" in attn_bridge._modules
-    assert "W_O" in attn_bridge._modules
-    assert isinstance(attn_bridge.W_Q, LinearBridge)
-    assert isinstance(attn_bridge.W_K, LinearBridge)
-    assert isinstance(attn_bridge.W_V, LinearBridge)
-    assert isinstance(attn_bridge.W_O, LinearBridge)
+    attn_bridge = blocks_bridge.submodules["attn"]
+    assert hasattr(attn_bridge, "submodules")
+    assert "W_Q" in attn_bridge.submodules
+    assert "W_K" in attn_bridge.submodules
+    assert "W_V" in attn_bridge.submodules
+    assert "W_O" in attn_bridge.submodules
+    assert isinstance(attn_bridge.submodules["W_Q"], LinearBridge)
+    assert isinstance(attn_bridge.submodules["W_K"], LinearBridge)
+    assert isinstance(attn_bridge.submodules["W_V"], LinearBridge)
+    assert isinstance(attn_bridge.submodules["W_O"], LinearBridge)
 
     # Test that MLP has submodules
-    mlp_bridge = blocks_bridge.mlp
-    assert hasattr(mlp_bridge, "_modules")
-    assert "W_gate" in mlp_bridge._modules
-    assert "W_in" in mlp_bridge._modules
-    assert "W_out" in mlp_bridge._modules
-    assert isinstance(mlp_bridge.W_gate, LinearBridge)
-    assert isinstance(mlp_bridge.W_in, LinearBridge)
-    assert isinstance(mlp_bridge.W_out, LinearBridge)
+    mlp_bridge = blocks_bridge.submodules["mlp"]
+    assert hasattr(mlp_bridge, "submodules")
+    assert "W_gate" in mlp_bridge.submodules
+    assert "W_in" in mlp_bridge.submodules
+    assert "W_out" in mlp_bridge.submodules
+    assert isinstance(mlp_bridge.submodules["W_gate"], LinearBridge)
+    assert isinstance(mlp_bridge.submodules["W_in"], LinearBridge)
+    assert isinstance(mlp_bridge.submodules["W_out"], LinearBridge)
 
 
 def test_get_component(adapter: Gemma3ArchitectureAdapter, model: MockGemma3Model) -> None:
@@ -265,7 +265,7 @@ def test_invalid_paths(adapter: Gemma3ArchitectureAdapter) -> None:
     with pytest.raises(ValueError, match="Component not_found not found in component mapping"):
         adapter.translate_transformer_lens_path("not_found")
 
-    with pytest.raises(ValueError, match="Expected block index, got invalid"):
+    with pytest.raises(ValueError, match="Expected item index, got invalid"):
         adapter.translate_transformer_lens_path("blocks.invalid")
 
     with pytest.raises(ValueError, match="Component not_found not found in blocks components"):
@@ -279,5 +279,5 @@ def test_get_component_invalid_paths(
     with pytest.raises(ValueError, match="Component not_found not found in component mapping"):
         adapter.get_component(model, "not_found")
 
-    with pytest.raises(ValueError, match="Expected block index, got invalid"):
+    with pytest.raises(ValueError, match="Expected item index, got invalid"):
         adapter.get_component(model, "blocks.invalid")

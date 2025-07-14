@@ -48,6 +48,22 @@ class MockArchitectureAdapter(ArchitectureAdapter):
                 },
             ),
         }
+        
+        # Set up the submodules properly by registering them as PyTorch modules
+        self._setup_mock_submodules()
+        
+    def _setup_mock_submodules(self):
+        """Set up submodules for testing by registering them as PyTorch modules."""
+        for component_name, component in self.component_mapping.items():
+            self._register_submodules(component)
+            
+    def _register_submodules(self, component):
+        """Recursively register submodules for a component."""
+        if hasattr(component, 'submodules') and component.submodules:
+            for submodule_name, submodule in component.submodules.items():
+                component.add_module(submodule_name, submodule)
+                # Recursively register nested submodules
+                self._register_submodules(submodule)
 
 
 @pytest.fixture

@@ -28,7 +28,7 @@ class GeneralizedComponent(nn.Module):
         self,
         name: str,
         config: Optional[Any] = None,
-        submodules: Optional[Dict[str, "GeneralizedComponent"]] = {},
+        submodules: Optional[Dict[str, "GeneralizedComponent"]] = None,
     ):
         """Initialize the generalized component.
 
@@ -40,7 +40,7 @@ class GeneralizedComponent(nn.Module):
         super().__init__()
         self.name = name
         self.config = config
-        self.submodules = submodules
+        self.submodules = submodules or {}
         # Use object.__setattr__ to avoid PyTorch's module system
         object.__setattr__(self, "_original_component", None)
         self.hooks: dict[str, list[Callable[..., torch.Tensor]]] = {}
