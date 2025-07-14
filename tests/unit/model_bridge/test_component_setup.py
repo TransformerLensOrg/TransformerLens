@@ -2,7 +2,6 @@
 
 
 import pytest
-import torch
 import torch.nn as nn
 
 from tests.mocks.architecture_adapter import MockArchitectureAdapter, mock_model_adapter
@@ -64,16 +63,18 @@ class TestComponentSetup:
 
         # Mock the original component with the expected attributes
         original_attn = nn.Module()
-        original_attn.q_proj = nn.Linear(10, 10)
-        original_attn.k_proj = nn.Linear(10, 10)
+        original_q_proj = nn.Linear(10, 10)
+        original_k_proj = nn.Linear(10, 10)
+        original_attn.q_proj = original_q_proj
+        original_attn.k_proj = original_k_proj
 
         setup_submodules(component, adapter, original_attn)
 
         # Check that submodules were registered and have original components set
         assert hasattr(component, "q_proj")
         assert hasattr(component, "k_proj")
-        assert component.q_proj.original_component is original_attn.q_proj
-        assert component.k_proj.original_component is original_attn.k_proj
+        assert component.q_proj.original_component is original_q_proj
+        assert component.k_proj.original_component is original_k_proj
 
     def test_setup_submodules_nested(self):
         """Test setting up nested submodules."""
@@ -92,13 +93,14 @@ class TestComponentSetup:
 
         # Mock the original nested structure
         original_attn = nn.Module()
-        original_attn.q_proj = nn.Linear(10, 10)
+        original_q_proj = nn.Linear(10, 10)
+        original_attn.q_proj = original_q_proj
 
         setup_submodules(component, adapter, original_attn)
 
         # Check that nested submodules were set up correctly
         assert hasattr(component, "q_proj")
-        assert component.q_proj.original_component is original_attn.q_proj
+        assert component.q_proj.original_component is original_q_proj
 
     def test_setup_submodules_empty(self):
         """Test setting up submodules when there are none."""
@@ -140,20 +142,22 @@ class TestComponentSetup:
 
         components = {
             "embed": EmbeddingBridge(
-                name="embed", submodules={"weight": EmbeddingBridge(name="weight")}
+                name="embed", submodules={"norm": LayerNormBridge(name="norm")}
             ),
         }
 
-        # Mock the embed to have a weight attribute
-        mock_model.embed.weight = nn.Parameter(torch.randn(100, 10))
+        # Mock the embed to have a norm attribute (a submodule, not a parameter)
+        mock_model.embed.norm = nn.LayerNorm(10)
         original_embed = mock_model.embed
+        original_norm = mock_model.embed.norm
 
         setup_components(components, bridge_module, adapter, mock_model)
 
         # Check that component and its submodules were set up
         assert hasattr(bridge_module, "embed")
-        assert hasattr(bridge_module.embed, "weight")
+        assert hasattr(bridge_module.embed, "norm")
         assert bridge_module.embed.original_component is original_embed
+        assert bridge_module.embed.norm.original_component is original_norm
 
     def test_setup_blocks_bridge(self):
         """Test setting up blocks bridge with ModuleList structure."""
