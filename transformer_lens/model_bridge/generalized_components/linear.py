@@ -17,8 +17,8 @@ class LinearBridge(GeneralizedComponent):
     """
 
     def __init__(
-        self, 
-        name: str, 
+        self,
+        name: str,
         config: Optional[Any] = None,
         submodules: Optional[Dict[str, GeneralizedComponent]] = {},
     ) -> None:

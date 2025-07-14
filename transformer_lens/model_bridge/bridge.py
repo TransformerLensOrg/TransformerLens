@@ -24,10 +24,7 @@ import torch.nn as nn
 from transformer_lens import utils
 from transformer_lens.ActivationCache import ActivationCache
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
-from transformer_lens.model_bridge.component_setup import (
-    replace_remote_component,
-    set_original_components,
-)
+from transformer_lens.model_bridge.component_setup import set_original_components
 from transformer_lens.model_bridge.types import ComponentMapping
 
 if TYPE_CHECKING:
@@ -115,7 +112,7 @@ class TransformerBridge(nn.Module):
 
                 # Check if it has submodules (like BlockBridge)
                 submodules = {}
-                
+
                 # Check the submodules attribute for bridge submodules
                 if hasattr(value, "submodules") and value.submodules:
                     submodules = value.submodules
@@ -695,6 +692,3 @@ class TransformerBridge(nn.Module):
         return self.to(torch.device("mps"))  # type: ignore
 
     # Remove the blocks property since we're now using a proper module
-
-
-

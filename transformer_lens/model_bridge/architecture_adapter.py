@@ -164,7 +164,7 @@ class ArchitectureAdapter:
             else:
                 # Get subcomponent from the item using bridge mapping
                 subcomponent_name = parts[2]
-                
+
                 # Check the submodules attribute for bridge submodules
                 if (
                     hasattr(bridge_component, "submodules")
@@ -180,7 +180,7 @@ class ArchitectureAdapter:
 
                         for i in range(3, len(parts)):
                             deeper_component_name = parts[i]
-                            
+
                             # Check submodules for deeper components
                             if (
                                 hasattr(current_bridge, "submodules")
@@ -265,7 +265,7 @@ class ArchitectureAdapter:
             else:
                 # Get subcomponent from the item bridge
                 subcomponent_name = parts[2]
-                
+
                 # Check the submodules attribute for bridge submodules
                 if (
                     hasattr(bridge_component, "submodules")
@@ -281,7 +281,7 @@ class ArchitectureAdapter:
 
                         for i in range(3, len(parts)):
                             deeper_component_name = parts[i]
-                            
+
                             # Check submodules for deeper components
                             if (
                                 hasattr(current_bridge, "submodules")

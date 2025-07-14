@@ -3,9 +3,8 @@
 
 import torch.nn as nn
 
-from tests.mocks.architecture_adapter import MockArchitectureAdapter, mock_model_adapter
+from tests.mocks.architecture_adapter import mock_model_adapter
 from transformer_lens.model_bridge.component_setup import replace_remote_component
-from transformer_lens.model_bridge.generalized_components import LayerNormBridge
 
 
 class TestComponentSetup:

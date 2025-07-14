@@ -3,7 +3,7 @@ from __future__ import annotations
 """Component setup utilities for creating and configuring bridged components."""
 
 import copy
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 import torch.nn as nn
 
@@ -54,7 +54,7 @@ def set_original_components(
     original_model: RemoteModel,
 ) -> None:
     """Set original components on the pre-created bridge components.
-    
+
     Args:
         bridge_module: The bridge module to configure
         architecture_adapter: The architecture adapter
@@ -70,7 +70,7 @@ def setup_submodules(
     original_model: RemoteModel,
 ) -> None:
     """Set up submodules for a bridge component using proper component setup.
-    
+
     Args:
         component: The bridge component to set up submodules for
         architecture_adapter: The architecture adapter
@@ -84,13 +84,13 @@ def setup_submodules(
             original_subcomponent = architecture_adapter.get_remote_component(
                 original_model, remote_path
             )
-            
+
             # Set the original component
             submodule.set_original_component(original_subcomponent)
-            
+
             # Recursively set up submodules of this submodule
             setup_submodules(submodule, architecture_adapter, original_subcomponent)
-            
+
             # Add the submodule to the parent component
             component.add_module(module_name, submodule)
 
@@ -102,7 +102,7 @@ def setup_components(
     original_model: RemoteModel,
 ) -> None:
     """Set up components on the bridge module.
-    
+
     Args:
         components: Dictionary of component name to bridge component mappings
         bridge_module: The bridge module to configure
@@ -137,17 +137,15 @@ def setup_components(
 
 
 def setup_blocks_bridge(
-    blocks_template: Any, 
-    architecture_adapter: ArchitectureAdapter, 
-    original_model: RemoteModel
+    blocks_template: Any, architecture_adapter: ArchitectureAdapter, original_model: RemoteModel
 ) -> nn.ModuleList:
     """Set up blocks bridge with proper ModuleList structure.
-    
+
     Args:
         blocks_template: Template bridge component for blocks
         architecture_adapter: The architecture adapter
         original_model: The original model to get components from
-        
+
     Returns:
         ModuleList of bridged block components
     """
