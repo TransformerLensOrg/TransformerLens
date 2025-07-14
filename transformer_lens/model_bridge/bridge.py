@@ -110,11 +110,7 @@ class TransformerBridge(nn.Module):
                 lines.append(self._format_single_component(name, path, indent))
 
                 # Check if it has submodules (like BlockBridge)
-                submodules = {}
-
-                # Check the submodules attribute for bridge submodules
-                if hasattr(value, "submodules") and value.submodules:
-                    submodules = value.submodules
+                submodules = value.submodules
 
                 if submodules:
                     # For list items (like blocks), add .0 to the path to indicate the first item
@@ -689,5 +685,3 @@ class TransformerBridge(nn.Module):
             Self for chaining
         """
         return self.to(torch.device("mps"))  # type: ignore
-
-    # Remove the blocks property since we're now using a proper module

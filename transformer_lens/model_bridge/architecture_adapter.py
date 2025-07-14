@@ -167,10 +167,7 @@ class ArchitectureAdapter:
                 subcomponent_name = parts[2]
 
                 # Check the submodules attribute for bridge submodules
-                if (
-                    hasattr(bridge_component, "submodules")
-                    and subcomponent_name in bridge_component.submodules
-                ):
+                if subcomponent_name in bridge_component.submodules:
                     subcomponent_bridge = bridge_component.submodules[subcomponent_name]
 
                     # If there are more parts (like blocks.0.attn.W_Q), navigate deeper
@@ -183,10 +180,7 @@ class ArchitectureAdapter:
                             deeper_component_name = parts[i]
 
                             # Check submodules for deeper components
-                            if (
-                                hasattr(current_bridge, "submodules")
-                                and deeper_component_name in current_bridge.submodules
-                            ):
+                            if deeper_component_name in current_bridge.submodules:
                                 current_bridge = current_bridge.submodules[deeper_component_name]
                                 current = getattr(current, current_bridge.name)
                             else:
@@ -268,10 +262,7 @@ class ArchitectureAdapter:
                 subcomponent_name = parts[2]
 
                 # Check the submodules attribute for bridge submodules
-                if (
-                    hasattr(bridge_component, "submodules")
-                    and subcomponent_name in bridge_component.submodules
-                ):
+                if subcomponent_name in bridge_component.submodules:
                     subcomponent_bridge = bridge_component.submodules[subcomponent_name]
 
                     # If there are more parts (like blocks.0.attn.q_proj), navigate deeper
@@ -284,10 +275,7 @@ class ArchitectureAdapter:
                             deeper_component_name = parts[i]
 
                             # Check submodules for deeper components
-                            if (
-                                hasattr(current_bridge, "submodules")
-                                and deeper_component_name in current_bridge.submodules
-                            ):
+                            if deeper_component_name in current_bridge.submodules:
                                 current_bridge = current_bridge.submodules[deeper_component_name]
                                 remote_path_parts.append(current_bridge.name)
                             else:

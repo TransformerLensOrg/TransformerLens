@@ -55,13 +55,11 @@ class GeneralizedComponent(nn.Module):
         Args:
             original_component: The original transformer component to wrap
         """
-        # Register the original component with PyTorch so its parameters are exposed
         self.add_module("_original_component", original_component)
 
     @property
     def original_component(self) -> Optional[nn.Module]:
         """Get the original component."""
-        # Since we use add_module, the component is stored in _modules
         return self._modules.get("_original_component", None)
 
     def set_hook_tracker(self, tracker: Any) -> None:
@@ -268,7 +266,7 @@ class GeneralizedComponent(nn.Module):
 
         # Check if this is a submodule that should be registered as a PyTorch module
         # but hasn't been yet. This prevents PyTorch's add_module from failing.
-        if hasattr(self, "submodules") and name in self.submodules:
+        if name in self.submodules:
             # Don't delegate to original component for submodules
             raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 

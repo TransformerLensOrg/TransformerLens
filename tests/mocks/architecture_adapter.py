@@ -59,7 +59,7 @@ class MockArchitectureAdapter(ArchitectureAdapter):
 
     def _register_submodules(self, component):
         """Recursively register submodules for a component."""
-        if hasattr(component, "submodules") and component.submodules:
+        if component.submodules:
             for submodule_name, submodule in component.submodules.items():
                 component.add_module(submodule_name, submodule)
                 # Recursively register nested submodules
