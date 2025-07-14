@@ -21,6 +21,9 @@ class GeneralizedComponent(nn.Module):
     and handles hook registration and execution.
     """
 
+    # Class attribute indicating whether this component represents a list item (like blocks)
+    is_list_item: bool = False
+
     def __init__(
         self,
         name: str,

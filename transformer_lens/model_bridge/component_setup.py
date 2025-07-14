@@ -64,16 +64,17 @@ def set_original_components(
 
     # Modern bridge instance mapping - set original components directly
     for tl_path, bridge_component in component_mapping.items():
-        if tl_path == "blocks":
-            # Special handling for blocks - create a ModuleList of bridge components
-            bridged_blocks = setup_blocks_bridge(
+        remote_path = bridge_component.name
+        if bridge_component.is_list_item:
+            # Special handling for list items - create a ModuleList of bridge components
+            bridged_list = setup_blocks_bridge(
                 bridge_component, architecture_adapter, original_model
             )
-            # Set the blocks on the bridge module as a proper module
-            bridge_module.add_module("blocks", bridged_blocks)
+            # Set the list on the bridge module as a proper module
+            bridge_module.add_module(tl_path, bridged_list)
+            replace_remote_component(bridged_list, remote_path, original_model)
         else:
             # Regular component handling
-            remote_path = bridge_component.name
             original_component = architecture_adapter.get_remote_component(
                 original_model, remote_path
             )

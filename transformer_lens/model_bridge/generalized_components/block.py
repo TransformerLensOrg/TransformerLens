@@ -21,6 +21,9 @@ class BlockBridge(GeneralizedComponent):
     This component provides standardized input/output hooks.
     """
 
+    # Override the class attribute to indicate this is a list item
+    is_list_item: bool = True
+
     def __init__(
         self,
         name: str,
