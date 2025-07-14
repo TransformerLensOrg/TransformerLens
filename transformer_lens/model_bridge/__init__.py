@@ -12,9 +12,10 @@ from transformer_lens.model_bridge.architecture_adapter import (
 from transformer_lens.model_bridge.bridge import (
     TransformerBridge,
 )
-from transformer_lens.model_bridge.component_creation import (
-    create_bridged_component,
+from transformer_lens.model_bridge.component_setup import (
     replace_remote_component,
+    set_original_components,
+    setup_blocks_bridge,
 )
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
@@ -48,8 +49,9 @@ __all__ = [
     "MLPBridge",
     "MoEBridge",
     "UnembeddingBridge",
-    "create_bridged_component",
     "replace_remote_component",
+    "set_original_components",
+    "setup_blocks_bridge",
     # Type definitions
     "ComponentMapping",
     "HookFunction",

@@ -24,6 +24,10 @@ import torch.nn as nn
 from transformer_lens import utils
 from transformer_lens.ActivationCache import ActivationCache
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
+from transformer_lens.model_bridge.component_setup import (
+    replace_remote_component,
+    set_original_components,
+)
 
 if TYPE_CHECKING:
     from transformer_lens.ActivationCache import ActivationCache
@@ -47,7 +51,7 @@ class TransformerBridge(nn.Module):
         """
         super().__init__()
         self.original_model: nn.Module = model
-        self.bridge = adapter
+        self.adapter = adapter
         self.cfg = adapter.user_cfg
         self.tokenizer = tokenizer
 
@@ -55,7 +59,7 @@ class TransformerBridge(nn.Module):
             raise ValueError("Adapter must have a component_mapping attribute")
 
         # Set original components on the pre-created bridge components
-        self._set_original_components()
+        set_original_components(self, self.adapter, self.original_model)
 
     def __getattr__(self, name: str) -> Any:
         """Provide a clear error message for missing attributes."""
@@ -77,7 +81,7 @@ class TransformerBridge(nn.Module):
         """
         indent_str = "  " * indent
         try:
-            comp = self.bridge.get_component(self.original_model, path)
+            comp = self.adapter.get_component(self.original_model, path)
             if hasattr(comp, "original_component"):
                 if comp.original_component is None:
                     return f"{indent_str}{name}: <error: original component not set>"
@@ -161,7 +165,7 @@ class TransformerBridge(nn.Module):
             A string describing the bridge's components
         """
         lines = ["TransformerBridge:"]
-        mapping = self.bridge.get_component_mapping()
+        mapping = self.adapter.get_component_mapping()
         lines.extend(self._format_component_mapping(mapping, indent=1))
         return "\n".join(lines)
 
@@ -718,97 +722,5 @@ class TransformerBridge(nn.Module):
 
     # Remove the blocks property since we're now using a proper module
 
-    def _set_original_components(self) -> None:
-        """Set original components on the pre-created bridge components."""
-        component_mapping = self.bridge.get_component_mapping()
 
-        # Modern bridge instance mapping - set original components directly
-        for tl_path, bridge_component in component_mapping.items():
-            if tl_path == "blocks":
-                # Special handling for blocks - create a ModuleList of bridge components
-                self._setup_blocks_bridge(bridge_component)
-            else:
-                # Regular component handling
-                remote_path = bridge_component.name
-                original_component = self.bridge.get_remote_component(
-                    self.original_model, remote_path
-                )
-                bridge_component.set_original_component(original_component)
 
-                # Set the bridge component on self as a proper module
-                self.add_module(tl_path, bridge_component)
-
-                # Replace the original component with the bridge component
-                self._replace_component(remote_path, bridge_component)
-
-    def _setup_blocks_bridge(self, blocks_template: Any) -> None:
-        """Set up blocks bridge with proper ModuleList structure."""
-        import copy
-
-        # Get the original blocks container
-        original_blocks = self.bridge.get_remote_component(
-            self.original_model, blocks_template.name
-        )
-
-        # Create a new ModuleList of bridge components
-        bridged_blocks = nn.ModuleList()
-
-        for i, original_block in enumerate(original_blocks):
-            # Create a copy of the template bridge for this block
-            block_bridge = copy.deepcopy(blocks_template)
-            block_bridge.name = f"{blocks_template.name}.{i}"
-
-            # Set the original component for this block
-            block_bridge.set_original_component(original_block)
-
-            # Set original components for all submodules
-            if hasattr(block_bridge, "_modules"):
-                for submodule_name, submodule in block_bridge._modules.items():
-                    if (
-                        hasattr(submodule, "set_original_component")
-                        and submodule_name != "hook_in"
-                        and submodule_name != "hook_out"
-                    ):
-                        # Get the original subcomponent
-                        original_subcomponent = getattr(original_block, submodule.name)
-                        submodule.set_original_component(original_subcomponent)
-
-                        # Handle nested submodules (like attention projections)
-                        if hasattr(submodule, "_modules"):
-                            for nested_name, nested_module in submodule._modules.items():
-                                if (
-                                    hasattr(nested_module, "set_original_component")
-                                    and nested_name != "hook_in"
-                                    and nested_name != "hook_out"
-                                ):
-                                    original_nested = getattr(
-                                        original_subcomponent, nested_module.name
-                                    )
-                                    nested_module.set_original_component(original_nested)
-
-            bridged_blocks.append(block_bridge)
-
-        # Replace the original blocks with the bridged blocks
-        self._replace_component(blocks_template.name, bridged_blocks)
-
-        # Set the blocks on self as a proper module
-        self.add_module("blocks", bridged_blocks)
-
-    def _replace_component(self, remote_path: str, replacement_component):
-        """Replace a component in the original model."""
-        path_parts = remote_path.split(".")
-
-        # Navigate to the parent of the target component
-        current = self.original_model
-        for part in path_parts[:-1]:
-            if hasattr(current, part):
-                current = getattr(current, part)
-            else:
-                raise ValueError(f"Path {remote_path} not found in model")
-
-        # Replace the target component
-        target_attr = path_parts[-1]
-        if hasattr(current, target_attr):
-            setattr(current, target_attr, replacement_component)
-        else:
-            raise ValueError(f"Attribute {target_attr} not found in {current}")

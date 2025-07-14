@@ -79,7 +79,7 @@ class TestTransformerBridge:
             "ln_final": LayerNormBridge(name="ln_final"),
             "unembed": EmbeddingBridge(name="unembed"),
         }
-        self.bridge.bridge.component_mapping = mapping
+        self.bridge.adapter.component_mapping = mapping
 
         result = self.bridge._format_component_mapping(mapping, indent=1)
 
@@ -104,7 +104,7 @@ class TestTransformerBridge:
                 },
             )
         }
-        self.bridge.bridge.component_mapping = mapping
+        self.bridge.adapter.component_mapping = mapping
 
         result = self.bridge._format_component_mapping(mapping, indent=1)
 
@@ -129,7 +129,7 @@ class TestTransformerBridge:
             ),
             "ln_final": LayerNormBridge(name="ln_final"),
         }
-        self.bridge.bridge.component_mapping = mapping
+        self.bridge.adapter.component_mapping = mapping
 
         result = self.bridge._format_component_mapping(mapping, indent=0)
 
@@ -148,7 +148,7 @@ class TestTransformerBridge:
             "attn": AttentionBridge(name="attn"),
         }
         # To test prepending, we need a parent structure in the component mapping
-        self.bridge.bridge.component_mapping = {
+        self.bridge.adapter.component_mapping = {
             "blocks": BlockBridge(
                 name="blocks",
                 submodules=mapping,
@@ -165,7 +165,7 @@ class TestTransformerBridge:
     def test_format_empty_mapping(self):
         """Test formatting of an empty mapping."""
         mapping = {}
-        self.bridge.bridge.component_mapping = mapping
+        self.bridge.adapter.component_mapping = mapping
 
         result = self.bridge._format_component_mapping(mapping, indent=1)
 
@@ -176,7 +176,7 @@ class TestTransformerBridge:
         mapping = {
             "some_component": "simple_string_value",
         }
-        self.bridge.bridge.component_mapping = mapping
+        self.bridge.adapter.component_mapping = mapping
 
         result = self.bridge._format_component_mapping(mapping, indent=1)
 
@@ -198,7 +198,7 @@ class TestTransformerBridge:
                 },
             )
         }
-        self.bridge.bridge.component_mapping = mapping
+        self.bridge.adapter.component_mapping = mapping
 
         result = self.bridge._format_component_mapping(mapping, indent=0)
 
@@ -213,7 +213,7 @@ class TestTransformerBridge:
         mapping = {
             "nonexistent_component": EmbeddingBridge(name="path.to.nowhere"),
         }
-        self.bridge.bridge.component_mapping = mapping
+        self.bridge.adapter.component_mapping = mapping
 
         # This should not raise an exception, but should handle the error in _format_single_component
         result = self.bridge._format_component_mapping(mapping, indent=1)
@@ -227,7 +227,7 @@ class TestTransformerBridge:
         mapping = {
             "level0": EmbeddingBridge(name="embed"),
         }
-        self.bridge.bridge.component_mapping = mapping
+        self.bridge.adapter.component_mapping = mapping
 
         # Test different indentation levels
         result_0 = self.bridge._format_component_mapping(mapping, indent=0)

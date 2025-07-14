@@ -41,8 +41,6 @@ class BlockBridge(GeneralizedComponent):
             for module_name, module in submodules.items():
                 self.add_module(module_name, module)
 
-        # No extra hooks; use only hook_in and hook_out
-
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         """Forward pass through the block bridge.
 
