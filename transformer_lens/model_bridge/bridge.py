@@ -50,7 +50,7 @@ class TransformerBridge(nn.Module):
         super().__init__()
         self.original_model: nn.Module = model
         self.adapter = adapter
-        self.cfg = adapter.user_cfg
+        self.cfg = adapter.cfg
         self.tokenizer = tokenizer
 
         if not hasattr(adapter, "component_mapping") or adapter.component_mapping is None:

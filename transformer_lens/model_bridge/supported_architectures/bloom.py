@@ -20,7 +20,7 @@ from transformer_lens.model_bridge.generalized_components import (
 class BloomArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for Bloom models."""
 
-    def __init__(self, user_cfg: Any) -> None:
+    def __init__(self, cfg: Any) -> None:
         """Initialize the Bloom architecture adapter."""
         super().__init__(user_cfg)
 

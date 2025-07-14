@@ -20,7 +20,7 @@ from transformer_lens.model_bridge.generalized_components import (
 class QwenArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for Qwen models."""
 
-    def __init__(self, user_cfg: Any) -> None:
+    def __init__(self, cfg: Any) -> None:
         """Initialize the Qwen architecture adapter."""
         super().__init__(user_cfg)
 

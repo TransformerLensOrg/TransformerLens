@@ -24,7 +24,7 @@ from transformer_lens.model_bridge.generalized_components import (
 class NeoxArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for NeoX models."""
 
-    def __init__(self, user_cfg: Any) -> None:
+    def __init__(self, cfg: Any) -> None:
         """Initialize the NeoX architecture adapter.
 
         Args:

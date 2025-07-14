@@ -68,8 +68,8 @@ class TestTransformerBridge:
 
         mock_adapter.get_component = mock_get_component
         self.bridge = TransformerBridge(mock_model_adapter, mock_adapter, MagicMock())
-        mock_adapter.user_cfg = MagicMock()
-        self.bridge.cfg = mock_adapter.user_cfg
+        mock_adapter.cfg = MagicMock()
+        self.bridge.cfg = mock_adapter.cfg
 
     def test_format_remote_import_tuple(self):
         """Test formatting of bridge instances (like embed, ln_final, unembed)."""
