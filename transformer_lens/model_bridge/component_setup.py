@@ -3,7 +3,7 @@ from __future__ import annotations
 """Component setup utilities for creating and configuring bridged components."""
 
 import copy
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any, cast
 
 import torch.nn as nn
 
@@ -12,9 +12,6 @@ from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
 from transformer_lens.model_bridge.types import RemoteModel
-
-if TYPE_CHECKING:
-    pass
 
 
 def replace_remote_component(

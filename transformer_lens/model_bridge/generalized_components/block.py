@@ -5,14 +5,11 @@ This module contains the bridge component for transformer blocks.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import Any, Dict, Optional
 
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
-
-if TYPE_CHECKING:
-    pass
 
 
 class BlockBridge(GeneralizedComponent):

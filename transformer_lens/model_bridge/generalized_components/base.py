@@ -3,15 +3,12 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import Any, Dict, Optional
 
 import torch
 import torch.nn as nn
 
 from transformer_lens.hook_points import HookPoint
-
-if TYPE_CHECKING:
-    pass
 
 
 class GeneralizedComponent(nn.Module):
