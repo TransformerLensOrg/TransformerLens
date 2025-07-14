@@ -77,8 +77,8 @@ def setup_submodules(
         original_model: The original model to get components from
     """
     for module_name, submodule in component.submodules.items():
-        # Only add if not already registered
-        if not hasattr(component, module_name):
+        # Only add if not already registered as a PyTorch module
+        if module_name not in component._modules:
             # Get the original component for this submodule
             remote_path = submodule.name
             original_subcomponent = architecture_adapter.get_remote_component(
@@ -93,6 +93,10 @@ def setup_submodules(
 
             # Add the submodule to the parent component
             component.add_module(module_name, submodule)
+
+            # Replace the original submodule with the bridged submodule in the parent
+            # Use the actual component's remote name in the parent component
+            replace_remote_component(submodule, submodule.name, original_model)
 
 
 def setup_components(

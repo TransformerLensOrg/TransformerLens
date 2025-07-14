@@ -57,6 +57,14 @@ class BlockBridge(GeneralizedComponent):
         if len(args) > 0:
             args = (self.hook_in(args[0]),) + args[1:]
         output = self.original_component(*args, **kwargs)
-        output = self.hook_out(output)
+
+        # Handle tuple outputs from transformer blocks
+        if isinstance(output, tuple):
+            # Apply hook to first element (hidden states) and preserve the rest
+            hooked_first = self.hook_out(output[0])
+            output = (hooked_first,) + output[1:]
+        else:
+            output = self.hook_out(output)
+
         self.hook_outputs.update({"output": output})
         return output

@@ -41,8 +41,6 @@ class GeneralizedComponent(nn.Module):
         self.name = name
         self.config = config
         self.submodules = submodules or {}
-        # Use object.__setattr__ to avoid PyTorch's module system
-        object.__setattr__(self, "_original_component", None)
         self.hooks: dict[str, list[Callable[..., torch.Tensor]]] = {}
         self.hook_outputs: dict[str, Any] = {}
         self._hook_tracker = None
@@ -57,13 +55,14 @@ class GeneralizedComponent(nn.Module):
         Args:
             original_component: The original transformer component to wrap
         """
-        # Use object.__setattr__ to avoid PyTorch's module system
-        object.__setattr__(self, "_original_component", original_component)
+        # Register the original component with PyTorch so its parameters are exposed
+        self.add_module("_original_component", original_component)
 
     @property
     def original_component(self) -> Optional[nn.Module]:
         """Get the original component."""
-        return object.__getattribute__(self, "_original_component")
+        # Since we use add_module, the component is stored in _modules
+        return self._modules.get("_original_component", None)
 
     def set_hook_tracker(self, tracker: Any) -> None:
         """Set the hook tracker for this component.
@@ -162,6 +161,10 @@ class GeneralizedComponent(nn.Module):
         """
         self.register_hook(hook_name, hook_fn)
 
+        # Also register with the actual HookPoint for the default "output" hook
+        if hook_name == "output":
+            self.hook_out.add_hook(hook_fn)
+
     def remove_hooks(self, hook_name: str | None = None) -> None:
         """Remove hooks (HookedTransformer-compatible interface).
 
@@ -170,15 +173,21 @@ class GeneralizedComponent(nn.Module):
         """
         if hook_name is None:
             self.clear_hooks()
+            # Also remove from HookPoints
+            self.hook_out.remove_hooks()
         else:
             if hook_name in self.hooks:
                 del self.hooks[hook_name]
             if hook_name in self.hook_outputs:
                 del self.hook_outputs[hook_name]
+            # Also remove from HookPoint for the default "output" hook
+            if hook_name == "output":
+                self.hook_out.remove_hooks()
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         """Generic forward pass for bridge components with input/output hooks."""
-        original_component = object.__getattribute__(self, "_original_component")
+        # Since we use add_module, the component is stored in _modules
+        original_component = self._modules.get("_original_component", None)
         if original_component is None:
             raise RuntimeError(
                 f"Original component not set for {self.name}. Call set_original_component() first."
@@ -207,8 +216,16 @@ class GeneralizedComponent(nn.Module):
             input_found = True
         # Call the original component's forward
         output = original_component(*args, **kwargs)
-        # Pass output through hook_out
-        output = self.hook_out(output)
+
+        # Handle tuple outputs from transformer components
+        if isinstance(output, tuple):
+            # Apply hook to first element (hidden states) and preserve the rest
+            hooked_first = self.hook_out(output[0])
+            output = (hooked_first,) + output[1:]
+        else:
+            # Pass output through hook_out
+            output = self.hook_out(output)
+
         self.hook_outputs.update({"output": output})
         return output
 
@@ -249,17 +266,19 @@ class GeneralizedComponent(nn.Module):
             # This should not happen since original_component is a property
             raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 
+        # Check if this is a submodule that should be registered as a PyTorch module
+        # but hasn't been yet. This prevents PyTorch's add_module from failing.
+        if hasattr(self, "submodules") and name in self.submodules:
+            # Don't delegate to original component for submodules
+            raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+
         # Try to get from original_component if it exists
-        try:
-            original_component = object.__getattribute__(self, "_original_component")
-            if original_component is not None:
-                try:
-                    return getattr(original_component, name)
-                except AttributeError:
-                    pass
-        except AttributeError:
-            # _original_component doesn't exist
-            pass
+        original_component = self._modules.get("_original_component", None)
+        if original_component is not None:
+            try:
+                return getattr(original_component, name)
+            except AttributeError:
+                pass
 
         # If we get here, the attribute wasn't found anywhere
         raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
