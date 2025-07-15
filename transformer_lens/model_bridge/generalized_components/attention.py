@@ -32,10 +32,7 @@ class AttentionBridge(GeneralizedComponent):
             submodules: Dictionary of submodules to register (e.g., q_proj, k_proj, etc.)
         """
         super().__init__(name, submodules=submodules)
-
-        # Create hooks for common attention outputs
         self.hook_hidden_states = HookPoint()
-        self.hook_attention_weights = HookPoint()
 
     def _process_output(self, output: Any) -> Any:
         """Process the output from the original component.
@@ -68,9 +65,6 @@ class AttentionBridge(GeneralizedComponent):
             if i == 0:  # First element is typically hidden states
                 if element is not None:
                     element = self.hook_hidden_states(element)
-            elif i == 1:  # Second element is typically attention weights
-                if element is not None:
-                    element = self.hook_attention_weights(element)
             processed_output.append(element)
 
         # Apply the main hook_out to the first element (hidden states) if it exists
@@ -93,11 +87,9 @@ class AttentionBridge(GeneralizedComponent):
         for key, value in output.items():
             if key in ["last_hidden_state", "hidden_states"] and value is not None:
                 value = self.hook_hidden_states(value)
-            elif key in ["attentions", "attention_weights"] and value is not None:
-                value = self.hook_attention_weights(value)
             processed_output[key] = value
 
-        # Apply hook_out to the main output (usually hidden_states)
+        # Apply hook_hidden_states and hook_out to the main output (usually hidden_states)
         main_key = next((k for k in output.keys() if "hidden" in k.lower()), None)
         if main_key and main_key in processed_output:
             processed_output[main_key] = self.hook_out(processed_output[main_key])
