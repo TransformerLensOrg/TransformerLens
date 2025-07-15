@@ -55,10 +55,8 @@ class EmbeddingBridge(GeneralizedComponent):
                 f"Original component not set for {self.name}. Call set_original_component() first."
             )
 
-        # Try to access hook_in directly from _modules
-        hook_in = self._modules.get("hook_in", None)
-        if hook_in is not None:
-            input_ids = hook_in(input_ids)
+        # Apply input hook
+        input_ids = self.hook_in(input_ids)
 
         # Remove position_ids if not supported
         if (
@@ -70,9 +68,7 @@ class EmbeddingBridge(GeneralizedComponent):
         else:
             output = self.original_component(input_ids, position_ids=position_ids, **kwargs)
 
-        # Try to access hook_out directly from _modules
-        hook_out = self._modules.get("hook_out", None)
-        if hook_out is not None:
-            output = hook_out(output)
+        # Apply output hook
+        output = self.hook_out(output)
 
         return output
