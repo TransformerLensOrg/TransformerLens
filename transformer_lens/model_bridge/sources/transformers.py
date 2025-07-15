@@ -37,9 +37,7 @@ def boot(
     Returns:
         The bridge to the loaded model.
     """
-    from transformer_lens.factories.architecture_adapter_factory import (
-        ArchitectureAdapterFactory,
-    )
+    from transformer_lens.model_bridge import ArchitectureAdapterFactory
 
     hf_config = AutoConfig.from_pretrained(model_name, **kwargs)
     adapter = ArchitectureAdapterFactory.select_architecture_adapter(hf_config)
