@@ -24,13 +24,13 @@ from transformer_lens.model_bridge.generalized_components import (
 class NeoxArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for NeoX models."""
 
-    def __init__(self, user_cfg: Any) -> None:
+    def __init__(self, cfg: Any) -> None:
         """Initialize the NeoX architecture adapter.
 
         Args:
-            user_cfg: The configuration object.
+            cfg: The configuration object.
         """
-        super().__init__(user_cfg)
+        super().__init__(cfg)
 
         self.conversion_rules = WeightConversionSet(
             {
@@ -46,9 +46,8 @@ class NeoxArchitectureAdapter(ArchitectureAdapter):
                             SplitWeightConversion(0, 3),
                             RearrangeWeightConversion(
                                 "(head d_head) d_model -> head d_model d_head",
-                                head=self.user_cfg.num_attention_heads,
-                                d_head=self.user_cfg.hidden_size
-                                // self.user_cfg.num_attention_heads,
+                                head=self.cfg.num_attention_heads,
+                                d_head=self.cfg.hidden_size // self.cfg.num_attention_heads,
                             ),
                         ]
                     ),
@@ -60,9 +59,8 @@ class NeoxArchitectureAdapter(ArchitectureAdapter):
                             SplitWeightConversion(1, 3),
                             RearrangeWeightConversion(
                                 "(head d_head) d_model -> head d_model d_head",
-                                head=self.user_cfg.num_attention_heads,
-                                d_head=self.user_cfg.hidden_size
-                                // self.user_cfg.num_attention_heads,
+                                head=self.cfg.num_attention_heads,
+                                d_head=self.cfg.hidden_size // self.cfg.num_attention_heads,
                             ),
                         ]
                     ),
@@ -74,9 +72,8 @@ class NeoxArchitectureAdapter(ArchitectureAdapter):
                             SplitWeightConversion(2, 3),
                             RearrangeWeightConversion(
                                 "(head d_head) d_model -> head d_model d_head",
-                                head=self.user_cfg.num_attention_heads,
-                                d_head=self.user_cfg.hidden_size
-                                // self.user_cfg.num_attention_heads,
+                                head=self.cfg.num_attention_heads,
+                                d_head=self.cfg.hidden_size // self.cfg.num_attention_heads,
                             ),
                         ]
                     ),
@@ -88,7 +85,7 @@ class NeoxArchitectureAdapter(ArchitectureAdapter):
                             SplitWeightConversion(0, 3),
                             RearrangeWeightConversion(
                                 "(head d_head) -> head d_head",
-                                head=self.user_cfg.num_attention_heads,
+                                head=self.cfg.num_attention_heads,
                             ),
                         ]
                     ),
@@ -100,7 +97,7 @@ class NeoxArchitectureAdapter(ArchitectureAdapter):
                             SplitWeightConversion(1, 3),
                             RearrangeWeightConversion(
                                 "(head d_head) -> head d_head",
-                                head=self.user_cfg.num_attention_heads,
+                                head=self.cfg.num_attention_heads,
                             ),
                         ]
                     ),
@@ -112,7 +109,7 @@ class NeoxArchitectureAdapter(ArchitectureAdapter):
                             SplitWeightConversion(2, 3),
                             RearrangeWeightConversion(
                                 "(head d_head) -> head d_head",
-                                head=self.user_cfg.num_attention_heads,
+                                head=self.cfg.num_attention_heads,
                             ),
                         ]
                     ),
@@ -133,18 +130,17 @@ class NeoxArchitectureAdapter(ArchitectureAdapter):
         )
 
         self.component_mapping = {
-            "embed": ("gpt_neox.embed_in", EmbeddingBridge),
-            "pos_embed": ("gpt_neox.embed_pos", EmbeddingBridge),
-            "blocks": (
-                "gpt_neox.layers",
-                BlockBridge,
-                {
-                    "ln1": ("input_layernorm", LayerNormBridge),
-                    "ln2": ("post_attention_layernorm", LayerNormBridge),
-                    "attn": ("attention", AttentionBridge),
-                    "mlp": ("mlp", MLPBridge),
+            "embed": EmbeddingBridge(name="gpt_neox.embed_in"),
+            "pos_embed": EmbeddingBridge(name="gpt_neox.embed_pos"),
+            "blocks": BlockBridge(
+                name="gpt_neox.layers",
+                submodules={
+                    "ln1": LayerNormBridge(name="input_layernorm"),
+                    "ln2": LayerNormBridge(name="post_attention_layernorm"),
+                    "attn": AttentionBridge(name="attention"),
+                    "mlp": MLPBridge(name="mlp"),
                 },
             ),
-            "ln_final": ("gpt_neox.final_layer_norm", LayerNormBridge),
-            "unembed": ("embed_out", UnembeddingBridge),
+            "ln_final": LayerNormBridge(name="gpt_neox.final_layer_norm"),
+            "unembed": UnembeddingBridge(name="embed_out"),
         }

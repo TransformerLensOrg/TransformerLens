@@ -3,13 +3,10 @@
 This module contains the bridge component for embedding layers.
 """
 
-from typing import Any
+from typing import Any, Dict, Optional
 
 import torch
-import torch.nn as nn
 
-from transformer_lens.hook_points import HookPoint
-from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
@@ -18,36 +15,24 @@ from transformer_lens.model_bridge.generalized_components.base import (
 class EmbeddingBridge(GeneralizedComponent):
     """Embedding bridge that wraps transformer embedding layers.
 
-    This component provides hook points for:
-    - Token embeddings
-    - Position embeddings
-    - Combined embeddings
+    This component provides standardized input/output hooks.
     """
 
     def __init__(
         self,
-        original_component: nn.Module,
         name: str,
-        architecture_adapter: ArchitectureAdapter,
+        config: Optional[Any] = None,
+        submodules: Optional[Dict[str, GeneralizedComponent]] = {},
     ):
         """Initialize the embedding bridge.
 
         Args:
-            original_component: The original embedding component to wrap
             name: The name of this component
-            architecture_adapter: Optional architecture adapter for component-specific operations
+            config: Optional configuration (unused for EmbeddingBridge)
+            submodules: Dictionary of GeneralizedComponent submodules to register
         """
-        super().__init__(original_component, name, architecture_adapter)
-
-        # Initialize hook points
-        self.hook_embed = HookPoint()  # Token embeddings
-        self.hook_pos = HookPoint()  # Position embeddings
-        self.hook_output = HookPoint()  # Combined embeddings
-
-        # Set hook names
-        self.hook_embed.name = f"{name}.embed"
-        self.hook_pos.name = f"{name}.pos"
-        self.hook_output.name = f"{name}.output"
+        super().__init__(name, config, submodules=submodules)
+        # No extra hooks; use only hook_in and hook_out
 
     def forward(
         self,
@@ -65,8 +50,14 @@ class EmbeddingBridge(GeneralizedComponent):
         Returns:
             Embedded output
         """
-        # Forward through original component
-        # Remove position_ids if not supported
+        if self.original_component is None:
+            raise RuntimeError(
+                f"Original component not set for {self.name}. Call set_original_component() first."
+            )
+
+        # Apply input hook
+        input_ids = self.hook_in(input_ids)
+
         if (
             not hasattr(self.original_component, "forward")
             or "position_ids" not in self.original_component.forward.__code__.co_varnames
@@ -76,28 +67,7 @@ class EmbeddingBridge(GeneralizedComponent):
         else:
             output = self.original_component(input_ids, position_ids=position_ids, **kwargs)
 
-        # Apply hook to final output
-        output = self.hook_output(output)
-
-        # Store hook outputs
-        self.hook_outputs.update({"output": output})
+        # Apply output hook
+        output = self.hook_out(output)
 
         return output
-
-    @classmethod
-    def wrap_component(
-        cls, component: nn.Module, name: str, architecture_adapter: ArchitectureAdapter
-    ) -> nn.Module:
-        """Wrap a component with this bridge if it's an embedding layer.
-
-        Args:
-            component: The component to wrap
-            name: The name of the component
-            architecture_adapter: The architecture adapter instance
-
-        Returns:
-            The wrapped component if it's an embedding layer, otherwise the original component
-        """
-        if name.endswith(".embed") or name.endswith(".embed_tokens"):
-            return cls(component, name, architecture_adapter)
-        return component

@@ -85,6 +85,35 @@ def test_translate_transformer_lens_path(adapter: Gemma3ArchitectureAdapter) -> 
     assert adapter.translate_transformer_lens_path("blocks.0.attn") == "model.layers.0.self_attn"
     assert adapter.translate_transformer_lens_path("blocks.0.mlp") == "model.layers.0.mlp"
 
+    # Test deeper subcomponent paths
+    assert (
+        adapter.translate_transformer_lens_path("blocks.0.attn.W_Q")
+        == "model.layers.0.self_attn.q_proj"
+    )
+    assert (
+        adapter.translate_transformer_lens_path("blocks.0.attn.W_K")
+        == "model.layers.0.self_attn.k_proj"
+    )
+    assert (
+        adapter.translate_transformer_lens_path("blocks.0.attn.W_V")
+        == "model.layers.0.self_attn.v_proj"
+    )
+    assert (
+        adapter.translate_transformer_lens_path("blocks.0.attn.W_O")
+        == "model.layers.0.self_attn.o_proj"
+    )
+    assert (
+        adapter.translate_transformer_lens_path("blocks.0.mlp.W_gate")
+        == "model.layers.0.mlp.gate_proj"
+    )
+    assert (
+        adapter.translate_transformer_lens_path("blocks.0.mlp.W_in") == "model.layers.0.mlp.up_proj"
+    )
+    assert (
+        adapter.translate_transformer_lens_path("blocks.0.mlp.W_out")
+        == "model.layers.0.mlp.down_proj"
+    )
+
 
 def test_translate_transformer_lens_path_last_component(adapter: Gemma3ArchitectureAdapter) -> None:
     """Test path translation with last_component_only=True."""
@@ -117,6 +146,99 @@ def test_translate_transformer_lens_path_last_component(adapter: Gemma3Architect
         adapter.translate_transformer_lens_path("blocks.0.mlp", last_component_only=True) == "mlp"
     )
 
+    # Test deeper subcomponent paths with last_component_only
+    assert (
+        adapter.translate_transformer_lens_path("blocks.0.attn.W_Q", last_component_only=True)
+        == "q_proj"
+    )
+    assert (
+        adapter.translate_transformer_lens_path("blocks.0.attn.W_K", last_component_only=True)
+        == "k_proj"
+    )
+    assert (
+        adapter.translate_transformer_lens_path("blocks.0.attn.W_V", last_component_only=True)
+        == "v_proj"
+    )
+    assert (
+        adapter.translate_transformer_lens_path("blocks.0.attn.W_O", last_component_only=True)
+        == "o_proj"
+    )
+    assert (
+        adapter.translate_transformer_lens_path("blocks.0.mlp.W_gate", last_component_only=True)
+        == "gate_proj"
+    )
+    assert (
+        adapter.translate_transformer_lens_path("blocks.0.mlp.W_in", last_component_only=True)
+        == "up_proj"
+    )
+    assert (
+        adapter.translate_transformer_lens_path("blocks.0.mlp.W_out", last_component_only=True)
+        == "down_proj"
+    )
+
+
+def test_component_mapping_structure(adapter: Gemma3ArchitectureAdapter) -> None:
+    """Test that the component mapping has the expected structure."""
+    mapping = adapter.get_component_mapping()
+
+    # Test that we have the expected top-level components
+    assert "embed" in mapping
+    assert "blocks" in mapping
+    assert "ln_final" in mapping
+    assert "unembed" in mapping
+
+    # Test that components are bridge instances
+    from transformer_lens.model_bridge.generalized_components import (
+        AttentionBridge,
+        BlockBridge,
+        EmbeddingBridge,
+        LayerNormBridge,
+        LinearBridge,
+        MLPBridge,
+        UnembeddingBridge,
+    )
+
+    assert isinstance(mapping["embed"], EmbeddingBridge)
+    assert isinstance(mapping["blocks"], BlockBridge)
+    assert isinstance(mapping["ln_final"], LayerNormBridge)
+    assert isinstance(mapping["unembed"], UnembeddingBridge)
+
+    # Test that blocks has submodules
+    blocks_bridge = mapping["blocks"]
+    assert hasattr(blocks_bridge, "submodules")
+    assert "ln1" in blocks_bridge.submodules
+    assert "ln2" in blocks_bridge.submodules
+    assert "attn" in blocks_bridge.submodules
+    assert "mlp" in blocks_bridge.submodules
+
+    # Test that the submodules are the expected types
+    assert isinstance(blocks_bridge.submodules["ln1"], LayerNormBridge)
+    assert isinstance(blocks_bridge.submodules["ln2"], LayerNormBridge)
+    assert isinstance(blocks_bridge.submodules["attn"], AttentionBridge)
+    assert isinstance(blocks_bridge.submodules["mlp"], MLPBridge)
+
+    # Test that attention has submodules
+    attn_bridge = blocks_bridge.submodules["attn"]
+    assert hasattr(attn_bridge, "submodules")
+    assert "W_Q" in attn_bridge.submodules
+    assert "W_K" in attn_bridge.submodules
+    assert "W_V" in attn_bridge.submodules
+    assert "W_O" in attn_bridge.submodules
+    assert isinstance(attn_bridge.submodules["W_Q"], LinearBridge)
+    assert isinstance(attn_bridge.submodules["W_K"], LinearBridge)
+    assert isinstance(attn_bridge.submodules["W_V"], LinearBridge)
+    assert isinstance(attn_bridge.submodules["W_O"], LinearBridge)
+
+    # Test that MLP has submodules
+    mlp_bridge = blocks_bridge.submodules["mlp"]
+    assert hasattr(mlp_bridge, "submodules")
+    assert "W_gate" in mlp_bridge.submodules
+    assert "W_in" in mlp_bridge.submodules
+    assert "W_out" in mlp_bridge.submodules
+    assert isinstance(mlp_bridge.submodules["W_gate"], LinearBridge)
+    assert isinstance(mlp_bridge.submodules["W_in"], LinearBridge)
+    assert isinstance(mlp_bridge.submodules["W_out"], LinearBridge)
+
 
 def test_get_component(adapter: Gemma3ArchitectureAdapter, model: MockGemma3Model) -> None:
     """Test getting components from the model."""
@@ -143,8 +265,19 @@ def test_invalid_paths(adapter: Gemma3ArchitectureAdapter) -> None:
     with pytest.raises(ValueError, match="Component not_found not found in component mapping"):
         adapter.translate_transformer_lens_path("not_found")
 
-    with pytest.raises(ValueError, match="Expected index, got invalid"):
+    with pytest.raises(ValueError, match="Expected item index, got invalid"):
         adapter.translate_transformer_lens_path("blocks.invalid")
 
     with pytest.raises(ValueError, match="Component not_found not found in blocks components"):
         adapter.translate_transformer_lens_path("blocks.0.not_found")
+
+
+def test_get_component_invalid_paths(
+    adapter: Gemma3ArchitectureAdapter, model: MockGemma3Model
+) -> None:
+    """Test handling of invalid paths in get_component."""
+    with pytest.raises(ValueError, match="Component not_found not found in component mapping"):
+        adapter.get_component(model, "not_found")
+
+    with pytest.raises(ValueError, match="Expected item index, got invalid"):
+        adapter.get_component(model, "blocks.invalid")

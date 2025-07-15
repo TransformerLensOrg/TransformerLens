@@ -3,47 +3,36 @@
 This module contains the bridge component for unembedding layers.
 """
 
-from typing import Any
+from typing import Any, Dict, Optional
 
 import torch
-import torch.nn as nn
 
-from transformer_lens.hook_points import HookPoint
-from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
 
 
 class UnembeddingBridge(GeneralizedComponent):
-    """Bridge component for unembedding layers.
+    """Unembedding bridge that wraps transformer unembedding layers.
 
-    This component wraps an unembedding layer from a remote model and provides a consistent interface
-    for accessing its weights and performing unembedding operations.
+    This component provides standardized input/output hooks.
     """
 
     def __init__(
         self,
-        original_component: nn.Module,
         name: str,
-        architecture_adapter: ArchitectureAdapter,
+        config: Optional[Any] = None,
+        submodules: Optional[Dict[str, GeneralizedComponent]] = {},
     ):
         """Initialize the unembedding bridge.
 
         Args:
-            original_component: The original unembedding component to wrap
-            name: The name of the component in the model
-            architecture_adapter: The architecture adapter instance
+            name: The name of this component
+            config: Optional configuration (unused for UnembeddingBridge)
+            submodules: Dictionary of GeneralizedComponent submodules to register
         """
-        super().__init__(original_component, name, architecture_adapter)
-
-        # Initialize hook points
-        self.hook_input = HookPoint()  # Input to projection
-        self.hook_logits = HookPoint()  # Logits output
-
-        # Set hook names
-        self.hook_input.name = f"{name}.input"
-        self.hook_logits.name = f"{name}.logits"
+        super().__init__(name, config, submodules=submodules)
+        # No extra hooks; use only hook_in and hook_out
 
     def forward(
         self,
@@ -57,36 +46,15 @@ class UnembeddingBridge(GeneralizedComponent):
             **kwargs: Additional arguments to pass to the original component
 
         Returns:
-            Logits output
+            Unembedded output (logits)
         """
-        # Apply input hook
-        hidden_states = self.hook_input(hidden_states)
+        if self.original_component is None:
+            raise RuntimeError(
+                f"Original component not set for {self.name}. Call set_original_component() first."
+            )
 
-        # Forward through original component
+        hidden_states = self.hook_in(hidden_states)
         output = self.original_component(hidden_states, **kwargs)
-
-        # Apply logits hook
-        output = self.hook_logits(output)
-
-        # Store hook outputs
-        self.hook_outputs.update({"output": output})
+        output = self.hook_out(output)
 
         return output
-
-    @classmethod
-    def wrap_component(
-        cls, component: nn.Module, name: str, architecture_adapter: ArchitectureAdapter
-    ) -> nn.Module:
-        """Wrap a component with this bridge if it's an unembedding layer.
-
-        Args:
-            component: The component to wrap
-            name: The name of the component
-            architecture_adapter: The architecture adapter instance
-
-        Returns:
-            The wrapped component if it's an unembedding layer, otherwise the original component
-        """
-        if name.endswith(".unembed") or name.endswith(".lm_head"):
-            return cls(component, name, architecture_adapter)
-        return component

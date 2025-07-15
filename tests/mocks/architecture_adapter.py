@@ -16,33 +16,54 @@ class MockArchitectureAdapter(ArchitectureAdapter):
     """Mock architecture adapter for testing."""
 
     def __init__(self, cfg=None):
+        if cfg is None:
+            # Create a minimal config for testing
+            cfg = type(
+                "MockConfig",
+                (),
+                {"d_mlp": 512, "intermediate_size": 512, "default_prepend_bos": True},
+            )()
         super().__init__(cfg)
+        # Use actual bridge instances instead of tuples
         self.component_mapping = {
-            "embed": ("embed", EmbeddingBridge),
-            "unembed": ("unembed", EmbeddingBridge),
-            "ln_final": ("ln_final", LayerNormBridge),
-            "blocks": (
-                "blocks",
-                BlockBridge,
-                {
-                    "ln1": ("ln1", LayerNormBridge),
-                    "ln2": ("ln2", LayerNormBridge),
-                    "attn": ("attn", AttentionBridge),
-                    "mlp": ("mlp", MLPBridge),
+            "embed": EmbeddingBridge(name="embed"),
+            "unembed": EmbeddingBridge(name="unembed"),
+            "ln_final": LayerNormBridge(name="ln_final"),
+            "blocks": BlockBridge(
+                name="blocks",
+                submodules={
+                    "ln1": LayerNormBridge(name="ln1"),
+                    "ln2": LayerNormBridge(name="ln2"),
+                    "attn": AttentionBridge(name="attn"),
+                    "mlp": MLPBridge(name="mlp"),
                 },
             ),
-            "outer_blocks": (
-                "outer_blocks",
-                BlockBridge,
-                {
-                    "inner_blocks": (
-                        "inner_blocks",
-                        BlockBridge,
-                        {"ln": ("ln", LayerNormBridge)},
+            "outer_blocks": BlockBridge(
+                name="outer_blocks",
+                submodules={
+                    "inner_blocks": BlockBridge(
+                        name="inner_blocks",
+                        submodules={"ln": LayerNormBridge(name="ln")},
                     )
                 },
             ),
         }
+
+        # Set up the submodules properly by registering them as PyTorch modules
+        self._setup_mock_submodules()
+
+    def _setup_mock_submodules(self):
+        """Set up submodules for testing by registering them as PyTorch modules."""
+        for component_name, component in self.component_mapping.items():
+            self._register_submodules(component)
+
+    def _register_submodules(self, component):
+        """Recursively register submodules for a component."""
+        if component.submodules:
+            for submodule_name, submodule in component.submodules.items():
+                component.add_module(submodule_name, submodule)
+                # Recursively register nested submodules
+                self._register_submodules(submodule)
 
 
 @pytest.fixture

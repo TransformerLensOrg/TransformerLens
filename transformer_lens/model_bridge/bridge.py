@@ -23,10 +23,10 @@ import torch.nn as nn
 
 from transformer_lens import utils
 from transformer_lens.ActivationCache import ActivationCache
+from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
-from transformer_lens.model_bridge.component_creation import (
-    create_and_replace_components_from_mapping,
-)
+from transformer_lens.model_bridge.component_setup import set_original_components
+from transformer_lens.model_bridge.types import ComponentMapping
 
 if TYPE_CHECKING:
     from transformer_lens.ActivationCache import ActivationCache
@@ -50,17 +50,56 @@ class TransformerBridge(nn.Module):
         """
         super().__init__()
         self.original_model: nn.Module = model
-        self.bridge = adapter
-        self.cfg = adapter.user_cfg
+        self.adapter = adapter
+        self.cfg = adapter.cfg
         self.tokenizer = tokenizer
 
         if not hasattr(adapter, "component_mapping") or adapter.component_mapping is None:
             raise ValueError("Adapter must have a component_mapping attribute")
 
-        # Create and replace components
-        create_and_replace_components_from_mapping(
-            self.bridge.get_component_mapping(), self.original_model, self.bridge, bridge=self
-        )
+        # Set original components on the pre-created bridge components
+        set_original_components(self, self.adapter, self.original_model)
+
+    @property
+    def hook_dict(self) -> dict[str, HookPoint]:
+        """Get all HookPoint objects in the model for compatibility with HookedTransformer."""
+        hooks = {}
+        visited = set()  # Move visited set outside the recursive function
+
+        def collect_hookpoints(module: nn.Module, prefix: str = "") -> None:
+            """Recursively collect all HookPoint objects."""
+            obj_id = id(module)
+            if obj_id in visited:
+                return
+            visited.add(obj_id)
+
+            for attr_name in dir(module):
+                if attr_name.startswith("_"):
+                    continue
+                try:
+                    attr = getattr(module, attr_name)
+                except Exception:
+                    continue
+
+                name = f"{prefix}.{attr_name}" if prefix else attr_name
+                if isinstance(attr, HookPoint):
+                    # Set the name on the HookPoint so it can be used in caching
+                    attr.name = name
+                    hooks[name] = attr
+                elif isinstance(attr, nn.Module) and attr is not module:
+                    collect_hookpoints(attr, name)
+                elif isinstance(attr, (list, tuple)):
+                    for i, item in enumerate(attr):
+                        if isinstance(item, nn.Module):
+                            collect_hookpoints(item, f"{name}[{i}]")
+
+            # Also traverse named_children() to catch ModuleList and other containers
+            for child_name, child_module in module.named_children():
+                child_path = f"{prefix}.{child_name}" if prefix else child_name
+                collect_hookpoints(child_module, child_path)
+
+        collect_hookpoints(self, "")
+        return hooks
 
     def __getattr__(self, name: str) -> Any:
         """Provide a clear error message for missing attributes."""
@@ -82,15 +121,17 @@ class TransformerBridge(nn.Module):
         """
         indent_str = "  " * indent
         try:
-            comp = self.bridge.get_component(self.original_model, path)
+            comp = self.adapter.get_component(self.original_model, path)
             if hasattr(comp, "original_component"):
+                if comp.original_component is None:
+                    return f"{indent_str}{name}: <error: original component not set>"
                 return f"{indent_str}{name}: {type(comp).__name__}({type(comp.original_component).__name__})"
             return f"{indent_str}{name}: {type(comp).__name__}"
         except Exception as e:
             return f"{indent_str}{name}: <error: {e}>"
 
     def _format_component_mapping(
-        self, mapping: dict, indent: int = 0, prepend: str | None = None
+        self, mapping: ComponentMapping, indent: int = 0, prepend: str | None = None
     ) -> list[str]:
         """Format a component mapping dictionary.
 
@@ -105,29 +146,23 @@ class TransformerBridge(nn.Module):
         lines = []
         for name, value in mapping.items():
             path = f"{prepend}.{name}" if prepend else name
-            if isinstance(value, tuple):
-                # Handle both 2-tuple (RemoteImport) and 3-tuple (BlockMapping) structures
-                if len(value) == 3:
-                    # This is a BlockMapping (path, bridge_type, sub_mapping)
-                    _, _, sub_mapping = value
-                    if isinstance(sub_mapping, dict):
-                        # This is a BlockMapping (like blocks) - format recursively
-                        path = f"{path}.0"
-                        lines.append(self._format_single_component(name, path, indent))
-                        # Recursively format subcomponents with updated prepend
-                        sub_lines = self._format_component_mapping(sub_mapping, indent + 1, path)
-                        lines.extend(sub_lines)
-                    else:
-                        # This should not happen with BlockMapping
-                        lines.append(self._format_single_component(name, path, indent))
-                elif len(value) == 2:
-                    # This is a RemoteImport (path, bridge_type) - format as single component
-                    lines.append(self._format_single_component(name, path, indent))
-                else:
-                    # Unknown tuple structure
-                    lines.append(self._format_single_component(name, path, indent))
+
+            if hasattr(value, "_modules") and hasattr(value, "name"):
+                # This is a bridge component instance
+                lines.append(self._format_single_component(name, path, indent))
+
+                # Check if it has submodules (like BlockBridge)
+                submodules = value.submodules
+
+                if submodules:
+                    # For list items (like blocks), add .0 to the path to indicate the first item
+                    subpath = f"{path}.0" if value.is_list_item else path
+                    # Recursively format submodules
+                    sub_lines = self._format_component_mapping(submodules, indent + 1, subpath)
+                    lines.extend(sub_lines)
+
             else:
-                # For regular components, use prepend if provided
+                # For other types, use prepend if provided
                 lines.append(self._format_single_component(name, path, indent))
         return lines
 
@@ -138,7 +173,7 @@ class TransformerBridge(nn.Module):
             A string describing the bridge's components
         """
         lines = ["TransformerBridge:"]
-        mapping = self.bridge.get_component_mapping()
+        mapping = self.adapter.get_component_mapping()
         lines.extend(self._format_component_mapping(mapping, indent=1))
         return "\n".join(lines)
 
@@ -192,7 +227,16 @@ class TransformerBridge(nn.Module):
         )["input_ids"]
 
         if move_to_device:
-            device = next(self.original_model.parameters()).device
+            # Try to get device from original model parameters, fallback to bridge components
+            try:
+                device = next(self.original_model.parameters()).device
+            except StopIteration:
+                # If original model has no parameters, try to get from bridge components
+                try:
+                    device = next(self.parameters()).device
+                except StopIteration:
+                    # If no parameters at all, default to CPU
+                    device = torch.device("cpu")
             tokens = tokens.to(device)
 
         return tokens
@@ -438,7 +482,25 @@ class TransformerBridge(nn.Module):
 
         def make_cache_hook(name: str):
             def cache_hook(tensor: torch.Tensor, *, hook: Any) -> torch.Tensor:
-                cache[name] = tensor.detach().cpu()
+                # Handle different types of outputs from bridge components
+                if tensor is None:
+                    cache[name] = None
+                elif isinstance(tensor, torch.Tensor):
+                    cache[name] = tensor.detach().cpu()
+                elif isinstance(tensor, tuple):
+                    # For tuple outputs, cache the first element (usually hidden states)
+                    # and store the full tuple structure
+                    if len(tensor) > 0 and isinstance(tensor[0], torch.Tensor):
+                        cache[name] = tensor[0].detach().cpu()
+                        # Also cache the full tuple structure with a special key
+                        cache[f"{name}_full_tuple"] = tuple(
+                            t.detach().cpu() if isinstance(t, torch.Tensor) else t for t in tensor
+                        )
+                    else:
+                        cache[name] = tensor
+                else:
+                    # For other types, store as-is
+                    cache[name] = tensor
                 return tensor
 
             return cache_hook
@@ -460,6 +522,8 @@ class TransformerBridge(nn.Module):
 
                 name = f"{prefix}.{attr_name}" if prefix else attr_name
                 if isinstance(attr, HookPoint):
+                    # Set the name on the HookPoint so it can be used in caching
+                    attr.name = name
                     hooks.append((attr, name))
                 elif isinstance(attr, nn.Module):
                     collect_hookpoints(attr, name)
@@ -468,7 +532,13 @@ class TransformerBridge(nn.Module):
                         if isinstance(item, nn.Module):
                             collect_hookpoints(item, f"{name}[{i}]")
 
-        collect_hookpoints(self.original_model)
+            # Also traverse named_children() to catch ModuleList and other containers
+            for child_name, child_module in module.named_children():
+                child_path = f"{prefix}.{child_name}" if prefix else child_name
+                collect_hookpoints(child_module, child_path)
+
+        # Collect hooks from bridge components (these have the clean TransformerLens paths)
+        collect_hookpoints(self, "")
 
         # Register hooks
         for hp, name in hooks:
@@ -512,7 +582,6 @@ class TransformerBridge(nn.Module):
                 output = output.logits
 
         finally:
-            # Remove hooks
             for hp, _ in hooks:
                 hp.remove_hooks()
 
@@ -657,8 +726,3 @@ class TransformerBridge(nn.Module):
             Self for chaining
         """
         return self.to(torch.device("mps"))  # type: ignore
-
-    @property
-    def blocks(self):
-        # Use the adapter to get the blocks component, for flexibility
-        return self.bridge.get_component(self.original_model, "blocks")

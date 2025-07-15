@@ -20,13 +20,13 @@ from transformer_lens.model_bridge.generalized_components import (
 class PhiArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for Phi models."""
 
-    def __init__(self, user_cfg: Any) -> None:
+    def __init__(self, cfg: Any) -> None:
         """Initialize the Phi architecture adapter.
 
         Args:
-            user_cfg: The configuration object.
+            cfg: The configuration object.
         """
-        super().__init__(user_cfg)
+        super().__init__(cfg)
 
         self.conversion_rules = WeightConversionSet(
             {
@@ -83,17 +83,16 @@ class PhiArchitectureAdapter(ArchitectureAdapter):
 
         # Set up component mapping
         self.component_mapping = {
-            "embed": ("model.embed_tokens", EmbeddingBridge),
-            "blocks": (
-                "model.layers",
-                BlockBridge,
-                {
-                    "ln1": ("input_layernorm", LayerNormBridge),
-                    "ln2": ("input_layernorm", LayerNormBridge),
-                    "attn": ("self_attn", AttentionBridge),
-                    "mlp": ("mlp", MLPBridge),
+            "embed": EmbeddingBridge(name="model.embed_tokens"),
+            "blocks": BlockBridge(
+                name="model.layers",
+                submodules={
+                    "ln1": LayerNormBridge(name="input_layernorm"),
+                    "ln2": LayerNormBridge(name="input_layernorm"),
+                    "attn": AttentionBridge(name="self_attn"),
+                    "mlp": MLPBridge(name="mlp"),
                 },
             ),
-            "ln_final": ("model.final_layernorm", LayerNormBridge),
-            "unembed": ("lm_head", UnembeddingBridge),
+            "ln_final": LayerNormBridge(name="model.final_layernorm"),
+            "unembed": UnembeddingBridge(name="lm_head"),
         }

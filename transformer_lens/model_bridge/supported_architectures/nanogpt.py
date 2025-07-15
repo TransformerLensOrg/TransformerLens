@@ -9,6 +9,7 @@ from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
 )
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
+    BlockBridge,
     EmbeddingBridge,
     LayerNormBridge,
     MLPBridge,
@@ -19,13 +20,13 @@ from transformer_lens.model_bridge.generalized_components import (
 class NanogptArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for NanoGPT models."""
 
-    def __init__(self, user_cfg: Any) -> None:
+    def __init__(self, cfg: Any) -> None:
         """Initialize the NanoGPT architecture adapter.
 
         Args:
-            user_cfg: The configuration object.
+            cfg: The configuration object.
         """
-        super().__init__(user_cfg)
+        super().__init__(cfg)
 
         self.conversion_rules = WeightConversionSet(
             {
@@ -83,20 +84,19 @@ class NanogptArchitectureAdapter(ArchitectureAdapter):
 
         # Set up component mapping
         self.component_mapping = {
-            "embed": ("transformer.wte", EmbeddingBridge),  # Word token embeddings
-            "pos_embed": ("transformer.wpe", EmbeddingBridge),  # Positional embeddings
-            "blocks": (
-                "transformer.h",  # Base path for blocks
-                AttentionBridge,
-                {
-                    "ln1": ("ln_1", LayerNormBridge),  # Pre-attention layer norm
-                    "ln2": ("ln_2", LayerNormBridge),  # Pre-MLP layer norm
-                    "attn": ("attn", AttentionBridge),  # Full attention module
-                    "mlp": ("mlp", MLPBridge),  # Full MLP module
+            "embed": EmbeddingBridge(name="transformer.wte"),  # Word token embeddings
+            "pos_embed": EmbeddingBridge(name="transformer.wpe"),  # Positional embeddings
+            "blocks": BlockBridge(
+                name="transformer.h",  # Base path for blocks
+                submodules={
+                    "ln1": LayerNormBridge(name="ln_1"),  # Pre-attention layer norm
+                    "ln2": LayerNormBridge(name="ln_2"),  # Pre-MLP layer norm
+                    "attn": AttentionBridge(name="attn"),  # Full attention module
+                    "mlp": MLPBridge(name="mlp"),  # Full MLP module
                 },
             ),
-            "ln_final": ("transformer.ln_f", LayerNormBridge),  # Final layer norm
-            "unembed": ("lm_head", UnembeddingBridge),  # Language model head
+            "ln_final": LayerNormBridge(name="transformer.ln_f"),  # Final layer norm
+            "unembed": UnembeddingBridge(name="lm_head"),  # Language model head
         }
 
     def convert_weights(self, remote_module: Any) -> dict[str, torch.Tensor]:
