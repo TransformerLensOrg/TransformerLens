@@ -64,10 +64,10 @@ class TransformerBridge(nn.Module):
     def hook_dict(self) -> dict[str, HookPoint]:
         """Get all HookPoint objects in the model for compatibility with HookedTransformer."""
         hooks = {}
+        visited = set()  # Move visited set outside the recursive function
         
         def collect_hookpoints(module: nn.Module, prefix: str = "") -> None:
             """Recursively collect all HookPoint objects."""
-            visited = set()
             obj_id = id(module)
             if obj_id in visited:
                 return
