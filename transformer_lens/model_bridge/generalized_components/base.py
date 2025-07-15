@@ -68,7 +68,9 @@ class GeneralizedComponent(nn.Module):
         elif hook_name == "input":
             self.hook_in.add_hook(hook_fn)
         else:
-            raise ValueError(f"Hook name '{hook_name}' not supported. Supported names are 'output' and 'input'.")
+            raise ValueError(
+                f"Hook name '{hook_name}' not supported. Supported names are 'output' and 'input'."
+            )
 
     def remove_hooks(self, hook_name: str | None = None) -> None:
         """Remove hooks (HookedTransformer-compatible interface).
@@ -84,7 +86,9 @@ class GeneralizedComponent(nn.Module):
         elif hook_name == "input":
             self.hook_in.remove_hooks()
         else:
-            raise ValueError(f"Hook name '{hook_name}' not supported. Supported names are 'output' and 'input'.")
+            raise ValueError(
+                f"Hook name '{hook_name}' not supported. Supported names are 'output' and 'input'."
+            )
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         """Generic forward pass for bridge components with input/output hooks."""
