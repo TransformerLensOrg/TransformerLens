@@ -14,6 +14,9 @@ from transformers import (
     PreTrainedTokenizerBase,
 )
 
+from transformer_lens.factories.architecture_adapter_factory import (
+    ArchitectureAdapterFactory,
+)
 from transformer_lens.model_bridge.bridge import TransformerBridge
 from transformer_lens.utils import get_tokenizer_with_bos
 
@@ -37,7 +40,6 @@ def boot(
     Returns:
         The bridge to the loaded model.
     """
-    from transformer_lens.model_bridge import ArchitectureAdapterFactory
 
     hf_config = AutoConfig.from_pretrained(model_name, **kwargs)
     adapter = ArchitectureAdapterFactory.select_architecture_adapter(hf_config)

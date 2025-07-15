@@ -37,23 +37,11 @@ from transformer_lens.model_bridge.types import (
     TransformerLensPath,
 )
 
-from transformer_lens.model_bridge.sources import transformers
-
-
-def __getattr__(name):
-    """Lazy import for ArchitectureAdapterFactory to avoid circular imports."""
-    if name == "ArchitectureAdapterFactory":
-        from transformer_lens.factories.architecture_adapter_factory import (
-            ArchitectureAdapterFactory,
-        )
-
-        return ArchitectureAdapterFactory
-    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
+import transformer_lens.model_bridge.sources.transformers
 
 
 __all__ = [
     "ArchitectureAdapter",
-    "ArchitectureAdapterFactory",
     "TransformerBridge",
     "AttentionBridge",
     "BlockBridge",
