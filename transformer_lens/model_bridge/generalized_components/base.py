@@ -42,9 +42,9 @@ class GeneralizedComponent(nn.Module):
         self.hook_outputs: dict[str, Any] = {}
         self._hook_tracker = None
 
-        # Standardized hooks for all bridge components - use add_module to ensure proper registration
-        self.add_module("hook_in", HookPoint())
-        self.add_module("hook_out", HookPoint())
+        # Standardized hooks for all bridge components
+        self.hook_in = HookPoint()
+        self.hook_out = HookPoint()
 
     def set_original_component(self, original_component: nn.Module) -> None:
         """Set the original component that this bridge wraps.
