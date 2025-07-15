@@ -6,7 +6,7 @@ This module contains the base class for architecture adapters that map between d
 from typing import Any, cast
 
 import torch
-from transformers.modeling_utils import PreTrainedModel
+from torch import nn
 
 from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
     WeightConversionSet,
@@ -307,7 +307,7 @@ class ArchitectureAdapter:
             return remote_path.split(".")[-1]
         return remote_path
 
-    def convert_weights(self, hf_model: PreTrainedModel) -> dict[str, torch.Tensor]:
+    def convert_weights(self, hf_model: nn.Module) -> dict[str, torch.Tensor]:
         """Convert the weights from the HuggingFace format to the HookedTransformer format.
 
         Args:
