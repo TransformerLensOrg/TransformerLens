@@ -57,5 +57,5 @@ class MLPBridge(GeneralizedComponent):
         new_args = (hidden_states,) + args[1:]
         output = self.original_component(*new_args, **kwargs)
         output = self.hook_out(output)
-        self.hook_outputs.update({"output": output})
+
         return output

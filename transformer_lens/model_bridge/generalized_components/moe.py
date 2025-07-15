@@ -56,5 +56,5 @@ class MoEBridge(GeneralizedComponent):
             args = (self.hook_in(args[0]),) + args[1:]
         output = self.original_component(*args, **kwargs)
         output = self.hook_out(output)
-        self.hook_outputs.update({"output": output})
+
         return output

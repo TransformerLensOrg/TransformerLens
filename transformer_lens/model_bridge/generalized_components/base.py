@@ -38,9 +38,6 @@ class GeneralizedComponent(nn.Module):
         self.name = name
         self.config = config
         self.submodules = submodules or {}
-        self.hooks: dict[str, list[Callable[..., torch.Tensor]]] = {}
-        self.hook_outputs: dict[str, Any] = {}
-        self._hook_tracker = None
 
         # Standardized hooks for all bridge components
         self.hook_in = HookPoint()
@@ -59,93 +56,9 @@ class GeneralizedComponent(nn.Module):
         """Get the original component."""
         return self._modules.get("_original_component", None)
 
-    def set_hook_tracker(self, tracker: Any) -> None:
-        """Set the hook tracker for this component.
 
-        Args:
-            tracker: The hook tracker instance
-        """
-        self._hook_tracker = tracker
 
-    def get_hook_tracker(self) -> Any | None:
-        """Get the hook tracker for this component.
 
-        Returns:
-            The hook tracker instance if set, None otherwise
-        """
-        return self._hook_tracker
-
-    def register_hook(self, hook_name: str, hook_fn: Callable[..., torch.Tensor]) -> None:
-        """Register a hook function for a specific hook point.
-
-        Args:
-            hook_name: Name of the hook point
-            hook_fn: Function to call at this hook point
-        """
-        if hook_name not in self.hooks:
-            self.hooks[hook_name] = []
-        self.hooks[hook_name].append(hook_fn)
-
-        # If we have a hook tracker, register the hook there too
-        if self._hook_tracker is not None:
-            self._hook_tracker.register_component_hook(self.name, hook_name, hook_fn)
-
-    def remove_hook(self, hook_name: str, hook_fn: Callable[..., torch.Tensor]) -> None:
-        """Remove a previously registered hook.
-
-        Args:
-            hook_name: Name of the hook point
-            hook_fn: Function to remove
-        """
-        if hook_name in self.hooks:
-            self.hooks[hook_name].remove(hook_fn)
-            if not self.hooks[hook_name]:  # If no hooks left, remove the entry
-                del self.hooks[hook_name]
-
-    def execute_hooks(self, hook_name: str, tensor: torch.Tensor | tuple) -> torch.Tensor | tuple:
-        """Execute all hooks registered for a specific hook point.
-
-        Args:
-            hook_name: Name of the hook point
-            tensor: The tensor or tuple to pass through the hooks
-
-        Returns:
-            The result of the last hook execution, or the input tensor if no hooks
-        """
-        # Store the input tensor as the hook output
-        self.hook_outputs[hook_name] = tensor
-
-        # Execute hooks if any
-        if hook_name in self.hooks:
-            result = tensor
-            for hook in self.hooks[hook_name]:
-                # For tuple outputs (like attention), pass the first element to hooks
-                if isinstance(result, tuple):
-                    hooked_first = hook(result[0], hook=self)  # Pass hook object as second argument
-                    result = (hooked_first,) + result[1:]
-                else:
-                    result = hook(result, hook=self)  # Pass hook object as second argument
-                # Update the hook output with the modified tensor
-                self.hook_outputs[hook_name] = result
-            return result
-
-        return tensor
-
-    def get_hook_output(self, hook_name: str) -> Any:
-        """Get the output from a specific hook point.
-
-        Args:
-            hook_name: Name of the hook point
-
-        Returns:
-            The stored output for this hook point
-        """
-        return self.hook_outputs.get(hook_name)
-
-    def clear_hooks(self) -> None:
-        """Clear all registered hooks."""
-        self.hooks.clear()
-        self.hook_outputs.clear()
 
     def add_hook(self, hook_fn: Callable[..., torch.Tensor], hook_name: str = "output") -> None:
         """Add a hook function (HookedTransformer-compatible interface).
@@ -154,11 +67,11 @@ class GeneralizedComponent(nn.Module):
             hook_fn: Function to call at this hook point
             hook_name: Name of the hook point (defaults to "output")
         """
-        self.register_hook(hook_name, hook_fn)
-
-        # Also register with the actual HookPoint for the default "output" hook
+        # Only support "output" hook for now, which maps to hook_out
         if hook_name == "output":
             self.hook_out.add_hook(hook_fn)
+        else:
+            raise ValueError(f"Hook name '{hook_name}' not supported. Only 'output' is supported.")
 
     def remove_hooks(self, hook_name: str | None = None) -> None:
         """Remove hooks (HookedTransformer-compatible interface).
@@ -167,17 +80,13 @@ class GeneralizedComponent(nn.Module):
             hook_name: Name of the hook point to remove. If None, removes all hooks.
         """
         if hook_name is None:
-            self.clear_hooks()
-            # Also remove from HookPoints
+            # Remove from all HookPoints
+            self.hook_in.remove_hooks()
+            self.hook_out.remove_hooks()
+        elif hook_name == "output":
             self.hook_out.remove_hooks()
         else:
-            if hook_name in self.hooks:
-                del self.hooks[hook_name]
-            if hook_name in self.hook_outputs:
-                del self.hook_outputs[hook_name]
-            # Also remove from HookPoint for the default "output" hook
-            if hook_name == "output":
-                self.hook_out.remove_hooks()
+            raise ValueError(f"Hook name '{hook_name}' not supported. Only 'output' is supported.")
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         """Generic forward pass for bridge components with input/output hooks."""
@@ -221,34 +130,9 @@ class GeneralizedComponent(nn.Module):
             # Pass output through hook_out
             output = self.hook_out(output)
 
-        self.hook_outputs.update({"output": output})
         return output
 
-    def _apply_hooks_to_outputs(self, outputs: Any, hook_map: dict[str | int, str]) -> Any:
-        """Apply hooks to outputs from the original component.
 
-        Args:
-            outputs: The outputs from the original component
-            hook_map: Dictionary mapping output indices/keys to hook names
-
-        Returns:
-            The outputs with hooks applied
-        """
-        if isinstance(outputs, tuple):
-            # For tuple outputs, apply hooks to each element that has a hook
-            return tuple(
-                self.execute_hooks(hook_map[i], out) if i in hook_map else out
-                for i, out in enumerate(outputs)
-            )
-        elif isinstance(outputs, dict):
-            # For dict outputs, apply hooks to each value that has a hook
-            return {
-                k: self.execute_hooks(hook_map[k], v) if k in hook_map else v
-                for k, v in outputs.items()
-            }
-        else:
-            # For single tensor outputs, apply the default hook
-            return self.execute_hooks(hook_map.get("output", "output"), outputs)
 
     def __getattr__(self, name: str):
         # Only called if attribute not found through normal lookup

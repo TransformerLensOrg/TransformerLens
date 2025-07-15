@@ -75,5 +75,5 @@ class EmbeddingBridge(GeneralizedComponent):
         if hook_out is not None:
             output = hook_out(output)
 
-        self.hook_outputs.update({"output": output})
+
         return output

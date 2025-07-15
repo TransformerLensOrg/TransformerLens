@@ -151,7 +151,7 @@ class AttentionBridge(GeneralizedComponent):
         output = self._process_output(output)
 
         # Update hook outputs for debugging/inspection
-        self.hook_outputs.update({"output": output})
+
 
         return output
 

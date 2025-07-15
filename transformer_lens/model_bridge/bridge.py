@@ -23,6 +23,7 @@ import torch.nn as nn
 
 from transformer_lens import utils
 from transformer_lens.ActivationCache import ActivationCache
+from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.component_setup import set_original_components
 from transformer_lens.model_bridge.types import ComponentMapping
@@ -58,6 +59,47 @@ class TransformerBridge(nn.Module):
 
         # Set original components on the pre-created bridge components
         set_original_components(self, self.adapter, self.original_model)
+
+    @property
+    def hook_dict(self) -> dict[str, HookPoint]:
+        """Get all HookPoint objects in the model for compatibility with HookedTransformer."""
+        hooks = {}
+        
+        def collect_hookpoints(module: nn.Module, prefix: str = "") -> None:
+            """Recursively collect all HookPoint objects."""
+            visited = set()
+            obj_id = id(module)
+            if obj_id in visited:
+                return
+            visited.add(obj_id)
+
+            for attr_name in dir(module):
+                if attr_name.startswith("_"):
+                    continue
+                try:
+                    attr = getattr(module, attr_name)
+                except Exception:
+                    continue
+
+                name = f"{prefix}.{attr_name}" if prefix else attr_name
+                if isinstance(attr, HookPoint):
+                    # Set the name on the HookPoint so it can be used in caching
+                    attr.name = name
+                    hooks[name] = attr
+                elif isinstance(attr, nn.Module) and attr is not module:
+                    collect_hookpoints(attr, name)
+                elif isinstance(attr, (list, tuple)):
+                    for i, item in enumerate(attr):
+                        if isinstance(item, nn.Module):
+                            collect_hookpoints(item, f"{name}[{i}]")
+
+            # Also traverse named_children() to catch ModuleList and other containers
+            for child_name, child_module in module.named_children():
+                child_path = f"{prefix}.{child_name}" if prefix else child_name
+                collect_hookpoints(child_module, child_path)
+
+        collect_hookpoints(self, "")
+        return hooks
 
     def __getattr__(self, name: str) -> Any:
         """Provide a clear error message for missing attributes."""

@@ -56,5 +56,5 @@ class UnembeddingBridge(GeneralizedComponent):
         hidden_states = self.hook_in(hidden_states)
         output = self.original_component(hidden_states, **kwargs)
         output = self.hook_out(output)
-        self.hook_outputs.update({"output": output})
+
         return output
