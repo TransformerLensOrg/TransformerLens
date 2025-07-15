@@ -100,6 +100,5 @@ class BertArchitectureAdapter(ArchitectureAdapter):
                 },
             ),
             "unembed": UnembeddingBridge(name="cls.predictions"),
+            "ln_final": LayerNormBridge(name="bert.pooler.dense"),
         }
-        if hasattr(self.cfg, "add_pooling_layer") and self.cfg.add_pooling_layer:
-            self.component_mapping["ln_final"] = LayerNormBridge(name="bert.pooler.dense")
