@@ -33,6 +33,7 @@ class AttentionBridge(GeneralizedComponent):
         """
         super().__init__(name, submodules=submodules)
         self.hook_hidden_states = HookPoint()
+        self.hook_attention_weights = HookPoint()
 
     def _process_output(self, output: Any) -> Any:
         """Process the output from the original component.
@@ -65,6 +66,9 @@ class AttentionBridge(GeneralizedComponent):
             if i == 0:  # First element is typically hidden states
                 if element is not None:
                     element = self.hook_hidden_states(element)
+            elif i == 1:  # Second element is typically attention weights
+                if element is not None:
+                    element = self.hook_attention_weights(element)
             processed_output.append(element)
 
         # Apply the main hook_out to the first element (hidden states) if it exists
@@ -87,6 +91,8 @@ class AttentionBridge(GeneralizedComponent):
         for key, value in output.items():
             if key in ["last_hidden_state", "hidden_states"] and value is not None:
                 value = self.hook_hidden_states(value)
+            elif key in ["attentions", "attention_weights"] and value is not None:
+                value = self.hook_attention_weights(value)
             processed_output[key] = value
 
         # Apply hook_hidden_states and hook_out to the main output (usually hidden_states)
@@ -143,7 +149,6 @@ class AttentionBridge(GeneralizedComponent):
         output = self._process_output(output)
 
         # Update hook outputs for debugging/inspection
-
 
         return output
 

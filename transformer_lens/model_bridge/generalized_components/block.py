@@ -63,5 +63,4 @@ class BlockBridge(GeneralizedComponent):
         else:
             output = self.hook_out(output)
 
-
         return output

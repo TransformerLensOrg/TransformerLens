@@ -56,10 +56,6 @@ class GeneralizedComponent(nn.Module):
         """Get the original component."""
         return self._modules.get("_original_component", None)
 
-
-
-
-
     def add_hook(self, hook_fn: Callable[..., torch.Tensor], hook_name: str = "output") -> None:
         """Add a hook function (HookedTransformer-compatible interface).
 
@@ -131,8 +127,6 @@ class GeneralizedComponent(nn.Module):
             output = self.hook_out(output)
 
         return output
-
-
 
     def __getattr__(self, name: str):
         # Only called if attribute not found through normal lookup
