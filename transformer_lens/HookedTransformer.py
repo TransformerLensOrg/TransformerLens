@@ -811,7 +811,7 @@ class HookedTransformer(HookedRootModule):
 
             if self.cfg.default_prepend_bos and not self.cfg.tokenizer_prepends_bos:
                 # We want to prepend bos but the tokenizer doesn't automatically do it, so we add it manually
-                input = utils.get_input_with_manually_prepended_bos(self.tokenizer, input)
+                input = utils.get_input_with_manually_prepended_bos(self.tokenizer.bos_token, input)
 
             tokens = self.tokenizer(
                 input,

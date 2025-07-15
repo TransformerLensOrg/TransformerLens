@@ -10,18 +10,31 @@ from transformer_lens.model_bridge.architecture_adapter import (
 from transformer_lens.model_bridge.bridge import (
     TransformerBridge,
 )
-from transformer_lens.model_bridge.component_creation import (
-    create_bridged_component,
+from transformer_lens.model_bridge.component_setup import (
     replace_remote_component,
+    set_original_components,
+    setup_blocks_bridge,
+    setup_components,
+    setup_submodules,
 )
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
     BlockBridge,
     EmbeddingBridge,
     LayerNormBridge,
+    LinearBridge,
     MLPBridge,
     MoEBridge,
     UnembeddingBridge,
+)
+from transformer_lens.model_bridge.types import (
+    ComponentMapping,
+    HookFunction,
+    HookRegistry,
+    RemoteComponent,
+    RemoteModel,
+    RemotePath,
+    TransformerLensPath,
 )
 
 from transformer_lens.model_bridge.sources import transformers
@@ -46,9 +59,21 @@ __all__ = [
     "BlockBridge",
     "EmbeddingBridge",
     "LayerNormBridge",
+    "LinearBridge",
     "MLPBridge",
     "MoEBridge",
     "UnembeddingBridge",
-    "create_bridged_component",
     "replace_remote_component",
+    "set_original_components",
+    "setup_blocks_bridge",
+    "setup_components",
+    "setup_submodules",
+    # Type definitions
+    "ComponentMapping",
+    "HookFunction",
+    "HookRegistry",
+    "RemoteComponent",
+    "RemoteModel",
+    "RemotePath",
+    "TransformerLensPath",
 ]

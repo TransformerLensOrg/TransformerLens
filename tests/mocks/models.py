@@ -33,4 +33,5 @@ class MockGemma3Model(nn.Module):
             layer.mlp.gate_proj = nn.Linear(512, 2048)
             layer.mlp.down_proj = nn.Linear(2048, 512)
         self.model.norm = nn.LayerNorm(512)
+        self.lm_head = nn.Linear(512, 1000)  # Add missing lm_head
         self.embed_tokens = self.model.embed_tokens  # For shared embedding/unembedding

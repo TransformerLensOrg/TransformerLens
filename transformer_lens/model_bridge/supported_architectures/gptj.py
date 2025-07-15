@@ -1,4 +1,4 @@
-"""GPT-J architecture adapter."""
+"""GPTJ architecture adapter."""
 
 from typing import Any
 
@@ -20,9 +20,9 @@ from transformer_lens.model_bridge.generalized_components import (
 class GptjArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for GPTJ models."""
 
-    def __init__(self, user_cfg: Any) -> None:
-        """Initialize the GPT-J architecture adapter."""
-        super().__init__(user_cfg)
+    def __init__(self, cfg: Any) -> None:
+        """Initialize the GPTJ architecture adapter."""
+        super().__init__(cfg)
 
         self.conversion_rules = WeightConversionSet(
             {
@@ -31,19 +31,19 @@ class GptjArchitectureAdapter(ArchitectureAdapter):
                 "blocks.{i}.ln1.b": "transformer.h.{i}.ln_1.bias",
                 "blocks.{i}.attn.W_Q": (
                     "transformer.h.{i}.attn.q_proj.weight",
-                    RearrangeWeightConversion("d_model (n_head d_head) -> n_head d_head d_model"),
+                    RearrangeWeightConversion("(n h) m -> n m h", n=self.cfg.num_attention_heads),
                 ),
                 "blocks.{i}.attn.W_K": (
                     "transformer.h.{i}.attn.k_proj.weight",
-                    RearrangeWeightConversion("d_model (n_head d_head) -> n_head d_head d_model"),
+                    RearrangeWeightConversion("(n h) m -> n m h", n=self.cfg.num_attention_heads),
                 ),
                 "blocks.{i}.attn.W_V": (
                     "transformer.h.{i}.attn.v_proj.weight",
-                    RearrangeWeightConversion("d_model (n_head d_head) -> n_head d_head d_model"),
+                    RearrangeWeightConversion("(n h) m -> n m h", n=self.cfg.num_attention_heads),
                 ),
                 "blocks.{i}.attn.W_O": (
                     "transformer.h.{i}.attn.out_proj.weight",
-                    RearrangeWeightConversion("(n_head d_head) d_model -> n_head d_head d_model"),
+                    RearrangeWeightConversion("m (n h) -> n h m", n=self.cfg.num_attention_heads),
                 ),
                 "blocks.{i}.mlp.W_in": "transformer.h.{i}.mlp.fc_in.weight",
                 "blocks.{i}.mlp.b_in": "transformer.h.{i}.mlp.fc_in.bias",
@@ -56,18 +56,16 @@ class GptjArchitectureAdapter(ArchitectureAdapter):
             }
         )
 
-        # Set up component mapping
         self.component_mapping = {
-            "embed": ("transformer.wte", EmbeddingBridge),
-            "blocks": (
-                "transformer.h",
-                BlockBridge,
-                {
-                    "ln1": ("ln_1", LayerNormBridge),
-                    "attn": ("attn", AttentionBridge),
-                    "mlp": ("mlp", MLPBridge),
+            "embed": EmbeddingBridge(name="transformer.wte"),
+            "blocks": BlockBridge(
+                name="transformer.h",
+                submodules={
+                    "ln1": LayerNormBridge(name="ln_1"),
+                    "attn": AttentionBridge(name="attn"),
+                    "mlp": MLPBridge(name="mlp"),
                 },
             ),
-            "ln_final": ("transformer.ln_f", LayerNormBridge),
-            "unembed": ("lm_head", UnembeddingBridge),
+            "ln_final": LayerNormBridge(name="transformer.ln_f"),
+            "unembed": UnembeddingBridge(name="lm_head"),
         }

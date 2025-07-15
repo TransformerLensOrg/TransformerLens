@@ -68,20 +68,19 @@ class NeelSoluOldArchitectureAdapter(ArchitectureAdapter):
             }
         )
         self.component_mapping = {
-            "embed": ("wte", EmbeddingBridge),
-            "pos_embed": ("wpe", EmbeddingBridge),
-            "blocks": (
-                "blocks",
-                BlockBridge,
-                {
-                    "ln1": ("ln1", LayerNormBridge),
-                    "attn": ("attn", AttentionBridge),
-                    "ln2": ("ln2", LayerNormBridge),
-                    "mlp": ("mlp", MLPBridge),
+            "embed": EmbeddingBridge(name="wte"),
+            "pos_embed": EmbeddingBridge(name="wpe"),
+            "blocks": BlockBridge(
+                name="blocks",
+                submodules={
+                    "ln1": LayerNormBridge(name="ln1"),
+                    "attn": AttentionBridge(name="attn"),
+                    "ln2": LayerNormBridge(name="ln2"),
+                    "mlp": MLPBridge(name="mlp"),
                 },
             ),
-            "ln_final": ("ln_f", LayerNormBridge),
-            "unembed": ("unembed", UnembeddingBridge),
+            "ln_final": LayerNormBridge(name="ln_f"),
+            "unembed": UnembeddingBridge(name="unembed"),
         }
 
 

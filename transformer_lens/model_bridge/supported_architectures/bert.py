@@ -23,13 +23,13 @@ from transformer_lens.model_bridge.generalized_components import (
 class BertArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for BERT models."""
 
-    def __init__(self, user_cfg: Any) -> None:
+    def __init__(self, cfg: Any) -> None:
         """Initialize the BERT architecture adapter.
 
         Args:
-            user_cfg: The configuration object.
+            cfg: The configuration object.
         """
-        super().__init__(user_cfg)
+        super().__init__(cfg)
 
         self.conversion_rules = WeightConversionSet(
             {
@@ -88,19 +88,17 @@ class BertArchitectureAdapter(ArchitectureAdapter):
 
         # Set up component mapping
         self.component_mapping = {
-            "embed": ("bert.embeddings", EmbeddingBridge),
-            "pos_embed": ("bert.embeddings.position_embeddings", EmbeddingBridge),
-            "blocks": (
-                "bert.encoder.layer",
-                BlockBridge,
-                {
-                    "ln1": ("attention.output.LayerNorm", LayerNormBridge),
-                    "ln2": ("output.LayerNorm", LayerNormBridge),
-                    "attn": ("attention", AttentionBridge),
-                    "mlp": ("intermediate", MLPBridge),
+            "embed": EmbeddingBridge(name="bert.embeddings"),
+            "pos_embed": EmbeddingBridge(name="bert.embeddings.position_embeddings"),
+            "blocks": BlockBridge(
+                name="bert.encoder.layer",
+                submodules={
+                    "ln1": LayerNormBridge(name="attention.output.LayerNorm"),
+                    "ln2": LayerNormBridge(name="output.LayerNorm"),
+                    "attn": AttentionBridge(name="attention"),
+                    "mlp": MLPBridge(name="intermediate"),
                 },
             ),
-            "unembed": ("cls.predictions", UnembeddingBridge),
+            "unembed": UnembeddingBridge(name="cls.predictions"),
+            "ln_final": LayerNormBridge(name="bert.pooler.dense"),
         }
-        if hasattr(self.user_cfg, "add_pooling_layer") and self.user_cfg.add_pooling_layer:
-            self.component_mapping["ln_final"] = ("bert.pooler.dense", LayerNormBridge)

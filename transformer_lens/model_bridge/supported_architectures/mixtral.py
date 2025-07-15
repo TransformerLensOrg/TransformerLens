@@ -20,9 +20,9 @@ from transformer_lens.model_bridge.generalized_components import (
 class MixtralArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for Mixtral models."""
 
-    def __init__(self, user_cfg: Any) -> None:
+    def __init__(self, cfg: Any) -> None:
         """Initialize the Mixtral architecture adapter."""
-        super().__init__(user_cfg)
+        super().__init__(cfg)
 
         self.conversion_rules = WeightConversionSet(
             {
@@ -73,17 +73,16 @@ class MixtralArchitectureAdapter(ArchitectureAdapter):
 
         # Set up component mapping
         self.component_mapping = {
-            "embed": ("model.embed_tokens", EmbeddingBridge),
-            "blocks": (
-                "model.layers",
-                BlockBridge,
-                {
-                    "ln1": ("input_layernorm", LayerNormBridge),
-                    "ln2": ("post_attention_layernorm", LayerNormBridge),
-                    "attn": ("self_attn", AttentionBridge),
-                    "mlp": ("block_sparse_moe", MoEBridge),
+            "embed": EmbeddingBridge(name="model.embed_tokens"),
+            "blocks": BlockBridge(
+                name="model.layers",
+                submodules={
+                    "ln1": LayerNormBridge(name="input_layernorm"),
+                    "ln2": LayerNormBridge(name="post_attention_layernorm"),
+                    "attn": AttentionBridge(name="self_attn"),
+                    "mlp": MoEBridge(name="block_sparse_moe"),
                 },
             ),
-            "ln_final": ("model.norm", LayerNormBridge),
-            "unembed": ("lm_head", UnembeddingBridge),
+            "ln_final": LayerNormBridge(name="model.norm"),
+            "unembed": UnembeddingBridge(name="lm_head"),
         }

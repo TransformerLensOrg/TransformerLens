@@ -19,13 +19,13 @@ from transformer_lens.model_bridge.generalized_components import (
 class T5ArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for T5 models."""
 
-    def __init__(self, user_cfg: Any) -> None:
+    def __init__(self, cfg: Any) -> None:
         """Initialize the T5 architecture adapter.
 
         Args:
-            user_cfg: The configuration object.
+            cfg: The configuration object.
         """
-        super().__init__(user_cfg)
+        super().__init__(cfg)
 
         self.conversion_rules = WeightConversionSet(
             {
@@ -44,21 +44,19 @@ class T5ArchitectureAdapter(ArchitectureAdapter):
             }
         )
         self.component_mapping = {
-            "embed": ("shared", EmbeddingBridge),
-            "pos_embed": (
-                "encoder.block.0.layer.0.SelfAttention.relative_attention_bias",
-                EmbeddingBridge,
+            "embed": EmbeddingBridge(name="shared"),
+            "pos_embed": EmbeddingBridge(
+                name="encoder.block.0.layer.0.SelfAttention.relative_attention_bias"
             ),
-            "blocks": (
-                "encoder.block",
-                BlockBridge,
-                {
-                    "ln1": ("layer.0.layer_norm", LayerNormBridge),
-                    "attn": ("layer.0.SelfAttention", AttentionBridge),
-                    "ln2": ("layer.1.layer_norm", LayerNormBridge),
-                    "mlp": ("layer.1.DenseReluDense", MLPBridge),
+            "blocks": BlockBridge(
+                name="encoder.block",
+                submodules={
+                    "ln1": LayerNormBridge(name="layer.0.layer_norm"),
+                    "attn": AttentionBridge(name="layer.0.SelfAttention"),
+                    "ln2": LayerNormBridge(name="layer.1.layer_norm"),
+                    "mlp": MLPBridge(name="layer.1.DenseReluDense"),
                 },
             ),
-            "ln_final": ("encoder.final_layer_norm", LayerNormBridge),
-            "unembed": ("lm_head", UnembeddingBridge),
+            "ln_final": LayerNormBridge(name="encoder.final_layer_norm"),
+            "unembed": UnembeddingBridge(name="lm_head"),
         }
