@@ -34,9 +34,6 @@ class MoEBridge(GeneralizedComponent):
         """
         super().__init__(name, config, submodules=submodules)
 
-    # Remove the old wrap_component method as it's no longer needed
-    # The new system uses set_original_component() instead
-
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         """Forward pass through the MoE bridge.
 

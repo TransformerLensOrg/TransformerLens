@@ -76,7 +76,6 @@ class GeneralizedComponent(nn.Module):
             hook_name: Name of the hook point to remove. If None, removes all hooks.
         """
         if hook_name is None:
-            # Remove from all HookPoints
             self.hook_in.remove_hooks()
             self.hook_out.remove_hooks()
         elif hook_name == "output":

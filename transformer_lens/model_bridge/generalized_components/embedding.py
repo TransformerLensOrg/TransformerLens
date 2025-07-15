@@ -58,7 +58,6 @@ class EmbeddingBridge(GeneralizedComponent):
         # Apply input hook
         input_ids = self.hook_in(input_ids)
 
-        # Remove position_ids if not supported
         if (
             not hasattr(self.original_component, "forward")
             or "position_ids" not in self.original_component.forward.__code__.co_varnames

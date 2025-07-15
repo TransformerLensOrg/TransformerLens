@@ -582,7 +582,6 @@ class TransformerBridge(nn.Module):
                 output = output.logits
 
         finally:
-            # Remove hooks
             for hp, _ in hooks:
                 hp.remove_hooks()
 
