@@ -42,9 +42,7 @@ class GPT2QKVBridge(GeneralizedComponent):
         self.W_V_hook_in = HookPoint()
         self.W_V_hook_out = HookPoint()
 
-    def split_qkv_matrix(
-        self, weights: torch.Tensor
-    ) -> tuple[torch.nn.Linear, torch.nn.Linear, torch.nn.Linear]:
+    def split_qkv_matrix(self) -> tuple[torch.nn.Linear, torch.nn.Linear, torch.nn.Linear]:
         """Split the QKV matrix into separate linear transformations.
         Args:
             weights: The weight matrix of the original QKV layer
@@ -109,9 +107,7 @@ class GPT2QKVBridge(GeneralizedComponent):
         output = self.original_component(input, *args, **kwargs)
 
         # Split the QKV matrix into separate transformations for investigating each activation
-        W_Q_transformation, W_K_transformation, W_V_transformation = self.split_qkv_matrix(
-            self.original_component.weight
-        )
+        W_Q_transformation, W_K_transformation, W_V_transformation = self.split_qkv_matrix()
 
         # Apply Q hook
         output_Q = self.W_Q_hook_in(W_Q_transformation(input))
