@@ -33,32 +33,44 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
                     "model.embed_tokens.weight",
                     RearrangeWeightConversion(
                         "d_vocab d_model -> d_vocab d_model",
-                        scale=self.cfg.hidden_size**0.5,
+                        scale=self.cfg.text_config.hidden_size**0.5,
                     ),
                 ),
                 "blocks.{i}.ln1.w": "model.layers.{i}.input_layernorm.weight",
                 "blocks.{i}.ln2.w": "model.layers.{i}.post_attention_layernorm.weight",
                 "blocks.{i}.attn.W_Q": (
                     "model.layers.{i}.self_attn.q_proj.weight",
-                    RearrangeWeightConversion("(n h) m -> n m h", n=self.cfg.num_attention_heads),
+                    RearrangeWeightConversion(
+                        "(n h) m -> n m h", n=self.cfg.text_config.num_attention_heads
+                    ),
                 ),
                 "blocks.{i}.attn.W_K": (
                     "model.layers.{i}.self_attn.k_proj.weight",
                     RearrangeWeightConversion(
                         "(n h) m -> n m h",
-                        n=getattr(self.cfg, "num_key_value_heads", self.cfg.num_attention_heads),
+                        n=getattr(
+                            self.cfg,
+                            "num_key_value_heads",
+                            self.cfg.text_config.num_attention_heads,
+                        ),
                     ),
                 ),
                 "blocks.{i}.attn.W_V": (
                     "model.layers.{i}.self_attn.v_proj.weight",
                     RearrangeWeightConversion(
                         "(n h) m -> n m h",
-                        n=getattr(self.cfg, "num_key_value_heads", self.cfg.num_attention_heads),
+                        n=getattr(
+                            self.cfg,
+                            "num_key_value_heads",
+                            self.cfg.text_config.num_attention_heads,
+                        ),
                     ),
                 ),
                 "blocks.{i}.attn.W_O": (
                     "model.layers.{i}.self_attn.o_proj.weight",
-                    RearrangeWeightConversion("m (n h) -> n h m", n=self.cfg.num_attention_heads),
+                    RearrangeWeightConversion(
+                        "m (n h) -> n h m", n=self.cfg.text_config.num_attention_heads
+                    ),
                 ),
                 "blocks.{i}.mlp.W_in": "model.layers.{i}.mlp.up_proj.weight.T",
                 "blocks.{i}.mlp.W_gate": "model.layers.{i}.mlp.gate_proj.weight.T",
@@ -70,12 +82,16 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
 
         # Set up component mapping with actual bridge instances
         self.component_mapping = {
-            "embed": EmbeddingBridge(name="model.embed_tokens"),
+            "embed": EmbeddingBridge(name="model.language_model.embed_tokens"),
+            "rotary_emb": EmbeddingBridge(name="model.language_model.rotary_emb"),
+            "rotary_emb_local": EmbeddingBridge(name="model.language_model.rotary_emb_local"),
             "blocks": BlockBridge(
-                name="model.layers",
+                name="model.language_model.layers",
                 submodules={
                     "ln1": LayerNormBridge(name="input_layernorm"),
                     "ln2": LayerNormBridge(name="post_attention_layernorm"),
+                    "ln3": LayerNormBridge(name="pre_feedforward_layernorm"),
+                    "ln4": LayerNormBridge(name="post_feedforward_layernorm"),
                     "attn": AttentionBridge(
                         name="self_attn",
                         submodules={
@@ -83,6 +99,8 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
                             "W_K": LinearBridge(name="k_proj"),
                             "W_V": LinearBridge(name="v_proj"),
                             "W_O": LinearBridge(name="o_proj"),
+                            "W_Q_norm": LayerNormBridge(name="q_norm"),
+                            "W_K_norm": LayerNormBridge(name="k_norm"),
                         },
                     ),
                     "mlp": MLPBridge(
@@ -95,6 +113,6 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
                     ),
                 },
             ),
-            "ln_final": LayerNormBridge(name="model.norm"),
+            "ln_final": LayerNormBridge(name="model.language_model.norm"),
             "unembed": UnembeddingBridge(name="lm_head"),
         }
