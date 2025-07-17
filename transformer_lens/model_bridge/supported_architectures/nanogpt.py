@@ -11,8 +11,8 @@ from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
     BlockBridge,
     EmbeddingBridge,
-    LayerNormBridge,
     MLPBridge,
+    NormalizationBridge,
     UnembeddingBridge,
 )
 
@@ -89,13 +89,13 @@ class NanogptArchitectureAdapter(ArchitectureAdapter):
             "blocks": BlockBridge(
                 name="transformer.h",  # Base path for blocks
                 submodules={
-                    "ln1": LayerNormBridge(name="ln_1"),  # Pre-attention layer norm
-                    "ln2": LayerNormBridge(name="ln_2"),  # Pre-MLP layer norm
+                    "ln1": NormalizationBridge(name="ln_1"),  # Pre-attention layer norm
+                    "ln2": NormalizationBridge(name="ln_2"),  # Pre-MLP layer norm
                     "attn": AttentionBridge(name="attn"),  # Full attention module
                     "mlp": MLPBridge(name="mlp"),  # Full MLP module
                 },
             ),
-            "ln_final": LayerNormBridge(name="transformer.ln_f"),  # Final layer norm
+            "ln_final": NormalizationBridge(name="transformer.ln_f"),  # Final layer norm
             "unembed": UnembeddingBridge(name="lm_head"),  # Language model head
         }
 

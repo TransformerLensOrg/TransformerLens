@@ -11,8 +11,8 @@ from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
     BlockBridge,
     EmbeddingBridge,
-    LayerNormBridge,
     MLPBridge,
+    NormalizationBridge,
     UnembeddingBridge,
 )
 
@@ -73,13 +73,13 @@ class NeelSoluOldArchitectureAdapter(ArchitectureAdapter):
             "blocks": BlockBridge(
                 name="blocks",
                 submodules={
-                    "ln1": LayerNormBridge(name="ln1"),
+                    "ln1": NormalizationBridge(name="ln1"),
                     "attn": AttentionBridge(name="attn"),
-                    "ln2": LayerNormBridge(name="ln2"),
+                    "ln2": NormalizationBridge(name="ln2"),
                     "mlp": MLPBridge(name="mlp"),
                 },
             ),
-            "ln_final": LayerNormBridge(name="ln_f"),
+            "ln_final": NormalizationBridge(name="ln_f"),
             "unembed": UnembeddingBridge(name="unembed"),
         }
 

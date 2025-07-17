@@ -192,15 +192,15 @@ def test_component_mapping_structure(adapter: Gemma3ArchitectureAdapter) -> None
         AttentionBridge,
         BlockBridge,
         EmbeddingBridge,
-        LayerNormBridge,
         LinearBridge,
         MLPBridge,
+        NormalizationBridge,
         UnembeddingBridge,
     )
 
     assert isinstance(mapping["embed"], EmbeddingBridge)
     assert isinstance(mapping["blocks"], BlockBridge)
-    assert isinstance(mapping["ln_final"], LayerNormBridge)
+    assert isinstance(mapping["ln_final"], NormalizationBridge)
     assert isinstance(mapping["unembed"], UnembeddingBridge)
 
     # Test that blocks has submodules
@@ -212,8 +212,8 @@ def test_component_mapping_structure(adapter: Gemma3ArchitectureAdapter) -> None
     assert "mlp" in blocks_bridge.submodules
 
     # Test that the submodules are the expected types
-    assert isinstance(blocks_bridge.submodules["ln1"], LayerNormBridge)
-    assert isinstance(blocks_bridge.submodules["ln2"], LayerNormBridge)
+    assert isinstance(blocks_bridge.submodules["ln1"], NormalizationBridge)
+    assert isinstance(blocks_bridge.submodules["ln2"], NormalizationBridge)
     assert isinstance(blocks_bridge.submodules["attn"], AttentionBridge)
     assert isinstance(blocks_bridge.submodules["mlp"], MLPBridge)
 
