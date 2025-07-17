@@ -2,6 +2,9 @@
 
 from typing import Any
 
+import einops
+import torch
+
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
     RearrangeWeightConversion,
@@ -12,6 +15,7 @@ from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
     LayerNormBridge,
+    LinearBridge,
     MLPBridge,
     UnembeddingBridge,
 )
@@ -89,3 +93,60 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
             "ln_final": LayerNormBridge(name="transformer.ln_f"),
             "unembed": UnembeddingBridge(name="lm_head"),
         }
+
+    def retrieve_q_from_qkv(self, weight, bias):
+        W_Q, _, _ = torch.tensor_split(weight, 3, dim=1)
+
+        bias = einops.rearrange(
+            bias,
+            "(qkv index head)->qkv index head",
+            qkv=3,
+            index=self.cfg.n_head,
+            head=self.cfg.n_embd // self.cfg.n_head,
+        )
+        bias_Q = bias[0]
+
+        # Create nn.Linear module
+        linear = torch.nn.Linear(W_Q.shape[0], W_Q.shape[1], bias=False)
+
+        # Set the weight and bias
+        linear.weight = torch.nn.Parameter(W_Q.T)
+        linear.bias = torch.nn.Parameter(bias_Q.flatten())
+
+        return linear
+
+    def retrieve_k_from_qkv(self, weight, bias):
+        _, W_K, _ = torch.tensor_split(weight, 3, dim=1)
+
+        bias = einops.rearrange(
+            bias,
+            "(qkv index head)->qkv index head",
+            qkv=3,
+            index=self.cfg.n_head,
+            head=self.cfg.n_embd // self.cfg.n_head,
+        )
+        bias_K = bias[1]
+
+        linear = torch.nn.Linear(W_K.shape[0], W_K.shape[1], bias=True)
+        linear.weight = torch.nn.Parameter(W_K.T)
+        linear.bias = torch.nn.Parameter(bias_K.flatten())
+
+        return linear
+
+    def retrieve_v_from_qkv(self, weight, bias):
+        _, _, W_V = torch.tensor_split(weight, 3, dim=1)
+
+        bias = einops.rearrange(
+            bias,
+            "(qkv index head)->qkv index head",
+            qkv=3,
+            index=self.cfg.n_head,
+            head=self.cfg.n_embd // self.cfg.n_head,
+        )
+        bias_V = bias[2]
+
+        linear = torch.nn.Linear(W_V.shape[0], W_V.shape[1], bias=True)
+        linear.weight.data = torch.nn.Parameter(W_V.T)
+        linear.bias = torch.nn.Parameter(bias_V.flatten())
+
+        return linear

@@ -58,6 +58,13 @@ class LinearBridge(GeneralizedComponent):
 
         return output
 
+    def create_remote_component(self, original_model) -> None:
+        """Create the remote component if it does not exist."""
+        component = self.config.get("creation_function").__call__(
+            original_model.c_attn.weight, original_model.c_attn.bias
+        )
+        setattr(original_model, self.name, component)
+
     @property
     def in_features(self) -> int:
         """Get input features from the original component."""
