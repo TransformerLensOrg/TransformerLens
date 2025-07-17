@@ -12,6 +12,7 @@ from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
     GPT2QKVBridge,
+    LayerNormBridge,
     LinearBridge,
     MLPBridge,
     UnembeddingBridge,
@@ -81,7 +82,7 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
             "blocks": BlockBridge(
                 name="transformer.h",
                 submodules={
-                    "ln1": NormalizationBridge(name="ln_1"),
+                    "ln1": LayerNormBridge(name="ln_1"),
                     "attn": AttentionBridge(
                         name="attn",
                         submodules={
@@ -89,7 +90,7 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
                             "W_O": LinearBridge(name="c_proj"),
                         },
                     ),
-                    "ln2": NormalizationBridge(name="ln_2"),
+                    "ln2": LayerNormBridge(name="ln_2"),
                     "mlp": MLPBridge(
                         name="mlp",
                         submodules={

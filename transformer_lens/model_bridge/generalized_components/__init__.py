@@ -9,9 +9,7 @@ from transformer_lens.model_bridge.generalized_components.block import (
 from transformer_lens.model_bridge.generalized_components.embedding import (
     EmbeddingBridge,
 )
-from transformer_lens.model_bridge.generalized_components.layer_norm import (
-    LayerNormBridge
-)
+from transformer_lens.model_bridge.generalized_components.layer_norm import LayerNormBridge
 from transformer_lens.model_bridge.generalized_components.gpt2_qkv import GPT2QKVBridge
 
 from transformer_lens.model_bridge.generalized_components.linear import (
