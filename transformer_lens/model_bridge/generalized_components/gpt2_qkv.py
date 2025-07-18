@@ -50,6 +50,12 @@ class GPT2QKVBridge(GeneralizedComponent):
             Tuple of nn.Linear modules for Q, K, and V transformations
         """
 
+        # Required for type checking
+        if self.original_component is None:
+            raise RuntimeError(
+                f"Original component not set for {self.name}. Call set_original_component() first."
+            )
+
         weights = self.original_component.weight
         W_Q, W_K, W_V = torch.tensor_split(weights, 3, dim=1)
 
