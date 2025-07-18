@@ -30,7 +30,7 @@ class GPT2QKVBridge(GeneralizedComponent):
 
         Args:
             name: The name of this component
-            config: Optional configuration
+            config: Configuration
             submodules: Dictionary of GeneralizedComponent submodules to register
         """
         super().__init__(name, config, submodules=submodules)
@@ -50,16 +50,22 @@ class GPT2QKVBridge(GeneralizedComponent):
             Tuple of nn.Linear modules for Q, K, and V transformations
         """
 
-        # Required for type checking
-        if self.original_component is None:
+        if self.config is None:
             raise RuntimeError(
-                f"Original component not set for {self.name}. Call set_original_component() first."
+                f"Config not set for {self.name}. Config is required for QKV matrix splitting."
             )
 
+        # Keep mypy happy
+        assert self.original_component is not None
+
         weights = self.original_component.weight
+
+        # Keep mypy happy
+        assert isinstance(weights, torch.Tensor)
+
         W_Q, W_K, W_V = torch.tensor_split(weights, 3, dim=1)
 
-        bias = einops.rearrange(
+        bias_tensor = einops.rearrange(
             self.original_component.bias,
             "(qkv index head)->qkv index head",
             qkv=3,
@@ -67,26 +73,31 @@ class GPT2QKVBridge(GeneralizedComponent):
             head=self.config.n_embd // self.config.n_head,
         )
 
+        # Keep mypy happy
+        assert isinstance(bias_tensor, torch.Tensor)
+
+        b_q, b_k, b_v = bias_tensor
+
         # Create nn.Linear module
         W_Q_transformation = torch.nn.Linear(W_Q.shape[0], W_Q.shape[1], bias=False)
 
         # Set the weight and bias
         W_Q_transformation.weight = torch.nn.Parameter(W_Q.T)
-        W_Q_transformation.bias = torch.nn.Parameter(bias[0].flatten())
+        W_Q_transformation.bias = torch.nn.Parameter(b_q.flatten())
 
         # Create nn.Linear module for K
         W_K_transformation = torch.nn.Linear(W_K.shape[0], W_K.shape[1], bias=False)
 
         # Set the weight and bias
         W_K_transformation.weight = torch.nn.Parameter(W_K.T)
-        W_K_transformation.bias = torch.nn.Parameter(bias[1].flatten())
+        W_K_transformation.bias = torch.nn.Parameter(b_k.flatten())
 
         # Create nn.Linear module for V
         W_V_transformation = torch.nn.Linear(W_V.shape[0], W_V.shape[1], bias=False)
 
         # Set the weight and bias
         W_V_transformation.weight = torch.nn.Parameter(W_V.T)
-        W_V_transformation.bias = torch.nn.Parameter(bias[2].flatten())
+        W_V_transformation.bias = torch.nn.Parameter(b_v.flatten())
 
         return W_Q_transformation, W_K_transformation, W_V_transformation
 
