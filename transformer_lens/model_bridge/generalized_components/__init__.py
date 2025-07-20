@@ -17,7 +17,7 @@ from transformer_lens.model_bridge.generalized_components.linear import (
 )
 from transformer_lens.model_bridge.generalized_components.mlp import MLPBridge
 from transformer_lens.model_bridge.generalized_components.moe import MoEBridge
-from transformer_lens.model_bridge.generalized_components.qkv_separator import (
+from transformer_lens.model_bridge.generalized_components.qkv_separation import (
     QKVSeparationBridge,
 )
 from transformer_lens.model_bridge.generalized_components.unembedding import (
