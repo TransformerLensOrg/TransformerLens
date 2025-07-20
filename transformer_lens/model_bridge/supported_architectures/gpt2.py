@@ -11,10 +11,10 @@ from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
     BlockBridge,
     EmbeddingBridge,
-    GPT2QKVBridge,
     LayerNormBridge,
     LinearBridge,
     MLPBridge,
+    QKVSeparationBridge,
     UnembeddingBridge,
 )
 
@@ -86,7 +86,14 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
                     "attn": AttentionBridge(
                         name="attn",
                         submodules={
-                            "W_QKV": GPT2QKVBridge(name="c_attn", config=self.cfg),
+                            "W_QKV": QKVSeparationBridge(
+                                name="c_attn",
+                                config={
+                                    "d_model": self.cfg.n_embd,
+                                    "n_head": self.cfg.n_head,
+                                    "d_head": self.cfg.n_embd // self.cfg.n_head,
+                                },
+                            ),
                             "W_O": LinearBridge(name="c_proj"),
                         },
                     ),
