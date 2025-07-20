@@ -12,7 +12,9 @@ from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
     LayerNormBridge,
+    LinearBridge,
     MLPBridge,
+    QKVSeparationBridge,
     UnembeddingBridge,
 )
 
@@ -75,13 +77,33 @@ class BloomArchitectureAdapter(ArchitectureAdapter):
 
         self.component_mapping = {
             "embed": EmbeddingBridge(name="transformer.word_embeddings"),
+            "embed_ln": LayerNormBridge(name="transformer.word_embeddings_layernorm"),
             "blocks": BlockBridge(
                 name="transformer.h",
                 submodules={
                     "ln1": LayerNormBridge(name="input_layernorm"),
                     "ln2": LayerNormBridge(name="post_attention_layernorm"),
-                    "attn": AttentionBridge(name="self_attention"),
-                    "mlp": MLPBridge(name="mlp"),
+                    "attn": AttentionBridge(
+                        name="self_attention",
+                        submodules={
+                            "W_QKV": QKVSeparationBridge(
+                                name="query_key_value",
+                                config={
+                                    "d_model": self.cfg.hidden_size,
+                                    "n_head": self.cfg.n_head,
+                                    "d_head": self.cfg.hidden_size // self.cfg.n_head,
+                                },
+                            ),
+                            "W_O": LinearBridge(name="dense"),
+                        },
+                    ),
+                    "mlp": MLPBridge(
+                        name="mlp",
+                        submodules={
+                            "W_in": LinearBridge(name="dense_h_to_4h"),
+                            "W_out": LinearBridge(name="dense_4h_to_h"),
+                        },
+                    ),
                 },
             ),
             "ln_final": LayerNormBridge(name="transformer.ln_f"),
