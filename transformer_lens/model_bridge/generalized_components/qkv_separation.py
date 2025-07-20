@@ -29,7 +29,7 @@ class QKVSeparationBridge(GeneralizedComponent):
 
         Args:
             name: The name of this component
-            config: Configuration
+            config: Configuration (d_model, n_head, and d_head are required)
             submodules: Dictionary of GeneralizedComponent submodules to register
         """
         super().__init__(name, config, submodules=submodules)
@@ -49,7 +49,18 @@ class QKVSeparationBridge(GeneralizedComponent):
             Tuple of nn.Linear modules for Q, K, and V transformations
         """
 
+        if self.config is None:
+            raise RuntimeError(
+                f"Config not set for {self.name}. Config is required for QKV matrix splitting."
+            )
+
+        # Keep mypy happy
+        assert self.original_component is not None
+
         W = self.original_component.weight
+
+        # Keep mypy happy
+        assert isinstance(W, torch.Tensor)
 
         W_split = W.T.reshape(
             3, self.config["d_model"], self.config["n_head"] * self.config["d_head"]
@@ -58,6 +69,10 @@ class QKVSeparationBridge(GeneralizedComponent):
         W_Q, W_K, W_V = W_split
 
         qkv_bias = self.original_component.bias
+
+        # Keep mypy happy
+        assert isinstance(qkv_bias, torch.Tensor)
+
         b_Q, b_K, b_V = qkv_bias.reshape(3, self.config["n_head"], self.config["d_head"])
 
         # Create nn.Linear module
