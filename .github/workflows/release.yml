@@ -23,7 +23,7 @@ jobs:
     steps:
      - name: Parse semver string
        id: semver_parser 
-       uses: mtkennerly/poetry-version@v1
+       uses: mtkennerly/poetry-dynamic-versioning@v1.9.1
     outputs:
       semver: "${{ steps.semver_parser.outputs.version }}"
 
