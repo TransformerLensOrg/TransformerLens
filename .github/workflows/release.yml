@@ -21,13 +21,15 @@ jobs:
     name: Parse the semantic version from the release
     runs-on: ubuntu-latest
     steps:
-      - uses: apexskier/github-semver-parse@v1
+      - name: Parse semver string
         id: semver_parser
-        with:
-          # version: ${{ github.event.release.tag_name }}
-          version: "v3.0.0a1"
+        run: |
+          echo "VERSION_RAW=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
+          pip install packaging
+          echo "VERSION=$(python -c 'from packaging.version import Version; print(str(Version("${GITHUB_REF#refs/tags/v}")))')" >> $GITHUB_ENV
+          echo "::set-output name=version::${VERSION}"
     outputs:
-      semver: "${{ steps.semver_parser.outputs.VERSION }}"
+      semver: "${{ steps.semver_parser.outputs.version }}"
 
   release-python:
     name: Release Python package to PyPi
