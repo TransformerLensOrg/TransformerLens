@@ -1,6 +1,6 @@
 """Joint QKV attention bridge component.
 
-This module contains the bridge component for separating joint QKV activations into separate Q, K, and V activations.
+This module contains the bridge component for attention layers that use a fused QKV matrix.
 """
 
 from typing import Any, Dict, Optional
@@ -8,6 +8,9 @@ from typing import Any, Dict, Optional
 import torch
 
 from transformer_lens.hook_points import HookPoint
+from transformer_lens.model_bridge.generalized_components.attention import (
+    AttentionBridge,
+)
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
@@ -22,10 +25,12 @@ class QKVHooks(torch.nn.Module):
         self.hook_out = HookPoint()
 
 
-class JointQKVAttentionBridge(GeneralizedComponent):
+class JointQKVAttentionBridge(AttentionBridge):
     """Joint QKV attention bridge that wraps a joint QKV linear layer.
 
-    This component provides standardized input/output hooks.
+    This component wraps attention layers that use a fused QKV matrix such that both
+    the activations from the joint QKV matrix and from the individual, separated Q, K, and V matrices
+    are hooked and accessible.
     """
 
     def __init__(
@@ -38,19 +43,18 @@ class JointQKVAttentionBridge(GeneralizedComponent):
 
         Args:
             name: The name of this component
-            config: Configuration (d_model, n_head, and d_head are required)
+            config: Configuration (split_qkv_matrix function is required)
             submodules: Dictionary of GeneralizedComponent submodules to register
         """
-        super().__init__(name, config, submodules=submodules)
+        super().__init__(name, submodules=submodules)
 
-        if config is None:
+        self.config = config
+        if self.config is None:
             raise RuntimeError(
                 f"Config not set for {self.name}. Config is required for QKV separation."
             )
-        if "d_model" not in config or "n_head" not in config or "d_head" not in config:
-            raise RuntimeError(
-                f"Config for {self.name} must contain 'd_model', 'n_head', and 'd_head'."
-            )
+        if "split_qkv_matrix" not in self.config:
+            raise RuntimeError(f"Config for {self.name} must include 'split_qkv_matrix' function.")
 
         # Create hook points for individual Q, K and V activations
         self.W_Q = QKVHooks()
@@ -68,19 +72,10 @@ class JointQKVAttentionBridge(GeneralizedComponent):
         Returns:
             Output tensor after QKV linear transformation
         """
-        if self.original_component is None:
-            raise RuntimeError(
-                f"Original component not set for {self.name}. Call set_original_component() first."
-            )
+        output = super().forward(input, *args, **kwargs)
 
         # Keep mypy happy
         assert self.config is not None
-
-        # Apply input hook
-        input = self.hook_in(input)
-
-        # Forward through the original linear layer
-        output = self.original_component(input, *args, **kwargs)
 
         W_Q_transformation, W_K_transformation, W_V_transformation = self.config[
             "split_qkv_matrix"
@@ -97,8 +92,5 @@ class JointQKVAttentionBridge(GeneralizedComponent):
         # Apply V hook
         output_V = self.W_V.hook_in(W_V_transformation(input))
         output_V = self.W_V.hook_out(output_V)
-
-        # Apply output hook
-        output = self.hook_out(output)
 
         return output

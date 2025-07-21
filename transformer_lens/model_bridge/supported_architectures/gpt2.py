@@ -92,9 +92,6 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
                             "W_O": LinearBridge(name="c_proj"),
                         },
                         config={
-                            "d_model": self.cfg.n_embd,
-                            "n_head": self.cfg.n_head,
-                            "d_head": self.cfg.n_embd // self.cfg.n_head,
                             "split_qkv_matrix": self.split_qkv_matrix,
                         },
                     ),
