@@ -61,7 +61,7 @@ class JointQKVAttentionBridge(AttentionBridge):
         self.W_K = QKVHooks()
         self.W_V = QKVHooks()
 
-    def forward(self, input: torch.Tensor, *args: Any, **kwargs: Any) -> torch.Tensor:
+    def forward(self, input: torch.Tensor, *args: Any, **kwargs: Any) -> Any:
         """Forward pass through the QKV linear transformation with hooks.
 
         Args:
