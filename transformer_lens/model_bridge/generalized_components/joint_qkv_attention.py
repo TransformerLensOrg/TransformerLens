@@ -32,7 +32,7 @@ class JointQKVAttentionBridge(GeneralizedComponent):
         self,
         name: str,
         config: Optional[Any] = None,
-        submodules: Optional[Dict[str, GeneralizedComponent | torch.nn.Linear]] = {},
+        submodules: Optional[Dict[str, GeneralizedComponent]] = {},
     ):
         """Initialize the joint QKV attention bridge.
 
