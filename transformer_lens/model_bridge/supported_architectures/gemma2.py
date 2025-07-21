@@ -74,9 +74,9 @@ class Gemma2ArchitectureAdapter(ArchitectureAdapter):
                 name="model.layers",
                 submodules={
                     "ln1": LayerNormBridge(name="input_layernorm"),
-                    "ln2": LayerNormBridge(name="post_attention_layernorm"),
-                    "ln3": LayerNormBridge(name="pre_feedforward_layernorm"),
-                    "ln4": LayerNormBridge(name="post_feedforward_layernorm"),
+                    "ln1_post": LayerNormBridge(name="post_attention_layernorm"),
+                    "ln2": LayerNormBridge(name="pre_feedforward_layernorm"),
+                    "ln2_post": LayerNormBridge(name="post_feedforward_layernorm"),
                     "attn": AttentionBridge(
                         name="self_attn",
                         submodules={
