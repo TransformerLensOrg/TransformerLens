@@ -21,13 +21,23 @@ jobs:
     name: Parse the semantic version from the release
     runs-on: ubuntu-latest
     steps:
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Install packaging
+        run: pip install packaging
+
       - name: Parse semver string
         id: semver_parser
+        env:
+          RAW_TAG: "v3.0.0a1"
+          # RAW_TAG: ${{ github.event.release.tag_name }}
         run: |
-          echo "VERSION_RAW=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
-          pip install packaging
-          echo "VERSION=$(python -c 'from packaging.version import Version; print(str(Version("${GITHUB_REF#refs/tags/v}")))')" >> $GITHUB_ENV
-          echo "::set-output name=version::${VERSION}"
+          VERSION="${RAW_TAG#v}"
+          echo "Detected version: $VERSION"
+          echo "::set-output name=version::$(python -c "from packaging.version import Version; print(Version('$VERSION'))")"
     outputs:
       semver: "${{ steps.semver_parser.outputs.version }}"
 
