@@ -1,4 +1,4 @@
-"""QKV separation bridge component.
+"""Joint QKV attention bridge component.
 
 This module contains the bridge component for separating joint QKV activations into separate Q, K, and V activations.
 """
@@ -13,8 +13,17 @@ from transformer_lens.model_bridge.generalized_components.base import (
 )
 
 
-class QKVSeparationBridge(GeneralizedComponent):
-    """QKV separation bridge that wraps a joint QKV linear layer.
+class QKVHooks(torch.nn.Module):
+    """Container for Q, K, or V hook points."""
+
+    def __init__(self):
+        super().__init__()
+        self.hook_in = HookPoint()
+        self.hook_out = HookPoint()
+
+
+class JointQKVAttentionBridge(GeneralizedComponent):
+    """Joint QKV attention bridge that wraps a joint QKV linear layer.
 
     This component provides standardized input/output hooks.
     """
@@ -23,9 +32,9 @@ class QKVSeparationBridge(GeneralizedComponent):
         self,
         name: str,
         config: Optional[Any] = None,
-        submodules: Optional[Dict[str, GeneralizedComponent]] = {},
+        submodules: Optional[Dict[str, GeneralizedComponent | torch.nn.Linear]] = {},
     ):
-        """Initialize the QKV separation bridge.
+        """Initialize the joint QKV attention bridge.
 
         Args:
             name: The name of this component
@@ -33,13 +42,20 @@ class QKVSeparationBridge(GeneralizedComponent):
             submodules: Dictionary of GeneralizedComponent submodules to register
         """
         super().__init__(name, config, submodules=submodules)
-        # Standardized hooks for all bridge components
-        self.W_Q_hook_in = HookPoint()
-        self.W_Q_hook_out = HookPoint()
-        self.W_K_hook_in = HookPoint()
-        self.W_K_hook_out = HookPoint()
-        self.W_V_hook_in = HookPoint()
-        self.W_V_hook_out = HookPoint()
+
+        if config is None:
+            raise RuntimeError(
+                f"Config not set for {self.name}. Config is required for QKV separation."
+            )
+        if "d_model" not in config or "n_head" not in config or "d_head" not in config:
+            raise RuntimeError(
+                f"Config for {self.name} must contain 'd_model', 'n_head', and 'd_head'."
+            )
+
+        # Create hook points for individual Q, K and V activations
+        self.W_Q = QKVHooks()
+        self.W_K = QKVHooks()
+        self.W_V = QKVHooks()
 
     def split_qkv_matrices(self) -> tuple[torch.nn.Linear, torch.nn.Linear, torch.nn.Linear]:
         """Split the QKV matrix into separate linear transformations.
@@ -57,7 +73,7 @@ class QKVSeparationBridge(GeneralizedComponent):
         # Keep mypy happy
         assert self.original_component is not None
 
-        W = self.original_component.weight
+        W = self.original_component.c_attn.weight
 
         # Keep mypy happy
         assert isinstance(W, torch.Tensor)
@@ -68,7 +84,7 @@ class QKVSeparationBridge(GeneralizedComponent):
 
         W_Q, W_K, W_V = W_split
 
-        qkv_bias = self.original_component.bias
+        qkv_bias = self.original_component.c_attn.original_component.bias
 
         # Keep mypy happy
         assert isinstance(qkv_bias, torch.Tensor)
@@ -121,20 +137,19 @@ class QKVSeparationBridge(GeneralizedComponent):
         # Forward through the original linear layer
         output = self.original_component(input, *args, **kwargs)
 
-        # Split the QKV matrix into separate transformations for investigating each activation
         W_Q_transformation, W_K_transformation, W_V_transformation = self.split_qkv_matrices()
 
         # Apply Q hook
-        output_Q = self.W_Q_hook_in(W_Q_transformation(input))
-        output_Q = self.W_Q_hook_out(output_Q)
+        output_Q = self.W_Q.hook_in(W_Q_transformation(input))
+        output_Q = self.W_Q.hook_out(output_Q)
 
         # Apply K hook
-        output_K = self.W_K_hook_in(W_K_transformation(input))
-        output_K = self.W_K_hook_out(output_K)
+        output_K = self.W_K.hook_in(W_K_transformation(input))
+        output_K = self.W_K.hook_out(output_K)
 
         # Apply V hook
-        output_V = self.W_V_hook_in(W_V_transformation(input))
-        output_V = self.W_V_hook_out(output_V)
+        output_V = self.W_V.hook_in(W_V_transformation(input))
+        output_V = self.W_V.hook_out(output_V)
 
         # Apply output hook
         output = self.hook_out(output)

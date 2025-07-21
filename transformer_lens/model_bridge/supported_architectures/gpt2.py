@@ -8,13 +8,11 @@ from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
     WeightConversionSet,
 )
 from transformer_lens.model_bridge.generalized_components import (
-    AttentionBridge,
     BlockBridge,
     EmbeddingBridge,
     LayerNormBridge,
     LinearBridge,
     MLPBridge,
-    QKVSeparationBridge,
     UnembeddingBridge,
 )
 
@@ -83,18 +81,16 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
                 name="transformer.h",
                 submodules={
                     "ln1": LayerNormBridge(name="ln_1"),
-                    "attn": AttentionBridge(
+                    "attn": JointQKVAttentionBridge(
                         name="attn",
                         submodules={
-                            "W_QKV": QKVSeparationBridge(
-                                name="c_attn",
-                                config={
-                                    "d_model": self.cfg.n_embd,
-                                    "n_head": self.cfg.n_head,
-                                    "d_head": self.cfg.n_embd // self.cfg.n_head,
-                                },
-                            ),
+                            "W_QKV": LinearBridge(name="c_attn"),
                             "W_O": LinearBridge(name="c_proj"),
+                        },
+                        config={
+                            "d_model": self.cfg.n_embd,
+                            "n_head": self.cfg.n_head,
+                            "d_head": self.cfg.n_embd // self.cfg.n_head,
                         },
                     ),
                     "ln2": LayerNormBridge(name="ln_2"),
