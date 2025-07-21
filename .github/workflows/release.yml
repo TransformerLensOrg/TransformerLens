@@ -4,18 +4,13 @@ on:
   release:
     types:
       - published
-  pull_request:
-    branches:
-      - main
-      - dev*
-      - refactor*
 
 jobs:
-  # checks:
-  #   name: Run checks workflow
-  #   uses: TransformerLensOrg/TransformerLens/.github/workflows/checks.yml@main
-  #   secrets:
-  #     HF_TOKEN: ${{ secrets.HF_TOKEN }}
+  checks:
+    name: Run checks workflow
+    uses: TransformerLensOrg/TransformerLens/.github/workflows/checks.yml@main
+    secrets:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
 
   semver-parser:
     name: Parse the semantic version from the release
@@ -32,8 +27,7 @@ jobs:
       - name: Parse semver string
         id: semver_parser
         env:
-          RAW_TAG: "v3.0.0a1"
-          # RAW_TAG: ${{ github.event.release.tag_name }}
+          RAW_TAG: ${{ github.event.release.tag_name }}
         run: |
           VERSION="${RAW_TAG#v}"
           echo "Detected version: $VERSION"
@@ -44,28 +38,27 @@ jobs:
   release-python:
     name: Release Python package to PyPi
     needs:
-      # - checks
+      - checks
       - semver-parser
     runs-on: ubuntu-latest
     steps:
-      - run: echo "Version is ${{ needs.semver-parser.outputs.semver }}"
-      # - uses: actions/checkout@v3
-      # - name: Install Poetry
-      #   uses: snok/install-poetry@v1
-      # - name: Set up Python
-      #   uses: actions/setup-python@v4
-      #   with:
-      #     python-version: '3.11'
-      #     cache: 'poetry'
-      # - name: Poetry config
-      #   run: poetry self add 'poethepoet[poetry_plugin]'
-      # - name: Install dependencies
-      #   run: poetry install --with dev
-      # - name: Set the version
-      #   run: poetry version ${{needs.semver-parser.outputs.semver}}
-      # - name: Build
-      #   run: poetry build
-      # - name: Publish
-      #   run: poetry publish
-      #   env:
-      #     POETRY_PYPI_TOKEN_PYPI: ${{ secrets.PYPI_TOKEN_PYPI }}
+      - uses: actions/checkout@v3
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'poetry'
+      - name: Poetry config
+        run: poetry self add 'poethepoet[poetry_plugin]'
+      - name: Install dependencies
+        run: poetry install --with dev
+      - name: Set the version
+        run: poetry version ${{needs.semver-parser.outputs.semver}}
+      - name: Build
+        run: poetry build
+      - name: Publish
+        run: poetry publish
+        env:
+          POETRY_PYPI_TOKEN_PYPI: ${{ secrets.PYPI_TOKEN_PYPI }}
