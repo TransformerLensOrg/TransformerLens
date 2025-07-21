@@ -27,7 +27,7 @@ jobs:
           # version: ${{ github.event.release.tag_name }}
           version: "v3.0.0a1"
     outputs:
-      semver: "${{ steps.semver_parser.outputs.version }}"
+      semver: "${{ steps.semver_parser.outputs.VERSION }}"
 
   release-python:
     name: Release Python package to PyPi
