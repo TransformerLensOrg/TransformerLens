@@ -21,11 +21,13 @@ jobs:
     name: Parse the semantic version from the release
     runs-on: ubuntu-latest
     steps:
-     - name: Parse semver string
-       id: semver_parser 
-       uses: mtkennerly/poetry-dynamic-versioning@v1.9.1
+      - uses: samuelcolvin/check-python-version@v4
+        id: version_check
+        with:
+          # test_github_ref: ${{ github.event.release.tag_name }}
+          test_github_ref: "v3.0.0a1"
     outputs:
-      semver: "${{ steps.semver_parser.outputs.version }}"
+      semver: "${{ steps.version_check.outputs.VERSION }}"
 
   release-python:
     name: Release Python package to PyPi
