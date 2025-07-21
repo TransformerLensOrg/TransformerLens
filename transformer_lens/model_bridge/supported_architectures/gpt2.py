@@ -2,6 +2,9 @@
 
 from typing import Any
 
+import einops
+import torch
+
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
     RearrangeWeightConversion,
@@ -10,6 +13,7 @@ from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
+    GeneralizedComponent,
     JointQKVAttentionBridge,
     LayerNormBridge,
     LinearBridge,
@@ -92,6 +96,7 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
                             "d_model": self.cfg.n_embd,
                             "n_head": self.cfg.n_head,
                             "d_head": self.cfg.n_embd // self.cfg.n_head,
+                            "split_qkv_matrix": self.split_qkv_matrix,
                         },
                     ),
                     "ln2": LayerNormBridge(name="ln_2"),
@@ -107,3 +112,47 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
             "ln_final": LayerNormBridge(name="transformer.ln_f"),
             "unembed": UnembeddingBridge(name="lm_head"),
         }
+
+    def split_qkv_matrix(
+        self, attention_component: GeneralizedComponent
+    ) -> tuple[torch.nn.Linear, torch.nn.Linear, torch.nn.Linear]:
+        """Split the QKV matrix into separate linear transformations.
+        Args:
+            attention_component: The original attention layer component
+        Returns:
+            Tuple of nn.Linear modules for Q, K, and V transformations
+        """
+
+        qkv_weights = attention_component.c_attn.original_component.weight
+        W_Q, W_K, W_V = torch.tensor_split(qkv_weights, 3, dim=1)
+
+        qkv_bias = einops.rearrange(
+            attention_component.c_attn.original_component.bias,
+            "(qkv index head)->qkv index head",
+            qkv=3,
+            index=self.cfg.n_head,
+            head=self.cfg.n_embd // self.cfg.n_head,
+        )
+
+        # Create nn.Linear module
+        W_Q_transformation = torch.nn.Linear(W_Q.shape[0], W_Q.shape[1], bias=True)
+
+        # Set the weight and bias
+        W_Q_transformation.weight = torch.nn.Parameter(W_Q.T)
+        W_Q_transformation.bias = torch.nn.Parameter(qkv_bias[0].flatten())
+
+        # Create nn.Linear module for K
+        W_K_transformation = torch.nn.Linear(W_K.shape[0], W_K.shape[1], bias=True)
+
+        # Set the weight and bias
+        W_K_transformation.weight = torch.nn.Parameter(W_K.T)
+        W_K_transformation.bias = torch.nn.Parameter(qkv_bias[1].flatten())
+
+        # Create nn.Linear module for V
+        W_V_transformation = torch.nn.Linear(W_V.shape[0], W_V.shape[1], bias=True)
+
+        # Set the weight and bias
+        W_V_transformation.weight = torch.nn.Parameter(W_V.T)
+        W_V_transformation.bias = torch.nn.Parameter(qkv_bias[2].flatten())
+
+        return W_Q_transformation, W_K_transformation, W_V_transformation

@@ -57,64 +57,6 @@ class JointQKVAttentionBridge(GeneralizedComponent):
         self.W_K = QKVHooks()
         self.W_V = QKVHooks()
 
-    def split_qkv_matrices(self) -> tuple[torch.nn.Linear, torch.nn.Linear, torch.nn.Linear]:
-        """Split the QKV matrix into separate linear transformations.
-        Args:
-            qkv_component: The original QKV layer
-        Returns:
-            Tuple of nn.Linear modules for Q, K, and V transformations
-        """
-
-        if self.config is None:
-            raise RuntimeError(
-                f"Config not set for {self.name}. Config is required for QKV matrix splitting."
-            )
-
-        # Keep mypy happy
-        assert self.original_component is not None
-
-        W = self.original_component.c_attn.weight
-
-        # Keep mypy happy
-        assert isinstance(W, torch.Tensor)
-
-        W_split = W.T.reshape(
-            3, self.config["d_model"], self.config["n_head"] * self.config["d_head"]
-        )
-
-        W_Q, W_K, W_V = W_split
-
-        qkv_bias = self.original_component.c_attn.original_component.bias
-
-        # Keep mypy happy
-        assert isinstance(qkv_bias, torch.Tensor)
-
-        b_Q, b_K, b_V = qkv_bias.reshape(3, self.config["n_head"], self.config["d_head"])
-
-        # Create nn.Linear module
-        W_Q_transformation = torch.nn.Linear(W_Q.shape[0], W_Q.shape[1], bias=True)
-
-        # Set the weight and bias
-        W_Q_transformation.weight = torch.nn.Parameter(W_Q.T)
-        W_Q_transformation.bias = torch.nn.Parameter(b_Q.flatten())
-
-        # Create nn.Linear module for K
-        W_K_transformation = torch.nn.Linear(W_K.shape[0], W_K.shape[1], bias=True)
-
-        # Set the weight and bias
-        W_K_transformation.weight = torch.nn.Parameter(W_K.T)
-        W_K_transformation.bias = torch.nn.Parameter(b_K.flatten())
-
-        # Create nn.Linear module for V
-        W_V_transformation = torch.nn.Linear(W_V.shape[0], W_V.shape[1], bias=True)
-
-        # Set the weight and bias
-        W_V_transformation.weight = torch.nn.Parameter(W_V.T)
-        W_V_transformation.bias = torch.nn.Parameter(b_V.flatten())
-
-        # Return the separated transformations
-        return W_Q_transformation, W_K_transformation, W_V_transformation
-
     def forward(self, input: torch.Tensor, *args: Any, **kwargs: Any) -> torch.Tensor:
         """Forward pass through the QKV linear transformation with hooks.
 
@@ -137,7 +79,9 @@ class JointQKVAttentionBridge(GeneralizedComponent):
         # Forward through the original linear layer
         output = self.original_component(input, *args, **kwargs)
 
-        W_Q_transformation, W_K_transformation, W_V_transformation = self.split_qkv_matrices()
+        W_Q_transformation, W_K_transformation, W_V_transformation = self.config[
+            "split_qkv_matrix"
+        ](self.original_component)
 
         # Apply Q hook
         output_Q = self.W_Q.hook_in(W_Q_transformation(input))
