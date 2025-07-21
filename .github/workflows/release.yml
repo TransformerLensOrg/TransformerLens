@@ -21,13 +21,13 @@ jobs:
     name: Parse the semantic version from the release
     runs-on: ubuntu-latest
     steps:
-      - uses: samuelcolvin/check-python-version@v4
-        id: version_check
+      - uses: apexskier/github-semver-parse@v1
+        id: semver_parser
         with:
-          # test_github_ref: ${{ github.event.release.tag_name }}
-          test_github_ref: "v3.0.0a1"
+          # version: ${{ github.event.release.tag_name }}
+          version: "v3.0.0a1"
     outputs:
-      semver: "${{ steps.version_check.outputs.VERSION }}"
+      semver: "${{ steps.semver_parser.outputs.version }}"
 
   release-python:
     name: Release Python package to PyPi
