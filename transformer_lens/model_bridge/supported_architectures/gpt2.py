@@ -113,7 +113,7 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
         }
 
     def split_qkv_matrix(
-        self, attention_component: Any
+        self, attention_bridge: JointQKVAttentionBridge
     ) -> tuple[torch.nn.Linear, torch.nn.Linear, torch.nn.Linear]:
         """Split the QKV matrix into separate linear transformations.
         Args:
@@ -122,16 +122,28 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
             Tuple of nn.Linear modules for Q, K, and V transformations
         """
 
-        qkv_weights = attention_component.c_attn.original_component.weight
+        # Keep mypy happy
+        assert attention_bridge.original_component is not None
+        assert isinstance(attention_bridge.original_component.c_attn, LinearBridge)
+        assert attention_bridge.original_component.c_attn.original_component is not None
+
+        qkv_weights = attention_bridge.original_component.c_attn.original_component.weight
+
+        # Keep mypy happy
+        assert isinstance(qkv_weights, torch.Tensor)
+
         W_Q, W_K, W_V = torch.tensor_split(qkv_weights, 3, dim=1)
-        print(type(attention_component))
+
         qkv_bias = einops.rearrange(
-            attention_component.c_attn.original_component.bias,
+            attention_bridge.original_component.c_attn.original_component.bias,
             "(qkv index head)->qkv index head",
             qkv=3,
             index=self.cfg.n_head,
             head=self.cfg.n_embd // self.cfg.n_head,
         )
+
+        # Keep mypy happy
+        assert isinstance(qkv_bias, torch.Tensor)
 
         # Create nn.Linear module
         W_Q_transformation = torch.nn.Linear(W_Q.shape[0], W_Q.shape[1], bias=True)

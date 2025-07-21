@@ -73,6 +73,9 @@ class JointQKVAttentionBridge(GeneralizedComponent):
                 f"Original component not set for {self.name}. Call set_original_component() first."
             )
 
+        # Keep mypy happy
+        assert self.config is not None
+
         # Apply input hook
         input = self.hook_in(input)
 
@@ -81,7 +84,7 @@ class JointQKVAttentionBridge(GeneralizedComponent):
 
         W_Q_transformation, W_K_transformation, W_V_transformation = self.config[
             "split_qkv_matrix"
-        ](self.original_component)
+        ](self)
 
         # Apply Q hook
         output_Q = self.W_Q.hook_in(W_Q_transformation(input))
