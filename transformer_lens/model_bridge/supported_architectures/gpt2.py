@@ -13,7 +13,6 @@ from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
-    GeneralizedComponent,
     JointQKVAttentionBridge,
     LayerNormBridge,
     LinearBridge,
@@ -114,7 +113,7 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
         }
 
     def split_qkv_matrix(
-        self, attention_component: GeneralizedComponent
+        self, attention_component: Any
     ) -> tuple[torch.nn.Linear, torch.nn.Linear, torch.nn.Linear]:
         """Split the QKV matrix into separate linear transformations.
         Args:
@@ -125,7 +124,7 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
 
         qkv_weights = attention_component.c_attn.original_component.weight
         W_Q, W_K, W_V = torch.tensor_split(qkv_weights, 3, dim=1)
-
+        print(type(attention_component))
         qkv_bias = einops.rearrange(
             attention_component.c_attn.original_component.bias,
             "(qkv index head)->qkv index head",
