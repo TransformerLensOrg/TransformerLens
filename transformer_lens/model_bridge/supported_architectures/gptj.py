@@ -12,6 +12,7 @@ from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
     LayerNormBridge,
+    LinearBridge,
     MLPBridge,
     UnembeddingBridge,
 )
@@ -62,8 +63,22 @@ class GptjArchitectureAdapter(ArchitectureAdapter):
                 name="transformer.h",
                 submodules={
                     "ln1": LayerNormBridge(name="ln_1"),
-                    "attn": AttentionBridge(name="attn"),
-                    "mlp": MLPBridge(name="mlp"),
+                    "attn": AttentionBridge(
+                        name="attn",
+                        submodules={
+                            "W_Q": LinearBridge(name="q_proj"),
+                            "W_K": LinearBridge(name="k_proj"),
+                            "W_V": LinearBridge(name="v_proj"),
+                            "W_O": LinearBridge(name="o_proj"),
+                        },
+                    ),
+                    "mlp": MLPBridge(
+                        name="mlp",
+                        submodules={
+                            "W_in": LinearBridge(name="fc_in"),
+                            "W_out": LinearBridge(name="fc_out"),
+                        },
+                    ),
                 },
             ),
             "ln_final": LayerNormBridge(name="transformer.ln_f"),
