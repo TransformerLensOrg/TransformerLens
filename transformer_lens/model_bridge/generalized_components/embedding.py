@@ -3,6 +3,7 @@
 This module contains the bridge component for embedding layers.
 """
 
+import inspect
 from typing import Any, Dict, Optional
 
 import torch
@@ -58,10 +59,11 @@ class EmbeddingBridge(GeneralizedComponent):
         # Apply input hook
         input_ids = self.hook_in(input_ids)
 
-        if (
-            not hasattr(self.original_component, "forward")
-            or "position_ids" not in self.original_component.forward.__code__.co_varnames
-        ):
+        # Check if the original component supports position_ids using inspect.signature
+        sig = inspect.signature(self.original_component.forward)
+        supports_position_ids = "position_ids" in sig.parameters
+
+        if not hasattr(self.original_component, "forward") or not supports_position_ids:
             kwargs.pop("position_ids", None)
             output = self.original_component(input_ids, **kwargs)
         else:
