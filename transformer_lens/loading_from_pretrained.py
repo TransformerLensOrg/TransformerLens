@@ -30,6 +30,7 @@ from transformer_lens.pretrained.weight_conversions import (
     convert_gemma_weights,
     convert_gpt2_weights,
     convert_gptj_weights,
+    convert_granite_weights,
     convert_llama_weights,
     convert_mingpt_weights,
     convert_mistral_weights,
@@ -44,7 +45,6 @@ from transformer_lens.pretrained.weight_conversions import (
     convert_qwen3_weights,
     convert_qwen_weights,
     convert_t5_weights,
-    convert_granite_weights
 )
 
 OFFICIAL_MODEL_NAMES = [
@@ -266,8 +266,8 @@ OFFICIAL_MODEL_NAMES = [
     "ai-forever/mGPT",
     "ibm-granite/granite-3.3-2b-instruct",
     "ibm-granite/granite-3.3-2b-base",
-    "ibm-granite/granite-3.3-8b-instruct", 
-    "ibm-granite/granite-3.3-8b-base"
+    "ibm-granite/granite-3.3-8b-instruct",
+    "ibm-granite/granite-3.3-8b-base",
 ]
 """Official model names for models on HuggingFace."""
 
@@ -727,7 +727,7 @@ MODEL_ALIASES = {
     "ibm-granite/granite-3.3-2b-instruct": ["granite-3.3-2b", "granite-3.3-2b-instruct"],
     "ibm-granite/granite-3.3-2b-base": ["granite-3.3-2b-base"],
     "ibm-granite/granite-3.3-8b-instruct": ["granite-3.3-8b", "granite-3.3-8b-instruct"],
-    "ibm-granite/granite-3.3-8b-base": ["granite-3.3-8b-base"]
+    "ibm-granite/granite-3.3-8b-base": ["granite-3.3-8b-base"],
 }
 """Model aliases for models on HuggingFace."""
 
@@ -1456,16 +1456,16 @@ def convert_hf_model_config(model_name: str, **kwargs: Any):
             "n_ctx": min(hf_config.max_position_embeddings, 2048),  # Cap context length for memory
             "eps": hf_config.rms_norm_eps,
             "d_vocab": hf_config.vocab_size,
-            "act_fn": "silu", 
+            "act_fn": "silu",
             "normalization_type": "RMS",
             "positional_embedding_type": "rotary",
             "n_key_value_heads": hf_config.num_key_value_heads,
             "gated_mlp": True,
             "final_rms": True,
             "rotary_adjacent_pairs": False,
-            "gated_mlp":True, ## Remove this later
+            "gated_mlp": True,  ## Remove this later
             "rotary_dim": hf_config.hidden_size // hf_config.num_attention_heads,
-            "rotary_base": getattr(hf_config, 'rope_theta', 10000.0),
+            "rotary_base": getattr(hf_config, "rope_theta", 10000.0),
             "use_attn_scale": True,
         }
     elif official_model_name.startswith("google/gemma-2b"):
@@ -2017,9 +2017,9 @@ def get_pretrained_state_dict(
             state_dict = convert_gemma_weights(hf_model, cfg)
         elif cfg.original_architecture == "Gemma2ForCausalLM":
             state_dict = convert_gemma_weights(hf_model, cfg)
-        elif cfg.original_architecture=="GraniteForCausalLM":
-            state_dict=convert_granite_weights(hf_model,cfg)
-            
+        elif cfg.original_architecture == "GraniteForCausalLM":
+            state_dict = convert_granite_weights(hf_model, cfg)
+
         else:
             raise ValueError(
                 f"Loading weights from the architecture is not currently supported: {cfg.original_architecture}, generated from model name {cfg.model_name}. Feel free to open an issue on GitHub to request this feature."

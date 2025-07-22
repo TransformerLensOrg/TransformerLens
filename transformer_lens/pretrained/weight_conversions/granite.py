@@ -1,7 +1,6 @@
 from typing import cast
+
 import einops
-
-
 import torch
 
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
@@ -24,7 +23,9 @@ def convert_granite_weights(hf_model, cfg: HookedTransformerConfig):
 
     for l in range(cfg.n_layers):
         # LayerNorm 1 - move to the correct device
-        state_dict[f"blocks.{l}.ln1.w"] = hf_model.model.layers[l].input_layernorm.weight.to(device=cfg.device)
+        state_dict[f"blocks.{l}.ln1.w"] = hf_model.model.layers[l].input_layernorm.weight.to(
+            device=cfg.device
+        )
 
         # Attention weights
         # Transpose the weights first, then rearrange
@@ -44,7 +45,7 @@ def convert_granite_weights(hf_model, cfg: HookedTransformerConfig):
         state_dict[f"blocks.{l}.attn.{gqa_uscore}W_K"] = W_K.to(device=cfg.device)
         state_dict[f"blocks.{l}.attn.{gqa_uscore}W_V"] = W_V.to(device=cfg.device)
         state_dict[f"blocks.{l}.attn.W_O"] = W_O.to(device=cfg.device)
-        
+
         # Attention biases (Granite models don't use biases, so we set them to zero)
         state_dict[f"blocks.{l}.attn.b_Q"] = torch.zeros(
             cfg.n_heads, cfg.d_head, dtype=cfg.dtype, device=cfg.device
@@ -59,13 +60,21 @@ def convert_granite_weights(hf_model, cfg: HookedTransformerConfig):
             cfg.d_model, dtype=cfg.dtype, device=cfg.device
         )
 
-        # LayerNorm 2 
-        state_dict[f"blocks.{l}.ln2.w"] = hf_model.model.layers[l].post_attention_layernorm.weight.to(device=cfg.device)
+        # LayerNorm 2
+        state_dict[f"blocks.{l}.ln2.w"] = hf_model.model.layers[
+            l
+        ].post_attention_layernorm.weight.to(device=cfg.device)
 
         # MLP weights for GatedMLP - move to the correct device
-        state_dict[f"blocks.{l}.mlp.W_in"] = hf_model.model.layers[l].mlp.up_proj.weight.T.to(device=cfg.device)
-        state_dict[f"blocks.{l}.mlp.W_gate"] = hf_model.model.layers[l].mlp.gate_proj.weight.T.to(device=cfg.device)
-        state_dict[f"blocks.{l}.mlp.W_out"] = hf_model.model.layers[l].mlp.down_proj.weight.T.to(device=cfg.device)
+        state_dict[f"blocks.{l}.mlp.W_in"] = hf_model.model.layers[l].mlp.up_proj.weight.T.to(
+            device=cfg.device
+        )
+        state_dict[f"blocks.{l}.mlp.W_gate"] = hf_model.model.layers[l].mlp.gate_proj.weight.T.to(
+            device=cfg.device
+        )
+        state_dict[f"blocks.{l}.mlp.W_out"] = hf_model.model.layers[l].mlp.down_proj.weight.T.to(
+            device=cfg.device
+        )
 
         # MLP biases (Granite models don't use biases, so we set them to zero)
         state_dict[f"blocks.{l}.mlp.b_in"] = torch.zeros(
@@ -75,9 +84,9 @@ def convert_granite_weights(hf_model, cfg: HookedTransformerConfig):
             cfg.d_model, dtype=cfg.dtype, device=cfg.device
         )
 
-    # Final LayerNorm 
+    # Final LayerNorm
     state_dict["ln_final.w"] = hf_model.model.norm.weight.to(device=cfg.device)
-    
+
     # Unembedding weights
     state_dict["unembed.W_U"] = hf_model.lm_head.weight.T.to(device=cfg.device)
     state_dict["unembed.b_U"] = torch.zeros(cfg.d_vocab, dtype=cfg.dtype, device=cfg.device)
