@@ -39,7 +39,12 @@ class EmbeddingBridge(GeneralizedComponent):
         """Return the embedding weight matrix."""
         if self.original_component is None:
             raise RuntimeError(f"Original component not set for {self.name}")
-        return self.original_component.weight
+        assert hasattr(
+            self.original_component, "weight"
+        ), f"Component {self.name} has no weight attribute"
+        weight = self.original_component.weight
+        assert isinstance(weight, torch.Tensor), f"Weight is not a tensor for {self.name}"
+        return weight
 
     def forward(
         self,

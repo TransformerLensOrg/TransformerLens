@@ -39,7 +39,12 @@ class UnembeddingBridge(GeneralizedComponent):
         """Return the unembedding weight matrix."""
         if self.original_component is None:
             raise RuntimeError(f"Original component not set for {self.name}")
-        return self.original_component.weight.T
+        assert hasattr(
+            self.original_component, "weight"
+        ), f"Component {self.name} has no weight attribute"
+        weight = self.original_component.weight
+        assert isinstance(weight, torch.Tensor), f"Weight is not a tensor for {self.name}"
+        return weight.T
 
     def forward(
         self,
@@ -74,12 +79,17 @@ class UnembeddingBridge(GeneralizedComponent):
 
         # Handle case where the original component doesn't have a bias (like GPT-2)
         if hasattr(self.original_component, "bias") and self.original_component.bias is not None:
-            return self.original_component.bias
+            bias = self.original_component.bias
+            assert isinstance(bias, torch.Tensor), f"Bias is not a tensor for {self.name}"
+            return bias
         else:
             # Return zero bias of appropriate shape [d_vocab]
-            device = self.original_component.weight.device
-            dtype = self.original_component.weight.dtype
-            vocab_size: int = self.original_component.weight.shape[
-                0
-            ]  # lm_head weight is [d_vocab, d_model]
+            assert hasattr(
+                self.original_component, "weight"
+            ), f"Component {self.name} has no weight attribute"
+            weight = self.original_component.weight
+            assert isinstance(weight, torch.Tensor), f"Weight is not a tensor for {self.name}"
+            device = weight.device
+            dtype = weight.dtype
+            vocab_size: int = int(weight.shape[0])  # lm_head weight is [d_vocab, d_model]
             return torch.zeros(vocab_size, device=device, dtype=dtype)
