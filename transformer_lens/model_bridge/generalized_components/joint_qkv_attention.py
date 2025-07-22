@@ -36,7 +36,7 @@ class JointQKVAttentionBridge(AttentionBridge):
     def __init__(
         self,
         name: str,
-        config: Optional[Any] = None,
+        config: Any,
         submodules: Optional[Dict[str, GeneralizedComponent]] = {},
     ):
         """Initialize the joint QKV attention bridge.
