@@ -79,8 +79,16 @@ def test_translate_transformer_lens_path(adapter: Gemma3ArchitectureAdapter) -> 
         adapter.translate_transformer_lens_path("blocks.0.ln1") == "model.layers.0.input_layernorm"
     )
     assert (
-        adapter.translate_transformer_lens_path("blocks.0.ln2")
+        adapter.translate_transformer_lens_path("blocks.0.ln1_post")
         == "model.layers.0.post_attention_layernorm"
+    )
+    assert (
+        adapter.translate_transformer_lens_path("blocks.0.ln2")
+        == "model.layers.0.pre_feedforward_layernorm"
+    )
+    assert (
+        adapter.translate_transformer_lens_path("blocks.0.ln2_post")
+        == "model.layers.0.post_feedforward_layernorm"
     )
     assert adapter.translate_transformer_lens_path("blocks.0.attn") == "model.layers.0.self_attn"
     assert adapter.translate_transformer_lens_path("blocks.0.mlp") == "model.layers.0.mlp"
@@ -135,8 +143,16 @@ def test_translate_transformer_lens_path_last_component(adapter: Gemma3Architect
         == "input_layernorm"
     )
     assert (
-        adapter.translate_transformer_lens_path("blocks.0.ln2", last_component_only=True)
+        adapter.translate_transformer_lens_path("blocks.0.ln1_post", last_component_only=True)
         == "post_attention_layernorm"
+    )
+    assert (
+        adapter.translate_transformer_lens_path("blocks.0.ln2", last_component_only=True)
+        == "pre_feedforward_layernorm"
+    )
+    assert (
+        adapter.translate_transformer_lens_path("blocks.0.ln2_post", last_component_only=True)
+        == "post_feedforward_layernorm"
     )
     assert (
         adapter.translate_transformer_lens_path("blocks.0.attn", last_component_only=True)
