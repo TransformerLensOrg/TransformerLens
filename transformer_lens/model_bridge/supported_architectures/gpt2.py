@@ -2,7 +2,6 @@
 
 from typing import Any
 
-import einops
 import torch
 
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
@@ -129,38 +128,36 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
         # Keep mypy happy
         assert isinstance(qkv_weights, torch.Tensor)
 
+        d_head = self.cfg.n_embd // self.cfg.n_head
+
+        # Original qkv_weights shape: [d_model, 3 * d_model]
+        # Split into three equal parts along dimension 1 to get Q, K, V weights
         W_Q, W_K, W_V = torch.tensor_split(qkv_weights, 3, dim=1)
 
-        qkv_bias = einops.rearrange(
-            attention_bridge.original_component.c_attn.original_component.bias,
-            "(qkv index head)->qkv index head",
-            qkv=3,
-            index=self.cfg.n_head,
-            head=self.cfg.n_embd // self.cfg.n_head,
-        )
+        qkv_bias = attention_bridge.original_component.c_attn.original_component.bias
 
         # Keep mypy happy
         assert isinstance(qkv_bias, torch.Tensor)
 
-        # Create nn.Linear module
+        # Original qkv_bias shape: [3 * n_head * d_head]
+        # Reshape to [3, n_head * d_head] to split by Q, K, V
+        qkv_bias = qkv_bias.reshape(3, self.cfg.n_head * d_head)
+        b_Q, b_K, b_V = qkv_bias[0, :], qkv_bias[1, :], qkv_bias[2, :]
+
+        # Create nn.Linear modules
+        # After tensor_split, W_Q, W_K, W_V shapes are [d_model, d_model] ([in_features, out_features])
+        # nn.Linear expects weight shape [out_features, in_features]
+        # So we need to transpose the weights
         W_Q_transformation = torch.nn.Linear(W_Q.shape[0], W_Q.shape[1], bias=True)
-
-        # Set the weight and bias
         W_Q_transformation.weight = torch.nn.Parameter(W_Q.T)
-        W_Q_transformation.bias = torch.nn.Parameter(qkv_bias[0].flatten())
+        W_Q_transformation.bias = torch.nn.Parameter(b_Q)
 
-        # Create nn.Linear module for K
         W_K_transformation = torch.nn.Linear(W_K.shape[0], W_K.shape[1], bias=True)
-
-        # Set the weight and bias
         W_K_transformation.weight = torch.nn.Parameter(W_K.T)
-        W_K_transformation.bias = torch.nn.Parameter(qkv_bias[1].flatten())
+        W_K_transformation.bias = torch.nn.Parameter(b_K)
 
-        # Create nn.Linear module for V
         W_V_transformation = torch.nn.Linear(W_V.shape[0], W_V.shape[1], bias=True)
-
-        # Set the weight and bias
         W_V_transformation.weight = torch.nn.Parameter(W_V.T)
-        W_V_transformation.bias = torch.nn.Parameter(qkv_bias[2].flatten())
+        W_V_transformation.bias = torch.nn.Parameter(b_V)
 
         return W_Q_transformation, W_K_transformation, W_V_transformation
