@@ -37,6 +37,8 @@ class UnembeddingBridge(GeneralizedComponent):
     @property
     def W_U(self) -> torch.Tensor:
         """Return the unembedding weight matrix."""
+        if self.original_component is None:
+            raise RuntimeError(f"Original component not set for {self.name}")
         return self.original_component.weight.T
 
     def forward(
@@ -65,7 +67,7 @@ class UnembeddingBridge(GeneralizedComponent):
         return output
 
     @property
-    def b_U(self):
+    def b_U(self) -> torch.Tensor:
         """Access the unembedding bias vector."""
         if self.original_component is None:
             raise RuntimeError(f"Original component not set for {self.name}")
@@ -77,7 +79,7 @@ class UnembeddingBridge(GeneralizedComponent):
             # Return zero bias of appropriate shape [d_vocab]
             device = self.original_component.weight.device
             dtype = self.original_component.weight.dtype
-            vocab_size = self.original_component.weight.shape[
+            vocab_size: int = self.original_component.weight.shape[
                 0
             ]  # lm_head weight is [d_vocab, d_model]
             return torch.zeros(vocab_size, device=device, dtype=dtype)

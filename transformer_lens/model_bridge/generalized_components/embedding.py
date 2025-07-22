@@ -37,6 +37,8 @@ class EmbeddingBridge(GeneralizedComponent):
     @property
     def W_E(self) -> torch.Tensor:
         """Return the embedding weight matrix."""
+        if self.original_component is None:
+            raise RuntimeError(f"Original component not set for {self.name}")
         return self.original_component.weight
 
     def forward(

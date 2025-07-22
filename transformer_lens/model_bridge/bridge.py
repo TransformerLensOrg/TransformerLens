@@ -788,7 +788,7 @@ class TransformerBridge(nn.Module):
             apply_hooks(bwd_hooks, False)
 
             # Run the model
-            output = self.forward(input, return_type=return_type, **kwargs)
+            output = self.forward(input, return_type=return_type or "logits", **kwargs)
 
             return output
 
