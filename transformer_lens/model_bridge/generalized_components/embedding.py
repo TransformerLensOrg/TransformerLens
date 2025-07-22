@@ -34,6 +34,11 @@ class EmbeddingBridge(GeneralizedComponent):
         super().__init__(name, config, submodules=submodules)
         # No extra hooks; use only hook_in and hook_out
 
+    @property
+    def W_E(self) -> torch.Tensor:
+        """Return the embedding weight matrix."""
+        return self.original_component.weight
+
     def forward(
         self,
         input_ids: torch.Tensor,
