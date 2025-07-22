@@ -69,7 +69,7 @@ class GptjArchitectureAdapter(ArchitectureAdapter):
                             "W_Q": LinearBridge(name="q_proj"),
                             "W_K": LinearBridge(name="k_proj"),
                             "W_V": LinearBridge(name="v_proj"),
-                            "W_O": LinearBridge(name="o_proj"),
+                            "W_O": LinearBridge(name="out_proj"),
                         },
                     ),
                     "mlp": MLPBridge(
