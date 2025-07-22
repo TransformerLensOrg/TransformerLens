@@ -137,12 +137,12 @@ class BloomArchitectureAdapter(ArchitectureAdapter):
 
         qkv_bias = attention_bridge.original_component.query_key_value.original_component.bias
 
+        # Keep mypy happy
+        assert isinstance(qkv_bias, torch.Tensor)
+
         # Original qkv_bias shape: [3 * n_head * d_head]
         # Reshape to [3, n_head * d_head] to split by Q, K, V
         qkv_bias = qkv_bias.reshape(3, self.cfg.n_head * d_head)
-
-        # Keep mypy happy
-        assert isinstance(qkv_bias, torch.Tensor)
 
         b_Q, b_K, b_V = qkv_bias[0, :], qkv_bias[1, :], qkv_bias[2, :]
 
