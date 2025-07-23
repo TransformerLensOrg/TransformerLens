@@ -58,29 +58,6 @@ class LinearBridge(GeneralizedComponent):
 
         return output
 
-    @property
-    def in_features(self) -> int:
-        """Get input features from the original component."""
-        if self.original_component is None:
-            raise RuntimeError(f"Original component not set for {self.name}")
-        assert isinstance(self.original_component, torch.nn.Linear)
-        return self.original_component.in_features
-
-    @property
-    def out_features(self) -> int:
-        """Get output features from the original component."""
-        if self.original_component is None:
-            raise RuntimeError(f"Original component not set for {self.name}")
-        assert isinstance(self.original_component, torch.nn.Linear)
-        return self.original_component.out_features
-
-    @property
-    def bias(self) -> bool:
-        """Check if the original component has bias."""
-        if self.original_component is None:
-            raise RuntimeError(f"Original component not set for {self.name}")
-        return self.original_component.bias is not None
-
     def __repr__(self) -> str:
         """String representation of the LinearBridge."""
         if self.original_component is not None:

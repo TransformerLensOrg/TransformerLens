@@ -10,8 +10,8 @@ from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
     BlockBridge,
     EmbeddingBridge,
-    LayerNormBridge,
     MLPBridge,
+    NormalizationBridge,
     UnembeddingBridge,
 )
 
@@ -51,12 +51,12 @@ class T5ArchitectureAdapter(ArchitectureAdapter):
             "blocks": BlockBridge(
                 name="encoder.block",
                 submodules={
-                    "ln1": LayerNormBridge(name="layer.0.layer_norm"),
+                    "ln1": NormalizationBridge(name="layer.0.layer_norm"),
                     "attn": AttentionBridge(name="layer.0.SelfAttention"),
-                    "ln2": LayerNormBridge(name="layer.1.layer_norm"),
+                    "ln2": NormalizationBridge(name="layer.1.layer_norm"),
                     "mlp": MLPBridge(name="layer.1.DenseReluDense"),
                 },
             ),
-            "ln_final": LayerNormBridge(name="encoder.final_layer_norm"),
+            "ln_final": NormalizationBridge(name="encoder.final_layer_norm"),
             "unembed": UnembeddingBridge(name="lm_head"),
         }

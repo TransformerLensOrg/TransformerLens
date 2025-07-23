@@ -13,9 +13,9 @@ from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
     JointQKVAttentionBridge,
-    LayerNormBridge,
     LinearBridge,
     MLPBridge,
+    NormalizationBridge,
     UnembeddingBridge,
 )
 
@@ -26,6 +26,11 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
     def __init__(self, cfg: Any) -> None:
         """Initialize the GPT2 architecture adapter."""
         super().__init__(cfg)
+
+        # Set default config for GPT2 models
+        self.default_cfg = {
+            "default_prepend_bos": True,  # Default for GPT-2 style models
+        }
 
         self.conversion_rules = WeightConversionSet(
             {
@@ -83,7 +88,7 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
             "blocks": BlockBridge(
                 name="transformer.h",
                 submodules={
-                    "ln1": LayerNormBridge(name="ln_1"),
+                    "ln1": NormalizationBridge(name="ln_1"),
                     "attn": JointQKVAttentionBridge(
                         name="attn",
                         submodules={
@@ -95,7 +100,7 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
                             "original_model_config": self.cfg,
                         },
                     ),
-                    "ln2": LayerNormBridge(name="ln_2"),
+                    "ln2": NormalizationBridge(name="ln_2"),
                     "mlp": MLPBridge(
                         name="mlp",
                         submodules={
@@ -105,7 +110,7 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
                     ),
                 },
             ),
-            "ln_final": LayerNormBridge(name="transformer.ln_f"),
+            "ln_final": NormalizationBridge(name="transformer.ln_f"),
             "unembed": UnembeddingBridge(name="lm_head"),
         }
 

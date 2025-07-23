@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import Callable
 from typing import Any, Dict, Optional
 
@@ -20,6 +21,10 @@ class GeneralizedComponent(nn.Module):
 
     # Class attribute indicating whether this component represents a list item (like blocks)
     is_list_item: bool = False
+
+    # Dictionary mapping deprecated hook names to their new equivalents
+    # Subclasses can override this to define their own aliases
+    hook_aliases: Dict[str, str] = {}
 
     def __init__(
         self,
@@ -139,6 +144,18 @@ class GeneralizedComponent(nn.Module):
         # First check if it's a module attribute (like hook_in, hook_out)
         if hasattr(self, "_modules") and name in self._modules:
             return self._modules[name]
+
+        # Check if this is a deprecated hook alias
+        if name in self.hook_aliases:
+            target_hook = self.hook_aliases[name]
+            warnings.warn(
+                f"Hook '{name}' is deprecated and will be removed in a future version. "
+                f"Use '{target_hook}' instead.",
+                FutureWarning,
+                stacklevel=2,
+            )
+            # Return the target hook
+            return getattr(self, target_hook)
 
         # Avoid recursion by checking if we're looking for original_component
         if name == "original_component":

@@ -12,9 +12,9 @@ from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
     BlockBridge,
     EmbeddingBridge,
-    LayerNormBridge,
     LinearBridge,
     MLPBridge,
+    NormalizationBridge,
     UnembeddingBridge,
 )
 
@@ -46,14 +46,22 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
                     "model.layers.{i}.self_attn.k_proj.weight",
                     RearrangeWeightConversion(
                         "(n h) m -> n m h",
-                        n=getattr(self.cfg, "num_key_value_heads", self.cfg.num_attention_heads),
+                        n=getattr(
+                            self.cfg,
+                            "num_key_value_heads",
+                            self.cfg.num_attention_heads,
+                        ),
                     ),
                 ),
                 "blocks.{i}.attn.W_V": (
                     "model.layers.{i}.self_attn.v_proj.weight",
                     RearrangeWeightConversion(
                         "(n h) m -> n m h",
-                        n=getattr(self.cfg, "num_key_value_heads", self.cfg.num_attention_heads),
+                        n=getattr(
+                            self.cfg,
+                            "num_key_value_heads",
+                            self.cfg.num_attention_heads,
+                        ),
                     ),
                 ),
                 "blocks.{i}.attn.W_O": (
@@ -71,11 +79,15 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
         # Set up component mapping with actual bridge instances
         self.component_mapping = {
             "embed": EmbeddingBridge(name="model.embed_tokens"),
+            "rotary_emb": EmbeddingBridge(name="model.rotary_emb"),
+            "rotary_emb_local": EmbeddingBridge(name="model.rotary_emb_local"),
             "blocks": BlockBridge(
                 name="model.layers",
                 submodules={
-                    "ln1": LayerNormBridge(name="input_layernorm"),
-                    "ln2": LayerNormBridge(name="post_attention_layernorm"),
+                    "ln1": NormalizationBridge(name="input_layernorm"),
+                    "ln1_post": NormalizationBridge(name="post_attention_layernorm"),
+                    "ln2": NormalizationBridge(name="pre_feedforward_layernorm"),
+                    "ln2_post": NormalizationBridge(name="post_feedforward_layernorm"),
                     "attn": AttentionBridge(
                         name="self_attn",
                         submodules={
@@ -83,6 +95,8 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
                             "W_K": LinearBridge(name="k_proj"),
                             "W_V": LinearBridge(name="v_proj"),
                             "W_O": LinearBridge(name="o_proj"),
+                            "W_Q_norm": NormalizationBridge(name="q_norm"),
+                            "W_K_norm": NormalizationBridge(name="k_norm"),
                         },
                     ),
                     "mlp": MLPBridge(
@@ -95,6 +109,6 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
                     ),
                 },
             ),
-            "ln_final": LayerNormBridge(name="model.norm"),
+            "ln_final": NormalizationBridge(name="model.norm"),
             "unembed": UnembeddingBridge(name="lm_head"),
         }
