@@ -167,47 +167,13 @@ class ActivationCache:
         if key in self.cache_dict:
             return self.cache_dict[key]
         elif type(key) == str:
-            act_name = utils.get_act_name(key)
-            if act_name in self.cache_dict:
-                return self.cache_dict[act_name]
-            else:
-                # Try hook alias mapping for backward compatibility
-                aliased_name = self._try_hook_alias(act_name)
-                if aliased_name in self.cache_dict:
-                    return self.cache_dict[aliased_name]
-                else:
-                    return self.cache_dict[act_name]  # Let original KeyError happen
+            return self.cache_dict[utils.get_act_name(key)]
         else:
             if len(key) > 1 and key[1] is not None:
                 if key[1] < 0:
                     # Supports negative indexing on the layer dimension
                     key = (key[0], self.model.cfg.n_layers + key[1], *key[2:])
-            act_name = utils.get_act_name(*key)
-            if act_name in self.cache_dict:
-                return self.cache_dict[act_name]
-            else:
-                # Try hook alias mapping for backward compatibility
-                aliased_name = self._try_hook_alias(act_name)
-                if aliased_name in self.cache_dict:
-                    return self.cache_dict[aliased_name]
-                else:
-                    return self.cache_dict[act_name]  # Let original KeyError happen
-
-    def _try_hook_alias(self, hook_name: str) -> str:
-        """Try to find an aliased hook name for backward compatibility.
-
-        Note: Hook aliases are now handled at cache creation time in TransformerBridge,
-        so this method is kept only for legacy compatibility and returns the original name.
-
-        Args:
-            hook_name: The original hook name to try aliasing
-
-        Returns:
-            The original hook name (aliases are now handled during cache creation)
-        """
-        # Hook aliases are now handled at cache creation time by TransformerBridge
-        # using component-based aliases, so no mapping is needed here
-        return hook_name
+            return self.cache_dict[utils.get_act_name(*key)]
 
     def __len__(self) -> int:
         """Length of the ActivationCache.
