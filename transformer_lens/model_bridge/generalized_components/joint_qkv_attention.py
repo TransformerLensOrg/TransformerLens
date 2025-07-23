@@ -61,6 +61,9 @@ class JointQKVAttentionBridge(AttentionBridge):
 
         super().set_original_component(original_component)
 
+        # Keep mypy happy
+        assert self.config is not None
+
         W_Q_transformation, W_K_transformation, W_V_transformation = self.config[
             "split_qkv_matrix"
         ](original_component)
