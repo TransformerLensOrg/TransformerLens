@@ -24,6 +24,11 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
         """Initialize the GPT2 architecture adapter."""
         super().__init__(cfg)
 
+        # Set default config for GPT2 models
+        self.default_cfg = {
+            "default_prepend_bos": True,  # Default for GPT-2 style models
+        }
+
         self.conversion_rules = WeightConversionSet(
             {
                 "pos_embed.W_pos": "transformer.wpe.weight",
