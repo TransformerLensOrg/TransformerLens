@@ -167,13 +167,56 @@ class ActivationCache:
         if key in self.cache_dict:
             return self.cache_dict[key]
         elif type(key) == str:
-            return self.cache_dict[utils.get_act_name(key)]
+            act_name = utils.get_act_name(key)
+            if act_name in self.cache_dict:
+                return self.cache_dict[act_name]
+            else:
+                # Try hook alias mapping for backward compatibility
+                aliased_name = self._try_hook_alias(act_name)
+                if aliased_name in self.cache_dict:
+                    return self.cache_dict[aliased_name]
+                else:
+                    return self.cache_dict[act_name]  # Let original KeyError happen
         else:
             if len(key) > 1 and key[1] is not None:
                 if key[1] < 0:
                     # Supports negative indexing on the layer dimension
                     key = (key[0], self.model.cfg.n_layers + key[1], *key[2:])
-            return self.cache_dict[utils.get_act_name(*key)]
+            act_name = utils.get_act_name(*key)
+            if act_name in self.cache_dict:
+                return self.cache_dict[act_name]
+            else:
+                # Try hook alias mapping for backward compatibility
+                aliased_name = self._try_hook_alias(act_name)
+                if aliased_name in self.cache_dict:
+                    return self.cache_dict[aliased_name]
+                else:
+                    return self.cache_dict[act_name]  # Let original KeyError happen
+
+    def _try_hook_alias(self, hook_name: str) -> str:
+        """Try to find an aliased hook name for backward compatibility.
+
+        Maps old hook names to new hook names:
+        - hook_pattern -> hook_attention_weights
+
+        Args:
+            hook_name: The original hook name to try aliasing
+
+        Returns:
+            The aliased hook name, or the original name if no alias exists
+        """
+        # Map old hook names to new hook names
+        hook_aliases = {
+            "hook_pattern": "hook_attention_weights",
+        }
+
+        # Check if this is a hook name that needs aliasing
+        for old_name, new_name in hook_aliases.items():
+            if hook_name.endswith(old_name):
+                # Replace the old hook suffix with the new one
+                return hook_name.replace(old_name, new_name)
+
+        return hook_name
 
     def __len__(self) -> int:
         """Length of the ActivationCache.

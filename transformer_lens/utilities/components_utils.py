@@ -64,7 +64,7 @@ def get_act_name(
     }
 
     act_name_alias = {
-        "attn": "pattern",
+        "attn": "pattern",  # Keep old mapping for backward compatibility
         "attn_logits": "attn_scores",
         "key": "k",
         "query": "q",
