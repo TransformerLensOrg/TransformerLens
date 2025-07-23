@@ -196,26 +196,17 @@ class ActivationCache:
     def _try_hook_alias(self, hook_name: str) -> str:
         """Try to find an aliased hook name for backward compatibility.
 
-        Maps old hook names to new hook names:
-        - hook_pattern -> hook_attention_weights
+        Note: Hook aliases are now handled at cache creation time in TransformerBridge,
+        so this method is kept only for legacy compatibility and returns the original name.
 
         Args:
             hook_name: The original hook name to try aliasing
 
         Returns:
-            The aliased hook name, or the original name if no alias exists
+            The original hook name (aliases are now handled during cache creation)
         """
-        # Map old hook names to new hook names
-        hook_aliases = {
-            "hook_pattern": "hook_attention_weights",
-        }
-
-        # Check if this is a hook name that needs aliasing
-        for old_name, new_name in hook_aliases.items():
-            if hook_name.endswith(old_name):
-                # Replace the old hook suffix with the new one
-                return hook_name.replace(old_name, new_name)
-
+        # Hook aliases are now handled at cache creation time by TransformerBridge
+        # using component-based aliases, so no mapping is needed here
         return hook_name
 
     def __len__(self) -> int:
