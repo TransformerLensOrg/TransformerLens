@@ -92,6 +92,7 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
                         },
                         config={
                             "split_qkv_matrix": self.split_qkv_matrix,
+                            "original_model_config": self.cfg,
                         },
                     ),
                     "ln2": LayerNormBridge(name="ln_2"),
@@ -109,7 +110,7 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
         }
 
     def split_qkv_matrix(
-        self, attention_bridge: JointQKVAttentionBridge
+        self, original_attention_component: Any
     ) -> tuple[torch.nn.Linear, torch.nn.Linear, torch.nn.Linear]:
         """Split the QKV matrix into separate linear transformations.
         Args:
@@ -119,11 +120,10 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
         """
 
         # Keep mypy happy
-        assert attention_bridge.original_component is not None
-        assert isinstance(attention_bridge.original_component.c_attn, LinearBridge)
-        assert attention_bridge.original_component.c_attn.original_component is not None
+        assert original_attention_component is not None
+        assert original_attention_component.c_attn is not None
 
-        qkv_weights = attention_bridge.original_component.c_attn.original_component.weight
+        qkv_weights = original_attention_component.c_attn.weight
 
         # Keep mypy happy
         assert isinstance(qkv_weights, torch.Tensor)
@@ -134,7 +134,7 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
         # Split into three equal parts along dimension 1 to get Q, K, V weights
         W_Q, W_K, W_V = torch.tensor_split(qkv_weights, 3, dim=1)
 
-        qkv_bias = attention_bridge.original_component.c_attn.original_component.bias
+        qkv_bias = original_attention_component.c_attn.bias
 
         # Keep mypy happy
         assert isinstance(qkv_bias, torch.Tensor)

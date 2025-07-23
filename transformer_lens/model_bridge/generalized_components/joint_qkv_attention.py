@@ -11,18 +11,10 @@ from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.generalized_components.attention import (
     AttentionBridge,
 )
+from transformer_lens.model_bridge.generalized_components.linear import LinearBridge
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
-
-
-class QKVHooks(torch.nn.Module):
-    """Container for Q, K, or V hook points."""
-
-    def __init__(self):
-        super().__init__()
-        self.hook_in = HookPoint()
-        self.hook_out = HookPoint()
 
 
 class JointQKVAttentionBridge(AttentionBridge):
@@ -56,10 +48,28 @@ class JointQKVAttentionBridge(AttentionBridge):
         if "split_qkv_matrix" not in self.config:
             raise RuntimeError(f"Config for {self.name} must include 'split_qkv_matrix' function.")
 
-        # Create hook points for individual Q, K and V activations
-        self.W_Q = QKVHooks()
-        self.W_K = QKVHooks()
-        self.W_V = QKVHooks()
+        # Create LinearBridge components for Q, K, and V activations
+        self.W_Q = LinearBridge(name="W_Q")
+        self.W_K = LinearBridge(name="W_K")
+        self.W_V = LinearBridge(name="W_V")
+
+    def set_original_component(self, original_component: torch.nn.Module) -> None:
+        """Set the original component that this bridge wraps and initialize LinearBridges for Q, K, and V transformations.
+
+        Args:
+            original_component: The original attention layer to wrap
+        """
+
+        super().set_original_component(original_component)
+
+        W_Q_transformation, W_K_transformation, W_V_transformation = self.config[
+            "split_qkv_matrix"
+        ](original_component)
+
+        # Initialize LinearBridges for Q, K, and V transformations
+        self.W_Q.set_original_component(W_Q_transformation)
+        self.W_K.set_original_component(W_K_transformation)
+        self.W_V.set_original_component(W_V_transformation)
 
     def forward(self, input: torch.Tensor, *args: Any, **kwargs: Any) -> Any:
         """Forward pass through the QKV linear transformation with hooks.
@@ -74,23 +84,8 @@ class JointQKVAttentionBridge(AttentionBridge):
         """
         output = super().forward(input, *args, **kwargs)
 
-        # Keep mypy happy
-        assert self.config is not None
-
-        W_Q_transformation, W_K_transformation, W_V_transformation = self.config[
-            "split_qkv_matrix"
-        ](self)
-
-        # Apply Q hook
-        output_Q = self.W_Q.hook_in(W_Q_transformation(input))
-        output_Q = self.W_Q.hook_out(output_Q)
-
-        # Apply K hook
-        output_K = self.W_K.hook_in(W_K_transformation(input))
-        output_K = self.W_K.hook_out(output_K)
-
-        # Apply V hook
-        output_V = self.W_V.hook_in(W_V_transformation(input))
-        output_V = self.W_V.hook_out(output_V)
+        self.W_Q(input)
+        self.W_K(input)
+        self.W_V(input)
 
         return output
