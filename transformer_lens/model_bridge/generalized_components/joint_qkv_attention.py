@@ -83,6 +83,8 @@ class JointQKVAttentionBridge(AttentionBridge):
         """
         output = super().forward(input, *args, **kwargs)
 
+        # Run the input through the individual Q, K, and V transformations
+        # in order to hook their outputs
         self.W_Q(input)
         self.W_K(input)
         self.W_V(input)
