@@ -14,8 +14,8 @@ from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
     BlockBridge,
     EmbeddingBridge,
-    LayerNormBridge,
     MLPBridge,
+    NormalizationBridge,
 )
 
 
@@ -34,7 +34,7 @@ class TestTransformerBridge:
                 comp.set_original_component(model.embed)
                 return comp
             elif "ln_final" in path:
-                comp = LayerNormBridge(name="ln_final")
+                comp = NormalizationBridge(name="ln_final")
                 comp.set_original_component(model.ln_final)
                 return comp
             elif "unembed" in path:
@@ -50,11 +50,11 @@ class TestTransformerBridge:
                 comp.set_original_component(model.blocks[0].mlp)
                 return comp
             elif "blocks" in path and "ln1" in path:
-                comp = LayerNormBridge(name="ln1")
+                comp = NormalizationBridge(name="ln1")
                 comp.set_original_component(model.blocks[0].ln1)
                 return comp
             elif "blocks" in path and "ln2" in path:
-                comp = LayerNormBridge(name="ln2")
+                comp = NormalizationBridge(name="ln2")
                 comp.set_original_component(model.blocks[0].ln2)
                 return comp
             elif "blocks" in path:
@@ -76,7 +76,7 @@ class TestTransformerBridge:
         # Updated to use actual bridge instances instead of tuples
         mapping = {
             "embed": EmbeddingBridge(name="embed"),
-            "ln_final": LayerNormBridge(name="ln_final"),
+            "ln_final": NormalizationBridge(name="ln_final"),
             "unembed": EmbeddingBridge(name="unembed"),
         }
         self.bridge.adapter.component_mapping = mapping
@@ -97,8 +97,8 @@ class TestTransformerBridge:
             "blocks": BlockBridge(
                 name="blocks",
                 submodules={
-                    "ln1": LayerNormBridge(name="ln1"),
-                    "ln2": LayerNormBridge(name="ln2"),
+                    "ln1": NormalizationBridge(name="ln1"),
+                    "ln2": NormalizationBridge(name="ln2"),
                     "attn": AttentionBridge(name="attn"),
                     "mlp": MLPBridge(name="mlp"),
                 },
@@ -123,11 +123,11 @@ class TestTransformerBridge:
             "blocks": BlockBridge(
                 name="blocks",
                 submodules={
-                    "ln1": LayerNormBridge(name="ln1"),
+                    "ln1": NormalizationBridge(name="ln1"),
                     "attn": AttentionBridge(name="attn"),
                 },
             ),
-            "ln_final": LayerNormBridge(name="ln_final"),
+            "ln_final": NormalizationBridge(name="ln_final"),
         }
         self.bridge.adapter.component_mapping = mapping
 
@@ -144,7 +144,7 @@ class TestTransformerBridge:
     def test_format_with_prepend_path(self):
         """Test formatting with prepend path parameter."""
         mapping = {
-            "ln1": LayerNormBridge(name="ln1"),
+            "ln1": NormalizationBridge(name="ln1"),
             "attn": AttentionBridge(name="attn"),
         }
         # To test prepending, we need a parent structure in the component mapping
@@ -192,7 +192,7 @@ class TestTransformerBridge:
                     "inner_blocks": BlockBridge(
                         name="inner_blocks",
                         submodules={
-                            "ln": LayerNormBridge(name="ln"),
+                            "ln": NormalizationBridge(name="ln"),
                         },
                     )
                 },

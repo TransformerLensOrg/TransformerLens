@@ -14,8 +14,8 @@ from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
     BlockBridge,
     EmbeddingBridge,
-    LayerNormBridge,
     MLPBridge,
+    NormalizationBridge,
     UnembeddingBridge,
 )
 
@@ -93,12 +93,12 @@ class BertArchitectureAdapter(ArchitectureAdapter):
             "blocks": BlockBridge(
                 name="bert.encoder.layer",
                 submodules={
-                    "ln1": LayerNormBridge(name="attention.output.LayerNorm"),
-                    "ln2": LayerNormBridge(name="output.LayerNorm"),
+                    "ln1": NormalizationBridge(name="attention.output.LayerNorm"),
+                    "ln2": NormalizationBridge(name="output.LayerNorm"),
                     "attn": AttentionBridge(name="attention"),
                     "mlp": MLPBridge(name="intermediate"),
                 },
             ),
             "unembed": UnembeddingBridge(name="cls.predictions"),
-            "ln_final": LayerNormBridge(name="bert.pooler.dense"),
+            "ln_final": NormalizationBridge(name="bert.pooler.dense"),
         }

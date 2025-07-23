@@ -7,6 +7,7 @@ a consistent interface for accessing their weights and performing operations.
 from typing import (
     TYPE_CHECKING,
     Any,
+    Callable,
     Dict,
     List,
     Literal,
@@ -19,10 +20,12 @@ from typing import (
 
 import numpy as np
 import torch
-import torch.nn as nn
+from jaxtyping import Float
+from torch import nn
 
 from transformer_lens import utils
 from transformer_lens.ActivationCache import ActivationCache
+from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.component_setup import set_original_components
@@ -53,6 +56,13 @@ class TransformerBridge(nn.Module):
         self.adapter = adapter
         self.cfg = adapter.cfg
         self.tokenizer = tokenizer
+
+        # Add device information to config from the loaded model
+        if not hasattr(self.cfg, "device"):
+            try:
+                self.cfg.device = next(self.original_model.parameters()).device
+            except StopIteration:
+                self.cfg.device = "cpu"
 
         if not hasattr(adapter, "component_mapping") or adapter.component_mapping is None:
             raise ValueError("Adapter must have a component_mapping attribute")
@@ -199,8 +209,6 @@ class TransformerBridge(nn.Module):
         Returns:
             Token tensor of shape [batch, pos]
         """
-        assert self.tokenizer is not None, "Cannot use to_tokens without a tokenizer"
-
         # Handle prepend_bos logic
         if prepend_bos is None:
             prepend_bos = getattr(self.cfg, "default_prepend_bos", True)
@@ -209,13 +217,15 @@ class TransformerBridge(nn.Module):
         if padding_side is None:
             padding_side = getattr(self.tokenizer, "padding_side", "right")
 
-        # Some tokenizers don't automatically prepend the BOS token even when they are initialized
-        # with add_bos_token=True. Therefore, we need this information to dynamically control prepend_bos.
-        tokenizer_prepends_bos = len(self.tokenizer.encode("")) > 0
+        # Use the pre-calculated tokenizer_prepends_bos configuration
+        tokenizer_prepends_bos = getattr(self.cfg, "tokenizer_prepends_bos", True)
 
         if prepend_bos and not tokenizer_prepends_bos:
             # We want to prepend bos but the tokenizer doesn't automatically do it, so we add it manually
             input = utils.get_input_with_manually_prepended_bos(self.tokenizer.bos_token, input)
+
+        if isinstance(input, str):
+            input = [input]
 
         # Tokenize
         tokens = self.tokenizer(
@@ -223,21 +233,15 @@ class TransformerBridge(nn.Module):
             return_tensors="pt",
             padding=True,
             truncation=truncate,
-            max_length=getattr(self.cfg, "n_ctx", None) if truncate else None,
+            max_length=self.cfg.n_ctx if truncate else None,
         )["input_ids"]
 
+        if not prepend_bos and tokenizer_prepends_bos:
+            # We don't want to prepend bos but the tokenizer does it automatically, so we remove it manually
+            tokens = utils.get_tokens_with_bos_removed(self.tokenizer, tokens)
+
         if move_to_device:
-            # Try to get device from original model parameters, fallback to bridge components
-            try:
-                device = next(self.original_model.parameters()).device
-            except StopIteration:
-                # If original model has no parameters, try to get from bridge components
-                try:
-                    device = next(self.parameters()).device
-                except StopIteration:
-                    # If no parameters at all, default to CPU
-                    device = torch.device("cpu")
-            tokens = tokens.to(device)
+            tokens = tokens.to(self.cfg.device)
 
         return tokens
 
@@ -253,8 +257,6 @@ class TransformerBridge(nn.Module):
         Returns:
             Decoded string(s)
         """
-        assert self.tokenizer is not None, "Cannot use to_string without a tokenizer"
-
         if not isinstance(tokens, torch.Tensor):
             tokens = torch.tensor(tokens)
 
@@ -281,8 +283,6 @@ class TransformerBridge(nn.Module):
         Returns:
             List of token strings
         """
-        assert self.tokenizer is not None, "Cannot use to_str_tokens without a tokenizer"
-
         if isinstance(input, list):
             # Use cast to help mypy understand the recursive return type
             return cast(
@@ -329,6 +329,59 @@ class TransformerBridge(nn.Module):
             raise AssertionError(f"Input string: {string} is not a single token!")
         return int(token.item())
 
+    def get_token_position(
+        self,
+        single_token: Union[str, int],
+        input: Union[str, torch.Tensor],
+        mode="first",
+        prepend_bos: Optional[Union[bool, None]] = None,
+        padding_side: Optional[Union[Literal["left", "right"], None]] = None,
+    ):
+        """Get the position of a single_token in a string or sequence of tokens.
+
+        Raises an error if the token is not present.
+
+        Args:
+            single_token (Union[str, int]): The token to search for. Can
+                be a token index, or a string (but the string must correspond to a single token).
+            input (Union[str, torch.Tensor]): The sequence to
+                search in. Can be a string or a rank 1 tensor of tokens or a rank 2 tensor of tokens
+                with a dummy batch dimension.
+            mode (str, optional): If there are multiple matches, which match to return. Supports
+                "first" or "last". Defaults to "first".
+            prepend_bos (bool, optional): Whether to prepend the BOS token to the input
+                (only applies when input is a string). Defaults to None, using the bridge's default.
+            padding_side (Union[Literal["left", "right"], None], optional): Specifies which side to pad when tokenizing multiple
+                strings of different lengths.
+        """
+        if isinstance(input, str):
+            # If the input is a string, convert to tensor
+            tokens = self.to_tokens(input, prepend_bos=prepend_bos, padding_side=padding_side)
+        else:
+            tokens = input
+
+        if len(tokens.shape) == 2:
+            # If the tokens have shape [1, seq_len], flatten to [seq_len]
+            assert (
+                tokens.shape[0] == 1
+            ), f"If tokens are rank two, they must have shape [1, seq_len], not {tokens.shape}"
+            tokens = tokens[0]
+
+        if isinstance(single_token, str):
+            # If the single token is a string, convert to an integer
+            single_token = self.to_single_token(single_token)
+        elif isinstance(single_token, torch.Tensor):
+            single_token = single_token.item()
+
+        indices = torch.arange(len(tokens), device=tokens.device)[tokens == single_token]
+        assert len(indices) > 0, "The token does not occur in the prompt"
+        if mode == "first":
+            return indices[0].item()
+        elif mode == "last":
+            return indices[-1].item()
+        else:
+            raise ValueError(f"mode must be 'first' or 'last', not {mode}")
+
     def to_single_str_token(self, int_token: int) -> str:
         """Get the single token corresponding to an int in string form.
 
@@ -343,6 +396,85 @@ class TransformerBridge(nn.Module):
         if isinstance(token, list) and len(token) == 1:
             return str(token[0])
         raise AssertionError("Expected a single string token.")
+
+    @property
+    def W_K(self) -> Float[torch.Tensor, "n_layers n_heads d_model d_head"]:
+        """Stack the key weights across all layers."""
+        return torch.stack([block.attn.W_K for block in self.blocks], dim=0)
+
+    @property
+    def W_Q(self) -> Float[torch.Tensor, "n_layers n_heads d_model d_head"]:
+        """Stack the query weights across all layers."""
+        return torch.stack([block.attn.W_Q for block in self.blocks], dim=0)
+
+    @property
+    def W_V(self) -> Float[torch.Tensor, "n_layers n_heads d_model d_head"]:
+        """Stack the value weights across all layers."""
+        return torch.stack([block.attn.W_V for block in self.blocks], dim=0)
+
+    @property
+    def W_O(self) -> Float[torch.Tensor, "n_layers n_heads d_head d_model"]:
+        """Stack the attn output weights across all layers."""
+        return torch.stack([block.attn.W_O for block in self.blocks], dim=0)
+
+    @property
+    def W_in(self) -> Float[torch.Tensor, "n_layers d_model d_mlp"]:
+        """Stack the MLP input weights across all layers."""
+        return torch.stack([block.mlp.W_in for block in self.blocks], dim=0)
+
+    @property
+    def W_gate(self) -> Union[Float[torch.Tensor, "n_layers d_model d_mlp"], None]:
+        """Stack the MLP gate weights across all layers.
+
+        Only works for models with gated MLPs.
+        """
+        if self.cfg.gated_mlp:
+            return torch.stack([block.mlp.W_gate for block in self.blocks], dim=0)
+        else:
+            return None
+
+    @property
+    def W_out(self) -> Float[torch.Tensor, "n_layers d_mlp d_model"]:
+        """Stack the MLP output weights across all layers."""
+        return torch.stack([block.mlp.W_out for block in self.blocks], dim=0)
+
+    @property
+    def b_K(self) -> Float[torch.Tensor, "n_layers n_heads d_head"]:
+        """Stack the key biases across all layers."""
+        return torch.stack([block.attn.b_K for block in self.blocks], dim=0)
+
+    @property
+    def b_Q(self) -> Float[torch.Tensor, "n_layers n_heads d_head"]:
+        """Stack the query biases across all layers."""
+        return torch.stack([block.attn.b_Q for block in self.blocks], dim=0)
+
+    @property
+    def b_V(self) -> Float[torch.Tensor, "n_layers n_heads d_head"]:
+        """Stack the value biases across all layers."""
+        return torch.stack([block.attn.b_V for block in self.blocks], dim=0)
+
+    @property
+    def b_O(self) -> Float[torch.Tensor, "n_layers d_model"]:
+        """Stack the attn output biases across all layers."""
+        return torch.stack([block.attn.b_O for block in self.blocks], dim=0)
+
+    @property
+    def b_in(self) -> Float[torch.Tensor, "n_layers d_mlp"]:
+        """Stack the MLP input biases across all layers."""
+        return torch.stack([block.mlp.b_in for block in self.blocks], dim=0)
+
+    @property
+    def b_out(self) -> Float[torch.Tensor, "n_layers d_model"]:
+        """Stack the MLP output biases across all layers."""
+        return torch.stack([block.mlp.b_out for block in self.blocks], dim=0)
+
+    @property
+    def QK(self):
+        return FactoredMatrix(self.W_Q, self.W_K.transpose(-2, -1))
+
+    @property
+    def OV(self):
+        return FactoredMatrix(self.W_V, self.W_O)
 
     # ==================== FORWARD PASS METHODS ====================
 
@@ -376,8 +508,13 @@ class TransformerBridge(nn.Module):
 
         # Run model
         if hasattr(self.original_model, "forward"):
+            # Pass labels for loss calculation if needed
+            if return_type in ["loss", "both"]:
+                kwargs["labels"] = input_ids
             output = self.original_model.forward(input_ids, **kwargs)
         else:
+            if return_type in ["loss", "both"]:
+                kwargs["labels"] = input_ids
             output = self.original_model(input_ids, **kwargs)
 
         # Handle different return types
@@ -389,7 +526,9 @@ class TransformerBridge(nn.Module):
             if hasattr(output, "loss"):
                 return output.loss
             # Calculate loss manually if needed
-            return self.loss_fn(output.logits if hasattr(output, "logits") else output, input_ids)
+            logits = output.logits if hasattr(output, "logits") else output
+            calculated_loss = self.loss_fn(logits, input_ids)
+            return calculated_loss
         elif return_type == "both":
             logits = output.logits if hasattr(output, "logits") else output
             loss = output.loss if hasattr(output, "loss") else self.loss_fn(logits, input_ids)
@@ -590,6 +729,74 @@ class TransformerBridge(nn.Module):
             return output, cache_obj
         else:
             return output, cache
+
+    def run_with_hooks(
+        self,
+        input: Union[str, List[str], torch.Tensor],
+        fwd_hooks: List[Tuple[Union[str, Callable], Callable]] = [],
+        bwd_hooks: List[Tuple[Union[str, Callable], Callable]] = [],
+        reset_hooks_end: bool = True,
+        clear_contexts: bool = False,
+        return_type: Optional[str] = "logits",
+        **kwargs,
+    ) -> Any:
+        """Run the model with specified forward and backward hooks.
+
+        Args:
+            input: Input to the model
+            fwd_hooks: Forward hooks to apply
+            bwd_hooks: Backward hooks to apply
+            reset_hooks_end: Whether to reset hooks at the end
+            clear_contexts: Whether to clear hook contexts
+            return_type: What to return ("logits", "loss", etc.)
+            **kwargs: Additional arguments
+
+        Returns:
+            Model output
+        """
+        from transformer_lens.hook_points import HookPoint
+
+        # Store hooks that we add so we can remove them later
+        added_hooks: List[Tuple[HookPoint, str]] = []
+
+        def add_hook_to_point(hook_point: HookPoint, hook_fn: Callable, name: str):
+            hook_point.add_hook(hook_fn)
+            added_hooks.append((hook_point, name))
+
+        # Helper function to apply hooks based on name or filter function
+        def apply_hooks(hooks: List[Tuple[Union[str, Callable], Callable]], is_fwd: bool):
+            for hook_name_or_filter, hook_fn in hooks:
+                if isinstance(hook_name_or_filter, str):
+                    # Direct hook name
+                    hook_dict = self.hook_dict
+                    if hook_name_or_filter in hook_dict:
+                        add_hook_to_point(
+                            hook_dict[hook_name_or_filter], hook_fn, hook_name_or_filter
+                        )
+                else:
+                    # Filter function
+                    hook_dict = self.hook_dict
+                    for name, hook_point in hook_dict.items():
+                        if hook_name_or_filter(name):
+                            add_hook_to_point(hook_point, hook_fn, name)
+
+        try:
+            # Apply forward hooks
+            apply_hooks(fwd_hooks, True)
+
+            # Apply backward hooks (though we don't fully support them yet)
+            apply_hooks(bwd_hooks, False)
+
+            # Run the model
+            output = self.forward(input, return_type=return_type or "logits", **kwargs)
+
+            return output
+
+        finally:
+            if reset_hooks_end:
+                # Remove all hooks we added
+                for hook_point, name in added_hooks:
+                    hook_point.remove_hooks()
 
     # ==================== GENERATION METHODS ====================
 

@@ -16,16 +16,24 @@ jobs:
     name: Parse the semantic version from the release
     runs-on: ubuntu-latest
     steps:
-     - name: Parse semver string
-       id: semver_parser 
-       uses: booxmedialtd/ws-action-parse-semver@v1.4.7
-       with:
-         input_string: ${{ github.event.release.tag_name }}
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Install packaging
+        run: pip install packaging
+
+      - name: Parse semver string
+        id: semver_parser
+        env:
+          RAW_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          VERSION="${RAW_TAG#v}"
+          echo "Detected version: $VERSION"
+          echo "::set-output name=version::$(python -c "from packaging.version import Version; print(Version('$VERSION'))")"
     outputs:
-      major: "${{ steps.semver_parser.outputs.major }}"
-      minor: "${{ steps.semver_parser.outputs.minor }}"
-      patch: "${{ steps.semver_parser.outputs.patch }}"
-      semver: "${{ steps.semver_parser.outputs.fullversion }}"
+      semver: "${{ steps.semver_parser.outputs.version }}"
 
   release-python:
     name: Release Python package to PyPi

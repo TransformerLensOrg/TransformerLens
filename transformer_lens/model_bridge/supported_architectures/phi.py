@@ -11,8 +11,8 @@ from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
     BlockBridge,
     EmbeddingBridge,
-    LayerNormBridge,
     MLPBridge,
+    NormalizationBridge,
     UnembeddingBridge,
 )
 
@@ -87,12 +87,12 @@ class PhiArchitectureAdapter(ArchitectureAdapter):
             "blocks": BlockBridge(
                 name="model.layers",
                 submodules={
-                    "ln1": LayerNormBridge(name="input_layernorm"),
-                    "ln2": LayerNormBridge(name="input_layernorm"),
+                    "ln1": NormalizationBridge(name="input_layernorm"),
+                    "ln2": NormalizationBridge(name="input_layernorm"),
                     "attn": AttentionBridge(name="self_attn"),
                     "mlp": MLPBridge(name="mlp"),
                 },
             ),
-            "ln_final": LayerNormBridge(name="model.final_layernorm"),
+            "ln_final": NormalizationBridge(name="model.final_layernorm"),
             "unembed": UnembeddingBridge(name="lm_head"),
         }
