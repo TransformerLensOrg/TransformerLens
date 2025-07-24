@@ -78,6 +78,7 @@ def setup_submodules(
         if module_name not in component._modules:
             # Get the original component for this submodule
             remote_path = submodule.name
+
             original_subcomponent = architecture_adapter.get_remote_component(
                 original_model, remote_path
             )

@@ -1,37 +1,33 @@
 """Joint QKV attention bridge component.
 
-This module contains the bridge component for separating joint QKV activations into separate Q, K, and V activations.
+This module contains the bridge component for attention layers that use a fused QKV matrix.
 """
 
 from typing import Any, Dict, Optional
 
 import torch
 
-from transformer_lens.hook_points import HookPoint
+from transformer_lens.model_bridge.generalized_components.attention import (
+    AttentionBridge,
+)
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
+from transformer_lens.model_bridge.generalized_components.linear import LinearBridge
 
 
-class QKVHooks(torch.nn.Module):
-    """Container for Q, K, or V hook points."""
-
-    def __init__(self):
-        super().__init__()
-        self.hook_in = HookPoint()
-        self.hook_out = HookPoint()
-
-
-class JointQKVAttentionBridge(GeneralizedComponent):
+class JointQKVAttentionBridge(AttentionBridge):
     """Joint QKV attention bridge that wraps a joint QKV linear layer.
 
-    This component provides standardized input/output hooks.
+    This component wraps attention layers that use a fused QKV matrix such that both
+    the activations from the joint QKV matrix and from the individual, separated Q, K, and V matrices
+    are hooked and accessible.
     """
 
     def __init__(
         self,
         name: str,
-        config: Optional[Any] = None,
+        config: Any,
         submodules: Optional[Dict[str, GeneralizedComponent]] = {},
     ):
         """Initialize the joint QKV attention bridge.
@@ -41,21 +37,43 @@ class JointQKVAttentionBridge(GeneralizedComponent):
             config: Configuration (split_qkv_matrix function is required)
             submodules: Dictionary of GeneralizedComponent submodules to register
         """
-        super().__init__(name, config, submodules=submodules)
+        super().__init__(name, submodules=submodules)
 
-        if config is None:
+        self.config = config
+        if self.config is None:
             raise RuntimeError(
                 f"Config not set for {self.name}. Config is required for QKV separation."
             )
-        if "split_qkv_matrix" not in config:
+        if "split_qkv_matrix" not in self.config:
             raise RuntimeError(f"Config for {self.name} must include 'split_qkv_matrix' function.")
 
-        # Create hook points for individual Q, K and V activations
-        self.W_Q = QKVHooks()
-        self.W_K = QKVHooks()
-        self.W_V = QKVHooks()
+        # Create LinearBridge components for Q, K, and V activations
+        self.W_Q = LinearBridge(name="W_Q")
+        self.W_K = LinearBridge(name="W_K")
+        self.W_V = LinearBridge(name="W_V")
 
-    def forward(self, input: torch.Tensor, *args: Any, **kwargs: Any) -> torch.Tensor:
+    def set_original_component(self, original_component: torch.nn.Module) -> None:
+        """Set the original component that this bridge wraps and initialize LinearBridges for Q, K, and V transformations.
+
+        Args:
+            original_component: The original attention layer to wrap
+        """
+
+        super().set_original_component(original_component)
+
+        # Keep mypy happy
+        assert self.config is not None
+
+        W_Q_transformation, W_K_transformation, W_V_transformation = self.config[
+            "split_qkv_matrix"
+        ](original_component)
+
+        # Initialize LinearBridges for Q, K, and V transformations
+        self.W_Q.set_original_component(W_Q_transformation)
+        self.W_K.set_original_component(W_K_transformation)
+        self.W_V.set_original_component(W_V_transformation)
+
+    def forward(self, input: torch.Tensor, *args: Any, **kwargs: Any) -> Any:
         """Forward pass through the QKV linear transformation with hooks.
 
         Args:
@@ -66,37 +84,12 @@ class JointQKVAttentionBridge(GeneralizedComponent):
         Returns:
             Output tensor after QKV linear transformation
         """
-        if self.original_component is None:
-            raise RuntimeError(
-                f"Original component not set for {self.name}. Call set_original_component() first."
-            )
+        output = super().forward(input, *args, **kwargs)
 
-        # Keep mypy happy
-        assert self.config is not None
-
-        # Apply input hook
-        input = self.hook_in(input)
-        print("Input shape:", input.shape)
-        # Forward through the original linear layer
-        output = self.original_component(input, *args, **kwargs)
-
-        W_Q_transformation, W_K_transformation, W_V_transformation = self.config[
-            "split_qkv_matrix"
-        ](self)
-
-        # Apply Q hook
-        output_Q = self.W_Q.hook_in(W_Q_transformation(input))
-        output_Q = self.W_Q.hook_out(output_Q)
-
-        # Apply K hook
-        output_K = self.W_K.hook_in(W_K_transformation(input))
-        output_K = self.W_K.hook_out(output_K)
-
-        # Apply V hook
-        output_V = self.W_V.hook_in(W_V_transformation(input))
-        output_V = self.W_V.hook_out(output_V)
-
-        # Apply output hook
-        output = self.hook_out(output)
+        # Run the input through the individual Q, K, and V transformations
+        # in order to hook their outputs
+        self.W_Q(input)
+        self.W_K(input)
+        self.W_V(input)
 
         return output

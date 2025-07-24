@@ -29,6 +29,7 @@ from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.component_setup import set_original_components
+from transformer_lens.model_bridge.exceptions import StopAtLayerException
 from transformer_lens.model_bridge.types import ComponentMapping
 
 if TYPE_CHECKING:
@@ -400,27 +401,27 @@ class TransformerBridge(nn.Module):
     @property
     def W_K(self) -> Float[torch.Tensor, "n_layers n_heads d_model d_head"]:
         """Stack the key weights across all layers."""
-        return torch.stack([block.attn.W_K for block in self.blocks], dim=0)
+        return torch.stack([block.attn.W_K.weight for block in self.blocks], dim=0)
 
     @property
     def W_Q(self) -> Float[torch.Tensor, "n_layers n_heads d_model d_head"]:
         """Stack the query weights across all layers."""
-        return torch.stack([block.attn.W_Q for block in self.blocks], dim=0)
+        return torch.stack([block.attn.W_Q.weight for block in self.blocks], dim=0)
 
     @property
     def W_V(self) -> Float[torch.Tensor, "n_layers n_heads d_model d_head"]:
         """Stack the value weights across all layers."""
-        return torch.stack([block.attn.W_V for block in self.blocks], dim=0)
+        return torch.stack([block.attn.W_V.weight for block in self.blocks], dim=0)
 
     @property
     def W_O(self) -> Float[torch.Tensor, "n_layers n_heads d_head d_model"]:
         """Stack the attn output weights across all layers."""
-        return torch.stack([block.attn.W_O for block in self.blocks], dim=0)
+        return torch.stack([block.attn.W_O.weight for block in self.blocks], dim=0)
 
     @property
     def W_in(self) -> Float[torch.Tensor, "n_layers d_model d_mlp"]:
         """Stack the MLP input weights across all layers."""
-        return torch.stack([block.mlp.W_in for block in self.blocks], dim=0)
+        return torch.stack([block.mlp.W_in.weight for block in self.blocks], dim=0)
 
     @property
     def W_gate(self) -> Union[Float[torch.Tensor, "n_layers d_model d_mlp"], None]:
@@ -429,44 +430,44 @@ class TransformerBridge(nn.Module):
         Only works for models with gated MLPs.
         """
         if self.cfg.gated_mlp:
-            return torch.stack([block.mlp.W_gate for block in self.blocks], dim=0)
+            return torch.stack([block.mlp.W_gate.weight for block in self.blocks], dim=0)
         else:
             return None
 
     @property
     def W_out(self) -> Float[torch.Tensor, "n_layers d_mlp d_model"]:
         """Stack the MLP output weights across all layers."""
-        return torch.stack([block.mlp.W_out for block in self.blocks], dim=0)
+        return torch.stack([block.mlp.W_out.weight for block in self.blocks], dim=0)
 
     @property
     def b_K(self) -> Float[torch.Tensor, "n_layers n_heads d_head"]:
         """Stack the key biases across all layers."""
-        return torch.stack([block.attn.b_K for block in self.blocks], dim=0)
+        return torch.stack([block.attn.b_K.bias for block in self.blocks], dim=0)
 
     @property
     def b_Q(self) -> Float[torch.Tensor, "n_layers n_heads d_head"]:
         """Stack the query biases across all layers."""
-        return torch.stack([block.attn.b_Q for block in self.blocks], dim=0)
+        return torch.stack([block.attn.b_Q.bias for block in self.blocks], dim=0)
 
     @property
     def b_V(self) -> Float[torch.Tensor, "n_layers n_heads d_head"]:
         """Stack the value biases across all layers."""
-        return torch.stack([block.attn.b_V for block in self.blocks], dim=0)
+        return torch.stack([block.attn.b_V.bias for block in self.blocks], dim=0)
 
     @property
     def b_O(self) -> Float[torch.Tensor, "n_layers d_model"]:
         """Stack the attn output biases across all layers."""
-        return torch.stack([block.attn.b_O for block in self.blocks], dim=0)
+        return torch.stack([block.attn.b_O.bias for block in self.blocks], dim=0)
 
     @property
     def b_in(self) -> Float[torch.Tensor, "n_layers d_mlp"]:
         """Stack the MLP input biases across all layers."""
-        return torch.stack([block.mlp.b_in for block in self.blocks], dim=0)
+        return torch.stack([block.mlp.b_in.bias for block in self.blocks], dim=0)
 
     @property
     def b_out(self) -> Float[torch.Tensor, "n_layers d_model"]:
         """Stack the MLP output biases across all layers."""
-        return torch.stack([block.mlp.b_out for block in self.blocks], dim=0)
+        return torch.stack([block.mlp.b_out.bias for block in self.blocks], dim=0)
 
     @property
     def QK(self):
@@ -600,6 +601,8 @@ class TransformerBridge(nn.Module):
         input: Union[str, List[str], torch.Tensor],
         return_cache_object: bool = True,
         remove_batch_dim: bool = False,
+        names_filter: Optional[Union[str, List[str], Callable[[str], bool]]] = None,
+        stop_at_layer: Optional[int] = None,
         **kwargs,
     ) -> Tuple[Any, Union[ActivationCache, Dict[str, torch.Tensor]]]:
         """Run the model and cache all activations.
@@ -608,12 +611,68 @@ class TransformerBridge(nn.Module):
             input: Input to the model
             return_cache_object: Whether to return ActivationCache object
             remove_batch_dim: Whether to remove batch dimension
+            names_filter: Filter for which activations to cache (str, list of str, or callable)
+            stop_at_layer: Layer to stop forward pass at (not yet fully implemented)
             **kwargs: Additional arguments
 
         Returns:
             Tuple of (output, cache)
         """
         from transformer_lens.hook_points import HookPoint
+
+        # Process names_filter to create a callable that handles legacy hook names
+        # Collect hook aliases from all bridge components
+        def get_hook_aliases_from_components():
+            """Collect all hook aliases from bridge components."""
+            aliases = {}
+
+            def collect_aliases_recursive(module, prefix=""):
+                if hasattr(module, "hook_aliases"):
+                    for old_alias, new_name in module.hook_aliases.items():
+                        # Create full hook name with prefix
+                        if prefix:
+                            full_old_name = f"{prefix}.{old_alias}"
+                            full_new_name = f"{prefix}.{new_name}"
+                        else:
+                            full_old_name = old_alias
+                            full_new_name = new_name
+                        aliases[full_old_name] = full_new_name
+
+                # Recursively collect from submodules
+                for child_name, child_module in module.named_children():
+                    child_prefix = f"{prefix}.{child_name}" if prefix else child_name
+                    collect_aliases_recursive(child_module, child_prefix)
+
+            collect_aliases_recursive(self)
+            return aliases
+
+        hook_aliases = get_hook_aliases_from_components()
+
+        def create_names_filter_fn(filter_input):
+            if filter_input is None:
+                return lambda name: True
+            elif isinstance(filter_input, str):
+                # Check if this is a legacy hook name that needs mapping
+                mapped_name = hook_aliases.get(filter_input, None)
+                if mapped_name:
+                    return lambda name: name == mapped_name or name == filter_input
+                else:
+                    return lambda name: name == filter_input
+            elif isinstance(filter_input, list):
+                # Map all legacy names in the list to new names
+                mapped_list = []
+                for item in filter_input:
+                    mapped_list.append(item)  # Keep original
+                    mapped_name = hook_aliases.get(item, None)
+                    if mapped_name:
+                        mapped_list.append(mapped_name)
+                return lambda name: name in mapped_list
+            elif callable(filter_input):
+                return filter_input
+            else:
+                raise ValueError("names_filter must be a string, list of strings, or callable")
+
+        names_filter_fn = create_names_filter_fn(names_filter)
 
         cache: Dict[str, torch.Tensor] = {}
         hooks: List[Tuple[HookPoint, str]] = []
@@ -663,7 +722,9 @@ class TransformerBridge(nn.Module):
                 if isinstance(attr, HookPoint):
                     # Set the name on the HookPoint so it can be used in caching
                     attr.name = name
-                    hooks.append((attr, name))
+                    # Only add hook if it passes the names filter
+                    if names_filter_fn(name):
+                        hooks.append((attr, name))
                 elif isinstance(attr, nn.Module):
                     collect_hookpoints(attr, name)
                 elif isinstance(attr, (list, tuple)):
@@ -713,16 +774,56 @@ class TransformerBridge(nn.Module):
                 kwargs["input_ids"] = input_ids
                 del kwargs["input"]
 
-            # Run the underlying model's forward method
-            output = self.original_model(*processed_args, **kwargs)
+            # Add stop_at_layer hook if specified
+            if stop_at_layer is not None:
+                # stop_at_layer is exclusive, so stop_at_layer=1 means run layer 0 and stop before layer 1
+                # We need to hook the output of the last layer to be processed (stop_at_layer - 1)
+                last_layer_to_process = stop_at_layer - 1
+                if (
+                    hasattr(self, "blocks")
+                    and last_layer_to_process >= 0
+                    and last_layer_to_process < len(self.blocks)
+                ):
 
-            # Extract logits if output is a HuggingFace model output object
-            if hasattr(output, "logits"):
-                output = output.logits
+                    def stop_hook(tensor: torch.Tensor, *, hook: Any) -> torch.Tensor:
+                        raise StopAtLayerException(tensor, stop_at_layer)
+
+                    # Add hook to the output of the last layer to be processed
+                    block_hook_name = f"blocks.{last_layer_to_process}.hook_out"
+                    hook_dict = self.hook_dict
+                    if block_hook_name in hook_dict:
+                        hook_dict[block_hook_name].add_hook(stop_hook)
+                        hooks.append((hook_dict[block_hook_name], block_hook_name))
+
+            # Run the underlying model's forward method
+            try:
+                output = self.original_model(*processed_args, **kwargs)
+                # Extract logits if output is a HuggingFace model output object
+                if hasattr(output, "logits"):
+                    output = output.logits
+            except StopAtLayerException as e:
+                # Return the intermediate output from the specified layer
+                output = e.layer_output
 
         finally:
             for hp, _ in hooks:
                 hp.remove_hooks()
+
+        # Create duplicate cache entries for TransformerLens compatibility
+        # Use the hook aliases collected from components (reverse mapping: new -> old)
+        reverse_hook_aliases = {new_name: old_name for old_name, new_name in hook_aliases.items()}
+
+        # Create duplicate entries in cache
+        cache_items_to_add = {}
+        for cache_name, cached_value in cache.items():
+            # Check if this cache name should have an alias
+            for new_name, old_name in reverse_hook_aliases.items():
+                if cache_name == new_name:
+                    cache_items_to_add[old_name] = cached_value
+                    break
+
+        # Add the aliased entries to the cache
+        cache.update(cache_items_to_add)
 
         if return_cache_object:
             cache_obj = ActivationCache(cache, self, has_batch_dim=not remove_batch_dim)
@@ -738,6 +839,8 @@ class TransformerBridge(nn.Module):
         reset_hooks_end: bool = True,
         clear_contexts: bool = False,
         return_type: Optional[str] = "logits",
+        names_filter: Optional[Union[str, List[str], Callable[[str], bool]]] = None,
+        stop_at_layer: Optional[int] = None,
         **kwargs,
     ) -> Any:
         """Run the model with specified forward and backward hooks.
@@ -749,6 +852,8 @@ class TransformerBridge(nn.Module):
             reset_hooks_end: Whether to reset hooks at the end
             clear_contexts: Whether to clear hook contexts
             return_type: What to return ("logits", "loss", etc.)
+            names_filter: Filter for hook names (not used directly, for compatibility)
+            stop_at_layer: Layer to stop at (not yet fully implemented)
             **kwargs: Additional arguments
 
         Returns:
@@ -762,6 +867,26 @@ class TransformerBridge(nn.Module):
         def add_hook_to_point(hook_point: HookPoint, hook_fn: Callable, name: str):
             hook_point.add_hook(hook_fn)
             added_hooks.append((hook_point, name))
+
+        # Add stop_at_layer hook if specified
+        if stop_at_layer is not None:
+            # stop_at_layer is exclusive, so stop_at_layer=1 means run layer 0 and stop before layer 1
+            # We need to hook the output of the last layer to be processed (stop_at_layer - 1)
+            last_layer_to_process = stop_at_layer - 1
+            if (
+                hasattr(self, "blocks")
+                and last_layer_to_process >= 0
+                and last_layer_to_process < len(self.blocks)
+            ):
+
+                def stop_hook(tensor: torch.Tensor, *, hook: Any) -> torch.Tensor:
+                    raise StopAtLayerException(tensor, stop_at_layer)
+
+                # Add hook to the output of the last layer to be processed
+                block_hook_name = f"blocks.{last_layer_to_process}.hook_out"
+                hook_dict = self.hook_dict
+                if block_hook_name in hook_dict:
+                    add_hook_to_point(hook_dict[block_hook_name], stop_hook, block_hook_name)
 
         # Helper function to apply hooks based on name or filter function
         def apply_hooks(hooks: List[Tuple[Union[str, Callable], Callable]], is_fwd: bool):
@@ -788,7 +913,11 @@ class TransformerBridge(nn.Module):
             apply_hooks(bwd_hooks, False)
 
             # Run the model
-            output = self.forward(input, return_type=return_type or "logits", **kwargs)
+            try:
+                output = self.forward(input, return_type=return_type or "logits", **kwargs)
+            except StopAtLayerException as e:
+                # Return the intermediate output from the specified layer
+                output = e.layer_output
 
             return output
 
