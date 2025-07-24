@@ -16,8 +16,8 @@ from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
     BlockBridge,
     EmbeddingBridge,
-    LayerNormBridge,
     MLPBridge,
+    NormalizationBridge,
 )
 
 
@@ -105,7 +105,7 @@ class TestComponentSetup:
     def test_setup_submodules_empty(self):
         """Test setting up submodules when there are none."""
         adapter = MockArchitectureAdapter()
-        component = LayerNormBridge(name="ln1")  # No submodules
+        component = NormalizationBridge(name="ln1")  # No submodules
         original_ln = nn.LayerNorm(10)
 
         # Should not raise any errors
@@ -119,7 +119,7 @@ class TestComponentSetup:
 
         components = {
             "embed": EmbeddingBridge(name="embed"),
-            "ln_final": LayerNormBridge(name="ln_final"),
+            "ln_final": NormalizationBridge(name="ln_final"),
         }
 
         # Store original components before setup
@@ -142,7 +142,7 @@ class TestComponentSetup:
 
         components = {
             "embed": EmbeddingBridge(
-                name="embed", submodules={"norm": LayerNormBridge(name="norm")}
+                name="embed", submodules={"norm": NormalizationBridge(name="norm")}
             ),
         }
 
@@ -167,8 +167,8 @@ class TestComponentSetup:
         blocks_template = BlockBridge(
             name="blocks",
             submodules={
-                "ln1": LayerNormBridge(name="ln1"),
-                "ln2": LayerNormBridge(name="ln2"),
+                "ln1": NormalizationBridge(name="ln1"),
+                "ln2": NormalizationBridge(name="ln2"),
                 "attn": AttentionBridge(name="attn"),
                 "mlp": MLPBridge(name="mlp"),
             },
@@ -209,7 +209,7 @@ class TestComponentSetup:
         blocks_template = BlockBridge(
             name="blocks",
             submodules={
-                "ln1": LayerNormBridge(name="ln1"),
+                "ln1": NormalizationBridge(name="ln1"),
             },
         )
 
@@ -234,12 +234,12 @@ class TestComponentSetup:
                 self.component_mapping = {
                     "embed": EmbeddingBridge(name="embed"),
                     "unembed": EmbeddingBridge(name="unembed"),
-                    "ln_final": LayerNormBridge(name="ln_final"),
+                    "ln_final": NormalizationBridge(name="ln_final"),
                     "blocks": BlockBridge(
                         name="blocks",
                         submodules={
-                            "ln1": LayerNormBridge(name="ln1"),
-                            "ln2": LayerNormBridge(name="ln2"),
+                            "ln1": NormalizationBridge(name="ln1"),
+                            "ln2": NormalizationBridge(name="ln2"),
                             "attn": AttentionBridge(name="attn"),
                             "mlp": MLPBridge(name="mlp"),
                         },
@@ -254,7 +254,7 @@ class TestComponentSetup:
         set_original_components(bridge_module, adapter, mock_model)
 
         # Check that the components are correctly bridged
-        assert isinstance(bridge_module.ln_final, LayerNormBridge)
+        assert isinstance(bridge_module.ln_final, NormalizationBridge)
         assert isinstance(bridge_module.blocks, nn.ModuleList)
         assert len(bridge_module.blocks) == 2
 

@@ -15,8 +15,8 @@ from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
     BlockBridge,
     EmbeddingBridge,
-    LayerNormBridge,
     MLPBridge,
+    NormalizationBridge,
     UnembeddingBridge,
 )
 
@@ -135,12 +135,12 @@ class NeoxArchitectureAdapter(ArchitectureAdapter):
             "blocks": BlockBridge(
                 name="gpt_neox.layers",
                 submodules={
-                    "ln1": LayerNormBridge(name="input_layernorm"),
-                    "ln2": LayerNormBridge(name="post_attention_layernorm"),
+                    "ln1": NormalizationBridge(name="input_layernorm"),
+                    "ln2": NormalizationBridge(name="post_attention_layernorm"),
                     "attn": AttentionBridge(name="attention"),
                     "mlp": MLPBridge(name="mlp"),
                 },
             ),
-            "ln_final": LayerNormBridge(name="gpt_neox.final_layer_norm"),
+            "ln_final": NormalizationBridge(name="gpt_neox.final_layer_norm"),
             "unembed": UnembeddingBridge(name="embed_out"),
         }
