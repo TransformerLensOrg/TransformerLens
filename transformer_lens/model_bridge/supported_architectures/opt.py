@@ -11,8 +11,8 @@ from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
     BlockBridge,
     EmbeddingBridge,
-    LayerNormBridge,
     MLPBridge,
+    NormalizationBridge,
     UnembeddingBridge,
 )
 
@@ -68,12 +68,12 @@ class OptArchitectureAdapter(ArchitectureAdapter):
             "blocks": BlockBridge(
                 name="model.decoder.layers",
                 submodules={
-                    "ln1": LayerNormBridge(name="self_attn_layer_norm"),
+                    "ln1": NormalizationBridge(name="self_attn_layer_norm"),
                     "attn": AttentionBridge(name="self_attn"),
-                    "ln2": LayerNormBridge(name="final_layer_norm"),
+                    "ln2": NormalizationBridge(name="final_layer_norm"),
                     "mlp": MLPBridge(name="mlp"),
                 },
             ),
-            "ln_final": LayerNormBridge(name="model.decoder.final_layer_norm"),
+            "ln_final": NormalizationBridge(name="model.decoder.final_layer_norm"),
             "unembed": UnembeddingBridge(name="lm_head"),
         }

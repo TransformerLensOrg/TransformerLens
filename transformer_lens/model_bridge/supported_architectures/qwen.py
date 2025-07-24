@@ -11,8 +11,8 @@ from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
     BlockBridge,
     EmbeddingBridge,
-    LayerNormBridge,
     MLPBridge,
+    NormalizationBridge,
     UnembeddingBridge,
 )
 
@@ -58,12 +58,12 @@ class QwenArchitectureAdapter(ArchitectureAdapter):
             "blocks": BlockBridge(
                 name="transformer.h",
                 submodules={
-                    "ln1": LayerNormBridge(name="ln_1"),
+                    "ln1": NormalizationBridge(name="ln_1"),
                     "attn": AttentionBridge(name="attn"),
-                    "ln2": LayerNormBridge(name="ln_2"),
+                    "ln2": NormalizationBridge(name="ln_2"),
                     "mlp": MLPBridge(name="mlp"),
                 },
             ),
-            "ln_final": LayerNormBridge(name="transformer.ln_f"),
+            "ln_final": NormalizationBridge(name="transformer.ln_f"),
             "unembed": UnembeddingBridge(name="lm_head"),
         }

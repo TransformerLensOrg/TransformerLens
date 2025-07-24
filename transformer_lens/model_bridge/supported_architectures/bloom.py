@@ -11,8 +11,8 @@ from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
     BlockBridge,
     EmbeddingBridge,
-    LayerNormBridge,
     MLPBridge,
+    NormalizationBridge,
     UnembeddingBridge,
 )
 
@@ -78,12 +78,12 @@ class BloomArchitectureAdapter(ArchitectureAdapter):
             "blocks": BlockBridge(
                 name="transformer.h",
                 submodules={
-                    "ln1": LayerNormBridge(name="input_layernorm"),
-                    "ln2": LayerNormBridge(name="post_attention_layernorm"),
+                    "ln1": NormalizationBridge(name="input_layernorm"),
+                    "ln2": NormalizationBridge(name="post_attention_layernorm"),
                     "attn": AttentionBridge(name="self_attention"),
                     "mlp": MLPBridge(name="mlp"),
                 },
             ),
-            "ln_final": LayerNormBridge(name="transformer.ln_f"),
+            "ln_final": NormalizationBridge(name="transformer.ln_f"),
             "unembed": UnembeddingBridge(name="lm_head"),
         }

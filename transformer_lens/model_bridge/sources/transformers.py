@@ -18,6 +18,69 @@ from transformer_lens.model_bridge.bridge import TransformerBridge
 from transformer_lens.utils import get_tokenizer_with_bos
 
 
+def map_default_transformer_lens_config(adapter, hf_config):
+    """Map HuggingFace config fields to TransformerLens config format.
+
+    This function provides a standardized mapping from various HuggingFace config
+    field names to the consistent TransformerLens naming convention.
+
+    Args:
+        adapter: The architecture adapter
+        hf_config: The HuggingFace config object
+    """
+    # Map d_model (hidden dimension)
+    if hasattr(hf_config, "n_embd"):  # GPT2-style
+        adapter.cfg.d_model = hf_config.n_embd
+    elif hasattr(hf_config, "hidden_size"):  # LLaMA/BERT-style
+        adapter.cfg.d_model = hf_config.hidden_size
+    elif hasattr(hf_config, "d_model"):  # T5-style
+        adapter.cfg.d_model = hf_config.d_model
+
+    # Map number of attention heads
+    if hasattr(hf_config, "n_head"):  # GPT2-style
+        adapter.cfg.n_heads = hf_config.n_head
+    elif hasattr(hf_config, "num_attention_heads"):  # LLaMA/BERT-style
+        adapter.cfg.n_heads = hf_config.num_attention_heads
+    elif hasattr(hf_config, "num_heads"):  # T5-style
+        adapter.cfg.n_heads = hf_config.num_heads
+
+    # Map number of layers
+    if hasattr(hf_config, "n_layer"):  # GPT2-style
+        adapter.cfg.n_layers = hf_config.n_layer
+    elif hasattr(hf_config, "num_hidden_layers"):  # LLaMA/BERT-style
+        adapter.cfg.n_layers = hf_config.num_hidden_layers
+    elif hasattr(hf_config, "num_layers"):  # T5-style
+        adapter.cfg.n_layers = hf_config.num_layers
+
+    # Map vocabulary size
+    if hasattr(hf_config, "vocab_size"):
+        adapter.cfg.d_vocab = hf_config.vocab_size
+
+    # Map context length
+    if hasattr(hf_config, "n_positions"):  # GPT2-style
+        adapter.cfg.n_ctx = hf_config.n_positions
+    elif hasattr(hf_config, "max_position_embeddings"):  # LLaMA/BERT-style
+        adapter.cfg.n_ctx = hf_config.max_position_embeddings
+    elif hasattr(hf_config, "max_length"):  # Some models
+        adapter.cfg.n_ctx = hf_config.max_length
+
+    # Map MLP dimension
+    if hasattr(hf_config, "n_inner"):  # GPT2 explicit
+        adapter.cfg.d_mlp = hf_config.n_inner
+    elif hasattr(hf_config, "intermediate_size"):  # BERT/LLaMA-style
+        adapter.cfg.d_mlp = hf_config.intermediate_size
+    elif hasattr(adapter.cfg, "d_model"):  # Default to 4x for GPT2-style
+        adapter.cfg.d_mlp = getattr(hf_config, "n_inner", 4 * adapter.cfg.d_model)
+
+    # Calculate d_head if we have both d_model and n_heads
+    if hasattr(adapter.cfg, "d_model") and hasattr(adapter.cfg, "n_heads"):
+        adapter.cfg.d_head = adapter.cfg.d_model // adapter.cfg.n_heads
+
+    # Set common defaults for transformer models
+    if not hasattr(adapter.cfg, "default_prepend_bos"):
+        adapter.cfg.default_prepend_bos = True
+
+
 def boot(
     model_name: str,
     config: dict | None = None,
@@ -43,7 +106,10 @@ def boot(
     )
 
     hf_config = AutoConfig.from_pretrained(model_name, **kwargs)
+    hf_config.output_attentions = True  # Ensure attention weights are returned
     adapter = ArchitectureAdapterFactory.select_architecture_adapter(hf_config)
+
+    # Get default config from adapter and merge with passed config
     default_config = adapter.default_cfg
     merged_config = {**default_config, **(config or {})}
 
@@ -51,13 +117,27 @@ def boot(
     if "d_mlp" not in merged_config and "intermediate_size" in merged_config:
         merged_config["d_mlp"] = merged_config["intermediate_size"]
 
+    # Apply merged config to adapter
+    for key, value in merged_config.items():
+        setattr(adapter.cfg, key, value)
+
+    # Apply HuggingFace to TransformerLens config mapping
+    map_default_transformer_lens_config(adapter, hf_config)
+
+    # Add device information to the config
+    if device is not None:
+        adapter.cfg.device = device
+
     # Load the model from HuggingFace using the original config
     hf_model = AutoModelForCausalLM.from_pretrained(
         model_name,
         config=hf_config,
         torch_dtype=dtype,
-        **merged_config,
     )
+
+    # Move model to device if specified
+    if device is not None:
+        hf_model = hf_model.to(device)
 
     # Load the tokenizer
     tokenizer = kwargs.get("tokenizer", None)
@@ -75,6 +155,10 @@ def boot(
             ),
             default_padding_side=default_padding_side,
         )
+
+    # Set tokenizer_prepends_bos configuration
+    if tokenizer is not None:
+        adapter.cfg.tokenizer_prepends_bos = len(tokenizer.encode("")) > 0
 
     return TransformerBridge(
         hf_model,
