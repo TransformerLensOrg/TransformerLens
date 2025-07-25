@@ -471,7 +471,7 @@ get_act_patch_attn_head_k_by_pos = partial(
     index_axis_names=("layer", "pos", "head"),
 )
 get_act_patch_attn_head_k_by_pos.__doc__ = """
-    Function to get activation patching results for the keys of each Attention Head (by position). Returns a tensor of shape [n_layers, pos, n_heads]
+    Function to get activation patching results for the keys of each Attention Head (by position). Returns a tensor of shape [n_layers, pos, n_heads] or [n_layers, pos, n_key_value_heads] if the model has a different number of key value heads than attention heads.
 
     See generic_activation_patch for a more detailed explanation of activation patching 
 
@@ -482,7 +482,7 @@ get_act_patch_attn_head_k_by_pos.__doc__ = """
         patching_metric: A function from the model's output logits to some metric (eg loss, logit diff, etc)
 
     Returns:
-        patched_output (torch.Tensor): The tensor of the patching metric for each patch. Has shape [n_layers, pos, n_heads]
+        patched_output (torch.Tensor): The tensor of the patching metric for each patch. Has shape [n_layers, pos, n_heads] or [n_layers, pos, n_key_value_heads] if the model has a different number of key value heads than attention heads.
     """
 
 get_act_patch_attn_head_v_by_pos = partial(
@@ -492,7 +492,7 @@ get_act_patch_attn_head_v_by_pos = partial(
     index_axis_names=("layer", "pos", "head"),
 )
 get_act_patch_attn_head_v_by_pos.__doc__ = """
-    Function to get activation patching results for the values of each Attention Head (by position). Returns a tensor of shape [n_layers, pos, n_heads]
+    Function to get activation patching results for the values of each Attention Head (by position). Returns a tensor of shape [n_layers, pos, n_heads] or [n_layers, pos, n_key_value_heads] if the model has a different number of key value heads than attention heads.
 
     See generic_activation_patch for a more detailed explanation of activation patching 
 
@@ -503,7 +503,7 @@ get_act_patch_attn_head_v_by_pos.__doc__ = """
         patching_metric: A function from the model's output logits to some metric (eg loss, logit diff, etc)
 
     Returns:
-        patched_output (torch.Tensor): The tensor of the patching metric for each patch. Has shape [n_layers, pos, n_heads]
+        patched_output (torch.Tensor): The tensor of the patching metric for each patch. Has shape [n_layers, pos, n_heads] or [n_layers, pos, n_key_value_heads] if the model has a different number of key value heads than attention heads.
     """
 # %%
 get_act_patch_attn_head_pattern_by_pos = partial(
@@ -598,7 +598,7 @@ get_act_patch_attn_head_k_all_pos = partial(
     index_axis_names=("layer", "head"),
 )
 get_act_patch_attn_head_k_all_pos.__doc__ = """
-    Function to get activation patching results for the keys of each Attention Head (across all positions). Returns a tensor of shape [n_layers, n_heads]
+    Function to get activation patching results for the keys of each Attention Head (across all positions). Returns a tensor of shape [n_layers, n_heads] or [n_layers, n_key_value_heads] if the model has a different number of key value heads than attention heads.
 
     See generic_activation_patch for a more detailed explanation of activation patching 
 
@@ -609,7 +609,7 @@ get_act_patch_attn_head_k_all_pos.__doc__ = """
         patching_metric: A function from the model's output logits to some metric (eg loss, logit diff, etc)
 
     Returns:
-        patched_output (torch.Tensor): The tensor of the patching metric for each patch. Has shape [n_layers, n_heads]
+        patched_output (torch.Tensor): The tensor of the patching metric for each patch. Has shape [n_layers, n_heads] or [n_layers, n_key_value_heads] if the model has a different number of key value heads than attention heads.
     """
 
 get_act_patch_attn_head_v_all_pos = partial(
@@ -619,7 +619,7 @@ get_act_patch_attn_head_v_all_pos = partial(
     index_axis_names=("layer", "head"),
 )
 get_act_patch_attn_head_v_all_pos.__doc__ = """
-    Function to get activation patching results for the values of each Attention Head (across all positions). Returns a tensor of shape [n_layers, n_heads]
+    Function to get activation patching results for the values of each Attention Head (across all positions). Returns a tensor of shape [n_layers, n_heads] or [n_layers, n_key_value_heads] if the model has a different number of key value heads than attention heads.
 
     See generic_activation_patch for a more detailed explanation of activation patching 
 
@@ -630,7 +630,7 @@ get_act_patch_attn_head_v_all_pos.__doc__ = """
         patching_metric: A function from the model's output logits to some metric (eg loss, logit diff, etc)
 
     Returns:
-        patched_output (torch.Tensor): The tensor of the patching metric for each patch. Has shape [n_layers, n_heads]
+        patched_output (torch.Tensor): The tensor of the patching metric for each patch. Has shape [n_layers, n_heads] or [n_layers, n_key_value_heads] if the model has a different number of key value heads than attention heads.
     """
 
 get_act_patch_attn_head_pattern_all_pos = partial(
