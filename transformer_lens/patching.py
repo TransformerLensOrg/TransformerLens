@@ -166,11 +166,16 @@ def generic_activation_patch(
     if index_df is None:
         assert index_axis_names is not None
 
+        number_of_heads = model.cfg.n_heads
+        # For some models, the number of key value heads is not the same as the number of attention heads
+        if activation_name in ["k", "v"] and model.cfg.n_key_value_heads is not None:
+            number_of_heads = model.cfg.n_key_value_heads
+
         # Get the max range for all possible axes
         max_axis_range = {
             "layer": model.cfg.n_layers,
             "pos": corrupted_tokens.shape[-1],
-            "head_index": model.cfg.n_heads,
+            "head_index": number_of_heads,
         }
         max_axis_range["src_pos"] = max_axis_range["pos"]
         max_axis_range["dest_pos"] = max_axis_range["pos"]
@@ -673,12 +678,17 @@ def get_act_patch_attn_head_all_pos_every(
     act_patch_results.append(
         get_act_patch_attn_head_q_all_pos(model, corrupted_tokens, clean_cache, metric)
     )
+
+    # Reshape k and v to be compatible with the rest of the results in case of n_key_value_heads != n_heads
+    k_results = get_act_patch_attn_head_k_all_pos(model, corrupted_tokens, clean_cache, metric)
     act_patch_results.append(
-        get_act_patch_attn_head_k_all_pos(model, corrupted_tokens, clean_cache, metric)
+        torch.nn.functional.pad(k_results, (0, act_patch_results[-1].size(-1) - k_results.size(-1)))
     )
+    v_results = get_act_patch_attn_head_v_all_pos(model, corrupted_tokens, clean_cache, metric)
     act_patch_results.append(
-        get_act_patch_attn_head_v_all_pos(model, corrupted_tokens, clean_cache, metric)
+        torch.nn.functional.pad(v_results, (0, act_patch_results[-1].size(-1) - v_results.size(-1)))
     )
+
     act_patch_results.append(
         get_act_patch_attn_head_pattern_all_pos(model, corrupted_tokens, clean_cache, metric)
     )
@@ -706,11 +716,15 @@ def get_act_patch_attn_head_by_pos_every(
     act_patch_results.append(
         get_act_patch_attn_head_q_by_pos(model, corrupted_tokens, clean_cache, metric)
     )
+
+    # Reshape k and v to be compatible with the rest of the results in case of n_key_value_heads != n_heads
+    k_results = get_act_patch_attn_head_k_by_pos(model, corrupted_tokens, clean_cache, metric)
     act_patch_results.append(
-        get_act_patch_attn_head_k_by_pos(model, corrupted_tokens, clean_cache, metric)
+        torch.nn.functional.pad(k_results, (0, act_patch_results[-1].size(-1) - k_results.size(-1)))
     )
+    v_results = get_act_patch_attn_head_v_by_pos(model, corrupted_tokens, clean_cache, metric)
     act_patch_results.append(
-        get_act_patch_attn_head_v_by_pos(model, corrupted_tokens, clean_cache, metric)
+        torch.nn.functional.pad(v_results, (0, act_patch_results[-1].size(-1) - v_results.size(-1)))
     )
 
     # Reshape pattern to be compatible with the rest of the results
