@@ -1,4 +1,4 @@
-"""Layer norm bridge component implementation."""
+"""Normalization bridge component implementation."""
 
 from typing import Any, Dict, Optional
 
@@ -9,8 +9,8 @@ from transformer_lens.model_bridge.generalized_components.base import (
 )
 
 
-class LayerNormBridge(GeneralizedComponent):
-    """Layer norm bridge that wraps transformer layer normalization layers.
+class NormalizationBridge(GeneralizedComponent):
+    """Normalization bridge that wraps transformer normalization layers.
 
     This component provides standardized input/output hooks.
     """
@@ -21,11 +21,11 @@ class LayerNormBridge(GeneralizedComponent):
         config: Optional[Any] = None,
         submodules: Optional[Dict[str, GeneralizedComponent]] = {},
     ):
-        """Initialize the layer norm bridge.
+        """Initialize the normalization bridge.
 
         Args:
             name: The name of this component
-            config: Optional configuration (unused for LayerNormBridge)
+            config: Optional configuration (unused for NormalizationBridge)
             submodules: Dictionary of GeneralizedComponent submodules to register
         """
         super().__init__(name, config, submodules=submodules)
@@ -36,7 +36,7 @@ class LayerNormBridge(GeneralizedComponent):
         hidden_states: torch.Tensor,
         **kwargs: Any,
     ) -> torch.Tensor:
-        """Forward pass through the layer norm bridge.
+        """Forward pass through the normalization bridge.
 
         Args:
             hidden_states: Input hidden states
