@@ -86,6 +86,7 @@ class ArchitectureAdapter:
             >>> # adapter.get_remote_component(model, "model.layers.0.ln1")
             >>> # <LayerNorm>
         """
+
         current = model
         for part in path.split("."):
             if part.isdigit():

@@ -20,6 +20,10 @@ class AttentionBridge(GeneralizedComponent):
     a standardized interface for hook registration and execution.
     """
 
+    hook_aliases = {
+        "hook_pattern": "hook_attention_weights",
+    }
+
     def __init__(
         self,
         name: str,

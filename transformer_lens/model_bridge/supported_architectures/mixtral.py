@@ -11,8 +11,8 @@ from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
     BlockBridge,
     EmbeddingBridge,
-    LayerNormBridge,
     MoEBridge,
+    NormalizationBridge,
     UnembeddingBridge,
 )
 
@@ -77,12 +77,12 @@ class MixtralArchitectureAdapter(ArchitectureAdapter):
             "blocks": BlockBridge(
                 name="model.layers",
                 submodules={
-                    "ln1": LayerNormBridge(name="input_layernorm"),
-                    "ln2": LayerNormBridge(name="post_attention_layernorm"),
+                    "ln1": NormalizationBridge(name="input_layernorm"),
+                    "ln2": NormalizationBridge(name="post_attention_layernorm"),
                     "attn": AttentionBridge(name="self_attn"),
                     "mlp": MoEBridge(name="block_sparse_moe"),
                 },
             ),
-            "ln_final": LayerNormBridge(name="model.norm"),
+            "ln_final": NormalizationBridge(name="model.norm"),
             "unembed": UnembeddingBridge(name="lm_head"),
         }
