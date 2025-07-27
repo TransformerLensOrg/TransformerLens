@@ -106,7 +106,6 @@ def boot(
     )
 
     hf_config = AutoConfig.from_pretrained(model_name, **kwargs)
-    hf_config.output_attentions = True  # Ensure attention weights are returned
     adapter = ArchitectureAdapterFactory.select_architecture_adapter(hf_config)
 
     # Get default config from adapter and merge with passed config
