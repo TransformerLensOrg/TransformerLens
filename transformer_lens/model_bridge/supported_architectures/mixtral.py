@@ -11,6 +11,7 @@ from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
     BlockBridge,
     EmbeddingBridge,
+    LinearBridge,
     MoEBridge,
     NormalizationBridge,
     UnembeddingBridge,
@@ -74,13 +75,35 @@ class MixtralArchitectureAdapter(ArchitectureAdapter):
         # Set up component mapping
         self.component_mapping = {
             "embed": EmbeddingBridge(name="model.embed_tokens"),
+            "rotary_emb": EmbeddingBridge(name="model.rotary_emb"),
             "blocks": BlockBridge(
                 name="model.layers",
                 submodules={
                     "ln1": NormalizationBridge(name="input_layernorm"),
                     "ln2": NormalizationBridge(name="post_attention_layernorm"),
-                    "attn": AttentionBridge(name="self_attn"),
-                    "mlp": MoEBridge(name="block_sparse_moe"),
+                    "attn": AttentionBridge(
+                        name="self_attn",
+                        submodules={
+                            "W_Q": LinearBridge(name="q_proj"),
+                            "W_K": LinearBridge(name="k_proj"),
+                            "W_V": LinearBridge(name="v_proj"),
+                            "W_O": LinearBridge(name="o_proj"),
+                        },
+                    ),
+                    "mlp": MoEBridge(
+                        name="block_sparse_moe",
+                        submodules={
+                            "W_gate": LinearBridge(name="gate"),
+                            "experts": BlockBridge(
+                                name="experts",
+                                submodules={
+                                    "W_gate": LinearBridge(name="w1"),
+                                    "W_in": LinearBridge(name="w3"),
+                                    "W_out": LinearBridge(name="w2"),
+                                },
+                            ),
+                        },
+                    ),
                 },
             ),
             "ln_final": NormalizationBridge(name="model.norm"),
