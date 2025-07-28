@@ -51,13 +51,12 @@ jobs:
           - "3.10"
     steps:
       - uses: actions/checkout@v3
-      - name: Install Poetry
-        uses: snok/install-poetry@v1
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
         with:
           python-version: ${{ matrix.python-version }}
-          cache: "poetry"
+          activate-environment: true
+          enable-cache: true
       - name: Cache Models used with Tests
         uses: actions/cache@v3
         with:
@@ -68,8 +67,8 @@ jobs:
           key: ${{ runner.os }}-huggingface-models
       - name: Install dependencies
         run: |
-          poetry check --lock
-          poetry install --with dev
+          uv lock --check
+          uv sync --locked
       - name: Authenticate HuggingFace CLI
         if: env.HF_TOKEN != ''
         run: |
@@ -84,20 +83,19 @@ jobs:
       - name: Acceptance Test
         run: make acceptance-test
       - name: Build check
-        run: poetry build
+        run: uv build
 
   code-checks:
     name: Code Checks
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - name: Install Poetry
-        uses: snok/install-poetry@v1
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
         with:
           python-version: "3.11"
-          cache: "poetry"
+          activate-environment: true
+          enable-cache: true
       - name: Cache Models used with Tests
         uses: actions/cache@v3
         with:
@@ -108,14 +106,14 @@ jobs:
           key: ${{ runner.os }}-huggingface-models
       - name: Install dependencies
         run: |
-          poetry check --lock
-          poetry install --with dev
+          uv lock --check
+          uv sync --locked
       - name: Check format
         run: make check-format
       - name: Docstring test
         run: make docstring-test
       - name: Type check
-        run: poetry run mypy .
+        run: mypy .
       - name: Authenticate HuggingFace CLI
         if: env.HF_TOKEN != ''
         run: |
@@ -128,7 +126,7 @@ jobs:
         env:
           HF_TOKEN:  ${{ secrets.HF_TOKEN }}
       - name: Build check
-        run: poetry build
+        run: uv build
       - name: Upload Coverage Report Artifact
         uses: actions/upload-artifact@v4
         with:
@@ -159,13 +157,12 @@ jobs:
           # - "T5"
     steps:
       - uses: actions/checkout@v3
-      - name: Install Poetry
-        uses: snok/install-poetry@v1
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
         with:
           python-version: "3.11"
-          cache: "poetry"
+          activate-environment: true
+          enable-cache: true
       - name: Re-use HuggingFace models cache
         uses: actions/cache/restore@v3
         with:
@@ -173,8 +170,8 @@ jobs:
           key: ${{ runner.os }}-huggingface-models
       - name: Install dependencies
         run: |
-          poetry check --lock
-          poetry install --with dev,jupyter
+          uv lock --check
+          uv sync --locked --group jupyter
       - name: Install pandoc
         uses: awalsh128/cache-apt-pkgs-action@latest
         with:
@@ -182,7 +179,7 @@ jobs:
           version: 1.0
       - name: Check Notebook Output Consistency
         # Note: currently only checks notebooks we have specifically setup for this
-        run: poetry run pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/${{ matrix.notebook }}.ipynb
+        run: pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/${{ matrix.notebook }}.ipynb
 
 
   build-docs:
@@ -194,20 +191,21 @@ jobs:
     needs: code-checks
     steps:
       - uses: actions/checkout@v4
-      - name: Install Poetry
-        uses: snok/install-poetry@v1
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
         with:
           python-version: "3.11"
-          cache: "poetry"
+          activate-environment: true
+          enable-cache: true
       - name: Install pandoc
         uses: awalsh128/cache-apt-pkgs-action@latest
         with:
           packages: pandoc
           version: 1.0
       - name: Install dependencies
-        run: poetry install --with docs
+        run: |
+          uv lock --check
+          uv sync --locked --group docs
       - name: Download Test Coverage Artifact
         uses: actions/download-artifact@v4
         with:
@@ -221,7 +219,7 @@ jobs:
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
       - name: Build Docs
-        run: poetry run build-docs
+        run: build-docs
         env:
           HF_TOKEN:  ${{ secrets.HF_TOKEN }}
       - name: Upload Docs Artifact
