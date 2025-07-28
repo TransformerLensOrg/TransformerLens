@@ -175,7 +175,7 @@ class ArchitectureAdapter:
                     if len(parts) > 3:
                         # Navigate through the deeper subcomponents
                         current_bridge = subcomponent_bridge
-                        current = getattr(item, subcomponent_bridge.name)
+                        current = getattr(item, subcomponent_name)
 
                         for i in range(3, len(parts)):
                             deeper_component_name = parts[i]
@@ -183,7 +183,7 @@ class ArchitectureAdapter:
                             # Check submodules for deeper components
                             if deeper_component_name in current_bridge.submodules:
                                 current_bridge = current_bridge.submodules[deeper_component_name]
-                                current = getattr(current, current_bridge.name)
+                                current = getattr(current, deeper_component_name)
                             else:
                                 raise ValueError(
                                     f"Component {deeper_component_name} not found in {'.'.join(parts[:i])} components"
@@ -192,7 +192,7 @@ class ArchitectureAdapter:
                         return current
                     else:
                         # Just the 3-level path
-                        return getattr(item, subcomponent_bridge.name)
+                        return getattr(item, subcomponent_name)
                 else:
                     raise ValueError(
                         f"Component {subcomponent_name} not found in {parts[0]} components"
