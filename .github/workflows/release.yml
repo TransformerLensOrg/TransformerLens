@@ -46,8 +46,9 @@ jobs:
           uv lock --check
           uv sync --locked
       - name: Set the version
-        run: |
-          sed -i "s/^version = \".*\"/version = \"${{needs.semver-parser.outputs.semver}}\"/" pyproject.toml
+        run: make version-set VERSION=${{needs.semver-parser.outputs.semver}}
+      - name: re-sync
+        run: uv sync
       - name: Build
         run: uv build
       - name: Publish

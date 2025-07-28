@@ -59,3 +59,32 @@ docs-hot-reload:
 
 build-docs:
 	$(RUN) build-docs
+
+
+# script to set the version in pyproject.toml
+define PY_VERSION_SET
+import os, re, pathlib, sys
+ver = os.environ.get("VERSION")
+if not ver:
+    sys.exit("VERSION env-var is missing. usage: make version-set VERSION=1.2.3")
+path = pathlib.Path("pyproject.toml")
+text = path.read_text()
+pattern = re.compile(r'^(\s*version\s*=\s*")([^"]*)(")', flags=re.M)
+updated = pattern.sub(lambda m: f'{m.group(1)}{ver}{m.group(3)}', text, count=1)
+path.write_text(updated)
+print(f"Set version to {ver} in {path}")
+endef
+export PY_VERSION_SET
+
+
+# Usage: make version-set VERSION=1.2.3
+.PHONY: version-set
+version-set:
+	@python -c "$$PY_VERSION_SET"
+
+
+# Usage: make version-reset
+.PHONY: version-reset
+version-reset:
+	$(MAKE) version-set VERSION=0.0.0
+
