@@ -97,7 +97,6 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
                         },
                         config={
                             "split_qkv_matrix": self.split_qkv_matrix,
-                            "original_model_config": self.cfg,
                         },
                     ),
                     "ln2": NormalizationBridge(name="ln_2"),
@@ -133,8 +132,6 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
         # Keep mypy happy
         assert isinstance(qkv_weights, torch.Tensor)
 
-        d_head = self.cfg.n_embd // self.cfg.n_head
-
         # Original qkv_weights shape: [d_model, 3 * d_model]
         # Split into three equal parts along dimension 1 to get Q, K, V weights
         W_Q, W_K, W_V = torch.tensor_split(qkv_weights, 3, dim=1)
@@ -144,9 +141,9 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
         # Keep mypy happy
         assert isinstance(qkv_bias, torch.Tensor)
 
-        # Original qkv_bias shape: [3 * n_head * d_head]
-        # Reshape to [3, n_head * d_head] to split by Q, K, V
-        qkv_bias = qkv_bias.reshape(3, self.cfg.n_head * d_head)
+        # Original qkv_bias shape: [3 * n_heads * d_head]
+        # Reshape to [3, n_heads * d_head] to split by Q, K, V
+        qkv_bias = qkv_bias.reshape(3, self.cfg.n_heads * self.cfg.d_head)
         b_Q, b_K, b_V = qkv_bias[0, :], qkv_bias[1, :], qkv_bias[2, :]
 
         # Create nn.Linear modules
