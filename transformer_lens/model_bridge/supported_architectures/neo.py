@@ -11,6 +11,7 @@ from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
     BlockBridge,
     EmbeddingBridge,
+    LinearBridge,
     MLPBridge,
     NormalizationBridge,
     UnembeddingBridge,
@@ -66,9 +67,23 @@ class NeoArchitectureAdapter(ArchitectureAdapter):
                 name="transformer.h",
                 submodules={
                     "ln1": NormalizationBridge(name="ln_1"),
-                    "attn": AttentionBridge(name="attn"),
+                    "attn": AttentionBridge(
+                        name="attn.attention",
+                        submodules={
+                            "W_Q": LinearBridge(name="q_proj"),
+                            "W_K": LinearBridge(name="k_proj"),
+                            "W_V": LinearBridge(name="v_proj"),
+                            "W_O": LinearBridge(name="out_proj"),
+                        },
+                    ),
                     "ln2": NormalizationBridge(name="ln_2"),
-                    "mlp": MLPBridge(name="mlp"),
+                    "mlp": MLPBridge(
+                        name="mlp",
+                        submodules={
+                            "W_in": LinearBridge(name="c_fc"),
+                            "W_out": LinearBridge(name="c_proj"),
+                        },
+                    ),
                 },
             ),
             "ln_final": NormalizationBridge(name="transformer.ln_f"),
