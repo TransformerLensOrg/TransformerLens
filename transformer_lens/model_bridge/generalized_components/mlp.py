@@ -19,6 +19,10 @@ class MLPBridge(GeneralizedComponent):
     This component wraps an MLP layer from a remote model and provides a consistent interface
     for accessing its weights and performing MLP operations.
     """
+    
+    hook_aliases = {
+        "hook_mlp_out": "hook_out",
+    }
 
     def __init__(
         self,
