@@ -86,7 +86,7 @@ def collect_aliases_recursive(module: Any, prefix: str = "") -> Dict[str, str]:
     Returns:
         Dictionary mapping all alias names to target names
     """
-    aliases = {}
-    visited = set()
+    aliases: Dict[str, str] = {}
+    visited: Set[int] = set()
     _collect_aliases_from_module(module, prefix, aliases, visited)
     return aliases
