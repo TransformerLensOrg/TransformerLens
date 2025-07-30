@@ -20,7 +20,7 @@ class BlockBridge(GeneralizedComponent):
 
     # Override the class attribute to indicate this is a list item
     is_list_item: bool = True
-    
+
     hook_aliases = {
         "hook_resid_pre": "hook_in",
         "hook_resid_post": "hook_out",

@@ -5,17 +5,15 @@ from typing import Any, Dict, Optional, Set
 
 
 def resolve_hook_alias(
-    target_object: Any, 
-    requested_name: str, 
-    hook_aliases: Dict[str, str]
+    target_object: Any, requested_name: str, hook_aliases: Dict[str, str]
 ) -> Optional[Any]:
     """Resolve a hook alias to the actual hook object.
-    
+
     Args:
         target_object: The object to get the resolved attribute from
         requested_name: The name being requested (potentially an alias)
         hook_aliases: Dictionary mapping alias names to target names
-        
+
     Returns:
         The resolved hook object if alias found, None otherwise
     """
@@ -33,13 +31,10 @@ def resolve_hook_alias(
 
 
 def _collect_aliases_from_module(
-    module: Any, 
-    path: str, 
-    aliases: Dict[str, str], 
-    visited: Set[int]
+    module: Any, path: str, aliases: Dict[str, str], visited: Set[int]
 ) -> None:
     """Helper function to collect all aliases from a single module.
-    
+
     Args:
         module: The module to collect aliases from
         path: Current path prefix for building full names
@@ -50,7 +45,7 @@ def _collect_aliases_from_module(
     if mod_id in visited:
         return
     visited.add(mod_id)
-    
+
     if hasattr(module, "hook_aliases"):
         for alias_name, target_name in module.hook_aliases.items():
             if alias_name == "":
@@ -66,7 +61,7 @@ def _collect_aliases_from_module(
                     full_alias = alias_name
                     full_target = target_name
                 aliases[full_alias] = full_target
-    
+
     # Recursively collect from submodules, excluding original_model
     if hasattr(module, "named_children"):
         for child_name, child_module in module.named_children():
@@ -79,19 +74,19 @@ def _collect_aliases_from_module(
 
 def collect_aliases_recursive(module: Any, prefix: str = "") -> Dict[str, str]:
     """Recursively collect all aliases from a module and its children.
-    
+
     This unified function collects both:
-    - Named hook aliases: old_hook_name -> new_hook_name  
+    - Named hook aliases: old_hook_name -> new_hook_name
     - Cache aliases: component_name -> component_name.hook_out (from empty string keys)
-    
+
     Args:
         module: The module to collect aliases from
         prefix: Path prefix for building full names
-        
+
     Returns:
         Dictionary mapping all alias names to target names
     """
     aliases = {}
     visited = set()
     _collect_aliases_from_module(module, prefix, aliases, visited)
-    return aliases 
+    return aliases

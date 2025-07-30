@@ -670,7 +670,7 @@ class TransformerBridge(nn.Module):
                 else:
                     # For other types, try to convert to tensor, otherwise skip
                     try:
-                        if hasattr(tensor, 'detach'):
+                        if hasattr(tensor, "detach"):
                             cache[name] = tensor.detach().cpu()
                         # If it's not a tensor-like object, don't cache it
                     except:
@@ -782,18 +782,20 @@ class TransformerBridge(nn.Module):
             # Handle device parameter properly - move model to device if specified
             filtered_kwargs = kwargs.copy()
             target_device = filtered_kwargs.pop("device", None)  # Remove device from kwargs
-            
+
             if target_device is not None:
                 # Ensure model is on the target device
                 self.original_model = self.original_model.to(target_device)
                 # Also move processed_args to the same device if needed
                 if processed_args and isinstance(processed_args[0], torch.Tensor):
-                    processed_args = [processed_args[0].to(target_device)] + list(processed_args[1:])
+                    processed_args = [processed_args[0].to(target_device)] + list(
+                        processed_args[1:]
+                    )
                 # Move any tensor kwargs to the target device
                 for key, value in filtered_kwargs.items():
                     if isinstance(value, torch.Tensor):
                         filtered_kwargs[key] = value.to(target_device)
-            
+
             try:
                 output = self.original_model(*processed_args, **filtered_kwargs)
                 # Extract logits if output is a HuggingFace model output object
@@ -823,7 +825,6 @@ class TransformerBridge(nn.Module):
         # Add the aliased entries to the cache
         cache.update(cache_items_to_add)
 
-        
         # Add cache entries for all aliases (both hook and cache aliases)
         for alias_name, target_name in aliases.items():
             if target_name in cache and alias_name not in cache:
