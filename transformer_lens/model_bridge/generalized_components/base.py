@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import warnings
 from collections.abc import Callable
 from typing import Any, Dict, Optional
@@ -47,6 +48,16 @@ class GeneralizedComponent(nn.Module):
         # Standardized hooks for all bridge components
         self.hook_in = HookPoint()
         self.hook_out = HookPoint()
+
+    def _is_getattr_called_internally(self) -> bool:
+        """This function checks if the __getattr__ method was being called internally
+        (e.g by the setup process or run_with_cache).
+        """
+        # Look through the call stack
+        for frame_info in inspect.stack():
+            if "setup_components" in frame_info.function or "run_with_cache" in frame_info.function:
+                return True
+        return False
 
     def set_original_component(self, original_component: nn.Module) -> None:
         """Set the original component that this bridge wraps.
@@ -139,14 +150,20 @@ class GeneralizedComponent(nn.Module):
 
         return output
 
-    def __getattr__(self, name: str):
+    def _getattr_helper(self, name: str) -> Any:
+        """This function contains the main getattr logic for the component.
+        It is extracted into a helper function to avoid recursion issues when trying
+        to access certain aliased attributes like W_Q, W_K, W_V, etc."""
+
         # Only called if attribute not found through normal lookup
         # First check if it's a module attribute (like hook_in, hook_out)
         if hasattr(self, "_modules") and name in self._modules:
             return self._modules[name]
 
         # Check if this is a deprecated hook alias
-        if name in self.hook_aliases:
+        # We only want to use hook_aliases if getattr was not called internally
+        # (e.g., during setup or run_with_cache)
+        if name in self.hook_aliases and not self._is_getattr_called_internally():
             target_hook = self.hook_aliases[name]
             warnings.warn(
                 f"Hook '{name}' is deprecated and will be removed in a future version. "
@@ -154,6 +171,7 @@ class GeneralizedComponent(nn.Module):
                 FutureWarning,
                 stacklevel=2,
             )
+
             # Return the target hook
             return getattr(self, target_hook)
 
@@ -178,3 +196,19 @@ class GeneralizedComponent(nn.Module):
 
         # If we get here, the attribute wasn't found anywhere
         raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+
+    def __getattr__(self, name: str):
+        # We only want to use hook_aliases if getattr was not called internally
+        # (e.g., during setup or run_with_cache)
+        if name in self.hook_aliases and not self._is_getattr_called_internally():
+            target_hook = self.hook_aliases[name]
+            target_hook_split = target_hook.split(".")
+
+            # hook_aliases like W_Q -> W_Q.weight and b_Q -> W_Q.bias need special handling
+            if len(target_hook_split) == 2 and (target_hook_split[1] == "weight" or target_hook_split[1] == "bias"):
+                first_attr = self._getattr_helper(target_hook_split[0])
+                nested_attr = getattr(first_attr, target_hook_split[1])
+                # Return the target hook
+                return nested_attr
+
+        return self._getattr_helper(name)

@@ -15,6 +15,11 @@ class NormalizationBridge(GeneralizedComponent):
     This component provides standardized input/output hooks.
     """
 
+    hook_aliases = {
+        "w": "weight",
+        "b": "bias",
+    }
+
     def __init__(
         self,
         name: str,

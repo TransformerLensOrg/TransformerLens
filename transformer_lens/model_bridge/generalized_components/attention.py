@@ -22,6 +22,14 @@ class AttentionBridge(GeneralizedComponent):
 
     hook_aliases = {
         "hook_pattern": "hook_attention_weights",
+        "W_Q": "W_Q.weight",
+        "W_K": "W_K.weight",
+        "W_V": "W_V.weight",
+        "W_O": "W_O.weight",
+        "b_Q": "W_Q.bias",
+        "b_K": "W_K.bias",
+        "b_V": "W_V.bias",
+        "b_O": "W_O.bias",
     }
 
     def __init__(

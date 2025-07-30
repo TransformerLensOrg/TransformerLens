@@ -19,6 +19,8 @@ class EmbeddingBridge(GeneralizedComponent):
     This component provides standardized input/output hooks.
     """
 
+    hook_aliases = {"W_pos": "W_E"}
+
     def __init__(
         self,
         name: str,
