@@ -205,7 +205,9 @@ class GeneralizedComponent(nn.Module):
             target_hook_split = target_hook.split(".")
 
             # hook_aliases like W_Q -> W_Q.weight and b_Q -> W_Q.bias need special handling
-            if len(target_hook_split) == 2 and (target_hook_split[1] == "weight" or target_hook_split[1] == "bias"):
+            if len(target_hook_split) == 2 and (
+                target_hook_split[1] == "weight" or target_hook_split[1] == "bias"
+            ):
                 first_attr = self._getattr_helper(target_hook_split[0])
                 nested_attr = getattr(first_attr, target_hook_split[1])
                 # Return the target hook
