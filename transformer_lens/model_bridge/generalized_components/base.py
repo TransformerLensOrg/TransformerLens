@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import inspect
-import warnings
 from collections.abc import Callable
 from typing import Any, Dict, Optional
 
@@ -11,6 +9,7 @@ import torch
 import torch.nn as nn
 
 from transformer_lens.hook_points import HookPoint
+from transformer_lens.utilities.aliases import resolve_hook_alias
 
 
 class GeneralizedComponent(nn.Module):
@@ -161,19 +160,9 @@ class GeneralizedComponent(nn.Module):
             return self._modules[name]
 
         # Check if this is a deprecated hook alias
-        # We only want to use hook_aliases if getattr was not called internally
-        # (e.g., during setup or run_with_cache)
-        if name in self.hook_aliases and not self._is_getattr_called_internally():
-            target_hook = self.hook_aliases[name]
-            warnings.warn(
-                f"Hook '{name}' is deprecated and will be removed in a future version. "
-                f"Use '{target_hook}' instead.",
-                FutureWarning,
-                stacklevel=2,
-            )
-
-            # Return the target hook
-            return getattr(self, target_hook)
+        resolved_hook = resolve_hook_alias(self, name, self.hook_aliases)
+        if resolved_hook is not None:
+            return resolved_hook
 
         # Avoid recursion by checking if we're looking for original_component
         if name == "original_component":
