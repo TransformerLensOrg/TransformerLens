@@ -192,9 +192,9 @@ class GeneralizedComponent(nn.Module):
         # We only want to use property_aliases if getattr was not called internally
         # (e.g., during setup or run_with_cache)
         if not self._is_getattr_called_internally():
-        # Check if this is a property alias
-        resolved_property = resolve_alias(self, name, self.property_aliases)
-        if resolved_property is not None:
-            return resolved_property
+            # Check if this is a property alias
+            resolved_property = resolve_alias(self, name, self.property_aliases)
+            if resolved_property is not None:
+                return resolved_property
 
         return self._getattr_helper(name)
