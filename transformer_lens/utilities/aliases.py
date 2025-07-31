@@ -4,21 +4,21 @@ import warnings
 from typing import Any, Dict, Optional, Set
 
 
-def resolve_hook_alias(
-    target_object: Any, requested_name: str, hook_aliases: Dict[str, str]
+def resolve_alias(
+    target_object: Any, requested_name: str, aliases: Dict[str, str]
 ) -> Optional[Any]:
     """Resolve a hook alias to the actual hook object.
 
     Args:
         target_object: The object to get the resolved attribute from
         requested_name: The name being requested (potentially an alias)
-        hook_aliases: Dictionary mapping alias names to target names
+        aliases: Dictionary mapping alias names to target names
 
     Returns:
         The resolved hook object if alias found, None otherwise
     """
-    if requested_name in hook_aliases:
-        target_hook = hook_aliases[requested_name]
+    if requested_name in aliases:
+        target_name = aliases[requested_name]
         warnings.warn(
             f"Hook '{requested_name}' is deprecated and will be removed in a future version. "
             f"Use '{target_hook}' instead.",

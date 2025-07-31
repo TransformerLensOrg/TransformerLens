@@ -9,7 +9,7 @@ import torch
 import torch.nn as nn
 
 from transformer_lens.hook_points import HookPoint
-from transformer_lens.utilities.aliases import resolve_hook_alias
+from transformer_lens.utilities.aliases import resolve_alias
 
 
 class GeneralizedComponent(nn.Module):
@@ -160,7 +160,7 @@ class GeneralizedComponent(nn.Module):
             return self._modules[name]
 
         # Check if this is a deprecated hook alias
-        resolved_hook = resolve_hook_alias(self, name, self.hook_aliases)
+        resolved_hook = resolve_alias(self, name, self.hook_aliases)
         if resolved_hook is not None:
             return resolved_hook
 
