@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 from collections.abc import Callable
 from typing import Any, Dict, Optional
 
@@ -25,6 +26,7 @@ class GeneralizedComponent(nn.Module):
     # Dictionary mapping deprecated hook names to their new equivalents
     # Subclasses can override this to define their own aliases
     hook_aliases: Dict[str, str] = {}
+    property_aliases: Dict[str, str] = {}
 
     def __init__(
         self,
@@ -187,19 +189,12 @@ class GeneralizedComponent(nn.Module):
         raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 
     def __getattr__(self, name: str):
-        # We only want to use hook_aliases if getattr was not called internally
+        # We only want to use property_aliases if getattr was not called internally
         # (e.g., during setup or run_with_cache)
-        if name in self.hook_aliases and not self._is_getattr_called_internally():
-            target_hook = self.hook_aliases[name]
-            target_hook_split = target_hook.split(".")
-
-            # hook_aliases like W_Q -> W_Q.weight and b_Q -> W_Q.bias need special handling
-            if len(target_hook_split) == 2 and (
-                target_hook_split[1] == "weight" or target_hook_split[1] == "bias"
-            ):
-                first_attr = self._getattr_helper(target_hook_split[0])
-                nested_attr = getattr(first_attr, target_hook_split[1])
-                # Return the target hook
-                return nested_attr
+        if not self._is_getattr_called_internally():
+        # Check if this is a property alias
+        resolved_property = resolve_alias(self, name, self.property_aliases)
+        if resolved_property is not None:
+            return resolved_property
 
         return self._getattr_helper(name)

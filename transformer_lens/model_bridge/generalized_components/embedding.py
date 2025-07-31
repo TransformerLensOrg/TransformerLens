@@ -20,9 +20,12 @@ class EmbeddingBridge(GeneralizedComponent):
     """
 
     hook_aliases = {
-        "hook_embed": "hook_out",
+        "hook_embed": "embed.hook_out",
+        "hook_pos_embed": "pos_embed.hook_out",
+    }
+
+    property_aliases = {
         "W_pos": "W_E",
-        "": "hook_out",  # Cache key: embed -> embed.hook_out
     }
 
     def __init__(

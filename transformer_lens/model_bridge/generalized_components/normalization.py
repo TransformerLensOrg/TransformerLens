@@ -15,7 +15,9 @@ class NormalizationBridge(GeneralizedComponent):
     This component provides standardized input/output hooks.
     """
 
-    hook_aliases = {
+    hook_aliases = {"hook_normalized": "hook_out", "hook_scale": "hook_out"}
+
+    property_aliases = {
         "w": "weight",
         "b": "bias",
     }

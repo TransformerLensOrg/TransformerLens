@@ -21,8 +21,11 @@ class MLPBridge(GeneralizedComponent):
     """
 
     hook_aliases = {
-        "hook_mlp_in": "hook_in",
-        "hook_mlp_out": "hook_out",
+        "hook_pre": "W_in.hook_in",
+        "hook_post": "W_out.hook_out",
+    }
+
+    property_aliases = {
         "W_gate": "W_gate.weight",
         "b_gate": "W_gate.bias",
         "W_in": "W_in.weight",
