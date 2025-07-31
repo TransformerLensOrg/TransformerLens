@@ -11,6 +11,7 @@ from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
     BlockBridge,
     EmbeddingBridge,
+    LinearBridge,
     MLPBridge,
     NormalizationBridge,
     UnembeddingBridge,
@@ -62,13 +63,29 @@ class LlamaArchitectureAdapter(ArchitectureAdapter):
 
         self.component_mapping = {
             "embed": EmbeddingBridge(name="model.embed_tokens"),
+            "rotary_emb": EmbeddingBridge(name="model.rotary_emb"),
             "blocks": BlockBridge(
                 name="model.layers",
                 submodules={
                     "ln1": NormalizationBridge(name="input_layernorm"),
                     "ln2": NormalizationBridge(name="post_attention_layernorm"),
-                    "attn": AttentionBridge(name="self_attn"),
-                    "mlp": MLPBridge(name="mlp"),
+                    "attn": AttentionBridge(
+                        name="self_attn",
+                        submodules={
+                            "W_Q": LinearBridge(name="q_proj"),
+                            "W_K": LinearBridge(name="k_proj"),
+                            "W_V": LinearBridge(name="v_proj"),
+                            "W_O": LinearBridge(name="o_proj"),
+                        },
+                    ),
+                    "mlp": MLPBridge(
+                        name="mlp",
+                        submodules={
+                            "W_gate": LinearBridge(name="gate_proj"),
+                            "W_in": LinearBridge(name="up_proj"),
+                            "W_out": LinearBridge(name="down_proj"),
+                        },
+                    ),
                 },
             ),
             "ln_final": NormalizationBridge(name="model.norm"),
