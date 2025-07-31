@@ -21,6 +21,7 @@ class MLPBridge(GeneralizedComponent):
     """
 
     hook_aliases = {
+        "hook_mlp_in": "hook_in",
         "hook_mlp_out": "hook_out",
     }
 

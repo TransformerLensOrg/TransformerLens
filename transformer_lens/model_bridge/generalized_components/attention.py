@@ -21,6 +21,7 @@ class AttentionBridge(GeneralizedComponent):
     """
 
     hook_aliases = {
+        "hook_attn_in": "hook_in",
         "hook_pattern": "hook_attention_weights",
         "hook_attn_out": "hook_out",
     }
