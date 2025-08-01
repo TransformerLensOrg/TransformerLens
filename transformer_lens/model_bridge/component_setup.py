@@ -11,7 +11,6 @@ from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapt
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
-from transformer_lens.model_bridge.generalized_components.block import BlockBridge
 from transformer_lens.model_bridge.types import RemoteModel
 
 
@@ -75,7 +74,7 @@ def setup_submodules(
         original_model: The original model to get components from
     """
     for module_name, submodule in component.submodules.items():
-        if isinstance(submodule, BlockBridge):
+        if submodule.is_list_item:
             # Submodule is a BlockBridge - create a ModuleList of bridge components
             bridged_list = setup_blocks_bridge(submodule, architecture_adapter, original_model)
             # Set the list on the bridge module as a proper module
