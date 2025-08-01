@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dis
 import inspect
 from collections.abc import Callable
 from typing import Any, Dict, Optional
@@ -189,12 +190,41 @@ class GeneralizedComponent(nn.Module):
         raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 
     def __getattr__(self, name: str):
-        # We only want to use property_aliases if getattr was not called internally
-        # (e.g., during setup or run_with_cache)
-        if not self._is_getattr_called_internally():
-            # Check if this is a property alias
+        # This code is to check if __getattr__ was called internally, because we only want to resolve aliases
+        # if the user is trying to access an attribute directly, not if it's being called internally during setup or run_with_cache.
+
+        # Get execution frame of caller
+        frame = inspect.currentframe().f_back
+        # Extract the module name from the frame
+        caller_module = frame.f_globals.get("__name__", "") if frame else ""
+
+        # Check 1: Is __getattr__ being called internally
+        if not caller_module.startswith("transformer_lens") and not caller_module.startswith(
+            "torch"
+        ):
+            # Check 2: Is next access .weight or .bias?
+            # If the user is correctly accessing a property like W_Q.weight or W_Q.bias,
+            # we want to return the original W_Q and not W_Q.weight (the alias), because otherwise
+            # we would essentially be calling W_Q.weight.weight which causes an error.
+            try:
+                # Get bytecode instructions of the current frame
+                instructions = list(dis.get_instructions(frame.f_code))
+                for instr in instructions:
+                    # Find next instruction after the current one (frame.f_lasti)
+                    if instr.offset > frame.f_lasti:
+                        # If the next instruction is a LOAD_ATTR and the attribute is weight or bias,
+                        # we want to return the original W_Q, not W_Q.weight or W_Q.bias
+                        if instr.opname == "LOAD_ATTR" and instr.argval in ["weight", "bias"]:
+                            return self._getattr_helper(name)
+                        break
+            except Exception as e:
+                pass
+
+            # If we reach here, we can resolve the alias normally
             resolved_property = resolve_alias(self, name, self.property_aliases)
+
             if resolved_property is not None:
                 return resolved_property
 
+        # If an internal call or no alias was found, just regularly get the attribute
         return self._getattr_helper(name)
