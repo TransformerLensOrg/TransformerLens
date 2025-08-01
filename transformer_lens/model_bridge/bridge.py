@@ -732,27 +732,13 @@ class TransformerBridge(nn.Module):
             # Handle string input whether passed positionally or as a kwarg
             if processed_args and isinstance(processed_args[0], str):
                 assert self.tokenizer is not None, "Tokenizer must be set to pass string input."
-                if self.tokenizer.pad_token is None:
-                    self.tokenizer.pad_token = self.tokenizer.eos_token
-                input_ids = self.tokenizer(
-                    processed_args[0],
-                    return_tensors="pt",
-                    padding=True,
-                    truncation=True,
-                )["input_ids"]
+                input_ids = self.to_tokens(processed_args[0])
                 input_ids = input_ids.to(next(self.original_model.parameters()).device)
                 kwargs["input_ids"] = input_ids
                 processed_args = processed_args[1:]
             elif "input" in kwargs and isinstance(kwargs["input"], str):
                 assert self.tokenizer is not None, "Tokenizer must be set to pass string input."
-                if self.tokenizer.pad_token is None:
-                    self.tokenizer.pad_token = self.tokenizer.eos_token
-                input_ids = self.tokenizer(
-                    kwargs["input"],
-                    return_tensors="pt",
-                    padding=True,
-                    truncation=True,
-                )["input_ids"]
+                input_ids = self.to_tokens(kwargs["input"])
                 input_ids = input_ids.to(next(self.original_model.parameters()).device)
                 kwargs["input_ids"] = input_ids
                 del kwargs["input"]
