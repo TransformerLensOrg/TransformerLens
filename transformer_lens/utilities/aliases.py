@@ -69,7 +69,7 @@ def _collect_aliases_from_module(
                     full_target = f"{path}.{target_name}"
                 else:
                     full_alias = alias_name
-                    full_target = target_name
+                    full_target = f"{path}.{target_name}" if path else target_name
 
                 aliases[full_alias] = full_target
 

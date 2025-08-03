@@ -221,7 +221,7 @@ class TestCollectAliasesRecursive:
         expected = {
             "prefix.root_alias": "prefix.root_target",
             "prefix.embed": "prefix.embed.hook_out",  # Cache alias
-            "prefix.embed.hook_embed": "prefix.embed.hook_out",  # Regular alias
+            "hook_embed": "prefix.embed.hook_out",  # Regular alias
             "prefix.child.child_alias": "prefix.child.child_target",
         }
         assert result == expected
@@ -269,7 +269,7 @@ class TestCollectAliasesRecursive:
             "embed": "embed.hook_out",
             "pos_embed": "pos_embed.hook_out",
             # Named hook aliases
-            "embed.hook_embed": "embed.hook_out",
+            "hook_embed": "embed.hook_out",
             "blocks.0.hook_resid_pre": "blocks.0.hook_in",
             "blocks.0.hook_resid_post": "blocks.0.hook_out",
         }
