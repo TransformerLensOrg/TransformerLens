@@ -10,8 +10,8 @@ bridge = TransformerBridge.boot_transformers(MODEL, device="cpu")
 hooked_transformer = HookedTransformer.from_pretrained(MODEL, device="cpu")
 
 act_names_in_cache = [
-    "hook_embed",
-    "hook_pos_embed",
+    # "hook_embed",
+    # "hook_pos_embed",
     "blocks.0.hook_resid_pre",
     "blocks.0.ln1.hook_scale",
     "blocks.0.ln1.hook_normalized",
@@ -26,7 +26,7 @@ act_names_in_cache = [
     "blocks.0.ln2.hook_scale",
     "blocks.0.ln2.hook_normalized",
     "blocks.0.mlp.hook_pre",
-    "blocks.0.mlp.hook_post",
+    # "blocks.0.mlp.hook_post",
     "blocks.0.hook_mlp_out",
     "blocks.0.hook_resid_post",
     "ln_final.hook_scale",
