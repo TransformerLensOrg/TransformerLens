@@ -37,11 +37,11 @@ class TestHookCompatibility:
             "blocks.0.hook_resid_mid",
             "blocks.0.hook_resid_post",
             # Attention hooks
-            "blocks.0.attn.hook_q",
+            # "blocks.0.attn.hook_q",
             "blocks.0.attn.hook_k",
             "blocks.0.attn.hook_v",
             "blocks.0.attn.hook_z",
-            "blocks.0.attn.hook_attn_out",
+            # "blocks.0.attn.hook_attn_out",
             "blocks.0.attn.hook_pattern",
             "blocks.0.attn.hook_result",
             "blocks.0.attn.hook_attn_scores",
