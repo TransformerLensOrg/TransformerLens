@@ -194,7 +194,12 @@ class GeneralizedComponent(nn.Module):
         # if the user is trying to access an attribute directly, not if it's being called internally during setup or run_with_cache.
 
         # Get execution frame of caller
-        frame = inspect.currentframe().f_back
+        current_frame = inspect.currentframe()
+        if current_frame is None:
+            # If we can't get frame info, fall back to regular attribute access
+            return self._getattr_helper(name)
+
+        frame = current_frame.f_back
         # Extract the module name from the frame
         caller_module = frame.f_globals.get("__name__", "") if frame else ""
 
@@ -206,19 +211,20 @@ class GeneralizedComponent(nn.Module):
             # If the user is correctly accessing a property like W_Q.weight or W_Q.bias,
             # we want to return the original W_Q and not W_Q.weight (the alias), because otherwise
             # we would essentially be calling W_Q.weight.weight which causes an error.
-            try:
-                # Get bytecode instructions of the current frame
-                instructions = list(dis.get_instructions(frame.f_code))
-                for instr in instructions:
-                    # Find next instruction after the current one (frame.f_lasti)
-                    if instr.offset > frame.f_lasti:
-                        # If the next instruction is a LOAD_ATTR and the attribute is weight or bias,
-                        # we want to return the original W_Q, not W_Q.weight or W_Q.bias
-                        if instr.opname == "LOAD_ATTR" and instr.argval in ["weight", "bias"]:
-                            return self._getattr_helper(name)
-                        break
-            except Exception as e:
-                pass
+            if frame is not None:
+                try:
+                    # Get bytecode instructions of the current frame
+                    instructions = list(dis.get_instructions(frame.f_code))
+                    for instr in instructions:
+                        # Find next instruction after the current one (frame.f_lasti)
+                        if instr.offset > frame.f_lasti:
+                            # If the next instruction is a LOAD_ATTR and the attribute is weight or bias,
+                            # we want to return the original W_Q, not W_Q.weight or W_Q.bias
+                            if instr.opname == "LOAD_ATTR" and instr.argval in ["weight", "bias"]:
+                                return self._getattr_helper(name)
+                            break
+                except Exception:
+                    pass
 
             # If we reach here, we can resolve the alias normally
             resolved_property = resolve_alias(self, name, self.property_aliases)
