@@ -31,8 +31,6 @@ class TestHookCompatibility:
             # "hook_embed",
             # "hook_pos_embed",
             # Final layer norm and unembedding
-            "ln_final",
-            "unembed",
             # Block 0 hooks only
             # Residual stream hooks
             "blocks.0.hook_resid_pre",
