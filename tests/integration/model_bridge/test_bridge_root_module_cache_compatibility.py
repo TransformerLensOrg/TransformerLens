@@ -55,6 +55,8 @@ def test_cache_hook_names():
     # Check that all expected hooks are present (subset check)
     # It's okay to have extra hooks - that means more functionality is exposed
     assert len(missing_hooks) == 0, f"Missing expected hooks: {sorted(missing_hooks)}"
-    
+
     # Verify we have at least the expected hooks
-    assert all(hook in actual_set for hook in expected_set), f"Some expected hooks are missing: {missing_hooks}"
+    assert all(
+        hook in actual_set for hook in expected_set
+    ), f"Some expected hooks are missing: {missing_hooks}"
