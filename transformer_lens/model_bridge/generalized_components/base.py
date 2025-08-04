@@ -165,7 +165,15 @@ class GeneralizedComponent(nn.Module):
         original_component = self._modules.get("_original_component", None)
         if original_component is not None:
             try:
-                return getattr(original_component, name)
+                name_split = name.split(".")
+
+                if len(name_split) > 1:
+                    current = getattr(original_component, name_split[0])
+                    for part in name_split[1:]:
+                        current = getattr(current, part)
+                    return current
+                else:
+                    return getattr(original_component, name)
             except AttributeError:
                 pass
 
