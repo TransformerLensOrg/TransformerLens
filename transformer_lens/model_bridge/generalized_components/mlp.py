@@ -21,17 +21,17 @@ class MLPBridge(GeneralizedComponent):
     """
 
     hook_aliases = {
-        "hook_pre": "W_in.hook_out",
-        "hook_post": "W_out.hook_in",
+        "hook_pre": "in.hook_out",
+        "hook_post": "out.hook_in",
     }
 
     property_aliases = {
-        "W_gate": "W_gate.weight",
-        "b_gate": "W_gate.bias",
-        "W_in": "W_in.weight",
-        "b_in": "W_in.bias",
-        "W_out": "W_out.weight",
-        "b_out": "W_out.bias",
+        "W_gate": "gate.weight",
+        "b_gate": "gate.bias",
+        "W_in": "in.weight",
+        "b_in": "in.bias",
+        "W_out": "out.weight",
+        "b_out": "out.bias",
     }
 
     def __init__(

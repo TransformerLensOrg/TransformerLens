@@ -27,9 +27,9 @@ class BlockBridge(GeneralizedComponent):
         "hook_resid_post": "hook_out",
         "hook_attn_in": "attn.hook_in",
         "hook_attn_out": "attn.hook_out",
-        "hook_q_input": "attn.W_Q.hook_in",
-        "hook_k_input": "attn.W_K.hook_in",
-        "hook_v_input": "attn.W_V.hook_in",
+        "hook_q_input": "attn.q.hook_in",
+        "hook_k_input": "attn.k.hook_in",
+        "hook_v_input": "attn.v.hook_in",
         "hook_mlp_in": "mlp.hook_in",
         "hook_mlp_out": "mlp.hook_out",
     }

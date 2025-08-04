@@ -26,35 +26,35 @@ class NeoArchitectureAdapter(ArchitectureAdapter):
 
         self.conversion_rules = WeightConversionSet(
             {
-                "embed.W_E": "transformer.wte.weight",
-                "pos_embed.W_pos": "transformer.wpe.weight",
+                "embed.e": "transformer.wte.weight",
+                "pos_embed.pos": "transformer.wpe.weight",
                 "blocks.{i}.ln1.w": "transformer.h.{i}.ln_1.weight",
                 "blocks.{i}.ln1.b": "transformer.h.{i}.ln_1.bias",
-                "blocks.{i}.attn.W_Q": (
+                "blocks.{i}.attn.q": (
                     "transformer.h.{i}.attn.attention.q_proj.weight",
                     RearrangeWeightConversion("(n h) m -> n m h", n=self.cfg.num_attention_heads),
                 ),
-                "blocks.{i}.attn.W_K": (
+                "blocks.{i}.attn.k": (
                     "transformer.h.{i}.attn.attention.k_proj.weight",
                     RearrangeWeightConversion("(n h) m -> n m h", n=self.cfg.num_attention_heads),
                 ),
-                "blocks.{i}.attn.W_V": (
+                "blocks.{i}.attn.v": (
                     "transformer.h.{i}.attn.attention.v_proj.weight",
                     RearrangeWeightConversion("(n h) m -> n m h", n=self.cfg.num_attention_heads),
                 ),
-                "blocks.{i}.attn.W_O": (
+                "blocks.{i}.attn.o": (
                     "transformer.h.{i}.attn.attention.out_proj.weight",
                     RearrangeWeightConversion("m (n h) -> n h m", n=self.cfg.num_attention_heads),
                 ),
                 "blocks.{i}.ln2.w": "transformer.h.{i}.ln_2.weight",
                 "blocks.{i}.ln2.b": "transformer.h.{i}.ln_2.bias",
-                "blocks.{i}.mlp.W_in": "transformer.h.{i}.mlp.c_fc.weight",
+                "blocks.{i}.mlp.in": "transformer.h.{i}.mlp.c_fc.weight",
                 "blocks.{i}.mlp.b_in": "transformer.h.{i}.mlp.c_fc.bias",
-                "blocks.{i}.mlp.W_out": "transformer.h.{i}.mlp.c_proj.weight",
+                "blocks.{i}.mlp.out": "transformer.h.{i}.mlp.c_proj.weight",
                 "blocks.{i}.mlp.b_out": "transformer.h.{i}.mlp.c_proj.bias",
                 "ln_final.w": "transformer.ln_f.weight",
                 "ln_final.b": "transformer.ln_f.bias",
-                "unembed.W_U": "lm_head.weight",
+                "unembed.u": "lm_head.weight",
                 "unembed.b_U": "lm_head.bias",
             }
         )

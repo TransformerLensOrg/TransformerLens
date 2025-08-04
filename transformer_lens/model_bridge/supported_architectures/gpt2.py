@@ -34,11 +34,11 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
 
         self.conversion_rules = WeightConversionSet(
             {
-                "pos_embed.W_pos": "transformer.wpe.weight",
-                "embed.W_E": "transformer.wte.weight",
+                "pos_embed.pos": "transformer.wpe.weight",
+                "embed.e": "transformer.wte.weight",
                 "blocks.{i}.ln1.w": "transformer.h.{i}.ln_1.weight",
                 "blocks.{i}.ln1.b": "transformer.h.{i}.ln_1.bias",
-                "blocks.{i}.attn.W_Q": (
+                "blocks.{i}.attn.q": (
                     "transformer.h.{i}.attn.c_attn.weight",
                     RearrangeWeightConversion(
                         "m (three n h) -> three n m h",
@@ -46,7 +46,7 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
                         n=self.cfg.num_attention_heads,
                     ),
                 ),
-                "blocks.{i}.attn.W_K": (
+                "blocks.{i}.attn.k": (
                     "transformer.h.{i}.attn.c_attn.weight",
                     RearrangeWeightConversion(
                         "m (three n h) -> three n m h",
@@ -54,7 +54,7 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
                         n=self.cfg.num_attention_heads,
                     ),
                 ),
-                "blocks.{i}.attn.W_V": (
+                "blocks.{i}.attn.v": (
                     "transformer.h.{i}.attn.c_attn.weight",
                     RearrangeWeightConversion(
                         "m (three n h) -> three n m h",
@@ -62,7 +62,7 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
                         n=self.cfg.num_attention_heads,
                     ),
                 ),
-                "blocks.{i}.attn.W_O": (
+                "blocks.{i}.attn.o": (
                     "transformer.h.{i}.attn.c_proj.weight",
                     RearrangeWeightConversion("(n h) m -> n h m", n=self.cfg.num_attention_heads),
                 ),
@@ -72,13 +72,13 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
                 "blocks.{i}.attn.b_O": "transformer.h.{i}.attn.c_proj.bias",
                 "blocks.{i}.ln2.w": "transformer.h.{i}.ln_2.weight",
                 "blocks.{i}.ln2.b": "transformer.h.{i}.ln_2.bias",
-                "blocks.{i}.mlp.W_in": "transformer.h.{i}.mlp.c_fc.weight",
+                "blocks.{i}.mlp.in": "transformer.h.{i}.mlp.c_fc.weight",
                 "blocks.{i}.mlp.b_in": "transformer.h.{i}.mlp.c_fc.bias",
-                "blocks.{i}.mlp.W_out": "transformer.h.{i}.mlp.c_proj.weight",
+                "blocks.{i}.mlp.out": "transformer.h.{i}.mlp.c_proj.weight",
                 "blocks.{i}.mlp.b_out": "transformer.h.{i}.mlp.c_proj.bias",
                 "ln_final.w": "transformer.ln_f.weight",
                 "ln_final.b": "transformer.ln_f.bias",
-                "unembed.W_U": "lm_head.weight",
+                "unembed.u": "lm_head.weight",
             }
         )
 
@@ -92,8 +92,8 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
                     "attn": JointQKVAttentionBridge(
                         name="attn",
                         submodules={
-                            "W_QKV": LinearBridge(name="c_attn"),
-                            "W_O": LinearBridge(name="c_proj"),
+                            "qkv": LinearBridge(name="c_attn"),
+                            "o": LinearBridge(name="c_proj"),
                         },
                         config={
                             "split_qkv_matrix": self.split_qkv_matrix,
@@ -104,8 +104,8 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
                     "mlp": MLPBridge(
                         name="mlp",
                         submodules={
-                            "W_in": LinearBridge(name="c_fc"),
-                            "W_out": LinearBridge(name="c_proj"),
+                            "in": LinearBridge(name="c_fc"),
+                            "out": LinearBridge(name="c_proj"),
                         },
                     ),
                 },

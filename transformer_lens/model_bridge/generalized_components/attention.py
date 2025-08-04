@@ -23,22 +23,22 @@ class AttentionBridge(GeneralizedComponent):
     hook_aliases = {
         "hook_pattern": "hook_in",
         "hook_result": "hook_hidden_states",
-        "hook_attn_scores": "W_O.hook_in",
-        "hook_q": "W_Q.hook_out",
-        "hook_k": "W_K.hook_out",
-        "hook_v": "W_V.hook_out",
-        "hook_z": "W_O.hook_out",
+        "hook_attn_scores": "o.hook_in",
+        "hook_q": "q.hook_out",
+        "hook_k": "k.hook_out",
+        "hook_v": "v.hook_out",
+        "hook_z": "o.hook_out",
     }
 
     property_aliases = {
-        "W_Q": "W_Q.weight",
-        "W_K": "W_K.weight",
-        "W_V": "W_V.weight",
-        "W_O": "W_O.weight",
-        "b_Q": "W_Q.bias",
-        "b_K": "W_K.bias",
-        "b_V": "W_V.bias",
-        "b_O": "W_O.bias",
+        "W_Q": "q.weight",
+        "W_K": "k.weight",
+        "W_V": "v.weight",
+        "W_O": "o.weight",
+        "b_Q": "q.bias",
+        "b_K": "k.bias",
+        "b_V": "v.bias",
+        "b_O": "o.bias",
     }
 
     def __init__(

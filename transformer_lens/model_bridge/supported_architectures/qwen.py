@@ -26,30 +26,30 @@ class QwenArchitectureAdapter(ArchitectureAdapter):
 
         self.conversion_rules = WeightConversionSet(
             {
-                "embed.W_E": "transformer.wte.weight",
+                "embed.e": "transformer.wte.weight",
                 "blocks.{i}.ln1.w": "transformer.h.{i}.ln_1.weight",
                 "blocks.{i}.ln2.w": "transformer.h.{i}.ln_2.weight",
-                "blocks.{i}.attn.W_Q": (
+                "blocks.{i}.attn.q": (
                     "transformer.h.{i}.attn.c_attn.weight",
                     RearrangeWeightConversion("(n h) m -> n m h", n=self.cfg.num_attention_heads),
                 ),
-                "blocks.{i}.attn.W_K": (
+                "blocks.{i}.attn.k": (
                     "transformer.h.{i}.attn.c_attn.weight",
                     RearrangeWeightConversion("(n h) m -> n m h", n=self.cfg.num_attention_heads),
                 ),
-                "blocks.{i}.attn.W_V": (
+                "blocks.{i}.attn.v": (
                     "transformer.h.{i}.attn.c_attn.weight",
                     RearrangeWeightConversion("(n h) m -> n m h", n=self.cfg.num_attention_heads),
                 ),
-                "blocks.{i}.attn.W_O": (
+                "blocks.{i}.attn.o": (
                     "transformer.h.{i}.attn.c_proj.weight",
                     RearrangeWeightConversion("m (n h) -> n h m", n=self.cfg.num_attention_heads),
                 ),
-                "blocks.{i}.mlp.W_in": "transformer.h.{i}.mlp.w2.weight.T",
-                "blocks.{i}.mlp.W_gate": "transformer.h.{i}.mlp.w1.weight.T",
-                "blocks.{i}.mlp.W_out": "transformer.h.{i}.mlp.c_proj.weight.T",
+                "blocks.{i}.mlp.in": "transformer.h.{i}.mlp.w2.weight.T",
+                "blocks.{i}.mlp.gate": "transformer.h.{i}.mlp.w1.weight.T",
+                "blocks.{i}.mlp.out": "transformer.h.{i}.mlp.c_proj.weight.T",
                 "ln_final.w": "transformer.ln_f.weight",
-                "unembed.W_U": "lm_head.weight.T",
+                "unembed.u": "lm_head.weight.T",
             }
         )
 

@@ -18,6 +18,10 @@ class UnembeddingBridge(GeneralizedComponent):
     This component provides standardized input/output hooks.
     """
 
+    property_aliases = {
+        "W_U": "u.weight",
+    }
+
     def __init__(
         self,
         name: str,

@@ -25,7 +25,8 @@ class EmbeddingBridge(GeneralizedComponent):
     }
 
     property_aliases = {
-        "W_pos": "W_E",
+        "W_E": "e.weight",
+        "W_pos": "pos.weight",
     }
 
     def __init__(
