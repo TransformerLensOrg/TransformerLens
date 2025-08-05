@@ -80,6 +80,10 @@ class HookPoint(nn.Module):
         # A variable giving the hook's name (from the perspective of the root
         # module) - this is set by the root module at setup.
         self.name: Optional[str] = None
+        
+        # Reshape functions for input and output transformations
+        self.input_reshape_fn: Optional[Callable[[Any], Any]] = None
+        self.output_reshape_fn: Optional[Callable[[Any], Any]] = None
 
     def add_perma_hook(self, hook: HookFunction, dir: Literal["fwd", "bwd"] = "fwd") -> None:
         self.add_hook(hook, dir=dir, is_permanent=True)
@@ -100,15 +104,27 @@ class HookPoint(nn.Module):
         """
 
         def full_hook(
-            module: torch.nn.Module,
-            module_input: Any,
+            module: torch.nn.Module,  # noqa: ARG001
+            module_input: Any,  # noqa: ARG001
             module_output: Any,
         ):
             if (
                 dir == "bwd"
             ):  # For a backwards hook, module_output is a tuple of (grad,) - I don't know why.
                 module_output = module_output[0]
-            return hook(module_output, hook=self)
+            
+            # Apply input reshape function if it exists
+            if self.input_reshape_fn is not None:
+                module_output = self.input_reshape_fn(module_output)
+            
+            # Apply the hook
+            hook_result = hook(module_output, hook=self)
+            
+            # Apply output reshape function if it exists and hook returned a value
+            if hook_result is not None and self.output_reshape_fn is not None:
+                hook_result = self.output_reshape_fn(hook_result)
+            
+            return hook_result
 
         # annotate the `full_hook` with the string representation of the `hook` function
         if isinstance(hook, partial):
@@ -163,6 +179,23 @@ class HookPoint(nn.Module):
     def clear_context(self):
         del self.ctx
         self.ctx = {}
+
+    def enable_reshape(
+        self,
+        input_reshape_fn: Optional[Callable[[Any], Any]] = None,
+        output_reshape_fn: Optional[Callable[[Any], Any]] = None,
+    ) -> None:
+        """
+        Enable reshape functionality for this hook point.
+        
+        Args:
+            input_reshape_fn: Function to reshape the input before applying hooks.
+                             Takes the module output and returns the reshaped version.
+            output_reshape_fn: Function to reshape the output after applying hooks.
+                              Takes the hook result and returns the final reshaped version.
+        """
+        self.input_reshape_fn = input_reshape_fn
+        self.output_reshape_fn = output_reshape_fn
 
     def forward(self, x: Tensor) -> Tensor:
         return x
