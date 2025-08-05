@@ -9,7 +9,7 @@ import torch
 from torch import nn
 
 from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
-    WeightConversionSet,
+    HookConversionSet,
 )
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
@@ -40,7 +40,7 @@ class ArchitectureAdapter:
         self.cfg = cfg
         self.default_cfg: dict[str, Any] = {}
         self.component_mapping: ComponentMapping | None = None
-        self.conversion_rules: WeightConversionSet | None = None
+        self.conversion_rules: HookConversionSet | None = None
 
     def get_component_mapping(self) -> ComponentMapping:
         """Get the full component mapping.

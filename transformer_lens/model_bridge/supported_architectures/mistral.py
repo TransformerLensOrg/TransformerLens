@@ -4,8 +4,8 @@ from typing import Any
 
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
-    RearrangeWeightConversion,
-    WeightConversionSet,
+    RearrangeHookConversion,
+    HookConversionSet,
 )
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
@@ -33,26 +33,26 @@ class MistralArchitectureAdapter(ArchitectureAdapter):
             "n_key_value_heads": cfg.num_key_value_heads,
         }
 
-        self.conversion_rules = WeightConversionSet(
+        self.conversion_rules = HookConversionSet(
             {
                 "embed.e": "model.embed_tokens.weight",
                 "blocks.{i}.ln1.w": "model.layers.{i}.input_layernorm.weight",
                 "blocks.{i}.ln2.w": "model.layers.{i}.post_attention_layernorm.weight",
                 "blocks.{i}.attn.q": (
                     "model.layers.{i}.self_attn.q_proj.weight",
-                    RearrangeWeightConversion("(n h) m -> n m h", n=self.cfg.num_attention_heads),
+                    RearrangeHookConversion("(n h) m -> n m h", n=self.cfg.num_attention_heads),
                 ),
                 "blocks.{i}.attn.k": (
                     "model.layers.{i}.self_attn.k_proj.weight",
-                    RearrangeWeightConversion("(n h) m -> n m h", n=self.cfg.num_key_value_heads),
+                    RearrangeHookConversion("(n h) m -> n m h", n=self.cfg.num_key_value_heads),
                 ),
                 "blocks.{i}.attn.v": (
                     "model.layers.{i}.self_attn.v_proj.weight",
-                    RearrangeWeightConversion("(n h) m -> n m h", n=self.cfg.num_key_value_heads),
+                    RearrangeHookConversion("(n h) m -> n m h", n=self.cfg.num_key_value_heads),
                 ),
                 "blocks.{i}.attn.o": (
                     "model.layers.{i}.self_attn.o_proj.weight",
-                    RearrangeWeightConversion("m (n h) -> n h m", n=self.cfg.num_attention_heads),
+                    RearrangeHookConversion("m (n h) -> n h m", n=self.cfg.num_attention_heads),
                 ),
                 "blocks.{i}.mlp.in": "model.layers.{i}.mlp.up_proj.weight.T",
                 "blocks.{i}.mlp.gate": "model.layers.{i}.mlp.gate_proj.weight.T",

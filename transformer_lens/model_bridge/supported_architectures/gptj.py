@@ -4,8 +4,8 @@ from typing import Any
 
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
-    RearrangeWeightConversion,
-    WeightConversionSet,
+    RearrangeHookConversion,
+    HookConversionSet,
 )
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
@@ -25,26 +25,26 @@ class GptjArchitectureAdapter(ArchitectureAdapter):
         """Initialize the GPTJ architecture adapter."""
         super().__init__(cfg)
 
-        self.conversion_rules = WeightConversionSet(
+        self.conversion_rules = HookConversionSet(
             {
                 "embed.e": "transformer.wte.weight",
                 "blocks.{i}.ln1.w": "transformer.h.{i}.ln_1.weight",
                 "blocks.{i}.ln1.b": "transformer.h.{i}.ln_1.bias",
                 "blocks.{i}.attn.q": (
                     "transformer.h.{i}.attn.q_proj.weight",
-                    RearrangeWeightConversion("(n h) m -> n m h", n=self.cfg.num_attention_heads),
+                    RearrangeHookConversion("(n h) m -> n m h", n=self.cfg.num_attention_heads),
                 ),
                 "blocks.{i}.attn.k": (
                     "transformer.h.{i}.attn.k_proj.weight",
-                    RearrangeWeightConversion("(n h) m -> n m h", n=self.cfg.num_attention_heads),
+                    RearrangeHookConversion("(n h) m -> n m h", n=self.cfg.num_attention_heads),
                 ),
                 "blocks.{i}.attn.v": (
                     "transformer.h.{i}.attn.v_proj.weight",
-                    RearrangeWeightConversion("(n h) m -> n m h", n=self.cfg.num_attention_heads),
+                    RearrangeHookConversion("(n h) m -> n m h", n=self.cfg.num_attention_heads),
                 ),
                 "blocks.{i}.attn.o": (
                     "transformer.h.{i}.attn.out_proj.weight",
-                    RearrangeWeightConversion("m (n h) -> n h m", n=self.cfg.num_attention_heads),
+                    RearrangeHookConversion("m (n h) -> n h m", n=self.cfg.num_attention_heads),
                 ),
                 "blocks.{i}.mlp.in": "transformer.h.{i}.mlp.fc_in.weight",
                 "blocks.{i}.mlp.b_in": "transformer.h.{i}.mlp.fc_in.bias",

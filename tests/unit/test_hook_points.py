@@ -66,37 +66,50 @@ def test_add_hook_prepend(mock_handle):
 
 
 def test_enable_reshape():
-    """Test that enable_reshape sets the reshape functions correctly."""
+    """Test that enable_reshape sets the hook conversion correctly."""
+    from transformer_lens.model_bridge.conversion_utils.conversion_steps.base_hook_conversion import (
+        BaseHookConversion,
+    )
+    
+    class TestHookConversion(BaseHookConversion):
+        def handle_conversion(self, input_value, *full_context):
+            return input_value * 2
+        
+        def revert(self, input_value, *full_context):
+            return input_value + 1
+    
     hook_point = HookPoint()
+    conversion = TestHookConversion()
     
-    def input_reshape(x):
-        return x * 2
+    hook_point.enable_reshape(conversion)
     
-    def output_reshape(x):
-        return x + 1
-    
-    hook_point.enable_reshape(input_reshape, output_reshape)
-    
-    assert hook_point.input_reshape_fn is input_reshape
-    assert hook_point.output_reshape_fn is output_reshape
+    assert hook_point.hook_conversion is conversion
 
 
 def test_enable_reshape_with_none():
     """Test that enable_reshape works with None values."""
     hook_point = HookPoint()
     
-    def input_reshape(x):
-        return x * 2
+    hook_point.enable_reshape(None)
     
-    hook_point.enable_reshape(input_reshape, None)
-    
-    assert hook_point.input_reshape_fn is input_reshape
-    assert hook_point.output_reshape_fn is None
+    assert hook_point.hook_conversion is None
 
 
 def test_reshape_functionality_integration():
-    """Test that reshape functions work in an integration context."""
+    """Test that hook conversion works in an integration context."""
     import torch
+
+    from transformer_lens.model_bridge.conversion_utils.conversion_steps.base_hook_conversion import (
+        BaseHookConversion,
+    )
+
+    # Create a test hook conversion
+    class TestHookConversion(BaseHookConversion):
+        def handle_conversion(self, input_value, *full_context):
+            return input_value * 2  # Double the input
+        
+        def revert(self, input_value, *full_context):
+            return input_value + 10  # Add 10 to the output
 
     # Create a simple test module that uses HookPoint
     class TestModule(torch.nn.Module):
@@ -109,14 +122,9 @@ def test_reshape_functionality_integration():
     
     module = TestModule()
     
-    # Set up reshape functions
-    def input_reshape(x):
-        return x * 2  # Double the input
-    
-    def output_reshape(x):
-        return x + 10  # Add 10 to the output
-    
-    module.hook_point.enable_reshape(input_reshape, output_reshape)
+    # Set up hook conversion
+    conversion = TestHookConversion()
+    module.hook_point.enable_reshape(conversion)
     
     # Set up a hook that modifies the activation
     def test_hook(activation, hook):
@@ -129,16 +137,28 @@ def test_reshape_functionality_integration():
     result = module(test_input)
     
     # The pipeline should be:
-    # 1. input_reshape: [1,2,3] * 2 = [2,4,6]
+    # 1. conversion.convert(): [1,2,3] * 2 = [2,4,6]
     # 2. hook: [2,4,6] + 1 = [3,5,7] 
-    # 3. output_reshape: [3,5,7] + 10 = [13,15,17]
+    # 3. conversion.revert(): [3,5,7] + 10 = [13,15,17]
     expected = torch.tensor([13.0, 15.0, 17.0])
     assert torch.equal(result, expected)
 
 
 def test_reshape_functionality_hook_returns_none_integration():
-    """Test that output reshape is not applied when hook returns None."""
+    """Test that output revert is not applied when hook returns None."""
     import torch
+
+    from transformer_lens.model_bridge.conversion_utils.conversion_steps.base_hook_conversion import (
+        BaseHookConversion,
+    )
+
+    # Create a test hook conversion
+    class TestHookConversion(BaseHookConversion):
+        def handle_conversion(self, input_value, *full_context):
+            return input_value * 2
+        
+        def revert(self, input_value, *full_context):
+            return input_value + 10
     
     class TestModule(torch.nn.Module):
         def __init__(self):
@@ -150,14 +170,9 @@ def test_reshape_functionality_hook_returns_none_integration():
     
     module = TestModule()
     
-    # Set up reshape functions
-    def input_reshape(x):
-        return x * 2
-    
-    def output_reshape(x):
-        return x + 10
-    
-    module.hook_point.enable_reshape(input_reshape, output_reshape)
+    # Set up hook conversion
+    conversion = TestHookConversion()
+    module.hook_point.enable_reshape(conversion)
     
     # Set up a hook that returns None
     def test_hook(activation, hook):

@@ -4,23 +4,20 @@ from typing import Any
 
 import torch
 
-from transformer_lens.model_bridge.conversion_utils.conversion_steps.base_weight_conversion import (
-    BaseWeightConversion,
-)
 from transformer_lens.model_bridge.conversion_utils.helpers.find_property import (
     find_property,
 )
-from transformer_lens.model_bridge.conversion_utils.weight_conversion_utils import (
+from transformer_lens.model_bridge.conversion_utils.hook_conversion_utils import (
     get_weight_conversion_field_set,
 )
 
-from .types import CONVERSION_ACTION, FIELD_SET, WeightConversionInterface
+from .base_hook_conversion import BaseHookConversion
 
 
-class WeightConversionSet(BaseWeightConversion):
+class HookConversionSet(BaseHookConversion):
     def __init__(
         self,
-        fields: FIELD_SET,
+        fields: dict[str, Any],
     ):
         super().__init__()
         self.fields = fields
@@ -66,7 +63,7 @@ class WeightConversionSet(BaseWeightConversion):
         return result
 
     def process_conversion_action(
-        self, input_value: Any, conversion_details: CONVERSION_ACTION, *full_context: Any
+        self, input_value: Any, conversion_details: Any, *full_context: Any
     ) -> Any:
         if isinstance(conversion_details, torch.Tensor):
             return conversion_details
@@ -80,11 +77,11 @@ class WeightConversionSet(BaseWeightConversion):
         self,
         input_value: Any,
         remote_field: str,
-        conversion: WeightConversionInterface,
+        conversion: BaseHookConversion,
         *full_context: Any,
     ) -> Any:
         field = find_property(remote_field, input_value)
-        if isinstance(conversion, WeightConversionSet):
+        if isinstance(conversion, HookConversionSet):
             result = []
             for layer in field:
                 result.append(conversion.convert(layer, input_value, *full_context))

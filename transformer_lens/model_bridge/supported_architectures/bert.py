@@ -7,8 +7,8 @@ from typing import Any
 
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
-    RearrangeWeightConversion,
-    WeightConversionSet,
+    RearrangeHookConversion,
+    HookConversionSet,
 )
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
@@ -31,7 +31,7 @@ class BertArchitectureAdapter(ArchitectureAdapter):
         """
         super().__init__(cfg)
 
-        self.conversion_rules = WeightConversionSet(
+        self.conversion_rules = HookConversionSet(
             {
                 "embed.e": "bert.embeddings.word_embeddings.weight",
                 "pos_embed.pos": "bert.embeddings.position_embeddings.weight",
@@ -44,31 +44,31 @@ class BertArchitectureAdapter(ArchitectureAdapter):
                 "blocks.{i}.ln2.b": "bert.encoder.layer.{i}.output.LayerNorm.bias",
                 "blocks.{i}.attn.q": (
                     "bert.encoder.layer.{i}.attention.self.query.weight",
-                    RearrangeWeightConversion("(h d_head) d_model -> h d_head d_model"),
+                    RearrangeHookConversion("(h d_head) d_model -> h d_head d_model"),
                 ),
                 "blocks.{i}.attn.k": (
                     "bert.encoder.layer.{i}.attention.self.key.weight",
-                    RearrangeWeightConversion("(h d_head) d_model -> h d_head d_model"),
+                    RearrangeHookConversion("(h d_head) d_model -> h d_head d_model"),
                 ),
                 "blocks.{i}.attn.v": (
                     "bert.encoder.layer.{i}.attention.self.value.weight",
-                    RearrangeWeightConversion("(h d_head) d_model -> h d_head d_model"),
+                    RearrangeHookConversion("(h d_head) d_model -> h d_head d_model"),
                 ),
                 "blocks.{i}.attn.b_Q": (
                     "bert.encoder.layer.{i}.attention.self.query.bias",
-                    RearrangeWeightConversion("(h d_head) -> h d_head"),
+                    RearrangeHookConversion("(h d_head) -> h d_head"),
                 ),
                 "blocks.{i}.attn.b_K": (
                     "bert.encoder.layer.{i}.attention.self.key.bias",
-                    RearrangeWeightConversion("(h d_head) -> h d_head"),
+                    RearrangeHookConversion("(h d_head) -> h d_head"),
                 ),
                 "blocks.{i}.attn.b_V": (
                     "bert.encoder.layer.{i}.attention.self.value.bias",
-                    RearrangeWeightConversion("(h d_head) -> h d_head"),
+                    RearrangeHookConversion("(h d_head) -> h d_head"),
                 ),
                 "blocks.{i}.attn.o": (
                     "bert.encoder.layer.{i}.attention.output.dense.weight",
-                    RearrangeWeightConversion("d_model (h d_head) -> h d_head d_model"),
+                    RearrangeHookConversion("d_model (h d_head) -> h d_head d_model"),
                 ),
                 "blocks.{i}.attn.b_O": "bert.encoder.layer.{i}.attention.output.dense.bias",
                 "blocks.{i}.mlp.in": "bert.encoder.layer.{i}.intermediate.dense.weight",

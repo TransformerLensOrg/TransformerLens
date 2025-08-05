@@ -28,27 +28,27 @@ def merge_quantization_fields(field_set: Any, quantization_fields: dict[str, Any
 
         # Handle different cases based on the types of existing and new fields
         if isinstance(new_field_value, tuple) and len(new_field_value) == 2:
-            # new_field_value is (str, WeightConversionSet)
+            # new_field_value is (str, HookConversionSet)
             new_remote, new_sub_wcs = new_field_value
 
             if isinstance(existing_field, tuple) and len(existing_field) == 2:
-                # existing_field is also (str, WeightConversionSet)
+                # existing_field is also (str, HookConversionSet)
                 existing_remote, existing_sub_wcs = existing_field
 
-                # Check if the second element is a WeightConversionSet-like object
+                # Check if the second element is a HookConversionSet-like object
                 if hasattr(existing_sub_wcs, "fields") and hasattr(new_sub_wcs, "fields"):
-                    # Recursively merge the sub-WeightConversionSets
+                    # Recursively merge the sub-HookConversionSets
                     merge_quantization_fields(existing_sub_wcs, new_sub_wcs.fields)
                     # Update the remote field name
                     field_set.fields[field_name] = (new_remote, existing_sub_wcs)
                 else:
                     raise RuntimeError(
-                        "Attempted to merge WeightConversionSet into a field that is not configured as a WeightConversionSet"
+                        "Attempted to merge HookConversionSet into a field that is not configured as a HookConversionSet"
                     )
             else:
                 # existing_field is not a tuple, but new_field_value is
                 raise RuntimeError(
-                    "Attempted to merge WeightConversionSet into a field that is not configured as a WeightConversionSet"
+                    "Attempted to merge HookConversionSet into a field that is not configured as a HookConversionSet"
                 )
         else:
             # new_field_value is a simple value (like torch.Tensor)

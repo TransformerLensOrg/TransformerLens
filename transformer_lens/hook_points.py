@@ -11,6 +11,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import partial
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Iterable,
@@ -29,6 +30,12 @@ import torch.utils.hooks as hooks
 from torch import Tensor
 
 from transformer_lens.utils import Slice, SliceInput
+
+# Import for hook conversions - use TYPE_CHECKING to avoid circular imports
+if TYPE_CHECKING:
+    from transformer_lens.model_bridge.conversion_utils.conversion_steps.base_hook_conversion import (
+        BaseHookConversion,
+    )
 
 
 @dataclass
@@ -81,9 +88,8 @@ class HookPoint(nn.Module):
         # module) - this is set by the root module at setup.
         self.name: Optional[str] = None
         
-        # Reshape functions for input and output transformations
-        self.input_reshape_fn: Optional[Callable[[Any], Any]] = None
-        self.output_reshape_fn: Optional[Callable[[Any], Any]] = None
+        # Hook conversion for input and output transformations
+        self.hook_conversion: Optional["transformer_lens.model_bridge.conversion_utils.conversion_steps.base_hook_conversion.BaseHookConversion"] = None
 
     def add_perma_hook(self, hook: HookFunction, dir: Literal["fwd", "bwd"] = "fwd") -> None:
         self.add_hook(hook, dir=dir, is_permanent=True)
@@ -104,8 +110,8 @@ class HookPoint(nn.Module):
         """
 
         def full_hook(
-            module: torch.nn.Module,  # noqa: ARG001
-            module_input: Any,  # noqa: ARG001
+            module: torch.nn.Module,
+            module_input: Any,
             module_output: Any,
         ):
             if (
@@ -113,16 +119,16 @@ class HookPoint(nn.Module):
             ):  # For a backwards hook, module_output is a tuple of (grad,) - I don't know why.
                 module_output = module_output[0]
             
-            # Apply input reshape function if it exists
-            if self.input_reshape_fn is not None:
-                module_output = self.input_reshape_fn(module_output)
+            # Apply input conversion if hook_conversion exists
+            if self.hook_conversion is not None:
+                module_output = self.hook_conversion.convert(module_output)
             
             # Apply the hook
             hook_result = hook(module_output, hook=self)
             
-            # Apply output reshape function if it exists and hook returned a value
-            if hook_result is not None and self.output_reshape_fn is not None:
-                hook_result = self.output_reshape_fn(hook_result)
+            # Apply output reversion if hook_conversion exists and hook returned a value
+            if hook_result is not None and self.hook_conversion is not None:
+                hook_result = self.hook_conversion.revert(hook_result)
             
             return hook_result
 
@@ -182,20 +188,17 @@ class HookPoint(nn.Module):
 
     def enable_reshape(
         self,
-        input_reshape_fn: Optional[Callable[[Any], Any]] = None,
-        output_reshape_fn: Optional[Callable[[Any], Any]] = None,
+        hook_conversion: Optional["transformer_lens.model_bridge.conversion_utils.conversion_steps.base_hook_conversion.BaseHookConversion"] = None,
     ) -> None:
         """
-        Enable reshape functionality for this hook point.
+        Enable reshape functionality for this hook point using a BaseHookConversion.
         
         Args:
-            input_reshape_fn: Function to reshape the input before applying hooks.
-                             Takes the module output and returns the reshaped version.
-            output_reshape_fn: Function to reshape the output after applying hooks.
-                              Takes the hook result and returns the final reshaped version.
+            hook_conversion: BaseHookConversion instance to handle input/output transformations.
+                           The convert() method will be used for input transformation,
+                           and the revert() method will be used for output transformation.
         """
-        self.input_reshape_fn = input_reshape_fn
-        self.output_reshape_fn = output_reshape_fn
+        self.hook_conversion = hook_conversion
 
     def forward(self, x: Tensor) -> Tensor:
         return x

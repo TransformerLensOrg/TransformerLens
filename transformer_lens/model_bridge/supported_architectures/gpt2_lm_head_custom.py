@@ -4,8 +4,8 @@ from typing import Any
 
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
-    RearrangeWeightConversion,
-    WeightConversionSet,
+    RearrangeHookConversion,
+    HookConversionSet,
 )
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
@@ -24,7 +24,7 @@ class Gpt2LmHeadCustomArchitectureAdapter(ArchitectureAdapter):
         """Initialize the GPT-2 LM Head Custom architecture adapter."""
         super().__init__(cfg)
 
-        self.conversion_rules = WeightConversionSet(
+        self.conversion_rules = HookConversionSet(
             {
                 "pos_embed.pos": "transformer.wpe.weight",
                 "embed.e": "transformer.wte.weight",
@@ -34,31 +34,31 @@ class Gpt2LmHeadCustomArchitectureAdapter(ArchitectureAdapter):
                 "blocks.{i}.ln2.b": "transformer.h.{i}.ln_2.bias",
                 "blocks.{i}.attn.q": (
                     "transformer.h.{i}.attn.c_attn.weight",
-                    RearrangeWeightConversion("d_model (n d_head) -> n d_model d_head"),
+                    RearrangeHookConversion("d_model (n d_head) -> n d_model d_head"),
                 ),
                 "blocks.{i}.attn.k": (
                     "transformer.h.{i}.attn.c_attn.weight",
-                    RearrangeWeightConversion("d_model (n d_head) -> n d_model d_head"),
+                    RearrangeHookConversion("d_model (n d_head) -> n d_model d_head"),
                 ),
                 "blocks.{i}.attn.v": (
                     "transformer.h.{i}.attn.c_attn.weight",
-                    RearrangeWeightConversion("d_model (n d_head) -> n d_model d_head"),
+                    RearrangeHookConversion("d_model (n d_head) -> n d_model d_head"),
                 ),
                 "blocks.{i}.attn.b_Q": (
                     "transformer.h.{i}.attn.c_attn.bias",
-                    RearrangeWeightConversion("(n d_head) -> n d_head"),
+                    RearrangeHookConversion("(n d_head) -> n d_head"),
                 ),
                 "blocks.{i}.attn.b_K": (
                     "transformer.h.{i}.attn.c_attn.bias",
-                    RearrangeWeightConversion("(n d_head) -> n d_head"),
+                    RearrangeHookConversion("(n d_head) -> n d_head"),
                 ),
                 "blocks.{i}.attn.b_V": (
                     "transformer.h.{i}.attn.c_attn.bias",
-                    RearrangeWeightConversion("(n d_head) -> n d_head"),
+                    RearrangeHookConversion("(n d_head) -> n d_head"),
                 ),
                 "blocks.{i}.attn.o": (
                     "transformer.h.{i}.attn.c_proj.weight",
-                    RearrangeWeightConversion("(n d_head) d_model -> n d_head d_model"),
+                    RearrangeHookConversion("(n d_head) d_model -> n d_head d_model"),
                 ),
                 "blocks.{i}.attn.b_O": "transformer.h.{i}.attn.c_proj.bias",
                 "blocks.{i}.mlp.in": "transformer.h.{i}.mlp.c_fc.weight",

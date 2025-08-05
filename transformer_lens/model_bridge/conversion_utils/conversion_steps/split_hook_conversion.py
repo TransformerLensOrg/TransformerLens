@@ -2,16 +2,16 @@
 import torch
 from torch import Tensor
 
-from transformer_lens.model_bridge.conversion_utils.conversion_steps.base_weight_conversion import (
-    BaseWeightConversion,
+from transformer_lens.model_bridge.conversion_utils.conversion_steps.base_hook_conversion import (
+    BaseHookConversion,
 )
 
 
-class SplitWeightConversion(BaseWeightConversion):
+class SplitHookConversion(BaseHookConversion):
     """Split a weight tensor along a specified dimension."""
 
     def __init__(self, index: int, num_splits: int, dim: int = 0):
-        """Initialize the SplitWeightConversion.
+        """Initialize the SplitHookConversion.
 
         Args:
             index (int): The index of the split to select.

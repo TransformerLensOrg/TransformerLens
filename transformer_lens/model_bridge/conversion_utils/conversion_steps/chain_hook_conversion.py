@@ -3,19 +3,19 @@ from typing import List
 
 from torch import Tensor
 
-from transformer_lens.model_bridge.conversion_utils.conversion_steps.base_weight_conversion import (
-    BaseWeightConversion,
+from transformer_lens.model_bridge.conversion_utils.conversion_steps.base_hook_conversion import (
+    BaseHookConversion,
 )
 
 
-class ChainWeightConversion(BaseWeightConversion):
+class ChainHookConversion(BaseHookConversion):
     """Chain multiple weight conversion steps together."""
 
-    def __init__(self, conversions: List[BaseWeightConversion]):
-        """Initialize the ChainWeightConversion.
+    def __init__(self, conversions: List[BaseHookConversion]):
+        """Initialize the ChainHookConversion.
 
         Args:
-            conversions (List[BaseWeightConversion]): A list of conversions to apply in order.
+            conversions (List[BaseHookConversion]): A list of conversions to apply in order.
         """
         super().__init__()
         self.conversions = conversions

@@ -4,9 +4,9 @@ from typing import Any
 
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
-    RearrangeWeightConversion,
-    SplitWeightConversion,
-    WeightConversionSet,
+    RearrangeHookConversion,
+    SplitHookConversion,
+    HookConversionSet,
 )
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
@@ -24,43 +24,43 @@ class Phi3ArchitectureAdapter(ArchitectureAdapter):
     def __init__(self, cfg: Any) -> None:
         super().__init__(cfg)
 
-        self.conversion_rules = WeightConversionSet(
+        self.conversion_rules = HookConversionSet(
             {
                 "embed.e": "model.embed_tokens.weight",
                 "blocks.{i}.ln1.w": "model.layers.{i}.input_layernorm.weight",
                 "blocks.{i}.attn.q": (
                     "model.layers.{i}.self_attn.qkv_proj.weight",
-                    SplitWeightConversion(
+                    SplitHookConversion(
                         0,
                         3,
                     ),
                 ),
                 "blocks.{i}.attn.k": (
                     "model.layers.{i}.self_attn.qkv_proj.weight",
-                    SplitWeightConversion(
+                    SplitHookConversion(
                         1,
                         3,
                     ),
                 ),
                 "blocks.{i}.attn.v": (
                     "model.layers.{i}.self_attn.qkv_proj.weight",
-                    SplitWeightConversion(
+                    SplitHookConversion(
                         2,
                         3,
                     ),
                 ),
                 "blocks.{i}.attn.o": (
                     "model.layers.{i}.self_attn.o_proj.weight",
-                    RearrangeWeightConversion("m (n h) -> n h m", n=self.cfg.num_attention_heads),
+                    RearrangeHookConversion("m (n h) -> n h m", n=self.cfg.num_attention_heads),
                 ),
                 "blocks.{i}.ln2.w": "model.layers.{i}.post_attention_layernorm.weight",
                 "blocks.{i}.mlp.in": (
                     "model.layers.{i}.mlp.gate_up_proj.weight",
-                    SplitWeightConversion(1, 2, dim=1),
+                    SplitHookConversion(1, 2, dim=1),
                 ),
                 "blocks.{i}.mlp.gate": (
                     "model.layers.{i}.mlp.gate_up_proj.weight",
-                    SplitWeightConversion(0, 2, dim=1),
+                    SplitHookConversion(0, 2, dim=1),
                 ),
                 "blocks.{i}.mlp.out": "model.layers.{i}.mlp.down_proj.weight",
                 "ln_final.w": "model.norm.weight",

@@ -4,10 +4,10 @@ from typing import Optional
 import einops
 import torch
 
-from .base_weight_conversion import BaseWeightConversion
+from .base_hook_conversion import BaseHookConversion
 
 
-class RepeatWeightConversion(BaseWeightConversion):
+class RepeatHookConversion(BaseHookConversion):
     def __init__(
         self,
         pattern: str,

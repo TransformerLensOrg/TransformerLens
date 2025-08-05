@@ -6,8 +6,8 @@ import torch
 
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
-    RearrangeWeightConversion,
-    WeightConversionSet,
+    RearrangeHookConversion,
+    HookConversionSet,
 )
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
@@ -27,14 +27,14 @@ class BloomArchitectureAdapter(ArchitectureAdapter):
         """Initialize the Bloom architecture adapter."""
         super().__init__(cfg)
 
-        self.conversion_rules = WeightConversionSet(
+        self.conversion_rules = HookConversionSet(
             {
                 "embed.e": "transformer.word_embeddings.weight",
                 "blocks.{i}.ln1.w": "transformer.h.{i}.input_layernorm.weight",
                 "blocks.{i}.ln1.b": "transformer.h.{i}.input_layernorm.bias",
                 "blocks.{i}.attn.q": (
                     "transformer.h.{i}.self_attention.query_key_value.weight",
-                    RearrangeWeightConversion(
+                    RearrangeHookConversion(
                         "(three n h) m -> three n m h",
                         three=3,
                         n=self.cfg.num_attention_heads,
@@ -42,7 +42,7 @@ class BloomArchitectureAdapter(ArchitectureAdapter):
                 ),
                 "blocks.{i}.attn.k": (
                     "transformer.h.{i}.self_attention.query_key_value.weight",
-                    RearrangeWeightConversion(
+                    RearrangeHookConversion(
                         "(three n h) m -> three n m h",
                         three=3,
                         n=self.cfg.num_attention_heads,
@@ -50,7 +50,7 @@ class BloomArchitectureAdapter(ArchitectureAdapter):
                 ),
                 "blocks.{i}.attn.v": (
                     "transformer.h.{i}.self_attention.query_key_value.weight",
-                    RearrangeWeightConversion(
+                    RearrangeHookConversion(
                         "(three n h) m -> three n m h",
                         three=3,
                         n=self.cfg.num_attention_heads,
@@ -58,7 +58,7 @@ class BloomArchitectureAdapter(ArchitectureAdapter):
                 ),
                 "blocks.{i}.attn.o": (
                     "transformer.h.{i}.self_attention.dense.weight",
-                    RearrangeWeightConversion("m (n h) -> n h m", n=self.cfg.num_attention_heads),
+                    RearrangeHookConversion("m (n h) -> n h m", n=self.cfg.num_attention_heads),
                 ),
                 "blocks.{i}.attn.b_Q": "transformer.h.{i}.self_attention.query_key_value.bias",
                 "blocks.{i}.attn.b_K": "transformer.h.{i}.self_attention.query_key_value.bias",

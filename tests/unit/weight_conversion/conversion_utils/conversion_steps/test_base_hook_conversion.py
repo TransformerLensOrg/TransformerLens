@@ -1,18 +1,18 @@
 import pytest
 import torch
 
-from transformer_lens.model_bridge.conversion_utils.conversion_steps.base_weight_conversion import (
-    BaseWeightConversion,
+from transformer_lens.model_bridge.conversion_utils.conversion_steps.base_hook_conversion import (
+    BaseHookConversion,
 )
 
 
-class MockWeightConversion(BaseWeightConversion):
+class MockWeightConversion(BaseHookConversion):
     def handle_conversion(self, weight):
         return weight + 5
 
 
-def test_base_weight_conversion_convert_throws_error():
-    weight_conversion = BaseWeightConversion()
+def test_base_hook_conversion_convert_throws_error():
+    weight_conversion = BaseHookConversion()
     with pytest.raises(NotImplementedError):
         weight_conversion.convert(torch.zeros(1, 4))
 

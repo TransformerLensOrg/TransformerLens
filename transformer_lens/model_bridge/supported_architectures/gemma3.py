@@ -5,8 +5,8 @@ from typing import Any
 
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
-    RearrangeWeightConversion,
-    WeightConversionSet,
+    RearrangeHookConversion,
+    HookConversionSet,
 )
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
@@ -26,12 +26,12 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
         """Initialize the Gemma3 architecture adapter."""
         super().__init__(cfg)
 
-        self.conversion_rules = WeightConversionSet(
+        self.conversion_rules = HookConversionSet(
             {
                 # Gemma3 scales embeddings by sqrt(d_model)
                 "embed.e": (
                     "model.embed_tokens.weight",
-                    RearrangeWeightConversion(
+                    RearrangeHookConversion(
                         "d_vocab d_model -> d_vocab d_model",
                         scale=self.cfg.hidden_size**0.5,
                     ),
@@ -40,11 +40,11 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
                 "blocks.{i}.ln2.w": "model.layers.{i}.post_attention_layernorm.weight",
                 "blocks.{i}.attn.q": (
                     "model.layers.{i}.self_attn.q_proj.weight",
-                    RearrangeWeightConversion("(n h) m -> n m h", n=self.cfg.num_attention_heads),
+                    RearrangeHookConversion("(n h) m -> n m h", n=self.cfg.num_attention_heads),
                 ),
                 "blocks.{i}.attn.k": (
                     "model.layers.{i}.self_attn.k_proj.weight",
-                    RearrangeWeightConversion(
+                    RearrangeHookConversion(
                         "(n h) m -> n m h",
                         n=getattr(
                             self.cfg,
@@ -55,7 +55,7 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
                 ),
                 "blocks.{i}.attn.v": (
                     "model.layers.{i}.self_attn.v_proj.weight",
-                    RearrangeWeightConversion(
+                    RearrangeHookConversion(
                         "(n h) m -> n m h",
                         n=getattr(
                             self.cfg,
@@ -66,7 +66,7 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
                 ),
                 "blocks.{i}.attn.o": (
                     "model.layers.{i}.self_attn.o_proj.weight",
-                    RearrangeWeightConversion("m (n h) -> n h m", n=self.cfg.num_attention_heads),
+                    RearrangeHookConversion("m (n h) -> n h m", n=self.cfg.num_attention_heads),
                 ),
                 "blocks.{i}.mlp.in": "model.layers.{i}.mlp.up_proj.weight.T",
                 "blocks.{i}.mlp.gate": "model.layers.{i}.mlp.gate_proj.weight.T",

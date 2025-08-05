@@ -22,3 +22,7 @@ class BaseHookConversion:
         raise NotImplementedError(
             f"The conversion function for {type(self).__name__} needs to be implemented."
         )
+
+    def revert(self, input_value, *full_context):
+        """Revert the conversion. For now, just return the input unchanged."""
+        return input_value

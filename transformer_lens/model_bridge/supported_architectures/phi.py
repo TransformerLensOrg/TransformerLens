@@ -4,8 +4,8 @@ from typing import Any
 
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
-    RearrangeWeightConversion,
-    WeightConversionSet,
+    RearrangeHookConversion,
+    HookConversionSet,
 )
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
@@ -28,7 +28,7 @@ class PhiArchitectureAdapter(ArchitectureAdapter):
         """
         super().__init__(cfg)
 
-        self.conversion_rules = WeightConversionSet(
+        self.conversion_rules = HookConversionSet(
             {
                 "embed.e": "transformer.wte.weight",
                 "blocks.{i}.ln1.w": "transformer.h.{i}.ln_1.weight",
@@ -37,37 +37,37 @@ class PhiArchitectureAdapter(ArchitectureAdapter):
                 "blocks.{i}.ln2.b": "transformer.h.{i}.ln_2.bias",
                 "blocks.{i}.attn.q": (
                     "transformer.h.{i}.attn.c_attn.weight",
-                    RearrangeWeightConversion(
+                    RearrangeHookConversion(
                         "d_model (3 n_head d_head) -> 3 n_head d_head d_model"
                     ),
                 ),
                 "blocks.{i}.attn.k": (
                     "transformer.h.{i}.attn.c_attn.weight",
-                    RearrangeWeightConversion(
+                    RearrangeHookConversion(
                         "d_model (3 n_head d_head) -> 3 n_head d_head d_model"
                     ),
                 ),
                 "blocks.{i}.attn.v": (
                     "transformer.h.{i}.attn.c_attn.weight",
-                    RearrangeWeightConversion(
+                    RearrangeHookConversion(
                         "d_model (3 n_head d_head) -> 3 n_head d_head d_model"
                     ),
                 ),
                 "blocks.{i}.attn.b_Q": (
                     "transformer.h.{i}.attn.c_attn.bias",
-                    RearrangeWeightConversion("(3 n_head d_head) -> 3 n_head d_head"),
+                    RearrangeHookConversion("(3 n_head d_head) -> 3 n_head d_head"),
                 ),
                 "blocks.{i}.attn.b_K": (
                     "transformer.h.{i}.attn.c_attn.bias",
-                    RearrangeWeightConversion("(3 n_head d_head) -> 3 n_head d_head"),
+                    RearrangeHookConversion("(3 n_head d_head) -> 3 n_head d_head"),
                 ),
                 "blocks.{i}.attn.b_V": (
                     "transformer.h.{i}.attn.c_attn.bias",
-                    RearrangeWeightConversion("(3 n_head d_head) -> 3 n_head d_head"),
+                    RearrangeHookConversion("(3 n_head d_head) -> 3 n_head d_head"),
                 ),
                 "blocks.{i}.attn.o": (
                     "transformer.h.{i}.attn.c_proj.weight",
-                    RearrangeWeightConversion("(n_head d_head) d_model -> n_head d_head d_model"),
+                    RearrangeHookConversion("(n_head d_head) d_model -> n_head d_head d_model"),
                 ),
                 "blocks.{i}.attn.b_O": "transformer.h.{i}.attn.c_proj.bias",
                 "blocks.{i}.mlp.in": "transformer.h.{i}.mlp.c_fc.weight",

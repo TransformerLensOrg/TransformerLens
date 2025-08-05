@@ -6,8 +6,8 @@ import torch
 
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
-    RearrangeWeightConversion,
-    WeightConversionSet,
+    HookConversionSet,
+    RearrangeHookConversion,
 )
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
@@ -32,7 +32,7 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
             "default_prepend_bos": True,  # Default for GPT-2 style models
         }
 
-        self.conversion_rules = WeightConversionSet(
+        self.conversion_rules = HookConversionSet(
             {
                 "pos_embed.pos": "transformer.wpe.weight",
                 "embed.e": "transformer.wte.weight",
@@ -40,7 +40,7 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
                 "blocks.{i}.ln1.b": "transformer.h.{i}.ln_1.bias",
                 "blocks.{i}.attn.q": (
                     "transformer.h.{i}.attn.c_attn.weight",
-                    RearrangeWeightConversion(
+                    RearrangeHookConversion(
                         "m (three n h) -> three n m h",
                         three=3,
                         n=self.cfg.num_attention_heads,
@@ -48,7 +48,7 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
                 ),
                 "blocks.{i}.attn.k": (
                     "transformer.h.{i}.attn.c_attn.weight",
-                    RearrangeWeightConversion(
+                    RearrangeHookConversion(
                         "m (three n h) -> three n m h",
                         three=3,
                         n=self.cfg.num_attention_heads,
@@ -56,7 +56,7 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
                 ),
                 "blocks.{i}.attn.v": (
                     "transformer.h.{i}.attn.c_attn.weight",
-                    RearrangeWeightConversion(
+                    RearrangeHookConversion(
                         "m (three n h) -> three n m h",
                         three=3,
                         n=self.cfg.num_attention_heads,
@@ -64,7 +64,7 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
                 ),
                 "blocks.{i}.attn.o": (
                     "transformer.h.{i}.attn.c_proj.weight",
-                    RearrangeWeightConversion("(n h) m -> n h m", n=self.cfg.num_attention_heads),
+                    RearrangeHookConversion("(n h) m -> n h m", n=self.cfg.num_attention_heads),
                 ),
                 "blocks.{i}.attn.b_Q": "transformer.h.{i}.attn.c_attn.bias",
                 "blocks.{i}.attn.b_K": "transformer.h.{i}.attn.c_attn.bias",

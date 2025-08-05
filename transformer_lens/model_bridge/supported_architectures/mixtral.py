@@ -4,8 +4,8 @@ from typing import Any
 
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
-    RearrangeWeightConversion,
-    WeightConversionSet,
+    RearrangeHookConversion,
+    HookConversionSet,
 )
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
@@ -25,7 +25,7 @@ class MixtralArchitectureAdapter(ArchitectureAdapter):
         """Initialize the Mixtral architecture adapter."""
         super().__init__(cfg)
 
-        self.conversion_rules = WeightConversionSet(
+        self.conversion_rules = HookConversionSet(
             {
                 "embed.e": "model.embed_tokens.weight",
                 "blocks.{i}.ln1.w": "model.layers.{i}.input_layernorm.weight",
@@ -34,31 +34,31 @@ class MixtralArchitectureAdapter(ArchitectureAdapter):
                 "blocks.{i}.ln2.b": "model.layers.{i}.post_attention_layernorm.bias",
                 "blocks.{i}.attn.q": (
                     "model.layers.{i}.self_attn.q_proj.weight",
-                    RearrangeWeightConversion("(h d_head) d_model -> h d_head d_model"),
+                    RearrangeHookConversion("(h d_head) d_model -> h d_head d_model"),
                 ),
                 "blocks.{i}.attn.k": (
                     "model.layers.{i}.self_attn.k_proj.weight",
-                    RearrangeWeightConversion("(h d_head) d_model -> h d_head d_model"),
+                    RearrangeHookConversion("(h d_head) d_model -> h d_head d_model"),
                 ),
                 "blocks.{i}.attn.v": (
                     "model.layers.{i}.self_attn.v_proj.weight",
-                    RearrangeWeightConversion("(h d_head) d_model -> h d_head d_model"),
+                    RearrangeHookConversion("(h d_head) d_model -> h d_head d_model"),
                 ),
                 "blocks.{i}.attn.b_Q": (
                     "model.layers.{i}.self_attn.q_proj.bias",
-                    RearrangeWeightConversion("(h d_head) -> h d_head"),
+                    RearrangeHookConversion("(h d_head) -> h d_head"),
                 ),
                 "blocks.{i}.attn.b_K": (
                     "model.layers.{i}.self_attn.k_proj.bias",
-                    RearrangeWeightConversion("(h d_head) -> h d_head"),
+                    RearrangeHookConversion("(h d_head) -> h d_head"),
                 ),
                 "blocks.{i}.attn.b_V": (
                     "model.layers.{i}.self_attn.v_proj.bias",
-                    RearrangeWeightConversion("(h d_head) -> h d_head"),
+                    RearrangeHookConversion("(h d_head) -> h d_head"),
                 ),
                 "blocks.{i}.attn.o": (
                     "model.layers.{i}.self_attn.o_proj.weight",
-                    RearrangeWeightConversion("d_model (h d_head) -> h d_head d_model"),
+                    RearrangeHookConversion("d_model (h d_head) -> h d_head d_model"),
                 ),
                 "blocks.{i}.attn.b_O": "model.layers.{i}.self_attn.o_proj.bias",
                 "blocks.{i}.mlp.in": "model.layers.{i}.mlp.gate_proj.weight",

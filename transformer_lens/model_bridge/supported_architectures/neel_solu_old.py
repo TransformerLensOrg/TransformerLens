@@ -4,8 +4,8 @@ from typing import Any
 
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
-    RearrangeWeightConversion,
-    WeightConversionSet,
+    RearrangeHookConversion,
+    HookConversionSet,
 )
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
@@ -29,7 +29,7 @@ class NeelSoluOldArchitectureAdapter(ArchitectureAdapter):
         self.default_config: dict[str, Any] = {}
         super().__init__(cfg)
 
-        self.conversion_rules = WeightConversionSet(
+        self.conversion_rules = HookConversionSet(
             {
                 "pos_embed.pos": "wpe.weight",
                 "embed.e": "wte.weight",
@@ -39,19 +39,19 @@ class NeelSoluOldArchitectureAdapter(ArchitectureAdapter):
                 "blocks.{i}.ln2.b": "blocks.{i}.ln2.b",
                 "blocks.{i}.attn.q": (
                     "blocks.{i}.attn.W_Q",
-                    RearrangeWeightConversion("d_model n_head d_head -> n_head d_model d_head"),
+                    RearrangeHookConversion("d_model n_head d_head -> n_head d_model d_head"),
                 ),
                 "blocks.{i}.attn.k": (
                     "blocks.{i}.attn.W_K",
-                    RearrangeWeightConversion("d_model n_head d_head -> n_head d_model d_head"),
+                    RearrangeHookConversion("d_model n_head d_head -> n_head d_model d_head"),
                 ),
                 "blocks.{i}.attn.v": (
                     "blocks.{i}.attn.W_V",
-                    RearrangeWeightConversion("d_model n_head d_head -> n_head d_model d_head"),
+                    RearrangeHookConversion("d_model n_head d_head -> n_head d_model d_head"),
                 ),
                 "blocks.{i}.attn.o": (
                     "blocks.{i}.attn.W_O",
-                    RearrangeWeightConversion("n_head d_head d_model -> n_head d_head d_model"),
+                    RearrangeHookConversion("n_head d_head d_model -> n_head d_head d_model"),
                 ),
                 "blocks.{i}.attn.b_Q": "blocks.{i}.attn.b_Q",
                 "blocks.{i}.attn.b_K": "blocks.{i}.attn.b_K",

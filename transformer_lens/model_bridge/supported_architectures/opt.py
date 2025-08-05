@@ -4,8 +4,8 @@ from typing import Any
 
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
-    RearrangeWeightConversion,
-    WeightConversionSet,
+    RearrangeHookConversion,
+    HookConversionSet,
 )
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
@@ -24,7 +24,7 @@ class OptArchitectureAdapter(ArchitectureAdapter):
         """Initialize the OPT architecture adapter."""
         super().__init__(cfg)
 
-        self.conversion_rules = WeightConversionSet(
+        self.conversion_rules = HookConversionSet(
             {
                 "embed.e": "model.decoder.embed_tokens.weight",
                 "pos_embed.pos": "model.decoder.embed_positions.weight",
@@ -32,19 +32,19 @@ class OptArchitectureAdapter(ArchitectureAdapter):
                 "blocks.{i}.ln1.b": "model.decoder.layers.{i}.self_attn_layer_norm.bias",
                 "blocks.{i}.attn.q": (
                     "model.decoder.layers.{i}.self_attn.q_proj.weight",
-                    RearrangeWeightConversion("(n h) m -> n m h", n=self.cfg.num_attention_heads),
+                    RearrangeHookConversion("(n h) m -> n m h", n=self.cfg.num_attention_heads),
                 ),
                 "blocks.{i}.attn.k": (
                     "model.decoder.layers.{i}.self_attn.k_proj.weight",
-                    RearrangeWeightConversion("(n h) m -> n m h", n=self.cfg.num_attention_heads),
+                    RearrangeHookConversion("(n h) m -> n m h", n=self.cfg.num_attention_heads),
                 ),
                 "blocks.{i}.attn.v": (
                     "model.decoder.layers.{i}.self_attn.v_proj.weight",
-                    RearrangeWeightConversion("(n h) m -> n m h", n=self.cfg.num_attention_heads),
+                    RearrangeHookConversion("(n h) m -> n m h", n=self.cfg.num_attention_heads),
                 ),
                 "blocks.{i}.attn.o": (
                     "model.decoder.layers.{i}.self_attn.out_proj.weight",
-                    RearrangeWeightConversion("m (n h) -> n h m", n=self.cfg.num_attention_heads),
+                    RearrangeHookConversion("m (n h) -> n h m", n=self.cfg.num_attention_heads),
                 ),
                 "blocks.{i}.attn.b_Q": "model.decoder.layers.{i}.self_attn.q_proj.bias",
                 "blocks.{i}.attn.b_K": "model.decoder.layers.{i}.self_attn.k_proj.bias",

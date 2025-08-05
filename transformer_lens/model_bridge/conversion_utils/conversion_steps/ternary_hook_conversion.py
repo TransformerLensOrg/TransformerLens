@@ -1,26 +1,24 @@
 """Weight conversion that performs ternary operations on weights."""
 
 from collections.abc import Callable
-from typing import Optional, Union
+from typing import Any, Optional, Union
 
 import torch
 
-from transformer_lens.model_bridge.conversion_utils.conversion_steps.base_weight_conversion import (
-    BaseWeightConversion,
+from transformer_lens.model_bridge.conversion_utils.conversion_steps.base_hook_conversion import (
+    BaseHookConversion,
 )
 from transformer_lens.model_bridge.conversion_utils.helpers.find_property import (
     find_property,
 )
 
-from .types import CONVERSION_ACTION
-
-PRIMARY_CONVERSION = torch.Tensor | BaseWeightConversion | None
+PRIMARY_CONVERSION = torch.Tensor | BaseHookConversion | None
 
 
-class TernaryWeightConversion(BaseWeightConversion):
+class TernaryHookConversion(BaseHookConversion):
     def __init__(
         self,
-        fallback_conversion: CONVERSION_ACTION,
+        fallback_conversion: Any,
         primary_conversion: PRIMARY_CONVERSION = None,
         input_filter: Optional[Callable] = None,
         output_filter: Optional[Callable] = None,

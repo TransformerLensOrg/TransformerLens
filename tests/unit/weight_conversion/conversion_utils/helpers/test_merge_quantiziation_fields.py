@@ -1,8 +1,8 @@
 import pytest
 import torch
 
-from transformer_lens.model_bridge.conversion_utils.conversion_steps.weight_conversion_set import (
-    WeightConversionSet,
+from transformer_lens.model_bridge.conversion_utils.conversion_steps.hook_conversion_set import (
+    HookConversionSet,
 )
 from transformer_lens.model_bridge.conversion_utils.helpers.merge_quantiziation_fields import (
     merge_quantization_fields,
@@ -22,11 +22,11 @@ def test_merge_quantization_fields_simple_overwrite():
         "layer_0": torch.tensor([999.0]),  # Overwrites existing
     }
 
-    conversion_set = WeightConversionSet(original_fields)
+    conversion_set = HookConversionSet(original_fields)
     result = merge_quantization_fields(conversion_set, new_fields)
 
     # Check we got the same object back
-    assert result is conversion_set, "Expected the same WeightConversionSet returned (in-place)."
+    assert result is conversion_set, "Expected the same HookConversionSet returned (in-place)."
 
     # layer_0 overwritten
     assert torch.allclose(result.fields["layer_0"], torch.tensor([999.0]))
@@ -44,7 +44,7 @@ def test_merge_quantization_fields_missing_original_field():
     new_fields = {
         "layer_0": torch.tensor([10.0]),
     }
-    conversion_set = WeightConversionSet(original_fields)
+    conversion_set = HookConversionSet(original_fields)
 
     with pytest.raises(
         RuntimeError,
@@ -55,7 +55,7 @@ def test_merge_quantization_fields_missing_original_field():
 
 def test_merge_quantization_fields_complex_subfield_structure():
     """
-    Both existing and new fields are (str, WeightConversionSet).
+    Both existing and new fields are (str, HookConversionSet).
     We recursively merge subfields in place.
     """
     # Sub-WCS for existing
@@ -64,14 +64,14 @@ def test_merge_quantization_fields_complex_subfield_structure():
         "sub_1": torch.tensor([2.0]),
         "sub_2": torch.tensor([3.0]),
     }
-    existing_sub_wcs = WeightConversionSet(existing_subfields)
+    existing_sub_wcs = HookConversionSet(existing_subfields)
 
     # Sub-WCS for new, overwrites sub_1, adds sub_2
     new_subfields = {
         "sub_1": torch.tensor([999.0]),
         "sub_2": torch.tensor([123.0]),
     }
-    new_sub_wcs = WeightConversionSet(new_subfields)
+    new_sub_wcs = HookConversionSet(new_subfields)
 
     original_fields = {
         "layer_0": ("old_remote", existing_sub_wcs),
@@ -80,13 +80,13 @@ def test_merge_quantization_fields_complex_subfield_structure():
         "layer_0": ("new_remote", new_sub_wcs),
     }
 
-    conversion_set = WeightConversionSet(original_fields)
+    conversion_set = HookConversionSet(original_fields)
     merge_quantization_fields(conversion_set, new_fields)
 
     merged_field = conversion_set.fields["layer_0"]
     assert isinstance(merged_field, tuple), "Expected the merged field to remain a tuple."
     assert isinstance(
-        merged_field[1], WeightConversionSet
+        merged_field[1], HookConversionSet
     ), "Expected the merged field to remain a tuple."
     assert merged_field[0] == "new_remote", "Remote field should be updated."
 
@@ -101,32 +101,32 @@ def test_merge_quantization_fields_complex_subfield_structure():
 
 def test_merge_quantization_fields_new_field_tuple_existing_not_tuple():
     """
-    If new_field is (str, WeightConversionSet), but the existing field
-    is not also a tuple with a WeightConversionSet, raise RuntimeError.
+    If new_field is (str, HookConversionSet), but the existing field
+    is not also a tuple with a HookConversionSet, raise RuntimeError.
     """
     original_fields = {
         "layer_0": torch.tensor([1.0]),
     }
-    new_sub_wcs = WeightConversionSet({"sub_0": torch.tensor([2.0])})
+    new_sub_wcs = HookConversionSet({"sub_0": torch.tensor([2.0])})
     new_fields = {
         "layer_0": ("some_remote", new_sub_wcs),
     }
 
-    conversion_set = WeightConversionSet(original_fields)
+    conversion_set = HookConversionSet(original_fields)
 
     with pytest.raises(
         RuntimeError,
-        match="Attempted to merge WeightConversionSet into a field that is not configured as a WeightConversionSet",
+        match="Attempted to merge HookConversionSet into a field that is not configured as a HookConversionSet",
     ):
         merge_quantization_fields(conversion_set, new_fields)
 
 
 def test_merge_quantization_fields_existing_tuple_new_is_not_tuple():
     """
-    If the existing field is a tuple with WeightConversionSet, but the new field
-    isn't a tuple with a WeightConversionSet, we simply overwrite the entire field.
+    If the existing field is a tuple with HookConversionSet, but the new field
+    isn't a tuple with a HookConversionSet, we simply overwrite the entire field.
     """
-    existing_sub = WeightConversionSet({"old_sub": torch.tensor([3.0])})
+    existing_sub = HookConversionSet({"old_sub": torch.tensor([3.0])})
     original_fields = {
         "layer_0": ("old_remote", existing_sub),
     }
@@ -134,7 +134,7 @@ def test_merge_quantization_fields_existing_tuple_new_is_not_tuple():
         "layer_0": torch.tensor([999.0]),
     }
 
-    conversion_set = WeightConversionSet(original_fields)
+    conversion_set = HookConversionSet(original_fields)
     ret = merge_quantization_fields(conversion_set, new_fields)
     assert ret is conversion_set
     # Overwritten with [999.0]
@@ -142,11 +142,11 @@ def test_merge_quantization_fields_existing_tuple_new_is_not_tuple():
 
 
 def test_merge_quantization_fields_returns_same_object():
-    """Check the function returns the same WeightConversionSet for in-place merges."""
+    """Check the function returns the same HookConversionSet for in-place merges."""
     original_fields = {"fieldA": torch.tensor([1.0])}
     new_fields = {"fieldA": torch.tensor([2.0])}
 
-    conversion_set = WeightConversionSet(original_fields)
+    conversion_set = HookConversionSet(original_fields)
     ret = merge_quantization_fields(conversion_set, new_fields)
     assert ret is conversion_set, "Expected in-place merge to return the same object."
     assert torch.allclose(ret.fields["fieldA"], torch.tensor([2.0]))
