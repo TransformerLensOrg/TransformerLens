@@ -21,8 +21,8 @@
         fancy-einsum=">=0.0.3"
         jaxtyping=">=0.2.11,<0.2.20"
         numpy=[
-            {version=">=1.24,<2", python=">=3.9,<3.12"},
-            {version=">=1.26,<2", python=">=3.12,<3.13"},
+            {version=">=1.24", python=">=3.9,<3.12"},
+            {version=">=1.26", python=">=3.12,<4.0"},
         ]
         pandas=">=1.1.5"
         python=">=3.10,<4.0"

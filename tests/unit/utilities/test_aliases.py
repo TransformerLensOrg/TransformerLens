@@ -8,12 +8,12 @@ import pytest
 from transformer_lens.utilities.aliases import (
     _collect_aliases_from_module,
     collect_aliases_recursive,
-    resolve_hook_alias,
+    resolve_alias,
 )
 
 
 class TestResolveHookAlias:
-    """Test cases for resolve_hook_alias function."""
+    """Test cases for resolve_alias function."""
 
     def test_resolve_existing_alias(self):
         """Test resolving an alias that exists in the hook_aliases dictionary."""
@@ -25,7 +25,7 @@ class TestResolveHookAlias:
 
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
-            result = resolve_hook_alias(mock_target, "old_hook", hook_aliases)
+            result = resolve_alias(mock_target, "old_hook", hook_aliases)
 
             # Check that the correct hook was returned
             assert result == mock_hook
@@ -43,7 +43,7 @@ class TestResolveHookAlias:
 
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
-            result = resolve_hook_alias(mock_target, "nonexistent_hook", hook_aliases)
+            result = resolve_alias(mock_target, "nonexistent_hook", hook_aliases)
 
             # Should return None for non-existent aliases
             assert result is None
@@ -56,7 +56,7 @@ class TestResolveHookAlias:
         mock_target = Mock()
         hook_aliases = {}
 
-        result = resolve_hook_alias(mock_target, "any_hook", hook_aliases)
+        result = resolve_alias(mock_target, "any_hook", hook_aliases)
         assert result is None
 
 
@@ -221,7 +221,7 @@ class TestCollectAliasesRecursive:
         expected = {
             "prefix.root_alias": "prefix.root_target",
             "prefix.embed": "prefix.embed.hook_out",  # Cache alias
-            "prefix.embed.hook_embed": "prefix.embed.hook_out",  # Regular alias
+            "hook_embed": "prefix.embed.hook_out",  # Regular alias
             "prefix.child.child_alias": "prefix.child.child_target",
         }
         assert result == expected
@@ -269,7 +269,7 @@ class TestCollectAliasesRecursive:
             "embed": "embed.hook_out",
             "pos_embed": "pos_embed.hook_out",
             # Named hook aliases
-            "embed.hook_embed": "embed.hook_out",
+            "hook_embed": "embed.hook_out",
             "blocks.0.hook_resid_pre": "blocks.0.hook_in",
             "blocks.0.hook_resid_post": "blocks.0.hook_out",
         }
@@ -316,8 +316,8 @@ class TestModuleWithoutHookAliases:
 class TestEdgeCases:
     """Test edge cases and error conditions."""
 
-    def test_resolve_hook_alias_attribute_error(self):
-        """Test resolve_hook_alias when target attribute doesn't exist."""
+    def test_resolve_alias_attribute_error(self):
+        """Test resolve_alias when target attribute doesn't exist."""
 
         # Create a class that will actually raise AttributeError
         class MockWithoutAttribute:
@@ -329,7 +329,7 @@ class TestEdgeCases:
         with warnings.catch_warnings(record=True):
             warnings.simplefilter("always")
             with pytest.raises(AttributeError):
-                resolve_hook_alias(mock_target, "old_hook", hook_aliases)
+                resolve_alias(mock_target, "old_hook", hook_aliases)
 
     def test_collect_aliases_with_circular_references(self):
         """Test handling of circular references in module hierarchy."""

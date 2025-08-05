@@ -27,32 +27,32 @@ class GptjArchitectureAdapter(ArchitectureAdapter):
 
         self.conversion_rules = WeightConversionSet(
             {
-                "embed.W_E": "transformer.wte.weight",
+                "embed.e": "transformer.wte.weight",
                 "blocks.{i}.ln1.w": "transformer.h.{i}.ln_1.weight",
                 "blocks.{i}.ln1.b": "transformer.h.{i}.ln_1.bias",
-                "blocks.{i}.attn.W_Q": (
+                "blocks.{i}.attn.q": (
                     "transformer.h.{i}.attn.q_proj.weight",
                     RearrangeWeightConversion("(n h) m -> n m h", n=self.cfg.num_attention_heads),
                 ),
-                "blocks.{i}.attn.W_K": (
+                "blocks.{i}.attn.k": (
                     "transformer.h.{i}.attn.k_proj.weight",
                     RearrangeWeightConversion("(n h) m -> n m h", n=self.cfg.num_attention_heads),
                 ),
-                "blocks.{i}.attn.W_V": (
+                "blocks.{i}.attn.v": (
                     "transformer.h.{i}.attn.v_proj.weight",
                     RearrangeWeightConversion("(n h) m -> n m h", n=self.cfg.num_attention_heads),
                 ),
-                "blocks.{i}.attn.W_O": (
+                "blocks.{i}.attn.o": (
                     "transformer.h.{i}.attn.out_proj.weight",
                     RearrangeWeightConversion("m (n h) -> n h m", n=self.cfg.num_attention_heads),
                 ),
-                "blocks.{i}.mlp.W_in": "transformer.h.{i}.mlp.fc_in.weight",
+                "blocks.{i}.mlp.in": "transformer.h.{i}.mlp.fc_in.weight",
                 "blocks.{i}.mlp.b_in": "transformer.h.{i}.mlp.fc_in.bias",
-                "blocks.{i}.mlp.W_out": "transformer.h.{i}.mlp.fc_out.weight",
+                "blocks.{i}.mlp.out": "transformer.h.{i}.mlp.fc_out.weight",
                 "blocks.{i}.mlp.b_out": "transformer.h.{i}.mlp.fc_out.bias",
                 "ln_final.w": "transformer.ln_f.weight",
                 "ln_final.b": "transformer.ln_f.bias",
-                "unembed.W_U": "lm_head.weight",
+                "unembed.u": "lm_head.weight",
                 "unembed.b_U": "lm_head.bias",
             }
         )
@@ -66,17 +66,17 @@ class GptjArchitectureAdapter(ArchitectureAdapter):
                     "attn": AttentionBridge(
                         name="attn",
                         submodules={
-                            "W_Q": LinearBridge(name="q_proj"),
-                            "W_K": LinearBridge(name="k_proj"),
-                            "W_V": LinearBridge(name="v_proj"),
-                            "W_O": LinearBridge(name="out_proj"),
+                            "q": LinearBridge(name="q_proj"),
+                            "k": LinearBridge(name="k_proj"),
+                            "v": LinearBridge(name="v_proj"),
+                            "o": LinearBridge(name="out_proj"),
                         },
                     ),
                     "mlp": MLPBridge(
                         name="mlp",
                         submodules={
-                            "W_in": LinearBridge(name="fc_in"),
-                            "W_out": LinearBridge(name="fc_out"),
+                            "in": LinearBridge(name="fc_in"),
+                            "out": LinearBridge(name="fc_out"),
                         },
                     ),
                 },

@@ -31,25 +31,25 @@ class NeelSoluOldArchitectureAdapter(ArchitectureAdapter):
 
         self.conversion_rules = WeightConversionSet(
             {
-                "pos_embed.W_pos": "wpe.weight",
-                "embed.W_E": "wte.weight",
+                "pos_embed.pos": "wpe.weight",
+                "embed.e": "wte.weight",
                 "blocks.{i}.ln1.w": "blocks.{i}.ln1.w",
                 "blocks.{i}.ln1.b": "blocks.{i}.ln1.b",
                 "blocks.{i}.ln2.w": "blocks.{i}.ln2.w",
                 "blocks.{i}.ln2.b": "blocks.{i}.ln2.b",
-                "blocks.{i}.attn.W_Q": (
+                "blocks.{i}.attn.q": (
                     "blocks.{i}.attn.W_Q",
                     RearrangeWeightConversion("d_model n_head d_head -> n_head d_model d_head"),
                 ),
-                "blocks.{i}.attn.W_K": (
+                "blocks.{i}.attn.k": (
                     "blocks.{i}.attn.W_K",
                     RearrangeWeightConversion("d_model n_head d_head -> n_head d_model d_head"),
                 ),
-                "blocks.{i}.attn.W_V": (
+                "blocks.{i}.attn.v": (
                     "blocks.{i}.attn.W_V",
                     RearrangeWeightConversion("d_model n_head d_head -> n_head d_model d_head"),
                 ),
-                "blocks.{i}.attn.W_O": (
+                "blocks.{i}.attn.o": (
                     "blocks.{i}.attn.W_O",
                     RearrangeWeightConversion("n_head d_head d_model -> n_head d_head d_model"),
                 ),
@@ -57,13 +57,13 @@ class NeelSoluOldArchitectureAdapter(ArchitectureAdapter):
                 "blocks.{i}.attn.b_K": "blocks.{i}.attn.b_K",
                 "blocks.{i}.attn.b_V": "blocks.{i}.attn.b_V",
                 "blocks.{i}.attn.b_O": "blocks.{i}.attn.b_O",
-                "blocks.{i}.mlp.W_in": "blocks.{i}.mlp.W_in",
+                "blocks.{i}.mlp.in": "blocks.{i}.mlp.W_in",
                 "blocks.{i}.mlp.b_in": "blocks.{i}.mlp.b_in",
-                "blocks.{i}.mlp.W_out": "blocks.{i}.mlp.W_out",
+                "blocks.{i}.mlp.out": "blocks.{i}.mlp.W_out",
                 "blocks.{i}.mlp.b_out": "blocks.{i}.mlp.b_out",
                 "ln_final.w": "ln_f.w",
                 "ln_final.b": "ln_f.b",
-                "unembed.W_U": "unembed.W_U",
+                "unembed.u": "unembed.W_U",
                 "unembed.b_U": "unembed.b_U",
             }
         )
