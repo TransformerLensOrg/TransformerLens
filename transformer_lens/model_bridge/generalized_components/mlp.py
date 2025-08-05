@@ -20,6 +20,20 @@ class MLPBridge(GeneralizedComponent):
     for accessing its weights and performing MLP operations.
     """
 
+    hook_aliases = {
+        "hook_pre": "in.hook_out",
+        "hook_post": "out.hook_in",
+    }
+
+    property_aliases = {
+        "W_gate": "gate.weight",
+        "b_gate": "gate.bias",
+        "W_in": "in.weight",
+        "b_in": "in.bias",
+        "W_out": "out.weight",
+        "b_out": "out.bias",
+    }
+
     def __init__(
         self,
         name: str,

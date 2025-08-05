@@ -74,6 +74,12 @@ def setup_submodules(
         original_model: The original model to get components from
     """
     for module_name, submodule in component.submodules.items():
+        if submodule.is_list_item:
+            # Submodule is a BlockBridge - create a ModuleList of bridge components
+            bridged_list = setup_blocks_bridge(submodule, architecture_adapter, original_model)
+            # Set the list on the bridge module as a proper module
+            component.add_module(module_name, bridged_list)
+            replace_remote_component(bridged_list, submodule.name, original_model)
         # Only add if not already registered as a PyTorch module
         if module_name not in component._modules:
             # Get the original component for this submodule
@@ -151,6 +157,7 @@ def setup_blocks_bridge(
     Returns:
         ModuleList of bridged block components
     """
+
     # Get the original blocks container
     original_blocks = architecture_adapter.get_remote_component(
         original_model, blocks_template.name

@@ -11,6 +11,9 @@ from torch import nn
 from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
     WeightConversionSet,
 )
+from transformer_lens.model_bridge.generalized_components.base import (
+    GeneralizedComponent,
+)
 from transformer_lens.model_bridge.types import (
     ComponentMapping,
     RemoteComponent,
@@ -95,6 +98,78 @@ class ArchitectureAdapter:
                 current = getattr(current, part)
         return current
 
+    def get_component_from_list_module(
+        self,
+        list_module: RemoteComponent,
+        bridge_component: GeneralizedComponent,
+        parts: list[str],
+    ) -> RemoteComponent:
+        """Get a component from a list module using the bridge component and the transformer lens path.
+        Args:
+            list_module: The remote list module to get the component from
+            bridge_component: The bridge component
+            parts: The parts of the transformer lens path to navigate
+        Returns:
+            The requested component from the list module described by the path
+        """
+
+        # Handle list item indexing (like blocks)
+        item_index = parts[1]
+        if not item_index.isdigit():
+            raise ValueError(f"Expected item index, got {item_index}")
+
+        if not hasattr(list_module, "__getitem__"):
+            raise TypeError(f"Component {bridge_component.name} is not indexable")
+
+        # Cast to indicate to mypy that list_module is indexable after the check
+        indexable_container = cast(Any, list_module)
+        item = indexable_container[int(item_index)]
+
+        if len(parts) == 2:
+            # Just return the item
+            return item
+        else:
+            # Get subcomponent from the item using bridge mapping
+            subcomponent_name = parts[2]
+
+            # Check the submodules attribute for bridge submodules
+            if subcomponent_name in bridge_component.submodules:
+                subcomponent_bridge = bridge_component.submodules[subcomponent_name]
+
+                # If there are more parts (like blocks.0.attn.W_Q), navigate deeper
+                if len(parts) > 3:
+                    # Navigate through the deeper subcomponents
+                    current_bridge = subcomponent_bridge
+                    current = getattr(item, subcomponent_bridge.name)
+
+                    for i in range(3, len(parts)):
+                        deeper_component_name = parts[i]
+
+                        if deeper_component_name.isdigit() and current_bridge.is_list_item:
+                            # We are dealing with a nested BlockBridge, call the function recursively
+                            # and pass the path (parts) starting from the nested BlockBridge
+                            return self.get_component_from_list_module(
+                                current, current_bridge, parts[i - 1 :]
+                            )
+
+                        # Check submodules for deeper components
+                        if deeper_component_name in current_bridge.submodules:
+                            current_bridge = current_bridge.submodules[deeper_component_name]
+                            current = getattr(current, current_bridge.name)
+                        else:
+                            raise ValueError(
+                                f"Component {deeper_component_name} not found in {'.'.join(parts[:i])} components"
+                            )
+
+                    return current
+                else:
+                    # Just the 3-level path
+                    return getattr(item, subcomponent_bridge.name)
+            else:
+                raise ValueError(
+                    f"Component {subcomponent_name} not found in {parts[0]} components"
+                )
+
     def get_component(self, model: RemoteModel, path: TransformerLensPath) -> RemoteComponent:
         """Get a component from the model using the component_mapping.
 
@@ -147,56 +222,9 @@ class ArchitectureAdapter:
 
         # For nested paths like "blocks.0.attn", we need to handle the indexing
         if bridge_component.is_list_item and len(parts) >= 2:
-            # Handle list item indexing (like blocks)
-            item_index = parts[1]
-            if not item_index.isdigit():
-                raise ValueError(f"Expected item index, got {item_index}")
-
-            # Get the item container
-            item_container = self.get_remote_component(model, bridge_component.name)
-            if not hasattr(item_container, "__getitem__"):
-                raise TypeError(f"Component {bridge_component.name} is not indexable")
-            # Cast to indicate to mypy that item_container is indexable after the check
-            indexable_container = cast(Any, item_container)
-            item = indexable_container[int(item_index)]
-
-            if len(parts) == 2:
-                # Just return the item
-                return item
-            else:
-                # Get subcomponent from the item using bridge mapping
-                subcomponent_name = parts[2]
-
-                # Check the submodules attribute for bridge submodules
-                if subcomponent_name in bridge_component.submodules:
-                    subcomponent_bridge = bridge_component.submodules[subcomponent_name]
-
-                    # If there are more parts (like blocks.0.attn.W_Q), navigate deeper
-                    if len(parts) > 3:
-                        # Navigate through the deeper subcomponents
-                        current_bridge = subcomponent_bridge
-                        current = getattr(item, subcomponent_bridge.name)
-
-                        for i in range(3, len(parts)):
-                            deeper_component_name = parts[i]
-
-                            # Check submodules for deeper components
-                            if deeper_component_name in current_bridge.submodules:
-                                current_bridge = current_bridge.submodules[deeper_component_name]
-                                current = getattr(current, current_bridge.name)
-                            else:
-                                raise ValueError(
-                                    f"Component {deeper_component_name} not found in {'.'.join(parts[:i])} components"
-                                )
-
-                        return current
-                    else:
-                        # Just the 3-level path
-                        return getattr(item, subcomponent_bridge.name)
-                else:
-                    raise ValueError(
-                        f"Component {subcomponent_name} not found in {parts[0]} components"
-                    )
+            # Get the remote ModuleList for the indexed item
+            list_module = self.get_remote_component(model, bridge_component.name)
+            return self.get_component_from_list_module(list_module, bridge_component, parts)
 
         # For other nested paths, navigate through the remote model
         remote_path = bridge_component.name

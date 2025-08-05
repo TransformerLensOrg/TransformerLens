@@ -29,18 +29,18 @@ class T5ArchitectureAdapter(ArchitectureAdapter):
 
         self.conversion_rules = WeightConversionSet(
             {
-                "embed.W_E": "shared.weight",
-                "pos_embed.W_pos": "encoder.block.0.layer.0.SelfAttention.relative_attention_bias.weight",
+                "embed.e": "shared.weight",
+                "pos_embed.pos": "encoder.block.0.layer.0.SelfAttention.relative_attention_bias.weight",
                 "blocks.{i}.ln1.w": "encoder.block.{i}.layer.0.layer_norm.weight",
-                "blocks.{i}.attn.W_Q": "encoder.block.{i}.layer.0.SelfAttention.q.weight",
-                "blocks.{i}.attn.W_K": "encoder.block.{i}.layer.0.SelfAttention.k.weight",
-                "blocks.{i}.attn.W_V": "encoder.block.{i}.layer.0.SelfAttention.v.weight",
-                "blocks.{i}.attn.W_O": "encoder.block.{i}.layer.0.SelfAttention.o.weight",
+                "blocks.{i}.attn.q": "encoder.block.{i}.layer.0.SelfAttention.q.weight",
+                "blocks.{i}.attn.k": "encoder.block.{i}.layer.0.SelfAttention.k.weight",
+                "blocks.{i}.attn.v": "encoder.block.{i}.layer.0.SelfAttention.v.weight",
+                "blocks.{i}.attn.o": "encoder.block.{i}.layer.0.SelfAttention.o.weight",
                 "blocks.{i}.ln2.w": "encoder.block.{i}.layer.1.layer_norm.weight",
-                "blocks.{i}.mlp.W_in": "encoder.block.{i}.layer.1.DenseReluDense.wi.weight",
-                "blocks.{i}.mlp.W_out": "encoder.block.{i}.layer.1.DenseReluDense.wo.weight",
+                "blocks.{i}.mlp.in": "encoder.block.{i}.layer.1.DenseReluDense.wi.weight",
+                "blocks.{i}.mlp.out": "encoder.block.{i}.layer.1.DenseReluDense.wo.weight",
                 "ln_final.w": "encoder.final_layer_norm.weight",
-                "unembed.W_U": "lm_head.weight",
+                "unembed.u": "lm_head.weight",
             }
         )
         self.component_mapping = {

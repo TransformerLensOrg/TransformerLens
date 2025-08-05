@@ -48,9 +48,9 @@ class JointQKVAttentionBridge(AttentionBridge):
             raise RuntimeError(f"Config for {self.name} must include 'split_qkv_matrix' function.")
 
         # Create LinearBridge components for Q, K, and V activations
-        self.W_Q = LinearBridge(name="W_Q")
-        self.W_K = LinearBridge(name="W_K")
-        self.W_V = LinearBridge(name="W_V")
+        self.q = LinearBridge(name="q")
+        self.k = LinearBridge(name="k")
+        self.v = LinearBridge(name="v")
 
     def set_original_component(self, original_component: torch.nn.Module) -> None:
         """Set the original component that this bridge wraps and initialize LinearBridges for Q, K, and V transformations.
@@ -69,9 +69,9 @@ class JointQKVAttentionBridge(AttentionBridge):
         ](original_component)
 
         # Initialize LinearBridges for Q, K, and V transformations
-        self.W_Q.set_original_component(W_Q_transformation)
-        self.W_K.set_original_component(W_K_transformation)
-        self.W_V.set_original_component(W_V_transformation)
+        self.q.set_original_component(W_Q_transformation)
+        self.k.set_original_component(W_K_transformation)
+        self.v.set_original_component(W_V_transformation)
 
     def forward(self, input: torch.Tensor, *args: Any, **kwargs: Any) -> Any:
         """Forward pass through the QKV linear transformation with hooks.
@@ -88,8 +88,8 @@ class JointQKVAttentionBridge(AttentionBridge):
 
         # Run the input through the individual Q, K, and V transformations
         # in order to hook their outputs
-        self.W_Q(input)
-        self.W_K(input)
-        self.W_V(input)
+        self.q(input)
+        self.k(input)
+        self.v(input)
 
         return output

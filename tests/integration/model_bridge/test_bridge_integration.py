@@ -95,7 +95,9 @@ def test_cache():
     cache_keys = list(cache.keys())
     assert any("embed" in key for key in cache_keys), "Cache should contain word token embeddings"
     assert any("ln_final" in key for key in cache_keys), "Cache should contain final layer norm"
-    assert any("lm_head" in key for key in cache_keys), "Cache should contain language model head"
+    assert any(
+        "unembed" in key for key in cache_keys
+    ), "Cache should contain unembedding/language model head"
 
     # Verify that cached tensors are actually tensors
     for key, value in cache.items():

@@ -26,23 +26,23 @@ class OptArchitectureAdapter(ArchitectureAdapter):
 
         self.conversion_rules = WeightConversionSet(
             {
-                "embed.W_E": "model.decoder.embed_tokens.weight",
-                "pos_embed.W_pos": "model.decoder.embed_positions.weight",
+                "embed.e": "model.decoder.embed_tokens.weight",
+                "pos_embed.pos": "model.decoder.embed_positions.weight",
                 "blocks.{i}.ln1.w": "model.decoder.layers.{i}.self_attn_layer_norm.weight",
                 "blocks.{i}.ln1.b": "model.decoder.layers.{i}.self_attn_layer_norm.bias",
-                "blocks.{i}.attn.W_Q": (
+                "blocks.{i}.attn.q": (
                     "model.decoder.layers.{i}.self_attn.q_proj.weight",
                     RearrangeWeightConversion("(n h) m -> n m h", n=self.cfg.num_attention_heads),
                 ),
-                "blocks.{i}.attn.W_K": (
+                "blocks.{i}.attn.k": (
                     "model.decoder.layers.{i}.self_attn.k_proj.weight",
                     RearrangeWeightConversion("(n h) m -> n m h", n=self.cfg.num_attention_heads),
                 ),
-                "blocks.{i}.attn.W_V": (
+                "blocks.{i}.attn.v": (
                     "model.decoder.layers.{i}.self_attn.v_proj.weight",
                     RearrangeWeightConversion("(n h) m -> n m h", n=self.cfg.num_attention_heads),
                 ),
-                "blocks.{i}.attn.W_O": (
+                "blocks.{i}.attn.o": (
                     "model.decoder.layers.{i}.self_attn.out_proj.weight",
                     RearrangeWeightConversion("m (n h) -> n h m", n=self.cfg.num_attention_heads),
                 ),
@@ -52,13 +52,13 @@ class OptArchitectureAdapter(ArchitectureAdapter):
                 "blocks.{i}.attn.b_O": "model.decoder.layers.{i}.self_attn.out_proj.bias",
                 "blocks.{i}.ln2.w": "model.decoder.layers.{i}.final_layer_norm.weight",
                 "blocks.{i}.ln2.b": "model.decoder.layers.{i}.final_layer_norm.bias",
-                "blocks.{i}.mlp.W_in": "model.decoder.layers.{i}.fc1.weight",
+                "blocks.{i}.mlp.in": "model.decoder.layers.{i}.fc1.weight",
                 "blocks.{i}.mlp.b_in": "model.decoder.layers.{i}.fc1.bias",
-                "blocks.{i}.mlp.W_out": "model.decoder.layers.{i}.fc2.weight",
+                "blocks.{i}.mlp.out": "model.decoder.layers.{i}.fc2.weight",
                 "blocks.{i}.mlp.b_out": "model.decoder.layers.{i}.fc2.bias",
                 "ln_final.w": "model.decoder.final_layer_norm.weight",
                 "ln_final.b": "model.decoder.final_layer_norm.bias",
-                "unembed.W_U": "lm_head.weight",
+                "unembed.u": "lm_head.weight",
             }
         )
 

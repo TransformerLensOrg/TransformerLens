@@ -35,12 +35,12 @@ class PythiaArchitectureAdapter(ArchitectureAdapter):
 
         self.conversion_rules = WeightConversionSet(
             {
-                "embed.W_E": "gpt_neox.embed_in.weight",
+                "embed.e": "gpt_neox.embed_in.weight",
                 "blocks.{i}.ln1.w": "gpt_neox.layers.{i}.input_layernorm.weight",
                 "blocks.{i}.ln1.b": "gpt_neox.layers.{i}.input_layernorm.bias",
                 "blocks.{i}.ln2.w": "gpt_neox.layers.{i}.post_attention_layernorm.weight",
                 "blocks.{i}.ln2.b": "gpt_neox.layers.{i}.post_attention_layernorm.bias",
-                "blocks.{i}.attn.W_Q": (
+                "blocks.{i}.attn.q": (
                     "gpt_neox.layers.{i}.attention.query_key_value.weight",
                     ChainWeightConversion(
                         [
@@ -53,7 +53,7 @@ class PythiaArchitectureAdapter(ArchitectureAdapter):
                         ]
                     ),
                 ),
-                "blocks.{i}.attn.W_K": (
+                "blocks.{i}.attn.k": (
                     "gpt_neox.layers.{i}.attention.query_key_value.weight",
                     ChainWeightConversion(
                         [
@@ -66,7 +66,7 @@ class PythiaArchitectureAdapter(ArchitectureAdapter):
                         ]
                     ),
                 ),
-                "blocks.{i}.attn.W_V": (
+                "blocks.{i}.attn.v": (
                     "gpt_neox.layers.{i}.attention.query_key_value.weight",
                     ChainWeightConversion(
                         [
@@ -115,18 +115,18 @@ class PythiaArchitectureAdapter(ArchitectureAdapter):
                         ]
                     ),
                 ),
-                "blocks.{i}.attn.W_O": (
+                "blocks.{i}.attn.o": (
                     "gpt_neox.layers.{i}.attention.dense.weight",
                     RearrangeWeightConversion("d_model (head d_head) -> head d_head d_model"),
                 ),
                 "blocks.{i}.attn.b_O": "gpt_neox.layers.{i}.attention.dense.bias",
-                "blocks.{i}.mlp.W_in": "gpt_neox.layers.{i}.mlp.dense_h_to_4h.weight",
+                "blocks.{i}.mlp.in": "gpt_neox.layers.{i}.mlp.dense_h_to_4h.weight",
                 "blocks.{i}.mlp.b_in": "gpt_neox.layers.{i}.mlp.dense_h_to_4h.bias",
-                "blocks.{i}.mlp.W_out": "gpt_neox.layers.{i}.mlp.dense_4h_to_h.weight",
+                "blocks.{i}.mlp.out": "gpt_neox.layers.{i}.mlp.dense_4h_to_h.weight",
                 "blocks.{i}.mlp.b_out": "gpt_neox.layers.{i}.mlp.dense_4h_to_h.bias",
                 "ln_final.w": "gpt_neox.final_layer_norm.weight",
                 "ln_final.b": "gpt_neox.final_layer_norm.bias",
-                "unembed.W_U": "embed_out.weight",
+                "unembed.u": "embed_out.weight",
             }
         )
 

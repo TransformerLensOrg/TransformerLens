@@ -21,7 +21,24 @@ class AttentionBridge(GeneralizedComponent):
     """
 
     hook_aliases = {
-        "hook_pattern": "hook_attention_weights",
+        "hook_pattern": "hook_in",
+        "hook_result": "hook_hidden_states",
+        "hook_attn_scores": "o.hook_in",
+        "hook_q": "q.hook_out",
+        "hook_k": "k.hook_out",
+        "hook_v": "v.hook_out",
+        "hook_z": "o.hook_out",
+    }
+
+    property_aliases = {
+        "W_Q": "q.weight",
+        "W_K": "k.weight",
+        "W_V": "v.weight",
+        "W_O": "o.weight",
+        "b_Q": "q.bias",
+        "b_K": "k.bias",
+        "b_V": "v.bias",
+        "b_O": "o.bias",
     }
 
     def __init__(
@@ -69,15 +86,21 @@ class AttentionBridge(GeneralizedComponent):
         for i, element in enumerate(output):
             if i == 0:  # First element is typically hidden states
                 if element is not None:
-                    element = self.hook_hidden_states(element)
+                    element = self._apply_hook_preserving_structure(
+                        element, self.hook_hidden_states
+                    )
             elif i == 1:  # Second element is typically attention weights
                 if element is not None:
-                    element = self.hook_attention_weights(element)
+                    element = self._apply_hook_preserving_structure(
+                        element, self.hook_attention_weights
+                    )
             processed_output.append(element)
 
         # Apply the main hook_out to the first element (hidden states) if it exists
         if len(processed_output) > 0 and processed_output[0] is not None:
-            processed_output[0] = self.hook_out(processed_output[0])
+            processed_output[0] = self._apply_hook_preserving_structure(
+                processed_output[0], self.hook_out
+            )
 
         return tuple(processed_output)
 
@@ -94,15 +117,17 @@ class AttentionBridge(GeneralizedComponent):
 
         for key, value in output.items():
             if key in ["last_hidden_state", "hidden_states"] and value is not None:
-                value = self.hook_hidden_states(value)
+                value = self._apply_hook_preserving_structure(value, self.hook_hidden_states)
             elif key in ["attentions", "attention_weights"] and value is not None:
-                value = self.hook_attention_weights(value)
+                value = self._apply_hook_preserving_structure(value, self.hook_attention_weights)
             processed_output[key] = value
 
         # Apply hook_hidden_states and hook_out to the main output (usually hidden_states)
         main_key = next((k for k in output.keys() if "hidden" in k.lower()), None)
         if main_key and main_key in processed_output:
-            processed_output[main_key] = self.hook_out(processed_output[main_key])
+            processed_output[main_key] = self._apply_hook_preserving_structure(
+                processed_output[main_key], self.hook_out
+            )
 
         return processed_output
 
@@ -116,9 +141,30 @@ class AttentionBridge(GeneralizedComponent):
             Processed tensor with hooks applied
         """
         # Apply hooks for single tensor output
-        output = self.hook_hidden_states(output)
-        output = self.hook_out(output)
+        output = self._apply_hook_preserving_structure(output, self.hook_hidden_states)
+        output = self._apply_hook_preserving_structure(output, self.hook_out)
         return output
+
+    def _apply_hook_preserving_structure(self, element: Any, hook_fn) -> Any:
+        """Apply a hook while preserving the original structure.
+
+        Args:
+            element: The element to process (tensor, tuple, etc.)
+            hook_fn: The hook function to apply to tensors
+
+        Returns:
+            The processed element with the same structure as input
+        """
+        if isinstance(element, torch.Tensor):
+            return hook_fn(element)
+        elif isinstance(element, tuple) and len(element) > 0:
+            # For tuple outputs, process the first element if it's a tensor
+            processed_elements = list(element)
+            if isinstance(element[0], torch.Tensor):
+                processed_elements[0] = hook_fn(element[0])
+            return tuple(processed_elements)
+        # For other types, return as-is
+        return element
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         """Forward pass through the attention layer.

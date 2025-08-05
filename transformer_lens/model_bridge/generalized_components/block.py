@@ -21,6 +21,19 @@ class BlockBridge(GeneralizedComponent):
     # Override the class attribute to indicate this is a list item
     is_list_item: bool = True
 
+    hook_aliases = {
+        "hook_resid_pre": "hook_in",
+        "hook_resid_mid": "attn.hook_out",
+        "hook_resid_post": "hook_out",
+        "hook_attn_in": "attn.hook_in",
+        "hook_attn_out": "attn.hook_out",
+        "hook_q_input": "attn.q.hook_in",
+        "hook_k_input": "attn.k.hook_in",
+        "hook_v_input": "attn.v.hook_in",
+        "hook_mlp_in": "mlp.hook_in",
+        "hook_mlp_out": "mlp.hook_out",
+    }
+
     def __init__(
         self,
         name: str,

@@ -29,10 +29,10 @@ class BloomArchitectureAdapter(ArchitectureAdapter):
 
         self.conversion_rules = WeightConversionSet(
             {
-                "embed.W_E": "transformer.word_embeddings.weight",
+                "embed.e": "transformer.word_embeddings.weight",
                 "blocks.{i}.ln1.w": "transformer.h.{i}.input_layernorm.weight",
                 "blocks.{i}.ln1.b": "transformer.h.{i}.input_layernorm.bias",
-                "blocks.{i}.attn.W_Q": (
+                "blocks.{i}.attn.q": (
                     "transformer.h.{i}.self_attention.query_key_value.weight",
                     RearrangeWeightConversion(
                         "(three n h) m -> three n m h",
@@ -40,7 +40,7 @@ class BloomArchitectureAdapter(ArchitectureAdapter):
                         n=self.cfg.num_attention_heads,
                     ),
                 ),
-                "blocks.{i}.attn.W_K": (
+                "blocks.{i}.attn.k": (
                     "transformer.h.{i}.self_attention.query_key_value.weight",
                     RearrangeWeightConversion(
                         "(three n h) m -> three n m h",
@@ -48,7 +48,7 @@ class BloomArchitectureAdapter(ArchitectureAdapter):
                         n=self.cfg.num_attention_heads,
                     ),
                 ),
-                "blocks.{i}.attn.W_V": (
+                "blocks.{i}.attn.v": (
                     "transformer.h.{i}.self_attention.query_key_value.weight",
                     RearrangeWeightConversion(
                         "(three n h) m -> three n m h",
@@ -56,7 +56,7 @@ class BloomArchitectureAdapter(ArchitectureAdapter):
                         n=self.cfg.num_attention_heads,
                     ),
                 ),
-                "blocks.{i}.attn.W_O": (
+                "blocks.{i}.attn.o": (
                     "transformer.h.{i}.self_attention.dense.weight",
                     RearrangeWeightConversion("m (n h) -> n h m", n=self.cfg.num_attention_heads),
                 ),
@@ -66,13 +66,13 @@ class BloomArchitectureAdapter(ArchitectureAdapter):
                 "blocks.{i}.attn.b_O": "transformer.h.{i}.self_attention.dense.bias",
                 "blocks.{i}.ln2.w": "transformer.h.{i}.post_attention_layernorm.weight",
                 "blocks.{i}.ln2.b": "transformer.h.{i}.post_attention_layernorm.bias",
-                "blocks.{i}.mlp.W_in": "transformer.h.{i}.mlp.dense_h_to_4h.weight",
+                "blocks.{i}.mlp.in": "transformer.h.{i}.mlp.dense_h_to_4h.weight",
                 "blocks.{i}.mlp.b_in": "transformer.h.{i}.mlp.dense_h_to_4h.bias",
-                "blocks.{i}.mlp.W_out": "transformer.h.{i}.mlp.dense_4h_to_h.weight",
+                "blocks.{i}.mlp.out": "transformer.h.{i}.mlp.dense_4h_to_h.weight",
                 "blocks.{i}.mlp.b_out": "transformer.h.{i}.mlp.dense_4h_to_h.bias",
                 "ln_final.w": "transformer.ln_f.weight",
                 "ln_final.b": "transformer.ln_f.bias",
-                "unembed.W_U": "lm_head.weight",
+                "unembed.u": "lm_head.weight",
             }
         )
 
@@ -87,8 +87,8 @@ class BloomArchitectureAdapter(ArchitectureAdapter):
                     "attn": JointQKVAttentionBridge(
                         name="self_attention",
                         submodules={
-                            "W_QKV": LinearBridge(name="query_key_value"),
-                            "W_O": LinearBridge(name="dense"),
+                            "qkv": LinearBridge(name="query_key_value"),
+                            "o": LinearBridge(name="dense"),
                         },
                         config={
                             "split_qkv_matrix": self.split_qkv_matrix,
@@ -97,8 +97,8 @@ class BloomArchitectureAdapter(ArchitectureAdapter):
                     "mlp": MLPBridge(
                         name="mlp",
                         submodules={
-                            "W_in": LinearBridge(name="dense_h_to_4h"),
-                            "W_out": LinearBridge(name="dense_4h_to_h"),
+                            "in": LinearBridge(name="dense_h_to_4h"),
+                            "out": LinearBridge(name="dense_4h_to_h"),
                         },
                     ),
                 },

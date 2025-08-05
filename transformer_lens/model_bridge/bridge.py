@@ -31,6 +31,7 @@ from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapt
 from transformer_lens.model_bridge.component_setup import set_original_components
 from transformer_lens.model_bridge.exceptions import StopAtLayerException
 from transformer_lens.model_bridge.types import ComponentMapping
+from transformer_lens.utilities.aliases import collect_aliases_recursive
 
 if TYPE_CHECKING:
     from transformer_lens.ActivationCache import ActivationCache
@@ -618,42 +619,16 @@ class TransformerBridge(nn.Module):
         Returns:
             Tuple of (output, cache)
         """
-        from transformer_lens.hook_points import HookPoint
-
         # Process names_filter to create a callable that handles legacy hook names
-        # Collect hook aliases from all bridge components
-        def get_hook_aliases_from_components():
-            """Collect all hook aliases from bridge components."""
-            aliases = {}
-
-            def collect_aliases_recursive(module, prefix=""):
-                if hasattr(module, "hook_aliases"):
-                    for old_alias, new_name in module.hook_aliases.items():
-                        # Create full hook name with prefix
-                        if prefix:
-                            full_old_name = f"{prefix}.{old_alias}"
-                            full_new_name = f"{prefix}.{new_name}"
-                        else:
-                            full_old_name = old_alias
-                            full_new_name = new_name
-                        aliases[full_old_name] = full_new_name
-
-                # Recursively collect from submodules
-                for child_name, child_module in module.named_children():
-                    child_prefix = f"{prefix}.{child_name}" if prefix else child_name
-                    collect_aliases_recursive(child_module, child_prefix)
-
-            collect_aliases_recursive(self)
-            return aliases
-
-        hook_aliases = get_hook_aliases_from_components()
+        # Collect all aliases from bridge components (both hook and cache aliases)
+        aliases = collect_aliases_recursive(self)
 
         def create_names_filter_fn(filter_input):
             if filter_input is None:
                 return lambda name: True
             elif isinstance(filter_input, str):
                 # Check if this is a legacy hook name that needs mapping
-                mapped_name = hook_aliases.get(filter_input, None)
+                mapped_name = aliases.get(filter_input, None)
                 if mapped_name:
                     return lambda name: name == mapped_name or name == filter_input
                 else:
@@ -663,7 +638,7 @@ class TransformerBridge(nn.Module):
                 mapped_list = []
                 for item in filter_input:
                     mapped_list.append(item)  # Keep original
-                    mapped_name = hook_aliases.get(item, None)
+                    mapped_name = aliases.get(item, None)
                     if mapped_name:
                         mapped_list.append(mapped_name)
                 return lambda name: name in mapped_list
@@ -687,18 +662,20 @@ class TransformerBridge(nn.Module):
                     cache[name] = tensor.detach().cpu()
                 elif isinstance(tensor, tuple):
                     # For tuple outputs, cache the first element (usually hidden states)
-                    # and store the full tuple structure
                     if len(tensor) > 0 and isinstance(tensor[0], torch.Tensor):
                         cache[name] = tensor[0].detach().cpu()
-                        # Also cache the full tuple structure with a special key
-                        cache[f"{name}_full_tuple"] = tuple(
-                            t.detach().cpu() if isinstance(t, torch.Tensor) else t for t in tensor
-                        )
                     else:
-                        cache[name] = tensor
+                        # If tuple doesn't contain tensors, don't cache it
+                        pass
                 else:
-                    # For other types, store as-is
-                    cache[name] = tensor
+                    # For other types, try to convert to tensor, otherwise skip
+                    try:
+                        if hasattr(tensor, "detach"):
+                            cache[name] = tensor.detach().cpu()
+                        # If it's not a tensor-like object, don't cache it
+                    except:
+                        # If conversion fails, don't cache it
+                        pass
                 return tensor
 
             return cache_hook
@@ -712,6 +689,9 @@ class TransformerBridge(nn.Module):
 
             for attr_name in dir(module):
                 if attr_name.startswith("_"):
+                    continue
+                # Skip the original_model to avoid collecting hooks from HuggingFace model
+                if attr_name == "original_model":
                     continue
                 try:
                     attr = getattr(module, attr_name)
@@ -735,6 +715,9 @@ class TransformerBridge(nn.Module):
             # Also traverse named_children() to catch ModuleList and other containers
             for child_name, child_module in module.named_children():
                 child_path = f"{prefix}.{child_name}" if prefix else child_name
+                # Skip the original_model module
+                if child_name == "original_model":
+                    continue
                 collect_hookpoints(child_module, child_path)
 
         # Collect hooks from bridge components (these have the clean TransformerLens paths)
@@ -749,27 +732,13 @@ class TransformerBridge(nn.Module):
             # Handle string input whether passed positionally or as a kwarg
             if processed_args and isinstance(processed_args[0], str):
                 assert self.tokenizer is not None, "Tokenizer must be set to pass string input."
-                if self.tokenizer.pad_token is None:
-                    self.tokenizer.pad_token = self.tokenizer.eos_token
-                input_ids = self.tokenizer(
-                    processed_args[0],
-                    return_tensors="pt",
-                    padding=True,
-                    truncation=True,
-                )["input_ids"]
+                input_ids = self.to_tokens(processed_args[0])
                 input_ids = input_ids.to(next(self.original_model.parameters()).device)
                 kwargs["input_ids"] = input_ids
                 processed_args = processed_args[1:]
             elif "input" in kwargs and isinstance(kwargs["input"], str):
                 assert self.tokenizer is not None, "Tokenizer must be set to pass string input."
-                if self.tokenizer.pad_token is None:
-                    self.tokenizer.pad_token = self.tokenizer.eos_token
-                input_ids = self.tokenizer(
-                    kwargs["input"],
-                    return_tensors="pt",
-                    padding=True,
-                    truncation=True,
-                )["input_ids"]
+                input_ids = self.to_tokens(kwargs["input"])
                 input_ids = input_ids.to(next(self.original_model.parameters()).device)
                 kwargs["input_ids"] = input_ids
                 del kwargs["input"]
@@ -796,8 +765,25 @@ class TransformerBridge(nn.Module):
                         hooks.append((hook_dict[block_hook_name], block_hook_name))
 
             # Run the underlying model's forward method
+            # Handle device parameter properly - move model to device if specified
+            filtered_kwargs = kwargs.copy()
+            target_device = filtered_kwargs.pop("device", None)  # Remove device from kwargs
+
+            if target_device is not None:
+                # Ensure model is on the target device
+                self.original_model = self.original_model.to(target_device)
+                # Also move processed_args to the same device if needed
+                if processed_args and isinstance(processed_args[0], torch.Tensor):
+                    processed_args = [processed_args[0].to(target_device)] + list(
+                        processed_args[1:]
+                    )
+                # Move any tensor kwargs to the target device
+                for key, value in filtered_kwargs.items():
+                    if isinstance(value, torch.Tensor):
+                        filtered_kwargs[key] = value.to(target_device)
+
             try:
-                output = self.original_model(*processed_args, **kwargs)
+                output = self.original_model(*processed_args, **filtered_kwargs)
                 # Extract logits if output is a HuggingFace model output object
                 if hasattr(output, "logits"):
                     output = output.logits
@@ -810,20 +796,25 @@ class TransformerBridge(nn.Module):
                 hp.remove_hooks()
 
         # Create duplicate cache entries for TransformerLens compatibility
-        # Use the hook aliases collected from components (reverse mapping: new -> old)
-        reverse_hook_aliases = {new_name: old_name for old_name, new_name in hook_aliases.items()}
+        # Use the aliases collected from components (reverse mapping: new -> old)
+        reverse_aliases = {new_name: old_name for old_name, new_name in aliases.items()}
 
         # Create duplicate entries in cache
         cache_items_to_add = {}
         for cache_name, cached_value in cache.items():
             # Check if this cache name should have an alias
-            for new_name, old_name in reverse_hook_aliases.items():
+            for new_name, old_name in reverse_aliases.items():
                 if cache_name == new_name:
                     cache_items_to_add[old_name] = cached_value
                     break
 
         # Add the aliased entries to the cache
         cache.update(cache_items_to_add)
+
+        # Add cache entries for all aliases (both hook and cache aliases)
+        for alias_name, target_name in aliases.items():
+            if target_name in cache and alias_name not in cache:
+                cache[alias_name] = cache[target_name]
 
         if return_cache_object:
             cache_obj = ActivationCache(cache, self, has_batch_dim=not remove_batch_dim)
