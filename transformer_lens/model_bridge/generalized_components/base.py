@@ -10,10 +10,10 @@ from typing import Any, Dict, Optional
 import torch
 import torch.nn as nn
 
-from transformer_lens.hook_points import HookPoint
 from transformer_lens.conversion_utils.conversion_steps.base_hook_conversion import (
     BaseHookConversion,
 )
+from transformer_lens.hook_points import HookPoint
 from transformer_lens.utilities.aliases import resolve_alias
 
 
