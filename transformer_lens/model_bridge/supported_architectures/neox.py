@@ -5,12 +5,12 @@ from typing import Any
 import torch
 
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
-from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
+from transformer_lens.conversion_utils.conversion_steps import (
     HookConversionSet,
     RearrangeHookConversion,
     SplitHookConversion,
 )
-from transformer_lens.model_bridge.conversion_utils.conversion_steps.chain_hook_conversion import (
+from transformer_lens.conversion_utils.conversion_steps.chain_hook_conversion import (
     ChainHookConversion,
 )
 from transformer_lens.model_bridge.generalized_components import (
@@ -142,13 +142,14 @@ class NeoxArchitectureAdapter(ArchitectureAdapter):
                     "ln2": NormalizationBridge(name="post_attention_layernorm"),
                     "attn": JointQKVAttentionBridge(
                         name="attention",
+                        model_config=self.cfg,
                         submodules={
                             "W_QKV": LinearBridge(
                                 name="query_key_value",
                             ),
                             "W_O": LinearBridge(name="dense"),
                         },
-                        config={"split_qkv_matrix": self.split_qkv_matrix},
+                        qkv_config={"split_qkv_matrix": self.split_qkv_matrix},
                     ),
                     "mlp": MLPBridge(
                         name="mlp",

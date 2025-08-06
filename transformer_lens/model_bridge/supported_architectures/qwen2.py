@@ -3,7 +3,7 @@
 from typing import Any
 
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
-from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
+from transformer_lens.conversion_utils.conversion_steps import (
     HookConversionSet,
     RearrangeHookConversion,
 )
@@ -65,7 +65,7 @@ class Qwen2ArchitectureAdapter(ArchitectureAdapter):
                 submodules={
                     "ln1": NormalizationBridge(name="input_layernorm"),
                     "ln2": NormalizationBridge(name="post_attention_layernorm"),
-                    "attn": AttentionBridge(name="self_attn"),
+                    "attn": AttentionBridge(name="self_attn", config=self.cfg),
                     "mlp": MLPBridge(name="mlp"),
                 },
             ),

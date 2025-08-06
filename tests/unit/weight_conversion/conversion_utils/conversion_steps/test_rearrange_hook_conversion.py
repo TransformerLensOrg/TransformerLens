@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from transformer_lens.model_bridge.conversion_utils.conversion_steps.rearrange_hook_conversion import (
+from transformer_lens.conversion_utils.conversion_steps.rearrange_hook_conversion import (
     RearrangeHookConversion,
 )
 

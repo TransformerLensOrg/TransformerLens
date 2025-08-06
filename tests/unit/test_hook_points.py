@@ -67,7 +67,7 @@ def test_add_hook_prepend(mock_handle):
 
 def test_enable_reshape():
     """Test that enable_reshape sets the hook conversion correctly."""
-    from transformer_lens.model_bridge.conversion_utils.conversion_steps.base_hook_conversion import (
+    from transformer_lens.conversion_utils.conversion_steps.base_hook_conversion import (
         BaseHookConversion,
     )
 
@@ -99,7 +99,7 @@ def test_reshape_functionality_integration():
     """Test that hook conversion works in an integration context."""
     import torch
 
-    from transformer_lens.model_bridge.conversion_utils.conversion_steps.base_hook_conversion import (
+    from transformer_lens.conversion_utils.conversion_steps.base_hook_conversion import (
         BaseHookConversion,
     )
 
@@ -148,7 +148,7 @@ def test_reshape_functionality_hook_returns_none_integration():
     """Test that output revert is not applied when hook returns None."""
     import torch
 
-    from transformer_lens.model_bridge.conversion_utils.conversion_steps.base_hook_conversion import (
+    from transformer_lens.conversion_utils.conversion_steps.base_hook_conversion import (
         BaseHookConversion,
     )
 

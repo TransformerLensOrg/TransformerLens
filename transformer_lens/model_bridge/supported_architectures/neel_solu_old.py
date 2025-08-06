@@ -3,7 +3,7 @@
 from typing import Any
 
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
-from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
+from transformer_lens.conversion_utils.conversion_steps import (
     HookConversionSet,
     RearrangeHookConversion,
 )
@@ -74,7 +74,7 @@ class NeelSoluOldArchitectureAdapter(ArchitectureAdapter):
                 name="blocks",
                 submodules={
                     "ln1": NormalizationBridge(name="ln1"),
-                    "attn": AttentionBridge(name="attn"),
+                    "attn": AttentionBridge(name="attn", config=self.cfg),
                     "ln2": NormalizationBridge(name="ln2"),
                     "mlp": MLPBridge(name="mlp"),
                 },

@@ -27,24 +27,26 @@ class JointQKVAttentionBridge(AttentionBridge):
     def __init__(
         self,
         name: str,
-        config: Any,
-        submodules: Optional[Dict[str, GeneralizedComponent]] = {},
+        model_config: Any,
+        submodules: Optional[Dict[str, GeneralizedComponent]] = None,
+        qkv_config: Optional[Dict[str, Any]] = None,
     ):
         """Initialize the joint QKV attention bridge.
 
         Args:
             name: The name of this component
-            config: Configuration (split_qkv_matrix function is required)
+            model_config: Model configuration (required for AttentionBridge)
             submodules: Dictionary of GeneralizedComponent submodules to register
+            qkv_config: QKV-specific configuration (split_qkv_matrix function is required)
         """
-        super().__init__(name, submodules=submodules)
+        super().__init__(name, model_config, submodules=submodules)
 
-        self.config = config
-        if self.config is None:
+        self.qkv_config = qkv_config
+        if self.qkv_config is None:
             raise RuntimeError(
-                f"Config not set for {self.name}. Config is required for QKV separation."
+                f"QKV config not set for {self.name}. QKV config is required for QKV separation."
             )
-        if "split_qkv_matrix" not in self.config:
+        if "split_qkv_matrix" not in self.qkv_config:
             raise RuntimeError(f"Config for {self.name} must include 'split_qkv_matrix' function.")
 
         # Create LinearBridge components for Q, K, and V activations
@@ -62,9 +64,9 @@ class JointQKVAttentionBridge(AttentionBridge):
         super().set_original_component(original_component)
 
         # Keep mypy happy
-        assert self.config is not None
+        assert self.qkv_config is not None
 
-        W_Q_transformation, W_K_transformation, W_V_transformation = self.config[
+        W_Q_transformation, W_K_transformation, W_V_transformation = self.qkv_config[
             "split_qkv_matrix"
         ](original_component)
 

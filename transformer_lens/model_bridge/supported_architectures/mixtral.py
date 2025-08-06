@@ -3,7 +3,7 @@
 from typing import Any
 
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
-from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
+from transformer_lens.conversion_utils.conversion_steps import (
     HookConversionSet,
     RearrangeHookConversion,
 )
@@ -83,6 +83,7 @@ class MixtralArchitectureAdapter(ArchitectureAdapter):
                     "ln2": NormalizationBridge(name="post_attention_layernorm"),
                     "attn": AttentionBridge(
                         name="self_attn",
+                        config=self.cfg,
                         submodules={
                             "W_Q": LinearBridge(name="q_proj"),
                             "W_K": LinearBridge(name="k_proj"),

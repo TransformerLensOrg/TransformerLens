@@ -5,10 +5,10 @@ from typing import Any, Optional, Union
 
 import torch
 
-from transformer_lens.model_bridge.conversion_utils.conversion_steps.base_hook_conversion import (
+from transformer_lens.conversion_utils.conversion_steps.base_hook_conversion import (
     BaseHookConversion,
 )
-from transformer_lens.model_bridge.conversion_utils.helpers.find_property import (
+from transformer_lens.conversion_utils.helpers.find_property import (
     find_property,
 )
 

@@ -1,9 +1,9 @@
 import torch
 
-from transformer_lens.model_bridge.conversion_utils.conversion_steps.base_hook_conversion import (
+from transformer_lens.conversion_utils.conversion_steps.base_hook_conversion import (
     BaseHookConversion,
 )
-from transformer_lens.model_bridge.conversion_utils.conversion_steps.ternary_hook_conversion import (
+from transformer_lens.conversion_utils.conversion_steps.ternary_hook_conversion import (
     TernaryHookConversion,
 )
 

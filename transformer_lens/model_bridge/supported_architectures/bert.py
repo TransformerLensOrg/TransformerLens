@@ -6,7 +6,7 @@ This module provides the architecture adapter for BERT models.
 from typing import Any
 
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
-from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
+from transformer_lens.conversion_utils.conversion_steps import (
     HookConversionSet,
     RearrangeHookConversion,
 )
@@ -95,7 +95,7 @@ class BertArchitectureAdapter(ArchitectureAdapter):
                 submodules={
                     "ln1": NormalizationBridge(name="attention.output.LayerNorm"),
                     "ln2": NormalizationBridge(name="output.LayerNorm"),
-                    "attn": AttentionBridge(name="attention"),
+                    "attn": AttentionBridge(name="attention", config=self.cfg),
                     "mlp": MLPBridge(name="intermediate"),
                 },
             ),

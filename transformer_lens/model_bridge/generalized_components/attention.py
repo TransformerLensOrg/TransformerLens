@@ -8,6 +8,12 @@ from typing import Any, Dict, Optional, Tuple
 import torch
 
 from transformer_lens.hook_points import HookPoint
+from transformer_lens.conversion_utils.conversion_steps.attention_auto_conversion import (
+    AttentionAutoConversion,
+)
+from transformer_lens.conversion_utils.conversion_steps.base_hook_conversion import (
+    BaseHookConversion,
+)
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
@@ -44,17 +50,34 @@ class AttentionBridge(GeneralizedComponent):
     def __init__(
         self,
         name: str,
-        submodules: Optional[Dict[str, GeneralizedComponent]] = {},
+        config: Any,
+        submodules: Optional[Dict[str, GeneralizedComponent]] = None,
+        conversion_rule: Optional[BaseHookConversion] = None,
     ):
         """Initialize the attention bridge.
 
         Args:
             name: The name of this component
+            config: Model configuration (required for auto-conversion detection)
             submodules: Dictionary of submodules to register (e.g., q_proj, k_proj, etc.)
+            conversion_rule: Optional conversion rule. If None, AttentionAutoConversion will be used
         """
-        super().__init__(name, submodules=submodules)
+        # Set up conversion rule - use AttentionAutoConversion if None
+        if conversion_rule is None:
+            conversion_rule = AttentionAutoConversion(config)
+            
+        super().__init__(
+            name, 
+            config=config, 
+            submodules=submodules or {}, 
+            conversion_rule=conversion_rule
+        )
         self.hook_hidden_states = HookPoint()
         self.hook_attention_weights = HookPoint()
+        
+        # Apply conversion rule to attention-specific hooks
+        self.hook_hidden_states.hook_conversion = conversion_rule
+        self.hook_attention_weights.hook_conversion = conversion_rule
 
     def _process_output(self, output: Any) -> Any:
         """Process the output from the original component.

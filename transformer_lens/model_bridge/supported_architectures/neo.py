@@ -3,7 +3,7 @@
 from typing import Any
 
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
-from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
+from transformer_lens.conversion_utils.conversion_steps import (
     HookConversionSet,
     RearrangeHookConversion,
 )
@@ -69,6 +69,7 @@ class NeoArchitectureAdapter(ArchitectureAdapter):
                     "ln1": NormalizationBridge(name="ln_1"),
                     "attn": AttentionBridge(
                         name="attn.attention",
+                        config=self.cfg,
                         submodules={
                             "W_Q": LinearBridge(name="q_proj"),
                             "W_K": LinearBridge(name="k_proj"),

@@ -5,7 +5,7 @@ from typing import Any
 import torch
 
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
-from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
+from transformer_lens.conversion_utils.conversion_steps import (
     HookConversionSet,
     RearrangeHookConversion,
 )
@@ -91,11 +91,12 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
                     "ln1": NormalizationBridge(name="ln_1"),
                     "attn": JointQKVAttentionBridge(
                         name="attn",
+                        model_config=self.cfg,
                         submodules={
                             "qkv": LinearBridge(name="c_attn"),
                             "o": LinearBridge(name="c_proj"),
                         },
-                        config={
+                        qkv_config={
                             "split_qkv_matrix": self.split_qkv_matrix,
                         },
                     ),

@@ -11,6 +11,9 @@ import torch
 import torch.nn as nn
 
 from transformer_lens.hook_points import HookPoint
+from transformer_lens.conversion_utils.conversion_steps.base_hook_conversion import (
+    BaseHookConversion,
+)
 from transformer_lens.utilities.aliases import resolve_alias
 
 
@@ -34,6 +37,7 @@ class GeneralizedComponent(nn.Module):
         name: str,
         config: Optional[Any] = None,
         submodules: Optional[Dict[str, "GeneralizedComponent"]] = None,
+        conversion_rule: Optional[BaseHookConversion] = None,
     ):
         """Initialize the generalized component.
 
@@ -41,15 +45,22 @@ class GeneralizedComponent(nn.Module):
             name: The name of this component
             config: Optional configuration object for the component
             submodules: Dictionary of GeneralizedComponent submodules to register
+            conversion_rule: Optional conversion rule for this component's hooks
         """
         super().__init__()
         self.name = name
         self.config = config
         self.submodules = submodules or {}
+        self.conversion_rule = conversion_rule
 
         # Standardized hooks for all bridge components
         self.hook_in = HookPoint()
         self.hook_out = HookPoint()
+        
+        # Apply conversion rule to hooks if available
+        if self.conversion_rule is not None:
+            self.hook_in.hook_conversion = self.conversion_rule
+            self.hook_out.hook_conversion = self.conversion_rule
 
     def _is_getattr_called_internally(self) -> bool:
         """This function checks if the __getattr__ method was being called internally
@@ -231,7 +242,7 @@ class GeneralizedComponent(nn.Module):
                             if instr.opname == "LOAD_ATTR" and instr.argval in ["weight", "bias"]:
                                 return self._getattr_helper(name)
                             break
-                except Exception:
+                except (AttributeError, ValueError, TypeError):
                     pass
 
             # If we reach here, we can resolve the alias normally

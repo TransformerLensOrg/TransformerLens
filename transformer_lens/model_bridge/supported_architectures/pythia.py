@@ -3,12 +3,12 @@
 from typing import Any
 
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
-from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
+from transformer_lens.conversion_utils.conversion_steps import (
     HookConversionSet,
     RearrangeHookConversion,
     SplitHookConversion,
 )
-from transformer_lens.model_bridge.conversion_utils.conversion_steps.chain_hook_conversion import (
+from transformer_lens.conversion_utils.conversion_steps.chain_hook_conversion import (
     ChainHookConversion,
 )
 from transformer_lens.model_bridge.generalized_components import (
@@ -137,7 +137,7 @@ class PythiaArchitectureAdapter(ArchitectureAdapter):
                 submodules={
                     "ln1": NormalizationBridge(name="input_layernorm"),
                     "ln2": NormalizationBridge(name="post_attention_layernorm"),
-                    "attn": AttentionBridge(name="attention"),
+                    "attn": AttentionBridge(name="attention", config=self.cfg),
                     "mlp": MLPBridge(name="mlp"),
                 },
             ),
