@@ -33,7 +33,9 @@ from transformer_lens.utils import Slice, SliceInput
 
 # Import for hook conversions - use TYPE_CHECKING to avoid circular imports
 if TYPE_CHECKING:
-    pass
+    from transformer_lens.model_bridge.conversion_utils.conversion_steps.base_hook_conversion import (
+        BaseHookConversion,
+    )
 
 
 @dataclass
@@ -87,9 +89,7 @@ class HookPoint(nn.Module):
         self.name: Optional[str] = None
 
         # Hook conversion for input and output transformations
-        self.hook_conversion: Optional[
-            "transformer_lens.model_bridge.conversion_utils.conversion_steps.base_hook_conversion.BaseHookConversion"
-        ] = None
+        self.hook_conversion: Optional["BaseHookConversion"] = None
 
     def add_perma_hook(self, hook: HookFunction, dir: Literal["fwd", "bwd"] = "fwd") -> None:
         self.add_hook(hook, dir=dir, is_permanent=True)
@@ -188,9 +188,7 @@ class HookPoint(nn.Module):
 
     def enable_reshape(
         self,
-        hook_conversion: Optional[
-            "transformer_lens.model_bridge.conversion_utils.conversion_steps.base_hook_conversion.BaseHookConversion"
-        ] = None,
+        hook_conversion: Optional["BaseHookConversion"] = None,
     ) -> None:
         """
         Enable reshape functionality for this hook point using a BaseHookConversion.
