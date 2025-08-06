@@ -8,9 +8,7 @@ from typing import Any, cast
 import torch
 from torch import nn
 
-from transformer_lens.conversion_utils.conversion_steps import (
-    HookConversionSet,
-)
+from transformer_lens.conversion_utils.conversion_steps import HookConversionSet
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )

@@ -3,9 +3,7 @@ from typing import List
 
 from torch import Tensor
 
-from transformer_lens.conversion_utils.conversion_steps.base_hook_conversion import (
-    BaseHookConversion,
-)
+from .base_hook_conversion import BaseHookConversion
 
 
 class ChainHookConversion(BaseHookConversion):

@@ -2,7 +2,6 @@
 
 from typing import Any
 
-from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.conversion_utils.conversion_steps import (
     HookConversionSet,
     RearrangeHookConversion,
@@ -11,6 +10,7 @@ from transformer_lens.conversion_utils.conversion_steps import (
 from transformer_lens.conversion_utils.conversion_steps.chain_hook_conversion import (
     ChainHookConversion,
 )
+from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
     BlockBridge,
