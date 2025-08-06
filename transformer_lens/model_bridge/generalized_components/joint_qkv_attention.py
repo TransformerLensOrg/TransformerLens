@@ -62,7 +62,7 @@ class JointQKVAttentionBridge(AttentionBridge):
 
     def _create_qkv_conversion_rule(self) -> RearrangeHookConversion:
         """Create the appropriate conversion rule for joint QKV matrices.
-        
+
         Returns:
             RearrangeHookConversion for joint QKV reshaping
         """
@@ -72,16 +72,20 @@ class JointQKVAttentionBridge(AttentionBridge):
         else:
             # Default pattern for joint QKV: (d_model, 3*n_heads*d_head) -> (3, n_heads, d_model, d_head)
             pattern = "d_model (three num_attention_heads d_head) -> three num_attention_heads d_model d_head"
-        
+
         # Get number of heads from model config (passed to parent AttentionBridge)
-        model_config = getattr(self, 'config', None)
+        model_config = getattr(self, "config", None)
         if model_config is None:
             raise RuntimeError(f"Cannot create QKV conversion rule: model config not available")
-        
-        n_heads = getattr(model_config, 'n_heads', None) or getattr(model_config, 'num_attention_heads', None)
+
+        n_heads = getattr(model_config, "n_heads", None) or getattr(
+            model_config, "num_attention_heads", None
+        )
         if n_heads is None:
-            raise RuntimeError(f"Cannot create QKV conversion rule: num_attention_heads not found in config")
-            
+            raise RuntimeError(
+                f"Cannot create QKV conversion rule: num_attention_heads not found in config"
+            )
+
         return RearrangeHookConversion(
             pattern,
             three=3,

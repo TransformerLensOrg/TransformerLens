@@ -30,7 +30,7 @@ class AttentionBridge(GeneralizedComponent):
         "hook_pattern": "hook_attention_weights",  # Capture attention patterns, not input
         "hook_result": "hook_hidden_states",
         "hook_attn_scores": "o.hook_in",
-        "hook_q": "q.hook_out", 
+        "hook_q": "q.hook_out",
         "hook_k": "k.hook_out",
         "hook_v": "v.hook_out",
         "hook_z": "o.hook_out",
@@ -65,16 +65,13 @@ class AttentionBridge(GeneralizedComponent):
         # Set up conversion rule - use AttentionAutoConversion if None
         if conversion_rule is None:
             conversion_rule = AttentionAutoConversion(config)
-            
+
         super().__init__(
-            name, 
-            config=config, 
-            submodules=submodules or {}, 
-            conversion_rule=conversion_rule
+            name, config=config, submodules=submodules or {}, conversion_rule=conversion_rule
         )
         self.hook_hidden_states = HookPoint()
         self.hook_attention_weights = HookPoint()
-        
+
         # Apply conversion rule to attention-specific hooks
         self.hook_hidden_states.hook_conversion = conversion_rule
         self.hook_attention_weights.hook_conversion = conversion_rule
@@ -116,7 +113,7 @@ class AttentionBridge(GeneralizedComponent):
                 # Skip KV cache - we want actual attention weights
                 pass
             elif i == 2:  # Third element is typically attention weights in HuggingFace
-                if element is not None and hasattr(element, 'shape'):
+                if element is not None and hasattr(element, "shape"):
                     element = self._apply_hook_preserving_structure(
                         element, self.hook_attention_weights
                     )

@@ -787,7 +787,7 @@ class TransformerBridge(nn.Module):
                 # Add output_attentions=True if not already specified
                 if "output_attentions" not in filtered_kwargs:
                     filtered_kwargs["output_attentions"] = True
-                    
+
                 output = self.original_model(*processed_args, **filtered_kwargs)
                 # Extract logits if output is a HuggingFace model output object
                 if hasattr(output, "logits"):

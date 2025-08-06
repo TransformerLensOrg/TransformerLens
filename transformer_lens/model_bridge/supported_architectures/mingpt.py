@@ -86,7 +86,9 @@ class MingptArchitectureAdapter(ArchitectureAdapter):
                     "ln1": NormalizationBridge(name="ln_1"),  # Pre-attention layer norm
                     "ln2": NormalizationBridge(name="ln_2"),  # Pre-MLP layer norm
                     "attn": AttentionBridge(name="attn", config=self.cfg),  # Full attention module
-                    "attn.c_attn": AttentionBridge(name="attn.c_attn", config=self.cfg),  # QKV projection
+                    "attn.c_attn": AttentionBridge(
+                        name="attn.c_attn", config=self.cfg
+                    ),  # QKV projection
                     "mlp": MLPBridge(name="mlp"),  # Full MLP module
                 },
             ),

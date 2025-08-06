@@ -56,7 +56,7 @@ class GeneralizedComponent(nn.Module):
         # Standardized hooks for all bridge components
         self.hook_in = HookPoint()
         self.hook_out = HookPoint()
-        
+
         # Apply conversion rule to hooks if available
         if self.conversion_rule is not None:
             self.hook_in.hook_conversion = self.conversion_rule
