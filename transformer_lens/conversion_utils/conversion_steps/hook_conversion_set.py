@@ -4,10 +4,8 @@ from typing import Any
 
 import torch
 
-from transformer_lens.model_bridge.conversion_utils.helpers.find_property import (
-    find_property,
-)
-from transformer_lens.model_bridge.conversion_utils.hook_conversion_utils import (
+from transformer_lens.conversion_utils.helpers.find_property import find_property
+from transformer_lens.conversion_utils.hook_conversion_utils import (
     get_weight_conversion_field_set,
 )
 

@@ -2,9 +2,7 @@
 import torch
 from torch import Tensor
 
-from transformer_lens.model_bridge.conversion_utils.conversion_steps.base_hook_conversion import (
-    BaseHookConversion,
-)
+from .base_hook_conversion import BaseHookConversion
 
 
 class SplitHookConversion(BaseHookConversion):

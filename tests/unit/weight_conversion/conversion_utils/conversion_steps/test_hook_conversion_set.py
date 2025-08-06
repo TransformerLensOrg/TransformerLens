@@ -1,11 +1,11 @@
 import torch
 
-from transformer_lens.model_bridge.conversion_utils.conversion_steps.base_hook_conversion import (
+from transformer_lens.conversion_utils.conversion_steps.base_hook_conversion import (
     BaseHookConversion,
 )
 
 # These imports reflect your code structure
-from transformer_lens.model_bridge.conversion_utils.conversion_steps.hook_conversion_set import (
+from transformer_lens.conversion_utils.conversion_steps.hook_conversion_set import (
     HookConversionSet,
 )
 

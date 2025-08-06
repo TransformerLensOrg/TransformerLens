@@ -5,12 +5,12 @@ from typing import Any
 import torch
 
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
-from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
+from transformer_lens.conversion_utils.conversion_steps import (
     HookConversionSet,
     RearrangeHookConversion,
     SplitHookConversion,
 )
-from transformer_lens.model_bridge.conversion_utils.conversion_steps.chain_hook_conversion import (
+from transformer_lens.conversion_utils.conversion_steps.chain_hook_conversion import (
     ChainHookConversion,
 )
 from transformer_lens.model_bridge.generalized_components import (

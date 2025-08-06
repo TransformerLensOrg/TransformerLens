@@ -1,10 +1,10 @@
 import pytest
 import torch
 
-from transformer_lens.model_bridge.conversion_utils.conversion_steps.hook_conversion_set import (
+from transformer_lens.conversion_utils.conversion_steps.hook_conversion_set import (
     HookConversionSet,
 )
-from transformer_lens.model_bridge.conversion_utils.helpers.merge_quantiziation_fields import (
+from transformer_lens.conversion_utils.helpers.merge_quantiziation_fields import (
     merge_quantization_fields,
 )
 
