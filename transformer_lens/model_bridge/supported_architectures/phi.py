@@ -4,8 +4,8 @@ from typing import Any
 
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
-    RearrangeHookConversion,
     HookConversionSet,
+    RearrangeHookConversion,
 )
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
@@ -37,21 +37,15 @@ class PhiArchitectureAdapter(ArchitectureAdapter):
                 "blocks.{i}.ln2.b": "transformer.h.{i}.ln_2.bias",
                 "blocks.{i}.attn.q": (
                     "transformer.h.{i}.attn.c_attn.weight",
-                    RearrangeHookConversion(
-                        "d_model (3 n_head d_head) -> 3 n_head d_head d_model"
-                    ),
+                    RearrangeHookConversion("d_model (3 n_head d_head) -> 3 n_head d_head d_model"),
                 ),
                 "blocks.{i}.attn.k": (
                     "transformer.h.{i}.attn.c_attn.weight",
-                    RearrangeHookConversion(
-                        "d_model (3 n_head d_head) -> 3 n_head d_head d_model"
-                    ),
+                    RearrangeHookConversion("d_model (3 n_head d_head) -> 3 n_head d_head d_model"),
                 ),
                 "blocks.{i}.attn.v": (
                     "transformer.h.{i}.attn.c_attn.weight",
-                    RearrangeHookConversion(
-                        "d_model (3 n_head d_head) -> 3 n_head d_head d_model"
-                    ),
+                    RearrangeHookConversion("d_model (3 n_head d_head) -> 3 n_head d_head d_model"),
                 ),
                 "blocks.{i}.attn.b_Q": (
                     "transformer.h.{i}.attn.c_attn.bias",

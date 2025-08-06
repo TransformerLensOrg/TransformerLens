@@ -33,9 +33,7 @@ from transformer_lens.utils import Slice, SliceInput
 
 # Import for hook conversions - use TYPE_CHECKING to avoid circular imports
 if TYPE_CHECKING:
-    from transformer_lens.model_bridge.conversion_utils.conversion_steps.base_hook_conversion import (
-        BaseHookConversion,
-    )
+    pass
 
 
 @dataclass
@@ -87,9 +85,11 @@ class HookPoint(nn.Module):
         # A variable giving the hook's name (from the perspective of the root
         # module) - this is set by the root module at setup.
         self.name: Optional[str] = None
-        
+
         # Hook conversion for input and output transformations
-        self.hook_conversion: Optional["transformer_lens.model_bridge.conversion_utils.conversion_steps.base_hook_conversion.BaseHookConversion"] = None
+        self.hook_conversion: Optional[
+            "transformer_lens.model_bridge.conversion_utils.conversion_steps.base_hook_conversion.BaseHookConversion"
+        ] = None
 
     def add_perma_hook(self, hook: HookFunction, dir: Literal["fwd", "bwd"] = "fwd") -> None:
         self.add_hook(hook, dir=dir, is_permanent=True)
@@ -118,18 +118,18 @@ class HookPoint(nn.Module):
                 dir == "bwd"
             ):  # For a backwards hook, module_output is a tuple of (grad,) - I don't know why.
                 module_output = module_output[0]
-            
+
             # Apply input conversion if hook_conversion exists
             if self.hook_conversion is not None:
                 module_output = self.hook_conversion.convert(module_output)
-            
+
             # Apply the hook
             hook_result = hook(module_output, hook=self)
-            
+
             # Apply output reversion if hook_conversion exists and hook returned a value
             if hook_result is not None and self.hook_conversion is not None:
                 hook_result = self.hook_conversion.revert(hook_result)
-            
+
             return hook_result
 
         # annotate the `full_hook` with the string representation of the `hook` function
@@ -188,11 +188,13 @@ class HookPoint(nn.Module):
 
     def enable_reshape(
         self,
-        hook_conversion: Optional["transformer_lens.model_bridge.conversion_utils.conversion_steps.base_hook_conversion.BaseHookConversion"] = None,
+        hook_conversion: Optional[
+            "transformer_lens.model_bridge.conversion_utils.conversion_steps.base_hook_conversion.BaseHookConversion"
+        ] = None,
     ) -> None:
         """
         Enable reshape functionality for this hook point using a BaseHookConversion.
-        
+
         Args:
             hook_conversion: BaseHookConversion instance to handle input/output transformations.
                            The convert() method will be used for input transformation,

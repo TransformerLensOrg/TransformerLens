@@ -6,8 +6,8 @@ import torch
 
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.conversion_utils.conversion_steps import (
-    RearrangeHookConversion,
     HookConversionSet,
+    RearrangeHookConversion,
 )
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,

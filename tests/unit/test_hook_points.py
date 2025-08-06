@@ -70,28 +70,28 @@ def test_enable_reshape():
     from transformer_lens.model_bridge.conversion_utils.conversion_steps.base_hook_conversion import (
         BaseHookConversion,
     )
-    
+
     class TestHookConversion(BaseHookConversion):
         def handle_conversion(self, input_value, *full_context):
             return input_value * 2
-        
+
         def revert(self, input_value, *full_context):
             return input_value + 1
-    
+
     hook_point = HookPoint()
     conversion = TestHookConversion()
-    
+
     hook_point.enable_reshape(conversion)
-    
+
     assert hook_point.hook_conversion is conversion
 
 
 def test_enable_reshape_with_none():
     """Test that enable_reshape works with None values."""
     hook_point = HookPoint()
-    
+
     hook_point.enable_reshape(None)
-    
+
     assert hook_point.hook_conversion is None
 
 
@@ -107,7 +107,7 @@ def test_reshape_functionality_integration():
     class TestHookConversion(BaseHookConversion):
         def handle_conversion(self, input_value, *full_context):
             return input_value * 2  # Double the input
-        
+
         def revert(self, input_value, *full_context):
             return input_value + 10  # Add 10 to the output
 
@@ -116,29 +116,29 @@ def test_reshape_functionality_integration():
         def __init__(self):
             super().__init__()
             self.hook_point = HookPoint()
-            
+
         def forward(self, x):
             return self.hook_point(x)
-    
+
     module = TestModule()
-    
+
     # Set up hook conversion
     conversion = TestHookConversion()
     module.hook_point.enable_reshape(conversion)
-    
+
     # Set up a hook that modifies the activation
     def test_hook(activation, hook):
         return activation + 1  # Add 1 to each element
-    
+
     module.hook_point.add_hook(test_hook, dir="fwd")
-    
+
     # Test the full pipeline
     test_input = torch.tensor([1.0, 2.0, 3.0])
     result = module(test_input)
-    
+
     # The pipeline should be:
     # 1. conversion.convert(): [1,2,3] * 2 = [2,4,6]
-    # 2. hook: [2,4,6] + 1 = [3,5,7] 
+    # 2. hook: [2,4,6] + 1 = [3,5,7]
     # 3. conversion.revert(): [3,5,7] + 10 = [13,15,17]
     expected = torch.tensor([13.0, 15.0, 17.0])
     assert torch.equal(result, expected)
@@ -156,34 +156,34 @@ def test_reshape_functionality_hook_returns_none_integration():
     class TestHookConversion(BaseHookConversion):
         def handle_conversion(self, input_value, *full_context):
             return input_value * 2
-        
+
         def revert(self, input_value, *full_context):
             return input_value + 10
-    
+
     class TestModule(torch.nn.Module):
         def __init__(self):
             super().__init__()
             self.hook_point = HookPoint()
-            
+
         def forward(self, x):
             return self.hook_point(x)
-    
+
     module = TestModule()
-    
+
     # Set up hook conversion
     conversion = TestHookConversion()
     module.hook_point.enable_reshape(conversion)
-    
+
     # Set up a hook that returns None
     def test_hook(activation, hook):
         return None
-    
+
     module.hook_point.add_hook(test_hook, dir="fwd")
-    
+
     # Test the pipeline
     test_input = torch.tensor([1.0, 2.0, 3.0])
     result = module(test_input)
-    
+
     # Since hook returns None, the original input should be returned
     # (HookPoint's forward method returns the input when no valid hook result)
     assert torch.equal(result, test_input)
