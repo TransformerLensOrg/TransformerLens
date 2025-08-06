@@ -783,6 +783,11 @@ class TransformerBridge(nn.Module):
                         filtered_kwargs[key] = value.to(target_device)
 
             try:
+                # For caching, we want attention weights to be available for hooks
+                # Add output_attentions=True if not already specified
+                if "output_attentions" not in filtered_kwargs:
+                    filtered_kwargs["output_attentions"] = True
+                    
                 output = self.original_model(*processed_args, **filtered_kwargs)
                 # Extract logits if output is a HuggingFace model output object
                 if hasattr(output, "logits"):

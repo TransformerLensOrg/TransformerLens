@@ -7,13 +7,13 @@ from typing import Any, Dict, Optional, Tuple
 
 import torch
 
-from transformer_lens.hook_points import HookPoint
 from transformer_lens.conversion_utils.conversion_steps.attention_auto_conversion import (
     AttentionAutoConversion,
 )
 from transformer_lens.conversion_utils.conversion_steps.base_hook_conversion import (
     BaseHookConversion,
 )
+from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
@@ -27,10 +27,10 @@ class AttentionBridge(GeneralizedComponent):
     """
 
     hook_aliases = {
-        "hook_pattern": "hook_in",
+        "hook_pattern": "hook_attention_weights",  # Capture attention patterns, not input
         "hook_result": "hook_hidden_states",
         "hook_attn_scores": "o.hook_in",
-        "hook_q": "q.hook_out",
+        "hook_q": "q.hook_out", 
         "hook_k": "k.hook_out",
         "hook_v": "v.hook_out",
         "hook_z": "o.hook_out",
@@ -112,8 +112,11 @@ class AttentionBridge(GeneralizedComponent):
                     element = self._apply_hook_preserving_structure(
                         element, self.hook_hidden_states
                     )
-            elif i == 1:  # Second element is typically attention weights
-                if element is not None:
+            elif i == 1:  # Second element might be KV cache or attention weights
+                # Skip KV cache - we want actual attention weights
+                pass
+            elif i == 2:  # Third element is typically attention weights in HuggingFace
+                if element is not None and hasattr(element, 'shape'):
                     element = self._apply_hook_preserving_structure(
                         element, self.hook_attention_weights
                     )
