@@ -66,6 +66,9 @@ class JointQKVAttentionBridge(AttentionBridge):
         Returns:
             RearrangeHookConversion for joint QKV reshaping
         """
+        # Keep mypy happy - we know qkv_config is not None due to earlier checks
+        assert self.qkv_config is not None
+
         # Get conversion pattern from config, with sensible defaults
         if "qkv_pattern" in self.qkv_config:
             pattern = self.qkv_config["qkv_pattern"]
