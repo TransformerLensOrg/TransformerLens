@@ -2095,7 +2095,7 @@ class HookedTransformer(HookedRootModule):
         freq_penalty: float = 0.0,
         use_past_kv_cache: bool = True,
         prepend_bos: Optional[bool] = USE_DEFAULT_VALUE,
-        padding_side: Optional[Literal["left", "right"]] = USE_DEFAULT_VALUE,
+        padding_side: Optional[Literal["left", "right"]] = "left",
         return_type: Optional[str] = "input",
         verbose: bool = True,
     ) -> Union[
@@ -2139,9 +2139,9 @@ class HookedTransformer(HookedRootModule):
                 the BOS token to the input (applicable when input is a string). Defaults to None,
                 implying usage of self.cfg.default_prepend_bos (default is True unless specified
                 otherwise). Pass True or False to override the default.
-            padding_side (Union[Literal["left", "right"], None], optional): Overrides
-                self.tokenizer.padding_side. Specifies which side to pad when tokenizing multiple
-                strings of different lengths.
+            padding_side (Union[Literal["left", "right"], None], optional): Specifies which side to 
+                pad when tokenizing multiple strings of different lengths. Defaults to left for 
+                correct generation behavior. If None uses self.tokenizer.padding_side. 
             return_type (Optional[str]): The type of the output to return - a string or a list of strings ('str'),
                 a tensor of tokens ('tokens'), a tensor of output embeddings ('embeds') or whatever the format of the
                 input was ('input').
@@ -2240,7 +2240,11 @@ class HookedTransformer(HookedRootModule):
             for index in tqdm.tqdm(range(max_new_tokens), disable=not verbose):
                 pos_offset = self.get_pos_offset(past_kv_cache, batch_size)
 
-                tokens = torch.zeros((embeds.size(0), embeds.size(1))).to(torch.int)
+                if len(sampled_tokens_list) > 0:
+                    sampled_tokens = torch.cat(sampled_tokens_list, dim=1)
+                    tokens = torch.cat((input_tokens, sampled_tokens), dim=1)
+                else:
+                    tokens = input_tokens
                 attention_mask = utils.get_attention_mask(
                     self.tokenizer, tokens, False if prepend_bos is None else prepend_bos
                 ).to(device)
@@ -2267,6 +2271,7 @@ class HookedTransformer(HookedRootModule):
                             past_kv_cache=past_kv_cache,
                             start_at_layer=start_at_layer,
                             shortformer_pos_embed=shortformer_pos_embed,
+                            attention_mask=attention_mask,
                         )
                     else:
                         logits = self.forward(
@@ -2277,6 +2282,7 @@ class HookedTransformer(HookedRootModule):
                             past_kv_cache=past_kv_cache,
                             start_at_layer=start_at_layer,
                             shortformer_pos_embed=shortformer_pos_embed,
+                            attention_mask=attention_mask,
                         )
                 else:
                     # We input the entire sequence, as a [batch, pos] tensor, since we aren't using
@@ -2288,6 +2294,7 @@ class HookedTransformer(HookedRootModule):
                         padding_side=padding_side,
                         start_at_layer=start_at_layer,
                         shortformer_pos_embed=shortformer_pos_embed,
+                        attention_mask=attention_mask,
                     )
                 final_logits = logits[:, -1, :]
 
