@@ -7,6 +7,9 @@ from typing import Any, Dict, Optional
 
 import torch
 
+from transformer_lens.conversion_utils.conversion_steps.base_hook_conversion import (
+    BaseHookConversion,
+)
 from transformer_lens.conversion_utils.conversion_steps.rearrange_hook_conversion import (
     RearrangeHookConversion,
 )
@@ -33,6 +36,7 @@ class JointQKVAttentionBridge(AttentionBridge):
         model_config: Any,
         submodules: Optional[Dict[str, GeneralizedComponent]] = None,
         qkv_config: Optional[Dict[str, Any]] = None,
+        pattern_conversion_rule: Optional[BaseHookConversion] = None,
     ):
         """Initialize the joint QKV attention bridge.
 
@@ -41,8 +45,14 @@ class JointQKVAttentionBridge(AttentionBridge):
             model_config: Model configuration passed to parent AttentionBridge
             submodules: Dictionary of GeneralizedComponent submodules to register
             qkv_config: QKV-specific configuration including split_qkv_matrix function and conversion patterns
+            pattern_conversion_rule: Optional conversion rule for attention patterns, passed to parent AttentionBridge
         """
-        super().__init__(name, model_config, submodules=submodules)
+        super().__init__(
+            name,
+            model_config,
+            submodules=submodules,
+            pattern_conversion_rule=pattern_conversion_rule,
+        )
 
         self.qkv_config = qkv_config
         if self.qkv_config is None:

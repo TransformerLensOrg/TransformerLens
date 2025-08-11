@@ -55,6 +55,7 @@ class AttentionBridge(GeneralizedComponent):
         config: Any,
         submodules: Optional[Dict[str, GeneralizedComponent]] = None,
         conversion_rule: Optional[BaseHookConversion] = None,
+        pattern_conversion_rule: Optional[BaseHookConversion] = None,
     ):
         """Initialize the attention bridge.
 
@@ -63,6 +64,8 @@ class AttentionBridge(GeneralizedComponent):
             config: Model configuration (required for auto-conversion detection)
             submodules: Dictionary of submodules to register (e.g., q_proj, k_proj, etc.)
             conversion_rule: Optional conversion rule. If None, AttentionAutoConversion will be used
+            pattern_conversion_rule: Optional conversion rule for attention patterns. If None,
+                                   uses default RearrangeHookConversion to reshape to (batch, n_heads, pos, pos)
         """
         # Set up conversion rule - use AttentionAutoConversion if None
         if conversion_rule is None:
@@ -77,11 +80,16 @@ class AttentionBridge(GeneralizedComponent):
         # Apply conversion rule to attention-specific hooks
         self.hook_hidden_states.hook_conversion = conversion_rule
 
-        # Create specific conversion rule for attention patterns - reshape to (batch, n_heads, pos, pos)
-        # This assumes the input is (batch, n_heads, seq_len, seq_len) or similar
-        pattern_conversion = RearrangeHookConversion(
-            "batch n_heads pos_q pos_k -> batch n_heads pos_q pos_k"
-        )
+        # Set up pattern conversion rule - use provided rule or create default
+        if pattern_conversion_rule is not None:
+            pattern_conversion = pattern_conversion_rule
+        else:
+            # Create default conversion rule for attention patterns - reshape to (batch, n_heads, pos, pos)
+            # This assumes the input is (batch, n_heads, seq_len, seq_len) or similar
+            pattern_conversion = RearrangeHookConversion(
+                "batch n_heads pos_q pos_k -> batch n_heads pos_q pos_k"
+            )
+
         self.hook_pattern.hook_conversion = pattern_conversion
 
     def _process_output(self, output: Any) -> Any:

@@ -122,6 +122,41 @@ def test_component_access():
     assert hasattr(block, "ln2"), "Block should have second layer norm"
 
 
+def test_attention_pattern_hook_shape_custom_conversion():
+    """Test that custom pattern conversion rules can be passed to attention components."""
+    from transformer_lens.conversion_utils.conversion_steps.rearrange_hook_conversion import (
+        RearrangeHookConversion,
+    )
+
+    model_name = "gpt2"  # Use a smaller model for testing
+    bridge = TransformerBridge.boot_transformers(model_name)
+
+    if bridge.tokenizer.pad_token is None:
+        bridge.tokenizer.pad_token = bridge.tokenizer.eos_token
+
+    # Create a custom conversion rule (this is just for testing the parameter passing)
+    custom_conversion = RearrangeHookConversion(
+        "batch n_heads pos_q pos_k -> batch n_heads pos_q pos_k"  # Same as default but explicitly set
+    )
+
+    # Verify that the attention bridge accepts the custom conversion parameter
+    # We can't easily test this with the existing bridge without recreating it,
+    # but we can at least verify the parameter is accepted without error
+    from transformer_lens.model_bridge.generalized_components.attention import (
+        AttentionBridge,
+    )
+
+    # This should not raise an error
+    test_bridge = AttentionBridge(
+        name="test_attn", config=bridge.cfg, pattern_conversion_rule=custom_conversion
+    )
+
+    # Verify the conversion rule was set
+    assert (
+        test_bridge.hook_pattern.hook_conversion is custom_conversion
+    ), "Custom conversion rule should be set"
+
+
 def test_attention_pattern_hook_shape():
     """Test that the attention pattern hook produces the correct shape (batch, n_heads, pos, pos)."""
     model_name = "gpt2"  # Use a smaller model for testing
