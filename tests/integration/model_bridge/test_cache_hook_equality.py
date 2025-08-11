@@ -7,6 +7,7 @@ MODEL = "gpt2"
 
 prompt = "Hello World!"
 bridge = TransformerBridge.boot_transformers(MODEL, device="cpu")
+bridge.enable_compatibility_mode(disable_warnings=False)
 hooked_transformer = HookedTransformer.from_pretrained(MODEL, device="cpu")
 
 act_names_in_cache = [

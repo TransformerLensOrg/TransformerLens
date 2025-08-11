@@ -71,6 +71,7 @@ class TestHookCompatibility:
         def hook_exists_on_model(model, hook_path: str) -> bool:
             """Check if a hook path exists on the model by traversing attributes."""
             parts = hook_path.split(".")
+            model.enable_compatibility_mode(disable_warnings=False)
             current = model
 
             try:
