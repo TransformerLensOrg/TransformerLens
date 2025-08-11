@@ -1,6 +1,8 @@
 """Tests for component setup utilities."""
 
 
+from types import SimpleNamespace
+
 import pytest
 import torch.nn as nn
 
@@ -55,7 +57,7 @@ class TestComponentSetup:
         # Create a component with submodules
         component = AttentionBridge(
             name="self_attn",
-            config=type("Cfg", (), {"n_heads": 1})(),
+            config=SimpleNamespace(n_heads=1),
             submodules={
                 "q_proj": EmbeddingBridge(name="q_proj"),
                 "k_proj": EmbeddingBridge(name="k_proj"),
@@ -84,12 +86,12 @@ class TestComponentSetup:
         # Create a component with nested submodules
         inner_component = AttentionBridge(
             name="q_proj",
-            config=type("Cfg", (), {"n_heads": 1})(),
+            config=SimpleNamespace(n_heads=1),
             submodules={},  # This should match a real path
         )
         component = AttentionBridge(
             name="attn",
-            config=type("Cfg", (), {"n_heads": 1})(),
+            config=SimpleNamespace(n_heads=1),
             submodules={
                 "q_proj": inner_component,
             },
@@ -173,7 +175,7 @@ class TestComponentSetup:
             submodules={
                 "ln1": NormalizationBridge(name="ln1"),
                 "ln2": NormalizationBridge(name="ln2"),
-                "attn": AttentionBridge(name="attn", config=type("Cfg", (), {"n_heads": 1})()),
+                "attn": AttentionBridge(name="attn", config=SimpleNamespace(n_heads=1)),
                 "mlp": MLPBridge(name="mlp"),
             },
         )
@@ -244,9 +246,7 @@ class TestComponentSetup:
                         submodules={
                             "ln1": NormalizationBridge(name="ln1"),
                             "ln2": NormalizationBridge(name="ln2"),
-                            "attn": AttentionBridge(
-                                name="attn", config=type("Cfg", (), {"n_heads": 1})()
-                            ),
+                            "attn": AttentionBridge(name="attn", config=SimpleNamespace(n_heads=1)),
                             "mlp": MLPBridge(name="mlp"),
                         },
                     ),
