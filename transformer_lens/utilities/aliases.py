@@ -5,7 +5,9 @@ from typing import Any, Dict, Optional, Set
 
 
 def resolve_alias(
-    target_object: Any, requested_name: str, aliases: Dict[str, str]
+    target_object: Any,
+    requested_name: str,
+    aliases: Dict[str, str],
 ) -> Optional[Any]:
     """Resolve a hook alias to the actual hook object.
 
@@ -19,12 +21,14 @@ def resolve_alias(
     """
     if requested_name in aliases:
         target_name = aliases[requested_name]
-        warnings.warn(
-            f"Hook '{requested_name}' is deprecated and will be removed in a future version. "
-            f"Use '{target_name}' instead.",
-            FutureWarning,
-            stacklevel=3,  # Adjusted for utility function call
-        )
+
+        if target_object.disable_warnings == False:
+            warnings.warn(
+                f"Hook '{requested_name}' is deprecated and will be removed in a future version. "
+                f"Use '{target_name}' instead.",
+                FutureWarning,
+                stacklevel=3,  # Adjusted for utility function call
+            )
 
         target_name_split = target_name.split(".")
 
