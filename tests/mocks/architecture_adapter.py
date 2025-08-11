@@ -25,6 +25,8 @@ class MockArchitectureAdapter(ArchitectureAdapter):
             )()
         super().__init__(cfg)
         # Use actual bridge instances instead of tuples
+        # Provide minimal config to components that require it
+        attn_cfg = type("Cfg", (), {"n_heads": 1})()
         self.component_mapping = {
             "embed": EmbeddingBridge(name="embed"),
             "unembed": EmbeddingBridge(name="unembed"),
@@ -34,7 +36,7 @@ class MockArchitectureAdapter(ArchitectureAdapter):
                 submodules={
                     "ln1": NormalizationBridge(name="ln1"),
                     "ln2": NormalizationBridge(name="ln2"),
-                    "attn": AttentionBridge(name="attn"),
+                    "attn": AttentionBridge(name="attn", config=attn_cfg),
                     "mlp": MLPBridge(name="mlp"),
                 },
             ),

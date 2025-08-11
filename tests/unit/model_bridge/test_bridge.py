@@ -42,7 +42,9 @@ class TestTransformerBridge:
                 comp.set_original_component(model.unembed)
                 return comp
             elif "blocks" in path and "attn" in path:
-                comp = AttentionBridge(name="attn")
+                # Minimal config with n_heads for AttentionBridge
+                attn_cfg = type("Cfg", (), {"n_heads": 1})()
+                comp = AttentionBridge(name="attn", config=attn_cfg)
                 comp.set_original_component(model.blocks[0].attn)
                 return comp
             elif "blocks" in path and "mlp" in path:
@@ -99,7 +101,7 @@ class TestTransformerBridge:
                 submodules={
                     "ln1": NormalizationBridge(name="ln1"),
                     "ln2": NormalizationBridge(name="ln2"),
-                    "attn": AttentionBridge(name="attn"),
+                    "attn": AttentionBridge(name="attn", config=type("Cfg", (), {"n_heads": 1})()),
                     "mlp": MLPBridge(name="mlp"),
                 },
             )
@@ -124,7 +126,7 @@ class TestTransformerBridge:
                 name="blocks",
                 submodules={
                     "ln1": NormalizationBridge(name="ln1"),
-                    "attn": AttentionBridge(name="attn"),
+                    "attn": AttentionBridge(name="attn", config=type("Cfg", (), {"n_heads": 1})()),
                 },
             ),
             "ln_final": NormalizationBridge(name="ln_final"),
@@ -145,7 +147,7 @@ class TestTransformerBridge:
         """Test formatting with prepend path parameter."""
         mapping = {
             "ln1": NormalizationBridge(name="ln1"),
-            "attn": AttentionBridge(name="attn"),
+            "attn": AttentionBridge(name="attn", config=type("Cfg", (), {"n_heads": 1})()),
         }
         # To test prepending, we need a parent structure in the component mapping
         self.bridge.adapter.component_mapping = {
