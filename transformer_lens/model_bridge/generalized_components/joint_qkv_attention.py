@@ -55,10 +55,10 @@ class JointQKVAttentionBridge(AttentionBridge):
         # Create conversion rules for Q, K, V based on configuration
         qkv_conversion_rule = self._create_qkv_conversion_rule()
 
-        # Create LinearBridge components for Q, K, and V activations with conversion rules
-        self.q = LinearBridge(name="q", config=model_config, conversion_rule=qkv_conversion_rule)
-        self.k = LinearBridge(name="k", config=model_config, conversion_rule=qkv_conversion_rule)
-        self.v = LinearBridge(name="v", config=model_config, conversion_rule=qkv_conversion_rule)
+        # Create custom LinearBridge components for Q, K, and V activations with conversion rules only on output
+        self.q = self._create_qkv_linear_bridge("q", model_config, qkv_conversion_rule)
+        self.k = self._create_qkv_linear_bridge("k", model_config, qkv_conversion_rule)
+        self.v = self._create_qkv_linear_bridge("v", model_config, qkv_conversion_rule)
 
     def _create_qkv_conversion_rule(self) -> RearrangeHookConversion:
         """Create the appropriate conversion rule for joint QKV matrices.
@@ -73,27 +73,49 @@ class JointQKVAttentionBridge(AttentionBridge):
         if "qkv_pattern" in self.qkv_config:
             pattern = self.qkv_config["qkv_pattern"]
         else:
-            # Default pattern for joint QKV: (d_model, 3*n_heads*d_head) -> (3, n_heads, d_model, d_head)
-            pattern = "d_model (three num_attention_heads d_head) -> three num_attention_heads d_model d_head"
+            # Default pattern for individual Q/K/V: (batch, seq, n_heads*d_head) -> (batch, seq, n_heads, d_head)
+            pattern = (
+                "batch seq (num_attention_heads d_head) -> batch seq num_attention_heads d_head"
+            )
 
         # Get number of heads from model config (passed to parent AttentionBridge)
         model_config = getattr(self, "config", None)
         if model_config is None:
-            raise RuntimeError(f"Cannot create QKV conversion rule: model config not available")
+            raise RuntimeError("Cannot create QKV conversion rule: model config not available")
 
         n_heads = getattr(model_config, "n_heads", None) or getattr(
             model_config, "num_attention_heads", None
         )
         if n_heads is None:
             raise RuntimeError(
-                f"Cannot create QKV conversion rule: num_attention_heads not found in config"
+                "Cannot create QKV conversion rule: num_attention_heads not found in config"
             )
 
         return RearrangeHookConversion(
             pattern,
-            three=3,
             num_attention_heads=n_heads,
         )
+
+    def _create_qkv_linear_bridge(
+        self, name: str, model_config: Any, conversion_rule: RearrangeHookConversion
+    ) -> LinearBridge:
+        """Create a LinearBridge that only applies conversion rule to output hooks.
+
+        Args:
+            name: Name for the linear bridge
+            model_config: Model configuration
+            conversion_rule: Conversion rule to apply only to output
+
+        Returns:
+            LinearBridge with conversion rule applied only to output
+        """
+        # Create LinearBridge without conversion rule
+        bridge = LinearBridge(name=name, config=model_config)
+
+        # Manually apply conversion rule only to output hook
+        bridge.hook_out.hook_conversion = conversion_rule
+
+        return bridge
 
     def set_original_component(self, original_component: torch.nn.Module) -> None:
         """Set the original component that this bridge wraps and initialize LinearBridges for Q, K, and V transformations.
@@ -116,23 +138,26 @@ class JointQKVAttentionBridge(AttentionBridge):
         self.k.set_original_component(W_K_transformation)
         self.v.set_original_component(W_V_transformation)
 
-    def forward(self, input: torch.Tensor, *args: Any, **kwargs: Any) -> Any:
+    def forward(self, *args: Any, **kwargs: Any) -> Any:
         """Forward pass through the QKV linear transformation with hooks.
 
         Args:
-            input: Input tensor
-            *args: Additional positional arguments
+            *args: Positional arguments (first should be input tensor)
             **kwargs: Additional keyword arguments
 
         Returns:
             Output tensor after QKV linear transformation
         """
-        output = super().forward(input, *args, **kwargs)
+        output = super().forward(*args, **kwargs)
 
-        # Run the input through the individual Q, K, and V transformations
+        # Extract input tensor to run through individual Q, K, and V transformations
         # in order to hook their outputs
-        self.q(input)
-        self.k(input)
-        self.v(input)
+        input_tensor = (
+            args[0] if len(args) > 0 else kwargs.get("input", kwargs.get("hidden_states"))
+        )
+        if input_tensor is not None:
+            self.q(input_tensor)
+            self.k(input_tensor)
+            self.v(input_tensor)
 
         return output
