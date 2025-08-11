@@ -13,6 +13,9 @@ from transformer_lens.conversion_utils.conversion_steps.attention_auto_conversio
 from transformer_lens.conversion_utils.conversion_steps.base_hook_conversion import (
     BaseHookConversion,
 )
+from transformer_lens.conversion_utils.conversion_steps.rearrange_hook_conversion import (
+    RearrangeHookConversion,
+)
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
@@ -27,7 +30,6 @@ class AttentionBridge(GeneralizedComponent):
     """
 
     hook_aliases = {
-        "hook_pattern": "hook_attention_weights",  # Capture attention patterns, not input
         "hook_result": "hook_hidden_states",
         "hook_attn_scores": "o.hook_in",
         "hook_q": "q.hook_out",
@@ -70,11 +72,17 @@ class AttentionBridge(GeneralizedComponent):
             name, config=config, submodules=submodules or {}, conversion_rule=conversion_rule
         )
         self.hook_hidden_states = HookPoint()
-        self.hook_attention_weights = HookPoint()
+        self.hook_pattern = HookPoint()
 
         # Apply conversion rule to attention-specific hooks
         self.hook_hidden_states.hook_conversion = conversion_rule
-        self.hook_attention_weights.hook_conversion = conversion_rule
+
+        # Create specific conversion rule for attention patterns - reshape to (batch, n_heads, pos, pos)
+        # This assumes the input is (batch, n_heads, seq_len, seq_len) or similar
+        pattern_conversion = RearrangeHookConversion(
+            "batch n_heads pos_q pos_k -> batch n_heads pos_q pos_k"
+        )
+        self.hook_pattern.hook_conversion = pattern_conversion
 
     def _process_output(self, output: Any) -> Any:
         """Process the output from the original component.
@@ -114,9 +122,7 @@ class AttentionBridge(GeneralizedComponent):
                 pass
             elif i == 2:  # Third element is typically attention weights in HuggingFace
                 if element is not None and hasattr(element, "shape"):
-                    element = self._apply_hook_preserving_structure(
-                        element, self.hook_attention_weights
-                    )
+                    element = self._apply_hook_preserving_structure(element, self.hook_pattern)
             processed_output.append(element)
 
         # Apply the main hook_out to the first element (hidden states) if it exists
@@ -142,7 +148,7 @@ class AttentionBridge(GeneralizedComponent):
             if key in ["last_hidden_state", "hidden_states"] and value is not None:
                 value = self._apply_hook_preserving_structure(value, self.hook_hidden_states)
             elif key in ["attentions", "attention_weights"] and value is not None:
-                value = self._apply_hook_preserving_structure(value, self.hook_attention_weights)
+                value = self._apply_hook_preserving_structure(value, self.hook_pattern)
             processed_output[key] = value
 
         # Apply hook_hidden_states and hook_out to the main output (usually hidden_states)

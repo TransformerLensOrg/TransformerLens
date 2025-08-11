@@ -122,5 +122,74 @@ def test_component_access():
     assert hasattr(block, "ln2"), "Block should have second layer norm"
 
 
+def test_attention_pattern_hook_shape():
+    """Test that the attention pattern hook produces the correct shape (batch, n_heads, pos, pos)."""
+    model_name = "gpt2"  # Use a smaller model for testing
+    bridge = TransformerBridge.boot_transformers(model_name)
+
+    if bridge.tokenizer.pad_token is None:
+        bridge.tokenizer.pad_token = bridge.tokenizer.eos_token
+
+    # Enable attention output in the HuggingFace model
+    bridge.original_model.config.output_attentions = True
+
+    # Variable to store captured attention patterns
+    captured_patterns = {}
+
+    def capture_pattern_hook(tensor, hook):
+        """Hook to capture attention patterns."""
+        captured_patterns[hook.name] = tensor.clone()
+        return tensor
+
+    # Add hook to capture attention patterns
+    bridge.blocks[0].attn.hook_pattern.add_hook(capture_pattern_hook)
+
+    try:
+        # Run model with a prompt
+        prompt = "The quick brown fox"
+        tokens = bridge.to_tokens(prompt)
+        batch_size, seq_len = tokens.shape
+
+        # Run forward pass
+        output = bridge(tokens)
+
+        # Verify we captured attention patterns
+        assert len(captured_patterns) > 0, "Should have captured attention patterns"
+
+        # Get the captured pattern tensor
+        pattern_tensor = list(captured_patterns.values())[0]
+
+        # Verify the shape is (batch, n_heads, pos, pos)
+        assert (
+            len(pattern_tensor.shape) == 4
+        ), f"Pattern tensor should be 4D, got {len(pattern_tensor.shape)}D"
+
+        batch_dim, n_heads_dim, pos_q_dim, pos_k_dim = pattern_tensor.shape
+
+        # Verify dimensions make sense
+        assert batch_dim == batch_size, f"Batch dimension should be {batch_size}, got {batch_dim}"
+        assert (
+            n_heads_dim == bridge.cfg.n_heads
+        ), f"Heads dimension should be {bridge.cfg.n_heads}, got {n_heads_dim}"
+        assert (
+            pos_q_dim == seq_len
+        ), f"Query position dimension should be {seq_len}, got {pos_q_dim}"
+        assert pos_k_dim == seq_len, f"Key position dimension should be {seq_len}, got {pos_k_dim}"
+
+        # Verify it's actually attention weights (should be non-negative and roughly sum to 1 along last dim)
+        assert torch.all(pattern_tensor >= 0), "Attention patterns should be non-negative"
+
+        # Check that attention weights roughly sum to 1 along the last dimension (with some tolerance for numerical precision)
+        attention_sums = pattern_tensor.sum(dim=-1)
+        expected_sums = torch.ones_like(attention_sums)
+        assert torch.allclose(
+            attention_sums, expected_sums, atol=1e-5
+        ), "Attention patterns should sum to ~1 along key dimension"
+
+    finally:
+        # Clean up hooks
+        bridge.blocks[0].attn.hook_pattern.remove_hooks()
+
+
 if __name__ == "__main__":
     pytest.main([__file__])
