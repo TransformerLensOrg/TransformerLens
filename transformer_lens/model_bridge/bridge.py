@@ -193,19 +193,21 @@ class TransformerBridge(nn.Module):
     def enable_compatibility_mode(self, disable_warnings: bool = False) -> None:
         """Enable compatibility mode for the bridge.
 
-        This sets up the bridge to work with legacy HookedTransformer components.
-        It will also disable warnings about missing components if specified.
+        This sets up the bridge to work with legacy HookedTransformer components/hooks.
+        It will also disable warnings about the usage of legacy components/hooks if specified.
 
         Args:
-            disable_warnings: Whether to disable warnings about missing components
+            disable_warnings: Whether to disable warnings about legacy components/hooks
         """
         self.compatibility_mode = True
         component_mapping = self.adapter.get_component_mapping()
 
+        # Enable compatibility mode for all individual components of the bridge
         for component in component_mapping.values():
-            self.adapter.enable_compatibility_mode(
-                self.original_model, component, disable_warnings=disable_warnings
+            remote_component = self.adapter.get_remote_component(
+                self.original_model, component.name
             )
+            component.enable_compatibility_mode(remote_component, disable_warnings=disable_warnings)
 
     # ==================== TOKENIZATION METHODS ====================
 

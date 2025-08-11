@@ -389,29 +389,3 @@ class ArchitectureAdapter:
             items[parent_key] = input
 
         return items
-
-    def enable_compatibility_mode(
-        self, model, component: GeneralizedComponent, disable_warnings: bool = False
-    ) -> None:
-        """Enable compatibility mode for the adapter.
-
-        This sets up the adapter to work with legacy HookedTransformer components.
-        It will also disable warnings about missing components if specified.
-
-        Args:
-            disable_warnings: Whether to disable warnings about missing components
-        """
-
-        component.compatibility_mode = True
-        component.disable_warnings = disable_warnings
-
-        if component.is_list_item:
-            remote_module_list = self.get_remote_component(model, component.name)
-
-            if isinstance(remote_module_list, nn.ModuleList):
-                for block in remote_module_list:
-                    self.enable_compatibility_mode(model, block, disable_warnings=disable_warnings)
-
-        for component_submodule in component.submodules.values():
-            component_submodule.compatibility_mode = True
-            component_submodule.disable_warnings = disable_warnings

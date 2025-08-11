@@ -63,6 +63,43 @@ class GeneralizedComponent(nn.Module):
                 return True
         return False
 
+    def enable_compatibility_mode(
+        self, remote_component: nn.Module, disable_warnings: bool = False
+    ) -> None:
+        """
+        This function sets this component up to work with legacy HookedTransformer components/hooks.
+        It will also disable warnings about the usage of legacy components/hooks if specified.
+
+        Args:
+            remote_component: The remote component of the current component required for BlockBridges
+                                to be able to iterate through the different blocks
+            disable_warnings: Whether to disable warnings about legacy components/hooks
+        """
+
+        # Set compatibility mode for the component
+        self.compatibility_mode = True
+        self.disable_warnings = disable_warnings
+
+        # We need to enable compatibility mode for all different blocks if the component is a list item
+        if self.is_list_item:
+            # Make sure the remote component is a ModuleList
+            if isinstance(remote_component, nn.ModuleList):
+                # Iterate over each block in the ModuleList and enable compatibility mode
+                for block in remote_component:
+                    block.enable_compatibility_mode(
+                        remote_component, disable_warnings=disable_warnings
+                    )
+            else:
+                # If the remote component is not a ModuleList, raise an error
+                raise TypeError(
+                    f"Expected remote_component to be nn.ModuleList, got {type(remote_component)}"
+                )
+
+        # If the component has submodules, enable compatibility mode for each submodule
+        for component_submodule in self.submodules.values():
+            component_submodule.compatibility_mode = True
+            component_submodule.disable_warnings = disable_warnings
+
     def set_original_component(self, original_component: nn.Module) -> None:
         """Set the original component that this bridge wraps.
 
