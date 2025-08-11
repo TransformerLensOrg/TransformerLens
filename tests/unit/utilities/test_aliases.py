@@ -20,6 +20,7 @@ class TestResolveHookAlias:
         mock_target = Mock()
         mock_hook = Mock()
         mock_target.actual_hook = mock_hook
+        mock_target.disable_warnings = False  # Ensure warnings are enabled
 
         hook_aliases = {"old_hook": "actual_hook"}
 
