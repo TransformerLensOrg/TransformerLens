@@ -35,7 +35,9 @@ class TestEndToEndBridge:
                 name="encoder.layers",
                 submodules={
                     "ln1": NormalizationBridge(name="norm1"),
-                    "attn": AttentionBridge(name="self_attn", config=type("Cfg", (), {"n_heads": 1})()),
+                    "attn": AttentionBridge(
+                        name="self_attn", config=type("Cfg", (), {"n_heads": 1})()
+                    ),
                 },
             ),
         }
