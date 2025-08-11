@@ -11,7 +11,6 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import partial
 from typing import (
-    TYPE_CHECKING,
     Any,
     Callable,
     Iterable,
@@ -34,10 +33,6 @@ from transformer_lens.conversion_utils.conversion_steps.base_hook_conversion imp
     BaseHookConversion,
 )
 from transformer_lens.utils import Slice, SliceInput
-
-# Import for hook conversions - use TYPE_CHECKING to avoid circular imports
-if TYPE_CHECKING:
-    pass
 
 
 @dataclass
