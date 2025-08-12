@@ -8,7 +8,6 @@ bridge = TransformerBridge.boot_transformers(
     device="cpu",
     hf_config_overrides={
         "attn_implementation": "eager",
-        "output_attentions": True,
     },
 )
 

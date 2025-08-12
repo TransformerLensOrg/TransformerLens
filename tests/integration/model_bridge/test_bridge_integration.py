@@ -215,7 +215,6 @@ def test_attention_pattern_hook_shape():
         model_name,
         hf_config_overrides={
             "attn_implementation": "eager",
-            "output_attentions": True,
         },
     )
 
