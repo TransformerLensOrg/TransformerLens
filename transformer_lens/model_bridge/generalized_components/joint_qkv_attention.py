@@ -143,7 +143,7 @@ class JointQKVAttentionBridge(AttentionBridge):
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         """Forward pass that handles both fused and separate Q, K, V computations.
-        
+
         When hooks are present on Q, K, or V components, this method reconstructs
         the attention computation using the hooked values. Otherwise, it falls back
         to the original fused computation for efficiency.
@@ -175,7 +175,7 @@ class JointQKVAttentionBridge(AttentionBridge):
                 q_output = self.q.original_component(raw_input_tensor)
                 k_output = self.k.original_component(raw_input_tensor)
                 v_output = self.v.original_component(raw_input_tensor)
-                
+
                 # Apply output hooks
                 q_output = self.q.hook_out(q_output)
                 k_output = self.k.hook_out(k_output)
