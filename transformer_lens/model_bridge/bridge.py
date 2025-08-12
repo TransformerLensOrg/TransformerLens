@@ -893,14 +893,21 @@ class TransformerBridge(nn.Module):
 
         # Helper function to apply hooks based on name or filter function
         def apply_hooks(hooks: List[Tuple[Union[str, Callable], Callable]], is_fwd: bool):
+            # Collect aliases for resolving legacy hook names
+            aliases = collect_aliases_recursive(self)
+
             for hook_name_or_filter, hook_fn in hooks:
                 if isinstance(hook_name_or_filter, str):
-                    # Direct hook name
+                    # Direct hook name - check for aliases first
                     hook_dict = self.hook_dict
-                    if hook_name_or_filter in hook_dict:
-                        add_hook_to_point(
-                            hook_dict[hook_name_or_filter], hook_fn, hook_name_or_filter
-                        )
+                    actual_hook_name = hook_name_or_filter
+
+                    # If this is an alias, resolve it to the actual hook name
+                    if hook_name_or_filter in aliases:
+                        actual_hook_name = aliases[hook_name_or_filter]
+
+                    if actual_hook_name in hook_dict:
+                        add_hook_to_point(hook_dict[actual_hook_name], hook_fn, actual_hook_name)
                 else:
                     # Filter function
                     hook_dict = self.hook_dict

@@ -163,16 +163,125 @@ class JointQKVAttentionBridge(AttentionBridge):
         Returns:
             Output tensor after QKV linear transformation
         """
-        output = super().forward(*args, **kwargs)
-
         # Extract input tensor to run through individual Q, K, and V transformations
-        # in order to hook their outputs
         input_tensor = (
             args[0] if len(args) > 0 else kwargs.get("input", kwargs.get("hidden_states"))
         )
-        if input_tensor is not None:
-            self.q(input_tensor)
-            self.k(input_tensor)
-            self.v(input_tensor)
 
+        if input_tensor is not None:
+            # Check if any hooks are registered on Q, K, or V outputs
+            has_hooks = (
+                len(self.q.hook_out.fwd_hooks) > 0
+                or len(self.k.hook_out.fwd_hooks) > 0
+                or len(self.v.hook_out.fwd_hooks) > 0
+            )
+
+            if has_hooks:
+                # If hooks are present, we need to reconstruct the attention computation
+                # using the hooked Q, K, V values instead of the fused computation
+
+                # Apply input hook
+                hooked_input = input_tensor
+                if "query_input" in kwargs:
+                    hooked_input = self.hook_in(kwargs["query_input"])
+                elif "hidden_states" in kwargs:
+                    hooked_input = self.hook_in(kwargs["hidden_states"])
+                elif len(args) > 0 and isinstance(args[0], torch.Tensor):
+                    hooked_input = self.hook_in(args[0])
+
+                # Run individual Q, K, V transformations (these can be hooked)
+                q_output = self.q(hooked_input)  # This can be modified by hooks
+                k_output = self.k(hooked_input)  # This can be modified by hooks
+                v_output = self.v(hooked_input)  # This can be modified by hooks
+
+                # Reconstruct attention computation using hooked Q, K, V
+                output = self._reconstruct_attention(q_output, k_output, v_output, **kwargs)
+
+                # Apply output hooks
+                output = self._process_output(output)
+                return output
+            else:
+                # No hooks on Q, K, V - run individual transformations for compatibility
+                # but use the original fused computation for efficiency
+                self.q(input_tensor)
+                self.k(input_tensor)
+                self.v(input_tensor)
+
+        # Run the original fused computation
+        output = super().forward(*args, **kwargs)
         return output
+
+    def _reconstruct_attention(
+        self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, **kwargs
+    ) -> torch.Tensor:
+        """Reconstruct attention computation using separate Q, K, V tensors.
+
+        This method manually computes attention when hooks have modified the Q, K, or V values.
+        """
+        # Get original component for configuration
+        original_component = self.original_component
+
+        # Extract attention parameters
+        if hasattr(original_component, "num_heads"):
+            num_heads = original_component.num_heads
+        elif hasattr(original_component, "num_attention_heads"):
+            num_heads = original_component.num_attention_heads
+        else:
+            raise ValueError("Cannot determine number of attention heads")
+
+        batch_size, seq_len, hidden_size = q.shape
+        head_dim = hidden_size // num_heads
+
+        # Reshape Q, K, V for multi-head attention
+        q = q.view(batch_size, seq_len, num_heads, head_dim).transpose(
+            1, 2
+        )  # (batch, heads, seq, head_dim)
+        k = k.view(batch_size, seq_len, num_heads, head_dim).transpose(
+            1, 2
+        )  # (batch, heads, seq, head_dim)
+        v = v.view(batch_size, seq_len, num_heads, head_dim).transpose(
+            1, 2
+        )  # (batch, heads, seq, head_dim)
+
+        # Compute attention scores
+        scale = head_dim**-0.5
+        attn_scores = torch.matmul(q, k.transpose(-2, -1)) * scale
+
+        # Apply causal mask (for GPT-2)
+        if (
+            hasattr(original_component, "register_buffer")
+            or "gpt" in str(type(original_component)).lower()
+        ):
+            # Create causal mask
+            causal_mask = torch.tril(
+                torch.ones(seq_len, seq_len, device=q.device, dtype=torch.bool)
+            )
+            attn_scores = attn_scores.masked_fill(~causal_mask, float("-inf"))
+
+        # Apply attention mask if provided
+        attention_mask = kwargs.get("attention_mask", None)
+        if attention_mask is not None:
+            attn_scores = attn_scores + attention_mask
+
+        # Softmax to get attention weights
+        attn_weights = torch.nn.functional.softmax(attn_scores, dim=-1)
+
+        # Apply dropout if configured (though we're in eval mode, so this should be a no-op)
+        if hasattr(original_component, "attn_dropout"):
+            attn_weights = original_component.attn_dropout(attn_weights)
+
+        # Apply attention to values
+        attn_output = torch.matmul(attn_weights, v)  # (batch, heads, seq, head_dim)
+
+        # Reshape back to original format
+        attn_output = (
+            attn_output.transpose(1, 2).contiguous().view(batch_size, seq_len, hidden_size)
+        )
+
+        # Apply output projection (this should be handled by the 'o' component)
+        if hasattr(self, "o") and self.o is not None:
+            attn_output = self.o(attn_output)
+
+        # Return in the same format as the original component (tuple with hidden_states, weights, patterns)
+        # For now, we don't reconstruct the attention weights/patterns, so return None for those
+        return (attn_output, None, None)
