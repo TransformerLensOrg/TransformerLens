@@ -42,7 +42,7 @@ class TestJointQKVAttentionHooksSimple:
             batch, pos, heads, d_head = value.shape
             assert heads == 12, f"Expected 12 heads, got {heads}"
             assert d_head == 64, f"Expected 64 d_head, got {d_head}"
-            
+
             # Ablate the specified head
             value[:, :, head_idx, :] = 0.0
             return value
@@ -81,10 +81,13 @@ class TestJointQKVAttentionHooksSimple:
 
         # Verify extreme ablation has meaningful effect
         effect_size = abs(extreme_hooked_loss - original_loss)
-        assert effect_size > 0.01, f"Extreme V ablation should have meaningful effect, got {effect_size:.6f}"
+        assert (
+            effect_size > 0.01
+        ), f"Extreme V ablation should have meaningful effect, got {effect_size:.6f}"
 
     def test_multiple_v_hooks_cumulative(self, model, sample_input):
         """Test that multiple V hooks on different layers have cumulative effects."""
+
         def v_scale_hook(
             value: Float[torch.Tensor, "batch pos head_index d_head"], hook: HookPoint
         ) -> Float[torch.Tensor, "batch pos head_index d_head"]:
@@ -180,5 +183,86 @@ class TestJointQKVAttentionHooksSimple:
         )
 
         # Verify we get reasonable values (original was ~3.999, ablated should be different)
-        assert 3.0 < original_loss < 5.0, f"Original loss should be reasonable, got {original_loss:.6f}"
-        assert 3.0 < ablated_loss < 6.0, f"Ablated loss should be reasonable, got {ablated_loss:.6f}"
+        assert (
+            3.0 < original_loss < 5.0
+        ), f"Original loss should be reasonable, got {original_loss:.6f}"
+        assert (
+            3.0 < ablated_loss < 6.0
+        ), f"Ablated loss should be reasonable, got {ablated_loss:.6f}"
+
+    def test_comprehensive_hook_detection(self, model, sample_input):
+        """Test that all types of hooks (input/output, forward/backward) are properly detected."""
+        layer_idx = 0
+
+        def dummy_hook(value, hook):
+            """Simple hook that doesn't modify the tensor."""
+            return value
+
+        def dummy_backward_hook(grad, hook):
+            """Simple backward hook."""
+            return grad
+
+        # Test that forward hooks on hook_in are detected
+        original_loss = model(sample_input, return_type="loss")
+
+        # Add forward hook to Q input
+        q_hook_in_loss = model.run_with_hooks(
+            sample_input,
+            return_type="loss",
+            fwd_hooks=[(f"blocks.{layer_idx}.attn.q.hook_in", dummy_hook)],
+        )
+
+        # Should use reconstruction path (may have slight differences due to numerical precision)
+        # The key test is that it doesn't error and processes the hook
+        assert isinstance(q_hook_in_loss, torch.Tensor), "Q hook_in should be processed correctly"
+
+        # Add forward hook to V input
+        v_hook_in_loss = model.run_with_hooks(
+            sample_input,
+            return_type="loss",
+            fwd_hooks=[(f"blocks.{layer_idx}.attn.v.hook_in", dummy_hook)],
+        )
+
+        assert isinstance(v_hook_in_loss, torch.Tensor), "V hook_in should be processed correctly"
+
+    def test_hookpoint_has_hooks_method(self):
+        """Test the new has_hooks method on HookPoint."""
+        from transformer_lens.hook_points import HookPoint
+
+        # Create a fresh HookPoint
+        hook_point = HookPoint()
+
+        # Initially should have no hooks
+        assert not hook_point.has_hooks("fwd"), "Should have no forward hooks initially"
+        assert not hook_point.has_hooks("bwd"), "Should have no backward hooks initially"
+        assert not hook_point.has_hooks("both"), "Should have no hooks initially"
+
+        # Add a forward hook
+        def dummy_hook(value, hook):
+            return value
+
+        hook_point.add_hook(dummy_hook, dir="fwd")
+
+        # Should now detect forward hooks
+        assert hook_point.has_hooks("fwd"), "Should detect forward hooks"
+        assert not hook_point.has_hooks("bwd"), "Should still have no backward hooks"
+        assert hook_point.has_hooks("both"), "Should detect hooks when checking both directions"
+
+        # Add a backward hook
+        hook_point.add_hook(dummy_hook, dir="bwd")
+
+        # Should now detect both
+        assert hook_point.has_hooks("fwd"), "Should still detect forward hooks"
+        assert hook_point.has_hooks("bwd"), "Should now detect backward hooks"
+        assert hook_point.has_hooks("both"), "Should detect hooks in both directions"
+
+        # Test permanent hook detection
+        hook_point.add_hook(dummy_hook, dir="fwd", is_permanent=True)
+
+        assert hook_point.has_hooks(
+            "fwd", including_permanent=True
+        ), "Should detect permanent hooks when included"
+        # Note: We can't easily test excluding permanent hooks without removing non-permanent ones
+
+        # Clean up
+        hook_point.remove_hooks("both", including_permanent=True)

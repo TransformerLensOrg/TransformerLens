@@ -169,11 +169,14 @@ class JointQKVAttentionBridge(AttentionBridge):
         )
 
         if input_tensor is not None:
-            # Check if any hooks are registered on Q, K, or V outputs
+            # Check if any hooks are registered on Q, K, or V (both input and output, forward and backward)
             has_hooks = (
-                len(self.q.hook_out.fwd_hooks) > 0
-                or len(self.k.hook_out.fwd_hooks) > 0
-                or len(self.v.hook_out.fwd_hooks) > 0
+                self.q.hook_in.has_hooks()
+                or self.q.hook_out.has_hooks()
+                or self.k.hook_in.has_hooks()
+                or self.k.hook_out.has_hooks()
+                or self.v.hook_in.has_hooks()
+                or self.v.hook_out.has_hooks()
             )
 
             if has_hooks:
@@ -210,9 +213,70 @@ class JointQKVAttentionBridge(AttentionBridge):
     ) -> tuple:
         """Reconstruct attention computation using separate Q, K, V tensors.
 
-        This method manually computes attention when hooks have modified the Q, K, or V values.
+        This method uses the original attention component's _attn method when possible,
+        or falls back to manual computation when hooks have modified the Q, K, or V values.
         """
-        # Get original component for configuration
+        original_component = self.original_component
+
+        # Try to use the original _attn method if available
+        if hasattr(original_component, "_attn"):
+            # The original _attn method expects [batch, heads, seq, head_dim] format
+            # Convert our Q, K, V tensors to this format
+
+            if len(q.shape) == 4:
+                # Format: [batch, pos, head_index, d_head] -> [batch, head_index, pos, d_head]
+                q_attn = q.transpose(1, 2)
+                k_attn = k.transpose(1, 2)
+                v_attn = v.transpose(1, 2)
+            elif len(q.shape) == 3:
+                # Format: [batch, pos, hidden_size] -> need to reshape
+                batch_size, seq_len, hidden_size = q.shape
+                num_heads = original_component.num_heads
+                head_dim = hidden_size // num_heads
+
+                q_attn = q.view(batch_size, seq_len, num_heads, head_dim).transpose(1, 2)
+                k_attn = k.view(batch_size, seq_len, num_heads, head_dim).transpose(1, 2)
+                v_attn = v.view(batch_size, seq_len, num_heads, head_dim).transpose(1, 2)
+            else:
+                raise ValueError(f"Unexpected Q tensor shape: {q.shape}")
+
+            # Call the original _attn method
+            attn_output, attn_weights = original_component._attn(
+                q_attn,
+                k_attn,
+                v_attn,
+                attention_mask=kwargs.get("attention_mask"),
+                head_mask=kwargs.get("head_mask"),
+            )
+
+            # The _attn method returns [batch, heads, seq, head_dim], need to merge heads
+            # Use the original component's _merge_heads method for exact equivalence
+            if hasattr(original_component, "_merge_heads"):
+                attn_output_merged = original_component._merge_heads(
+                    attn_output, original_component.num_heads, original_component.head_dim
+                )
+            else:
+                # Fallback to manual reshaping if _merge_heads not available
+                batch_size, num_heads, seq_len, head_dim = attn_output.shape
+                hidden_size = num_heads * head_dim
+                attn_output_merged = (
+                    attn_output.transpose(1, 2).contiguous().view(batch_size, seq_len, hidden_size)
+                )
+
+            # Apply output projection through our bridge component
+            if hasattr(self, "o") and self.o is not None:
+                attn_output_merged = self.o(attn_output_merged)
+
+            return (attn_output_merged, attn_weights, None)
+
+        # Fallback: manual computation (original implementation)
+        else:
+            return self._manual_attention_computation(q, k, v, **kwargs)
+
+    def _manual_attention_computation(
+        self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, **kwargs
+    ) -> tuple:
+        """Manual attention computation as fallback."""
         original_component = self.original_component
 
         # Extract attention parameters
@@ -228,7 +292,7 @@ class JointQKVAttentionBridge(AttentionBridge):
             # Format: [batch, pos, hidden_size] - need to reshape to multi-head format
             batch_size, seq_len, hidden_size = q.shape
             head_dim = hidden_size // num_heads
-            
+
             # Reshape Q, K, V for multi-head attention
             q = q.view(batch_size, seq_len, num_heads, head_dim).transpose(1, 2)
             k = k.view(batch_size, seq_len, num_heads, head_dim).transpose(1, 2)
@@ -236,13 +300,15 @@ class JointQKVAttentionBridge(AttentionBridge):
         elif len(q.shape) == 4:
             # Format: [batch, pos, head_index, d_head] - already in multi-head format
             batch_size, seq_len, num_heads_tensor, head_dim = q.shape
-            
+
             # Verify the tensor dimensions match expected head count
-            assert num_heads_tensor == num_heads, f"Expected {num_heads} heads, got {num_heads_tensor}"
-            
+            assert (
+                num_heads_tensor == num_heads
+            ), f"Expected {num_heads} heads, got {num_heads_tensor}"
+
             # Transpose to [batch, heads, seq, head_dim] format
             q = q.transpose(1, 2)
-            k = k.transpose(1, 2)  
+            k = k.transpose(1, 2)
             v = v.transpose(1, 2)
         else:
             raise ValueError(f"Unexpected Q tensor shape: {q.shape}. Expected 3D or 4D tensor.")
@@ -278,6 +344,7 @@ class JointQKVAttentionBridge(AttentionBridge):
         attn_output = torch.matmul(attn_weights, v)  # (batch, heads, seq, head_dim)
 
         # Reshape back to original format
+        hidden_size = num_heads * head_dim
         attn_output = (
             attn_output.transpose(1, 2).contiguous().view(batch_size, seq_len, hidden_size)
         )
@@ -287,5 +354,4 @@ class JointQKVAttentionBridge(AttentionBridge):
             attn_output = self.o(attn_output)
 
         # Return in the same format as the original component (tuple with hidden_states, weights, patterns)
-        # For now, we don't reconstruct the attention weights/patterns, so return None for those
         return (attn_output, None, None)
