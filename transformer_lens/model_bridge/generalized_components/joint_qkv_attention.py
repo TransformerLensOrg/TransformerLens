@@ -112,7 +112,7 @@ class JointQKVAttentionBridge(AttentionBridge):
         )
 
     def _create_qkv_linear_bridge(
-        self, name: str, model_config: Any, conversion_rule: RearrangeHookConversion
+        self, name: str, model_config: Any, conversion_rule: BaseHookConversion
     ) -> LinearBridge:
         """Create a LinearBridge that only applies conversion rule to output hooks.
 
