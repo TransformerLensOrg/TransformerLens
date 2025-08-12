@@ -125,11 +125,13 @@ class AttentionBridge(GeneralizedComponent):
                     element = self._apply_hook_preserving_structure(
                         element, self.hook_hidden_states
                     )
-            elif i == 1:  # Second element might be KV cache or attention weights
-                # Skip KV cache - we want actual attention weights
-                pass
-            elif i == 2:  # Third element is typically attention weights in HuggingFace
-                if element is not None and hasattr(element, "shape"):
+            elif i == 1:
+                # When use_cache=False, attention weights may be at index 1
+                if isinstance(element, torch.Tensor):
+                    element = self._apply_hook_preserving_structure(element, self.hook_pattern)
+                # else: assume KV cache and skip
+            elif i == 2:  # With cache enabled, attention weights are typically at index 2
+                if isinstance(element, torch.Tensor):
                     element = self._apply_hook_preserving_structure(element, self.hook_pattern)
             processed_output.append(element)
 
