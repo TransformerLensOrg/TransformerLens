@@ -111,7 +111,7 @@ def boot(
         ArchitectureAdapterFactory,
     )
 
-    hf_config = AutoConfig.from_pretrained(model_name)
+    hf_config = AutoConfig.from_pretrained(model_name, output_attentions=True)
 
     # Apply config variables to hf_config before selecting adapter
     if hf_config_overrides:
