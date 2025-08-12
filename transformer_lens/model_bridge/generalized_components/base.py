@@ -10,8 +10,8 @@ from typing import Any, Dict, Optional
 import torch
 import torch.nn as nn
 
+import transformer_lens.model_bridge.architecture_adapter as architecture_adapter
 from transformer_lens.hook_points import HookPoint
-from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.utilities.aliases import resolve_alias
 
 
@@ -65,7 +65,10 @@ class GeneralizedComponent(nn.Module):
         return False
 
     def enable_compatibility_mode(
-        self, model: nn.Module, adapter: ArchitectureAdapter, disable_warnings: bool = False
+        self,
+        model: nn.Module,
+        adapter: architecture_adapter.ArchitectureAdapter,
+        disable_warnings: bool = False,
     ) -> None:
         """
         This function sets this component up to work with legacy HookedTransformer components/hooks.
