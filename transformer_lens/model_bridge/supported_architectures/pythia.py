@@ -137,7 +137,7 @@ class PythiaArchitectureAdapter(ArchitectureAdapter):
                 submodules={
                     "ln1": NormalizationBridge(name="input_layernorm"),
                     "ln2": NormalizationBridge(name="post_attention_layernorm"),
-                    "attn": AttentionBridge(name="attention"),
+                    "attn": AttentionBridge(name="attention", config=self.cfg),
                     "mlp": MLPBridge(name="mlp"),
                 },
             ),

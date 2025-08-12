@@ -71,6 +71,7 @@ class Gemma1ArchitectureAdapter(ArchitectureAdapter):
                     "ln2": NormalizationBridge(name="post_attention_layernorm"),
                     "attn": AttentionBridge(
                         name="self_attn",
+                        config=self.cfg,
                         submodules={
                             "q": LinearBridge(name="q_proj"),
                             "k": LinearBridge(name="k_proj"),

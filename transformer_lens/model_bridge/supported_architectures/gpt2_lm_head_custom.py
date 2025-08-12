@@ -80,7 +80,7 @@ class Gpt2LmHeadCustomArchitectureAdapter(ArchitectureAdapter):
                 name="transformer.h",
                 submodules={
                     "ln1": NormalizationBridge(name="ln_1"),
-                    "attn": AttentionBridge(name="attn"),
+                    "attn": AttentionBridge(name="attn", config=self.cfg),
                     "ln2": NormalizationBridge(name="ln_2"),
                     "mlp": MLPBridge(name="mlp"),
                 },

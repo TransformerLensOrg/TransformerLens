@@ -91,11 +91,12 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
                     "ln1": NormalizationBridge(name="ln_1"),
                     "attn": JointQKVAttentionBridge(
                         name="attn",
+                        model_config=self.cfg,
                         submodules={
                             "qkv": LinearBridge(name="c_attn"),
                             "o": LinearBridge(name="c_proj"),
                         },
-                        config={
+                        qkv_config={
                             "split_qkv_matrix": self.split_qkv_matrix,
                         },
                     ),

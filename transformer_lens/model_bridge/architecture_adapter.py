@@ -29,6 +29,8 @@ class ArchitectureAdapter:
     (for initializing weights from one format to another).
     """
 
+    default_cfg: dict[str, Any] = {}
+
     def __init__(self, cfg: Any) -> None:
         """Initialize the architecture adapter.
 
@@ -36,9 +38,17 @@ class ArchitectureAdapter:
             cfg: The user-provided configuration object.
         """
         self.cfg = cfg
-        self.default_cfg: dict[str, Any] = {}
         self.component_mapping: ComponentMapping | None = None
         self.conversion_rules: HookConversionSet | None = None
+
+        # Merge default_cfg into cfg for missing variables
+        self._merge_default_config()
+
+    def _merge_default_config(self) -> None:
+        """Merge default_cfg into cfg for variables that don't exist in cfg."""
+        for key, value in self.default_cfg.items():
+            if key not in self.cfg:
+                self.cfg[key] = value
 
     def get_component_mapping(self) -> ComponentMapping:
         """Get the full component mapping.

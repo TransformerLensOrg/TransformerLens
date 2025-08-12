@@ -142,13 +142,14 @@ class NeoxArchitectureAdapter(ArchitectureAdapter):
                     "ln2": NormalizationBridge(name="post_attention_layernorm"),
                     "attn": JointQKVAttentionBridge(
                         name="attention",
+                        model_config=self.cfg,
                         submodules={
                             "W_QKV": LinearBridge(
                                 name="query_key_value",
                             ),
                             "W_O": LinearBridge(name="dense"),
                         },
-                        config={"split_qkv_matrix": self.split_qkv_matrix},
+                        qkv_config={"split_qkv_matrix": self.split_qkv_matrix},
                     ),
                     "mlp": MLPBridge(
                         name="mlp",

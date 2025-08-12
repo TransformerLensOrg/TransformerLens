@@ -4,6 +4,9 @@ from typing import Any, Dict, Optional
 
 import torch
 
+from transformer_lens.conversion_utils.conversion_steps.base_hook_conversion import (
+    BaseHookConversion,
+)
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
@@ -20,7 +23,8 @@ class LinearBridge(GeneralizedComponent):
         self,
         name: str,
         config: Optional[Any] = None,
-        submodules: Optional[Dict[str, GeneralizedComponent]] = {},
+        submodules: Optional[Dict[str, GeneralizedComponent]] = None,
+        conversion_rule: Optional[BaseHookConversion] = None,
     ) -> None:
         """Initialize the LinearBridge.
 
@@ -28,8 +32,9 @@ class LinearBridge(GeneralizedComponent):
             name: The name of this component
             config: Optional configuration (unused for LinearBridge)
             submodules: Dictionary of GeneralizedComponent submodules to register
+            conversion_rule: Optional conversion rule for this component's hooks
         """
-        super().__init__(name, config, submodules=submodules)
+        super().__init__(name, config, submodules=submodules, conversion_rule=conversion_rule)
 
     def forward(self, input: torch.Tensor, *args: Any, **kwargs: Any) -> torch.Tensor:
         """Forward pass through the linear layer with hooks.

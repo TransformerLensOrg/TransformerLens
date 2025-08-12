@@ -83,7 +83,7 @@ class PhiArchitectureAdapter(ArchitectureAdapter):
                 submodules={
                     "ln1": NormalizationBridge(name="input_layernorm"),
                     "ln2": NormalizationBridge(name="input_layernorm"),
-                    "attn": AttentionBridge(name="self_attn"),
+                    "attn": AttentionBridge(name="self_attn", config=self.cfg),
                     "mlp": MLPBridge(name="mlp"),
                 },
             ),

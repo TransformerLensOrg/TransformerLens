@@ -65,6 +65,7 @@ class GptjArchitectureAdapter(ArchitectureAdapter):
                     "ln1": NormalizationBridge(name="ln_1"),
                     "attn": AttentionBridge(
                         name="attn",
+                        config=self.cfg,
                         submodules={
                             "q": LinearBridge(name="q_proj"),
                             "k": LinearBridge(name="k_proj"),

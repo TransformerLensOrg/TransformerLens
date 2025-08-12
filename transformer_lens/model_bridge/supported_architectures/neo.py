@@ -69,6 +69,7 @@ class NeoArchitectureAdapter(ArchitectureAdapter):
                     "ln1": NormalizationBridge(name="ln_1"),
                     "attn": AttentionBridge(
                         name="attn.attention",
+                        config=self.cfg,
                         submodules={
                             "W_Q": LinearBridge(name="q_proj"),
                             "W_K": LinearBridge(name="k_proj"),

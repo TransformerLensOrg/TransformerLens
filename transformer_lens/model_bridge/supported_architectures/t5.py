@@ -50,7 +50,7 @@ class T5ArchitectureAdapter(ArchitectureAdapter):
                 name="encoder.block",
                 submodules={
                     "ln1": NormalizationBridge(name="layer.0.layer_norm"),
-                    "attn": AttentionBridge(name="layer.0.SelfAttention"),
+                    "attn": AttentionBridge(name="layer.0.SelfAttention", config=self.cfg),
                     "ln2": NormalizationBridge(name="layer.1.layer_norm"),
                     "mlp": MLPBridge(name="layer.1.DenseReluDense"),
                 },

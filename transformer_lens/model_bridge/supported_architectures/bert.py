@@ -95,7 +95,7 @@ class BertArchitectureAdapter(ArchitectureAdapter):
                 submodules={
                     "ln1": NormalizationBridge(name="attention.output.LayerNorm"),
                     "ln2": NormalizationBridge(name="output.LayerNorm"),
-                    "attn": AttentionBridge(name="attention"),
+                    "attn": AttentionBridge(name="attention", config=self.cfg),
                     "mlp": MLPBridge(name="intermediate"),
                 },
             ),

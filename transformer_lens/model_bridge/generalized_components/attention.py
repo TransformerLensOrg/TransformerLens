@@ -7,6 +7,15 @@ from typing import Any, Dict, Optional, Tuple
 
 import torch
 
+from transformer_lens.conversion_utils.conversion_steps.attention_auto_conversion import (
+    AttentionAutoConversion,
+)
+from transformer_lens.conversion_utils.conversion_steps.base_hook_conversion import (
+    BaseHookConversion,
+)
+from transformer_lens.conversion_utils.conversion_steps.rearrange_hook_conversion import (
+    RearrangeHookConversion,
+)
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
@@ -21,7 +30,6 @@ class AttentionBridge(GeneralizedComponent):
     """
 
     hook_aliases = {
-        "hook_pattern": "hook_in",
         "hook_result": "hook_hidden_states",
         "hook_attn_scores": "o.hook_in",
         "hook_q": "q.hook_out",
@@ -44,17 +52,45 @@ class AttentionBridge(GeneralizedComponent):
     def __init__(
         self,
         name: str,
-        submodules: Optional[Dict[str, GeneralizedComponent]] = {},
+        config: Any,
+        submodules: Optional[Dict[str, GeneralizedComponent]] = None,
+        conversion_rule: Optional[BaseHookConversion] = None,
+        pattern_conversion_rule: Optional[BaseHookConversion] = None,
     ):
         """Initialize the attention bridge.
 
         Args:
             name: The name of this component
+            config: Model configuration (required for auto-conversion detection)
             submodules: Dictionary of submodules to register (e.g., q_proj, k_proj, etc.)
+            conversion_rule: Optional conversion rule. If None, AttentionAutoConversion will be used
+            pattern_conversion_rule: Optional conversion rule for attention patterns. If None,
+                                   uses default RearrangeHookConversion to reshape to (batch, n_heads, pos, pos)
         """
-        super().__init__(name, submodules=submodules)
+        # Set up conversion rule - use AttentionAutoConversion if None
+        if conversion_rule is None:
+            conversion_rule = AttentionAutoConversion(config)
+
+        super().__init__(
+            name, config=config, submodules=submodules or {}, conversion_rule=conversion_rule
+        )
         self.hook_hidden_states = HookPoint()
-        self.hook_attention_weights = HookPoint()
+        self.hook_pattern = HookPoint()
+
+        # Apply conversion rule to attention-specific hooks
+        self.hook_hidden_states.hook_conversion = conversion_rule
+
+        # Set up pattern conversion rule - use provided rule or create default
+        if pattern_conversion_rule is not None:
+            pattern_conversion = pattern_conversion_rule
+        else:
+            # Create default conversion rule for attention patterns - reshape to (batch, n_heads, pos, pos)
+            # This assumes the input is (batch, n_heads, seq_len, seq_len) or similar
+            pattern_conversion = RearrangeHookConversion(
+                "batch n_heads pos_q pos_k -> batch n_heads pos_q pos_k"
+            )
+
+        self.hook_pattern.hook_conversion = pattern_conversion
 
     def _process_output(self, output: Any) -> Any:
         """Process the output from the original component.
@@ -89,11 +125,14 @@ class AttentionBridge(GeneralizedComponent):
                     element = self._apply_hook_preserving_structure(
                         element, self.hook_hidden_states
                     )
-            elif i == 1:  # Second element is typically attention weights
-                if element is not None:
-                    element = self._apply_hook_preserving_structure(
-                        element, self.hook_attention_weights
-                    )
+            elif i == 1:
+                # When use_cache=False, attention weights may be at index 1
+                if isinstance(element, torch.Tensor):
+                    element = self._apply_hook_preserving_structure(element, self.hook_pattern)
+                # else: assume KV cache and skip
+            elif i == 2:  # With cache enabled, attention weights are typically at index 2
+                if isinstance(element, torch.Tensor):
+                    element = self._apply_hook_preserving_structure(element, self.hook_pattern)
             processed_output.append(element)
 
         # Apply the main hook_out to the first element (hidden states) if it exists
@@ -119,7 +158,7 @@ class AttentionBridge(GeneralizedComponent):
             if key in ["last_hidden_state", "hidden_states"] and value is not None:
                 value = self._apply_hook_preserving_structure(value, self.hook_hidden_states)
             elif key in ["attentions", "attention_weights"] and value is not None:
-                value = self._apply_hook_preserving_structure(value, self.hook_attention_weights)
+                value = self._apply_hook_preserving_structure(value, self.hook_pattern)
             processed_output[key] = value
 
         # Apply hook_hidden_states and hook_out to the main output (usually hidden_states)

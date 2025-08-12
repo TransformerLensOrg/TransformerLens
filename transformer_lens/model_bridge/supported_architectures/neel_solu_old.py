@@ -74,7 +74,7 @@ class NeelSoluOldArchitectureAdapter(ArchitectureAdapter):
                 name="blocks",
                 submodules={
                     "ln1": NormalizationBridge(name="ln1"),
-                    "attn": AttentionBridge(name="attn"),
+                    "attn": AttentionBridge(name="attn", config=self.cfg),
                     "ln2": NormalizationBridge(name="ln2"),
                     "mlp": MLPBridge(name="mlp"),
                 },

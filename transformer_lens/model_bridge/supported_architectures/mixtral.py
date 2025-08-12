@@ -83,6 +83,7 @@ class MixtralArchitectureAdapter(ArchitectureAdapter):
                     "ln2": NormalizationBridge(name="post_attention_layernorm"),
                     "attn": AttentionBridge(
                         name="self_attn",
+                        config=self.cfg,
                         submodules={
                             "W_Q": LinearBridge(name="q_proj"),
                             "W_K": LinearBridge(name="k_proj"),

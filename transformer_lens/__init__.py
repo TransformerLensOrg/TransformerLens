@@ -2,6 +2,7 @@ from . import supported_models
 from . import utilities
 from . import hook_points
 from . import evals
+from . import conversion_utils
 from .past_key_value_caching import (
     HookedTransformerKeyValueCache,
     HookedTransformerKeyValueCacheEntry,

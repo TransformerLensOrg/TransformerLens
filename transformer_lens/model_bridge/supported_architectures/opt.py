@@ -69,7 +69,7 @@ class OptArchitectureAdapter(ArchitectureAdapter):
                 name="model.decoder.layers",
                 submodules={
                     "ln1": NormalizationBridge(name="self_attn_layer_norm"),
-                    "attn": AttentionBridge(name="self_attn"),
+                    "attn": AttentionBridge(name="self_attn", config=self.cfg),
                     "ln2": NormalizationBridge(name="final_layer_norm"),
                     "mlp": MLPBridge(name="mlp"),
                 },

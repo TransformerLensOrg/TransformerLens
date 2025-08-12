@@ -1,4 +1,5 @@
 """End-to-end tests for the TransformerBridge."""
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import torch.nn as nn
@@ -35,7 +36,7 @@ class TestEndToEndBridge:
                 name="encoder.layers",
                 submodules={
                     "ln1": NormalizationBridge(name="norm1"),
-                    "attn": AttentionBridge(name="self_attn"),
+                    "attn": AttentionBridge(name="self_attn", config=SimpleNamespace(n_heads=1)),
                 },
             ),
         }

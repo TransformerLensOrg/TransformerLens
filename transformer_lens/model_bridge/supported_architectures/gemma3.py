@@ -90,6 +90,7 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
                     "ln2_post": NormalizationBridge(name="post_feedforward_layernorm"),
                     "attn": AttentionBridge(
                         name="self_attn",
+                        config=self.cfg,
                         submodules={
                             "q": LinearBridge(name="q_proj"),
                             "k": LinearBridge(name="k_proj"),

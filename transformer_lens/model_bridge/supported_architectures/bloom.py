@@ -86,11 +86,12 @@ class BloomArchitectureAdapter(ArchitectureAdapter):
                     "ln2": NormalizationBridge(name="post_attention_layernorm"),
                     "attn": JointQKVAttentionBridge(
                         name="self_attention",
+                        model_config=self.cfg,
                         submodules={
                             "qkv": LinearBridge(name="query_key_value"),
                             "o": LinearBridge(name="dense"),
                         },
-                        config={
+                        qkv_config={
                             "split_qkv_matrix": self.split_qkv_matrix,
                         },
                     ),

@@ -1,4 +1,6 @@
 """Mock architecture adapter for testing."""
+from types import SimpleNamespace
+
 import pytest
 import torch.nn as nn
 
@@ -18,13 +20,11 @@ class MockArchitectureAdapter(ArchitectureAdapter):
     def __init__(self, cfg=None):
         if cfg is None:
             # Create a minimal config for testing
-            cfg = type(
-                "MockConfig",
-                (),
-                {"d_mlp": 512, "intermediate_size": 512, "default_prepend_bos": True},
-            )()
+            cfg = SimpleNamespace(d_mlp=512, intermediate_size=512, default_prepend_bos=True)
         super().__init__(cfg)
         # Use actual bridge instances instead of tuples
+        # Provide minimal config to components that require it
+        attn_cfg = SimpleNamespace(n_heads=1)
         self.component_mapping = {
             "embed": EmbeddingBridge(name="embed"),
             "unembed": EmbeddingBridge(name="unembed"),
@@ -34,7 +34,7 @@ class MockArchitectureAdapter(ArchitectureAdapter):
                 submodules={
                     "ln1": NormalizationBridge(name="ln1"),
                     "ln2": NormalizationBridge(name="ln2"),
-                    "attn": AttentionBridge(name="attn"),
+                    "attn": AttentionBridge(name="attn", config=attn_cfg),
                     "mlp": MLPBridge(name="mlp"),
                 },
             ),

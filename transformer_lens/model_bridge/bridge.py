@@ -45,6 +45,13 @@ class TransformerBridge(nn.Module):
     to map between the HookedTransformer and HuggingFace model structures.
     """
 
+    # Top-level hook aliases for legacy TransformerLens names
+    # Placing these on the main bridge ensures aliases like 'hook_embed' are available
+    hook_aliases = {
+        "hook_embed": "embed.hook_out",
+        "hook_pos_embed": "pos_embed.hook_out",
+    }
+
     def __init__(self, model: nn.Module, adapter: ArchitectureAdapter, tokenizer: Any):
         """Initialize the bridge.
 
@@ -802,6 +809,11 @@ class TransformerBridge(nn.Module):
                         filtered_kwargs[key] = value.to(target_device)
 
             try:
+                # For caching, we want attention weights to be available for hooks
+                # Add output_attentions=True if not already specified
+                if "output_attentions" not in filtered_kwargs:
+                    filtered_kwargs["output_attentions"] = True
+
                 output = self.original_model(*processed_args, **filtered_kwargs)
                 # Extract logits if output is a HuggingFace model output object
                 if hasattr(output, "logits"):

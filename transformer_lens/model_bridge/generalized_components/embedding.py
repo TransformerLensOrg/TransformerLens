@@ -19,11 +19,6 @@ class EmbeddingBridge(GeneralizedComponent):
     This component provides standardized input/output hooks.
     """
 
-    hook_aliases = {
-        "hook_embed": "embed.hook_out",
-        "hook_pos_embed": "pos_embed.hook_out",
-    }
-
     property_aliases = {
         "W_E": "e.weight",
         "W_pos": "pos.weight",
