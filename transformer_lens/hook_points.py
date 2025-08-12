@@ -155,6 +155,44 @@ class HookPoint(nn.Module):
         else:
             visible_hooks.append(handle)
 
+    def has_hooks(
+        self,
+        dir: Literal["fwd", "bwd", "both"] = "both",
+        including_permanent: bool = True,
+        level: Optional[int] = None,
+    ) -> bool:
+        """Check if this HookPoint has any active hooks.
+
+        Args:
+            dir: Direction of hooks to check ("fwd", "bwd", or "both")
+            including_permanent: Whether to include permanent hooks in the check
+            level: Only check hooks at this context level (None for all levels)
+
+        Returns:
+            True if any matching hooks are found, False otherwise
+        """
+
+        def _has_hooks_in_direction(handles: list[LensHandle]) -> bool:
+            for handle in handles:
+                # Check if this hook matches our criteria
+                if not including_permanent and handle.is_permanent:
+                    continue
+                if level is not None and handle.context_level != level:
+                    continue
+                return True
+            return False
+
+        if dir == "fwd":
+            return _has_hooks_in_direction(self.fwd_hooks)
+        elif dir == "bwd":
+            return _has_hooks_in_direction(self.bwd_hooks)
+        elif dir == "both":
+            return _has_hooks_in_direction(self.fwd_hooks) or _has_hooks_in_direction(
+                self.bwd_hooks
+            )
+        else:
+            raise ValueError(f"Invalid direction {dir}")
+
     def remove_hooks(
         self,
         dir: Literal["fwd", "bwd", "both"] = "fwd",
