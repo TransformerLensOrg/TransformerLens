@@ -11,6 +11,7 @@ import torch
 import torch.nn as nn
 
 from transformer_lens.hook_points import HookPoint
+from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.utilities.aliases import resolve_alias
 
 
@@ -64,15 +65,15 @@ class GeneralizedComponent(nn.Module):
         return False
 
     def enable_compatibility_mode(
-        self, remote_component: nn.Module, disable_warnings: bool = False
+        self, model: nn.Module, adapter: ArchitectureAdapter, disable_warnings: bool = False
     ) -> None:
         """
         This function sets this component up to work with legacy HookedTransformer components/hooks.
         It will also disable warnings about the usage of legacy components/hooks if specified.
 
         Args:
-            remote_component: The remote component of the current component required for BlockBridges
-                                to be able to iterate through the different blocks
+            model: The original model to get components from
+            adapter: The architecture adapter to use for retrieving remote components
             disable_warnings: Whether to disable warnings about legacy components/hooks
         """
 
@@ -82,18 +83,15 @@ class GeneralizedComponent(nn.Module):
 
         # We need to enable compatibility mode for all different blocks if the component is a list item
         if self.is_list_item:
+            # Retrieve the remote component list from the adapter
+            remote_module_list = adapter.get_remote_component(model, self.name)
+
             # Make sure the remote component is a ModuleList
-            if isinstance(remote_component, nn.ModuleList):
-                # Iterate over each block in the ModuleList and enable compatibility mode
-                for block in remote_component:
+            if isinstance(remote_module_list, nn.ModuleList):
+                for block in remote_module_list:
                     block.enable_compatibility_mode(
-                        remote_component, disable_warnings=disable_warnings
+                        model, adapter, disable_warnings=disable_warnings
                     )
-            else:
-                # If the remote component is not a ModuleList, raise an error
-                raise TypeError(
-                    f"Expected remote_component to be nn.ModuleList, got {type(remote_component)}"
-                )
 
         # If the component has submodules, enable compatibility mode for each submodule
         for component_submodule in self.submodules.values():
