@@ -216,6 +216,9 @@ def test_attention_pattern_hook_shape():
     if bridge.tokenizer.pad_token is None:
         bridge.tokenizer.pad_token = bridge.tokenizer.eos_token
 
+    # Set attention implementation to 'eager' to support output_attentions
+    bridge.original_model.config.attn_implementation = "eager"
+
     # Enable attention output in the HuggingFace model
     bridge.original_model.config.output_attentions = True
 
