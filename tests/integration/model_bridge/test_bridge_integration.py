@@ -211,16 +211,18 @@ def test_attention_pattern_hook_shape_custom_conversion():
 def test_attention_pattern_hook_shape():
     """Test that the attention pattern hook produces the correct shape (batch, n_heads, pos, pos)."""
     model_name = "gpt2"  # Use a smaller model for testing
-    bridge = TransformerBridge.boot_transformers(model_name)
+    bridge = TransformerBridge.boot_transformers(
+        model_name,
+        hf_config_overrides={
+            "attn_implementation": "eager",
+            "output_attentions": True,
+        },
+    )
 
     if bridge.tokenizer.pad_token is None:
         bridge.tokenizer.pad_token = bridge.tokenizer.eos_token
 
-    # Set attention implementation to 'eager' to support output_attentions
-    bridge.original_model.config.attn_implementation = "eager"
-
-    # Enable attention output in the HuggingFace model
-    bridge.original_model.config.output_attentions = True
+    # Attention output enabled via hf_config_overrides
 
     # Variable to store captured attention patterns
     captured_patterns = {}
