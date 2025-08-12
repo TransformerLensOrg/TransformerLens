@@ -200,20 +200,14 @@ class JointQKVAttentionBridge(AttentionBridge):
                 # Apply output hooks
                 output = self._process_output(output)
                 return output
-            else:
-                # No hooks on Q, K, V - run individual transformations for compatibility
-                # but use the original fused computation for efficiency
-                self.q(input_tensor)
-                self.k(input_tensor)
-                self.v(input_tensor)
 
-        # Run the original fused computation
+        # Run the original fused computation (no hooks on Q, K, V)
         output = super().forward(*args, **kwargs)
         return output
 
     def _reconstruct_attention(
         self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, **kwargs
-    ) -> torch.Tensor:
+    ) -> tuple:
         """Reconstruct attention computation using separate Q, K, V tensors.
 
         This method manually computes attention when hooks have modified the Q, K, or V values.
@@ -229,19 +223,29 @@ class JointQKVAttentionBridge(AttentionBridge):
         else:
             raise ValueError("Cannot determine number of attention heads")
 
-        batch_size, seq_len, hidden_size = q.shape
-        head_dim = hidden_size // num_heads
-
-        # Reshape Q, K, V for multi-head attention
-        q = q.view(batch_size, seq_len, num_heads, head_dim).transpose(
-            1, 2
-        )  # (batch, heads, seq, head_dim)
-        k = k.view(batch_size, seq_len, num_heads, head_dim).transpose(
-            1, 2
-        )  # (batch, heads, seq, head_dim)
-        v = v.view(batch_size, seq_len, num_heads, head_dim).transpose(
-            1, 2
-        )  # (batch, heads, seq, head_dim)
+        # Handle both formats: [batch, pos, hidden_size] and [batch, pos, head_index, d_head]
+        if len(q.shape) == 3:
+            # Format: [batch, pos, hidden_size] - need to reshape to multi-head format
+            batch_size, seq_len, hidden_size = q.shape
+            head_dim = hidden_size // num_heads
+            
+            # Reshape Q, K, V for multi-head attention
+            q = q.view(batch_size, seq_len, num_heads, head_dim).transpose(1, 2)
+            k = k.view(batch_size, seq_len, num_heads, head_dim).transpose(1, 2)
+            v = v.view(batch_size, seq_len, num_heads, head_dim).transpose(1, 2)
+        elif len(q.shape) == 4:
+            # Format: [batch, pos, head_index, d_head] - already in multi-head format
+            batch_size, seq_len, num_heads_tensor, head_dim = q.shape
+            
+            # Verify the tensor dimensions match expected head count
+            assert num_heads_tensor == num_heads, f"Expected {num_heads} heads, got {num_heads_tensor}"
+            
+            # Transpose to [batch, heads, seq, head_dim] format
+            q = q.transpose(1, 2)
+            k = k.transpose(1, 2)  
+            v = v.transpose(1, 2)
+        else:
+            raise ValueError(f"Unexpected Q tensor shape: {q.shape}. Expected 3D or 4D tensor.")
 
         # Compute attention scores
         scale = head_dim**-0.5
