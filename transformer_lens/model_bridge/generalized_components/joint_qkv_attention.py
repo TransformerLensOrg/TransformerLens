@@ -37,6 +37,7 @@ class JointQKVAttentionBridge(AttentionBridge):
         submodules: Optional[Dict[str, GeneralizedComponent]] = None,
         qkv_config: Optional[Dict[str, Any]] = None,
         pattern_conversion_rule: Optional[BaseHookConversion] = None,
+        qkv_conversion_rule: Optional[BaseHookConversion] = None,
     ):
         """Initialize the joint QKV attention bridge.
 
@@ -46,6 +47,7 @@ class JointQKVAttentionBridge(AttentionBridge):
             submodules: Dictionary of GeneralizedComponent submodules to register
             qkv_config: QKV-specific configuration including split_qkv_matrix function and conversion patterns
             pattern_conversion_rule: Optional conversion rule for attention patterns, passed to parent AttentionBridge
+            qkv_conversion_rule: Optional conversion rule for QKV reshaping. If None, uses default RearrangeHookConversion
         """
         super().__init__(
             name,
@@ -63,12 +65,15 @@ class JointQKVAttentionBridge(AttentionBridge):
             raise RuntimeError(f"Config for {self.name} must include 'split_qkv_matrix' function.")
 
         # Create conversion rules for Q, K, V based on configuration
-        qkv_conversion_rule = self._create_qkv_conversion_rule()
+        if qkv_conversion_rule is not None:
+            final_qkv_conversion_rule = qkv_conversion_rule
+        else:
+            final_qkv_conversion_rule = self._create_qkv_conversion_rule()
 
         # Create custom LinearBridge components for Q, K, and V activations with conversion rules only on output
-        self.q = self._create_qkv_linear_bridge("q", model_config, qkv_conversion_rule)
-        self.k = self._create_qkv_linear_bridge("k", model_config, qkv_conversion_rule)
-        self.v = self._create_qkv_linear_bridge("v", model_config, qkv_conversion_rule)
+        self.q = self._create_qkv_linear_bridge("q", model_config, final_qkv_conversion_rule)
+        self.k = self._create_qkv_linear_bridge("k", model_config, final_qkv_conversion_rule)
+        self.v = self._create_qkv_linear_bridge("v", model_config, final_qkv_conversion_rule)
 
     def _create_qkv_conversion_rule(self) -> RearrangeHookConversion:
         """Create the appropriate conversion rule for joint QKV matrices.
