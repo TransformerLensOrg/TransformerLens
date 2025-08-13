@@ -3,7 +3,13 @@ from transformer_lens.model_bridge import TransformerBridge
 MODEL = "gpt2"
 
 prompt = "Hello World!"
-bridge = TransformerBridge.boot_transformers(MODEL, device="cpu")
+bridge = TransformerBridge.boot_transformers(
+    MODEL,
+    device="cpu",
+    hf_config_overrides={
+        "attn_implementation": "eager",
+    },
+)
 
 act_names_in_cache = [
     # "hook_embed",
