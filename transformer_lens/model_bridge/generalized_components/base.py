@@ -10,7 +10,6 @@ from typing import Any, Dict, Optional
 import torch
 import torch.nn as nn
 
-import transformer_lens.model_bridge.architecture_adapter as architecture_adapter
 from transformer_lens.conversion_utils.conversion_steps.base_hook_conversion import (
     BaseHookConversion,
 )
@@ -27,7 +26,10 @@ class GeneralizedComponent(nn.Module):
 
     # Class attribute indicating whether this component represents a list item (like blocks)
     is_list_item: bool = False
+
+    # Compatibility mode that can be activated/deactivated for legacy components/hooks
     compatibility_mode: bool = False
+    # Whether to disable warnings about deprecated hooks
     disable_warnings: bool = False
 
     # Dictionary mapping deprecated hook names to their new equivalents
@@ -74,43 +76,6 @@ class GeneralizedComponent(nn.Module):
             if "setup_components" in frame_info.function or "run_with_cache" in frame_info.function:
                 return True
         return False
-
-    def enable_compatibility_mode(
-        self,
-        model: nn.Module,
-        adapter: architecture_adapter.ArchitectureAdapter,
-        disable_warnings: bool = False,
-    ) -> None:
-        """
-        This function sets this component up to work with legacy HookedTransformer components/hooks.
-        It will also disable warnings about the usage of legacy components/hooks if specified.
-
-        Args:
-            model: The original model to get components from
-            adapter: The architecture adapter to use for retrieving remote components
-            disable_warnings: Whether to disable warnings about legacy components/hooks
-        """
-
-        # Set compatibility mode for the component
-        self.compatibility_mode = True
-        self.disable_warnings = disable_warnings
-
-        # We need to enable compatibility mode for all different blocks if the component is a list item
-        if self.is_list_item:
-            # Retrieve the remote component list from the adapter
-            remote_module_list = adapter.get_remote_component(model, self.name)
-
-            # Make sure the remote component is a ModuleList
-            if isinstance(remote_module_list, nn.ModuleList):
-                for block in remote_module_list:
-                    block.enable_compatibility_mode(
-                        model, adapter, disable_warnings=disable_warnings
-                    )
-
-        # If the component has submodules, enable compatibility mode for each submodule
-        for component_submodule in self.submodules.values():
-            component_submodule.compatibility_mode = True
-            component_submodule.disable_warnings = disable_warnings
 
     def set_original_component(self, original_component: nn.Module) -> None:
         """Set the original component that this bridge wraps.

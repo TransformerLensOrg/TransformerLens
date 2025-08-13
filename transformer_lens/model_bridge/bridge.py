@@ -32,6 +32,7 @@ from transformer_lens.model_bridge.component_setup import set_original_component
 from transformer_lens.model_bridge.exceptions import StopAtLayerException
 from transformer_lens.model_bridge.types import ComponentMapping
 from transformer_lens.utilities.aliases import collect_aliases_recursive
+from transformer_lens.utilities.bridge_components import apply_fn_to_all_components
 
 if TYPE_CHECKING:
     from transformer_lens.ActivationCache import ActivationCache
@@ -206,14 +207,15 @@ class TransformerBridge(nn.Module):
         Args:
             disable_warnings: Whether to disable warnings about legacy components/hooks
         """
-        self.compatibility_mode = True
-        component_mapping = self.adapter.get_component_mapping()
 
-        # Enable compatibility mode for all individual components of the bridge
-        for component in component_mapping.values():
-            component.enable_compatibility_mode(
-                self.original_model, self.adapter, disable_warnings=disable_warnings
-            )
+        self.compatibility_mode = True
+
+        def set_compatibility_mode(component: Any) -> None:
+            """Set compatibility mode on a component."""
+            component.compatibility_mode = True
+            component.disable_warnings = disable_warnings
+
+        apply_fn_to_all_components(self, set_compatibility_mode)
 
     # ==================== TOKENIZATION METHODS ====================
 
