@@ -38,7 +38,7 @@ class TestLegacyHookCompatibility:
     @pytest.fixture
     def expected_hooks(self):
         """Get the unified list of hooks that should be available for TransformerBridge testing.
-
+        
         This includes all hooks that should be present in activation caches and accessible
         on the model for interpretability research.
         """
@@ -148,7 +148,7 @@ class TestLegacyHookCompatibility:
 
             hooked_transformer_activation = hooked_transformer_cache[hook]
             bridge_activation = bridge_cache[hook]
-
+            
             assert hooked_transformer_activation.shape == bridge_activation.shape, (
                 f"Shape mismatch for hook {hook}: "
                 f"HookedTransformer shape {hooked_transformer_activation.shape}, "
@@ -171,13 +171,11 @@ class TestLegacyHookCompatibility:
             if not self.hook_exists_on_model(transformer_bridge, hook_name):
                 missing_hooks.append(hook_name)
 
-        assert (
-            len(missing_hooks) == 0
-        ), f"Required hooks are not accessible on TransformerBridge: {sorted(missing_hooks)}"
+        assert len(missing_hooks) == 0, (
+            f"Required hooks are not accessible on TransformerBridge: {sorted(missing_hooks)}"
+        )
 
-    def test_cache_completeness_vs_strict_equality(
-        self, transformer_bridge, prompt, expected_hooks
-    ):
+    def test_cache_completeness_vs_strict_equality(self, transformer_bridge, prompt, expected_hooks):
         """Test cache completeness (allowing extra hooks) vs strict equality."""
         _, cache = transformer_bridge.run_with_cache(prompt)
         actual_keys = list(cache.keys())
@@ -193,10 +191,8 @@ class TestLegacyHookCompatibility:
         # - We require all expected hooks to be present
         # - We allow extra hooks (they indicate additional functionality)
         assert len(missing_hooks) == 0, f"Missing expected hooks: {sorted(missing_hooks)}"
-
+        
         # Log extra hooks for visibility but don't fail
         if extra_hooks:
             print(f"Note: Found {len(extra_hooks)} additional hooks beyond expected set")
-            print(
-                f"Additional hooks: {sorted(list(extra_hooks)[:5])}{'...' if len(extra_hooks) > 5 else ''}"
-            )
+            print(f"Additional hooks: {sorted(list(extra_hooks)[:5])}{'...' if len(extra_hooks) > 5 else ''}")
