@@ -32,7 +32,6 @@ from transformer_lens.model_bridge.component_setup import set_original_component
 from transformer_lens.model_bridge.exceptions import StopAtLayerException
 from transformer_lens.model_bridge.types import ComponentMapping
 from transformer_lens.utilities.aliases import collect_aliases_recursive
-from transformer_lens.utilities.bridge_components import apply_fn_to_all_components
 
 if TYPE_CHECKING:
     from transformer_lens.ActivationCache import ActivationCache
@@ -207,6 +206,10 @@ class TransformerBridge(nn.Module):
         Args:
             disable_warnings: Whether to disable warnings about legacy components/hooks
         """
+        # Avoid circular import
+        from transformer_lens.utilities.bridge_components import (
+            apply_fn_to_all_components,
+        )
 
         self.compatibility_mode = True
 

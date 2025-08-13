@@ -4,14 +4,14 @@ from typing import Any, Callable
 
 import torch.nn as nn
 
-import transformer_lens.model_bridge.bridge as bridge
+from transformer_lens.model_bridge.bridge import TransformerBridge
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
 
 
 def collect_all_submodules_of_component(
-    model: bridge.TransformerBridge,
+    model: TransformerBridge,
     component: GeneralizedComponent,
     submodules: dict,
     block_prefix: str = "",
@@ -41,7 +41,7 @@ def collect_all_submodules_of_component(
 
 
 def collect_components_of_block_bridge(
-    model: bridge.TransformerBridge, component: GeneralizedComponent, components: dict
+    model: TransformerBridge, component: GeneralizedComponent, components: dict
 ) -> dict:
     """Collects all components of a BlockBridge component.
     Args:
@@ -63,7 +63,7 @@ def collect_components_of_block_bridge(
     return components
 
 
-def collect_all_components(model: bridge.TransformerBridge, components: dict) -> dict:
+def collect_all_components(model: TransformerBridge, components: dict) -> dict:
     """Collects all components in a TransformerBridge inside a dictionary.
     The keys are the component names, and the values are the components themselves.
     Args:
@@ -85,7 +85,7 @@ def collect_all_components(model: bridge.TransformerBridge, components: dict) ->
 
 
 def apply_fn_to_all_components(
-    model: bridge.TransformerBridge,
+    model: TransformerBridge,
     fn: Callable[[GeneralizedComponent], Any],
     components: dict | None = None,
 ) -> dict[str, Any]:
