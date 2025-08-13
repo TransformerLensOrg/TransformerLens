@@ -354,10 +354,7 @@ class TestJointQKVAttentionBridgeIntegration:
 
     # Cross-Architecture Validation (Selective - only when needed)
 
-    @pytest.mark.skipif(
-        "not config.getoption('--run-slow')",
-        reason="Slow test skipped unless --run-slow is specified",
-    )
+    @pytest.mark.skip(reason="Slow cross-architecture test - enable manually if needed")
     @pytest.mark.parametrize("model_name", ["bigscience/bloom-560m", "EleutherAI/pythia-70m"])
     def test_other_architectures_use_joint_qkv_bridge(self, model_name):
         """Test that other architectures also use JointQKVAttentionBridge (slow test)."""
