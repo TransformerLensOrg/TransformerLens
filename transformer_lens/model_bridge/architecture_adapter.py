@@ -8,8 +8,10 @@ from typing import Any, cast
 import torch
 from torch import nn
 
-import transformer_lens.model_bridge.generalized_components.base as base
 from transformer_lens.conversion_utils.conversion_steps import HookConversionSet
+from transformer_lens.model_bridge.generalized_components.base import (
+    GeneralizedComponent,
+)
 from transformer_lens.model_bridge.types import (
     ComponentMapping,
     RemoteComponent,
@@ -107,7 +109,7 @@ class ArchitectureAdapter:
     def get_component_from_list_module(
         self,
         list_module: RemoteComponent,
-        bridge_component: base.GeneralizedComponent,
+        bridge_component: GeneralizedComponent,
         parts: list[str],
     ) -> RemoteComponent:
         """Get a component from a list module using the bridge component and the transformer lens path.
