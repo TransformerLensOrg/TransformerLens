@@ -172,6 +172,9 @@ class JointQKVAttentionBridge(AttentionBridge):
                     self.hook_in(args[0])
 
                 # Run individual Q, K, V transformations using raw input
+                assert self.q.original_component is not None
+                assert self.k.original_component is not None
+                assert self.v.original_component is not None
                 q_output = self.q.original_component(raw_input_tensor)
                 k_output = self.k.original_component(raw_input_tensor)
                 v_output = self.v.original_component(raw_input_tensor)
@@ -195,6 +198,7 @@ class JointQKVAttentionBridge(AttentionBridge):
     ) -> tuple:
         """Reconstruct attention computation using separate Q, K, V tensors."""
         original_component = self.original_component
+        assert original_component is not None
 
         # Try to use the original _attn method if available
         if hasattr(original_component, "_attn"):
@@ -204,8 +208,8 @@ class JointQKVAttentionBridge(AttentionBridge):
                 v_attn = v.transpose(1, 2)
             elif len(q.shape) == 3:
                 batch_size, seq_len, hidden_size = q.shape
-                num_heads = original_component.num_heads
-                head_dim = hidden_size // num_heads
+                num_heads = int(original_component.num_heads)  # type: ignore[arg-type]
+                head_dim: int = hidden_size // num_heads
 
                 q_attn = q.view(batch_size, seq_len, num_heads, head_dim).transpose(1, 2)
                 k_attn = k.view(batch_size, seq_len, num_heads, head_dim).transpose(1, 2)
@@ -213,7 +217,7 @@ class JointQKVAttentionBridge(AttentionBridge):
             else:
                 raise ValueError(f"Unexpected Q tensor shape: {q.shape}")
 
-            attn_output, attn_weights = original_component._attn(
+            attn_output, attn_weights = original_component._attn(  # type: ignore[operator]
                 q_attn,
                 k_attn,
                 v_attn,
@@ -222,7 +226,7 @@ class JointQKVAttentionBridge(AttentionBridge):
             )
 
             if hasattr(original_component, "_merge_heads"):
-                attn_output_merged = original_component._merge_heads(
+                attn_output_merged = original_component._merge_heads(  # type: ignore[operator]
                     attn_output, original_component.num_heads, original_component.head_dim
                 )
             else:
@@ -244,17 +248,18 @@ class JointQKVAttentionBridge(AttentionBridge):
     ) -> tuple:
         """Manual attention computation as fallback."""
         original_component = self.original_component
+        assert original_component is not None
 
         if hasattr(original_component, "num_heads"):
-            num_heads = original_component.num_heads
+            num_heads = int(original_component.num_heads)  # type: ignore[arg-type]
         elif hasattr(original_component, "num_attention_heads"):
-            num_heads = original_component.num_attention_heads
+            num_heads = int(original_component.num_attention_heads)  # type: ignore[arg-type]
         else:
             raise ValueError("Cannot determine number of attention heads")
 
         if len(q.shape) == 3:
             batch_size, seq_len, hidden_size = q.shape
-            head_dim = hidden_size // num_heads
+            head_dim: int = hidden_size // num_heads
             q = q.view(batch_size, seq_len, num_heads, head_dim).transpose(1, 2)
             k = k.view(batch_size, seq_len, num_heads, head_dim).transpose(1, 2)
             v = v.view(batch_size, seq_len, num_heads, head_dim).transpose(1, 2)
@@ -289,13 +294,13 @@ class JointQKVAttentionBridge(AttentionBridge):
         attn_weights = torch.nn.functional.softmax(attn_scores, dim=-1)
 
         if hasattr(original_component, "attn_dropout"):
-            attn_weights = original_component.attn_dropout(attn_weights)
+            attn_weights = original_component.attn_dropout(attn_weights)  # type: ignore[operator]
 
         attn_output = torch.matmul(attn_weights, v)
 
-        hidden_size = num_heads * head_dim
+        final_hidden_size: int = num_heads * head_dim
         attn_output = (
-            attn_output.transpose(1, 2).contiguous().view(batch_size, seq_len, hidden_size)
+            attn_output.transpose(1, 2).contiguous().view(batch_size, seq_len, final_hidden_size)
         )
 
         if hasattr(self, "o") and self.o is not None:
