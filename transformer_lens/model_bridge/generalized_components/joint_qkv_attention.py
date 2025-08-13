@@ -217,13 +217,22 @@ class JointQKVAttentionBridge(AttentionBridge):
             else:
                 raise ValueError(f"Unexpected Q tensor shape: {q.shape}")
 
-            attn_output, attn_weights = original_component._attn(  # type: ignore[operator]
+            attn_result = original_component._attn(  # type: ignore[operator]
                 q_attn,
                 k_attn,
                 v_attn,
                 attention_mask=kwargs.get("attention_mask"),
                 head_mask=kwargs.get("head_mask"),
             )
+            # Handle different return formats from _attn method
+            if len(attn_result) == 2:
+                attn_output, attn_weights = attn_result
+            elif len(attn_result) == 3:
+                attn_output, attn_weights, _ = attn_result  # Ignore past_key_value
+            else:
+                raise ValueError(
+                    f"Unexpected number of return values from _attn: {len(attn_result)}"
+                )
 
             if hasattr(original_component, "_merge_heads"):
                 attn_output_merged = original_component._merge_heads(  # type: ignore[operator]
@@ -239,7 +248,9 @@ class JointQKVAttentionBridge(AttentionBridge):
             if hasattr(self, "o") and self.o is not None:
                 attn_output_merged = self.o(attn_output_merged)
 
-            return (attn_output_merged, attn_weights, None)
+            # Return format should match what GPT2Block expects (exactly 2 values)
+            # The GPT2Block handles past_key_value separately
+            return (attn_output_merged, attn_weights)
         else:
             return self._manual_attention_computation(q, k, v, **kwargs)
 
@@ -289,6 +300,12 @@ class JointQKVAttentionBridge(AttentionBridge):
 
         attention_mask = kwargs.get("attention_mask", None)
         if attention_mask is not None:
+            # Handle attention mask shape mismatch - slice to match sequence length
+            if attention_mask.shape[-1] != seq_len:
+                # Slice the attention mask to match the sequence length
+                attention_mask = attention_mask[..., :seq_len]
+            if attention_mask.shape[-2] != seq_len:
+                attention_mask = attention_mask[..., :seq_len, :]
             attn_scores = attn_scores + attention_mask
 
         attn_weights = torch.nn.functional.softmax(attn_scores, dim=-1)
@@ -306,4 +323,6 @@ class JointQKVAttentionBridge(AttentionBridge):
         if hasattr(self, "o") and self.o is not None:
             attn_output = self.o(attn_output)
 
-        return (attn_output, None, None)
+        # Return format should match what GPT2Block expects (exactly 2 values)
+        # The GPT2Block handles past_key_value separately
+        return (attn_output, None)  # (output, weights)
