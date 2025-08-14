@@ -47,7 +47,12 @@ class GPTOSSArchitectureAdapter(ArchitectureAdapter):
                             "experts": BlockBridge(
                                 name="experts",
                                 submodules={
-                                    "gate_up": JointGateUpMLPBridge(name="gate_up_proj"),
+                                    "gate_up": JointGateUpMLPBridge(
+                                        name="gate_up_proj",
+                                        gate_up_config={
+                                            "split_gate_up_matrix": self.split_gate_up_matrix
+                                        },
+                                    ),
                                     "down": LinearBridge(name="down_proj"),
                                 },
                             ),
