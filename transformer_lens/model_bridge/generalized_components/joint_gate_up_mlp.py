@@ -3,11 +3,16 @@
 This module contains the bridge component for MLP layers with joint gating and up-projection.
 """
 
+from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
 import torch
 
+from transformer_lens.model_bridge.generalized_components.base import (
+    GeneralizedComponent,
+)
+from transformer_lens.model_bridge.generalized_components.linear import LinearBridge
 from transformer_lens.model_bridge.generalized_components.mlp import MLPBridge
 
 
@@ -34,6 +39,7 @@ class JointGateUpMLPBridge(MLPBridge):
             gate_up_config: Gate_Up-specific configuration which holds function to split the joint projection into two
         """
         super().__init__(name, model_config, submodules=submodules)
+        self.gate_up_config = gate_up_config or {}
         self.gate = LinearBridge(name="gate", config=model_config)
         self.up = LinearBridge(name="up", config=model_config)
 
