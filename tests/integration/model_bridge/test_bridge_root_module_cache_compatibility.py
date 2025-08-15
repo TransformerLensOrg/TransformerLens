@@ -11,8 +11,6 @@ bridge = TransformerBridge.boot_transformers(
     },
 )
 
-# Attention output enabled via hf_config_overrides
-
 act_names_in_cache = [
     # "hook_embed",
     # "hook_pos_embed",
