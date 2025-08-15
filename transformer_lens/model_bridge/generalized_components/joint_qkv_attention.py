@@ -325,4 +325,4 @@ class JointQKVAttentionBridge(AttentionBridge):
 
         # Return format should match what GPT2Block expects (exactly 2 values)
         # The GPT2Block handles past_key_value separately
-        return (attn_output, None)  # (output, weights)
+        return (attn_output, attn_weights)  # (output, weights)
