@@ -27,6 +27,11 @@ class GeneralizedComponent(nn.Module):
     # Class attribute indicating whether this component represents a list item (like blocks)
     is_list_item: bool = False
 
+    # Compatibility mode that can be activated/deactivated for legacy components/hooks
+    compatibility_mode: bool = False
+    # Whether to disable warnings about deprecated hooks
+    disable_warnings: bool = False
+
     # Dictionary mapping deprecated hook names to their new equivalents
     # Subclasses can override this to define their own aliases
     hook_aliases: Dict[str, str] = {}
@@ -175,7 +180,7 @@ class GeneralizedComponent(nn.Module):
 
         # Check if this is a deprecated hook alias
         resolved_hook = resolve_alias(self, name, self.hook_aliases)
-        if resolved_hook is not None:
+        if resolved_hook is not None and self.compatibility_mode == True:
             return resolved_hook
 
         # Avoid recursion by checking if we're looking for original_component
@@ -248,7 +253,7 @@ class GeneralizedComponent(nn.Module):
             # If we reach here, we can resolve the alias normally
             resolved_property = resolve_alias(self, name, self.property_aliases)
 
-            if resolved_property is not None:
+            if resolved_property is not None and self.compatibility_mode == True:
                 return resolved_property
 
         # If an internal call or no alias was found, just regularly get the attribute

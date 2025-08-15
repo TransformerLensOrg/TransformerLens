@@ -11,6 +11,8 @@ bridge = TransformerBridge.boot_transformers(
     },
 )
 
+bridge.enable_compatibility_mode(disable_warnings=False)
+
 act_names_in_cache = [
     # "hook_embed",
     # "hook_pos_embed",

@@ -65,6 +65,7 @@ class TransformerBridge(nn.Module):
         self.adapter = adapter
         self.cfg = adapter.cfg
         self.tokenizer = tokenizer
+        self.compatibility_mode = False
 
         # Add device information to config from the loaded model
         if not hasattr(self.cfg, "device"):
@@ -195,6 +196,29 @@ class TransformerBridge(nn.Module):
         mapping = self.adapter.get_component_mapping()
         lines.extend(self._format_component_mapping(mapping, indent=1))
         return "\n".join(lines)
+
+    def enable_compatibility_mode(self, disable_warnings: bool = False) -> None:
+        """Enable compatibility mode for the bridge.
+
+        This sets up the bridge to work with legacy HookedTransformer components/hooks.
+        It will also disable warnings about the usage of legacy components/hooks if specified.
+
+        Args:
+            disable_warnings: Whether to disable warnings about legacy components/hooks
+        """
+        # Avoid circular import
+        from transformer_lens.utilities.bridge_components import (
+            apply_fn_to_all_components,
+        )
+
+        self.compatibility_mode = True
+
+        def set_compatibility_mode(component: Any) -> None:
+            """Set compatibility mode on a component."""
+            component.compatibility_mode = True
+            component.disable_warnings = disable_warnings
+
+        apply_fn_to_all_components(self, set_compatibility_mode)
 
     # ==================== TOKENIZATION METHODS ====================
 
@@ -807,26 +831,28 @@ class TransformerBridge(nn.Module):
             for hp, _ in hooks:
                 hp.remove_hooks()
 
-        # Create duplicate cache entries for TransformerLens compatibility
-        # Use the aliases collected from components (reverse mapping: new -> old)
-        reverse_aliases = {new_name: old_name for old_name, new_name in aliases.items()}
+        if self.compatibility_mode == True:
+            # If compatibility mode is enabled, we need to handle aliases
+            # Create duplicate cache entries for TransformerLens compatibility
+            # Use the aliases collected from components (reverse mapping: new -> old)
+            reverse_aliases = {new_name: old_name for old_name, new_name in aliases.items()}
 
-        # Create duplicate entries in cache
-        cache_items_to_add = {}
-        for cache_name, cached_value in cache.items():
-            # Check if this cache name should have an alias
-            for new_name, old_name in reverse_aliases.items():
-                if cache_name == new_name:
-                    cache_items_to_add[old_name] = cached_value
-                    break
+            # Create duplicate entries in cache
+            cache_items_to_add = {}
+            for cache_name, cached_value in cache.items():
+                # Check if this cache name should have an alias
+                for new_name, old_name in reverse_aliases.items():
+                    if cache_name == new_name:
+                        cache_items_to_add[old_name] = cached_value
+                        break
 
-        # Add the aliased entries to the cache
-        cache.update(cache_items_to_add)
+            # Add the aliased entries to the cache
+            cache.update(cache_items_to_add)
 
-        # Add cache entries for all aliases (both hook and cache aliases)
-        for alias_name, target_name in aliases.items():
-            if target_name in cache and alias_name not in cache:
-                cache[alias_name] = cache[target_name]
+            # Add cache entries for all aliases (both hook and cache aliases)
+            for alias_name, target_name in aliases.items():
+                if target_name in cache and alias_name not in cache:
+                    cache[alias_name] = cache[target_name]
 
         if return_cache_object:
             cache_obj = ActivationCache(cache, self, has_batch_dim=not remove_batch_dim)
