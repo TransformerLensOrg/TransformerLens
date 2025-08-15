@@ -6,6 +6,7 @@ import torch
 
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
+    AttentionBridge,
     BlockBridge,
     EmbeddingBridge,
     JointGateUpMLPBridge,
@@ -32,6 +33,7 @@ class GPTOSSArchitectureAdapter(ArchitectureAdapter):
                     "ln1": NormalizationBridge(name="input_layernorm"),
                     "attn": AttentionBridge(
                         name="self_attn",
+                        config=self.cfg,
                         submodules={
                             "q": LinearBridge(name="q_proj"),
                             "k": LinearBridge(name="k_proj"),
@@ -64,28 +66,28 @@ class GPTOSSArchitectureAdapter(ArchitectureAdapter):
             "unembed": UnembeddingBridge(name="lm_head"),
         }
 
-        def split_gate_up_matrix(
-            self, original_mlp_component: Any
-        ) -> tuple[torch.nn.Linear, torch.nn.Linear]:
-            gate_up_weight = original_mlp_component.gate_up_proj
-            gate_up_bias = original_mlp_component.gate_up_proj_bias
+    def split_gate_up_matrix(
+        self, original_mlp_component: Any
+    ) -> tuple[torch.nn.Linear, torch.nn.Linear]:
+        gate_up_weight = original_mlp_component.gate_up_proj
+        gate_up_bias = original_mlp_component.gate_up_proj_bias
 
-            # In GPT-OSS, all the gate projection weights lie at even indices,
-            # all the up projection weights lie at odd indices
-            gate_weight = gate_up_weight[..., ::2]
-            up_weight = gate_up_weight[..., 1::2]
+        # In GPT-OSS, all the gate projection weights lie at even indices,
+        # all the up projection weights lie at odd indices
+        gate_weight = gate_up_weight[..., ::2]
+        up_weight = gate_up_weight[..., 1::2]
 
-            gate_bias = gate_up_bias[..., ::2]
-            up_bias = gate_up_bias[..., 1::2]
+        gate_bias = gate_up_bias[..., ::2]
+        up_bias = gate_up_bias[..., 1::2]
 
-            gate_projection = torch.nn.Linear(gate_weight.shape[0], gate_weight.shape[1], bias=True)
+        gate_projection = torch.nn.Linear(gate_weight.shape[0], gate_weight.shape[1], bias=True)
 
-            gate_projection.weight = torch.nn.Parameter(gate_weight)
-            gate_projection.bias = torch.nn.Parameter(bias)
+        gate_projection.weight = torch.nn.Parameter(gate_weight)
+        gate_projection.bias = torch.nn.Parameter(gate_bias)
 
-            up_projection = torch.nn.Linear(up_weight.shape[0], up_weight.shape[1])
+        up_projection = torch.nn.Linear(up_weight.shape[0], up_weight.shape[1])
 
-            up_projection.weight = torch.nn.Parameter(up_weight)
-            up_projection.bias = torch.nn.Parameter(up_bias)
+        up_projection.weight = torch.nn.Parameter(up_weight)
+        up_projection.bias = torch.nn.Parameter(up_bias)
 
-            return gate_projection, up_projection
+        return gate_projection, up_projection
