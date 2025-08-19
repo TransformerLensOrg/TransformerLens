@@ -240,6 +240,7 @@ jobs:
           # - "No_Position_Experiment"
           - "Othello_GPT"
           - "Patchscopes_Generation_Demo"
+          - "Santa_Coder"
           - "T5"
     steps:
       - uses: actions/checkout@v3
