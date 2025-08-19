@@ -126,14 +126,12 @@ class TransformerBridge(nn.Module):
         if name in self.__dict__:
             return self.__dict__[name]
 
-
-        
         return super().__getattr__(name)
-    
+
     def _get_nested_attr(self, path: str) -> Any:
         """Get a nested attribute using dot notation."""
         obj = self
-        for part in path.split('.'):
+        for part in path.split("."):
             obj = getattr(obj, part)
         return obj
 
@@ -1113,41 +1111,50 @@ class TransformerBridge(nn.Module):
         """Add a hook to a specific component (HookedTransformer compatibility method)."""
         # Navigate to the hook point using the name
         component = self
-        parts = name.split('.')
-        
+        parts = name.split(".")
+
         for part in parts[:-1]:  # All but the last part
             if hasattr(component, part):
                 component = getattr(component, part)
             else:
                 raise AttributeError(f"Component path '{'.'.join(parts[:-1])}' not found")
-        
+
         # The last part should be a hook name
         hook_name = parts[-1]
         if hasattr(component, hook_name):
             hook_point = getattr(component, hook_name)
-            if hasattr(hook_point, 'add_hook'):
+            if hasattr(hook_point, "add_hook"):
                 hook_point.add_hook(hook_fn, dir=dir, is_permanent=is_permanent)
             else:
                 raise AttributeError(f"'{hook_name}' is not a hook point")
         else:
             raise AttributeError(f"Hook point '{hook_name}' not found on component")
-    
+
     def reset_hooks(self, clear_contexts=True):
         """Remove all hooks from the model (HookedTransformer compatibility method)."""
+
         # Recursively remove hooks from all components
         def remove_hooks_recursive(module):
-            if hasattr(module, 'remove_hooks'):
+            if hasattr(module, "remove_hooks"):
                 module.remove_hooks()
             for child in module.children():
                 remove_hooks_recursive(child)
-        
+
         remove_hooks_recursive(self)
-    
-    def get_caching_hooks(self, names_filter=None, incl_bwd=False, device=None, remove_batch_dim=False, cache=None, pos_slice=None):
+
+    def get_caching_hooks(
+        self,
+        names_filter=None,
+        incl_bwd=False,
+        device=None,
+        remove_batch_dim=False,
+        cache=None,
+        pos_slice=None,
+    ):
         """Creates hooks to cache activations (HookedTransformer compatibility method)."""
         if cache is None:
             cache = {}
-        
+
         if names_filter is None:
             names_filter = lambda name: True
         elif isinstance(names_filter, str):
@@ -1157,7 +1164,7 @@ class TransformerBridge(nn.Module):
             pass  # Already a function
         else:
             raise ValueError("names_filter must be a string, callable, or None")
-        
+
         def make_cache_hook(name):
             def cache_hook(tensor, hook):
                 cache[name] = tensor.detach().clone()
@@ -1166,31 +1173,32 @@ class TransformerBridge(nn.Module):
                 if device is not None:
                     cache[name] = cache[name].to(device)
                 return tensor
+
             return cache_hook
-        
+
         fwd_hooks = []
         bwd_hooks = []
-        
+
         # Collect hooks from all HookPoint objects in the model
         def collect_hooks(module, prefix=""):
             for name, child in module.named_children():
                 full_name = f"{prefix}.{name}" if prefix else name
-                if hasattr(child, 'add_hook') and names_filter(full_name):
+                if hasattr(child, "add_hook") and names_filter(full_name):
                     fwd_hooks.append((full_name, make_cache_hook(full_name)))
                 collect_hooks(child, full_name)
-        
+
         collect_hooks(self)
-        
+
         return cache, fwd_hooks, bwd_hooks
-    
+
     def hooks(self, fwd_hooks=[], bwd_hooks=[], reset_hooks_end=True, clear_contexts=False):
         """Context manager for temporarily adding hooks (HookedTransformer compatibility method)."""
         from contextlib import contextmanager
-        
+
         @contextmanager
         def _hooks_context():
             added_hooks = []
-            
+
             try:
                 # Add forward hooks
                 for hook_name, hook_fn in fwd_hooks:
@@ -1199,35 +1207,35 @@ class TransformerBridge(nn.Module):
                         added_hooks.append((hook_name, hook_fn))
                     except Exception as e:
                         print(f"Warning: Failed to add hook {hook_name}: {e}")
-                
+
                 yield
-                
+
             finally:
                 if reset_hooks_end:
                     # Reset all hooks
                     self.reset_hooks()
-        
+
         return _hooks_context()
-    
+
     def zero_softcap(self):
         """Context manager to temporarily set softcap to zero (HookedTransformer compatibility method)."""
         from contextlib import contextmanager
-        
+
         @contextmanager
         def _zero_softcap_context():
-            current_softcap = getattr(self.cfg, 'output_logits_soft_cap', None)
+            current_softcap = getattr(self.cfg, "output_logits_soft_cap", None)
             try:
                 # Only set if the attribute exists or can be set
-                if hasattr(self.cfg, 'output_logits_soft_cap'):
+                if hasattr(self.cfg, "output_logits_soft_cap"):
                     self.cfg.output_logits_soft_cap = 0.0
                 yield
             finally:
                 # Only restore if we actually changed it
-                if current_softcap is not None and hasattr(self.cfg, 'output_logits_soft_cap'):
+                if current_softcap is not None and hasattr(self.cfg, "output_logits_soft_cap"):
                     self.cfg.output_logits_soft_cap = current_softcap
-        
+
         return _zero_softcap_context()
-    
+
     def setup(self):
         """Setup method for HookedTransformer compatibility - TransformerBridge handles setup in __init__."""
         pass
