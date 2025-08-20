@@ -30,6 +30,9 @@ from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.component_setup import set_original_components
 from transformer_lens.model_bridge.exceptions import StopAtLayerException
+from transformer_lens.model_bridge.generalized_components.base import (
+    GeneralizedComponent,
+)
 from transformer_lens.model_bridge.types import ComponentMapping
 from transformer_lens.utilities.aliases import collect_aliases_recursive
 
@@ -1106,7 +1109,7 @@ class TransformerBridge(nn.Module):
         """
         return self.to(torch.device("mps"))  # type: ignore
 
-    # HookedTransformer compatibility methods
+
     def add_hook(self, name: str, hook_fn, dir="fwd", is_permanent=False):
         """Add a hook to a specific component (HookedTransformer compatibility method)."""
         # Navigate to the hook point using the name
@@ -1135,7 +1138,7 @@ class TransformerBridge(nn.Module):
 
         # Recursively remove hooks from all components
         def remove_hooks_recursive(module):
-            if hasattr(module, "remove_hooks"):
+            if isinstance(module, GeneralizedComponent):
                 module.remove_hooks()
             for child in module.children():
                 remove_hooks_recursive(child)
