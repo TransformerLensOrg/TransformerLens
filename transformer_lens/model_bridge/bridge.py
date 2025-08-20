@@ -1109,7 +1109,6 @@ class TransformerBridge(nn.Module):
         """
         return self.to(torch.device("mps"))  # type: ignore
 
-
     def add_hook(self, name: str, hook_fn, dir="fwd", is_permanent=False):
         """Add a hook to a specific component."""
         # Navigate to the hook point using the name
@@ -1129,7 +1128,9 @@ class TransformerBridge(nn.Module):
             if isinstance(hook_point, HookPoint):
                 hook_point.add_hook(hook_fn, dir=dir, is_permanent=is_permanent)
             else:
-                raise AttributeError(f"'{hook_name}' is not a hook point. Found object of type: {type(hook_point)} with value: {hook_point}")
+                raise AttributeError(
+                    f"'{hook_name}' is not a hook point. Found object of type: {type(hook_point)} with value: {hook_point}"
+                )
         else:
             raise AttributeError(f"Hook point '{hook_name}' not found on component")
 
@@ -1219,5 +1220,3 @@ class TransformerBridge(nn.Module):
                     self.reset_hooks()
 
         return _hooks_context()
-
-
