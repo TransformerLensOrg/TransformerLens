@@ -1220,25 +1220,4 @@ class TransformerBridge(nn.Module):
 
         return _hooks_context()
 
-    def zero_softcap(self):
-        """Context manager to temporarily set softcap to zero."""
-        from contextlib import contextmanager
 
-        @contextmanager
-        def _zero_softcap_context():
-            current_softcap = getattr(self.cfg, "output_logits_soft_cap", None)
-            try:
-                # Only set if the attribute exists or can be set
-                if hasattr(self.cfg, "output_logits_soft_cap"):
-                    self.cfg.output_logits_soft_cap = 0.0
-                yield
-            finally:
-                # Only restore if we actually changed it
-                if current_softcap is not None and hasattr(self.cfg, "output_logits_soft_cap"):
-                    self.cfg.output_logits_soft_cap = current_softcap
-
-        return _zero_softcap_context()
-
-    def setup(self):
-        """Setup method for HookedTransformer compatibility - TransformerBridge handles setup in __init__."""
-        pass
