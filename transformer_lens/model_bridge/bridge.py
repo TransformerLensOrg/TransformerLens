@@ -1180,8 +1180,8 @@ class TransformerBridge(nn.Module):
 
             return cache_hook
 
-        fwd_hooks = []
-        bwd_hooks = []
+        fwd_hooks: List[Tuple[str, Callable]] = []
+        bwd_hooks: List[Tuple[str, Callable]] = []
 
         # Collect hooks from all HookPoint objects in the model
         def collect_hooks(module, prefix=""):
