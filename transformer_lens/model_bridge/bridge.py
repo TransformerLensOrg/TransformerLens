@@ -30,6 +30,9 @@ from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.component_setup import set_original_components
 from transformer_lens.model_bridge.exceptions import StopAtLayerException
+from transformer_lens.model_bridge.generalized_components.base import (
+    GeneralizedComponent,
+)
 from transformer_lens.model_bridge.types import ComponentMapping
 from transformer_lens.utilities.aliases import collect_aliases_recursive
 
@@ -127,6 +130,13 @@ class TransformerBridge(nn.Module):
             return self.__dict__[name]
 
         return super().__getattr__(name)
+
+    def _get_nested_attr(self, path: str) -> Any:
+        """Get a nested attribute using dot notation."""
+        obj = self
+        for part in path.split("."):
+            obj = getattr(obj, part)
+        return obj
 
     def _format_single_component(self, name: str, path: str, indent: int = 0) -> str:
         """Format a single component's string representation.
@@ -1098,3 +1108,115 @@ class TransformerBridge(nn.Module):
             Self for chaining
         """
         return self.to(torch.device("mps"))  # type: ignore
+
+    def add_hook(self, name: str, hook_fn, dir="fwd", is_permanent=False):
+        """Add a hook to a specific component."""
+        # Navigate to the hook point using the name
+        component = self
+        parts = name.split(".")
+
+        for part in parts[:-1]:  # All but the last part
+            if hasattr(component, part):
+                component = getattr(component, part)
+            else:
+                raise AttributeError(f"Component path '{'.'.join(parts[:-1])}' not found")
+
+        # The last part should be a hook name
+        hook_name = parts[-1]
+        if hasattr(component, hook_name):
+            hook_point = getattr(component, hook_name)
+            if isinstance(hook_point, HookPoint):
+                hook_point.add_hook(hook_fn, dir=dir, is_permanent=is_permanent)
+            else:
+                raise AttributeError(
+                    f"'{hook_name}' is not a hook point. Found object of type: {type(hook_point)} with value: {hook_point}"
+                )
+        else:
+            raise AttributeError(f"Hook point '{hook_name}' not found on component")
+
+    def reset_hooks(self, clear_contexts=True):
+        """Remove all hooks from the model."""
+
+        # Recursively remove hooks from all components
+        def remove_hooks_recursive(module):
+            if isinstance(module, GeneralizedComponent):
+                module.remove_hooks()
+            for child in module.children():
+                remove_hooks_recursive(child)
+
+        remove_hooks_recursive(self)
+
+    def get_caching_hooks(
+        self,
+        names_filter=None,
+        incl_bwd=False,
+        device=None,
+        remove_batch_dim=False,
+        cache=None,
+        pos_slice=None,
+    ):
+        """Creates hooks to cache activations."""
+        if cache is None:
+            cache = {}
+
+        if names_filter is None:
+            names_filter = lambda name: True
+        elif isinstance(names_filter, str):
+            filter_str = names_filter
+            names_filter = lambda name: filter_str in name
+        elif callable(names_filter):
+            pass  # Already a function
+        else:
+            raise ValueError("names_filter must be a string, callable, or None")
+
+        def make_cache_hook(name):
+            def cache_hook(tensor, hook):
+                cache[name] = tensor.detach().clone()
+                if remove_batch_dim and tensor.shape[0] == 1:
+                    cache[name] = cache[name].squeeze(0)
+                if device is not None:
+                    cache[name] = cache[name].to(device)
+                return tensor
+
+            return cache_hook
+
+        fwd_hooks: List[Tuple[str, Callable]] = []
+        bwd_hooks: List[Tuple[str, Callable]] = []
+
+        # Collect hooks from all HookPoint objects in the model
+        def collect_hooks(module, prefix=""):
+            for name, child in module.named_children():
+                full_name = f"{prefix}.{name}" if prefix else name
+                if hasattr(child, "add_hook") and names_filter(full_name):
+                    fwd_hooks.append((full_name, make_cache_hook(full_name)))
+                collect_hooks(child, full_name)
+
+        collect_hooks(self)
+
+        return cache, fwd_hooks, bwd_hooks
+
+    def hooks(self, fwd_hooks=[], bwd_hooks=[], reset_hooks_end=True, clear_contexts=False):
+        """Context manager for temporarily adding hooks."""
+        from contextlib import contextmanager
+
+        @contextmanager
+        def _hooks_context():
+            added_hooks = []
+
+            try:
+                # Add forward hooks
+                for hook_name, hook_fn in fwd_hooks:
+                    try:
+                        self.add_hook(hook_name, hook_fn)
+                        added_hooks.append((hook_name, hook_fn))
+                    except Exception as e:
+                        print(f"Warning: Failed to add hook {hook_name}: {e}")
+
+                yield
+
+            finally:
+                if reset_hooks_end:
+                    # Reset all hooks
+                    self.reset_hooks()
+
+        return _hooks_context()
