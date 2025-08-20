@@ -1123,10 +1123,10 @@ class TransformerBridge(nn.Module):
         hook_name = parts[-1]
         if hasattr(component, hook_name):
             hook_point = getattr(component, hook_name)
-            if hasattr(hook_point, "add_hook"):
+            if isinstance(hook_point, HookPoint):
                 hook_point.add_hook(hook_fn, dir=dir, is_permanent=is_permanent)
             else:
-                raise AttributeError(f"'{hook_name}' is not a hook point")
+                raise AttributeError(f"'{hook_name}' is not a hook point. Found object of type: {type(hook_point)} with value: {hook_point}")
         else:
             raise AttributeError(f"Hook point '{hook_name}' not found on component")
 
