@@ -1111,7 +1111,7 @@ class TransformerBridge(nn.Module):
 
 
     def add_hook(self, name: str, hook_fn, dir="fwd", is_permanent=False):
-        """Add a hook to a specific component (HookedTransformer compatibility method)."""
+        """Add a hook to a specific component."""
         # Navigate to the hook point using the name
         component = self
         parts = name.split(".")
@@ -1134,7 +1134,7 @@ class TransformerBridge(nn.Module):
             raise AttributeError(f"Hook point '{hook_name}' not found on component")
 
     def reset_hooks(self, clear_contexts=True):
-        """Remove all hooks from the model (HookedTransformer compatibility method)."""
+        """Remove all hooks from the model."""
 
         # Recursively remove hooks from all components
         def remove_hooks_recursive(module):
@@ -1154,7 +1154,7 @@ class TransformerBridge(nn.Module):
         cache=None,
         pos_slice=None,
     ):
-        """Creates hooks to cache activations (HookedTransformer compatibility method)."""
+        """Creates hooks to cache activations."""
         if cache is None:
             cache = {}
 
@@ -1195,7 +1195,7 @@ class TransformerBridge(nn.Module):
         return cache, fwd_hooks, bwd_hooks
 
     def hooks(self, fwd_hooks=[], bwd_hooks=[], reset_hooks_end=True, clear_contexts=False):
-        """Context manager for temporarily adding hooks (HookedTransformer compatibility method)."""
+        """Context manager for temporarily adding hooks."""
         from contextlib import contextmanager
 
         @contextmanager
@@ -1221,7 +1221,7 @@ class TransformerBridge(nn.Module):
         return _hooks_context()
 
     def zero_softcap(self):
-        """Context manager to temporarily set softcap to zero (HookedTransformer compatibility method)."""
+        """Context manager to temporarily set softcap to zero."""
         from contextlib import contextmanager
 
         @contextmanager
