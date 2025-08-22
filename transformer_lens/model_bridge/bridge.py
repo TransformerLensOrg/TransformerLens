@@ -443,27 +443,27 @@ class TransformerBridge(nn.Module):
     @property
     def W_K(self) -> Float[torch.Tensor, "n_layers n_heads d_model d_head"]:
         """Stack the key weights across all layers."""
-        return torch.stack([block.attn.W_K.weight for block in self.blocks], dim=0)
+        return torch.stack([block.attn.k.weight for block in self.blocks], dim=0)
 
     @property
     def W_Q(self) -> Float[torch.Tensor, "n_layers n_heads d_model d_head"]:
         """Stack the query weights across all layers."""
-        return torch.stack([block.attn.W_Q.weight for block in self.blocks], dim=0)
+        return torch.stack([block.attn.q.weight for block in self.blocks], dim=0)
 
     @property
     def W_V(self) -> Float[torch.Tensor, "n_layers n_heads d_model d_head"]:
         """Stack the value weights across all layers."""
-        return torch.stack([block.attn.W_V.weight for block in self.blocks], dim=0)
+        return torch.stack([block.attn.v.weight for block in self.blocks], dim=0)
 
     @property
     def W_O(self) -> Float[torch.Tensor, "n_layers n_heads d_head d_model"]:
         """Stack the attn output weights across all layers."""
-        return torch.stack([block.attn.W_O.weight for block in self.blocks], dim=0)
+        return torch.stack([block.attn.o.weight for block in self.blocks], dim=0)
 
     @property
     def W_in(self) -> Float[torch.Tensor, "n_layers d_model d_mlp"]:
         """Stack the MLP input weights across all layers."""
-        return torch.stack([block.mlp.W_in.weight for block in self.blocks], dim=0)
+        return torch.stack([getattr(block.mlp, "in").weight for block in self.blocks], dim=0)
 
     @property
     def W_gate(self) -> Union[Float[torch.Tensor, "n_layers d_model d_mlp"], None]:
@@ -471,15 +471,15 @@ class TransformerBridge(nn.Module):
 
         Only works for models with gated MLPs.
         """
-        if self.cfg.gated_mlp:
-            return torch.stack([block.mlp.W_gate.weight for block in self.blocks], dim=0)
+        if getattr(self.cfg, "gated_mlp", False):
+            return torch.stack([block.mlp.gate.weight for block in self.blocks], dim=0)
         else:
             return None
 
     @property
     def W_out(self) -> Float[torch.Tensor, "n_layers d_mlp d_model"]:
         """Stack the MLP output weights across all layers."""
-        return torch.stack([block.mlp.W_out.weight for block in self.blocks], dim=0)
+        return torch.stack([block.mlp.out.weight for block in self.blocks], dim=0)
 
     @property
     def b_K(self) -> Float[torch.Tensor, "n_layers n_heads d_head"]:
