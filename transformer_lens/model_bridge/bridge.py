@@ -1220,7 +1220,3 @@ class TransformerBridge(nn.Module):
                     self.reset_hooks()
 
         return _hooks_context()
-
-    def setup(self):
-        """Setup method - TransformerBridge handles setup in __init__."""
-        pass
