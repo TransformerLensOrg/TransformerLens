@@ -123,14 +123,14 @@ def test_component_access():
 
 
 def test_joint_qkv_custom_conversion_rule():
-    """Test that custom QKV conversion rules can be passed to JointQKVAttentionBridge."""
+    """Test that custom QKV conversion rules can be passed to QKVBridge."""
     from transformer_lens.conversion_utils.conversion_steps.rearrange_hook_conversion import (
         RearrangeHookConversion,
     )
-    from transformer_lens.model_bridge.generalized_components.joint_qkv_attention import (
-        JointQKVAttentionBridge,
-    )
     from transformer_lens.model_bridge.generalized_components.linear import LinearBridge
+    from transformer_lens.model_bridge.generalized_components.qkv_bridge import (
+        QKVBridge,
+    )
 
     model_name = "gpt2"  # Use a smaller model for testing
     bridge = TransformerBridge.boot_transformers(model_name)
@@ -141,10 +141,10 @@ def test_joint_qkv_custom_conversion_rule():
         num_attention_heads=12,  # GPT-2 small has 12 heads
     )
 
-    # Create QKV config
-    qkv_config = {
-        "split_qkv_matrix": lambda x: (x, x, x),  # Dummy function for test
-    }
+    custom_qkv_separation = RearrangeHookConversion(
+        "batch seq (three d_model) -> three batch seq d_model",
+        three=3,
+    )
 
     # Create submodules
     submodules = {
@@ -153,12 +153,12 @@ def test_joint_qkv_custom_conversion_rule():
     }
 
     # This should not raise an error
-    test_bridge = JointQKVAttentionBridge(
-        name="test_joint_qkv",
-        model_config=bridge.cfg,
+    test_bridge = QKVBridge(
+        name="test_qkv_bridge",
+        config=bridge.cfg,
         submodules=submodules,
-        qkv_config=qkv_config,
         qkv_conversion_rule=custom_qkv_conversion,
+        qkv_separation_rule=custom_qkv_separation,
     )
 
     # Verify the custom conversion rule was set on Q, K, V components

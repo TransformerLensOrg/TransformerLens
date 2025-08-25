@@ -22,5 +22,10 @@ class RearrangeHookConversion(BaseHookConversion):
     def handle_conversion(self, input_value: torch.Tensor, *full_context) -> torch.Tensor:
         return einops.rearrange(input_value, self.pattern, **self.axes_lengths)
 
+    def revert(self, input_value: torch.Tensor, *full_context) -> torch.Tensor:
+        left, right = self.pattern.split("->")
+        pattern = f"{right.strip()} -> {left.strip()}"
+        return einops.rearrange(input_value, pattern, **self.axes_lengths)
+
     def __repr__(self):
         return f'Is a rearrange operation with the pattern "{self.pattern}"'

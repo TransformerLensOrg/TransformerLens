@@ -1,4 +1,4 @@
-"""Lightweight integration tests for JointQKVAttentionBridge.
+"""Lightweight integration tests for QKVBridge.
 
 Tests the core functionality without loading large models to keep CI fast.
 """
@@ -9,8 +9,8 @@ import torch
 import transformer_lens.utils as utils
 
 
-class TestJointQKVAttentionBridgeIntegration:
-    """Minimal integration tests for JointQKVAttentionBridge."""
+class TestQKVBridgeIntegration:
+    """Minimal integration tests for QKVBridge."""
 
     def test_hook_alias_resolution(self):
         """Test that hook aliases are properly resolved."""
@@ -25,15 +25,15 @@ class TestJointQKVAttentionBridgeIntegration:
         assert utils.get_act_name("k", 2) == "blocks.2.attn.hook_k"
 
     def test_component_class_exists(self):
-        """Test that JointQKVAttentionBridge class can be imported."""
-        from transformer_lens.model_bridge.generalized_components.joint_qkv_attention import (
-            JointQKVAttentionBridge,
+        """Test that QKVBridge class can be imported."""
+        from transformer_lens.model_bridge.generalized_components.qkv_bridge import (
+            QKVBridge,
         )
 
         # Verify the class exists and has expected methods
-        assert hasattr(JointQKVAttentionBridge, "forward")
-        assert hasattr(JointQKVAttentionBridge, "_reconstruct_attention")
-        assert hasattr(JointQKVAttentionBridge, "_manual_attention_computation")
+        assert hasattr(QKVBridge, "forward")
+        assert hasattr(QKVBridge, "_create_qkv_conversion_rule")
+        assert hasattr(QKVBridge, "_create_qkv_separation_rule")
 
     def test_hook_point_has_hooks_method(self):
         """Test that HookPoint.has_hooks method works correctly."""
@@ -60,9 +60,9 @@ class TestJointQKVAttentionBridgeIntegration:
         assert not hook_point.has_hooks()
 
     def test_architecture_imports(self):
-        """Test that architecture files can be imported and reference JointQKVAttentionBridge."""
+        """Test that architecture files can be imported and reference QKVBridge."""
         # Test that we can import the architecture files without errors
-        # Test that JointQKVAttentionBridge is referenced in the source files
+        # Test that QKVBridge is referenced in the source files
         import inspect
 
         from transformer_lens.model_bridge.supported_architectures import (
@@ -72,19 +72,13 @@ class TestJointQKVAttentionBridgeIntegration:
         )
 
         gpt2_source = inspect.getsource(gpt2)
-        assert (
-            "JointQKVAttentionBridge" in gpt2_source
-        ), "GPT-2 architecture should reference JointQKVAttentionBridge"
+        assert "QKVBridge" in gpt2_source, "GPT-2 architecture should reference QKVBridge"
 
         bloom_source = inspect.getsource(bloom)
-        assert (
-            "JointQKVAttentionBridge" in bloom_source
-        ), "BLOOM architecture should reference JointQKVAttentionBridge"
+        assert "QKVBridge" in bloom_source, "BLOOM architecture should reference QKVBridge"
 
         neox_source = inspect.getsource(neox)
-        assert (
-            "JointQKVAttentionBridge" in neox_source
-        ), "NeoX architecture should reference JointQKVAttentionBridge"
+        assert "QKVBridge" in neox_source, "NeoX architecture should reference QKVBridge"
 
     @pytest.mark.skip(reason="Requires model loading - too slow for CI")
     def test_distilgpt2_integration(self):
@@ -96,15 +90,15 @@ class TestJointQKVAttentionBridgeIntegration:
         torch.set_grad_enabled(False)
         model = TransformerBridge.boot_transformers("distilgpt2", device="cpu")
 
-        # Verify JointQKVAttentionBridge usage
-        joint_qkv_modules = [
+        # Verify QKVBridge usage
+        qkv_bridge_modules = [
             name
             for name, module in model.named_modules()
-            if "JointQKVAttentionBridge" in getattr(module, "__class__", {}).get("__name__", "")
+            if "QKVBridge" in getattr(module, "__class__", {}).get("__name__", "")
         ]
         assert (
-            len(joint_qkv_modules) == 6
-        ), f"Expected 6 JointQKVAttentionBridge modules, got {len(joint_qkv_modules)}"
+            len(qkv_bridge_modules) == 6
+        ), f"Expected 6 QKVBridge modules, got {len(qkv_bridge_modules)}"
 
         # Test basic functionality
         tokens = model.to_tokens("Test")
