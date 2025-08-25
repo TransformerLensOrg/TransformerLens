@@ -127,7 +127,6 @@ def test_joint_qkv_custom_conversion_rule():
     from transformer_lens.conversion_utils.conversion_steps.rearrange_hook_conversion import (
         RearrangeHookConversion,
     )
-    from transformer_lens.model_bridge.generalized_components.linear import LinearBridge
     from transformer_lens.model_bridge.generalized_components.qkv_bridge import (
         QKVBridge,
     )
@@ -146,31 +145,41 @@ def test_joint_qkv_custom_conversion_rule():
         three=3,
     )
 
-    # Create submodules
-    submodules = {
-        "qkv": LinearBridge(name="c_attn"),
-        "o": LinearBridge(name="c_proj"),
-    }
-
     # This should not raise an error
     test_bridge = QKVBridge(
         name="test_qkv_bridge",
         config=bridge.cfg,
-        submodules=submodules,
+        submodules={},
         qkv_conversion_rule=custom_qkv_conversion,
         qkv_separation_rule=custom_qkv_separation,
     )
 
     # Verify the custom conversion rule was set on Q, K, V components
     assert (
-        test_bridge.q.hook_out.hook_conversion is custom_qkv_conversion
-    ), "Custom QKV conversion rule should be set on Q"
+        test_bridge.q_hook_in.hook_conversion is custom_qkv_conversion
+    ), "Custom QKV conversion rule should be set on hook_in of Q"
     assert (
-        test_bridge.k.hook_out.hook_conversion is custom_qkv_conversion
-    ), "Custom QKV conversion rule should be set on K"
+        test_bridge.k_hook_in.hook_conversion is custom_qkv_conversion
+    ), "Custom QKV conversion rule should be set on hook_in of K"
     assert (
-        test_bridge.v.hook_out.hook_conversion is custom_qkv_conversion
-    ), "Custom QKV conversion rule should be set on V"
+        test_bridge.v_hook_in.hook_conversion is custom_qkv_conversion
+    ), "Custom QKV conversion rule should be set on hook_in of V"
+    assert (
+        test_bridge.q_hook_out.hook_conversion is custom_qkv_conversion
+    ), "Custom QKV conversion rule should be set on hook_out of Q"
+    assert (
+        test_bridge.k_hook_out.hook_conversion is custom_qkv_conversion
+    ), "Custom QKV conversion rule should be set on hook_out of K"
+    assert (
+        test_bridge.v_hook_out.hook_conversion is custom_qkv_conversion
+    ), "Custom QKV conversion rule should be set on hook_out of V"
+
+    assert (
+        test_bridge.qkv_conversion_rule is custom_qkv_conversion
+    ), "Custom QKV conversion rule should be set"
+    assert (
+        test_bridge.qkv_separation_rule is custom_qkv_separation
+    ), "Custom QKV separation rule should be set"
 
 
 def test_attention_pattern_hook_shape_custom_conversion():
