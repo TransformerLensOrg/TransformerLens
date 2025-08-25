@@ -4,6 +4,8 @@ This module contains tests that verify the core functionality of the model bridg
 including model initialization, text generation, hooks, and caching.
 """
 
+import logging
+
 import pytest
 import torch
 
@@ -19,6 +21,35 @@ def test_model_initialization():
     assert bridge is not None, "Bridge should be initialized"
     assert bridge.tokenizer is not None, "Tokenizer should be initialized"
     assert isinstance(bridge.original_model, torch.nn.Module), "Model should be a PyTorch module"
+
+
+def test_model_initialization_with_alias(caplog):
+    """Test that the model can be initialized correctly with an alias and logs deprecation warning."""
+
+    model_name = "gpt2-small"
+
+    # Set logging level to capture warnings
+    with caplog.at_level(logging.WARNING):
+        bridge = TransformerBridge.boot_transformers(model_name)
+
+        # Basic assertions
+        assert bridge is not None, "Bridge should be initialized"
+        assert bridge.tokenizer is not None, "Tokenizer should be initialized"
+        assert isinstance(
+            bridge.original_model, torch.nn.Module
+        ), "Model should be a PyTorch module"
+
+    # Check that a deprecation warning was logged
+    deprecation_found = False
+    for record in caplog.records:
+        if "DEPRECATED" in record.message:
+            deprecation_found = True
+            # Verify the warning contains expected content
+            assert "gpt2-small" in record.message, "Warning should mention the deprecated alias"
+            assert "gpt2" in record.message, "Warning should mention the official name"
+            break
+
+    assert deprecation_found, "Expected deprecation warning for alias 'gpt2-small' was not logged"
 
 
 def test_text_generation():
