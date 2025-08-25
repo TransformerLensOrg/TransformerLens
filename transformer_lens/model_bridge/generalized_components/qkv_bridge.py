@@ -28,6 +28,7 @@ class QKVBridge(GeneralizedComponent):
         name: str,
         config: Any,
         submodules: Optional[Dict[str, GeneralizedComponent]] = None,
+        base_conversion_rule: Optional[BaseHookConversion] = None,
         qkv_conversion_rule: Optional[BaseHookConversion] = None,
         qkv_separation_rule: Optional[BaseHookConversion] = None,
     ) -> None:
@@ -37,10 +38,11 @@ class QKVBridge(GeneralizedComponent):
             name: The name of this component
             config: Model configuration
             submodules: Dictionary of GeneralizedComponent submodules to register
+            base_conversion_rule: Optional conversion rule for hook_in and hook_out of this component. If None, no conversion is applied to hook_in and hook_out.
             qkv_conversion_rule: Optional conversion rule for QKV reshaping. If None, uses default RearrangeHookConversion
             qkv_separation_rule: Optional separation rule for the output of the QKV layer. If None, uses default RearrangeHookConversion
         """
-        super().__init__(name, config, submodules=submodules)
+        super().__init__(name, config, submodules=submodules, conversion_rule=base_conversion_rule)
 
         self.q_hook_in = HookPoint()
         self.k_hook_in = HookPoint()
