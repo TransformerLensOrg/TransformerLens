@@ -7,6 +7,7 @@ import pytest
 import torch
 
 import transformer_lens.utils as utils
+from transformer_lens.model_bridge.generalized_components.qkv_bridge import QKVBridge
 
 
 class TestQKVBridgeIntegration:
@@ -24,11 +25,32 @@ class TestQKVBridgeIntegration:
         assert utils.get_act_name("q", 1) == "blocks.1.attn.hook_q"
         assert utils.get_act_name("k", 2) == "blocks.2.attn.hook_k"
 
+    def test_joint_qkv_attention_bridge_properties(self):
+        """Test that JointQKVAttentionBridge properties are properly resolved."""
+        from transformer_lens.model_bridge.generalized_components.joint_qkv_attention import (
+            JointQKVAttentionBridge,
+        )
+
+        class TestConfig:
+            n_heads = 12
+
+        qkv_bridge = QKVBridge(name="qkv", config=TestConfig())
+
+        qkv_attention_bridge = JointQKVAttentionBridge(
+            name="blocks.0.attn",
+            config=TestConfig(),
+            submodules={"qkv": qkv_bridge},
+        )
+
+        assert qkv_attention_bridge.q.hook_in == qkv_bridge.q_hook_in
+        assert qkv_attention_bridge.q.hook_out == qkv_bridge.q_hook_out
+        assert qkv_attention_bridge.k.hook_in == qkv_bridge.k_hook_in
+        assert qkv_attention_bridge.k.hook_out == qkv_bridge.k_hook_out
+        assert qkv_attention_bridge.v.hook_in == qkv_bridge.v_hook_in
+        assert qkv_attention_bridge.v.hook_out == qkv_bridge.v_hook_out
+
     def test_component_class_exists(self):
         """Test that QKVBridge class can be imported."""
-        from transformer_lens.model_bridge.generalized_components.qkv_bridge import (
-            QKVBridge,
-        )
 
         # Verify the class exists and has expected methods
         assert hasattr(QKVBridge, "forward")

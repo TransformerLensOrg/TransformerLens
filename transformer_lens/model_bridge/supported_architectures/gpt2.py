@@ -8,9 +8,9 @@ from transformer_lens.conversion_utils.conversion_steps import (
 )
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
-    AttentionBridge,
     BlockBridge,
     EmbeddingBridge,
+    JointQKVAttentionBridge,
     LinearBridge,
     MLPBridge,
     NormalizationBridge,
@@ -88,7 +88,7 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
                 name="transformer.h",
                 submodules={
                     "ln1": NormalizationBridge(name="ln_1"),
-                    "attn": AttentionBridge(
+                    "attn": JointQKVAttentionBridge(
                         name="attn",
                         config=self.cfg,
                         submodules={

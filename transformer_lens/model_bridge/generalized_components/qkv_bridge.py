@@ -16,27 +16,12 @@ from transformer_lens.model_bridge.generalized_components.base import (
 )
 
 
-class QKVHook(torch.nn.Module):
-    """Hook for QKV linear layers."""
-
-    def __init__(self):
-        super().__init__()
-        self.hook_in = HookPoint()
-        self.hook_out = HookPoint()
-
-
 class QKVBridge(GeneralizedComponent):
     """Bridge component for QKV linear layers.
 
     This component wraps linear layers that are used for joint QKV projections
     in attention mechanisms.
     """
-
-    hook_aliases = {
-        "hook_q": "q.hook_out",
-        "hook_k": "k.hook_out",
-        "hook_v": "v.hook_out",
-    }
 
     def __init__(
         self,
@@ -57,9 +42,12 @@ class QKVBridge(GeneralizedComponent):
         """
         super().__init__(name, config, submodules=submodules)
 
-        self.q = QKVHook()
-        self.k = QKVHook()
-        self.v = QKVHook()
+        self.q_hook_in = HookPoint()
+        self.k_hook_in = HookPoint()
+        self.v_hook_in = HookPoint()
+        self.q_hook_out = HookPoint()
+        self.k_hook_out = HookPoint()
+        self.v_hook_out = HookPoint()
 
         if qkv_conversion_rule is not None:
             self.qkv_conversion_rule = qkv_conversion_rule
@@ -71,13 +59,13 @@ class QKVBridge(GeneralizedComponent):
         else:
             self.qkv_separation_rule = self._create_qkv_separation_rule()
 
-        self.q.hook_in.hook_conversion = self.qkv_conversion_rule
-        self.k.hook_in.hook_conversion = self.qkv_conversion_rule
-        self.v.hook_in.hook_conversion = self.qkv_conversion_rule
+        self.q_hook_in.hook_conversion = self.qkv_conversion_rule
+        self.k_hook_in.hook_conversion = self.qkv_conversion_rule
+        self.v_hook_in.hook_conversion = self.qkv_conversion_rule
 
-        self.q.hook_out.hook_conversion = self.qkv_conversion_rule
-        self.k.hook_out.hook_conversion = self.qkv_conversion_rule
-        self.v.hook_out.hook_conversion = self.qkv_conversion_rule
+        self.q_hook_out.hook_conversion = self.qkv_conversion_rule
+        self.k_hook_out.hook_conversion = self.qkv_conversion_rule
+        self.v_hook_out.hook_conversion = self.qkv_conversion_rule
 
     def _create_qkv_conversion_rule(self) -> RearrangeHookConversion:
         """Create the appropriate conversion rule for joint QKV matrices.
@@ -124,27 +112,24 @@ class QKVBridge(GeneralizedComponent):
                 f"Original component not set for {self.name}. Call set_original_component() first."
             )
 
+        input = self.q_hook_in(input)
+        input = self.k_hook_in(input)
+        input = self.v_hook_in(input)
+
+        output = self.original_component(input, *args, **kwargs)
+
         has_hooks = (
-            self.q.hook_in.has_hooks()
-            or self.q.hook_out.has_hooks()
-            or self.k.hook_in.has_hooks()
-            or self.k.hook_out.has_hooks()
-            or self.v.hook_in.has_hooks()
-            or self.v.hook_out.has_hooks()
+            self.q_hook_out.has_hooks()
+            or self.k_hook_out.has_hooks()
+            or self.v_hook_out.has_hooks()
         )
 
         if has_hooks:
-            input = self.q.hook_in(input)
-            input = self.k.hook_in(input)
-            input = self.v.hook_in(input)
-
-            output = self.original_component(input, *args, **kwargs)
-
             q_output, k_output, v_output = self.qkv_separation_rule.handle_conversion(output)
 
-            q_output = self.q.hook_out(q_output)
-            k_output = self.k.hook_out(k_output)
-            v_output = self.v.hook_out(v_output)
+            q_output = self.q_hook_out(q_output)
+            k_output = self.k_hook_out(k_output)
+            v_output = self.v_hook_out(v_output)
 
             original_output = torch.stack((q_output, k_output, v_output), dim=0)
 
@@ -152,7 +137,6 @@ class QKVBridge(GeneralizedComponent):
 
             return output
 
-        output = self.original_component(input, *args, **kwargs)
         return output
 
     def __repr__(self) -> str:

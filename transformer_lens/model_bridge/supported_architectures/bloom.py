@@ -8,9 +8,9 @@ from transformer_lens.conversion_utils.conversion_steps import (
 )
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
-    AttentionBridge,
     BlockBridge,
     EmbeddingBridge,
+    JointQKVAttentionBridge,
     LinearBridge,
     MLPBridge,
     NormalizationBridge,
@@ -84,7 +84,7 @@ class BloomArchitectureAdapter(ArchitectureAdapter):
                 submodules={
                     "ln1": NormalizationBridge(name="input_layernorm"),
                     "ln2": NormalizationBridge(name="post_attention_layernorm"),
-                    "attn": AttentionBridge(
+                    "attn": JointQKVAttentionBridge(
                         name="self_attention",
                         config=self.cfg,
                         submodules={

@@ -30,6 +30,9 @@ from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.component_setup import set_original_components
 from transformer_lens.model_bridge.exceptions import StopAtLayerException
+from transformer_lens.model_bridge.generalized_components.joint_qkv_attention import (
+    HookPointWrapper,
+)
 from transformer_lens.model_bridge.types import ComponentMapping
 from transformer_lens.utilities.aliases import collect_aliases_recursive
 
@@ -729,13 +732,21 @@ class TransformerBridge(nn.Module):
                 except Exception:
                     continue
 
-                name = f"{prefix}.{attr_name}" if prefix else attr_name
-                if isinstance(attr, HookPoint):
+                def add_hook_to_list(hook: HookPoint, name: str):
                     # Set the name on the HookPoint so it can be used in caching
-                    attr.name = name
+                    hook.name = name
+
                     # Only add hook if it passes the names filter
                     if names_filter_fn(name):
-                        hooks.append((attr, name))
+                        hooks.append((hook, name))
+
+                name = f"{prefix}.{attr_name}" if prefix else attr_name
+                if isinstance(attr, HookPoint):
+                    add_hook_to_list(attr, name)
+                elif isinstance(attr, HookPointWrapper):
+                    # Add hooks for the wrapped hook points (hook_in and hook_out)
+                    add_hook_to_list(attr.hook_in, f"{name}.hook_in")
+                    add_hook_to_list(attr.hook_out, f"{name}.hook_out")
                 elif isinstance(attr, nn.Module):
                     collect_hookpoints(attr, name)
                 elif isinstance(attr, (list, tuple)):
