@@ -81,6 +81,8 @@ class QKVBridge(GeneralizedComponent):
         """
         pattern = "batch seq (num_attention_heads d_head) -> batch seq num_attention_heads d_head"
 
+        assert self.config is not None, "Config is required to create QKV conversion rule"
+
         return RearrangeHookConversion(
             pattern,
             num_attention_heads=self.config.n_heads,
