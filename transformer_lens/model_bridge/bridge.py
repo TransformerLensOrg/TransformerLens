@@ -30,10 +30,11 @@ from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.component_setup import set_original_components
 from transformer_lens.model_bridge.exceptions import StopAtLayerException
-from transformer_lens.model_bridge.generalized_components.joint_qkv_attention import (
-    HookPointWrapper,
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
+)
+from transformer_lens.model_bridge.generalized_components.joint_qkv_attention import (
+    HookPointWrapper,
 )
 from transformer_lens.model_bridge.types import ComponentMapping
 from transformer_lens.utilities.aliases import collect_aliases_recursive
