@@ -258,3 +258,41 @@ class GeneralizedComponent(nn.Module):
 
         # If an internal call or no alias was found, just regularly get the attribute
         return self._getattr_helper(name)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        """Set attribute, with passthrough to original component for compatibility."""
+        # Handle normal PyTorch module attributes and our own attributes
+        if name.startswith("_") or name in [
+            "name",
+            "config",
+            "submodules",
+            "conversion_rule",
+            "compatibility_mode",
+            "disable_warnings",
+            "hook_in",
+            "hook_out",
+        ]:
+            super().__setattr__(name, value)
+            return
+
+        # Check if this is a property on our class - if so, try to set it normally
+        class_attr = getattr(type(self), name, None)
+        if class_attr is not None and isinstance(class_attr, property):
+            if class_attr.fset is not None:
+                super().__setattr__(name, value)
+                return
+            # If it's a property with no setter, try the original component instead
+
+        # Try to set the attribute on the original component if we have one
+        if hasattr(self, "_modules") and "_original_component" in self._modules:
+            original_component = self._modules["_original_component"]
+            # Check if the attribute exists on the original component before setting
+            if hasattr(original_component, name):
+                try:
+                    setattr(original_component, name, value)
+                    return
+                except AttributeError:
+                    pass
+
+        # Fall back to normal attribute setting
+        super().__setattr__(name, value)
