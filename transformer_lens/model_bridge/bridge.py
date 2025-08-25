@@ -722,7 +722,7 @@ class TransformerBridge(nn.Module):
                 if attr_name.startswith("_"):
                     continue
                 # Skip the original_model to avoid collecting hooks from HuggingFace model
-                if attr_name == "original_model":
+                if attr_name == "original_model" or attr_name == "original_component":
                     continue
                 try:
                     attr = getattr(module, attr_name)
@@ -747,7 +747,7 @@ class TransformerBridge(nn.Module):
             for child_name, child_module in module.named_children():
                 child_path = f"{prefix}.{child_name}" if prefix else child_name
                 # Skip the original_model module
-                if child_name == "original_model":
+                if child_name == "original_model" or child_name == "original_component":
                     continue
                 collect_hookpoints(child_module, child_path)
 

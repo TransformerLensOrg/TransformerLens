@@ -75,6 +75,9 @@ def _collect_aliases_from_module(
                     full_alias = alias_name
                     full_target = f"{path}.{target_name}" if path else target_name
 
+                # Handle special case, qkv should not be in the alias
+                if "qkv" in full_alias:
+                    full_alias = full_alias.replace(".qkv", "")
                 aliases[full_alias] = full_target
 
     # Recursively collect from submodules, excluding original_model
@@ -83,6 +86,7 @@ def _collect_aliases_from_module(
             # Skip the original_model to avoid collecting hooks from HuggingFace model
             if child_name == "original_model" or child_name == "_original_component":
                 continue
+
             child_path = f"{path}.{child_name}" if path else child_name
             _collect_aliases_from_module(child_module, child_path, aliases, visited)
 

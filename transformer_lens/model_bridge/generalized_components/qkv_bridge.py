@@ -16,7 +16,7 @@ from transformer_lens.model_bridge.generalized_components.base import (
 )
 
 
-class QKVHook(HookPoint):
+class QKVHook(torch.nn.Module):
     """Hook for QKV linear layers."""
 
     def __init__(self):
@@ -31,6 +31,12 @@ class QKVBridge(GeneralizedComponent):
     This component wraps linear layers that are used for joint QKV projections
     in attention mechanisms.
     """
+
+    hook_aliases = {
+        "hook_q": "q.hook_out",
+        "hook_k": "k.hook_out",
+        "hook_v": "v.hook_out",
+    }
 
     def __init__(
         self,
