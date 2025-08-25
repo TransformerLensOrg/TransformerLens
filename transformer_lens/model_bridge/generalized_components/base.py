@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import dis
 import inspect
 from collections.abc import Callable
 from typing import Any, Dict, Optional
@@ -168,11 +167,7 @@ class GeneralizedComponent(nn.Module):
 
         return output
 
-    def _getattr_helper(self, name: str) -> Any:
-        """This function contains the main getattr logic for the component.
-        It is extracted into a helper function to avoid recursion issues when trying
-        to access certain aliased attributes like W_Q, W_K, W_V, etc."""
-
+    def __getattr__(self, name: str) -> Any:
         # Only called if attribute not found through normal lookup
         # First check if it's a module attribute (like hook_in, hook_out)
         if hasattr(self, "_modules") and name in self._modules:
@@ -182,6 +177,12 @@ class GeneralizedComponent(nn.Module):
         resolved_hook = resolve_alias(self, name, self.hook_aliases)
         if resolved_hook is not None and self.compatibility_mode == True:
             return resolved_hook
+
+        # If we reach here, we can resolve the alias normally
+        resolved_property = resolve_alias(self, name, self.property_aliases)
+
+        if resolved_property is not None and self.compatibility_mode == True:
+            return resolved_property
 
         # Avoid recursion by checking if we're looking for original_component
         if name == "original_component":
@@ -212,52 +213,6 @@ class GeneralizedComponent(nn.Module):
 
         # If we get here, the attribute wasn't found anywhere
         raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
-
-    def __getattr__(self, name: str):
-        # This code is to check if __getattr__ was called internally, because we only want to resolve aliases
-        # if the user is trying to access an attribute directly, not if it's being called internally during setup or run_with_cache.
-
-        # Get execution frame of caller
-        current_frame = inspect.currentframe()
-        if current_frame is None:
-            # If we can't get frame info, fall back to regular attribute access
-            return self._getattr_helper(name)
-
-        frame = current_frame.f_back
-        # Extract the module name from the frame
-        caller_module = frame.f_globals.get("__name__", "") if frame else ""
-
-        # Check 1: Is __getattr__ being called internally
-        if not caller_module.startswith("transformer_lens") and not caller_module.startswith(
-            "torch"
-        ):
-            # Check 2: Is next access .weight or .bias?
-            # If the user is correctly accessing a property like W_Q.weight or W_Q.bias,
-            # we want to return the original W_Q and not W_Q.weight (the alias), because otherwise
-            # we would essentially be calling W_Q.weight.weight which causes an error.
-            if frame is not None:
-                try:
-                    # Get bytecode instructions of the current frame
-                    instructions = list(dis.get_instructions(frame.f_code))
-                    for instr in instructions:
-                        # Find next instruction after the current one (frame.f_lasti)
-                        if instr.offset > frame.f_lasti:
-                            # If the next instruction is a LOAD_ATTR and the attribute is weight or bias,
-                            # we want to return the original W_Q, not W_Q.weight or W_Q.bias
-                            if instr.opname == "LOAD_ATTR" and instr.argval in ["weight", "bias"]:
-                                return self._getattr_helper(name)
-                            break
-                except (AttributeError, ValueError, TypeError):
-                    pass
-
-            # If we reach here, we can resolve the alias normally
-            resolved_property = resolve_alias(self, name, self.property_aliases)
-
-            if resolved_property is not None and self.compatibility_mode == True:
-                return resolved_property
-
-        # If an internal call or no alias was found, just regularly get the attribute
-        return self._getattr_helper(name)
 
     def __setattr__(self, name: str, value: Any) -> None:
         """Set attribute, with passthrough to original component for compatibility."""
