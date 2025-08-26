@@ -66,6 +66,12 @@ class LinearBridge(GeneralizedComponent):
     def __repr__(self) -> str:
         """String representation of the LinearBridge."""
         if self.original_component is not None:
-            return f"LinearBridge({self.in_features} -> {self.out_features}, bias={self.bias})"
+            try:
+                in_features = self.original_component.in_features
+                out_features = self.original_component.out_features
+                bias = self.original_component.bias is not None
+                return f"LinearBridge({in_features} -> {out_features}, bias={bias})"
+            except AttributeError:
+                return f"LinearBridge(name={self.name}, original_component={type(self.original_component).__name__})"
         else:
             return f"LinearBridge(name={self.name}, original_component=None)"

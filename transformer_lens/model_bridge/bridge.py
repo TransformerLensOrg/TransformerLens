@@ -9,6 +9,7 @@ from typing import (
     Any,
     Callable,
     Dict,
+    Iterator,
     List,
     Literal,
     Optional,
@@ -20,7 +21,6 @@ from typing import (
 
 import numpy as np
 import torch
-from jaxtyping import Float
 from torch import nn
 
 from transformer_lens import utils
@@ -33,8 +33,9 @@ from transformer_lens.model_bridge.exceptions import StopAtLayerException
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
+from transformer_lens.model_bridge.hook_point_wrapper import HookPointWrapper
 from transformer_lens.model_bridge.types import ComponentMapping
-from transformer_lens.utilities.aliases import collect_aliases_recursive
+from transformer_lens.utilities.aliases import collect_aliases_recursive, resolve_alias
 
 if TYPE_CHECKING:
     from transformer_lens.ActivationCache import ActivationCache
@@ -53,6 +54,7 @@ class TransformerBridge(nn.Module):
     hook_aliases = {
         "hook_embed": "embed.hook_out",
         "hook_pos_embed": "pos_embed.hook_out",
+        "hook_unembed": "unembed.hook_out",
     }
 
     def __init__(self, model: nn.Module, adapter: ArchitectureAdapter, tokenizer: Any):
@@ -69,6 +71,11 @@ class TransformerBridge(nn.Module):
         self.cfg = adapter.cfg
         self.tokenizer = tokenizer
         self.compatibility_mode = False
+        self._hook_cache = None  # Cache for hook discovery results
+        self._hook_registry: Dict[
+            str, HookPoint
+        ] = {}  # Dynamic registry of hook names to HookPoints
+        self._hook_registry_initialized = False  # Track if registry has been initialized
 
         # Add device information to config from the loaded model
         if not hasattr(self.cfg, "device"):
@@ -83,51 +90,158 @@ class TransformerBridge(nn.Module):
         # Set original components on the pre-created bridge components
         set_original_components(self, self.adapter, self.original_model)
 
-    @property
-    def hook_dict(self) -> dict[str, HookPoint]:
-        """Get all HookPoint objects in the model for compatibility with HookedTransformer."""
-        hooks = {}
-        visited = set()  # Move visited set outside the recursive function
+        # Initialize hook registry after components are set up
+        self._initialize_hook_registry()
 
-        def collect_hookpoints(module: nn.Module, prefix: str = "") -> None:
-            """Recursively collect all HookPoint objects."""
-            obj_id = id(module)
+    def __setattr__(self, name: str, value: Any) -> None:
+        """Override setattr to track HookPoint objects dynamically."""
+        # Call parent setattr first
+        super().__setattr__(name, value)
+
+        # Check if this is a HookPoint being set
+        if isinstance(value, HookPoint):
+            # Set the name on the HookPoint
+            value.name = name
+            # Add to registry
+            self._hook_registry[name] = value
+        elif isinstance(value, HookPointWrapper):
+            # Handle HookPointWrapper objects
+            hook_in_name = f"{name}.hook_in"
+            hook_out_name = f"{name}.hook_out"
+            value.hook_in.name = hook_in_name
+            value.hook_out.name = hook_out_name
+            self._hook_registry[hook_in_name] = value.hook_in
+            self._hook_registry[hook_out_name] = value.hook_out
+        elif hasattr(value, "get_hooks") and callable(getattr(value, "get_hooks")):
+            # This is a GeneralizedComponent being set
+            # We need to register its hooks with the appropriate prefix
+            component_hooks = value.get_hooks()
+            for hook_name, hook in component_hooks.items():
+                full_name = f"{name}.{hook_name}"
+                hook.name = full_name
+                self._hook_registry[full_name] = hook
+
+    def _initialize_hook_registry(self) -> None:
+        """Initialize the hook registry by scanning existing components."""
+        if self._hook_registry_initialized:
+            return
+
+        # Scan existing components for hooks
+        self._scan_existing_hooks(self, "")
+
+        # Add bridge aliases if compatibility mode is enabled
+        if self.compatibility_mode and self.hook_aliases:
+            for alias_name, target_name in self.hook_aliases.items():
+                # Use the existing alias system to resolve the target hook
+                target_hook = resolve_alias(self, alias_name, self.hook_aliases)
+                if target_hook is not None:
+                    self._hook_registry[alias_name] = target_hook
+
+        self._hook_registry_initialized = True
+
+    def _scan_existing_hooks(self, module: nn.Module, prefix: str = "") -> None:
+        """Scan existing modules for hooks and add them to registry."""
+        visited = set()
+
+        def scan_module(mod: nn.Module, path: str = "") -> None:
+            obj_id = id(mod)
             if obj_id in visited:
                 return
             visited.add(obj_id)
 
-            for attr_name in dir(module):
-                if attr_name.startswith("_"):
-                    continue
+            # Check if this is a GeneralizedComponent with its own hook registry
+            if hasattr(mod, "get_hooks") and callable(getattr(mod, "get_hooks")):
+                # Use the component's own hook registry
                 try:
-                    attr = getattr(module, attr_name)
+                    component_hooks = mod.get_hooks()  # type: ignore
+                    if isinstance(component_hooks, dict):
+                        # Type cast to help mypy understand this is a dict of hooks
+                        hooks_dict = cast(Dict[str, HookPoint], component_hooks)  # type: ignore
+                        for hook_name, hook in hooks_dict.items():  # type: ignore
+                            full_name = f"{path}.{hook_name}" if path else hook_name
+                            hook.name = full_name
+                            self._hook_registry[full_name] = hook
                 except Exception:
+                    # If get_hooks() fails, fall through to the else block
+                    pass
+            else:
+                # Fall back to scanning attributes for non-GeneralizedComponent modules
+                for attr_name in dir(mod):
+                    if attr_name.startswith("_"):
+                        continue
+                    if attr_name == "original_component":
+                        continue
+
+                    try:
+                        attr = getattr(mod, attr_name)
+                    except Exception:
+                        continue
+
+                    name = f"{path}.{attr_name}" if path else attr_name
+
+                    if isinstance(attr, HookPoint):
+                        attr.name = name
+                        self._hook_registry[name] = attr
+                    elif isinstance(attr, HookPointWrapper):
+                        hook_in_name = f"{name}.hook_in"
+                        hook_out_name = f"{name}.hook_out"
+                        attr.hook_in.name = hook_in_name
+                        attr.hook_out.name = hook_out_name
+                        self._hook_registry[hook_in_name] = attr.hook_in
+                        self._hook_registry[hook_out_name] = attr.hook_out
+                    elif isinstance(attr, nn.Module) and attr is not mod:
+                        scan_module(attr, name)
+                    elif isinstance(attr, (list, tuple)):
+                        for i, item in enumerate(attr):
+                            if isinstance(item, nn.Module):
+                                scan_module(item, f"{name}[{i}]")
+
+            # Check named children
+            for child_name, child_module in mod.named_children():
+                if child_name == "original_component" or child_name == "_original_component":
                     continue
+                child_path = f"{path}.{child_name}" if path else child_name
+                scan_module(child_module, child_path)
 
-                name = f"{prefix}.{attr_name}" if prefix else attr_name
-                if isinstance(attr, HookPoint):
-                    # Set the name on the HookPoint so it can be used in caching
-                    attr.name = name
-                    hooks[name] = attr
-                elif isinstance(attr, nn.Module) and attr is not module:
-                    collect_hookpoints(attr, name)
-                elif isinstance(attr, (list, tuple)):
-                    for i, item in enumerate(attr):
-                        if isinstance(item, nn.Module):
-                            collect_hookpoints(item, f"{name}[{i}]")
+        scan_module(module, prefix)
 
-            # Also traverse named_children() to catch ModuleList and other containers
-            for child_name, child_module in module.named_children():
-                child_path = f"{prefix}.{child_name}" if prefix else child_name
-                collect_hookpoints(child_module, child_path)
+    @property
+    def hook_dict(self) -> dict[str, HookPoint]:
+        """Get all HookPoint objects in the model for compatibility with HookedTransformer."""
+        # Start with the current registry
+        hooks = self._hook_registry.copy()
 
-        collect_hookpoints(self, "")
+        # Add aliases if compatibility mode is enabled
+        if self.compatibility_mode:
+            for alias_name, target_name in self.hook_aliases.items():
+                if target_name in hooks:
+                    hooks[alias_name] = hooks[target_name]
+
         return hooks
+
+    def _discover_hooks(self) -> dict[str, HookPoint]:
+        """Get all HookPoint objects from the registry (deprecated, use hook_dict)."""
+        return self._hook_registry.copy()
+
+    def clear_hook_cache(self) -> None:
+        """Clear the cached hook discovery results (deprecated, kept for compatibility)."""
+        pass  # No longer needed since we don't use caching
+
+    def clear_hook_registry(self) -> None:
+        """Clear the hook registry and force re-initialization."""
+        self._hook_registry.clear()
+        self._hook_registry_initialized = False
 
     def __getattr__(self, name: str) -> Any:
         """Provide a clear error message for missing attributes."""
         if name in self.__dict__:
             return self.__dict__[name]
+
+        # Check if this is a hook alias when compatibility mode is enabled
+        if self.compatibility_mode and name in self.hook_aliases:
+            target_name = self.hook_aliases[name]
+            if target_name in self._hook_registry:
+                return self._hook_registry[target_name]
 
         return super().__getattr__(name)
 
@@ -229,6 +343,10 @@ class TransformerBridge(nn.Module):
             component.disable_warnings = disable_warnings
 
         apply_fn_to_all_components(self, set_compatibility_mode)
+
+        # Re-initialize the hook registry to include aliases from components
+        self.clear_hook_registry()
+        self._initialize_hook_registry()
 
     # ==================== TOKENIZATION METHODS ====================
 
@@ -441,75 +559,107 @@ class TransformerBridge(nn.Module):
         raise AssertionError("Expected a single string token.")
 
     @property
-    def W_K(self) -> Float[torch.Tensor, "n_layers n_heads d_model d_head"]:
+    def W_K(self) -> torch.Tensor:
         """Stack the key weights across all layers."""
-        return torch.stack([block.attn.k.weight for block in self.blocks], dim=0)
+        weights = []
+        for block in self.blocks:
+            w_k = block.attn.W_K
+            # Reshape from [d_model, d_model] to [n_heads, d_model, d_head]
+            if w_k.shape == (self.cfg.d_model, self.cfg.d_model):
+                d_head = self.cfg.d_model // self.cfg.n_heads
+                w_k = w_k.reshape(self.cfg.n_heads, self.cfg.d_model, d_head)
+            weights.append(w_k)
+        return torch.stack(weights, dim=0)
 
     @property
-    def W_Q(self) -> Float[torch.Tensor, "n_layers n_heads d_model d_head"]:
+    def W_Q(self) -> torch.Tensor:
         """Stack the query weights across all layers."""
-        return torch.stack([block.attn.q.weight for block in self.blocks], dim=0)
+        weights = []
+        for block in self.blocks:
+            w_q = block.attn.W_Q
+            # Reshape from [d_model, d_model] to [n_heads, d_model, d_head]
+            if w_q.shape == (self.cfg.d_model, self.cfg.d_model):
+                d_head = self.cfg.d_model // self.cfg.n_heads
+                w_q = w_q.reshape(self.cfg.n_heads, self.cfg.d_model, d_head)
+            weights.append(w_q)
+        return torch.stack(weights, dim=0)
 
     @property
-    def W_V(self) -> Float[torch.Tensor, "n_layers n_heads d_model d_head"]:
+    def W_V(self) -> torch.Tensor:
         """Stack the value weights across all layers."""
-        return torch.stack([block.attn.v.weight for block in self.blocks], dim=0)
+        weights = []
+        for block in self.blocks:
+            w_v = block.attn.W_V
+            # Reshape from [d_model, d_model] to [n_heads, d_model, d_head]
+            if w_v.shape == (self.cfg.d_model, self.cfg.d_model):
+                d_head = self.cfg.d_model // self.cfg.n_heads
+                w_v = w_v.reshape(self.cfg.n_heads, self.cfg.d_model, d_head)
+            weights.append(w_v)
+        return torch.stack(weights, dim=0)
 
     @property
-    def W_O(self) -> Float[torch.Tensor, "n_layers n_heads d_head d_model"]:
+    def W_O(self) -> torch.Tensor:
         """Stack the attn output weights across all layers."""
-        return torch.stack([block.attn.o.weight for block in self.blocks], dim=0)
+        weights = []
+        for block in self.blocks:
+            w_o = block.attn.W_O
+            # Reshape from [d_model, d_model] to [n_heads, d_head, d_model]
+            if w_o.shape == (self.cfg.d_model, self.cfg.d_model):
+                d_head = self.cfg.d_model // self.cfg.n_heads
+                w_o = w_o.reshape(self.cfg.n_heads, d_head, self.cfg.d_model)
+            weights.append(w_o)
+        return torch.stack(weights, dim=0)
 
     @property
-    def W_in(self) -> Float[torch.Tensor, "n_layers d_model d_mlp"]:
+    def W_in(self) -> torch.Tensor:
         """Stack the MLP input weights across all layers."""
-        return torch.stack([getattr(block.mlp, "in").weight for block in self.blocks], dim=0)
+        return torch.stack([block.mlp.W_in for block in self.blocks], dim=0)
 
     @property
-    def W_gate(self) -> Union[Float[torch.Tensor, "n_layers d_model d_mlp"], None]:
+    def W_gate(self) -> Union[torch.Tensor, None]:
         """Stack the MLP gate weights across all layers.
 
         Only works for models with gated MLPs.
         """
         if getattr(self.cfg, "gated_mlp", False):
-            return torch.stack([block.mlp.gate.weight for block in self.blocks], dim=0)
+            return torch.stack([block.mlp.W_gate for block in self.blocks], dim=0)
         else:
             return None
 
     @property
-    def W_out(self) -> Float[torch.Tensor, "n_layers d_mlp d_model"]:
+    def W_out(self) -> torch.Tensor:
         """Stack the MLP output weights across all layers."""
-        return torch.stack([block.mlp.out.weight for block in self.blocks], dim=0)
+        return torch.stack([block.mlp.W_out for block in self.blocks], dim=0)
 
     @property
-    def b_K(self) -> Float[torch.Tensor, "n_layers n_heads d_head"]:
+    def b_K(self) -> torch.Tensor:
         """Stack the key biases across all layers."""
-        return torch.stack([block.attn.b_K.bias for block in self.blocks], dim=0)
+        return torch.stack([block.attn.b_K for block in self.blocks], dim=0)
 
     @property
-    def b_Q(self) -> Float[torch.Tensor, "n_layers n_heads d_head"]:
+    def b_Q(self) -> torch.Tensor:
         """Stack the query biases across all layers."""
-        return torch.stack([block.attn.b_Q.bias for block in self.blocks], dim=0)
+        return torch.stack([block.attn.b_Q for block in self.blocks], dim=0)
 
     @property
-    def b_V(self) -> Float[torch.Tensor, "n_layers n_heads d_head"]:
+    def b_V(self) -> torch.Tensor:
         """Stack the value biases across all layers."""
-        return torch.stack([block.attn.b_V.bias for block in self.blocks], dim=0)
+        return torch.stack([block.attn.b_V for block in self.blocks], dim=0)
 
     @property
-    def b_O(self) -> Float[torch.Tensor, "n_layers d_model"]:
+    def b_O(self) -> torch.Tensor:
         """Stack the attn output biases across all layers."""
-        return torch.stack([block.attn.b_O.bias for block in self.blocks], dim=0)
+        return torch.stack([block.attn.b_O for block in self.blocks], dim=0)
 
     @property
-    def b_in(self) -> Float[torch.Tensor, "n_layers d_mlp"]:
+    def b_in(self) -> torch.Tensor:
         """Stack the MLP input biases across all layers."""
-        return torch.stack([block.mlp.b_in.bias for block in self.blocks], dim=0)
+        return torch.stack([block.mlp.b_in for block in self.blocks], dim=0)
 
     @property
-    def b_out(self) -> Float[torch.Tensor, "n_layers d_model"]:
+    def b_out(self) -> torch.Tensor:
         """Stack the MLP output biases across all layers."""
-        return torch.stack([block.mlp.b_out.bias for block in self.blocks], dim=0)
+        return torch.stack([block.mlp.b_out for block in self.blocks], dim=0)
 
     @property
     def QK(self):
@@ -518,6 +668,85 @@ class TransformerBridge(nn.Module):
     @property
     def OV(self):
         return FactoredMatrix(self.W_V, self.W_O)
+
+    def get_params(self):
+        """Access to model parameters in the format expected by SVDInterpreter."""
+        params_dict = {}
+
+        # Add embedding weights
+        params_dict["embed.W_E"] = self.embed.weight
+        params_dict["pos_embed.W_pos"] = self.pos_embed.weight
+
+        # Add attention weights
+        for layer_idx in range(self.cfg.n_layers):
+            block = self.blocks[layer_idx]
+
+            # Attention weights - reshape to expected format
+            w_q = block.attn.q.weight
+            w_k = block.attn.k.weight
+            w_v = block.attn.v.weight
+            w_o = block.attn.o.weight
+
+            # Reshape from [d_model, d_model] to [n_heads, d_model, d_head] and [n_heads, d_head, d_model]
+            if w_q.shape == (self.cfg.d_model, self.cfg.d_model):
+                d_head = self.cfg.d_model // self.cfg.n_heads
+                w_q = w_q.reshape(self.cfg.n_heads, self.cfg.d_model, d_head)
+                w_k = w_k.reshape(self.cfg.n_heads, self.cfg.d_model, d_head)
+                w_v = w_v.reshape(self.cfg.n_heads, self.cfg.d_model, d_head)
+                w_o = w_o.reshape(self.cfg.n_heads, d_head, self.cfg.d_model)
+
+            params_dict[f"blocks.{layer_idx}.attn.W_Q"] = w_q
+            params_dict[f"blocks.{layer_idx}.attn.W_K"] = w_k
+            params_dict[f"blocks.{layer_idx}.attn.W_V"] = w_v
+            params_dict[f"blocks.{layer_idx}.attn.W_O"] = w_o
+
+            # Attention biases
+            params_dict[f"blocks.{layer_idx}.attn.b_Q"] = block.attn.q.bias.reshape(
+                self.cfg.n_heads, -1
+            )
+            params_dict[f"blocks.{layer_idx}.attn.b_K"] = block.attn.k.bias.reshape(
+                self.cfg.n_heads, -1
+            )
+            params_dict[f"blocks.{layer_idx}.attn.b_V"] = block.attn.v.bias.reshape(
+                self.cfg.n_heads, -1
+            )
+            params_dict[f"blocks.{layer_idx}.attn.b_O"] = block.attn.o.bias
+
+            # MLP weights - access the actual weight tensors
+            params_dict[f"blocks.{layer_idx}.mlp.W_in"] = getattr(block.mlp, "in").weight
+            params_dict[f"blocks.{layer_idx}.mlp.W_out"] = block.mlp.out.weight
+
+            # MLP biases
+            params_dict[f"blocks.{layer_idx}.mlp.b_in"] = getattr(block.mlp, "in").bias
+            params_dict[f"blocks.{layer_idx}.mlp.b_out"] = block.mlp.out.bias
+
+            # Add gate weights if they exist
+            if hasattr(block.mlp, "gate") and hasattr(block.mlp.gate, "weight"):
+                params_dict[f"blocks.{layer_idx}.mlp.W_gate"] = block.mlp.gate.weight
+                if hasattr(block.mlp.gate, "bias") and block.mlp.gate.bias is not None:
+                    params_dict[f"blocks.{layer_idx}.mlp.b_gate"] = block.mlp.gate.bias
+
+        # Add unembedding weights
+        params_dict["unembed.W_U"] = self.unembed.weight.T
+
+        return params_dict
+
+    @property
+    def params(self):
+        """Property access to model parameters in the format expected by SVDInterpreter."""
+        return self.get_params()
+
+    def named_parameters(
+        self, prefix: str = "", recurse: bool = True, remove_duplicate: bool = True
+    ) -> Iterator[Tuple[str, torch.nn.Parameter]]:
+        """Return named parameters in the same format as HookedTransformer.
+
+        This ensures compatibility with tools like SVDInterpreter that expect
+        parameter names like 'blocks.0.attn.W_Q' instead of the raw model names.
+        """
+        params_dict = self.get_params()
+        for name, param in params_dict.items():
+            yield name, param
 
     # ==================== FORWARD PASS METHODS ====================
 
@@ -721,48 +950,14 @@ class TransformerBridge(nn.Module):
 
             return cache_hook
 
-        # Recursively collect all HookPoint objects
-        def collect_hookpoints(module: nn.Module, prefix: str = "") -> None:
-            obj_id = id(module)
-            if obj_id in visited:
-                return
-            visited.add(obj_id)
+        # Use cached hooks instead of re-discovering them
+        hook_dict = self.hook_dict
 
-            for attr_name in dir(module):
-                if attr_name.startswith("_"):
-                    continue
-                # Skip the original_model to avoid collecting hooks from HuggingFace model
-                if attr_name == "original_model":
-                    continue
-                try:
-                    attr = getattr(module, attr_name)
-                except Exception:
-                    continue
-
-                name = f"{prefix}.{attr_name}" if prefix else attr_name
-                if isinstance(attr, HookPoint):
-                    # Set the name on the HookPoint so it can be used in caching
-                    attr.name = name
-                    # Only add hook if it passes the names filter
-                    if names_filter_fn(name):
-                        hooks.append((attr, name))
-                elif isinstance(attr, nn.Module):
-                    collect_hookpoints(attr, name)
-                elif isinstance(attr, (list, tuple)):
-                    for i, item in enumerate(attr):
-                        if isinstance(item, nn.Module):
-                            collect_hookpoints(item, f"{name}[{i}]")
-
-            # Also traverse named_children() to catch ModuleList and other containers
-            for child_name, child_module in module.named_children():
-                child_path = f"{prefix}.{child_name}" if prefix else child_name
-                # Skip the original_model module
-                if child_name == "original_model":
-                    continue
-                collect_hookpoints(child_module, child_path)
-
-        # Collect hooks from bridge components (these have the clean TransformerLens paths)
-        collect_hookpoints(self, "")
+        # Filter hooks based on names_filter
+        for hook_name, hook in hook_dict.items():
+            # Only add hook if it passes the names filter
+            if names_filter_fn(hook_name):
+                hooks.append((hook, hook_name))
 
         # Register hooks
         for hp, name in hooks:
@@ -880,6 +1075,7 @@ class TransformerBridge(nn.Module):
         return_type: Optional[str] = "logits",
         names_filter: Optional[Union[str, List[str], Callable[[str], bool]]] = None,
         stop_at_layer: Optional[int] = None,
+        remove_batch_dim: bool = False,
         **kwargs,
     ) -> Any:
         """Run the model with specified forward and backward hooks.
@@ -893,6 +1089,7 @@ class TransformerBridge(nn.Module):
             return_type: What to return ("logits", "loss", etc.)
             names_filter: Filter for hook names (not used directly, for compatibility)
             stop_at_layer: Layer to stop at (not yet fully implemented)
+            remove_batch_dim: Whether to remove batch dimension from hook inputs (only works for batch_size==1)
             **kwargs: Additional arguments
 
         Returns:
@@ -933,6 +1130,24 @@ class TransformerBridge(nn.Module):
             aliases = collect_aliases_recursive(self)
 
             for hook_name_or_filter, hook_fn in hooks:
+                # Wrap the hook function to handle remove_batch_dim if needed
+                if remove_batch_dim:
+                    original_hook_fn = hook_fn
+
+                    def wrapped_hook_fn(tensor, hook):
+                        # Remove batch dimension if it's size 1
+                        if tensor.shape[0] == 1:
+                            tensor_no_batch = tensor.squeeze(0)
+                            result = original_hook_fn(tensor_no_batch, hook)
+                            # Add batch dimension back if result doesn't have it
+                            if result.dim() == tensor_no_batch.dim():
+                                result = result.unsqueeze(0)
+                            return result
+                        else:
+                            return original_hook_fn(tensor, hook)
+
+                    hook_fn = wrapped_hook_fn
+
                 if isinstance(hook_name_or_filter, str):
                     # Direct hook name - check for aliases first
                     hook_dict = self.hook_dict
@@ -1220,3 +1435,38 @@ class TransformerBridge(nn.Module):
                     self.reset_hooks()
 
         return _hooks_context()
+
+    def set_use_attn_result(self, use_attn_result: bool):
+        """Toggle whether to explicitly calculate and expose the result for each attention head.
+
+        Useful for interpretability but can easily burn through GPU memory.
+        """
+        self.cfg.use_attn_result = use_attn_result
+
+    def set_use_split_qkv_input(self, use_split_qkv_input: bool):
+        """
+        Toggles whether to allow editing of inputs to each attention head.
+        """
+        self.cfg.use_split_qkv_input = use_split_qkv_input
+
+    def set_use_hook_mlp_in(self, use_hook_mlp_in: bool):
+        """Toggles whether to allow storing and editing inputs to each MLP layer."""
+        import warnings
+
+        warnings.warn(
+            "This function is now deprecated and no longer does anything. These options are turned on by default now.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
+    def set_use_attn_in(self, use_attn_in: bool):
+        """
+        Toggles whether to allow editing of inputs to each attention head.
+        """
+        import warnings
+
+        warnings.warn(
+            "This function is now deprecated and no longer does anything. These options are turned on by default now.",
+            DeprecationWarning,
+            stacklevel=2,
+        )

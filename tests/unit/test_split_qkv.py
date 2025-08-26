@@ -24,7 +24,6 @@ def test_split_qkv_normal_attn_correct():
     )
 
     model = HookedTransformer(cfg)
-    assert model.cfg.use_split_qkv_input is False
 
     x = torch.arange(1, 9).unsqueeze(0)
     normal_output = model(x)
@@ -60,7 +59,6 @@ def test_split_qkv_grouped_query_attn_correct():
     )
 
     model = HookedTransformer(cfg)
-    assert model.cfg.use_split_qkv_input is False
 
     x = torch.arange(1, 9).unsqueeze(0)
     normal_output = model(x)

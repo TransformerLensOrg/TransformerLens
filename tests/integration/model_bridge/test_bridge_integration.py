@@ -4,6 +4,8 @@ This module contains tests that verify the core functionality of the model bridg
 including model initialization, text generation, hooks, and caching.
 """
 
+import logging
+
 import pytest
 import torch
 
@@ -19,6 +21,35 @@ def test_model_initialization():
     assert bridge is not None, "Bridge should be initialized"
     assert bridge.tokenizer is not None, "Tokenizer should be initialized"
     assert isinstance(bridge.original_model, torch.nn.Module), "Model should be a PyTorch module"
+
+
+def test_model_initialization_with_alias(caplog):
+    """Test that the model can be initialized correctly with an alias and logs deprecation warning."""
+
+    model_name = "gpt2-small"
+
+    # Set logging level to capture warnings
+    with caplog.at_level(logging.WARNING):
+        bridge = TransformerBridge.boot_transformers(model_name)
+
+        # Basic assertions
+        assert bridge is not None, "Bridge should be initialized"
+        assert bridge.tokenizer is not None, "Tokenizer should be initialized"
+        assert isinstance(
+            bridge.original_model, torch.nn.Module
+        ), "Model should be a PyTorch module"
+
+    # Check that a deprecation warning was logged
+    deprecation_found = False
+    for record in caplog.records:
+        if "DEPRECATED" in record.message:
+            deprecation_found = True
+            # Verify the warning contains expected content
+            assert "gpt2-small" in record.message, "Warning should mention the deprecated alias"
+            assert "gpt2" in record.message, "Warning should mention the official name"
+            break
+
+    assert deprecation_found, "Expected deprecation warning for alias 'gpt2-small' was not logged"
 
 
 def test_text_generation():
@@ -79,6 +110,9 @@ def test_cache():
     model_name = "gpt2"  # Use a smaller model for testing
     bridge = TransformerBridge.boot_transformers(model_name)
 
+    # Enable compatibility mode to include hook aliases
+    bridge.enable_compatibility_mode(disable_warnings=True)
+
     if bridge.tokenizer.pad_token is None:
         bridge.tokenizer.pad_token = bridge.tokenizer.eos_token
 
@@ -123,14 +157,13 @@ def test_component_access():
 
 
 def test_joint_qkv_custom_conversion_rule():
-    """Test that custom QKV conversion rules can be passed to JointQKVAttentionBridge."""
+    """Test that custom QKV conversion rules can be passed to QKVBridge."""
     from transformer_lens.conversion_utils.conversion_steps.rearrange_hook_conversion import (
         RearrangeHookConversion,
     )
-    from transformer_lens.model_bridge.generalized_components.joint_qkv_attention import (
-        JointQKVAttentionBridge,
+    from transformer_lens.model_bridge.generalized_components.qkv_bridge import (
+        QKVBridge,
     )
-    from transformer_lens.model_bridge.generalized_components.linear import LinearBridge
 
     model_name = "gpt2"  # Use a smaller model for testing
     bridge = TransformerBridge.boot_transformers(model_name)
@@ -141,36 +174,46 @@ def test_joint_qkv_custom_conversion_rule():
         num_attention_heads=12,  # GPT-2 small has 12 heads
     )
 
-    # Create QKV config
-    qkv_config = {
-        "split_qkv_matrix": lambda x: (x, x, x),  # Dummy function for test
-    }
-
-    # Create submodules
-    submodules = {
-        "qkv": LinearBridge(name="c_attn"),
-        "o": LinearBridge(name="c_proj"),
-    }
+    custom_qkv_separation = RearrangeHookConversion(
+        "batch seq (three d_model) -> three batch seq d_model",
+        three=3,
+    )
 
     # This should not raise an error
-    test_bridge = JointQKVAttentionBridge(
-        name="test_joint_qkv",
-        model_config=bridge.cfg,
-        submodules=submodules,
-        qkv_config=qkv_config,
+    test_bridge = QKVBridge(
+        name="test_qkv_bridge",
+        config=bridge.cfg,
+        submodules={},
         qkv_conversion_rule=custom_qkv_conversion,
+        qkv_separation_rule=custom_qkv_separation,
     )
 
     # Verify the custom conversion rule was set on Q, K, V components
     assert (
-        test_bridge.q.hook_out.hook_conversion is custom_qkv_conversion
-    ), "Custom QKV conversion rule should be set on Q"
+        test_bridge.q_hook_in.hook_conversion is custom_qkv_conversion
+    ), "Custom QKV conversion rule should be set on hook_in of Q"
     assert (
-        test_bridge.k.hook_out.hook_conversion is custom_qkv_conversion
-    ), "Custom QKV conversion rule should be set on K"
+        test_bridge.k_hook_in.hook_conversion is custom_qkv_conversion
+    ), "Custom QKV conversion rule should be set on hook_in of K"
     assert (
-        test_bridge.v.hook_out.hook_conversion is custom_qkv_conversion
-    ), "Custom QKV conversion rule should be set on V"
+        test_bridge.v_hook_in.hook_conversion is custom_qkv_conversion
+    ), "Custom QKV conversion rule should be set on hook_in of V"
+    assert (
+        test_bridge.q_hook_out.hook_conversion is custom_qkv_conversion
+    ), "Custom QKV conversion rule should be set on hook_out of Q"
+    assert (
+        test_bridge.k_hook_out.hook_conversion is custom_qkv_conversion
+    ), "Custom QKV conversion rule should be set on hook_out of K"
+    assert (
+        test_bridge.v_hook_out.hook_conversion is custom_qkv_conversion
+    ), "Custom QKV conversion rule should be set on hook_out of V"
+
+    assert (
+        test_bridge.qkv_conversion_rule is custom_qkv_conversion
+    ), "Custom QKV conversion rule should be set"
+    assert (
+        test_bridge.qkv_separation_rule is custom_qkv_separation
+    ), "Custom QKV separation rule should be set"
 
 
 def test_attention_pattern_hook_shape_custom_conversion():
@@ -209,7 +252,7 @@ def test_attention_pattern_hook_shape_custom_conversion():
 
 
 def test_attention_pattern_hook_shape():
-    """Test that the attention pattern hook produces the correct shape (batch, n_heads, pos, pos)."""
+    """Test that the attention pattern hook produces the correct shape (n_heads, pos, pos)."""
     model_name = "gpt2"  # Use a smaller model for testing
     bridge = TransformerBridge.boot_transformers(
         model_name,
@@ -249,15 +292,14 @@ def test_attention_pattern_hook_shape():
         # Get the captured pattern tensor
         pattern_tensor = list(captured_patterns.values())[0]
 
-        # Verify the shape is (batch, n_heads, pos, pos)
+        # Verify the shape is (n_heads, pos, pos) - attention patterns should not have batch dimension
         assert (
-            len(pattern_tensor.shape) == 4
-        ), f"Pattern tensor should be 4D, got {len(pattern_tensor.shape)}D"
+            len(pattern_tensor.shape) == 3
+        ), f"Pattern tensor should be 3D, got {len(pattern_tensor.shape)}D"
 
-        batch_dim, n_heads_dim, pos_q_dim, pos_k_dim = pattern_tensor.shape
+        n_heads_dim, pos_q_dim, pos_k_dim = pattern_tensor.shape
 
         # Verify dimensions make sense
-        assert batch_dim == batch_size, f"Batch dimension should be {batch_size}, got {batch_dim}"
         assert (
             n_heads_dim == bridge.cfg.n_heads
         ), f"Heads dimension should be {bridge.cfg.n_heads}, got {n_heads_dim}"
