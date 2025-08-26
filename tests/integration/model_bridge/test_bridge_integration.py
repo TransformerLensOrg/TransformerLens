@@ -110,6 +110,9 @@ def test_cache():
     model_name = "gpt2"  # Use a smaller model for testing
     bridge = TransformerBridge.boot_transformers(model_name)
 
+    # Enable compatibility mode to include hook aliases
+    bridge.enable_compatibility_mode(disable_warnings=True)
+
     if bridge.tokenizer.pad_token is None:
         bridge.tokenizer.pad_token = bridge.tokenizer.eos_token
 

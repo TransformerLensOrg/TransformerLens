@@ -35,7 +35,7 @@ from transformer_lens.model_bridge.generalized_components.base import (
 )
 from transformer_lens.model_bridge.hook_point_wrapper import HookPointWrapper
 from transformer_lens.model_bridge.types import ComponentMapping
-from transformer_lens.utilities.aliases import collect_aliases_recursive
+from transformer_lens.utilities.aliases import collect_aliases_recursive, resolve_alias
 
 if TYPE_CHECKING:
     from transformer_lens.ActivationCache import ActivationCache
@@ -54,6 +54,7 @@ class TransformerBridge(nn.Module):
     hook_aliases = {
         "hook_embed": "embed.hook_out",
         "hook_pos_embed": "pos_embed.hook_out",
+        "hook_unembed": "unembed.hook_out",
     }
 
     def __init__(self, model: nn.Module, adapter: ArchitectureAdapter, tokenizer: Any):
@@ -127,6 +128,15 @@ class TransformerBridge(nn.Module):
 
         # Scan existing components for hooks
         self._scan_existing_hooks(self, "")
+
+        # Add bridge aliases if compatibility mode is enabled
+        if self.compatibility_mode and self.hook_aliases:
+            for alias_name, target_name in self.hook_aliases.items():
+                # Use the existing alias system to resolve the target hook
+                target_hook = resolve_alias(self, alias_name, self.hook_aliases)
+                if target_hook is not None:
+                    self._hook_registry[alias_name] = target_hook
+
         self._hook_registry_initialized = True
 
     def _scan_existing_hooks(self, module: nn.Module, prefix: str = "") -> None:
@@ -151,18 +161,6 @@ class TransformerBridge(nn.Module):
                             full_name = f"{path}.{hook_name}" if path else hook_name
                             hook.name = full_name
                             self._hook_registry[full_name] = hook
-
-                        # Add component aliases if compatibility mode is enabled
-                        if hasattr(mod, "compatibility_mode") and mod.compatibility_mode:
-                            if hasattr(mod, "hook_aliases"):
-                                for alias_name, target_name in mod.hook_aliases.items():  # type: ignore
-                                    if target_name in hooks_dict:
-                                        alias_full_name = (
-                                            f"{path}.{alias_name}" if path else alias_name
-                                        )
-                                        self._hook_registry[alias_full_name] = hooks_dict[
-                                            target_name
-                                        ]
                 except Exception:
                     # If get_hooks() fails, fall through to the else block
                     pass
@@ -345,6 +343,10 @@ class TransformerBridge(nn.Module):
             component.disable_warnings = disable_warnings
 
         apply_fn_to_all_components(self, set_compatibility_mode)
+
+        # Re-initialize the hook registry to include aliases from components
+        self.clear_hook_registry()
+        self._initialize_hook_registry()
 
     # ==================== TOKENIZATION METHODS ====================
 

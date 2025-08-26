@@ -22,7 +22,7 @@ def resolve_alias(
     if requested_name in aliases:
         target_name = aliases[requested_name]
 
-        if target_object.disable_warnings == False:
+        if hasattr(target_object, "disable_warnings") and target_object.disable_warnings == False:
             warnings.warn(
                 f"Hook '{requested_name}' is deprecated and will be removed in a future version. "
                 f"Use '{target_name}' instead.",
