@@ -70,6 +70,7 @@ class TransformerBridge(nn.Module):
         self.cfg = adapter.cfg
         self.tokenizer = tokenizer
         self.compatibility_mode = False
+        self._hook_cache = None  # Cache for hook discovery results
 
         # Add device information to config from the loaded model
         if not hasattr(self.cfg, "device"):
@@ -87,8 +88,18 @@ class TransformerBridge(nn.Module):
     @property
     def hook_dict(self) -> dict[str, HookPoint]:
         """Get all HookPoint objects in the model for compatibility with HookedTransformer."""
+        # Return cached hooks if available
+        if self._hook_cache is not None:
+            return self._hook_cache
+        
+        # Discover hooks and cache the result
+        self._hook_cache = self._discover_hooks()
+        return self._hook_cache
+
+    def _discover_hooks(self) -> dict[str, HookPoint]:
+        """Discover and cache all HookPoint objects in the model."""
         hooks = {}
-        visited = set()  # Move visited set outside the recursive function
+        visited = set()
 
         def collect_hookpoints(module: nn.Module, prefix: str = "") -> None:
             """Recursively collect all HookPoint objects."""
@@ -97,6 +108,15 @@ class TransformerBridge(nn.Module):
                 return
             visited.add(obj_id)
 
+            # Use named_children() first for better performance
+            for child_name, child_module in module.named_children():
+                # Skip original_component and _original_component to avoid deep traversal
+                if child_name == "original_component" or child_name == "_original_component":
+                    continue
+                child_path = f"{prefix}.{child_name}" if prefix else child_name
+                collect_hookpoints(child_module, child_path)
+
+            # Then check direct attributes (but skip expensive dir() calls when possible)
             for attr_name in dir(module):
                 if attr_name.startswith("_"):
                     continue
@@ -130,16 +150,12 @@ class TransformerBridge(nn.Module):
                         if isinstance(item, nn.Module):
                             collect_hookpoints(item, f"{name}[{i}]")
 
-            # Also traverse named_children() to catch ModuleList and other containers
-            for child_name, child_module in module.named_children():
-                # Skip original_component and _original_component to avoid deep traversal
-                if child_name == "original_component" or child_name == "_original_component":
-                    continue
-                child_path = f"{prefix}.{child_name}" if prefix else child_name
-                collect_hookpoints(child_module, child_path)
-
         collect_hookpoints(self, "")
         return hooks
+
+    def clear_hook_cache(self) -> None:
+        """Clear the cached hook discovery results."""
+        self._hook_cache = None
 
     def __getattr__(self, name: str) -> Any:
         """Provide a clear error message for missing attributes."""
@@ -738,56 +754,14 @@ class TransformerBridge(nn.Module):
 
             return cache_hook
 
-        # Recursively collect all HookPoint objects
-        def collect_hookpoints(module: nn.Module, prefix: str = "") -> None:
-            obj_id = id(module)
-            if obj_id in visited:
-                return
-            visited.add(obj_id)
-
-            for attr_name in dir(module):
-                if attr_name.startswith("_"):
-                    continue
-                # Skip the original_model to avoid collecting hooks from HuggingFace model
-                if attr_name == "original_model" or attr_name == "original_component":
-                    continue
-                try:
-                    attr = getattr(module, attr_name)
-                except Exception:
-                    continue
-
-                def add_hook_to_list(hook: HookPoint, name: str):
-                    # Set the name on the HookPoint so it can be used in caching
-                    hook.name = name
-
-                    # Only add hook if it passes the names filter
-                    if names_filter_fn(name):
-                        hooks.append((hook, name))
-
-                name = f"{prefix}.{attr_name}" if prefix else attr_name
-                if isinstance(attr, HookPoint):
-                    add_hook_to_list(attr, name)
-                elif isinstance(attr, HookPointWrapper):
-                    # Add hooks for the wrapped hook points (hook_in and hook_out)
-                    add_hook_to_list(attr.hook_in, f"{name}.hook_in")
-                    add_hook_to_list(attr.hook_out, f"{name}.hook_out")
-                elif isinstance(attr, nn.Module):
-                    collect_hookpoints(attr, name)
-                elif isinstance(attr, (list, tuple)):
-                    for i, item in enumerate(attr):
-                        if isinstance(item, nn.Module):
-                            collect_hookpoints(item, f"{name}[{i}]")
-
-            # Also traverse named_children() to catch ModuleList and other containers
-            for child_name, child_module in module.named_children():
-                child_path = f"{prefix}.{child_name}" if prefix else child_name
-                # Skip the original_model module
-                if child_name == "original_model" or child_name == "original_component":
-                    continue
-                collect_hookpoints(child_module, child_path)
-
-        # Collect hooks from bridge components (these have the clean TransformerLens paths)
-        collect_hookpoints(self, "")
+        # Use cached hooks instead of re-discovering them
+        hook_dict = self.hook_dict
+        
+        # Filter hooks based on names_filter
+        for hook_name, hook in hook_dict.items():
+            # Only add hook if it passes the names filter
+            if names_filter_fn(hook_name):
+                hooks.append((hook, hook_name))
 
         # Register hooks
         for hp, name in hooks:
