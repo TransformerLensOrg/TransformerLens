@@ -1,4 +1,3 @@
-from . import supported_models
 from . import utilities
 from . import hook_points
 from . import evals
