@@ -56,7 +56,9 @@ class GeneralizedComponent(nn.Module):
         self.config = config
         self.submodules = submodules or {}
         self.conversion_rule = conversion_rule
-        self._hook_registry = {}  # Dynamic registry of hook names to HookPoints
+        self._hook_registry: Dict[
+            str, HookPoint
+        ] = {}  # Dynamic registry of hook names to HookPoints
 
         # Standardized hooks for all bridge components
         self.hook_in = HookPoint()
