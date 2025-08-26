@@ -22,6 +22,29 @@ from transformer_lens.model_bridge.generalized_components.base import (
 )
 
 
+class AttentionPatternConversion(BaseHookConversion):
+    """Custom conversion rule for attention patterns that always removes batch dimension."""
+    
+    def handle_conversion(self, tensor: torch.Tensor, *args) -> torch.Tensor:
+        """Convert attention pattern tensor to standard shape [n_heads, pos, pos].
+        
+        Args:
+            tensor: Input tensor with shape [batch, n_heads, pos, pos] or [n_heads, pos, pos]
+            *args: Additional context arguments (ignored)
+            
+        Returns:
+            Tensor with shape [n_heads, pos, pos]
+        """
+        if tensor.dim() == 4:
+            # Remove batch dimension if present
+            return tensor.squeeze(0)
+        elif tensor.dim() == 3:
+            # Already in correct shape
+            return tensor
+        else:
+            raise ValueError(f"Unexpected attention pattern shape: {tensor.shape}")
+
+
 class AttentionBridge(GeneralizedComponent):
     """Bridge component for attention layers.
 
@@ -65,7 +88,7 @@ class AttentionBridge(GeneralizedComponent):
             submodules: Dictionary of submodules to register (e.g., q_proj, k_proj, etc.)
             conversion_rule: Optional conversion rule. If None, AttentionAutoConversion will be used
             pattern_conversion_rule: Optional conversion rule for attention patterns. If None,
-                                   uses default RearrangeHookConversion to reshape to (batch, n_heads, pos, pos)
+                                   uses AttentionPatternConversion to ensure [n_heads, pos, pos] shape
         """
         # Set up conversion rule - use AttentionAutoConversion if None
         if conversion_rule is None:
@@ -84,11 +107,8 @@ class AttentionBridge(GeneralizedComponent):
         if pattern_conversion_rule is not None:
             pattern_conversion = pattern_conversion_rule
         else:
-            # Create default conversion rule for attention patterns - reshape to (batch, n_heads, pos, pos)
-            # This assumes the input is (batch, n_heads, seq_len, seq_len) or similar
-            pattern_conversion = RearrangeHookConversion(
-                "batch n_heads pos_q pos_k -> batch n_heads pos_q pos_k"
-            )
+            # Use custom conversion rule that always removes batch dimension
+            pattern_conversion = AttentionPatternConversion()
 
         self.hook_pattern.hook_conversion = pattern_conversion
 

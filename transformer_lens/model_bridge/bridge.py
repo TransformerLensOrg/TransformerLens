@@ -905,6 +905,7 @@ class TransformerBridge(nn.Module):
         return_type: Optional[str] = "logits",
         names_filter: Optional[Union[str, List[str], Callable[[str], bool]]] = None,
         stop_at_layer: Optional[int] = None,
+        remove_batch_dim: bool = False,
         **kwargs,
     ) -> Any:
         """Run the model with specified forward and backward hooks.
@@ -918,6 +919,7 @@ class TransformerBridge(nn.Module):
             return_type: What to return ("logits", "loss", etc.)
             names_filter: Filter for hook names (not used directly, for compatibility)
             stop_at_layer: Layer to stop at (not yet fully implemented)
+            remove_batch_dim: Whether to remove batch dimension from hook inputs (only works for batch_size==1)
             **kwargs: Additional arguments
 
         Returns:
@@ -958,6 +960,22 @@ class TransformerBridge(nn.Module):
             aliases = collect_aliases_recursive(self)
 
             for hook_name_or_filter, hook_fn in hooks:
+                # Wrap the hook function to handle remove_batch_dim if needed
+                if remove_batch_dim:
+                    original_hook_fn = hook_fn
+                    def wrapped_hook_fn(tensor, hook):
+                        # Remove batch dimension if it's size 1
+                        if tensor.shape[0] == 1:
+                            tensor_no_batch = tensor.squeeze(0)
+                            result = original_hook_fn(tensor_no_batch, hook)
+                            # Add batch dimension back if result doesn't have it
+                            if result.dim() == tensor_no_batch.dim():
+                                result = result.unsqueeze(0)
+                            return result
+                        else:
+                            return original_hook_fn(tensor, hook)
+                    hook_fn = wrapped_hook_fn
+
                 if isinstance(hook_name_or_filter, str):
                     # Direct hook name - check for aliases first
                     hook_dict = self.hook_dict
