@@ -83,13 +83,15 @@ class GeneralizedComponent(nn.Module):
     def get_hooks(self) -> Dict[str, HookPoint]:
         """Get all hooks registered in this component."""
         hooks = self._hook_registry.copy()
-        
+
         # Add aliases if compatibility mode is enabled
         if self.compatibility_mode and self.hook_aliases:
             for alias_name, target_name in self.hook_aliases.items():
-                if target_name in hooks:
-                    hooks[alias_name] = hooks[target_name]
-        
+                # Use the existing alias system to resolve the target hook
+                target_hook = resolve_alias(self, alias_name, self.hook_aliases)
+                if target_hook is not None:
+                    hooks[alias_name] = target_hook
+
         return hooks
 
     def _is_getattr_called_internally(self) -> bool:
