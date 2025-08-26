@@ -8,21 +8,13 @@ from typing import Any, Dict, Optional
 from transformer_lens.conversion_utils.conversion_steps.base_hook_conversion import (
     BaseHookConversion,
 )
-from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.generalized_components.attention import (
     AttentionBridge,
 )
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
-
-
-class HookPointWrapper:
-    """Wrapper class to provide dotted access to hook points."""
-
-    def __init__(self, hook_in: HookPoint, hook_out: HookPoint):
-        self.hook_in = hook_in
-        self.hook_out = hook_out
+from transformer_lens.model_bridge.hook_point_wrapper import HookPointWrapper
 
 
 class JointQKVAttentionBridge(AttentionBridge):
