@@ -56,6 +56,7 @@ class GeneralizedComponent(nn.Module):
         self.config = config
         self.submodules = submodules or {}
         self.conversion_rule = conversion_rule
+        self._hook_registry = {}  # Dynamic registry of hook names to HookPoints
 
         # Standardized hooks for all bridge components
         self.hook_in = HookPoint()
@@ -65,6 +66,30 @@ class GeneralizedComponent(nn.Module):
         if self.conversion_rule is not None:
             self.hook_in.hook_conversion = self.conversion_rule
             self.hook_out.hook_conversion = self.conversion_rule
+
+        # Register the standard hooks
+        self._register_hook("hook_in", self.hook_in)
+        self._register_hook("hook_out", self.hook_out)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        """Override setattr to track HookPoint objects dynamically."""
+        # Call parent setattr first
+        super().__setattr__(name, value)
+
+        # Check if this is a HookPoint being set
+        if isinstance(value, HookPoint):
+            self._register_hook(name, value)
+
+    def _register_hook(self, name: str, hook: HookPoint) -> None:
+        """Register a hook in the component's hook registry."""
+        # Set the name on the HookPoint
+        hook.name = name
+        # Add to registry
+        self._hook_registry[name] = hook
+
+    def get_hooks(self) -> Dict[str, HookPoint]:
+        """Get all hooks registered in this component."""
+        return self._hook_registry.copy()
 
     def _is_getattr_called_internally(self) -> bool:
         """This function checks if the __getattr__ method was being called internally
