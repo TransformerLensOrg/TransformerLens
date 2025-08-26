@@ -87,8 +87,6 @@ class TestActivationCacheCompatibility:
         print(f"Total cache keys: {len(cache_keys)}")
         print(f"Sample keys: {cache_keys[:5]}")
 
-
-
     def test_cache_with_names_filter(self, bridge_model):
         """Test that names filtering works with caching."""
         prompt = "Test names filter."
