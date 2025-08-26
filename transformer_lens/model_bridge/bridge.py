@@ -963,6 +963,7 @@ class TransformerBridge(nn.Module):
                 # Wrap the hook function to handle remove_batch_dim if needed
                 if remove_batch_dim:
                     original_hook_fn = hook_fn
+
                     def wrapped_hook_fn(tensor, hook):
                         # Remove batch dimension if it's size 1
                         if tensor.shape[0] == 1:
@@ -974,6 +975,7 @@ class TransformerBridge(nn.Module):
                             return result
                         else:
                             return original_hook_fn(tensor, hook)
+
                     hook_fn = wrapped_hook_fn
 
                 if isinstance(hook_name_or_filter, str):
