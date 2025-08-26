@@ -249,7 +249,7 @@ def test_attention_pattern_hook_shape_custom_conversion():
 
 
 def test_attention_pattern_hook_shape():
-    """Test that the attention pattern hook produces the correct shape (batch, n_heads, pos, pos)."""
+    """Test that the attention pattern hook produces the correct shape (n_heads, pos, pos)."""
     model_name = "gpt2"  # Use a smaller model for testing
     bridge = TransformerBridge.boot_transformers(
         model_name,
@@ -289,15 +289,14 @@ def test_attention_pattern_hook_shape():
         # Get the captured pattern tensor
         pattern_tensor = list(captured_patterns.values())[0]
 
-        # Verify the shape is (batch, n_heads, pos, pos)
+        # Verify the shape is (n_heads, pos, pos) - attention patterns should not have batch dimension
         assert (
-            len(pattern_tensor.shape) == 4
-        ), f"Pattern tensor should be 4D, got {len(pattern_tensor.shape)}D"
+            len(pattern_tensor.shape) == 3
+        ), f"Pattern tensor should be 3D, got {len(pattern_tensor.shape)}D"
 
-        batch_dim, n_heads_dim, pos_q_dim, pos_k_dim = pattern_tensor.shape
+        n_heads_dim, pos_q_dim, pos_k_dim = pattern_tensor.shape
 
         # Verify dimensions make sense
-        assert batch_dim == batch_size, f"Batch dimension should be {batch_size}, got {batch_dim}"
         assert (
             n_heads_dim == bridge.cfg.n_heads
         ), f"Heads dimension should be {bridge.cfg.n_heads}, got {n_heads_dim}"
