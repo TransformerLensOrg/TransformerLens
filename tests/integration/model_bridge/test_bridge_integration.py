@@ -5,6 +5,7 @@ including model initialization, text generation, hooks, and caching.
 """
 
 import pytest
+import numpy as np
 import torch
 
 from transformer_lens.ActivationCache import ActivationCache
@@ -35,6 +36,43 @@ def test_text_generation():
     assert isinstance(output, str), "Output should be a string"
     assert len(output) > len(prompt), "Generated text should be longer than the prompt"
 
+
+def test_text_generation_stream():
+    """Test streaming text generation functionality."""
+    model_name = "gpt2"  # Use a smaller model for testing
+    bridge = TransformerBridge.boot_transformers(model_name)
+
+    if bridge.tokenizer.pad_token is None:
+        bridge.tokenizer.pad_token = bridge.tokenizer.eos_token
+
+    prompt = "The quick brown fox jumps over the lazy dog"
+
+    # Make sampling deterministic for reproducible streamed chunks
+    torch.manual_seed(0)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(0)
+    np.random.seed(0)
+
+    # Expected non-empty streamed chunks from a reference run
+    EXPECTED_CHUNKS = ['The quick brown fox jumps over the lazy ', 'dog, ', 'and ', 'the ', 'dog ', 'gets ', 'away...']
+
+    # Collect streamed chunks
+    chunks = []
+    expected_idx = 0
+    for chunk in bridge.generate_stream(prompt, max_new_tokens=20, temperature=0.8, top_k=20):        
+        assert isinstance(chunk, str), "Each streamed item should be a string"
+        if chunk:
+            chunks.append(chunk)
+            # Ensure the generated chunk matches the expected chunk at the same index
+            assert expected_idx < len(EXPECTED_CHUNKS), "Received more chunks than expected"
+            assert chunk == EXPECTED_CHUNKS[expected_idx], (
+                f"Chunk {expected_idx} mismatch: got {repr(chunk)} expected {repr(EXPECTED_CHUNKS[expected_idx])}"
+            )
+            expected_idx += 1    
+
+    streamed_text = "".join(chunks)    
+    assert isinstance(streamed_text, str)
+    assert len(streamed_text) > 0, "Streamed output should contain text"
 
 def test_hooks():
     """Test that hooks can be added and removed correctly."""

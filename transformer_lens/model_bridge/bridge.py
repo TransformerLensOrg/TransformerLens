@@ -22,8 +22,11 @@ import numpy as np
 import torch
 from jaxtyping import Float
 from torch import nn
+import tqdm.auto as tqdm
+from transformers.generation.streamers import TextIteratorStreamer
 
 from transformer_lens import utils
+from transformer_lens.utilities import devices
 from transformer_lens.ActivationCache import ActivationCache
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookPoint
@@ -974,6 +977,98 @@ class TransformerBridge(nn.Module):
                     hook_point.remove_hooks()
 
     # ==================== GENERATION METHODS ====================
+
+    def generate_stream(
+        self,
+        input: Union[str, List[str], torch.Tensor] = "",
+        max_new_tokens: int = 10,
+        stop_at_eos: bool = True,
+        eos_token_id: Optional[int] = None,
+        do_sample: bool = True,
+        top_k: Optional[int] = None,
+        top_p: Optional[float] = None,
+        temperature: float = 1.0,
+        freq_penalty: float = 0.0,
+        use_past_kv_cache: bool = True,
+        prepend_bos: Optional[bool] = None,
+        padding_side: Optional[str] = None,
+        return_type: Optional[str] = "input",
+        verbose: bool = True,
+    ):
+        """Stream text generation token-by-token.
+
+        This mirrors the preprocessing and kwargs of `generate`, but yields decoded
+        text chunks incrementally using Hugging Face's TextIteratorStreamer.
+
+        Note: This currently yields decoded text chunks (strings). If you need raw
+        token IDs per step, consider consuming the model outputs manually in a loop.
+        """
+        # Validate underlying support
+        if not hasattr(self.original_model, "generate"):
+            raise RuntimeError("Underlying model does not support generate method.")
+
+        # Tokenize input if needed (mirror generate)
+        if isinstance(input, (str, list)):
+            input_ids = self.to_tokens(
+                input, prepend_bos=prepend_bos, padding_side=padding_side
+            )
+        else:
+            input_ids = input
+
+        if input_ids.ndim == 1:
+            input_ids = input_ids.unsqueeze(0)
+
+        # Map return_type when set to "input"
+        if return_type == "input":
+            return_type = "str" if isinstance(input, (str, list)) else "tokens"
+
+        # Build generation kwargs (mirror generate)
+        gen_kwargs = {
+            "max_new_tokens": max_new_tokens,
+            "do_sample": do_sample,
+            "temperature": temperature,
+        }
+        if top_k is not None:
+            gen_kwargs["top_k"] = top_k
+        if top_p is not None:
+            gen_kwargs["top_p"] = top_p
+        if eos_token_id is not None:
+            gen_kwargs["eos_token_id"] = eos_token_id
+
+        # Frequency penalty is handled inside TL sampling utilities, but since we
+        # delegate to HF generate for streaming, we cannot directly apply it here.
+        # Keep the parameter to match signature; it is currently unused.
+        _ = freq_penalty
+        _ = use_past_kv_cache
+
+        # Configure streamer to yield decoded text per new token
+        streamer = TextIteratorStreamer(
+            self.tokenizer,
+            skip_special_tokens=True,
+            clean_up_tokenization_spaces=False,
+        )
+
+        # Launch generation in a background thread so we can iterate the streamer
+        import threading
+
+        def _run_generation():
+            self.original_model.generate(
+                input_ids,
+                streamer=streamer,  # type: ignore[arg-type]
+                **gen_kwargs,
+            )
+
+        thread = threading.Thread(target=_run_generation)
+        thread.start()
+
+        # Iterate over streamed text pieces
+        for text in streamer:
+            # If caller requested tokens, best-effort fallback is to yield strings;
+            # true token IDs streaming is not supported in this path.
+            yield text
+
+        # Ensure thread finishes
+        thread.join()
 
     def generate(
         self,
