@@ -33,8 +33,9 @@ from transformer_lens.model_bridge.exceptions import StopAtLayerException
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
+from transformer_lens.model_bridge.hook_point_wrapper import HookPointWrapper
 from transformer_lens.model_bridge.types import ComponentMapping
-from transformer_lens.utilities.aliases import collect_aliases_recursive
+from transformer_lens.utilities.aliases import collect_aliases_recursive, resolve_alias
 
 if TYPE_CHECKING:
     from transformer_lens.ActivationCache import ActivationCache
@@ -53,6 +54,7 @@ class TransformerBridge(nn.Module):
     hook_aliases = {
         "hook_embed": "embed.hook_out",
         "hook_pos_embed": "pos_embed.hook_out",
+        "hook_unembed": "unembed.hook_out",
     }
 
     def __init__(self, model: nn.Module, adapter: ArchitectureAdapter, tokenizer: Any):
@@ -69,6 +71,11 @@ class TransformerBridge(nn.Module):
         self.cfg = adapter.cfg
         self.tokenizer = tokenizer
         self.compatibility_mode = False
+        self._hook_cache = None  # Cache for hook discovery results
+        self._hook_registry: Dict[
+            str, HookPoint
+        ] = {}  # Dynamic registry of hook names to HookPoints
+        self._hook_registry_initialized = False  # Track if registry has been initialized
 
         # Add device information to config from the loaded model
         if not hasattr(self.cfg, "device"):
@@ -83,51 +90,158 @@ class TransformerBridge(nn.Module):
         # Set original components on the pre-created bridge components
         set_original_components(self, self.adapter, self.original_model)
 
-    @property
-    def hook_dict(self) -> dict[str, HookPoint]:
-        """Get all HookPoint objects in the model for compatibility with HookedTransformer."""
-        hooks = {}
-        visited = set()  # Move visited set outside the recursive function
+        # Initialize hook registry after components are set up
+        self._initialize_hook_registry()
 
-        def collect_hookpoints(module: nn.Module, prefix: str = "") -> None:
-            """Recursively collect all HookPoint objects."""
-            obj_id = id(module)
+    def __setattr__(self, name: str, value: Any) -> None:
+        """Override setattr to track HookPoint objects dynamically."""
+        # Call parent setattr first
+        super().__setattr__(name, value)
+
+        # Check if this is a HookPoint being set
+        if isinstance(value, HookPoint):
+            # Set the name on the HookPoint
+            value.name = name
+            # Add to registry
+            self._hook_registry[name] = value
+        elif isinstance(value, HookPointWrapper):
+            # Handle HookPointWrapper objects
+            hook_in_name = f"{name}.hook_in"
+            hook_out_name = f"{name}.hook_out"
+            value.hook_in.name = hook_in_name
+            value.hook_out.name = hook_out_name
+            self._hook_registry[hook_in_name] = value.hook_in
+            self._hook_registry[hook_out_name] = value.hook_out
+        elif hasattr(value, "get_hooks") and callable(getattr(value, "get_hooks")):
+            # This is a GeneralizedComponent being set
+            # We need to register its hooks with the appropriate prefix
+            component_hooks = value.get_hooks()
+            for hook_name, hook in component_hooks.items():
+                full_name = f"{name}.{hook_name}"
+                hook.name = full_name
+                self._hook_registry[full_name] = hook
+
+    def _initialize_hook_registry(self) -> None:
+        """Initialize the hook registry by scanning existing components."""
+        if self._hook_registry_initialized:
+            return
+
+        # Scan existing components for hooks
+        self._scan_existing_hooks(self, "")
+
+        # Add bridge aliases if compatibility mode is enabled
+        if self.compatibility_mode and self.hook_aliases:
+            for alias_name, target_name in self.hook_aliases.items():
+                # Use the existing alias system to resolve the target hook
+                target_hook = resolve_alias(self, alias_name, self.hook_aliases)
+                if target_hook is not None:
+                    self._hook_registry[alias_name] = target_hook
+
+        self._hook_registry_initialized = True
+
+    def _scan_existing_hooks(self, module: nn.Module, prefix: str = "") -> None:
+        """Scan existing modules for hooks and add them to registry."""
+        visited = set()
+
+        def scan_module(mod: nn.Module, path: str = "") -> None:
+            obj_id = id(mod)
             if obj_id in visited:
                 return
             visited.add(obj_id)
 
-            for attr_name in dir(module):
-                if attr_name.startswith("_"):
-                    continue
+            # Check if this is a GeneralizedComponent with its own hook registry
+            if hasattr(mod, "get_hooks") and callable(getattr(mod, "get_hooks")):
+                # Use the component's own hook registry
                 try:
-                    attr = getattr(module, attr_name)
+                    component_hooks = mod.get_hooks()  # type: ignore
+                    if isinstance(component_hooks, dict):
+                        # Type cast to help mypy understand this is a dict of hooks
+                        hooks_dict = cast(Dict[str, HookPoint], component_hooks)  # type: ignore
+                        for hook_name, hook in hooks_dict.items():  # type: ignore
+                            full_name = f"{path}.{hook_name}" if path else hook_name
+                            hook.name = full_name
+                            self._hook_registry[full_name] = hook
                 except Exception:
+                    # If get_hooks() fails, fall through to the else block
+                    pass
+            else:
+                # Fall back to scanning attributes for non-GeneralizedComponent modules
+                for attr_name in dir(mod):
+                    if attr_name.startswith("_"):
+                        continue
+                    if attr_name == "original_component":
+                        continue
+
+                    try:
+                        attr = getattr(mod, attr_name)
+                    except Exception:
+                        continue
+
+                    name = f"{path}.{attr_name}" if path else attr_name
+
+                    if isinstance(attr, HookPoint):
+                        attr.name = name
+                        self._hook_registry[name] = attr
+                    elif isinstance(attr, HookPointWrapper):
+                        hook_in_name = f"{name}.hook_in"
+                        hook_out_name = f"{name}.hook_out"
+                        attr.hook_in.name = hook_in_name
+                        attr.hook_out.name = hook_out_name
+                        self._hook_registry[hook_in_name] = attr.hook_in
+                        self._hook_registry[hook_out_name] = attr.hook_out
+                    elif isinstance(attr, nn.Module) and attr is not mod:
+                        scan_module(attr, name)
+                    elif isinstance(attr, (list, tuple)):
+                        for i, item in enumerate(attr):
+                            if isinstance(item, nn.Module):
+                                scan_module(item, f"{name}[{i}]")
+
+            # Check named children
+            for child_name, child_module in mod.named_children():
+                if child_name == "original_component" or child_name == "_original_component":
                     continue
+                child_path = f"{path}.{child_name}" if path else child_name
+                scan_module(child_module, child_path)
 
-                name = f"{prefix}.{attr_name}" if prefix else attr_name
-                if isinstance(attr, HookPoint):
-                    # Set the name on the HookPoint so it can be used in caching
-                    attr.name = name
-                    hooks[name] = attr
-                elif isinstance(attr, nn.Module) and attr is not module:
-                    collect_hookpoints(attr, name)
-                elif isinstance(attr, (list, tuple)):
-                    for i, item in enumerate(attr):
-                        if isinstance(item, nn.Module):
-                            collect_hookpoints(item, f"{name}[{i}]")
+        scan_module(module, prefix)
 
-            # Also traverse named_children() to catch ModuleList and other containers
-            for child_name, child_module in module.named_children():
-                child_path = f"{prefix}.{child_name}" if prefix else child_name
-                collect_hookpoints(child_module, child_path)
+    @property
+    def hook_dict(self) -> dict[str, HookPoint]:
+        """Get all HookPoint objects in the model for compatibility with HookedTransformer."""
+        # Start with the current registry
+        hooks = self._hook_registry.copy()
 
-        collect_hookpoints(self, "")
+        # Add aliases if compatibility mode is enabled
+        if self.compatibility_mode:
+            for alias_name, target_name in self.hook_aliases.items():
+                if target_name in hooks:
+                    hooks[alias_name] = hooks[target_name]
+
         return hooks
+
+    def _discover_hooks(self) -> dict[str, HookPoint]:
+        """Get all HookPoint objects from the registry (deprecated, use hook_dict)."""
+        return self._hook_registry.copy()
+
+    def clear_hook_cache(self) -> None:
+        """Clear the cached hook discovery results (deprecated, kept for compatibility)."""
+        pass  # No longer needed since we don't use caching
+
+    def clear_hook_registry(self) -> None:
+        """Clear the hook registry and force re-initialization."""
+        self._hook_registry.clear()
+        self._hook_registry_initialized = False
 
     def __getattr__(self, name: str) -> Any:
         """Provide a clear error message for missing attributes."""
         if name in self.__dict__:
             return self.__dict__[name]
+
+        # Check if this is a hook alias when compatibility mode is enabled
+        if self.compatibility_mode and name in self.hook_aliases:
+            target_name = self.hook_aliases[name]
+            if target_name in self._hook_registry:
+                return self._hook_registry[target_name]
 
         return super().__getattr__(name)
 
@@ -229,6 +343,10 @@ class TransformerBridge(nn.Module):
             component.disable_warnings = disable_warnings
 
         apply_fn_to_all_components(self, set_compatibility_mode)
+
+        # Re-initialize the hook registry to include aliases from components
+        self.clear_hook_registry()
+        self._initialize_hook_registry()
 
     # ==================== TOKENIZATION METHODS ====================
 
@@ -832,48 +950,14 @@ class TransformerBridge(nn.Module):
 
             return cache_hook
 
-        # Recursively collect all HookPoint objects
-        def collect_hookpoints(module: nn.Module, prefix: str = "") -> None:
-            obj_id = id(module)
-            if obj_id in visited:
-                return
-            visited.add(obj_id)
+        # Use cached hooks instead of re-discovering them
+        hook_dict = self.hook_dict
 
-            for attr_name in dir(module):
-                if attr_name.startswith("_"):
-                    continue
-                # Skip the original_model to avoid collecting hooks from HuggingFace model
-                if attr_name == "original_model":
-                    continue
-                try:
-                    attr = getattr(module, attr_name)
-                except Exception:
-                    continue
-
-                name = f"{prefix}.{attr_name}" if prefix else attr_name
-                if isinstance(attr, HookPoint):
-                    # Set the name on the HookPoint so it can be used in caching
-                    attr.name = name
-                    # Only add hook if it passes the names filter
-                    if names_filter_fn(name):
-                        hooks.append((attr, name))
-                elif isinstance(attr, nn.Module):
-                    collect_hookpoints(attr, name)
-                elif isinstance(attr, (list, tuple)):
-                    for i, item in enumerate(attr):
-                        if isinstance(item, nn.Module):
-                            collect_hookpoints(item, f"{name}[{i}]")
-
-            # Also traverse named_children() to catch ModuleList and other containers
-            for child_name, child_module in module.named_children():
-                child_path = f"{prefix}.{child_name}" if prefix else child_name
-                # Skip the original_model module
-                if child_name == "original_model":
-                    continue
-                collect_hookpoints(child_module, child_path)
-
-        # Collect hooks from bridge components (these have the clean TransformerLens paths)
-        collect_hookpoints(self, "")
+        # Filter hooks based on names_filter
+        for hook_name, hook in hook_dict.items():
+            # Only add hook if it passes the names filter
+            if names_filter_fn(hook_name):
+                hooks.append((hook, hook_name))
 
         # Register hooks
         for hp, name in hooks:
@@ -991,6 +1075,7 @@ class TransformerBridge(nn.Module):
         return_type: Optional[str] = "logits",
         names_filter: Optional[Union[str, List[str], Callable[[str], bool]]] = None,
         stop_at_layer: Optional[int] = None,
+        remove_batch_dim: bool = False,
         **kwargs,
     ) -> Any:
         """Run the model with specified forward and backward hooks.
@@ -1004,6 +1089,7 @@ class TransformerBridge(nn.Module):
             return_type: What to return ("logits", "loss", etc.)
             names_filter: Filter for hook names (not used directly, for compatibility)
             stop_at_layer: Layer to stop at (not yet fully implemented)
+            remove_batch_dim: Whether to remove batch dimension from hook inputs (only works for batch_size==1)
             **kwargs: Additional arguments
 
         Returns:
@@ -1044,6 +1130,24 @@ class TransformerBridge(nn.Module):
             aliases = collect_aliases_recursive(self)
 
             for hook_name_or_filter, hook_fn in hooks:
+                # Wrap the hook function to handle remove_batch_dim if needed
+                if remove_batch_dim:
+                    original_hook_fn = hook_fn
+
+                    def wrapped_hook_fn(tensor, hook):
+                        # Remove batch dimension if it's size 1
+                        if tensor.shape[0] == 1:
+                            tensor_no_batch = tensor.squeeze(0)
+                            result = original_hook_fn(tensor_no_batch, hook)
+                            # Add batch dimension back if result doesn't have it
+                            if result.dim() == tensor_no_batch.dim():
+                                result = result.unsqueeze(0)
+                            return result
+                        else:
+                            return original_hook_fn(tensor, hook)
+
+                    hook_fn = wrapped_hook_fn
+
                 if isinstance(hook_name_or_filter, str):
                     # Direct hook name - check for aliases first
                     hook_dict = self.hook_dict

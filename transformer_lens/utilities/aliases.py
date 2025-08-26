@@ -22,7 +22,7 @@ def resolve_alias(
     if requested_name in aliases:
         target_name = aliases[requested_name]
 
-        if target_object.disable_warnings == False:
+        if hasattr(target_object, "disable_warnings") and target_object.disable_warnings == False:
             warnings.warn(
                 f"Hook '{requested_name}' is deprecated and will be removed in a future version. "
                 f"Use '{target_name}' instead.",
@@ -35,8 +35,8 @@ def resolve_alias(
         if len(target_name_split) > 1:
             current_attr = target_object
             for i in range(len(target_name_split) - 1):
-                current_attr = current_attr._getattr_helper(target_name_split[i])
-                next_attr = current_attr._getattr_helper(target_name_split[i + 1])
+                current_attr = getattr(current_attr, target_name_split[i])
+                next_attr = getattr(current_attr, target_name_split[i + 1])
             return next_attr
         else:
             # Return the target hook
@@ -83,6 +83,7 @@ def _collect_aliases_from_module(
             # Skip the original_model to avoid collecting hooks from HuggingFace model
             if child_name == "original_model" or child_name == "_original_component":
                 continue
+
             child_path = f"{path}.{child_name}" if path else child_name
             _collect_aliases_from_module(child_module, child_path, aliases, visited)
 
