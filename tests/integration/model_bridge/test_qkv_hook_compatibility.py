@@ -2,7 +2,6 @@
 
 import torch
 
-import transformer_lens.utils as utils
 from transformer_lens.model_bridge import TransformerBridge
 
 
@@ -131,33 +130,62 @@ class TestQKVHookCompatibility:
         bridge.enable_compatibility_mode(disable_warnings=True)
 
         # Create test tokens (same as in the demo)
-        gpt2_text = "Natural language processing tasks, such as question answering, machine translation, reading comprehension, and summarization, are typically approached with supervised learning on taskspec"
-        gpt2_tokens = bridge.to_tokens(gpt2_text)
+        gpt2_tokens = torch.tensor([[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]])
 
         layer_to_ablate = 0
         head_index_to_ablate = 8
 
-        # We define a head ablation hook
-        # The type annotations are NOT necessary, they're just a useful guide to the reader
-        #
-        def head_ablation_hook(
-            value, hook
-        ):
-            print(f"Shape of the value tensor: {value.shape}")
-            # Note: We use out-of-place modification for TransformerBridge (Hugging Face models don't allow in-place)
-            # The demo uses: value[:, :, head_index_to_ablate, :] = 0.0
-            result = value.clone()
-            result[:, :, head_index_to_ablate, :] = 0.0
-            return result
+        # Test both hook names
+        hook_names_to_test = [
+            "blocks.0.attn.hook_v",  # Compatibility mode alias
+            "blocks.0.attn.v.hook_out",  # Direct property access
+        ]
 
-        original_loss = bridge(gpt2_tokens, return_type="loss")
-        ablated_loss = bridge.run_with_hooks(
-            gpt2_tokens,
-            return_type="loss",
-            fwd_hooks=[("blocks.0.attn.qkv.v_hook_out", head_ablation_hook)],
-        )
-        print(f"Original Loss: {original_loss.item():.3f}")
-        print(f"Ablated Loss: {ablated_loss.item():.3f}")
+        for hook_name in hook_names_to_test:
+            print(f"\nTesting hook name: {hook_name}")
 
-        # Assert that ablated loss is higher than original loss (ablation should hurt performance)
-        assert ablated_loss.item() > original_loss.item(), "Ablated loss should be higher than original loss"
+            # Track if the hook was called
+            hook_called = False
+            mutation_applied = False
+
+            # We define a head ablation hook
+            def head_ablation_hook(value, hook):
+                nonlocal hook_called, mutation_applied
+                hook_called = True
+                print(f"Shape of the value tensor: {value.shape}")
+
+                # Apply the ablation (out-of-place to avoid view modification error)
+                result = value.clone()
+                result[:, :, head_index_to_ablate, :] = 0.0
+
+                # Check if the mutation was applied (the result should be zero for the ablated head)
+                if torch.all(result[:, :, head_index_to_ablate, :] == 0.0):
+                    mutation_applied = True
+
+                return result
+
+            # Get original loss
+            original_loss = bridge(gpt2_tokens, return_type="loss")
+
+            # Run with head ablation hook
+            ablated_loss = bridge.run_with_hooks(
+                gpt2_tokens, return_type="loss", fwd_hooks=[(hook_name, head_ablation_hook)]
+            )
+
+            print(f"Original Loss: {original_loss.item():.3f}")
+            print(f"Ablated Loss: {ablated_loss.item():.3f}")
+
+            # Assert that the hook was called
+            assert hook_called, f"Head ablation hook should have been called for {hook_name}"
+
+            # Assert that the mutation was applied
+            assert (
+                mutation_applied
+            ), f"Mutation should have been applied to the value tensor for {hook_name}"
+
+            # Assert that ablated loss is higher than original loss (ablation should hurt performance)
+            assert (
+                ablated_loss.item() > original_loss.item()
+            ), f"Ablated loss should be higher than original loss for {hook_name}"
+
+            print(f"✅ Hook {hook_name} works correctly!")

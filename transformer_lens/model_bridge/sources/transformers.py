@@ -3,8 +3,8 @@
 This module provides functionality to load and convert models from HuggingFace to TransformerLens format.
 """
 
-
 import copy
+import logging
 import os
 
 import torch
@@ -16,6 +16,7 @@ from transformers import (
 )
 
 from transformer_lens.model_bridge.bridge import TransformerBridge
+from transformer_lens.supported_models import MODEL_ALIASES
 from transformer_lens.utils import get_tokenizer_with_bos
 
 
@@ -110,6 +111,16 @@ def boot(
     from transformer_lens.factories.architecture_adapter_factory import (
         ArchitectureAdapterFactory,
     )
+
+    # MODEL_ALIASES is a dict of {official_name: [alias1, alias2, ...]}
+    # Check if model_name that the user passed is an alias, and if so, use the official name
+    for official_name, aliases in MODEL_ALIASES.items():
+        if model_name in aliases:
+            logging.warning(
+                f"DEPRECATED: You are using a deprecated, model_name alias '{model_name}'. TransformerLens will now load the official transformers model name, '{official_name}' instead.\n Please update your code to use the official name by changing model_name from '{model_name}' to '{official_name}'.\nSince TransformerLens v3, all model names should be the official transformers model names.\nThe aliases will be removed in the next version of TransformerLens, so please do the update now."
+            )
+            model_name = official_name
+            break
 
     hf_config = AutoConfig.from_pretrained(model_name, output_attentions=True)
 
