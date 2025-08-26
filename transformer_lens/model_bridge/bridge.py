@@ -71,7 +71,9 @@ class TransformerBridge(nn.Module):
         self.tokenizer = tokenizer
         self.compatibility_mode = False
         self._hook_cache = None  # Cache for hook discovery results
-        self._hook_registry = {}  # Dynamic registry of hook names to HookPoints
+        self._hook_registry: Dict[
+            str, HookPoint
+        ] = {}  # Dynamic registry of hook names to HookPoints
         self._hook_registry_initialized = False  # Track if registry has been initialized
 
         # Add device information to config from the loaded model
@@ -140,19 +142,30 @@ class TransformerBridge(nn.Module):
             # Check if this is a GeneralizedComponent with its own hook registry
             if hasattr(mod, "get_hooks") and callable(getattr(mod, "get_hooks")):
                 # Use the component's own hook registry
-                component_hooks = mod.get_hooks()
-                for hook_name, hook in component_hooks.items():
-                    full_name = f"{path}.{hook_name}" if path else hook_name
-                    hook.name = full_name
-                    self._hook_registry[full_name] = hook
+                try:
+                    component_hooks = mod.get_hooks()  # type: ignore
+                    if isinstance(component_hooks, dict):
+                        # Type cast to help mypy understand this is a dict of hooks
+                        hooks_dict = cast(Dict[str, HookPoint], component_hooks)  # type: ignore
+                        for hook_name, hook in hooks_dict.items():  # type: ignore
+                            full_name = f"{path}.{hook_name}" if path else hook_name
+                            hook.name = full_name
+                            self._hook_registry[full_name] = hook
 
-                # Add component aliases if compatibility mode is enabled
-                if hasattr(mod, "compatibility_mode") and mod.compatibility_mode:
-                    if hasattr(mod, "hook_aliases"):
-                        for alias_name, target_name in mod.hook_aliases.items():
-                            if target_name in component_hooks:
-                                alias_full_name = f"{path}.{alias_name}" if path else alias_name
-                                self._hook_registry[alias_full_name] = component_hooks[target_name]
+                        # Add component aliases if compatibility mode is enabled
+                        if hasattr(mod, "compatibility_mode") and mod.compatibility_mode:
+                            if hasattr(mod, "hook_aliases"):
+                                for alias_name, target_name in mod.hook_aliases.items():  # type: ignore
+                                    if target_name in hooks_dict:
+                                        alias_full_name = (
+                                            f"{path}.{alias_name}" if path else alias_name
+                                        )
+                                        self._hook_registry[alias_full_name] = hooks_dict[
+                                            target_name
+                                        ]
+                except Exception:
+                    # If get_hooks() fails, fall through to the else block
+                    pass
             else:
                 # Fall back to scanning attributes for non-GeneralizedComponent modules
                 for attr_name in dir(mod):

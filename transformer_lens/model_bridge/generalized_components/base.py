@@ -71,15 +71,6 @@ class GeneralizedComponent(nn.Module):
         self._register_hook("hook_in", self.hook_in)
         self._register_hook("hook_out", self.hook_out)
 
-    def __setattr__(self, name: str, value: Any) -> None:
-        """Override setattr to track HookPoint objects dynamically."""
-        # Call parent setattr first
-        super().__setattr__(name, value)
-
-        # Check if this is a HookPoint being set
-        if isinstance(value, HookPoint):
-            self._register_hook(name, value)
-
     def _register_hook(self, name: str, hook: HookPoint) -> None:
         """Register a hook in the component's hook registry."""
         # Set the name on the HookPoint
@@ -242,6 +233,13 @@ class GeneralizedComponent(nn.Module):
     def __setattr__(self, name: str, value: Any) -> None:
         """Set attribute, with passthrough to original component for compatibility."""
         # Handle normal PyTorch module attributes and our own attributes
+
+        # Check if this is a HookPoint being set
+        if isinstance(value, HookPoint):
+            self._register_hook(name, value)
+            super().__setattr__(name, value)
+            return
+
         if name.startswith("_") or name in [
             "name",
             "config",
@@ -249,8 +247,6 @@ class GeneralizedComponent(nn.Module):
             "conversion_rule",
             "compatibility_mode",
             "disable_warnings",
-            "hook_in",
-            "hook_out",
         ]:
             super().__setattr__(name, value)
             return
