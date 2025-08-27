@@ -23,7 +23,6 @@ import torch
 from jaxtyping import Float
 from torch import nn
 import tqdm.auto as tqdm
-from transformers.generation.streamers import TextIteratorStreamer
 
 from transformer_lens import utils
 from transformer_lens.utilities import devices
@@ -980,95 +979,167 @@ class TransformerBridge(nn.Module):
 
     def generate_stream(
         self,
-        input: Union[str, List[str], torch.Tensor] = "",
+        input: str | list[str] | torch.Tensor = "",
         max_new_tokens: int = 10,
-        stop_at_eos: bool = True,
-        eos_token_id: Optional[int] = None,
-        do_sample: bool = True,
-        top_k: Optional[int] = None,
-        top_p: Optional[float] = None,
-        temperature: float = 1.0,
+        max_tokens_per_yield: int = 10,
+        return_logits: bool = False,
         freq_penalty: float = 0.0,
-        use_past_kv_cache: bool = True,
-        prepend_bos: Optional[bool] = None,
-        padding_side: Optional[str] = None,
-        return_type: Optional[str] = "input",
-        verbose: bool = True,
+        eos_token_id: int | list[int] | None = None,
+        do_sample: bool = True,
+        top_k: int | None = None,
+        top_p: float | None = None,
+        temperature: float = 1.0,
+        prepend_bos: bool | None = None,
+        padding_side: str | None = None,
+        stop_at_eos: bool = True,        
     ):
-        """Stream text generation token-by-token.
-
-        This mirrors the preprocessing and kwargs of `generate`, but yields decoded
-        text chunks incrementally using Hugging Face's TextIteratorStreamer.
-
-        Note: This currently yields decoded text chunks (strings). If you need raw
-        token IDs per step, consider consuming the model outputs manually in a loop.
-        """
-        # Validate underlying support
-        if not hasattr(self.original_model, "generate"):
-            raise RuntimeError("Underlying model does not support generate method.")
-
-        # Tokenize input if needed (mirror generate)
+        """Stream text generation token-by-token."""        
+                
+        # Convert input text/list to token tensor if needed
         if isinstance(input, (str, list)):
-            input_ids = self.to_tokens(
+            input_tokens = self.to_tokens(
                 input, prepend_bos=prepend_bos, padding_side=padding_side
             )
         else:
-            input_ids = input
+            input_tokens = input
 
-        if input_ids.ndim == 1:
-            input_ids = input_ids.unsqueeze(0)
-
-        # Map return_type when set to "input"
-        if return_type == "input":
-            return_type = "str" if isinstance(input, (str, list)) else "tokens"
-
-        # Build generation kwargs (mirror generate)
-        gen_kwargs = {
-            "max_new_tokens": max_new_tokens,
-            "do_sample": do_sample,
-            "temperature": temperature,
-        }
-        if top_k is not None:
-            gen_kwargs["top_k"] = top_k
-        if top_p is not None:
-            gen_kwargs["top_p"] = top_p
-        if eos_token_id is not None:
-            gen_kwargs["eos_token_id"] = eos_token_id
-
-        # Frequency penalty is handled inside TL sampling utilities, but since we
-        # delegate to HF generate for streaming, we cannot directly apply it here.
-        # Keep the parameter to match signature; it is currently unused.
-        _ = freq_penalty
-        _ = use_past_kv_cache
-
-        # Configure streamer to yield decoded text per new token
-        streamer = TextIteratorStreamer(
-            self.tokenizer,
-            skip_special_tokens=True,
-            clean_up_tokenization_spaces=False,
-        )
-
-        # Launch generation in a background thread so we can iterate the streamer
-        import threading
-
-        def _run_generation():
-            self.original_model.generate(
-                input_ids,
-                streamer=streamer,  # type: ignore[arg-type]
-                **gen_kwargs,
+        # Ensure we have a batch dimension [batch_size, seq_len]
+        if input_tokens.ndim == 1:
+            input_tokens = input_tokens.unsqueeze(0)                
+                
+        # Set up which tokens should trigger sequence completion
+        stop_tokens: list[int] = []
+        eos_token_for_padding = 0
+        
+        if stop_at_eos:
+            # Check if tokenizer has an EOS token available
+            tokenizer_has_eos_token = (
+                self.tokenizer is not None and self.tokenizer.eos_token_id is not None
             )
+            
+            # Use provided EOS token or fall back to tokenizer's EOS token
+            if eos_token_id is None:
+                assert (
+                    tokenizer_has_eos_token
+                ), "Must pass a eos_token_id if stop_at_eos is True and tokenizer is None or has no eos_token_id"
+                eos_token_id = self.tokenizer.eos_token_id
 
-        thread = threading.Thread(target=_run_generation)
-        thread.start()
+            # Handle both single EOS token and multiple stop tokens
+            if isinstance(eos_token_id, int):
+                stop_tokens = [eos_token_id]
+                eos_token_for_padding = eos_token_id
+            else:
+                if eos_token_id is not None:
+                    # eos_token_id is a Sequence (e.g. list or tuple)                
+                    stop_tokens = eos_token_id
+                    eos_token_for_padding = (
+                        self.tokenizer.eos_token_id if tokenizer_has_eos_token else eos_token_id[0]
+                    )
+        
+        # Working copy of tokens
+        current_tokens = input_tokens.clone()  
+        # Tokens and logits collected since last yield
+        accumulated_tokens = None              
+        accumulated_logits = None              
 
-        # Iterate over streamed text pieces
-        for text in streamer:
-            # If caller requested tokens, best-effort fallback is to yield strings;
-            # true token IDs streaming is not supported in this path.
-            yield text
-
-        # Ensure thread finishes
-        thread.join()
+        # Track which sequences in the batch have completed generation        
+        batch_size = input_tokens.shape[0]
+        # Shape: [batch_size] - boolean mask where True = sequence is finished
+        finished_sequences = torch.zeros(batch_size, dtype=torch.bool, device=self.cfg.device)
+                
+        for i in range(max_new_tokens):        
+            # Get logits for next token prediction. Also, no gradient needed for inference.
+            with torch.no_grad():
+                # logits shape: [batch_size, current_seq_len, vocab_size]
+                logits = self.forward(current_tokens, return_type="logits", prepend_bos=prepend_bos, padding_side=padding_side)
+                # Only need logits for the last position (next token prediction)
+                # final_logits shape: [batch_size, vocab_size]
+                final_logits = logits[:, -1, :]                
+                        
+            # Generate one new token per sequence in the batch
+            if do_sample:
+                # Sample from probability distribution with optional top-k/top-p filtering
+                sampled_tokens = utils.sample_logits(
+                    final_logits=final_logits,
+                    top_k=top_k,
+                    top_p=top_p,
+                    temperature=temperature,
+                    freq_penalty=freq_penalty,                    
+                ).to(self.cfg.device)
+            else:
+                # Greedy selection - pick most likely token
+                sampled_tokens = final_logits.argmax(-1).to(self.cfg.device)
+                        
+            if stop_at_eos:
+                # For sequences that finished in previous iterations, replace their 
+                # newly generated token with padding (prevents further meaningful generation)
+                # Both sampled_tokens and finished_sequences have a shape of [batch_size] and so 
+                # we can use boolean indexing to replace the tokens for finished sequences.
+                sampled_tokens[finished_sequences] = eos_token_for_padding
+                
+                # Update finished_sequences mask: mark any sequence as finished if it
+                # just generated a stop token.
+                finished_sequences.logical_or_(
+                    torch.isin(
+                        sampled_tokens.to(self.cfg.device),
+                        torch.tensor(stop_tokens).to(self.cfg.device),
+                    )
+                )
+                        
+            # Add batch dimension: [batch_size] -> [batch_size, 1]
+            new_tokens = sampled_tokens.unsqueeze(1)
+            
+            # Track logits for the newly generated tokens if requested
+            if return_logits:
+                # Add sequence dimension: [batch_size, vocab_size] -> [batch_size, 1, vocab_size]
+                new_logits = final_logits.unsqueeze(1)            
+            
+            # Collect tokens until we have enough to yield (max_tokens_per_yield)
+            if i == 0:
+                # First iteration: concatenate input + first generated token
+                accumulated_tokens = torch.cat([current_tokens, new_tokens], dim=-1)            
+                tokens_since_last_yield = accumulated_tokens.shape[1]  # Total length so far
+                if return_logits:
+                    accumulated_logits = new_logits
+            else:
+                if accumulated_tokens is None:
+                        accumulated_tokens = new_tokens
+                else:
+                    accumulated_tokens = torch.cat([accumulated_tokens, new_tokens], dim=-1)
+                # Subsequent iterations: just add the new token
+                tokens_since_last_yield += 1
+                                
+                if return_logits:
+                    if accumulated_logits is None:
+                        accumulated_logits = new_logits 
+                    else:
+                        accumulated_logits = torch.cat([accumulated_logits, new_logits], dim=1)
+            
+            # When we've accumulated enough tokens based on max_tokens_per_yield, yield them to caller
+            if tokens_since_last_yield >= max_tokens_per_yield:
+                if return_logits:
+                    yield (accumulated_tokens, accumulated_logits)
+                    accumulated_logits = None
+                else:
+                    yield accumulated_tokens
+                
+                # Reset accumulation state
+                tokens_since_last_yield = 0
+                accumulated_tokens = None
+            
+            # Update current_tokens for the next forward pass
+            current_tokens = torch.cat([current_tokens, new_tokens], dim=-1)
+            
+            # Early termination: if all sequences are finished, no need to continue
+            if stop_at_eos and finished_sequences.all():
+                break
+        
+        # Final yield: handle any remaining accumulated tokens after loop ends
+        if accumulated_tokens is not None:
+            if return_logits:
+                yield (accumulated_tokens, accumulated_logits)
+            else:
+                yield accumulated_tokens
 
     def generate(
         self,
