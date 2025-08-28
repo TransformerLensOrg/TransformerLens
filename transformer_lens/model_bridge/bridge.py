@@ -51,7 +51,7 @@ class TransformerBridge(nn.Module):
 
     # Top-level hook aliases for legacy TransformerLens names
     # Placing these on the main bridge ensures aliases like 'hook_embed' are available
-    hook_aliases = {
+    hook_aliases: Dict[str, Union[str, List[str]]] = {
         "hook_embed": "embed.hook_out",
         # rotary style models use rotary_emb.hook_out, but gpt2-style models use pos_embed.hook_out
         "hook_pos_embed": ["pos_embed.hook_out", "rotary_emb.hook_out"],
@@ -132,11 +132,25 @@ class TransformerBridge(nn.Module):
 
         # Add bridge aliases if compatibility mode is enabled
         if self.compatibility_mode and self.hook_aliases:
-            for alias_name, target_name in self.hook_aliases.items():
+            for alias_name, target in self.hook_aliases.items():
                 # Use the existing alias system to resolve the target hook
-                target_hook = resolve_alias(self, alias_name, self.hook_aliases)
-                if target_hook is not None:
-                    self._hook_registry[alias_name] = target_hook
+                # Convert to Dict[str, str] for resolve_alias if target_name is a list
+                if isinstance(target, list):
+                    # For list targets, try each one until one works
+                    for single_target in target:
+                        try:
+                            target_hook = resolve_alias(
+                                self, alias_name, {alias_name: single_target}
+                            )
+                            if target_hook is not None:
+                                self._hook_registry[alias_name] = target_hook
+                                break
+                        except AttributeError:
+                            continue
+                else:
+                    target_hook = resolve_alias(self, alias_name, {alias_name: target})
+                    if target_hook is not None:
+                        self._hook_registry[alias_name] = target_hook
 
         self._hook_registry_initialized = True
 
@@ -214,9 +228,17 @@ class TransformerBridge(nn.Module):
 
         # Add aliases if compatibility mode is enabled
         if self.compatibility_mode:
-            for alias_name, target_name in self.hook_aliases.items():
-                if target_name in hooks:
-                    hooks[alias_name] = hooks[target_name]
+            for alias_name, target in self.hook_aliases.items():
+                # Handle both string and list target names
+                if isinstance(target, list):
+                    # For list targets, find the first one that exists in hooks
+                    for single_target in target:
+                        if single_target in hooks:
+                            hooks[alias_name] = hooks[single_target]
+                            break
+                else:
+                    if target in hooks:
+                        hooks[alias_name] = hooks[target]
 
         return hooks
 
@@ -240,9 +262,16 @@ class TransformerBridge(nn.Module):
 
         # Check if this is a hook alias when compatibility mode is enabled
         if self.compatibility_mode and name in self.hook_aliases:
-            target_name = self.hook_aliases[name]
-            if target_name in self._hook_registry:
-                return self._hook_registry[target_name]
+            target = self.hook_aliases[name]
+            # Handle both string and list target names
+            if isinstance(target, list):
+                # For list targets, find the first one that exists in the registry
+                for single_target in target:
+                    if single_target in self._hook_registry:
+                        return self._hook_registry[single_target]
+            else:
+                if target in self._hook_registry:
+                    return self._hook_registry[target]
 
         return super().__getattr__(name)
 
