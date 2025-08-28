@@ -39,7 +39,7 @@
     dev=[
         "black>=23.3.0,<24",
         "circuitsvis>=1.38.1",
-        "ipython<8.0.0",                # magic() -> run_line_magic() change
+        "ipython<8.0.0",                # magic() -> run_line_magic() change, see https://github.com/TransformerLensOrg/TransformerLens/issues/1036
         "isort==5.8.0",
         "jupyter>=1.0.0",
         "mypy>=1.10.0",
