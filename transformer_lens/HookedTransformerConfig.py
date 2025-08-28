@@ -192,8 +192,6 @@ class HookedTransformerConfig:
         NTK_by_parts_factor (float): The overall factor used in the "NTK-by-parts" method that
             affects the rate of change between low and high-frequency interpolation strategies.
             Defaults to 8.0.
-
-
     """
 
     n_layers: int
@@ -329,7 +327,7 @@ class HookedTransformerConfig:
             self.n_params += self.n_layers * mlp_params_per_layer
 
         if self.device is None:
-            self.device = utils.get_device()
+            self.device = str(utils.get_device())
 
         if self.n_devices > 1:
             assert (
@@ -342,7 +340,7 @@ class HookedTransformerConfig:
         assert self.default_prepend_bos in [
             True,
             False,
-        ], f"padding_side must be either True or False, but {self.default_prepend_bos} is given"
+        ], f"default_prepend_bos must be either True or False, but {self.default_prepend_bos} is given"
 
     @classmethod
     def unwrap(cls, config: Union[Dict, "HookedTransformerConfig"]) -> HookedTransformerConfig:

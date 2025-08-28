@@ -1,13 +1,13 @@
 [project]
     authors=[{name="Neel Nanda", email="77788841+TransformerLensOrg@users.noreply.github.com"}]
     dependencies=[
-        "accelerate>=0.23.0",
+        "accelerate>=0.23.0",                                                    # Needed for Llama Models
         "beartype>=0.14.1,<0.15",
         "better-abc>=0.0.3",
         "datasets>=2.7.1",
         "einops>=0.6.0",
         "fancy-einsum>=0.0.3",
-        "jaxtyping>=0.2.11",
+        "jaxtyping>=0.2.11,<0.2.20",
         "numpy>=1.20,<1.25; python_version >= '3.8' and python_version < '3.9'",
         "numpy>=1.24,<2; python_version >= '3.9' and python_version < '3.12'",
         "numpy>=1.26,<2; python_version >= '3.12' and python_version < '3.13'",

@@ -1,6 +1,7 @@
+from . import utilities
 from . import hook_points
-from . import utils
 from . import evals
+from . import conversion_utils
 from .past_key_value_caching import (
     HookedTransformerKeyValueCache,
     HookedTransformerKeyValueCacheEntry,
@@ -26,3 +27,17 @@ from .past_key_value_caching import (
 )
 from .HookedTransformer import HookedTransformer as EasyTransformer
 from .HookedTransformerConfig import HookedTransformerConfig as EasyTransformerConfig
+
+__all__ = [
+    "HookedTransformerConfig",
+    "FactoredMatrix",
+    "ActivationCache",
+    "HookedTransformer",
+    "SVDInterpreter",
+    "HookedEncoder",
+    "HookedEncoderDecoder",
+    "EasyTransformer",
+    "EasyTransformerConfig",
+    "EasyTransformerKeyValueCache",
+    "EasyTransformerKeyValueCacheEntry",
+]

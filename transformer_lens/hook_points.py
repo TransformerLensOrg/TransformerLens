@@ -10,13 +10,28 @@ from collections.abc import Callable, Iterable, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import partial
-from typing import Any, Literal, Optional, Protocol, Union, runtime_checkable
+from typing import (
+    Any,
+    Callable,
+    Iterable,
+    Literal,
+    Optional,
+    Protocol,
+    Sequence,
+    Union,
+    cast,
+    runtime_checkable,
+)
 
 import torch
 import torch.nn as nn
 import torch.utils.hooks as hooks
 from torch import Tensor
 
+# Import BaseHookConversion from the new location
+from transformer_lens.conversion_utils.conversion_steps.base_hook_conversion import (
+    BaseHookConversion,
+)
 from transformer_lens.utils import Slice, SliceInput
 
 
@@ -70,6 +85,9 @@ class HookPoint(nn.Module):
         # module) - this is set by the root module at setup.
         self.name: Optional[str] = None
 
+        # Hook conversion for input and output transformations
+        self.hook_conversion: Optional[BaseHookConversion] = None
+
     def add_perma_hook(self, hook: HookFunction, dir: Literal["fwd", "bwd"] = "fwd") -> None:
         self.add_hook(hook, dir=dir, is_permanent=True)
 
@@ -97,7 +115,19 @@ class HookPoint(nn.Module):
                 dir == "bwd"
             ):  # For a backwards hook, module_output is a tuple of (grad,) - I don't know why.
                 module_output = module_output[0]
-            return hook(module_output, hook=self)
+
+            # Apply input conversion if hook_conversion exists
+            if self.hook_conversion is not None:
+                module_output = self.hook_conversion.convert(module_output)
+
+            # Apply the hook
+            hook_result = hook(module_output, hook=self)
+
+            # Apply output reversion if hook_conversion exists and hook returned a value
+            if hook_result is not None and self.hook_conversion is not None:
+                hook_result = self.hook_conversion.revert(hook_result)
+
+            return hook_result
 
         # annotate the `full_hook` with the string representation of the `hook` function
         if isinstance(hook, partial):
@@ -124,6 +154,44 @@ class HookPoint(nn.Module):
 
         else:
             visible_hooks.append(handle)
+
+    def has_hooks(
+        self,
+        dir: Literal["fwd", "bwd", "both"] = "both",
+        including_permanent: bool = True,
+        level: Optional[int] = None,
+    ) -> bool:
+        """Check if this HookPoint has any active hooks.
+
+        Args:
+            dir: Direction of hooks to check ("fwd", "bwd", or "both")
+            including_permanent: Whether to include permanent hooks in the check
+            level: Only check hooks at this context level (None for all levels)
+
+        Returns:
+            True if any matching hooks are found, False otherwise
+        """
+
+        def _has_hooks_in_direction(handles: list[LensHandle]) -> bool:
+            for handle in handles:
+                # Check if this hook matches our criteria
+                if not including_permanent and handle.is_permanent:
+                    continue
+                if level is not None and handle.context_level != level:
+                    continue
+                return True
+            return False
+
+        if dir == "fwd":
+            return _has_hooks_in_direction(self.fwd_hooks)
+        elif dir == "bwd":
+            return _has_hooks_in_direction(self.bwd_hooks)
+        elif dir == "both":
+            return _has_hooks_in_direction(self.fwd_hooks) or _has_hooks_in_direction(
+                self.bwd_hooks
+            )
+        else:
+            raise ValueError(f"Invalid direction {dir}")
 
     def remove_hooks(
         self,
@@ -152,6 +220,20 @@ class HookPoint(nn.Module):
     def clear_context(self):
         del self.ctx
         self.ctx = {}
+
+    def enable_reshape(
+        self,
+        hook_conversion: Optional[BaseHookConversion] = None,
+    ) -> None:
+        """
+        Enable reshape functionality for this hook point using a BaseHookConversion.
+
+        Args:
+            hook_conversion: BaseHookConversion instance to handle input/output transformations.
+                           The convert() method will be used for input transformation,
+                           and the revert() method will be used for output transformation.
+        """
+        self.hook_conversion = hook_conversion
 
     def forward(self, x: Tensor) -> Tensor:
         return x
@@ -331,7 +413,15 @@ class HookedRootModule(nn.Module):
             hook (Callable): The hook to add
             dir (Literal[&quot;fwd&quot;, &quot;bwd&quot;]): The direction for the hook
         """
-        self.mod_dict[name].add_hook(hook, dir=dir, level=self.context_level)  # type: ignore[operator]
+        hook_point_module = self.mod_dict[name]
+        if not hasattr(hook_point_module, "add_hook"):
+            raise TypeError(f"Expected a module with add_hook, got {type(hook_point_module)}")
+        if isinstance(hook_point_module, torch.Tensor):
+            raise TypeError(
+                "Module set as Tensor for some reason!"
+            )  # mypy seems to think these could be tensors after a torch update no idea why, or if this is possible
+        module_with_hook = cast(HookPoint, hook_point_module)
+        module_with_hook.add_hook(hook, dir=dir, level=self.context_level)
 
     def _enable_hooks_for_points(
         self,

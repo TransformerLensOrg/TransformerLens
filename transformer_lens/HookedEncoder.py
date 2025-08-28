@@ -418,7 +418,8 @@ class HookedEncoder(HookedRootModule):
         model.load_state_dict(state_dict, strict=False)
 
         if move_to_device:
-            model.to(cfg.device)
+            if cfg.device is not None:
+                model.to(cfg.device)
 
         print(f"Loaded pretrained model {model_name} into HookedEncoder")
 

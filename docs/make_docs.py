@@ -19,8 +19,10 @@ import tqdm  # type: ignore[import-untyped]
 import yaml  # type: ignore[import-untyped]
 from muutils.dictmagic import TensorDictFormats, condense_tensor_dict
 from muutils.misc import shorten_numerical_to_str
-from transformers import AutoTokenizer  # type: ignore[import-untyped]
-from transformers import PreTrainedTokenizer
+from transformers import (
+    AutoTokenizer,  # type: ignore[import-untyped]
+    PreTrainedTokenizer,
+)
 
 import transformer_lens  # type: ignore[import-untyped]
 from transformer_lens import (
@@ -47,6 +49,7 @@ except Exception as e:
     warnings.warn(
         f"Failed to get Hugging Face token -- info about certain models will be limited\n{e}"
     )
+from transformer_lens import loading, supported_models
 
 # Docs Directories
 CURRENT_DIR: Path = Path(__file__).parent
@@ -703,6 +706,84 @@ def get_property(name, model_name):
             return f"{round(n_params/1e9)}B"
         raise ValueError(f"Passed in {n_params} above 1T?")
     return cfg.to_dict()[name]
+
+
+def generate_model_table(_app: Optional[Any] = None):
+    """Generate a markdown table summarizing properties of pretrained models.
+
+    This script extracts various properties of pretrained models from the `easy_transformer`
+    library, such as the number of parameters, layers, and heads, among others, and generates a
+    markdown table.
+    """
+
+    # Create the table
+    column_names = [
+        "n_params",
+        "n_layers",
+        "d_model",
+        "n_heads",
+        "act_fn",
+        "n_ctx",
+        "d_vocab",
+        "d_head",
+        "d_mlp",
+        "n_key_value_heads",
+    ]
+    df = pd.DataFrame(
+        {
+            name: [
+                get_property(name, model_name)
+                for model_name in supported_models.DEFAULT_MODEL_ALIASES
+            ]
+            for name in column_names
+        },
+        index=supported_models.DEFAULT_MODEL_ALIASES,
+    )
+
+    # Convert to markdown (with a title)
+    df["n_key_value_heads"] = df["n_key_value_heads"].fillna(-1).astype(int).replace(-1, "")
+    markdown_string = df.to_markdown()
+    markdown_string = "# Model Properties Table\n\n" + markdown_string
+
+    # Save to the docs directory
+    GENERATED_DIR.mkdir(exist_ok=True)
+    file_path = GENERATED_DIR / "model_properties_table.md"
+    with open(file_path, "w", encoding="utf-8") as file:
+        file.write(markdown_string)
+
+
+def copy_demos(_app: Optional[Any] = None):
+    """Copy demo notebooks to the generated directory."""
+    copy_to_dir = GENERATED_DIR / "demos"
+    notebooks_to_copy = [
+        "Exploratory_Analysis_Demo.ipynb",
+        "Main_Demo.ipynb",
+    ]
+
+    if copy_to_dir.exists():
+        shutil.rmtree(copy_to_dir)
+
+    copy_to_dir.mkdir()
+    for filename in notebooks_to_copy:
+        shutil.copy(DEMOS_DIR / filename, copy_to_dir)
+
+
+def build_docs():
+    """Build the docs."""
+    generate_model_table()
+    copy_demos()
+
+    # Generating docs
+    subprocess.run(
+        [
+            "sphinx-build",
+            SOURCE_PATH,
+            BUILD_PATH,
+            # "-n",  # Nitpicky mode (warn about all missing references)
+            "-W",  # Turn warnings into errors
+        ],
+        check=True,
+    )
 
 
 def docs_hot_reload():
