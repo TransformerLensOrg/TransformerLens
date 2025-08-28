@@ -65,9 +65,17 @@
         "tiktoken>=0.8.0; python_version >= '3.13'",
     ]
     jupyter=["ipywidgets>=8.1.1,<9", "jupyterlab>=3.5.0"]
+    notebooks=[
+        "bitsandbytes==0.42.0",
+        "gradio",
+        "huggingface_hub",
+        "matplotlib",
+        "torchtyping",
+        "transformers_stream_generator",
+    ]
 
 [tool.uv]
-    default-groups=["dev", "docs", "jupyter"]
+    default-groups=["dev", "docs", "jupyter", "notebooks"]
 
 [tool.pytest]
     [tool.pytest.ini_options]
