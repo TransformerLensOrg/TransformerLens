@@ -30,6 +30,7 @@ from transformer_lens import (
     HookedTransformer,
     HookedTransformerConfig,
     loading,
+    supported_models,
 )
 from transformer_lens.loading_from_pretrained import (  # type: ignore[import-untyped]
     NON_HF_HOSTED_MODEL_NAMES,
@@ -49,7 +50,6 @@ except Exception as e:
     warnings.warn(
         f"Failed to get Hugging Face token -- info about certain models will be limited\n{e}"
     )
-from transformer_lens import loading, supported_models
 
 # Docs Directories
 CURRENT_DIR: Path = Path(__file__).parent
@@ -264,7 +264,7 @@ def get_model_info(
     """
 
     # assumes the input is a default alias
-    if model_name not in transformer_lens.loading.DEFAULT_MODEL_ALIASES:
+    if model_name not in supported_models.DEFAULT_MODEL_ALIASES:
         raise ValueError(f"Model name '{model_name}' not found in default aliases")
 
     # get the names and model types
@@ -273,7 +273,7 @@ def get_model_info(
         "name.default_alias": model_name,
         "name.huggingface": official_name,
         "name.aliases": ", ".join(
-            list(transformer_lens.loading.MODEL_ALIASES.get(official_name, []))  # type: ignore[arg-type]
+            list(supported_models.MODEL_ALIASES.get(official_name, []))  # type: ignore[arg-type]
         ),
         "model_type": None,
     }
@@ -406,7 +406,7 @@ def make_model_table(
     **kwargs,
 ) -> pd.DataFrame:
     """make table of all models. kwargs passed to `get_model_info()`"""
-    model_names: list[str] = list(transformer_lens.loading.DEFAULT_MODEL_ALIASES)
+    model_names: list[str] = list(supported_models.DEFAULT_MODEL_ALIASES)
     model_data: list[tuple[str, Union[dict, Exception]]] = list()
 
     # filter by regex pattern if provided
@@ -439,7 +439,7 @@ def make_model_table(
     else:
         # serial
         with tqdm.tqdm(
-            transformer_lens.loading.DEFAULT_MODEL_ALIASES,
+            supported_models.DEFAULT_MODEL_ALIASES,
             desc="Loading model info",
             disable=not verbose,
         ) as pbar:
@@ -631,22 +631,6 @@ def get_model_table(
     return model_table
 
 
-def copy_demos(_app: Optional[Any] = None):
-    """Copy demo notebooks to the generated directory."""
-    copy_to_dir = GENERATED_DIR / "demos"
-    notebooks_to_copy = [
-        "Exploratory_Analysis_Demo.ipynb",
-        "Main_Demo.ipynb",
-    ]
-
-    if copy_to_dir.exists():
-        shutil.rmtree(copy_to_dir)
-
-    copy_to_dir.mkdir()
-    for filename in notebooks_to_copy:
-        shutil.copy(DEMOS_DIR / filename, copy_to_dir)
-
-
 def build_docs():
     """Build the docs."""
     get_model_table(
@@ -668,7 +652,7 @@ def build_docs():
     )
 
 
-def get_property(name, model_name):
+def get_property(name: str, model_name: str) -> Any:
     """Retrieve a specific property of a pretrained model.
 
     Args:
@@ -766,24 +750,6 @@ def copy_demos(_app: Optional[Any] = None):
     copy_to_dir.mkdir()
     for filename in notebooks_to_copy:
         shutil.copy(DEMOS_DIR / filename, copy_to_dir)
-
-
-def build_docs():
-    """Build the docs."""
-    generate_model_table()
-    copy_demos()
-
-    # Generating docs
-    subprocess.run(
-        [
-            "sphinx-build",
-            SOURCE_PATH,
-            BUILD_PATH,
-            # "-n",  # Nitpicky mode (warn about all missing references)
-            "-W",  # Turn warnings into errors
-        ],
-        check=True,
-    )
 
 
 def docs_hot_reload():
