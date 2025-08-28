@@ -39,6 +39,7 @@
     dev=[
         "black>=23.3.0,<24",
         "circuitsvis>=1.38.1",
+        "ipython<8.0.0",                # magic() -> run_line_magic() change
         "isort==5.8.0",
         "jupyter>=1.0.0",
         "mypy>=1.10.0",
@@ -78,7 +79,6 @@
 
 [tool.pytest]
     [tool.pytest.ini_options]
-        pythonpath = ["."]
         addopts=[
             "--doctest-modules",
             "--doctest-plus",
@@ -93,6 +93,7 @@
             # More info: https://numpy.org/doc/stable/reference/distutils.html#module-numpy.distutils
             "ignore:distutils Version classes are deprecated:DeprecationWarning",
         ]
+        pythonpath=["."]
 
 [tool.isort]
     extend_skip=[".venv/", "__init__.py"]
