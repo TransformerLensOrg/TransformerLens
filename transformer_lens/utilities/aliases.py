@@ -30,17 +30,48 @@ def resolve_alias(
                 stacklevel=3,  # Adjusted for utility function call
             )
 
-        target_name_split = target_name.split(".")
+        def _resolve_single_target(target_name: str) -> Any:
+            """Helper function to resolve a single target name."""
+            target_name_split = target_name.split(".")
+            # there are multiple target names, so we need to check all of them
+            # this is the case for hook_pos_embed, which can be either pos_embed.hook_out (gpt2-style) or rotary_emb.hook_out (gemma/etc-style)
+            if len(target_name_split) > 1:
+                current_attr = target_object
+                for i in range(len(target_name_split) - 1):
+                    if not hasattr(current_attr, target_name_split[i]):
+                        continue
+                    current_attr = getattr(current_attr, target_name_split[i])
 
-        if len(target_name_split) > 1:
-            current_attr = target_object
-            for i in range(len(target_name_split) - 1):
-                current_attr = getattr(current_attr, target_name_split[i])
-                next_attr = getattr(current_attr, target_name_split[i + 1])
-            return next_attr
+                # Check if the final attribute exists
+                if not hasattr(current_attr, target_name_split[-1]):
+                    raise AttributeError(
+                        f"'{type(current_attr).__name__}' object has no attribute '{target_name_split[-1]}'"
+                    )
+                next_attr = getattr(current_attr, target_name_split[-1])
+                return next_attr
+            else:
+                # Check if the target attribute exists before getting it
+                if not hasattr(target_object, target_name):
+                    raise AttributeError(
+                        f"'{type(target_object).__name__}' object has no attribute '{target_name}'"
+                    )
+                # Return the target hook
+                return getattr(target_object, target_name)
+
+        # if the target_name is a list, we check all elements
+        if isinstance(target_name, list):
+            for target_name_item in target_name:
+                try:
+                    result = _resolve_single_target(target_name_item)
+                    return result
+                except AttributeError:
+                    continue
+            # If we get here, none of the targets in the list were found
+            raise AttributeError(
+                f"None of the target names {target_name} could be resolved on '{type(target_object).__name__}' object"
+            )
         else:
-            # Return the target hook
-            return getattr(target_object, target_name)
+            return _resolve_single_target(target_name)
     return None
 
 
