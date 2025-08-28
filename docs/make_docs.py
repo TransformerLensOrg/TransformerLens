@@ -19,10 +19,8 @@ import tqdm  # type: ignore[import-untyped]
 import yaml  # type: ignore[import-untyped]
 from muutils.dictmagic import TensorDictFormats, condense_tensor_dict
 from muutils.misc import shorten_numerical_to_str
-from transformers import (
-    AutoTokenizer,  # type: ignore[import-untyped]
-    PreTrainedTokenizer,
-)
+from transformers import AutoTokenizer  # type: ignore[import-untyped]
+from transformers import PreTrainedTokenizer
 
 import transformer_lens  # type: ignore[import-untyped]
 from transformer_lens import (
