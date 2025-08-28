@@ -62,6 +62,6 @@ jobs:
       - name: Publish
         run: |
           python -m pip install --upgrade twine
-          twine upload --non-interactive -u __token__ -p "$POETRY_PYPI_TOKEN_PYPI" dist/*
+          twine upload --non-interactive -u __token__ -p "$PYPI_TOKEN_PYPI" dist/*
         env:
-          POETRY_PYPI_TOKEN_PYPI: ${{ secrets.PYPI_TOKEN_PYPI }}
+          PYPI_TOKEN_PYPI: ${{ secrets.PYPI_TOKEN_PYPI }}
