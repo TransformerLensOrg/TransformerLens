@@ -1,5 +1,8 @@
 RUN := uv run
 
+dep:
+	uv sync
+
 format:
 	$(RUN) pycln --all . --exclude "__init__.py"
 	$(RUN) isort format .
