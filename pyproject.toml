@@ -67,7 +67,7 @@
     jupyter=["ipywidgets>=8.1.1,<9", "jupyterlab>=3.5.0"]
 
 [tool.uv]
-    default-groups=["dev", "jupyter"]
+    default-groups=["dev", "docs", "jupyter"]
 
 [tool.pytest]
     [tool.pytest.ini_options]
