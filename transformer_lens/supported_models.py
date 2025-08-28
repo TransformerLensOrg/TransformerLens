@@ -1,4 +1,4 @@
-OFFICIAL_MODEL_NAMES = [
+OFFICIAL_MODEL_NAMES: list[str] = [
     "01-ai/Yi-34B",
     "01-ai/Yi-34B-Chat",
     "01-ai/Yi-6B",
@@ -219,7 +219,7 @@ OFFICIAL_MODEL_NAMES = [
 """Official model names for models on HuggingFace."""
 
 # Model Aliases:
-MODEL_ALIASES = {
+MODEL_ALIASES: dict[str, list[str]] = {
     "01-ai/Yi-34B": ["yi-34b", "Yi-34B"],
     "01-ai/Yi-34B-Chat": ["yi-34b-chat", "Yi-34B-Chat"],
     "01-ai/Yi-6B": ["yi-6b", "Yi-6B"],
@@ -585,6 +585,6 @@ MODEL_ALIASES = {
 
 
 # Sets a default model alias, by convention the first one in the model alias table, else the official name if it has no aliases
-DEFAULT_MODEL_ALIASES = [
+DEFAULT_MODEL_ALIASES: list[str] = [
     MODEL_ALIASES[name][0] if name in MODEL_ALIASES else name for name in OFFICIAL_MODEL_NAMES
 ]
