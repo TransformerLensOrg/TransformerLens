@@ -78,6 +78,7 @@
 
 [tool.pytest]
     [tool.pytest.ini_options]
+        pythonpath = ["."]
         addopts=[
             "--doctest-modules",
             "--doctest-plus",
