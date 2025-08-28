@@ -73,9 +73,9 @@ class TransformerBridge(nn.Module):
         self.tokenizer = tokenizer
         self.compatibility_mode = False
         self._hook_cache = None  # Cache for hook discovery results
-        self._hook_registry: Dict[str, HookPoint] = (
-            {}
-        )  # Dynamic registry of hook names to HookPoints
+        self._hook_registry: Dict[
+            str, HookPoint
+        ] = {}  # Dynamic registry of hook names to HookPoints
         self._hook_registry_initialized = False  # Track if registry has been initialized
 
         # Add device information to config from the loaded model
@@ -855,7 +855,8 @@ class TransformerBridge(nn.Module):
         return_cache_object: Literal[True] = True,
         remove_batch_dim: bool = False,
         **kwargs,
-    ) -> Tuple[Any, ActivationCache]: ...
+    ) -> Tuple[Any, ActivationCache]:
+        ...
 
     @overload
     def run_with_cache(
@@ -864,7 +865,8 @@ class TransformerBridge(nn.Module):
         return_cache_object: Literal[False],
         remove_batch_dim: bool = False,
         **kwargs,
-    ) -> Tuple[Any, Dict[str, torch.Tensor]]: ...
+    ) -> Tuple[Any, Dict[str, torch.Tensor]]:
+        ...
 
     def run_with_cache(
         self,
