@@ -70,7 +70,6 @@
         "gradio",
         "huggingface_hub",
         "matplotlib",
-        "torchtyping",
         "transformers_stream_generator",
     ]
 

@@ -9383,21 +9383,6 @@ wheels = [
 ]
 
 [[package]]
-name = "torchtyping"
-version = "0.1.4"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "torch", version = "2.5.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
-    { name = "torch", version = "2.7.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.9'" },
-    { name = "typeguard", version = "4.4.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
-    { name = "typeguard", version = "4.4.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.9'" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/4f/f3/5524f68150ff7cbb57186b8659244a2d44e037bb4ab0802d7d9b58468f96/torchtyping-0.1.4.tar.gz", hash = "sha256:4763375d17752641bd1bff0faaddade29be3c125fca6355e3cee7700e975fdb5", size = 23181, upload-time = "2021-06-27T21:16:18.57Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/9a/29/4eced5b50c3e8a6fd796c166916171e27bd0e52fe80f212c51ee0d17f7ed/torchtyping-0.1.4-py3-none-any.whl", hash = "sha256:485fb6ef3965c39b0de15f00d6f49373e0a3a6993e9733942a63c5e207d35390", size = 17842, upload-time = "2021-06-27T21:16:16.731Z" },
-]
-
-[[package]]
 name = "tornado"
 version = "6.4.2"
 source = { registry = "https://pypi.org/simple" }
@@ -9551,7 +9536,6 @@ notebooks = [
     { name = "matplotlib", version = "3.7.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
     { name = "matplotlib", version = "3.9.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.9.*'" },
     { name = "matplotlib", version = "3.10.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
-    { name = "torchtyping" },
     { name = "transformers-stream-generator" },
 ]
 
@@ -9619,7 +9603,6 @@ notebooks = [
     { name = "gradio" },
     { name = "huggingface-hub" },
     { name = "matplotlib" },
-    { name = "torchtyping" },
     { name = "transformers-stream-generator" },
 ]
 
