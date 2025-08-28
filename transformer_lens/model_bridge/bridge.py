@@ -1070,7 +1070,15 @@ class TransformerBridge(nn.Module):
             # If compatibility mode is enabled, we need to handle aliases
             # Create duplicate cache entries for TransformerLens compatibility
             # Use the aliases collected from components (reverse mapping: new -> old)
-            reverse_aliases = {new_name: old_name for old_name, new_name in aliases.items()}
+            # Handle the case where some alias values might be lists
+            reverse_aliases = {}
+            for old_name, new_name in aliases.items():
+                if isinstance(new_name, list):
+                    # For list values, create a mapping for each item in the list
+                    for single_new_name in new_name:
+                        reverse_aliases[single_new_name] = old_name
+                else:
+                    reverse_aliases[new_name] = old_name
 
             # Create duplicate entries in cache
             cache_items_to_add = {}
@@ -1086,8 +1094,16 @@ class TransformerBridge(nn.Module):
 
             # Add cache entries for all aliases (both hook and cache aliases)
             for alias_name, target_name in aliases.items():
-                if target_name in cache and alias_name not in cache:
-                    cache[alias_name] = cache[target_name]
+                # Handle both string and list target names
+                if isinstance(target_name, list):
+                    # For list targets, find the first one that exists in cache
+                    for single_target in target_name:
+                        if single_target in cache and alias_name not in cache:
+                            cache[alias_name] = cache[single_target]
+                            break
+                else:
+                    if target_name in cache and alias_name not in cache:
+                        cache[alias_name] = cache[target_name]
 
         if return_cache_object:
             cache_obj = ActivationCache(cache, self, has_batch_dim=not remove_batch_dim)
