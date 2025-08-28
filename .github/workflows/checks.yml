@@ -152,7 +152,7 @@ jobs:
           - "Exploratory_Analysis_Demo"
           # - "Grokking_Demo"
           # - "Head_Detector_Demo"
-          - "Interactive_Neuroscope"
+          # - "Interactive_Neuroscope"
           # - "LLaMA"
           # - "LLaMA2_GPU_Quantized"
           - "Main_Demo"
