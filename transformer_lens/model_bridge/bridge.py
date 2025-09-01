@@ -130,28 +130,6 @@ class TransformerBridge(nn.Module):
         # Scan existing components for hooks
         self._scan_existing_hooks(self, "")
 
-        # Add bridge aliases if compatibility mode is enabled
-        if self.compatibility_mode and self.hook_aliases:
-            for alias_name, target in self.hook_aliases.items():
-                # Use the existing alias system to resolve the target hook
-                # Convert to Dict[str, str] for resolve_alias if target_name is a list
-                if isinstance(target, list):
-                    # For list targets, try each one until one works
-                    for single_target in target:
-                        try:
-                            target_hook = resolve_alias(
-                                self, alias_name, {alias_name: single_target}
-                            )
-                            if target_hook is not None:
-                                self._hook_registry[alias_name] = target_hook
-                                break
-                        except AttributeError:
-                            continue
-                else:
-                    target_hook = resolve_alias(self, alias_name, {alias_name: target})
-                    if target_hook is not None:
-                        self._hook_registry[alias_name] = target_hook
-
         self._hook_registry_initialized = True
 
     def _scan_existing_hooks(self, module: nn.Module, prefix: str = "") -> None:
@@ -222,23 +200,7 @@ class TransformerBridge(nn.Module):
     def hook_dict(self) -> dict[str, HookPoint]:
         """Get all HookPoint objects in the model for compatibility with HookedTransformer."""
         # Start with the current registry
-        hooks = self._hook_registry.copy()
-
-        # Add aliases if compatibility mode is enabled
-        if self.compatibility_mode:
-            for alias_name, target in self.hook_aliases.items():
-                # Handle both string and list target names
-                if isinstance(target, list):
-                    # For list targets, find the first one that exists in hooks
-                    for single_target in target:
-                        if single_target in hooks:
-                            hooks[alias_name] = hooks[single_target]
-                            break
-                else:
-                    if target in hooks:
-                        hooks[alias_name] = hooks[target]
-
-        return hooks
+        return self._hook_registry.copy()
 
     def _discover_hooks(self) -> dict[str, HookPoint]:
         """Get all HookPoint objects from the registry (deprecated, use hook_dict)."""
@@ -259,17 +221,10 @@ class TransformerBridge(nn.Module):
             return self.__dict__[name]
 
         # Check if this is a hook alias when compatibility mode is enabled
-        if self.compatibility_mode and name in self.hook_aliases:
-            target = self.hook_aliases[name]
-            # Handle both string and list target names
-            if isinstance(target, list):
-                # For list targets, find the first one that exists in the registry
-                for single_target in target:
-                    if single_target in self._hook_registry:
-                        return self._hook_registry[single_target]
-            else:
-                if target in self._hook_registry:
-                    return self._hook_registry[target]
+        if self.compatibility_mode:
+            resolved_hook = resolve_alias(self, name, self.hook_aliases)
+            if resolved_hook is not None:
+                return resolved_hook
 
         return super().__getattr__(name)
 
