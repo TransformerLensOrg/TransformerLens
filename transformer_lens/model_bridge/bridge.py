@@ -216,13 +216,6 @@ class TransformerBridge(nn.Module):
                 child_path = f"{path}.{child_name}" if path else child_name
                 scan_module(child_module, child_path)
 
-            # Check submodules property for GeneralizedComponent instances
-            if hasattr(mod, "submodules") and isinstance(mod.submodules, dict):
-                for submodule_name, submodule in mod.submodules.items():
-                    if isinstance(submodule, nn.Module):
-                        submodule_path = f"{path}.{submodule_name}" if path else submodule_name
-                        scan_module(submodule, submodule_path)
-
         scan_module(module, prefix)
 
     @property
