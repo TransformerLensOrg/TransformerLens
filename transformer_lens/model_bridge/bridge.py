@@ -184,7 +184,7 @@ class TransformerBridge(nn.Module):
             for attr_name in dir(mod):
                 if attr_name.startswith("_"):
                     continue
-                if attr_name == "original_component":
+                if attr_name == "original_component" or "original_model":
                     continue
 
                 try:
@@ -207,7 +207,11 @@ class TransformerBridge(nn.Module):
 
             # Check named children
             for child_name, child_module in mod.named_children():
-                if child_name == "original_component" or child_name == "_original_component":
+                if (
+                    child_name == "original_component"
+                    or child_name == "_original_component"
+                    or child_name == "original_model"
+                ):
                     continue
                 child_path = f"{path}.{child_name}" if path else child_name
                 scan_module(child_module, child_path)
