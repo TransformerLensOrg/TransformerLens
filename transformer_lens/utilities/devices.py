@@ -31,6 +31,7 @@ def get_device() -> torch.device:
 @runtime_checkable
 class ModelWithCfg(Protocol):
     """Protocol for models that have a config attribute and can be moved to devices."""
+
     cfg: Any
 
     def state_dict(self) -> dict[str, torch.Tensor]:
@@ -49,12 +50,12 @@ def move_to_and_update_config(
 ) -> Any:
     """
     Wrapper around `to` that also updates `model.cfg`.
-    
+
     Args:
         model: The model to move/update
         device_or_dtype: Device or dtype to move/change to
         print_details: Whether to print details about the operation
-        
+
     Returns:
         The model after the operation
     """
@@ -68,14 +69,14 @@ def move_to_and_update_config(
             print("Moving model to device: ", model.cfg.device)
     elif isinstance(device_or_dtype, torch.dtype):
         # Update dtype in config if it exists
-        if hasattr(model.cfg, 'dtype'):
+        if hasattr(model.cfg, "dtype"):
             model.cfg.dtype = device_or_dtype
         if print_details:
             print("Changing model dtype to", device_or_dtype)
         # change state_dict dtypes
         for k, v in model.state_dict().items():
             model.state_dict()[k] = v.to(device_or_dtype)
-    
+
     # Call the base nn.Module.to() method to avoid recursion with custom to() methods
     # Use the unbound method approach to avoid calling the overridden to() method
     return nn.Module.to(model, device_or_dtype)  # type: ignore

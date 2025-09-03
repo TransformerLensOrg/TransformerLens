@@ -13,16 +13,16 @@ from transformer_lens.utilities.devices import (
 
 class MockModelWithCfg:
     """Mock model that implements the ModelWithCfg protocol."""
-    
+
     def __init__(self, device="cpu", dtype=torch.float32):
         self.cfg = Mock()
         self.cfg.device = device
         self.cfg.dtype = dtype
         self._parameters = {"weight": torch.randn(10, 10)}
-    
+
     def state_dict(self):
         return self._parameters
-    
+
     def to(self, device_or_dtype):
         # Mock the to method
         if isinstance(device_or_dtype, torch.device):
@@ -74,21 +74,21 @@ def test_model_with_cfg_protocol():
     """Test that ModelWithCfg protocol is runtime checkable."""
     model = MockModelWithCfg()
     assert isinstance(model, ModelWithCfg)
-    
+
     # Test that it has required attributes
-    assert hasattr(model, 'cfg')
-    assert hasattr(model, 'state_dict')
-    assert hasattr(model, 'to')
+    assert hasattr(model, "cfg")
+    assert hasattr(model, "state_dict")
+    assert hasattr(model, "to")
 
 
 def test_move_to_and_update_config_device():
     """Test move_to_and_update_config with device."""
     model = MockModelWithCfg(device="cpu")
-    
+
     with patch("torch.nn.Module.to") as mock_to:
         mock_to.return_value = model
         result = move_to_and_update_config(model, torch.device("cuda"))
-        
+
         assert model.cfg.device == "cuda"
         assert result == model
         mock_to.assert_called_once_with(model, torch.device("cuda"))
@@ -97,11 +97,11 @@ def test_move_to_and_update_config_device():
 def test_move_to_and_update_config_string():
     """Test move_to_and_update_config with string device."""
     model = MockModelWithCfg(device="cpu")
-    
+
     with patch("torch.nn.Module.to") as mock_to:
         mock_to.return_value = model
         result = move_to_and_update_config(model, "mps")
-        
+
         assert model.cfg.device == "mps"
         assert result == model
         mock_to.assert_called_once_with(model, "mps")
@@ -110,11 +110,11 @@ def test_move_to_and_update_config_string():
 def test_move_to_and_update_config_dtype():
     """Test move_to_and_update_config with dtype."""
     model = MockModelWithCfg(dtype=torch.float32)
-    
+
     with patch("torch.nn.Module.to") as mock_to:
         mock_to.return_value = model
         result = move_to_and_update_config(model, torch.float16)
-        
+
         assert model.cfg.dtype == torch.float16
         assert result == model
         mock_to.assert_called_once_with(model, torch.float16)
@@ -123,12 +123,12 @@ def test_move_to_and_update_config_dtype():
 def test_move_to_and_update_config_dtype_no_dtype_attr():
     """Test move_to_and_update_config with dtype when model has no dtype attr."""
     model = MockModelWithCfg()
-    delattr(model.cfg, 'dtype')  # Remove dtype attribute
-    
+    delattr(model.cfg, "dtype")  # Remove dtype attribute
+
     with patch("torch.nn.Module.to") as mock_to:
         mock_to.return_value = model
         result = move_to_and_update_config(model, torch.float16)
-        
+
         # Should not crash and should still call the base to method
         assert result == model
         mock_to.assert_called_once_with(model, torch.float16)
@@ -137,12 +137,12 @@ def test_move_to_and_update_config_dtype_no_dtype_attr():
 def test_move_to_and_update_config_print_details_false():
     """Test move_to_and_update_config with print_details=False."""
     model = MockModelWithCfg(device="cpu")
-    
+
     with patch("torch.nn.Module.to") as mock_to:
         mock_to.return_value = model
         with patch("builtins.print") as mock_print:
             result = move_to_and_update_config(model, "mps", print_details=False)
-            
+
             assert model.cfg.device == "mps"
             assert result == model
             mock_print.assert_not_called()
