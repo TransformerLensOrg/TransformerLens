@@ -16,9 +16,6 @@ from transformers import (
 )
 
 from transformer_lens.config import TransformerBridgeConfig
-from transformer_lens.factories.architecture_adapter_factory import (
-    SUPPORTED_ARCHITECTURES,
-)
 from transformer_lens.model_bridge.bridge import TransformerBridge
 from transformer_lens.supported_models import MODEL_ALIASES
 from transformer_lens.utils import get_tokenizer_with_bos
@@ -143,6 +140,11 @@ def determine_architecture_from_hf_config(hf_config):
 
         if model_type in model_type_mappings:
             architectures.append(model_type_mappings[model_type])
+
+    # Import here to avoid circular import
+    from transformer_lens.factories.architecture_adapter_factory import (
+        SUPPORTED_ARCHITECTURES,
+    )
 
     # Return the first supported architecture
     for arch in architectures:
