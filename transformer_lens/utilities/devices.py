@@ -6,10 +6,9 @@ devices.
 
 from __future__ import annotations
 
-from typing import Any, Mapping, Optional, Protocol, Union
+from typing import Any, Optional, Protocol, Union
 
 import torch
-from torch import nn
 
 from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 
@@ -159,8 +158,12 @@ def get_device_for_block_index(
 
 class ModelWithCfg(Protocol):
     cfg: Any
-    def state_dict(self) -> dict[str, torch.Tensor]: ...
-    def to(self, device_or_dtype: Union[torch.device, str, torch.dtype]) -> Any: ...
+
+    def state_dict(self) -> dict[str, torch.Tensor]:
+        ...
+
+    def to(self, device_or_dtype: Union[torch.device, str, torch.dtype]) -> Any:
+        ...
 
 
 def move_to_and_update_config(
