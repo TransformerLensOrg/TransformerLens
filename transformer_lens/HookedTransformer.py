@@ -64,6 +64,7 @@ from transformer_lens.utilities import (
     get_best_available_device,
     get_device_for_block_index,
 )
+from transformer_lens.utilities.devices import move_to_and_update_config
 from transformer_lens.utils import (
     USE_DEFAULT_VALUE,
     init_kaiming_normal_,
@@ -1095,7 +1096,7 @@ class HookedTransformer(HookedRootModule):
         device_or_dtype: Union[torch.device, str, torch.dtype],
         print_details: bool = True,
     ):
-        return devices.move_to_and_update_config(self, device_or_dtype, print_details)
+        return move_to_and_update_config(self, device_or_dtype, print_details)
 
     def cuda(self: T, device: Optional[Union[int, torch.device]] = None) -> T:
         # TODO: Add support for kwargs
@@ -2211,7 +2212,7 @@ class HookedTransformer(HookedRootModule):
 
             input_tokens = input if input_type in ["str", "tokens"] else None
             batch_size, ctx_length = input.shape[0], input.shape[1]
-            device = devices.get_device_for_block_index(0, self.cfg)
+            device = get_device_for_block_index(0, self.cfg)
             input = input.to(device)
             if use_past_kv_cache:
                 past_kv_cache = HookedTransformerKeyValueCache.init_cache(
@@ -2327,14 +2328,14 @@ class HookedTransformer(HookedRootModule):
                             )
                             if "sampled_tokens" in locals()
                             else input_tokens,
-                        ).to(devices.get_device_for_block_index(0, self.cfg))
+                        ).to(get_device_for_block_index(0, self.cfg))
                     else:
                         sampled_tokens = utils.sample_logits(
                             final_logits, top_k=top_k, top_p=top_p, temperature=temperature
-                        ).to(devices.get_device_for_block_index(0, self.cfg))
+                        ).to(get_device_for_block_index(0, self.cfg))
                 else:
                     sampled_tokens = final_logits.argmax(-1).to(
-                        devices.get_device_for_block_index(0, self.cfg)
+                        get_device_for_block_index(0, self.cfg)
                     )
                 sampled_tokens_list.append(sampled_tokens.unsqueeze(1))
                 if stop_at_eos:
