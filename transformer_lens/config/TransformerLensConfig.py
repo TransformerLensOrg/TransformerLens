@@ -100,7 +100,7 @@ class TransformerLensConfig:
         return TransformerLensConfig.from_dict(config) if isinstance(config, Dict) else config
 
     @classmethod
-    def from_dict(cls, config_dict: Dict[str, Any]) -> TransformerLensConfig:
+    def from_dict(cls, config_dict: Dict[str, Any]):
         """
         Instantiates a `TransformerLensConfig` from a Python dictionary of parameters.
         Only includes fields that are defined in the TransformerLensConfig dataclass.

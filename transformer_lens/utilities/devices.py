@@ -6,12 +6,13 @@ devices.
 
 from __future__ import annotations
 
-from typing import Optional, Union
+from typing import TYPE_CHECKING, Optional, Union
 
 import torch
 from torch import nn
 
-import transformer_lens
+if TYPE_CHECKING:
+    from transformer_lens.config import HookedTransformerConfig
 
 AvailableDeviceMemory = list[tuple[int, int]]
 """
@@ -100,7 +101,7 @@ def get_device() -> torch.device:
     return torch.device("cpu")
 
 
-def get_best_available_device(cfg: "transformer_lens.HookedTransformerConfig") -> torch.device:
+def get_best_available_device(cfg: "HookedTransformerConfig") -> torch.device:
     """Gets the best available device to be used based on the passed in arguments
 
     Args:
@@ -120,7 +121,7 @@ def get_best_available_device(cfg: "transformer_lens.HookedTransformerConfig") -
 
 def get_device_for_block_index(
     index: int,
-    cfg: "transformer_lens.HookedTransformerConfig",
+    cfg: "HookedTransformerConfig",
     device: Optional[Union[torch.device, str]] = None,
 ):
     """
@@ -158,7 +159,7 @@ def get_device_for_block_index(
 def move_to_and_update_config(
     model: Union[
         "transformer_lens.HookedTransformer",
-        "transformer_lens.HookedEncoder",
+        "transformer_lens.HookedEncoder", 
         "transformer_lens.HookedEncoderDecoder",
     ],
     device_or_dtype: Union[torch.device, str, torch.dtype],

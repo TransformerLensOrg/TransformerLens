@@ -49,8 +49,8 @@ class ArchitectureAdapter:
     def _merge_default_config(self) -> None:
         """Merge default_cfg into cfg for variables that don't exist in cfg."""
         for key, value in self.default_cfg.items():
-            if key not in self.cfg:
-                self.cfg[key] = value
+            if not hasattr(self.cfg, key):
+                setattr(self.cfg, key, value)
 
     def get_component_mapping(self) -> ComponentMapping:
         """Get the full component mapping.
