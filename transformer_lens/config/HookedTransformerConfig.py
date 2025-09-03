@@ -6,7 +6,6 @@ Module with a dataclass for storing the configuration of a
 
 from __future__ import annotations
 
-import logging
 import pprint
 import random
 from dataclasses import dataclass
@@ -15,8 +14,8 @@ from typing import Any, Dict, List, Optional, Union
 import numpy as np
 import torch
 
-from transformer_lens import utils
 from transformer_lens.utilities.activation_functions import SUPPORTED_ACTIVATIONS
+from transformer_lens.utilities.devices import get_device
 
 from .TransformerLensConfig import TransformerLensConfig
 
@@ -253,17 +252,8 @@ class HookedTransformerConfig(TransformerLensConfig):
     NTK_original_ctx_len: int = 8192
 
     def __post_init__(self):
-        if self.n_heads == -1:
-            self.n_heads = self.d_model // self.d_head
-
-            if not self.d_model % (self.d_head) == 0:
-                logging.warning(
-                    "d_model %d is not divisible by d_head %d."
-                    "n_heads was inferred to be %d, rounding down the ratio.",
-                    self.d_model,
-                    self.d_head,
-                    self.n_heads,
-                )
+        # Call parent's post_init first
+        super().__post_init__()
 
         if self.seed is not None:
             self.set_seed_everywhere(self.seed)
@@ -271,9 +261,6 @@ class HookedTransformerConfig(TransformerLensConfig):
             assert self.window_size is not None, "window_size must be specified for local attention"
             assert self.attn_types is not None, "attn_types must be specified for local attention"
         if not self.attn_only:
-            if self.d_mlp is None:
-                # For some reason everyone hard codes in this hyper-parameter!
-                self.d_mlp: int = self.d_model * 4
             assert self.act_fn is not None, "act_fn must be specified for non-attn-only models"
             assert (
                 self.act_fn in SUPPORTED_ACTIVATIONS
@@ -316,7 +303,7 @@ class HookedTransformerConfig(TransformerLensConfig):
             self.n_params += self.n_layers * mlp_params_per_layer
 
         if self.device is None:
-            self.device = str(utils.get_device())
+            self.device = str(get_device())
 
         if self.n_devices > 1:
             assert (

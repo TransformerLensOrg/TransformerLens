@@ -11,7 +11,7 @@ import torch
 from jaxtyping import Float, Int
 
 from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
-from transformer_lens.utilities.devices import get_device_for_block_index
+from transformer_lens.utilities.multi_gpu import get_device_for_block_index
 
 
 @dataclass
