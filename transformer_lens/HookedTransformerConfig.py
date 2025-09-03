@@ -16,11 +16,12 @@ import numpy as np
 import torch
 
 from transformer_lens import utils
+from transformer_lens.TransformerLensConfig import TransformerLensConfig
 from transformer_lens.utilities.activation_functions import SUPPORTED_ACTIVATIONS
 
 
 @dataclass
-class HookedTransformerConfig:
+class HookedTransformerConfig(TransformerLensConfig):
     """
     Configuration class to store the configuration of a HookedTransformer model.
 
@@ -194,20 +195,11 @@ class HookedTransformerConfig:
             Defaults to 8.0.
     """
 
-    n_layers: int
-    d_model: int
-    n_ctx: int
-    d_head: int
     model_name: str = "custom"
-    n_heads: int = -1
-    d_mlp: Optional[int] = None
     act_fn: Optional[str] = None
-    d_vocab: int = -1
     eps: float = 1e-5
-    use_attn_result: bool = False
     use_attn_scale: bool = True
     attn_scale: float = -1.0
-    use_split_qkv_input: bool = False
     use_hook_mlp_in: bool = False
     use_attn_in: bool = False
     use_qk_norm: bool = False
@@ -223,7 +215,6 @@ class HookedTransformerConfig:
     attn_types: Optional[List] = None
     init_mode: str = "gpt2"
     normalization_type: Optional[str] = "LN"
-    device: Optional[str] = None
     n_devices: int = 1
     attention_dir: str = "causal"
     attn_only: bool = False
@@ -231,7 +222,6 @@ class HookedTransformerConfig:
     initializer_range: float = -1.0
     init_weights: bool = True
     scale_attn_by_inverse_layer_idx: bool = False
-    positional_embedding_type: str = "standard"
     final_rms: bool = False
     d_vocab_out: int = -1
     parallel_attn_mlp: bool = False
@@ -239,10 +229,8 @@ class HookedTransformerConfig:
     n_params: Optional[int] = None
     use_hook_tokens: bool = False
     gated_mlp: bool = False
-    default_prepend_bos: bool = True
     dtype: torch.dtype = torch.float32
     tokenizer_prepends_bos: Optional[bool] = None
-    n_key_value_heads: Optional[int] = None
     post_embedding_ln: bool = False
     rotary_base: int = 10000
     trust_remote_code: bool = False

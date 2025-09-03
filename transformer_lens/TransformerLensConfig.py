@@ -1,0 +1,139 @@
+"""TransformerLens Configuration.
+
+Module with a dataclass for storing the configuration of a
+:class:`transformer_lens.model_bridge.TransformerBridge` model.
+"""
+
+from __future__ import annotations
+
+import logging
+import pprint
+import random
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Union
+
+import numpy as np
+import torch
+
+from transformer_lens import utils
+
+
+@dataclass
+class TransformerLensConfig:
+    """
+    Configuration class for TransformerLens bridge components.
+
+    This class contains only the configuration parameters that are actually used
+    by the model_bridge system. It serves as a minimal base configuration.
+
+    Args:
+        # Core model architecture parameters (used by bridge)
+        d_model (int): The dimensionality of the embeddings.
+        d_head (int): The dimensionality of each attention head.
+        n_layers (int): The number of transformer blocks.
+        n_ctx (int): The maximum sequence length.
+        n_heads (int): The number of attention heads. If not specified, will be set to d_model // d_head.
+        d_mlp (int, optional): The dimensionality of the feedforward mlp network.
+        d_vocab (int): The size of the vocabulary. Defaults to -1, which means not set.
+        
+        # Device configuration (used by bridge)
+        device (str, optional): The device to use for the model. Defaults to 'cuda' if available, else 'cpu'.
+        
+        # Attention configuration (used by bridge)
+        use_attn_result (bool): Whether to explicitly calculate the amount each head adds to the residual stream.
+        use_split_qkv_input (bool): Whether to explicitly calculate the input of each head separately.
+        
+        # Tokenizer configuration (used by bridge)
+        default_prepend_bos (bool): Default behavior of whether to prepend the BOS token.
+        
+        # Positional embedding configuration (used by bridge)
+        positional_embedding_type (str): The positional embedding used.
+        
+        # GQA configuration (used by bridge)
+        n_key_value_heads (int, optional): The number of groups of heads that use the same key and value matrix.
+    """
+
+    # Core model architecture parameters (used by bridge)
+    d_model: int
+    d_head: int
+    n_layers: int
+    n_ctx: int
+    n_heads: int = -1
+    d_mlp: Optional[int] = None
+    d_vocab: int = -1
+    
+    # Device configuration (used by bridge)
+    device: Optional[str] = None
+    
+    # Attention configuration (used by bridge)
+    use_attn_result: bool = False
+    use_split_qkv_input: bool = False
+    
+    # Tokenizer configuration (used by bridge)
+    default_prepend_bos: bool = True
+    
+    # Positional embedding configuration (used by bridge)
+    positional_embedding_type: str = "standard"
+    
+    # GQA configuration (used by bridge)
+    n_key_value_heads: Optional[int] = None
+
+    def __post_init__(self):
+        """Post-initialization processing and validation."""
+        # Set n_heads if not specified
+        if self.n_heads == -1:
+            self.n_heads = self.d_model // self.d_head
+            if not self.d_model % self.d_head == 0:
+                raise ValueError(
+                    f"d_model ({self.d_model}) must be divisible by d_head ({self.d_head})"
+                )
+
+        # Set device if not specified
+        if self.device is None:
+            self.device = "cuda" if torch.cuda.is_available() else "cpu"
+
+        # Set d_mlp if not specified
+        if self.d_mlp is None:
+            self.d_mlp = self.d_model * 4
+
+    @classmethod
+    def unwrap(cls, config: Union[Dict, "TransformerLensConfig"]) -> TransformerLensConfig:
+        """
+        Convenience function to avoid duplicate code from a common way config is passed to various components.
+        """
+        return TransformerLensConfig.from_dict(config) if isinstance(config, Dict) else config
+
+    @classmethod
+    def from_dict(cls, config_dict: Dict[str, Any]) -> TransformerLensConfig:
+        """
+        Instantiates a `TransformerLensConfig` from a Python dictionary of parameters.
+        """
+        return cls(**config_dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert the config to a dictionary."""
+        return self.__dict__.copy()
+
+    def __repr__(self) -> str:
+        """String representation of the config."""
+        return "TransformerLensConfig:\n" + pprint.pformat(self.to_dict())
+
+    def get_hidden_size(self) -> int:
+        """Get the hidden size (alias for d_model for compatibility)."""
+        return self.d_model
+
+    def get_num_attention_heads(self) -> int:
+        """Get the number of attention heads (alias for n_heads for compatibility)."""
+        return self.n_heads
+
+    def get_num_hidden_layers(self) -> int:
+        """Get the number of hidden layers (alias for n_layers for compatibility)."""
+        return self.n_layers
+
+    def get_vocab_size(self) -> int:
+        """Get the vocabulary size (alias for d_vocab for compatibility)."""
+        return self.d_vocab
+
+    def get_max_position_embeddings(self) -> int:
+        """Get the maximum position embeddings (alias for n_ctx for compatibility)."""
+        return self.n_ctx

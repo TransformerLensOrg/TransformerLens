@@ -17,6 +17,7 @@ from transformers import (
 
 from transformer_lens.model_bridge.bridge import TransformerBridge
 from transformer_lens.supported_models import MODEL_ALIASES
+from transformer_lens.TransformerLensConfig import TransformerLensConfig
 from transformer_lens.utils import get_tokenizer_with_bos
 
 
@@ -131,11 +132,14 @@ def boot(
     # Apply HuggingFace to TransformerLens config mapping
     tl_config = map_default_transformer_lens_config(hf_config)
 
-    adapter = ArchitectureAdapterFactory.select_architecture_adapter(tl_config)
+    # Convert to TransformerLensConfig
+    bridge_config = TransformerLensConfig.from_dict(tl_config.__dict__)
+
+    adapter = ArchitectureAdapterFactory.select_architecture_adapter(bridge_config)
 
     # Add device information to the config
     if device is not None:
-        adapter.cfg.device = device
+        adapter.cfg.device = str(device)
 
     # Load the model from HuggingFace using the original config
     hf_model = AutoModelForCausalLM.from_pretrained(

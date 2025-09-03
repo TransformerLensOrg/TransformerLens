@@ -35,6 +35,7 @@ from transformer_lens.model_bridge.generalized_components.base import (
 )
 from transformer_lens.model_bridge.hook_point_wrapper import HookPointWrapper
 from transformer_lens.model_bridge.types import ComponentMapping
+from transformer_lens.TransformerLensConfig import TransformerLensConfig
 from transformer_lens.utilities.aliases import collect_aliases_recursive, resolve_alias
 
 if TYPE_CHECKING:
@@ -70,6 +71,7 @@ class TransformerBridge(nn.Module):
         self.original_model: nn.Module = model
         self.adapter = adapter
         self.cfg = adapter.cfg
+        
         self.tokenizer = tokenizer
         self.compatibility_mode = False
         self._hook_cache = None  # Cache for hook discovery results
@@ -79,9 +81,9 @@ class TransformerBridge(nn.Module):
         self._hook_registry_initialized = False  # Track if registry has been initialized
 
         # Add device information to config from the loaded model
-        if not hasattr(self.cfg, "device"):
+        if not hasattr(self.cfg, "device") or self.cfg.device is None:
             try:
-                self.cfg.device = next(self.original_model.parameters()).device
+                self.cfg.device = str(next(self.original_model.parameters()).device)
             except StopIteration:
                 self.cfg.device = "cpu"
 

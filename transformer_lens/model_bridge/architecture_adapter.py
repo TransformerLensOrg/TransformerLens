@@ -19,6 +19,7 @@ from transformer_lens.model_bridge.types import (
     RemotePath,
     TransformerLensPath,
 )
+from transformer_lens.TransformerLensConfig import TransformerLensConfig
 
 
 class ArchitectureAdapter:
@@ -31,13 +32,14 @@ class ArchitectureAdapter:
 
     default_cfg: dict[str, Any] = {}
 
-    def __init__(self, cfg: Any) -> None:
+    def __init__(self, cfg: TransformerLensConfig) -> None:
         """Initialize the architecture adapter.
 
         Args:
-            cfg: The user-provided configuration object.
+            cfg: The configuration object.
         """
         self.cfg = cfg
+        
         self.component_mapping: ComponentMapping | None = None
         self.conversion_rules: HookConversionSet | None = None
 
@@ -219,7 +221,7 @@ class ArchitectureAdapter:
             raise ValueError("Empty path")
 
         # Get the top-level component from the mapping
-        if parts[0] not in self.component_mapping:
+        if self.component_mapping is None or parts[0] not in self.component_mapping:
             raise ValueError(f"Component {parts[0]} not found in component mapping")
 
         bridge_component = self.component_mapping[parts[0]]
