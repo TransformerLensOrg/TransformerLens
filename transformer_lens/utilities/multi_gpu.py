@@ -5,11 +5,16 @@ Utilities for managing multiple GPU devices and distributing model layers across
 
 from __future__ import annotations
 
-from typing import Optional, Union
+from typing import TYPE_CHECKING, Any, Optional, Union
 
 import torch
 
-from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
+if TYPE_CHECKING:
+    from transformer_lens.config.HookedTransformerConfig import (
+        HookedTransformerConfig as ConfigType,
+    )
+else:
+    ConfigType = Any
 
 AvailableDeviceMemory = list[tuple[int, int]]
 """
@@ -82,7 +87,7 @@ def get_best_available_cuda_device(max_devices: Optional[int] = None) -> torch.d
 
 
 def get_best_available_device(
-    cfg: HookedTransformerConfig,
+    cfg: ConfigType,
 ) -> torch.device:
     """Gets the best available device to be used based on the passed in arguments
 
@@ -103,7 +108,7 @@ def get_best_available_device(
 
 def get_device_for_block_index(
     index: int,
-    cfg: HookedTransformerConfig,
+    cfg: ConfigType,
     device: Optional[Union[torch.device, str]] = None,
 ):
     """
