@@ -1,6 +1,6 @@
 import einops
 
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.config import HookedTransformerConfig
 
 
 def convert_bert_weights(bert, cfg: HookedTransformerConfig):

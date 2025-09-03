@@ -3,7 +3,7 @@ from typing import cast
 import einops
 import torch
 
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.config import HookedTransformerConfig
 
 
 def convert_llama_weights(llama, cfg: HookedTransformerConfig):

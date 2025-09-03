@@ -25,6 +25,7 @@ from torch import nn
 
 from transformer_lens import utils
 from transformer_lens.ActivationCache import ActivationCache
+from transformer_lens.config import TransformerLensConfig
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
@@ -35,7 +36,6 @@ from transformer_lens.model_bridge.generalized_components.base import (
 )
 from transformer_lens.model_bridge.hook_point_wrapper import HookPointWrapper
 from transformer_lens.model_bridge.types import ComponentMapping
-from transformer_lens.TransformerLensConfig import TransformerLensConfig
 from transformer_lens.utilities.aliases import collect_aliases_recursive, resolve_alias
 
 if TYPE_CHECKING:

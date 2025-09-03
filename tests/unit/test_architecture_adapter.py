@@ -9,10 +9,10 @@ from tests.mocks.architecture_adapter import (
     mock_model_adapter,
 )
 from tests.mocks.models import MockGemma3Model
+from transformer_lens.config import TransformerLensConfig
 from transformer_lens.model_bridge.supported_architectures.gemma3 import (
     Gemma3ArchitectureAdapter,
 )
-from transformer_lens.TransformerLensConfig import TransformerLensConfig
 
 
 def test_get_remote_component_with_mock(

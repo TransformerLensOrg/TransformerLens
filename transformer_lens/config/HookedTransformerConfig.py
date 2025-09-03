@@ -16,8 +16,9 @@ import numpy as np
 import torch
 
 from transformer_lens import utils
-from transformer_lens.TransformerLensConfig import TransformerLensConfig
 from transformer_lens.utilities.activation_functions import SUPPORTED_ACTIVATIONS
+
+from .TransformerLensConfig import TransformerLensConfig
 
 
 @dataclass

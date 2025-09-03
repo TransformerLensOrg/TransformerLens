@@ -1,7 +1,7 @@
 import einops
 import torch
 
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.config import HookedTransformerConfig
 
 
 def convert_opt_weights(opt, cfg: HookedTransformerConfig):

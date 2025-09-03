@@ -11,7 +11,7 @@ from jaxtyping import Float
 from transformer_lens.components import Attention, LayerNorm
 from transformer_lens.factories.mlp_factory import MLPFactory
 from transformer_lens.hook_points import HookPoint
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.config import HookedTransformerConfig
 from transformer_lens.utils import repeat_along_head_dimension
 
 

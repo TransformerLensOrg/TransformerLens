@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import pytest
 import torch.nn as nn
 
+from transformer_lens.config import TransformerLensConfig
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
@@ -12,7 +13,6 @@ from transformer_lens.model_bridge.generalized_components import (
     MLPBridge,
     NormalizationBridge,
 )
-from transformer_lens.TransformerLensConfig import TransformerLensConfig
 
 
 class MockArchitectureAdapter(ArchitectureAdapter):

@@ -5,7 +5,7 @@ from transformer_lens.components.mlps.gated_mlp import GatedMLP
 from transformer_lens.components.mlps.gated_mlp_4bit import GatedMLP4Bit
 from transformer_lens.components.mlps.mlp import MLP
 from transformer_lens.factories.mlp_factory import MLPFactory
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.config import HookedTransformerConfig
 
 
 def test_create_mlp_basic():

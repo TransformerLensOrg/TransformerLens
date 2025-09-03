@@ -11,7 +11,7 @@ from transformers.utils import is_bitsandbytes_available
 
 from transformer_lens.components.mlps.can_be_used_as_mlp import CanBeUsedAsMLP
 from transformer_lens.hook_points import HookPoint
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.config import HookedTransformerConfig
 
 if is_bitsandbytes_available():
     import bitsandbytes as bnb
