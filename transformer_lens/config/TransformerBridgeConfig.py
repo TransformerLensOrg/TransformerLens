@@ -19,7 +19,7 @@ class TransformerBridgeConfig(TransformerLensConfig):
 
     # Architecture information for adapter selection
     architecture: Optional[str] = None
-    
+
     # Tokenizer configuration
     tokenizer_prepends_bos: bool = True
     default_padding_side: Optional[str] = None
@@ -31,5 +31,3 @@ class TransformerBridgeConfig(TransformerLensConfig):
         # Validate architecture if provided
         if self.architecture is not None and not isinstance(self.architecture, str):
             raise ValueError(f"architecture must be a string, got {type(self.architecture)}")
-
-
