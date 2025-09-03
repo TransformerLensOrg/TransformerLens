@@ -6,10 +6,12 @@ devices.
 
 from __future__ import annotations
 
-from typing import Optional, Union
+from typing import Any, Mapping, Optional, Protocol, Union
 
 import torch
 from torch import nn
+
+from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 
 AvailableDeviceMemory = list[tuple[int, int]]
 """
@@ -99,7 +101,7 @@ def get_device() -> torch.device:
 
 
 def get_best_available_device(
-    cfg: "transformer_lens.config.HookedTransformerConfig.HookedTransformerConfig",
+    cfg: HookedTransformerConfig,
 ) -> torch.device:
     """Gets the best available device to be used based on the passed in arguments
 
@@ -120,7 +122,7 @@ def get_best_available_device(
 
 def get_device_for_block_index(
     index: int,
-    cfg: "transformer_lens.config.HookedTransformerConfig.HookedTransformerConfig",
+    cfg: HookedTransformerConfig,
     device: Optional[Union[torch.device, str]] = None,
 ):
     """
@@ -155,12 +157,14 @@ def get_device_for_block_index(
     return torch.device(device.type, device_index)
 
 
+class ModelWithCfg(Protocol):
+    cfg: Any
+    def state_dict(self) -> dict[str, torch.Tensor]: ...
+    def to(self, device_or_dtype: Union[torch.device, str, torch.dtype]) -> Any: ...
+
+
 def move_to_and_update_config(
-    model: Union[
-        "transformer_lens.HookedTransformer",
-        "transformer_lens.HookedEncoder",
-        "transformer_lens.HookedEncoderDecoder",
-    ],
+    model: ModelWithCfg,
     device_or_dtype: Union[torch.device, str, torch.dtype],
     print_details=True,
 ):
@@ -182,4 +186,4 @@ def move_to_and_update_config(
         # change state_dict dtypes
         for k, v in model.state_dict().items():
             model.state_dict()[k] = v.to(device_or_dtype)
-    return nn.Module.to(model, device_or_dtype)
+    return model.to(device_or_dtype)

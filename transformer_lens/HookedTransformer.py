@@ -52,7 +52,7 @@ from transformer_lens.components import (
     TransformerBlock,
     Unembed,
 )
-from transformer_lens.config import HookedTransformerConfig
+from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookedRootModule, HookPoint
 from transformer_lens.loading_from_pretrained import NON_HF_HOSTED_MODEL_NAMES

@@ -8,7 +8,7 @@ import torch
 import torch.nn as nn
 from jaxtyping import Float
 
-from transformer_lens.config import HookedTransformerConfig
+from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.hook_points import HookPoint
 
 
