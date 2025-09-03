@@ -11,7 +11,9 @@ from typing import TYPE_CHECKING, Any, Optional, Protocol, Union, runtime_checka
 import torch
 
 if TYPE_CHECKING:
-    import transformer_lens
+    from transformer_lens.config.HookedTransformerConfig import (
+        HookedTransformerConfig as HTC,
+    )
 
 AvailableDeviceMemory = list[tuple[int, int]]
 """
@@ -101,7 +103,7 @@ def get_device() -> torch.device:
 
 
 def get_best_available_device(
-    cfg: "transformer_lens.config.HookedTransformerConfig.HookedTransformerConfig",
+    cfg: "HTC",
 ) -> torch.device:
     """Gets the best available device to be used based on the passed in arguments
 
@@ -122,7 +124,7 @@ def get_best_available_device(
 
 def get_device_for_block_index(
     index: int,
-    cfg: "transformer_lens.config.HookedTransformerConfig.HookedTransformerConfig",
+    cfg: "HTC",
     device: Optional[Union[torch.device, str]] = None,
 ):
     """
