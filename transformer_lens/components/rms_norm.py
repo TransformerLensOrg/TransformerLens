@@ -8,8 +8,8 @@ import torch
 import torch.nn as nn
 from jaxtyping import Float
 
-from transformer_lens.hook_points import HookPoint
 from transformer_lens.config import HookedTransformerConfig
+from transformer_lens.hook_points import HookPoint
 
 
 class RMSNorm(nn.Module):

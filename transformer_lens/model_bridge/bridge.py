@@ -25,7 +25,6 @@ from torch import nn
 
 from transformer_lens import utils
 from transformer_lens.ActivationCache import ActivationCache
-from transformer_lens.config import TransformerLensConfig
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
@@ -71,7 +70,7 @@ class TransformerBridge(nn.Module):
         self.original_model: nn.Module = model
         self.adapter = adapter
         self.cfg = adapter.cfg
-        
+
         self.tokenizer = tokenizer
         self.compatibility_mode = False
         self._hook_cache = None  # Cache for hook discovery results

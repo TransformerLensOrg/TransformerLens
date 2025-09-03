@@ -7,16 +7,11 @@ Module with a dataclass for storing the configuration of a
 from __future__ import annotations
 
 import inspect
-import logging
 import pprint
-import random
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, Optional, Union
 
-import numpy as np
 import torch
-
-from transformer_lens import utils
 
 
 @dataclass
@@ -36,20 +31,20 @@ class TransformerLensConfig:
         n_heads (int): The number of attention heads. If not specified, will be set to d_model // d_head.
         d_mlp (int, optional): The dimensionality of the feedforward mlp network.
         d_vocab (int): The size of the vocabulary. Defaults to -1, which means not set.
-        
+
         # Device configuration (used by bridge)
         device (str, optional): The device to use for the model. Defaults to 'cuda' if available, else 'cpu'.
-        
+
         # Attention configuration (used by bridge)
         use_attn_result (bool): Whether to explicitly calculate the amount each head adds to the residual stream.
         use_split_qkv_input (bool): Whether to explicitly calculate the input of each head separately.
-        
+
         # Tokenizer configuration (used by bridge)
         default_prepend_bos (bool): Default behavior of whether to prepend the BOS token.
-        
+
         # Positional embedding configuration (used by bridge)
         positional_embedding_type (str): The positional embedding used.
-        
+
         # GQA configuration (used by bridge)
         n_key_value_heads (int, optional): The number of groups of heads that use the same key and value matrix.
     """
@@ -62,20 +57,20 @@ class TransformerLensConfig:
     n_heads: int = -1
     d_mlp: Optional[int] = None
     d_vocab: int = -1
-    
+
     # Device configuration (used by bridge)
     device: Optional[str] = None
-    
+
     # Attention configuration (used by bridge)
     use_attn_result: bool = False
     use_split_qkv_input: bool = False
-    
+
     # Tokenizer configuration (used by bridge)
     default_prepend_bos: bool = True
-    
+
     # Positional embedding configuration (used by bridge)
     positional_embedding_type: str = "standard"
-    
+
     # GQA configuration (used by bridge)
     n_key_value_heads: Optional[int] = None
 
@@ -112,10 +107,10 @@ class TransformerLensConfig:
         """
         # Get the field names from the dataclass
         valid_fields = set(inspect.signature(cls).parameters.keys())
-        
+
         # Filter the config dict to only include valid fields
         filtered_dict = {k: v for k, v in config_dict.items() if k in valid_fields}
-        
+
         return cls(**filtered_dict)
 
     def to_dict(self) -> Dict[str, Any]:

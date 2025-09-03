@@ -8,7 +8,7 @@ from typing import Any, cast
 import torch
 from torch import nn
 
-from transformer_lens.config import TransformerLensConfig
+from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.conversion_utils.conversion_steps import HookConversionSet
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
@@ -32,14 +32,14 @@ class ArchitectureAdapter:
 
     default_cfg: dict[str, Any] = {}
 
-    def __init__(self, cfg: TransformerLensConfig) -> None:
+    def __init__(self, cfg: TransformerBridgeConfig) -> None:
         """Initialize the architecture adapter.
 
         Args:
             cfg: The configuration object.
         """
         self.cfg = cfg
-        
+
         self.component_mapping: ComponentMapping | None = None
         self.conversion_rules: HookConversionSet | None = None
 

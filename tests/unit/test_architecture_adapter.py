@@ -9,7 +9,7 @@ from tests.mocks.architecture_adapter import (
     mock_model_adapter,
 )
 from tests.mocks.models import MockGemma3Model
-from transformer_lens.config import TransformerLensConfig
+from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.model_bridge.supported_architectures.gemma3 import (
     Gemma3ArchitectureAdapter,
 )
@@ -40,7 +40,7 @@ def test_get_remote_component_with_mock(
 
 @pytest.fixture
 def cfg():
-    return TransformerLensConfig(
+    return TransformerBridgeConfig(
         d_model=128,
         d_head=16,  # 128 / 8 heads
         n_layers=2,
@@ -49,7 +49,8 @@ def cfg():
         d_vocab=1000,
         d_mlp=512,
         n_key_value_heads=8,
-        default_prepend_bos=True
+        default_prepend_bos=True,
+        architecture="Gemma3ForCausalLM",  # Test architecture
     )
 
 
