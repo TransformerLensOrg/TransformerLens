@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Optional, Union
 import torch
 
 if TYPE_CHECKING:
-    from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
+    pass
 
 AvailableDeviceMemory = list[tuple[int, int]]
 """
@@ -83,7 +83,7 @@ def get_best_available_cuda_device(max_devices: Optional[int] = None) -> torch.d
 
 
 def get_best_available_device(
-    cfg: "HookedTransformerConfig",
+    cfg: "transformer_lens.config.HookedTransformerConfig",
 ) -> torch.device:
     """Gets the best available device to be used based on the passed in arguments
 
@@ -104,7 +104,7 @@ def get_best_available_device(
 
 def get_device_for_block_index(
     index: int,
-    cfg: "HookedTransformerConfig",
+    cfg: "transformer_lens.config.HookedTransformerConfig",
     device: Optional[Union[torch.device, str]] = None,
 ):
     """
