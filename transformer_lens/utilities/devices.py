@@ -6,11 +6,12 @@ devices.
 
 from __future__ import annotations
 
-from typing import Any, Optional, Protocol, Union
+from typing import TYPE_CHECKING, Any, Optional, Protocol, Union, runtime_checkable
 
 import torch
 
-from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
+if TYPE_CHECKING:
+    import transformer_lens
 
 AvailableDeviceMemory = list[tuple[int, int]]
 """
@@ -100,7 +101,7 @@ def get_device() -> torch.device:
 
 
 def get_best_available_device(
-    cfg: HookedTransformerConfig,
+    cfg: "transformer_lens.config.HookedTransformerConfig.HookedTransformerConfig",
 ) -> torch.device:
     """Gets the best available device to be used based on the passed in arguments
 
@@ -121,7 +122,7 @@ def get_best_available_device(
 
 def get_device_for_block_index(
     index: int,
-    cfg: HookedTransformerConfig,
+    cfg: "transformer_lens.config.HookedTransformerConfig.HookedTransformerConfig",
     device: Optional[Union[torch.device, str]] = None,
 ):
     """
@@ -156,6 +157,7 @@ def get_device_for_block_index(
     return torch.device(device.type, device_index)
 
 
+@runtime_checkable
 class ModelWithCfg(Protocol):
     cfg: Any
 
