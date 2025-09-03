@@ -103,7 +103,7 @@ def get_device() -> torch.device:
 
 
 def get_best_available_device(
-    cfg: "HTC",
+    cfg: "transformer_lens.config.HookedTransformerConfig.HookedTransformerConfig",
 ) -> torch.device:
     """Gets the best available device to be used based on the passed in arguments
 
@@ -124,7 +124,7 @@ def get_best_available_device(
 
 def get_device_for_block_index(
     index: int,
-    cfg: "HTC",
+    cfg: "transformer_lens.config.HookedTransformerConfig.HookedTransformerConfig",
     device: Optional[Union[torch.device, str]] = None,
 ):
     """
