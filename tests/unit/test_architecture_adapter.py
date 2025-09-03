@@ -12,6 +12,7 @@ from tests.mocks.models import MockGemma3Model
 from transformer_lens.model_bridge.supported_architectures.gemma3 import (
     Gemma3ArchitectureAdapter,
 )
+from transformer_lens.TransformerLensConfig import TransformerLensConfig
 
 
 def test_get_remote_component_with_mock(
@@ -37,17 +38,19 @@ def test_get_remote_component_with_mock(
     assert isinstance(mlp, nn.Module)
 
 
-class DummyHFConfig:
-    def __init__(self):
-        self.num_attention_heads = 8
-        self.num_key_value_heads = 8
-        self.hidden_size = 128
-        # Add any other attributes needed by the adapter here
-
-
 @pytest.fixture
 def cfg():
-    return DummyHFConfig()
+    return TransformerLensConfig(
+        d_model=128,
+        d_head=16,  # 128 / 8 heads
+        n_layers=2,
+        n_ctx=1024,
+        n_heads=8,
+        d_vocab=1000,
+        d_mlp=512,
+        n_key_value_heads=8,
+        default_prepend_bos=True
+    )
 
 
 @pytest.fixture

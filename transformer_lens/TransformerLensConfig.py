@@ -6,6 +6,7 @@ Module with a dataclass for storing the configuration of a
 
 from __future__ import annotations
 
+import inspect
 import logging
 import pprint
 import random
@@ -107,8 +108,15 @@ class TransformerLensConfig:
     def from_dict(cls, config_dict: Dict[str, Any]) -> TransformerLensConfig:
         """
         Instantiates a `TransformerLensConfig` from a Python dictionary of parameters.
+        Only includes fields that are defined in the TransformerLensConfig dataclass.
         """
-        return cls(**config_dict)
+        # Get the field names from the dataclass
+        valid_fields = set(inspect.signature(cls).parameters.keys())
+        
+        # Filter the config dict to only include valid fields
+        filtered_dict = {k: v for k, v in config_dict.items() if k in valid_fields}
+        
+        return cls(**filtered_dict)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert the config to a dictionary."""

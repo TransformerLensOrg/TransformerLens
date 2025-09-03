@@ -12,6 +12,7 @@ from transformer_lens.model_bridge.generalized_components import (
     MLPBridge,
     NormalizationBridge,
 )
+from transformer_lens.TransformerLensConfig import TransformerLensConfig
 
 
 class MockArchitectureAdapter(ArchitectureAdapter):
@@ -19,8 +20,16 @@ class MockArchitectureAdapter(ArchitectureAdapter):
 
     def __init__(self, cfg=None):
         if cfg is None:
-            # Create a minimal config for testing
-            cfg = SimpleNamespace(d_mlp=512, intermediate_size=512, default_prepend_bos=True)
+            # Create a minimal TransformerLensConfig for testing
+            cfg = TransformerLensConfig(
+                d_model=512,
+                d_head=64,
+                n_layers=2,
+                n_ctx=1024,
+                d_vocab=1000,
+                d_mlp=2048,
+                default_prepend_bos=True
+            )
         super().__init__(cfg)
         # Use actual bridge instances instead of tuples
         # Provide minimal config to components that require it
