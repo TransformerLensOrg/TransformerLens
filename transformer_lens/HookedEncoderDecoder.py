@@ -456,9 +456,7 @@ class HookedEncoderDecoder(HookedRootModule):
                     tokens=decoder_input,
                 ).to(get_device_for_block_index(0, self.cfg))
             else:
-                sampled_tokens = final_logits.argmax(-1).to(
-                    get_device_for_block_index(0, self.cfg)
-                )
+                sampled_tokens = final_logits.argmax(-1).to(get_device_for_block_index(0, self.cfg))
 
             if stop_at_eos:
                 # For all unfinished sequences, add on the next token. If a sequence was
