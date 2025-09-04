@@ -120,23 +120,3 @@ class TransformerLensConfig:
     def __repr__(self) -> str:
         """String representation of the config."""
         return "TransformerLensConfig:\n" + pprint.pformat(self.to_dict())
-
-    def get_hidden_size(self) -> int:
-        """Get the hidden size (alias for d_model for compatibility)."""
-        return self.d_model
-
-    def get_num_attention_heads(self) -> int:
-        """Get the number of attention heads (alias for n_heads for compatibility)."""
-        return self.n_heads
-
-    def get_num_hidden_layers(self) -> int:
-        """Get the number of hidden layers (alias for n_layers for compatibility)."""
-        return self.n_layers
-
-    def get_vocab_size(self) -> int:
-        """Get the vocabulary size (alias for d_vocab for compatibility)."""
-        return self.d_vocab
-
-    def get_max_position_embeddings(self) -> int:
-        """Get the maximum position embeddings (alias for n_ctx for compatibility)."""
-        return self.n_ctx
