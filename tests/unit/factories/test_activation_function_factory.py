@@ -1,10 +1,10 @@
 import pytest
 import torch
 
+from transformer_lens.config import HookedTransformerConfig
 from transformer_lens.factories.activation_function_factory import (
     ActivationFunctionFactory,
 )
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.utilities.activation_functions import SUPPORTED_ACTIVATIONS
 
 

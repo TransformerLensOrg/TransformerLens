@@ -6,11 +6,11 @@ import torch.nn.functional as F
 from jaxtyping import Float
 
 from transformer_lens.components.mlps.can_be_used_as_mlp import CanBeUsedAsMLP
+from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.factories.activation_function_factory import (
     ActivationFunctionFactory,
 )
 from transformer_lens.hook_points import HookPoint
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 
 class MoEGatedMLP(nn.Module):

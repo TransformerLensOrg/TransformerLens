@@ -22,7 +22,7 @@ from transformers import (
 )
 
 import transformer_lens.utils as utils
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.pretrained.weight_conversions import (
     convert_bert_weights,
     convert_bloom_weights,

@@ -42,7 +42,7 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
                     RearrangeHookConversion(
                         "m (three n h) -> three n m h",
                         three=3,
-                        n=self.cfg.num_attention_heads,
+                        n=self.cfg.n_heads,
                     ),
                 ),
                 "blocks.{i}.attn.k": (
@@ -50,7 +50,7 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
                     RearrangeHookConversion(
                         "m (three n h) -> three n m h",
                         three=3,
-                        n=self.cfg.num_attention_heads,
+                        n=self.cfg.n_heads,
                     ),
                 ),
                 "blocks.{i}.attn.v": (
@@ -58,12 +58,12 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
                     RearrangeHookConversion(
                         "m (three n h) -> three n m h",
                         three=3,
-                        n=self.cfg.num_attention_heads,
+                        n=self.cfg.n_heads,
                     ),
                 ),
                 "blocks.{i}.attn.o": (
                     "transformer.h.{i}.attn.c_proj.weight",
-                    RearrangeHookConversion("(n h) m -> n h m", n=self.cfg.num_attention_heads),
+                    RearrangeHookConversion("(n h) m -> n h m", n=self.cfg.n_heads),
                 ),
                 "blocks.{i}.attn.b_Q": "transformer.h.{i}.attn.c_attn.bias",
                 "blocks.{i}.attn.b_K": "transformer.h.{i}.attn.c_attn.bias",
