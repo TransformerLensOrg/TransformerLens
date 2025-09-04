@@ -3,7 +3,7 @@ import torch
 
 from transformer_lens import HookedTransformer
 from transformer_lens.components import Attention, GroupedQueryAttention
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.config import HookedTransformerConfig
 
 
 def test_grouped_query_attention_output_is_correct():

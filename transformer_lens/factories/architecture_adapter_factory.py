@@ -3,8 +3,7 @@
 This module provides a factory for creating architecture adapters.
 """
 
-from typing import Any
-
+from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.supported_architectures import (
     BertArchitectureAdapter,
@@ -69,11 +68,11 @@ class ArchitectureAdapterFactory:
     _adapters = SUPPORTED_ARCHITECTURES
 
     @classmethod
-    def select_architecture_adapter(cls, cfg: Any) -> ArchitectureAdapter:
-        """Select the appropriate architecture adapter for the given config (HF or TL).
+    def select_architecture_adapter(cls, cfg: TransformerBridgeConfig) -> ArchitectureAdapter:
+        """Select the appropriate architecture adapter for the given config.
 
         Args:
-            cfg: The config to select the adapter for (can be Hugging Face or TL config).
+            cfg: The TransformerBridgeConfig to select the adapter for.
 
         Returns:
             The selected architecture adapter.
@@ -81,25 +80,11 @@ class ArchitectureAdapterFactory:
         Raises:
             ValueError: If no adapter is found for the given config.
         """
-        # Try to extract architecture name from Hugging Face config
-        architectures = []
-        if hasattr(cfg, "original_architecture"):
-            architectures.append(cfg.original_architecture)
-        if hasattr(cfg, "architectures") and cfg.architectures:
-            architectures.extend(cfg.architectures)
-        if hasattr(cfg, "model_type"):
-            # Try to map model_type to a known architecture
-            # e.g. 'gemma3' -> 'Gemma3ForCausalLM'
-            model_type = cfg.model_type
-            # Try to find a matching adapter by model_type
-            for arch_name in cls._adapters:
-                if model_type.lower() in arch_name.lower():
-                    architectures.append(arch_name)
+        if cfg.architecture is not None:
+            if cfg.architecture in cls._adapters:
+                return cls._adapters[cfg.architecture](cfg)
+            else:
+                raise ValueError(f"Unsupported architecture: {cfg.architecture}")
 
-        # Try each architecture in order
-        for architecture in architectures:
-            if architecture in cls._adapters:
-                return cls._adapters[architecture](cfg)
-
-        # If no architecture was found, raise an error
-        raise ValueError(f"Could not determine architecture from config: {cfg}")
+        # If architecture is None, this is an error since TransformerBridgeConfig should always have it set
+        raise ValueError(f"TransformerBridgeConfig must have architecture set, got: {cfg}")

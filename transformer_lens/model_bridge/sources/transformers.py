@@ -15,6 +15,7 @@ from transformers import (
     PreTrainedTokenizerBase,
 )
 
+from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.model_bridge.bridge import TransformerBridge
 from transformer_lens.supported_models import MODEL_ALIASES
 from transformer_lens.utils import get_tokenizer_with_bos
@@ -88,6 +89,76 @@ def map_default_transformer_lens_config(hf_config):
     return tl_config
 
 
+def determine_architecture_from_hf_config(hf_config):
+    """Determine the architecture name from HuggingFace config.
+
+    Args:
+        hf_config: The HuggingFace config object
+
+    Returns:
+        str: The architecture name (e.g., "GPT2LMHeadModel", "LlamaForCausalLM")
+
+    Raises:
+        ValueError: If architecture cannot be determined
+    """
+    # Try to get architecture from various config fields
+    architectures = []
+
+    # Check original_architecture first (highest priority)
+    if hasattr(hf_config, "original_architecture"):
+        architectures.append(hf_config.original_architecture)
+
+    # Check architectures list
+    if hasattr(hf_config, "architectures") and hf_config.architectures:
+        architectures.extend(hf_config.architectures)
+
+    # Try to map model_type to architecture name
+    if hasattr(hf_config, "model_type"):
+        model_type = hf_config.model_type
+
+        # Common mappings from model_type to architecture
+        model_type_mappings = {
+            "gpt2": "GPT2LMHeadModel",
+            "llama": "LlamaForCausalLM",
+            "mistral": "MistralForCausalLM",
+            "mixtral": "MixtralForCausalLM",
+            "gemma": "GemmaForCausalLM",
+            "gemma2": "Gemma2ForCausalLM",
+            "gemma3": "Gemma3ForCausalLM",
+            "bert": "BertForMaskedLM",
+            "bloom": "BloomForCausalLM",
+            "gptj": "GPTJForCausalLM",
+            "gpt_neo": "GPTNeoForCausalLM",
+            "gpt_neox": "GPTNeoXForCausalLM",
+            "opt": "OPTForCausalLM",
+            "phi": "PhiForCausalLM",
+            "phi3": "Phi3ForCausalLM",
+            "qwen": "QwenForCausalLM",
+            "qwen2": "Qwen2ForCausalLM",
+            "t5": "T5ForConditionalGeneration",
+        }
+
+        if model_type in model_type_mappings:
+            architectures.append(model_type_mappings[model_type])
+
+    # Import here to avoid circular import
+    from transformer_lens.factories.architecture_adapter_factory import (
+        SUPPORTED_ARCHITECTURES,
+    )
+
+    # Return the first supported architecture
+    for arch in architectures:
+        if arch in SUPPORTED_ARCHITECTURES:
+            return arch
+
+    raise ValueError(
+        f"Could not determine supported architecture from config. "
+        f"Available architectures: {list(SUPPORTED_ARCHITECTURES.keys())}, "
+        f"Config architectures: {architectures}, "
+        f"Model type: {getattr(hf_config, 'model_type', None)}"
+    )
+
+
 def boot(
     model_name: str,
     hf_config_overrides: dict | None = None,
@@ -131,11 +202,17 @@ def boot(
     # Apply HuggingFace to TransformerLens config mapping
     tl_config = map_default_transformer_lens_config(hf_config)
 
-    adapter = ArchitectureAdapterFactory.select_architecture_adapter(tl_config)
+    architecture = determine_architecture_from_hf_config(hf_config)
+
+    # Convert to TransformerBridgeConfig with unified architecture
+    bridge_config = TransformerBridgeConfig.from_dict(tl_config.__dict__)
+    bridge_config.architecture = architecture
+
+    adapter = ArchitectureAdapterFactory.select_architecture_adapter(bridge_config)
 
     # Add device information to the config
     if device is not None:
-        adapter.cfg.device = device
+        adapter.cfg.device = str(device)
 
     # Load the model from HuggingFace using the original config
     hf_model = AutoModelForCausalLM.from_pretrained(

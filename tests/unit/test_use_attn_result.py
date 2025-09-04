@@ -1,7 +1,7 @@
 import torch
 
 from transformer_lens import HookedTransformer
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.config import HookedTransformerConfig
 
 
 def test_atten_result_normal_attn_correct():
