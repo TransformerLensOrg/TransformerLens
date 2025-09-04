@@ -20,10 +20,10 @@ class TransformerLensConfig:
     Configuration class for TransformerLens bridge components.
 
     This class contains only the configuration parameters that are actually used
-    by the model_bridge system. It serves as a minimal base configuration.
+    by the system. It serves as a minimal base configuration.
 
     Args:
-        # Core model architecture parameters (used by bridge)
+        # Core model architecture parameters
         d_model (int): The dimensionality of the embeddings.
         d_head (int): The dimensionality of each attention head.
         n_layers (int): The number of transformer blocks.
@@ -32,24 +32,24 @@ class TransformerLensConfig:
         d_mlp (int, optional): The dimensionality of the feedforward mlp network.
         d_vocab (int): The size of the vocabulary. Defaults to -1, which means not set.
 
-        # Device configuration (used by bridge)
+        # Device configuration
         device (str, optional): The device to use for the model. Defaults to 'cuda' if available, else 'cpu'.
 
-        # Attention configuration (used by bridge)
+        # Attention configuration
         use_attn_result (bool): Whether to explicitly calculate the amount each head adds to the residual stream.
         use_split_qkv_input (bool): Whether to explicitly calculate the input of each head separately.
 
-        # Tokenizer configuration (used by bridge)
+        # Tokenizer configuration
         default_prepend_bos (bool): Default behavior of whether to prepend the BOS token.
 
-        # Positional embedding configuration (used by bridge)
+        # Positional embedding configuration
         positional_embedding_type (str): The positional embedding used.
 
-        # GQA configuration (used by bridge)
+        # GQA configuration
         n_key_value_heads (int, optional): The number of groups of heads that use the same key and value matrix.
     """
 
-    # Core model architecture parameters (used by bridge)
+    # Core model architecture parameters
     d_model: int
     d_head: int
     n_layers: int
@@ -58,20 +58,20 @@ class TransformerLensConfig:
     d_mlp: Optional[int] = None
     d_vocab: int = -1
 
-    # Device configuration (used by bridge)
+    # Device configuration
     device: Optional[str] = None
 
-    # Attention configuration (used by bridge)
+    # Attention configuration
     use_attn_result: bool = False
     use_split_qkv_input: bool = False
 
-    # Tokenizer configuration (used by bridge)
+    # Tokenizer configuration
     default_prepend_bos: bool = True
 
-    # Positional embedding configuration (used by bridge)
+    # Positional embedding configuration
     positional_embedding_type: str = "standard"
 
-    # GQA configuration (used by bridge)
+    # GQA configuration
     n_key_value_heads: Optional[int] = None
 
     def __post_init__(self):
