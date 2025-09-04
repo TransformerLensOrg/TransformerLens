@@ -8,6 +8,7 @@ from typing import Any, cast
 import torch
 from torch import nn
 
+from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.conversion_utils.conversion_steps import HookConversionSet
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
@@ -31,13 +32,14 @@ class ArchitectureAdapter:
 
     default_cfg: dict[str, Any] = {}
 
-    def __init__(self, cfg: Any) -> None:
+    def __init__(self, cfg: TransformerBridgeConfig) -> None:
         """Initialize the architecture adapter.
 
         Args:
-            cfg: The user-provided configuration object.
+            cfg: The configuration object.
         """
         self.cfg = cfg
+
         self.component_mapping: ComponentMapping | None = None
         self.conversion_rules: HookConversionSet | None = None
 
@@ -47,8 +49,8 @@ class ArchitectureAdapter:
     def _merge_default_config(self) -> None:
         """Merge default_cfg into cfg for variables that don't exist in cfg."""
         for key, value in self.default_cfg.items():
-            if key not in self.cfg:
-                self.cfg[key] = value
+            if not hasattr(self.cfg, key):
+                setattr(self.cfg, key, value)
 
     def get_component_mapping(self) -> ComponentMapping:
         """Get the full component mapping.
@@ -219,7 +221,7 @@ class ArchitectureAdapter:
             raise ValueError("Empty path")
 
         # Get the top-level component from the mapping
-        if parts[0] not in self.component_mapping:
+        if self.component_mapping is None or parts[0] not in self.component_mapping:
             raise ValueError(f"Component {parts[0]} not found in component mapping")
 
         bridge_component = self.component_mapping[parts[0]]

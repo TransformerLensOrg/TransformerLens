@@ -10,7 +10,7 @@ from typing import List, Optional, Tuple, Union
 import numpy as np
 import torch
 
-from transformer_lens.utilities import to_numpy
+from .tensors import to_numpy
 
 # Type alias
 SliceInput = Optional[

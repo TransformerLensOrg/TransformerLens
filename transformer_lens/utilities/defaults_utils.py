@@ -8,7 +8,7 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any, Optional
 
-from transformer_lens.utilities import get_nested_attr, set_nested_attr
+from .attribute_utils import get_nested_attr, set_nested_attr
 
 USE_DEFAULT_VALUE = None
 

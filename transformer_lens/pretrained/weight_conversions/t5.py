@@ -1,6 +1,6 @@
 import einops
 
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 
 
 def convert_t5_weights(t5, cfg: HookedTransformerConfig):

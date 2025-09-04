@@ -51,9 +51,10 @@ class TransformerBridge(nn.Module):
 
     # Top-level hook aliases for legacy TransformerLens names
     # Placing these on the main bridge ensures aliases like 'hook_embed' are available
-    hook_aliases = {
+    hook_aliases: Dict[str, Union[str, List[str]]] = {
         "hook_embed": "embed.hook_out",
-        "hook_pos_embed": "pos_embed.hook_out",
+        # rotary style models use rotary_emb.hook_out, but gpt2-style models use pos_embed.hook_out
+        "hook_pos_embed": ["pos_embed.hook_out", "rotary_emb.hook_out"],
         "hook_unembed": "unembed.hook_out",
     }
 
@@ -69,6 +70,7 @@ class TransformerBridge(nn.Module):
         self.original_model: nn.Module = model
         self.adapter = adapter
         self.cfg = adapter.cfg
+
         self.tokenizer = tokenizer
         self.compatibility_mode = False
         self._hook_cache = None  # Cache for hook discovery results
@@ -78,9 +80,9 @@ class TransformerBridge(nn.Module):
         self._hook_registry_initialized = False  # Track if registry has been initialized
 
         # Add device information to config from the loaded model
-        if not hasattr(self.cfg, "device"):
+        if not hasattr(self.cfg, "device") or self.cfg.device is None:
             try:
-                self.cfg.device = next(self.original_model.parameters()).device
+                self.cfg.device = str(next(self.original_model.parameters()).device)
             except StopIteration:
                 self.cfg.device = "cpu"
 
@@ -131,11 +133,25 @@ class TransformerBridge(nn.Module):
 
         # Add bridge aliases if compatibility mode is enabled
         if self.compatibility_mode and self.hook_aliases:
-            for alias_name, target_name in self.hook_aliases.items():
+            for alias_name, target in self.hook_aliases.items():
                 # Use the existing alias system to resolve the target hook
-                target_hook = resolve_alias(self, alias_name, self.hook_aliases)
-                if target_hook is not None:
-                    self._hook_registry[alias_name] = target_hook
+                # Convert to Dict[str, str] for resolve_alias if target_name is a list
+                if isinstance(target, list):
+                    # For list targets, try each one until one works
+                    for single_target in target:
+                        try:
+                            target_hook = resolve_alias(
+                                self, alias_name, {alias_name: single_target}
+                            )
+                            if target_hook is not None:
+                                self._hook_registry[alias_name] = target_hook
+                                break
+                        except AttributeError:
+                            continue
+                else:
+                    target_hook = resolve_alias(self, alias_name, {alias_name: target})
+                    if target_hook is not None:
+                        self._hook_registry[alias_name] = target_hook
 
         self._hook_registry_initialized = True
 
@@ -213,9 +229,17 @@ class TransformerBridge(nn.Module):
 
         # Add aliases if compatibility mode is enabled
         if self.compatibility_mode:
-            for alias_name, target_name in self.hook_aliases.items():
-                if target_name in hooks:
-                    hooks[alias_name] = hooks[target_name]
+            for alias_name, target in self.hook_aliases.items():
+                # Handle both string and list target names
+                if isinstance(target, list):
+                    # For list targets, find the first one that exists in hooks
+                    for single_target in target:
+                        if single_target in hooks:
+                            hooks[alias_name] = hooks[single_target]
+                            break
+                else:
+                    if target in hooks:
+                        hooks[alias_name] = hooks[target]
 
         return hooks
 
@@ -239,9 +263,16 @@ class TransformerBridge(nn.Module):
 
         # Check if this is a hook alias when compatibility mode is enabled
         if self.compatibility_mode and name in self.hook_aliases:
-            target_name = self.hook_aliases[name]
-            if target_name in self._hook_registry:
-                return self._hook_registry[target_name]
+            target = self.hook_aliases[name]
+            # Handle both string and list target names
+            if isinstance(target, list):
+                # For list targets, find the first one that exists in the registry
+                for single_target in target:
+                    if single_target in self._hook_registry:
+                        return self._hook_registry[single_target]
+            else:
+                if target in self._hook_registry:
+                    return self._hook_registry[target]
 
         return super().__getattr__(name)
 
@@ -1040,7 +1071,15 @@ class TransformerBridge(nn.Module):
             # If compatibility mode is enabled, we need to handle aliases
             # Create duplicate cache entries for TransformerLens compatibility
             # Use the aliases collected from components (reverse mapping: new -> old)
-            reverse_aliases = {new_name: old_name for old_name, new_name in aliases.items()}
+            # Handle the case where some alias values might be lists
+            reverse_aliases = {}
+            for old_name, new_name in aliases.items():
+                if isinstance(new_name, list):
+                    # For list values, create a mapping for each item in the list
+                    for single_new_name in new_name:
+                        reverse_aliases[single_new_name] = old_name
+                else:
+                    reverse_aliases[new_name] = old_name
 
             # Create duplicate entries in cache
             cache_items_to_add = {}
@@ -1056,8 +1095,16 @@ class TransformerBridge(nn.Module):
 
             # Add cache entries for all aliases (both hook and cache aliases)
             for alias_name, target_name in aliases.items():
-                if target_name in cache and alias_name not in cache:
-                    cache[alias_name] = cache[target_name]
+                # Handle both string and list target names
+                if isinstance(target_name, list):
+                    # For list targets, find the first one that exists in cache
+                    for single_target in target_name:
+                        if single_target in cache and alias_name not in cache:
+                            cache[alias_name] = cache[single_target]
+                            break
+                else:
+                    if target_name in cache and alias_name not in cache:
+                        cache[alias_name] = cache[target_name]
 
         if return_cache_object:
             cache_obj = ActivationCache(cache, self, has_batch_dim=not remove_batch_dim)
