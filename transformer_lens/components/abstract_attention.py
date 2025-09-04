@@ -11,9 +11,9 @@ from jaxtyping import Float, Int
 from transformers.utils.import_utils import is_bitsandbytes_available
 
 from transformer_lens.components.rms_norm import RMSNorm
+from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookPoint
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.past_key_value_caching import HookedTransformerKeyValueCacheEntry
 from transformer_lens.utilities.attention import complex_attn_linear, simple_attn_linear
 from transformer_lens.utils import get_offset_position_ids

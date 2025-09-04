@@ -37,7 +37,7 @@ class BloomArchitectureAdapter(ArchitectureAdapter):
                     RearrangeHookConversion(
                         "(three n h) m -> three n m h",
                         three=3,
-                        n=self.cfg.num_attention_heads,
+                        n=self.cfg.n_heads,
                     ),
                 ),
                 "blocks.{i}.attn.k": (
@@ -45,7 +45,7 @@ class BloomArchitectureAdapter(ArchitectureAdapter):
                     RearrangeHookConversion(
                         "(three n h) m -> three n m h",
                         three=3,
-                        n=self.cfg.num_attention_heads,
+                        n=self.cfg.n_heads,
                     ),
                 ),
                 "blocks.{i}.attn.v": (
@@ -53,12 +53,12 @@ class BloomArchitectureAdapter(ArchitectureAdapter):
                     RearrangeHookConversion(
                         "(three n h) m -> three n m h",
                         three=3,
-                        n=self.cfg.num_attention_heads,
+                        n=self.cfg.n_heads,
                     ),
                 ),
                 "blocks.{i}.attn.o": (
                     "transformer.h.{i}.self_attention.dense.weight",
-                    RearrangeHookConversion("m (n h) -> n h m", n=self.cfg.num_attention_heads),
+                    RearrangeHookConversion("m (n h) -> n h m", n=self.cfg.n_heads),
                 ),
                 "blocks.{i}.attn.b_Q": "transformer.h.{i}.self_attention.query_key_value.bias",
                 "blocks.{i}.attn.b_K": "transformer.h.{i}.self_attention.query_key_value.bias",

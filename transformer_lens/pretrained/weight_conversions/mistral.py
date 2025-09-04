@@ -1,7 +1,7 @@
 import einops
 import torch
 
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 
 
 def convert_mistral_weights(mistral, cfg: HookedTransformerConfig):

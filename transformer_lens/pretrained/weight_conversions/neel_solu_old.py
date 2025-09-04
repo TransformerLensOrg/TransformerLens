@@ -1,4 +1,4 @@
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 
 
 def convert_neel_solu_old_weights(state_dict: dict, cfg: HookedTransformerConfig):
