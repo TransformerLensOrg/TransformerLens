@@ -32,19 +32,19 @@ class OptArchitectureAdapter(ArchitectureAdapter):
                 "blocks.{i}.ln1.b": "model.decoder.layers.{i}.self_attn_layer_norm.bias",
                 "blocks.{i}.attn.q": (
                     "model.decoder.layers.{i}.self_attn.q_proj.weight",
-                    RearrangeHookConversion("(n h) m -> n m h", n=self.cfg.num_attention_heads),
+                    RearrangeHookConversion("(n h) m -> n m h", n=self.cfg.n_heads),
                 ),
                 "blocks.{i}.attn.k": (
                     "model.decoder.layers.{i}.self_attn.k_proj.weight",
-                    RearrangeHookConversion("(n h) m -> n m h", n=self.cfg.num_attention_heads),
+                    RearrangeHookConversion("(n h) m -> n m h", n=self.cfg.n_heads),
                 ),
                 "blocks.{i}.attn.v": (
                     "model.decoder.layers.{i}.self_attn.v_proj.weight",
-                    RearrangeHookConversion("(n h) m -> n m h", n=self.cfg.num_attention_heads),
+                    RearrangeHookConversion("(n h) m -> n m h", n=self.cfg.n_heads),
                 ),
                 "blocks.{i}.attn.o": (
                     "model.decoder.layers.{i}.self_attn.out_proj.weight",
-                    RearrangeHookConversion("m (n h) -> n h m", n=self.cfg.num_attention_heads),
+                    RearrangeHookConversion("m (n h) -> n h m", n=self.cfg.n_heads),
                 ),
                 "blocks.{i}.attn.b_Q": "model.decoder.layers.{i}.self_attn.q_proj.bias",
                 "blocks.{i}.attn.b_K": "model.decoder.layers.{i}.self_attn.k_proj.bias",

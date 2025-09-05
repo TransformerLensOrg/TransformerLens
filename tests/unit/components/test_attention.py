@@ -5,7 +5,7 @@ import torch.nn as nn
 from transformers.utils import is_bitsandbytes_available
 
 from transformer_lens.components import Attention
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.config import HookedTransformerConfig
 from transformer_lens.utilities.attention import complex_attn_linear
 
 if is_bitsandbytes_available():
