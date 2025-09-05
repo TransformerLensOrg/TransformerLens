@@ -10,8 +10,8 @@ import torch.nn as nn
 from jaxtyping import Float, Int
 
 from transformer_lens.components import Embed, LayerNorm, PosEmbed, TokenTypeEmbed
+from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.hook_points import HookPoint
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 
 class BertEmbed(nn.Module):

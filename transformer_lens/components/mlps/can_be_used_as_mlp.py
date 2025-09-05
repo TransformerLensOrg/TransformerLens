@@ -12,11 +12,11 @@ from jaxtyping import Float
 
 from transformer_lens.components.layer_norm import LayerNorm
 from transformer_lens.components.layer_norm_pre import LayerNormPre
+from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.factories.activation_function_factory import (
     ActivationFunctionFactory,
 )
 from transformer_lens.hook_points import HookPoint
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.utilities.activation_functions import ActivationFunction
 
 

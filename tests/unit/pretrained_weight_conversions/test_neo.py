@@ -3,7 +3,7 @@ from unittest import mock
 import torch
 
 from transformer_lens import HookedTransformer
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.config import HookedTransformerConfig
 from transformer_lens.pretrained.weight_conversions.neo import convert_neo_weights
 
 
