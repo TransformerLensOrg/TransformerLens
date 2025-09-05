@@ -4,7 +4,7 @@ import pytest
 import torch
 
 from transformer_lens.HookedTransformer import HookedTransformer
-from transformer_lens.utilities.devices import get_best_available_device
+from transformer_lens.utilities.multi_gpu import get_best_available_device
 
 
 @pytest.fixture

@@ -47,8 +47,8 @@ class PythiaArchitectureAdapter(ArchitectureAdapter):
                             SplitHookConversion(0, 3),
                             RearrangeHookConversion(
                                 "(head d_head) d_model -> head d_model d_head",
-                                head=self.cfg.num_attention_heads,
-                                d_head=self.cfg.hidden_size // self.cfg.num_attention_heads,
+                                head=self.cfg.n_heads,
+                                d_head=self.cfg.d_model // self.cfg.n_heads,
                             ),
                         ]
                     ),
@@ -60,8 +60,8 @@ class PythiaArchitectureAdapter(ArchitectureAdapter):
                             SplitHookConversion(1, 3),
                             RearrangeHookConversion(
                                 "(head d_head) d_model -> head d_model d_head",
-                                head=self.cfg.num_attention_heads,
-                                d_head=self.cfg.hidden_size // self.cfg.num_attention_heads,
+                                head=self.cfg.n_heads,
+                                d_head=self.cfg.d_model // self.cfg.n_heads,
                             ),
                         ]
                     ),
@@ -73,8 +73,8 @@ class PythiaArchitectureAdapter(ArchitectureAdapter):
                             SplitHookConversion(2, 3),
                             RearrangeHookConversion(
                                 "(head d_head) d_model -> head d_model d_head",
-                                head=self.cfg.num_attention_heads,
-                                d_head=self.cfg.hidden_size // self.cfg.num_attention_heads,
+                                head=self.cfg.n_heads,
+                                d_head=self.cfg.d_model // self.cfg.n_heads,
                             ),
                         ]
                     ),
@@ -86,7 +86,7 @@ class PythiaArchitectureAdapter(ArchitectureAdapter):
                             SplitHookConversion(0, 3),
                             RearrangeHookConversion(
                                 "(head d_head) -> head d_head",
-                                head=self.cfg.num_attention_heads,
+                                head=self.cfg.n_heads,
                             ),
                         ]
                     ),
@@ -98,7 +98,7 @@ class PythiaArchitectureAdapter(ArchitectureAdapter):
                             SplitHookConversion(1, 3),
                             RearrangeHookConversion(
                                 "(head d_head) -> head d_head",
-                                head=self.cfg.num_attention_heads,
+                                head=self.cfg.n_heads,
                             ),
                         ]
                     ),
@@ -110,7 +110,7 @@ class PythiaArchitectureAdapter(ArchitectureAdapter):
                             SplitHookConversion(2, 3),
                             RearrangeHookConversion(
                                 "(head d_head) -> head d_head",
-                                head=self.cfg.num_attention_heads,
+                                head=self.cfg.n_heads,
                             ),
                         ]
                     ),

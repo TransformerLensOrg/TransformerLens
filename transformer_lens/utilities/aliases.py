@@ -1,13 +1,13 @@
 """Utilities for handling hook aliases in the bridge system."""
 
 import warnings
-from typing import Any, Dict, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Union
 
 
 def resolve_alias(
     target_object: Any,
     requested_name: str,
-    aliases: Dict[str, str],
+    aliases: Dict[str, str] | Dict[str, Union[str, List[str]]],
 ) -> Optional[Any]:
     """Resolve a hook alias to the actual hook object.
 
@@ -76,7 +76,7 @@ def resolve_alias(
 
 
 def _collect_aliases_from_module(
-    module: Any, path: str, aliases: Dict[str, str], visited: Set[int]
+    module: Any, path: str, aliases: Dict[str, str], visited: Set[int] = set()
 ) -> None:
     """Helper function to collect all aliases from a single module.
     Args:

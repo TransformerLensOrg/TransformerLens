@@ -6,7 +6,6 @@ Module with a dataclass for storing the configuration of a
 
 from __future__ import annotations
 
-import logging
 import pprint
 import random
 from dataclasses import dataclass
@@ -15,12 +14,14 @@ from typing import Any, Dict, List, Optional, Union
 import numpy as np
 import torch
 
-from transformer_lens import utils
 from transformer_lens.utilities.activation_functions import SUPPORTED_ACTIVATIONS
+from transformer_lens.utilities.devices import get_device
+
+from .TransformerLensConfig import TransformerLensConfig
 
 
 @dataclass
-class HookedTransformerConfig:
+class HookedTransformerConfig(TransformerLensConfig):
     """
     Configuration class to store the configuration of a HookedTransformer model.
 
@@ -194,20 +195,11 @@ class HookedTransformerConfig:
             Defaults to 8.0.
     """
 
-    n_layers: int
-    d_model: int
-    n_ctx: int
-    d_head: int
     model_name: str = "custom"
-    n_heads: int = -1
-    d_mlp: Optional[int] = None
     act_fn: Optional[str] = None
-    d_vocab: int = -1
     eps: float = 1e-5
-    use_attn_result: bool = False
     use_attn_scale: bool = True
     attn_scale: float = -1.0
-    use_split_qkv_input: bool = False
     use_hook_mlp_in: bool = False
     use_attn_in: bool = False
     use_qk_norm: bool = False
@@ -223,7 +215,6 @@ class HookedTransformerConfig:
     attn_types: Optional[List] = None
     init_mode: str = "gpt2"
     normalization_type: Optional[str] = "LN"
-    device: Optional[str] = None
     n_devices: int = 1
     attention_dir: str = "causal"
     attn_only: bool = False
@@ -231,7 +222,6 @@ class HookedTransformerConfig:
     initializer_range: float = -1.0
     init_weights: bool = True
     scale_attn_by_inverse_layer_idx: bool = False
-    positional_embedding_type: str = "standard"
     final_rms: bool = False
     d_vocab_out: int = -1
     parallel_attn_mlp: bool = False
@@ -239,10 +229,8 @@ class HookedTransformerConfig:
     n_params: Optional[int] = None
     use_hook_tokens: bool = False
     gated_mlp: bool = False
-    default_prepend_bos: bool = True
     dtype: torch.dtype = torch.float32
     tokenizer_prepends_bos: Optional[bool] = None
-    n_key_value_heads: Optional[int] = None
     post_embedding_ln: bool = False
     rotary_base: int = 10000
     trust_remote_code: bool = False
@@ -264,17 +252,8 @@ class HookedTransformerConfig:
     NTK_original_ctx_len: int = 8192
 
     def __post_init__(self):
-        if self.n_heads == -1:
-            self.n_heads = self.d_model // self.d_head
-
-            if not self.d_model % (self.d_head) == 0:
-                logging.warning(
-                    "d_model %d is not divisible by d_head %d."
-                    "n_heads was inferred to be %d, rounding down the ratio.",
-                    self.d_model,
-                    self.d_head,
-                    self.n_heads,
-                )
+        # Call parent's post_init first
+        super().__post_init__()
 
         if self.seed is not None:
             self.set_seed_everywhere(self.seed)
@@ -282,9 +261,6 @@ class HookedTransformerConfig:
             assert self.window_size is not None, "window_size must be specified for local attention"
             assert self.attn_types is not None, "attn_types must be specified for local attention"
         if not self.attn_only:
-            if self.d_mlp is None:
-                # For some reason everyone hard codes in this hyper-parameter!
-                self.d_mlp: int = self.d_model * 4
             assert self.act_fn is not None, "act_fn must be specified for non-attn-only models"
             assert (
                 self.act_fn in SUPPORTED_ACTIVATIONS
@@ -327,7 +303,7 @@ class HookedTransformerConfig:
             self.n_params += self.n_layers * mlp_params_per_layer
 
         if self.device is None:
-            self.device = str(utils.get_device())
+            self.device = str(get_device())
 
         if self.n_devices > 1:
             assert (
@@ -343,11 +319,17 @@ class HookedTransformerConfig:
         ], f"default_prepend_bos must be either True or False, but {self.default_prepend_bos} is given"
 
     @classmethod
-    def unwrap(cls, config: Union[Dict, "HookedTransformerConfig"]) -> HookedTransformerConfig:
+    def unwrap(cls, config: Union[Dict, "TransformerLensConfig"]) -> HookedTransformerConfig:
         """
         Convenience function to avoid duplicate code from a common way config is passed to various components
         """
-        return HookedTransformerConfig.from_dict(config) if isinstance(config, Dict) else config
+        if isinstance(config, Dict):
+            return cls.from_dict(config)
+        elif isinstance(config, cls):
+            return config
+        else:
+            # Convert from TransformerLensConfig to HookedTransformerConfig
+            return cls.from_dict(config.to_dict())
 
     @classmethod
     def from_dict(cls, config_dict: Dict[str, Any]) -> HookedTransformerConfig:
