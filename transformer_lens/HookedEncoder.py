@@ -29,9 +29,9 @@ from transformer_lens.components import (
     BertPooler,
     Unembed,
 )
+from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookedRootModule, HookPoint
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.utilities import devices
 
 T = TypeVar("T", bound="HookedEncoder")

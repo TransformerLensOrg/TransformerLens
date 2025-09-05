@@ -31,19 +31,19 @@ class QwenArchitectureAdapter(ArchitectureAdapter):
                 "blocks.{i}.ln2.w": "transformer.h.{i}.ln_2.weight",
                 "blocks.{i}.attn.q": (
                     "transformer.h.{i}.attn.c_attn.weight",
-                    RearrangeHookConversion("(n h) m -> n m h", n=self.cfg.num_attention_heads),
+                    RearrangeHookConversion("(n h) m -> n m h", n=self.cfg.n_heads),
                 ),
                 "blocks.{i}.attn.k": (
                     "transformer.h.{i}.attn.c_attn.weight",
-                    RearrangeHookConversion("(n h) m -> n m h", n=self.cfg.num_attention_heads),
+                    RearrangeHookConversion("(n h) m -> n m h", n=self.cfg.n_heads),
                 ),
                 "blocks.{i}.attn.v": (
                     "transformer.h.{i}.attn.c_attn.weight",
-                    RearrangeHookConversion("(n h) m -> n m h", n=self.cfg.num_attention_heads),
+                    RearrangeHookConversion("(n h) m -> n m h", n=self.cfg.n_heads),
                 ),
                 "blocks.{i}.attn.o": (
                     "transformer.h.{i}.attn.c_proj.weight",
-                    RearrangeHookConversion("m (n h) -> n h m", n=self.cfg.num_attention_heads),
+                    RearrangeHookConversion("m (n h) -> n h m", n=self.cfg.n_heads),
                 ),
                 "blocks.{i}.mlp.in": "transformer.h.{i}.mlp.w2.weight.T",
                 "blocks.{i}.mlp.gate": "transformer.h.{i}.mlp.w1.weight.T",

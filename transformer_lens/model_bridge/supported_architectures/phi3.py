@@ -51,7 +51,7 @@ class Phi3ArchitectureAdapter(ArchitectureAdapter):
                 ),
                 "blocks.{i}.attn.o": (
                     "model.layers.{i}.self_attn.o_proj.weight",
-                    RearrangeHookConversion("m (n h) -> n h m", n=self.cfg.num_attention_heads),
+                    RearrangeHookConversion("m (n h) -> n h m", n=self.cfg.n_heads),
                 ),
                 "blocks.{i}.ln2.w": "model.layers.{i}.post_attention_layernorm.weight",
                 "blocks.{i}.mlp.in": (
