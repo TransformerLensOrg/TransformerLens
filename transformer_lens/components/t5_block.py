@@ -66,7 +66,7 @@ class T5Block(nn.Module):
         Args:
             resid_pre (torch.Tensor): The residual stream - shape [batch, pos, d_model]
             encoder_hidden_states (torch.Tensor): The hidden states of the encoder for cross attention - shape [batch, encoder_pos, d_model]
-            cache (HookedTransformerKeyValueCache): A cache of previous keys and values, used only when generating text. Defaults to None.
+            cache (TransformerLensKeyValueCache): A cache of previous keys and values, used only when generating text. Defaults to None.
             attention_mask (torch.Tensor, optional): The attention mask for padded tokens. Defaults to None.
 
         Returns:

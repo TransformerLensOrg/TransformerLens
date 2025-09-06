@@ -45,9 +45,7 @@ from transformer_lens.ActivationCache import ActivationCache
 
 # Note - activation cache is used with run_with_cache, past_key_value_caching is used for
 # generation.
-from transformer_lens.cache.key_value_cache import (
-    TransformerLensKeyValueCache as HookedTransformerKeyValueCache,
-)
+from transformer_lens.cache.key_value_cache import TransformerLensKeyValueCache
 from transformer_lens.components import (
     Embed,
     LayerNorm,
@@ -347,7 +345,7 @@ class HookedTransformer(HookedRootModule):
         prepend_bos: Optional[Union[bool, None]] = USE_DEFAULT_VALUE,
         padding_side: Optional[Union[Literal["left", "right"], None]] = USE_DEFAULT_VALUE,
         attention_mask: Optional[torch.Tensor] = None,
-        past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
+        past_kv_cache: Optional[TransformerLensKeyValueCache] = None,
     ) -> Tuple[
         Float[torch.Tensor, "batch pos d_model"],  # residual
         Optional[Int[torch.Tensor, "batch pos"]],  # tokens
@@ -365,7 +363,7 @@ class HookedTransformer(HookedRootModule):
             padding_side ([Literal["left", "right"], optional): Overrides
                 self.tokenizer.padding_side. Specifies which side to pad when tokenizing
                 multiple strings of different lengths.
-            past_kv_cache (HookedTransformerKeyValueCache, optional): If passed, we're doing caching
+            past_kv_cache (TransformerLensKeyValueCache, optional): If passed, we're doing caching
                 and attention_mask will be stored in the cache.
         """
         if isinstance(input, str) or isinstance(input, list):
@@ -443,7 +441,7 @@ class HookedTransformer(HookedRootModule):
         shortformer_pos_embed: Optional[Float[torch.Tensor, "batch pos d_model"]] = None,
         attention_mask: Optional[torch.Tensor] = None,  # [batch pos]
         stop_at_layer: Optional[int] = None,
-        past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
+        past_kv_cache: Optional[TransformerLensKeyValueCache] = None,
     ) -> Loss:
         ...
 
@@ -460,7 +458,7 @@ class HookedTransformer(HookedRootModule):
         shortformer_pos_embed: Optional[Float[torch.Tensor, "batch pos d_model"]] = None,
         attention_mask: Optional[torch.Tensor] = None,  # [batch pos]
         stop_at_layer: Optional[int] = None,
-        past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
+        past_kv_cache: Optional[TransformerLensKeyValueCache] = None,
     ) -> Loss:
         ...
 
@@ -477,7 +475,7 @@ class HookedTransformer(HookedRootModule):
         shortformer_pos_embed: Optional[Float[torch.Tensor, "batch pos d_model"]] = None,
         attention_mask: Optional[torch.Tensor] = None,  # [batch pos]
         stop_at_layer: Optional[int] = None,
-        past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
+        past_kv_cache: Optional[TransformerLensKeyValueCache] = None,
     ) -> Tuple[Float[torch.Tensor, "batch pos d_vocab"], Loss]:
         ...
 
@@ -494,7 +492,7 @@ class HookedTransformer(HookedRootModule):
         shortformer_pos_embed: Optional[Float[torch.Tensor, "batch pos d_model"]] = None,
         attention_mask: Optional[torch.Tensor] = None,  # [batch pos]
         stop_at_layer: Optional[int] = None,
-        past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
+        past_kv_cache: Optional[TransformerLensKeyValueCache] = None,
     ) -> None:
         ...
 
@@ -515,7 +513,7 @@ class HookedTransformer(HookedRootModule):
         shortformer_pos_embed: Optional[Float[torch.Tensor, "batch pos d_model"]] = None,
         attention_mask: Optional[torch.Tensor] = None,  # [batch pos]
         stop_at_layer: Optional[int] = None,
-        past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
+        past_kv_cache: Optional[TransformerLensKeyValueCache] = None,
     ) -> Union[
         None,
         Float[torch.Tensor, "batch pos d_vocab"],
@@ -572,7 +570,7 @@ class HookedTransformer(HookedRootModule):
                 negative indexing. Useful for analysis of intermediate layers, eg finding neuron
                 activations in layer 3 of a 24 layer model. Defaults to None (run the full model).
                 If not None, we return the last residual stream computed.
-            past_kv_cache Optional[HookedTransformerKeyValueCache]: If not None, keys and values
+            past_kv_cache Optional[TransformerLensKeyValueCache]: If not None, keys and values
                 will be stored for every attention head (unless the cache is frozen). If there are
                 keys and values already in the cache, these will be prepended to the keys and values
                 for the new input, so that the new tokens can pay attention to previous tokens. This
@@ -624,7 +622,7 @@ class HookedTransformer(HookedRootModule):
 
                 residual = block(
                     residual,
-                    # Cache contains a list of HookedTransformerKeyValueCache objects, one for each
+                    # Cache contains a list of TransformerLensKeyValueCache objects, one for each
                     # block
                     past_kv_cache_entry=past_kv_cache[i] if past_kv_cache is not None else None,
                     shortformer_pos_embed=shortformer_pos_embed,
@@ -2217,7 +2215,7 @@ class HookedTransformer(HookedRootModule):
             device = get_device_for_block_index(0, self.cfg)
             input = input.to(device)
             if use_past_kv_cache:
-                past_kv_cache = HookedTransformerKeyValueCache.init_cache(
+                past_kv_cache = TransformerLensKeyValueCache.init_cache(
                     self.cfg, self.cfg.device, batch_size
                 )
             else:

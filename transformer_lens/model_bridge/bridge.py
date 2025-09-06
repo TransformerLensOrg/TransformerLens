@@ -26,9 +26,7 @@ from torch import nn
 
 from transformer_lens import utils
 from transformer_lens.ActivationCache import ActivationCache
-from transformer_lens.cache.key_value_cache import (
-    TransformerLensKeyValueCache as HookedTransformerKeyValueCache,
-)
+from transformer_lens.cache.key_value_cache import TransformerLensKeyValueCache
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
@@ -746,7 +744,7 @@ class TransformerBridge(nn.Module):
         loss_per_token: bool = False,
         prepend_bos: Optional[bool] = None,
         padding_side: Optional[str] = None,
-        past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
+        past_kv_cache: Optional[TransformerLensKeyValueCache] = None,
         start_at_layer: int = 0,
         **kwargs,
     ) -> Any:

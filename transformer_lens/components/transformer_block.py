@@ -111,7 +111,7 @@ class TransformerBlock(nn.Module):
 
         Args:
             resid_pre (torch.Tensor): The residual stream - shape [batch, pos, d_model]
-            cache (HookedTransformerKeyValueCache): A cache of previous keys and values, used only when generating text. Defaults to None.
+            cache (TransformerLensKeyValueCache): A cache of previous keys and values, used only when generating text. Defaults to None.
             shortformer_pos_embed (torch.Tensor, optional): Only used for positional_embeddings_type == "shortformer". The positional embeddings. See HookedTransformerConfig for details. Defaults to None.
             attention_mask (torch.Tensor, optional): The attention mask for padded tokens. Defaults to None.
 
