@@ -377,6 +377,8 @@ class TransformerBridge(nn.Module):
         sum_head(b_V_head @ W_O_head).
         """
 
+        assert self.adapter.conversion_rules is not None, "Conversion rules are not set"
+
         for layer in range(self.cfg.n_layers):
             if not self.blocks[layer].attn.v.has_bias():
                 raise ValueError(
