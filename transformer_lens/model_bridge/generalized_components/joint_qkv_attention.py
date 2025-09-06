@@ -59,6 +59,8 @@ class JointQKVAttentionBridge(AttentionBridge):
             pattern_conversion_rule=pattern_conversion_rule,
         )
 
+        self.split_qkv_matrix = split_qkv_matrix
+
         if qkv_conversion_rule is not None:
             self.qkv_conversion_rule = qkv_conversion_rule
         else:
