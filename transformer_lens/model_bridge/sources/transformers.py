@@ -250,8 +250,6 @@ def boot(
         hf_model,
         adapter,
         tokenizer,
-        fold_ln,
-        fold_value_biases,
     )
 
 
