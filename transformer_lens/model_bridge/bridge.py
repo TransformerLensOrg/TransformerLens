@@ -21,10 +21,12 @@ from typing import (
 
 import numpy as np
 import torch
+import tqdm
 from torch import nn
 
 from transformer_lens import utils
 from transformer_lens.ActivationCache import ActivationCache
+from transformer_lens.cache.key_value_cache import TransformerLensKeyValueCache
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
@@ -390,6 +392,26 @@ class TransformerBridge(nn.Module):
 
         return tokens
 
+    # ==================== PAST KV CACHE HELPERS ====================
+
+    def get_pos_offset(self, past_kv_cache, batch_size: int) -> int:
+        """Compute position offset from a TransformerLensKeyValueCache-like object.
+
+        Mirrors HookedTransformer.get_pos_offset behavior for compatibility.
+        """
+        if past_kv_cache is None:
+            return 0
+        cached_batch_size, cache_ctx_length, num_heads_in_cache, d_head_in_cache = past_kv_cache[
+            0
+        ].past_keys.shape
+        assert cached_batch_size == batch_size
+        if getattr(self.cfg, "n_key_value_heads", None) is None:
+            assert num_heads_in_cache == self.cfg.n_heads
+        else:
+            assert num_heads_in_cache == getattr(self.cfg, "n_key_value_heads")
+        assert d_head_in_cache == self.cfg.d_head
+        return cache_ctx_length
+
     def to_string(
         self,
         tokens: Union[List[int], torch.Tensor, np.ndarray],
@@ -741,6 +763,9 @@ class TransformerBridge(nn.Module):
         loss_per_token: bool = False,
         prepend_bos: Optional[bool] = None,
         padding_side: Optional[str] = None,
+        past_kv_cache: Optional[TransformerLensKeyValueCache] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        start_at_layer: int = 0,
         **kwargs,
     ) -> Any:
         """Forward pass through the model.
@@ -751,6 +776,8 @@ class TransformerBridge(nn.Module):
             loss_per_token: Whether to return loss per token
             prepend_bos: Whether to prepend BOS token
             padding_side: Which side to pad on
+            past_kv_cache: Optional TransformerLensKeyValueCache for generation
+            start_at_layer: Layer to start forward pass from
             **kwargs: Additional arguments passed to model
 
         Returns:
@@ -761,6 +788,61 @@ class TransformerBridge(nn.Module):
             input_ids = self.to_tokens(input, prepend_bos=prepend_bos, padding_side=padding_side)
         else:
             input_ids = input
+
+        # Handle explicit attention mask
+        if attention_mask is not None:
+            kwargs["attention_mask"] = attention_mask
+
+        # Handle KV cache if provided
+        if past_kv_cache is not None:
+            # Convert TransformerLensKeyValueCache to backend format
+            # Create a list of tuples (keys, values) for each layer in backend format
+            backend_cache = []
+            for entry in past_kv_cache.entries:
+                if entry.past_keys.numel() > 0:  # Only add if there are cached values
+                    # Convert from TL format [batch, pos, n_heads, d_head] to backend format [batch, n_heads, pos, d_head]
+                    cached_keys = entry.past_keys.transpose(1, 2)  # [batch, n_heads, pos, d_head]
+                    cached_values = entry.past_values.transpose(
+                        1, 2
+                    )  # [batch, n_heads, pos, d_head]
+                    backend_cache.append((cached_keys, cached_values))
+                # Note: We skip empty entries rather than adding (None, None) to maintain type consistency
+
+            kwargs["past_key_values"] = backend_cache
+
+            # Handle attention mask from the cache
+            if hasattr(past_kv_cache, "previous_attention_mask"):
+                # Build attention mask that includes past context
+                batch_size = input_ids.shape[0]
+                current_length = input_ids.shape[1]
+                past_length = past_kv_cache.previous_attention_mask.shape[1]
+
+                # Use explicit attention mask if provided, otherwise create one for current tokens
+                if attention_mask is not None:
+                    current_mask = attention_mask
+                else:
+                    current_mask = torch.ones(
+                        batch_size, current_length, dtype=torch.long, device=input_ids.device
+                    )
+
+                # Combine with past attention mask
+                if past_length > 0:
+                    full_attention_mask = torch.cat(
+                        [past_kv_cache.previous_attention_mask, current_mask], dim=1
+                    )
+                else:
+                    full_attention_mask = current_mask
+
+                kwargs["attention_mask"] = full_attention_mask
+
+            # Enable caching for the underlying model
+            kwargs["use_cache"] = True
+        elif "use_past_kv_cache" in kwargs and kwargs["use_past_kv_cache"]:
+            # If use_past_kv_cache is True but no cache provided, enable caching
+            kwargs["use_cache"] = True
+
+        # Store reference to original TransformerLensKeyValueCache for updating
+        original_tl_cache = past_kv_cache
 
         # Run model
         if hasattr(self.original_model, "forward"):
@@ -773,7 +855,84 @@ class TransformerBridge(nn.Module):
                 kwargs["labels"] = input_ids
             output = self.original_model(input_ids, **kwargs)
 
+        # Update TransformerLensKeyValueCache if it was provided and model returned new cache
+        if (
+            original_tl_cache is not None
+            and hasattr(output, "past_key_values")
+            and output.past_key_values is not None
+        ):
+            # Update the TransformerLensKeyValueCache with new key-value pairs from backend output
+            backend_cache = output.past_key_values
+
+            # Handle different backend cache formats
+            if isinstance(backend_cache, (list, tuple)):
+                # Standard format: list/tuple of (keys, values) tuples for each layer
+                for layer_idx, entry in enumerate(original_tl_cache.entries):
+                    if layer_idx < len(backend_cache):
+                        layer_cache = backend_cache[layer_idx]
+                        if isinstance(layer_cache, (list, tuple)) and len(layer_cache) >= 2:
+                            new_keys, new_values = layer_cache[0], layer_cache[1]
+                            if new_keys is not None and new_values is not None:
+                                # Convert from backend format [batch, n_heads, seq_len, d_head] to TL format [batch, seq_len, n_heads, d_head]
+                                new_keys_tl = new_keys.transpose(1, 2)
+                                new_values_tl = new_values.transpose(1, 2)
+
+                                # Only take the new tokens (not the cached ones)
+                                new_token_count = input_ids.shape[1]
+                                if new_keys_tl.shape[1] >= new_token_count:
+                                    new_keys_tl = new_keys_tl[:, -new_token_count:, :, :]
+                                    new_values_tl = new_values_tl[:, -new_token_count:, :, :]
+                                    entry.append(new_keys_tl, new_values_tl)
+            else:
+                # Handle cache objects with different APIs (like DynamicCache)
+                for layer_idx, entry in enumerate(original_tl_cache.entries):
+                    new_keys = None
+                    new_values = None
+
+                    # Try different access patterns
+                    if (
+                        hasattr(backend_cache, "layers")
+                        and hasattr(backend_cache.layers, "__len__")
+                        and layer_idx < len(backend_cache.layers)
+                    ):
+                        # New API: cache.layers[idx].keys/values
+                        layer = backend_cache.layers[layer_idx]
+                        if hasattr(layer, "keys") and hasattr(layer, "values"):
+                            new_keys = layer.keys
+                            new_values = layer.values
+                    elif hasattr(backend_cache, "key_cache") and hasattr(
+                        backend_cache, "value_cache"
+                    ):
+                        # Legacy API: cache.key_cache[idx], cache.value_cache[idx]
+                        if hasattr(backend_cache.key_cache, "__len__") and layer_idx < len(
+                            backend_cache.key_cache
+                        ):
+                            new_keys = backend_cache.key_cache[layer_idx]
+                            new_values = backend_cache.value_cache[layer_idx]
+
+                    if new_keys is not None and new_values is not None:
+                        # Convert from backend format to TL format and append to cache entry
+                        new_keys_tl = new_keys.transpose(1, 2)  # [batch, seq_len, n_heads, d_head]
+                        new_values_tl = new_values.transpose(
+                            1, 2
+                        )  # [batch, seq_len, n_heads, d_head]
+
+                        # Only take the new tokens (not the cached ones)
+                        new_token_count = input_ids.shape[1]
+                        if new_keys_tl.shape[1] >= new_token_count:
+                            new_keys_tl = new_keys_tl[:, -new_token_count:, :, :]
+                            new_values_tl = new_values_tl[:, -new_token_count:, :, :]
+                            entry.append(new_keys_tl, new_values_tl)
+
+            # Update attention mask in the cache
+            current_mask = torch.ones(
+                input_ids.shape[0], input_ids.shape[1], dtype=torch.long, device=input_ids.device
+            )
+            original_tl_cache.append_attention_mask(current_mask)
+
         # Handle different return types
+        if return_type == "raw":
+            return output
         if return_type == "logits":
             if hasattr(output, "logits"):
                 return output.logits
@@ -1247,15 +1406,29 @@ class TransformerBridge(nn.Module):
                 "do_sample": do_sample,
                 "temperature": temperature,
             }
+
+            # Handle KV cache parameter
+            if use_past_kv_cache:
+                gen_kwargs["use_cache"] = True
+            else:
+                gen_kwargs["use_cache"] = False
+
+            # Add optional parameters
             if top_k is not None:
                 gen_kwargs["top_k"] = top_k
             if top_p is not None:
                 gen_kwargs["top_p"] = top_p
             if eos_token_id is not None:
                 gen_kwargs["eos_token_id"] = eos_token_id
+            if (
+                stop_at_eos
+                and eos_token_id is None
+                and hasattr(self.tokenizer, "eos_token_id")
+                and self.tokenizer.eos_token_id is not None
+            ):
+                gen_kwargs["eos_token_id"] = self.tokenizer.eos_token_id
 
-            if not hasattr(self.original_model, "generate"):
-                raise RuntimeError("Underlying model does not support generate method.")
+            # Call the original model's generate method
             output_ids = self.original_model.generate(input_ids, **gen_kwargs)  # type: ignore[operator]
 
             # Handle return type
@@ -1275,7 +1448,136 @@ class TransformerBridge(nn.Module):
             else:
                 return output_ids
         else:
-            raise RuntimeError("Underlying model does not support generate method.")
+            # Fallback to custom implementation if original model doesn't have generate method
+            # Handle input tokenization
+            if isinstance(input, (str, list)):
+                input_ids = self.to_tokens(
+                    input, prepend_bos=prepend_bos, padding_side=padding_side
+                )
+            else:
+                input_ids = input
+
+            if input_ids.ndim == 1:
+                input_ids = input_ids.unsqueeze(0)
+
+            batch_size, ctx_length = input_ids.shape[0], input_ids.shape[1]
+            device = input_ids.device
+
+            # Handle EOS token
+            stop_tokens = []
+            eos_token_for_padding = 0
+            if stop_at_eos:
+                if eos_token_id is None:
+                    if (
+                        hasattr(self.tokenizer, "eos_token_id")
+                        and self.tokenizer.eos_token_id is not None
+                    ):
+                        eos_token_id = self.tokenizer.eos_token_id
+                    else:
+                        raise ValueError(
+                            "Must pass eos_token_id if stop_at_eos is True and tokenizer has no eos_token_id"
+                        )
+
+                if isinstance(eos_token_id, int):
+                    stop_tokens = [eos_token_id]
+                    eos_token_for_padding = eos_token_id
+                else:
+                    stop_tokens = eos_token_id
+                    eos_token_for_padding = (
+                        self.tokenizer.eos_token_id
+                        if hasattr(self.tokenizer, "eos_token_id")
+                        and self.tokenizer.eos_token_id is not None
+                        else eos_token_id[0]
+                    )
+
+            # Track finished sequences
+            finished_sequences = torch.zeros(batch_size, dtype=torch.bool, device=device)
+
+            # Initialize a TL cache object if using a HookedTransformer backend and caching is enabled
+            past_kv_cache_obj = None
+            if use_past_kv_cache and getattr(
+                self.original_model.__class__, "__name__", ""
+            ).endswith("HookedTransformer"):
+                past_kv_cache_obj = TransformerLensKeyValueCache.init_cache(
+                    self.cfg, device, batch_size
+                )
+
+            # Generate tokens
+            self.eval()
+            sampled_tokens_list: list[torch.Tensor] = []
+
+            for index in tqdm.tqdm(range(max_new_tokens), disable=not verbose):
+                # Build the current sequence (use caching by feeding only the last token when enabled)
+                if use_past_kv_cache and index > 0:
+                    step_input = sampled_tokens_list[-1]
+                else:
+                    step_input = (
+                        input_ids
+                        if index == 0
+                        else torch.cat([input_ids] + sampled_tokens_list, dim=1)
+                    )
+
+                # Forward pass with optional KV cache (delegated to underlying model)
+                logits = self.forward(
+                    step_input,
+                    return_type="logits",
+                    prepend_bos=prepend_bos,
+                    padding_side=padding_side,
+                    past_kv_cache=past_kv_cache_obj,
+                    use_past_kv_cache=use_past_kv_cache,
+                )
+
+                # Get logits for the last position
+                final_logits = logits[:, -1, :]
+
+                # Sample next token
+                if do_sample:
+                    sampled_tokens = utils.sample_logits(
+                        final_logits,
+                        top_k=top_k,
+                        top_p=top_p,
+                        temperature=temperature,
+                    ).to(device)
+                else:
+                    sampled_tokens = final_logits.argmax(-1).to(device)
+
+                sampled_tokens_list.append(sampled_tokens.unsqueeze(1))
+
+                # Handle EOS tokens
+                if stop_at_eos:
+                    sampled_tokens[finished_sequences] = eos_token_for_padding
+                    finished_sequences.logical_or_(
+                        torch.isin(
+                            sampled_tokens.to(device),
+                            torch.tensor(stop_tokens).to(device),
+                        )
+                    )
+
+                # Stop if all sequences are finished
+                if stop_at_eos and finished_sequences.all():
+                    break
+
+            # Combine all generated tokens
+            sampled_tokens = torch.cat(sampled_tokens_list, dim=1)
+            output_tokens = torch.cat((input_ids, sampled_tokens), dim=1)
+
+            # Handle return type
+            if return_type == "input":
+                if isinstance(input, (str, list)):
+                    return_type = "str"
+                else:
+                    return_type = "tokens"
+
+            if return_type == "str":
+                decoded_texts = [
+                    self.tokenizer.decode(tokens, skip_special_tokens=True)
+                    for tokens in output_tokens
+                ]
+                return decoded_texts[0] if len(decoded_texts) == 1 else decoded_texts
+            elif return_type == "tokens":
+                return output_tokens
+            else:
+                return output_tokens
 
     # ==================== UTILITY METHODS ====================
 
@@ -1315,6 +1617,26 @@ class TransformerBridge(nn.Module):
             Self for chaining
         """
         return self.to(torch.device("cpu"))  # type: ignore
+
+    def get_embeddings(self, tokens: torch.Tensor) -> torch.Tensor:
+        """Get embeddings for tokens.
+
+        Args:
+            tokens: Input tokens
+
+        Returns:
+            Token embeddings
+        """
+        # Use the embed component if available
+        if hasattr(self, "embed") and hasattr(self.embed, "weight"):
+            return torch.nn.functional.embedding(tokens, self.embed.weight)
+        else:
+            # Fallback to using the underlying model's embedding layer
+            if hasattr(self.original_model, "get_input_embeddings"):
+                embedding_layer = self.original_model.get_input_embeddings()  # type: ignore[operator]
+                return embedding_layer(tokens)
+            else:
+                raise NotImplementedError("No embedding method available")
 
     def mps(self) -> "TransformerBridge":
         """Move model to MPS.
