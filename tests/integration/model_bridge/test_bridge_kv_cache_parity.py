@@ -59,8 +59,6 @@ def transformer_bridge(model_name, hooked_transformer):
         architecture="gpt2",  # Set architecture for adapter selection
         device=hooked_transformer.cfg.device,
     )
-    # Add missing attributes that might be needed for cache initialization
-    bridge_cfg.n_devices = getattr(hooked_transformer.cfg, "n_devices", 1)
     adapter = GPT2ArchitectureAdapter(bridge_cfg)
     bridge = TransformerBridge(hf_model, adapter, hf_tokenizer)
 
@@ -333,8 +331,6 @@ class TestLargerModelParity:
             architecture="gpt2",
             device=hooked_transformer.cfg.device,
         )
-        # Add missing attributes that might be needed for cache initialization
-        bridge_cfg.n_devices = getattr(hooked_transformer.cfg, "n_devices", 1)
         adapter = GPT2ArchitectureAdapter(bridge_cfg)
         bridge = TransformerBridge(hf_model, adapter, hf_tokenizer)
 

@@ -41,11 +41,24 @@ class TransformerLensKeyValueCache:
         device: Union[torch.device, str, None],
         batch_size: int = 1,
     ):
+        # Determine device for each layer
+        if hasattr(cfg, "n_devices"):
+            # HookedTransformer case: use our multi-GPU logic
+            device_for_layer = lambda i: get_device_for_block_index(
+                i, cast("HookedTransformerConfig", cfg), device
+            )
+        else:
+            # Fallback when no model is provided - use single device
+            fallback_device = device if device is not None else cfg.device
+            if fallback_device is None:
+                fallback_device = torch.device("cpu")
+            device_for_layer = lambda i: fallback_device
+
         return cls(
             entries=[
                 TransformerLensKeyValueCacheEntry.init_cache_entry(
                     cfg,
-                    get_device_for_block_index(i, cast("HookedTransformerConfig", cfg), device),
+                    device_for_layer(i),
                     batch_size,
                 )
                 for i in range(cfg.n_layers)
