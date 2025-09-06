@@ -74,6 +74,9 @@ class TransformerLensConfig:
     # GQA configuration
     n_key_value_heads: Optional[int] = None
 
+    # Multi-GPU configuration
+    n_devices: int = 1
+
     def __post_init__(self):
         """Post-initialization processing and validation."""
         # Set n_heads if not specified

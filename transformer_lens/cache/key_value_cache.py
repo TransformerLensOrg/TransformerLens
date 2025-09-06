@@ -5,12 +5,16 @@ cache entries and attention masks.
 """
 
 from dataclasses import dataclass
-from typing import List, Union
+from typing import TYPE_CHECKING, List, Union, cast
 
 import torch
 from jaxtyping import Int
 
 from transformer_lens.config.TransformerLensConfig import TransformerLensConfig
+
+if TYPE_CHECKING:
+    from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
+
 from transformer_lens.utilities.multi_gpu import get_device_for_block_index
 
 from .key_value_cache_entry import TransformerLensKeyValueCacheEntry
@@ -33,7 +37,7 @@ class TransformerLensKeyValueCache:
     @classmethod
     def init_cache(
         cls,
-        cfg: TransformerLensConfig,
+        cfg: Union[TransformerLensConfig, "HookedTransformerConfig"],
         device: Union[torch.device, str, None],
         batch_size: int = 1,
     ):
@@ -41,7 +45,7 @@ class TransformerLensKeyValueCache:
             entries=[
                 TransformerLensKeyValueCacheEntry.init_cache_entry(
                     cfg,
-                    get_device_for_block_index(i, cfg, device),
+                    get_device_for_block_index(i, cast("HookedTransformerConfig", cfg), device),
                     batch_size,
                 )
                 for i in range(cfg.n_layers)

@@ -806,8 +806,7 @@ class TransformerBridge(nn.Module):
                         1, 2
                     )  # [batch, n_heads, pos, d_head]
                     backend_cache.append((cached_keys, cached_values))
-                else:
-                    backend_cache.append((None, None))
+                # Note: We skip empty entries rather than adding (None, None) to maintain type consistency
 
             kwargs["past_key_values"] = backend_cache
 
@@ -1505,7 +1504,7 @@ class TransformerBridge(nn.Module):
 
             # Generate tokens
             self.eval()
-            sampled_tokens_list = []
+            sampled_tokens_list: list[torch.Tensor] = []
 
             for index in tqdm.tqdm(range(max_new_tokens), disable=not verbose):
                 # Build the current sequence (use caching by feeding only the last token when enabled)
@@ -1634,7 +1633,8 @@ class TransformerBridge(nn.Module):
         else:
             # Fallback to using the underlying model's embedding layer
             if hasattr(self.original_model, "get_input_embeddings"):
-                return self.original_model.get_input_embeddings()(tokens)
+                embedding_layer = self.original_model.get_input_embeddings()  # type: ignore[operator]
+                return embedding_layer(tokens)
             else:
                 raise NotImplementedError("No embedding method available")
 
