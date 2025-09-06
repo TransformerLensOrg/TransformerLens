@@ -136,7 +136,7 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
         W_Q, W_K, W_V = torch.tensor_split(qkv_weights, 3, dim=1)
 
         qkv_bias = original_attention_component.c_attn.bias
-        print(f"qkv_bias: {qkv_bias.shape}")
+
         # Keep mypy happy
         assert isinstance(qkv_bias, torch.Tensor)
 
