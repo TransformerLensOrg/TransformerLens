@@ -80,6 +80,9 @@ class TransformerLensConfig:
     # Gated MLP
     gated_mlp: bool = False
 
+    # Epsilon
+    eps: float = 1e-5
+
     def __post_init__(self):
         """Post-initialization processing and validation."""
         # Set n_heads if not specified

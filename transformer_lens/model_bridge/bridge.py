@@ -67,8 +67,6 @@ class TransformerBridge(nn.Module):
         model: nn.Module,
         adapter: ArchitectureAdapter,
         tokenizer: Any,
-        fold_value_biases: bool,
-        fold_ln: bool,
     ):
         """Initialize the bridge.
 
@@ -76,8 +74,6 @@ class TransformerBridge(nn.Module):
             model: The model to bridge (must be a PyTorch nn.Module or PreTrainedModel)
             adapter: The architecture adapter to use
             tokenizer: The tokenizer to use (required)
-            fold_value_biases: Whether to fold the value biases into the output bias.
-            fold_ln: Whether to fold the layer norm weights into the neighbouring weights.
         """
         super().__init__()
         self.original_model: nn.Module = model
@@ -107,12 +103,6 @@ class TransformerBridge(nn.Module):
 
         # Initialize hook registry after components are set up
         self._initialize_hook_registry()
-
-        if fold_value_biases:
-            self.fold_value_biases()
-
-        if fold_ln:
-            self.fold_layer_norm()
 
     def __setattr__(self, name: str, value: Any) -> None:
         """Override setattr to track HookPoint objects dynamically."""
@@ -324,7 +314,9 @@ class TransformerBridge(nn.Module):
         lines.extend(self._format_component_mapping(mapping, indent=1))
         return "\n".join(lines)
 
-    def enable_compatibility_mode(self, disable_warnings: bool = False) -> None:
+    def enable_compatibility_mode(
+        self, disable_warnings: bool = False, no_processing: bool = False
+    ) -> None:
         """Enable compatibility mode for the bridge.
 
         This sets up the bridge to work with legacy HookedTransformer components/hooks.
@@ -332,6 +324,7 @@ class TransformerBridge(nn.Module):
 
         Args:
             disable_warnings: Whether to disable warnings about legacy components/hooks
+            no_processing: Whether to disable pre-processing steps of the model (e.g. folding layer norm weights, folding value biases)
         """
         # Avoid circular import
         from transformer_lens.utilities.bridge_components import (
@@ -350,6 +343,10 @@ class TransformerBridge(nn.Module):
         # Re-initialize the hook registry to include aliases from components
         self.clear_hook_registry()
         self._initialize_hook_registry()
+
+        if not no_processing:
+            self.fold_layer_norm()
+            self.fold_value_biases()
 
     def uses_rms_norm(self) -> bool:
         """Check if the model uses RMS norm."""
@@ -394,7 +391,7 @@ class TransformerBridge(nn.Module):
 
             if self.cfg.n_key_value_heads is not None:
                 v_bias_rearranged = torch.repeat_interleave(
-                    v_bias_rearranged, dim=0, repeats=self.cfg.n_heads // n_key_value_heads
+                    v_bias_rearranged, dim=0, repeats=self.cfg.n_heads // self.cfg.n_key_value_heads
                 )
 
             # [(head_index d_head), d_model]
@@ -414,14 +411,47 @@ class TransformerBridge(nn.Module):
 
     def fold_layer_norm(self, fold_biases=True, center_weights=True):
         """Fold Layer Norm into the neighbouring weights. Can also be used to fold RMS Norm, when fold_biases and center_weights are set to False.
-            See boot function in transformer_lens/model_bridge/sources/transformers.py for more details.
+
+            Folding the LayerNorm weights to the subsequent linear layer does not change the computation.
+
+            `LayerNorm
+            <https://wandb.ai/wandb_fc/LayerNorm/reports/Layer-Normalization-in-Pytorch-With-Examples---VmlldzoxMjk5MTk1>`_
+            is a common regularization technique used in transformers. Unlike BatchNorm, it
+            cannot be turned off at inference time, as it significantly alters the mathematical
+            function implemented by the transformer.
+
+            When `fold_ln` is set to True, LayerNorm (with weights :math:`w_{ln}` and
+            :math:`b_{ln}`) followed by a linear layer (:math:`W + b`) is optimized to
+            LayerNormPre (just centering & normalizing) followed by a new linear layer with
+            :math:`W_{eff} = w[:, \text{None}] * W` (element-wise multiplication) and
+            :math:`b_{eff} = b + b_{ln} @ W`. This transformation is computationally equivalent
+            and simplifies the model's interpretability. It essentially merges LayerNorm weights
+            into the subsequent linear layer's weights, which is handled by HookedTransformer
+            when loading pre-trained weights. Set `fold_ln` to False when loading a state dict
+            if you wish to turn this off.
+
+            Mathematically, LayerNorm is defined as follows:
+
+            .. math::
+                x_1 &= x_0 - \\text{mean}(x_0)
+
+                x_2 &= \\frac{x_1}{\\sqrt{\\text{mean}(x_1^2)}}
+
+                x_3 &= x_2 \\cdot w
+
+                x_4 &= x_3 + b
+
+            For further details, refer to `this document
+            <https://transformer-circuits.pub/2021/framework/index.html#:~:text=Handling%20Layer%20Normalization>`_.
 
         Args:
             fold_biases (bool): Enables folding of LN biases. Should be disabled when RMS Norm is used.
             center_weights (bool): Enables the centering of weights after folding in LN. Should be disabled when RMS Norm is used.
         """
 
-        if self.uses_rms_norm():
+        uses_rms_norm = self.uses_rms_norm()
+
+        if uses_rms_norm:
             warnings.warn(
                 "This model uses RMS norm, so in order to fold the layer norm weights, fold_biases and center_weights will automatically be set to False."
             )
@@ -616,13 +646,10 @@ class TransformerBridge(nn.Module):
                 )
 
                 if center_weights:
-                    mlp_input_weight_centered = (
-                        mlp_input_weight_folded_original_shape
-                        - einops.reduce(
-                            mlp_input_weight_folded_original_shape,
-                            "d_model d_mlp -> 1 d_mlp",
-                            "mean",
-                        )
+                    mlp_input_weight_centered = mlp_input_weight_folded - einops.reduce(
+                        mlp_input_weight_folded,
+                        "d_model d_mlp -> 1 d_mlp",
+                        "mean",
                     )
                     mlp_input_weight_centered_original_shape = (
                         self.adapter.conversion_rules.get_conversion_action(
@@ -679,9 +706,8 @@ class TransformerBridge(nn.Module):
 
         if center_weights:
             # Center the weights that read in from the LayerNorm ln_final
-            unembed_weight_centered = nn.Parameter(
-                unembed_weight_folded
-                - einops.reduce(unembed_weight_folded, "d_model d_vocab -> 1 d_vocab", "mean")
+            unembed_weight_centered = unembed_weight_folded - einops.reduce(
+                unembed_weight_folded, "d_model d_vocab -> 1 d_vocab", "mean"
             )
             unembed_weight_centered_original_shape = (
                 self.adapter.conversion_rules.get_conversion_action("unembed.weight").revert(
@@ -1451,7 +1477,7 @@ class TransformerBridge(nn.Module):
             return cache_hook
 
         # Use cached hooks instead of re-discovering them
-        hook_dict = self._hook_registry
+        hook_dict = self.hook_dict
 
         # Filter hooks based on names_filter
         for hook_name, hook in hook_dict.items():
@@ -1495,7 +1521,7 @@ class TransformerBridge(nn.Module):
 
                     # Add hook to the output of the last layer to be processed
                     block_hook_name = f"blocks.{last_layer_to_process}.hook_out"
-                    hook_dict = self._hook_registry
+                    hook_dict = self.hook_dict
                     if block_hook_name in hook_dict:
                         hook_dict[block_hook_name].add_hook(stop_hook)
                         hooks.append((hook_dict[block_hook_name], block_hook_name))
@@ -1636,7 +1662,7 @@ class TransformerBridge(nn.Module):
 
                 # Add hook to the output of the last layer to be processed
                 block_hook_name = f"blocks.{last_layer_to_process}.hook_out"
-                hook_dict = self._hook_registry
+                hook_dict = self.hook_dict
                 if block_hook_name in hook_dict:
                     add_hook_to_point(hook_dict[block_hook_name], stop_hook, block_hook_name)
 
@@ -1666,7 +1692,7 @@ class TransformerBridge(nn.Module):
 
                 if isinstance(hook_name_or_filter, str):
                     # Direct hook name - check for aliases first
-                    hook_dict = self._hook_registry
+                    hook_dict = self.hook_dict
                     actual_hook_name = hook_name_or_filter
 
                     # If this is an alias, resolve it to the actual hook name
@@ -1677,7 +1703,7 @@ class TransformerBridge(nn.Module):
                         add_hook_to_point(hook_dict[actual_hook_name], hook_fn, actual_hook_name)
                 else:
                     # Filter function
-                    hook_dict = self._hook_registry
+                    hook_dict = self.hook_dict
                     for name, hook_point in hook_dict.items():
                         if hook_name_or_filter(name):
                             add_hook_to_point(hook_point, hook_fn, name)
