@@ -67,6 +67,37 @@ def test_text_generation():
     assert len(output) > len(prompt), "Generated text should be longer than the prompt"
 
 
+def test_generate_with_kv_cache():
+    """Test that generate works with use_past_kv_cache parameter."""
+    model_name = "gpt2"  # Use a smaller model for testing
+    bridge = TransformerBridge.boot_transformers(model_name)
+
+    if bridge.tokenizer.pad_token is None:
+        bridge.tokenizer.pad_token = bridge.tokenizer.eos_token
+
+    prompt = "The quick brown fox jumps over the lazy dog"
+
+    # Test with KV cache enabled
+    output_with_cache = bridge.generate(prompt, max_new_tokens=5, use_past_kv_cache=True)
+
+    # Test with KV cache disabled
+    output_without_cache = bridge.generate(prompt, max_new_tokens=5, use_past_kv_cache=False)
+
+    # Both should produce valid outputs
+    assert isinstance(output_with_cache, str), "Output with KV cache should be a string"
+    assert isinstance(output_without_cache, str), "Output without KV cache should be a string"
+    assert len(output_with_cache) > len(
+        prompt
+    ), "Generated text with KV cache should be longer than the prompt"
+    assert len(output_without_cache) > len(
+        prompt
+    ), "Generated text without KV cache should be longer than the prompt"
+
+    # The outputs might be different due to sampling, but both should be valid
+    assert len(output_with_cache) > 0, "Output with KV cache should not be empty"
+    assert len(output_without_cache) > 0, "Output without KV cache should not be empty"
+
+
 def test_hooks():
     """Test that hooks can be added and removed correctly."""
     model_name = "gpt2"  # Use a smaller model for testing
