@@ -75,5 +75,3 @@ class TransformerLensKeyValueCache:
 
     def __getitem__(self, idx):
         return self.entries[idx]
-
-

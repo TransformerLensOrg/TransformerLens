@@ -51,5 +51,3 @@ class TransformerLensKeyValueCacheEntry:
             self.past_keys = updated_keys
             self.past_values = updated_values
         return updated_keys, updated_values
-
-

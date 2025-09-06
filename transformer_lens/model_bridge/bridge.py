@@ -38,7 +38,6 @@ from transformer_lens.model_bridge.generalized_components.base import (
 from transformer_lens.model_bridge.hook_point_wrapper import HookPointWrapper
 from transformer_lens.model_bridge.types import ComponentMapping
 from transformer_lens.utilities.aliases import collect_aliases_recursive, resolve_alias
-from transformer_lens.utilities.cache import get_pos_offset
 
 if TYPE_CHECKING:
     from transformer_lens.ActivationCache import ActivationCache
@@ -1264,13 +1263,13 @@ class TransformerBridge(nn.Module):
                 "do_sample": do_sample,
                 "temperature": temperature,
             }
-            
+
             # Handle KV cache parameter
             if use_past_kv_cache:
                 gen_kwargs["use_cache"] = True
             else:
                 gen_kwargs["use_cache"] = False
-            
+
             # Add optional parameters
             if top_k is not None:
                 gen_kwargs["top_k"] = top_k
@@ -1278,7 +1277,12 @@ class TransformerBridge(nn.Module):
                 gen_kwargs["top_p"] = top_p
             if eos_token_id is not None:
                 gen_kwargs["eos_token_id"] = eos_token_id
-            if stop_at_eos and eos_token_id is None and hasattr(self.tokenizer, 'eos_token_id') and self.tokenizer.eos_token_id is not None:
+            if (
+                stop_at_eos
+                and eos_token_id is None
+                and hasattr(self.tokenizer, "eos_token_id")
+                and self.tokenizer.eos_token_id is not None
+            ):
                 gen_kwargs["eos_token_id"] = self.tokenizer.eos_token_id
 
             # Call the original model's generate method
@@ -1321,10 +1325,15 @@ class TransformerBridge(nn.Module):
             eos_token_for_padding = 0
             if stop_at_eos:
                 if eos_token_id is None:
-                    if hasattr(self.tokenizer, 'eos_token_id') and self.tokenizer.eos_token_id is not None:
+                    if (
+                        hasattr(self.tokenizer, "eos_token_id")
+                        and self.tokenizer.eos_token_id is not None
+                    ):
                         eos_token_id = self.tokenizer.eos_token_id
                     else:
-                        raise ValueError("Must pass eos_token_id if stop_at_eos is True and tokenizer has no eos_token_id")
+                        raise ValueError(
+                            "Must pass eos_token_id if stop_at_eos is True and tokenizer has no eos_token_id"
+                        )
 
                 if isinstance(eos_token_id, int):
                     stop_tokens = [eos_token_id]
@@ -1332,7 +1341,9 @@ class TransformerBridge(nn.Module):
                 else:
                     stop_tokens = eos_token_id
                     eos_token_for_padding = (
-                        self.tokenizer.eos_token_id if hasattr(self.tokenizer, 'eos_token_id') and self.tokenizer.eos_token_id is not None 
+                        self.tokenizer.eos_token_id
+                        if hasattr(self.tokenizer, "eos_token_id")
+                        and self.tokenizer.eos_token_id is not None
                         else eos_token_id[0]
                     )
 
@@ -1342,7 +1353,7 @@ class TransformerBridge(nn.Module):
             # Generate tokens
             self.eval()
             sampled_tokens_list = []
-            
+
             for index in tqdm.tqdm(range(max_new_tokens), disable=not verbose):
                 # Build the current sequence
                 if index == 0:
@@ -1402,7 +1413,8 @@ class TransformerBridge(nn.Module):
 
             if return_type == "str":
                 decoded_texts = [
-                    self.tokenizer.decode(tokens, skip_special_tokens=True) for tokens in output_tokens
+                    self.tokenizer.decode(tokens, skip_special_tokens=True)
+                    for tokens in output_tokens
                 ]
                 return decoded_texts[0] if len(decoded_texts) == 1 else decoded_texts
             elif return_type == "tokens":
@@ -1459,11 +1471,11 @@ class TransformerBridge(nn.Module):
             Token embeddings
         """
         # Use the embed component if available
-        if hasattr(self, 'embed') and hasattr(self.embed, 'weight'):
+        if hasattr(self, "embed") and hasattr(self.embed, "weight"):
             return torch.nn.functional.embedding(tokens, self.embed.weight)
         else:
             # Fallback to using the underlying model's embedding layer
-            if hasattr(self.original_model, 'get_input_embeddings'):
+            if hasattr(self.original_model, "get_input_embeddings"):
                 return self.original_model.get_input_embeddings()(tokens)
             else:
                 raise NotImplementedError("No embedding method available")
