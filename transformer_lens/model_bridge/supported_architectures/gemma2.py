@@ -25,6 +25,8 @@ class Gemma2ArchitectureAdapter(ArchitectureAdapter):
         """Initialize the Gemma2 architecture adapter."""
         super().__init__(cfg)
 
+        self.cfg.gated_mlp = True
+
         self.conversion_rules = HookConversionSet(
             {
                 # Gemma2 scales embeddings by sqrt(d_model)

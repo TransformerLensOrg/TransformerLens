@@ -284,3 +284,11 @@ class GeneralizedComponent(nn.Module):
 
         # Fall back to normal attribute setting
         super().__setattr__(name, value)
+
+    def has_bias(self) -> bool:
+        """Check if the linear layer has a bias."""
+        if self.original_component is None:
+            raise RuntimeError(
+                f"Original component not set for {self.name}. Call set_original_component() first."
+            )
+        return self.original_component.bias is not None

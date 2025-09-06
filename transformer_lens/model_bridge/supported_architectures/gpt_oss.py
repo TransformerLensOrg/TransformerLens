@@ -24,6 +24,8 @@ class GPTOSSArchitectureAdapter(ArchitectureAdapter):
         """Initialize the GPT-OSS architecture adapter."""
         super().__init__(cfg)
 
+        self.cfg.gated_mlp = True
+
         self.component_mapping = {
             "embed": EmbeddingBridge(name="model.embed_tokens"),
             "rotary_emb": EmbeddingBridge(name="model.rotary_emb"),

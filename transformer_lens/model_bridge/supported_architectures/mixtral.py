@@ -25,6 +25,8 @@ class MixtralArchitectureAdapter(ArchitectureAdapter):
         """Initialize the Mixtral architecture adapter."""
         super().__init__(cfg)
 
+        self.cfg.gated_mlp = True
+
         self.conversion_rules = HookConversionSet(
             {
                 "embed.e": "model.embed_tokens.weight",

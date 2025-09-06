@@ -74,6 +74,12 @@ class TransformerLensConfig:
     # GQA configuration
     n_key_value_heads: Optional[int] = None
 
+    # Attention only model
+    attn_only: bool = False
+
+    # Gated MLP
+    gated_mlp: bool = False
+
     def __post_init__(self):
         """Post-initialization processing and validation."""
         # Set n_heads if not specified
