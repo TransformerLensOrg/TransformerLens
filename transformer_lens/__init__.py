@@ -12,8 +12,8 @@ from . import (
 from . import loading_from_pretrained as loading
 from .ActivationCache import ActivationCache
 from .BertNextSentencePrediction import BertNextSentencePrediction
-from .cache.key_value_cache import KeyValueCache
-from .cache.key_value_cache_entry import KeyValueCacheEntry
+from .cache.key_value_cache import TransformerLensKeyValueCache
+from .cache.key_value_cache_entry import TransformerLensKeyValueCacheEntry
 from .config import HookedTransformerConfig
 from .config import HookedTransformerConfig as EasyTransformerConfig
 from .FactoredMatrix import FactoredMatrix
@@ -33,6 +33,6 @@ __all__ = [
     "HookedEncoderDecoder",
     "EasyTransformer",
     "EasyTransformerConfig",
-    "KeyValueCache",
-    "KeyValueCacheEntry",
+    "TransformerLensKeyValueCache",
+    "TransformerLensKeyValueCacheEntry",
 ]

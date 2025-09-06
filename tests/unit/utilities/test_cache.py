@@ -7,10 +7,10 @@ import pytest
 import torch
 
 from transformer_lens.cache.key_value_cache import (
-    KeyValueCache as HookedTransformerKeyValueCache,
+    TransformerLensKeyValueCache as HookedTransformerKeyValueCache,
 )
 from transformer_lens.cache.key_value_cache_entry import (
-    KeyValueCacheEntry as HookedTransformerKeyValueCacheEntry,
+    TransformerLensKeyValueCacheEntry as HookedTransformerKeyValueCacheEntry,
 )
 from transformer_lens.utilities.cache import get_pos_offset
 

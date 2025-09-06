@@ -4,7 +4,9 @@ import torch
 import torch.nn as nn
 from jaxtyping import Float
 
-from transformer_lens.cache.key_value_cache_entry import KeyValueCacheEntry
+from transformer_lens.cache.key_value_cache_entry import (
+    TransformerLensKeyValueCacheEntry,
+)
 from transformer_lens.components import RMSNorm, T5Attention
 from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.factories.mlp_factory import MLPFactory
@@ -57,7 +59,7 @@ class T5Block(nn.Module):
         ] = None,
         position_bias: Optional[Float[torch.Tensor, "1 head_index pos kv_pos"]] = None,
         encoder_hidden_states: Optional[Float[torch.Tensor, "batch encoder_pos d_model"]] = None,
-        past_kv_cache_entry: Optional[KeyValueCacheEntry] = None,
+        past_kv_cache_entry: Optional[TransformerLensKeyValueCacheEntry] = None,
     ) -> Float[torch.Tensor, "batch pos d_model"]:
         """A single Transformer block.
 

@@ -9,7 +9,9 @@ import torch
 import torch.nn as nn
 from jaxtyping import Float, Int
 
-from transformer_lens.cache.key_value_cache_entry import KeyValueCacheEntry
+from transformer_lens.cache.key_value_cache_entry import (
+    TransformerLensKeyValueCacheEntry,
+)
 from transformer_lens.components import (
     Attention,
     GroupedQueryAttention,
@@ -102,7 +104,7 @@ class TransformerBlock(nn.Module):
         self,
         resid_pre: Float[torch.Tensor, "batch pos d_model"],
         shortformer_pos_embed: Optional[Float[torch.Tensor, "batch pos d_model"]] = None,
-        past_kv_cache_entry: Optional[KeyValueCacheEntry] = None,
+        past_kv_cache_entry: Optional[TransformerLensKeyValueCacheEntry] = None,
         attention_mask: Optional[Int[torch.Tensor, "batch offset_pos"]] = None,
     ) -> Float[torch.Tensor, "batch pos d_model"]:
         """A single Transformer block.

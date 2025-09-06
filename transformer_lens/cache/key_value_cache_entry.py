@@ -1,6 +1,6 @@
 """Key-Value cache entry for TransformerLens.
 
-This module defines the KeyValueCacheEntry class which stores
+This module defines the TransformerLensKeyValueCacheEntry class which stores
 past keys and values for a single transformer layer.
 """
 
@@ -14,7 +14,7 @@ from transformer_lens.config.TransformerLensConfig import TransformerLensConfig
 
 
 @dataclass
-class KeyValueCacheEntry:
+class TransformerLensKeyValueCacheEntry:
     past_keys: Float[torch.Tensor, "batch pos_so_far n_heads d_head"]
     past_values: Float[torch.Tensor, "batch pos_so_far n_heads d_head"]
     frozen: bool = False

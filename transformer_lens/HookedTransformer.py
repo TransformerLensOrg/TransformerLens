@@ -46,7 +46,7 @@ from transformer_lens.ActivationCache import ActivationCache
 # Note - activation cache is used with run_with_cache, past_key_value_caching is used for
 # generation.
 from transformer_lens.cache.key_value_cache import (
-    KeyValueCache as HookedTransformerKeyValueCache,
+    TransformerLensKeyValueCache as HookedTransformerKeyValueCache,
 )
 from transformer_lens.components import (
     Embed,

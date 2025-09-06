@@ -3,7 +3,7 @@ import torch as t
 
 from transformer_lens import HookedTransformer
 from transformer_lens.cache.key_value_cache import (
-    KeyValueCache as HookedTransformerKeyValueCache,
+    TransformerLensKeyValueCache as HookedTransformerKeyValueCache,
 )
 
 

@@ -27,7 +27,7 @@ from torch import nn
 from transformer_lens import utils
 from transformer_lens.ActivationCache import ActivationCache
 from transformer_lens.cache.key_value_cache import (
-    KeyValueCache as HookedTransformerKeyValueCache,
+    TransformerLensKeyValueCache as HookedTransformerKeyValueCache,
 )
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookPoint

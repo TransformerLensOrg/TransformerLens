@@ -7,7 +7,7 @@ key-value caches used in transformer models.
 from typing import Optional
 
 from transformer_lens.cache.key_value_cache import (
-    KeyValueCache as HookedTransformerKeyValueCache,
+    TransformerLensKeyValueCache as HookedTransformerKeyValueCache,
 )
 
 

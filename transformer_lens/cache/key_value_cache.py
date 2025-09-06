@@ -1,6 +1,6 @@
 """Key-Value cache for TransformerLens.
 
-Defines the KeyValueCache which manages a list of per-layer
+Defines the TransformerLensKeyValueCache which manages a list of per-layer
 cache entries and attention masks.
 """
 
@@ -13,20 +13,20 @@ from jaxtyping import Int
 from transformer_lens.config.TransformerLensConfig import TransformerLensConfig
 from transformer_lens.utilities.multi_gpu import get_device_for_block_index
 
-from .key_value_cache_entry import KeyValueCacheEntry
+from .key_value_cache_entry import TransformerLensKeyValueCacheEntry
 
 
 @dataclass
-class KeyValueCache:
+class TransformerLensKeyValueCache:
     """
     A cache for storing past keys and values for the Transformer. This is important for generating text - we can cache a lot of past computation and avoid repeating ourselves!
 
-    This cache is a list of KeyValueCacheEntry objects, one for each layer in the Transformer. Each object stores a [batch, pos_so_far, n_heads, d_head] tensor for both keys and values, and each entry has an append method to add a single new key and value.
+    This cache is a list of TransformerLensKeyValueCacheEntry objects, one for each layer in the Transformer. Each object stores a [batch, pos_so_far, n_heads, d_head] tensor for both keys and values, and each entry has an append method to add a single new key and value.
 
     The cache can be frozen so that it is not updated during the forward pass. This is useful when we want to run many inputs with the same prefix.
     """
 
-    entries: List[KeyValueCacheEntry]
+    entries: List[TransformerLensKeyValueCacheEntry]
     previous_attention_mask: Int[torch.Tensor, "batch pos_so_far"]
     frozen: bool = False
 
@@ -39,7 +39,7 @@ class KeyValueCache:
     ):
         return cls(
             entries=[
-                KeyValueCacheEntry.init_cache_entry(
+                TransformerLensKeyValueCacheEntry.init_cache_entry(
                     cfg,
                     get_device_for_block_index(i, cfg, device),
                     batch_size,
