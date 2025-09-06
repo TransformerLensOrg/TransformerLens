@@ -420,15 +420,11 @@ class TransformerBridge(nn.Module):
             cannot be turned off at inference time, as it significantly alters the mathematical
             function implemented by the transformer.
 
-            When `fold_ln` is set to True, LayerNorm (with weights :math:`w_{ln}` and
-            :math:`b_{ln}`) followed by a linear layer (:math:`W + b`) is optimized to
-            LayerNormPre (just centering & normalizing) followed by a new linear layer with
-            :math:`W_{eff} = w[:, \text{None}] * W` (element-wise multiplication) and
-            :math:`b_{eff} = b + b_{ln} @ W`. This transformation is computationally equivalent
-            and simplifies the model's interpretability. It essentially merges LayerNorm weights
-            into the subsequent linear layer's weights, which is handled by HookedTransformer
-            when loading pre-trained weights. Set `fold_ln` to False when loading a state dict
-            if you wish to turn this off.
+            When 'no_processing' is set to False, this function folds the LayerNorm weights into the subsequent linear layer.
+            This transformation is computationally equivalent and simplifies the model's interpretability.
+            It essentially merges LayerNorm weights into the subsequent linear layer's weights,
+            which is handled by HookedTransformer when loading pre-trained weights.
+            Set 'no_processing' to True when enabling compatibility mode if you wish to turn this off.
 
             Mathematically, LayerNorm is defined as follows:
 
@@ -668,12 +664,6 @@ class TransformerBridge(nn.Module):
         ln_final_weight_rearranged = self.adapter.conversion_rules.get_conversion_action(
             "ln_final.weight"
         ).handle_conversion(self.ln_final.weight)
-
-        self.unembed.bias = nn.Parameter(
-            torch.load("/Users/fabiandegen/Documents/VSCODE/TransformerLens/unembed.b_U.pt").to(
-                self.cfg.device
-            )
-        )
 
         # Fold ln_final into Unembed
         if fold_biases and self.unembed.has_bias():
