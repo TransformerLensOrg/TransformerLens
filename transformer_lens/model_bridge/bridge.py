@@ -454,6 +454,8 @@ class TransformerBridge(nn.Module):
             fold_biases = False
             center_weights = False
 
+        assert self.adapter.conversion_rules is not None, "Conversion rules are not set"
+
         for l in range(self.cfg.n_layers):
             # Fold ln1 into attention - it's important to fold biases first, since biases depend on
             # weights but not vice versa The various indexing is just to broadcast ln.b and ln.w
