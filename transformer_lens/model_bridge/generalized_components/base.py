@@ -69,10 +69,6 @@ class GeneralizedComponent(nn.Module):
             self.hook_in.hook_conversion = self.conversion_rule
             self.hook_out.hook_conversion = self.conversion_rule
 
-        # Register the standard hooks
-        self._register_hook("hook_in", self.hook_in)
-        self._register_hook("hook_out", self.hook_out)
-
     def _register_hook(self, name: str, hook: HookPoint) -> None:
         """Register a hook in the component's hook registry."""
         # Set the name on the HookPoint
@@ -82,17 +78,20 @@ class GeneralizedComponent(nn.Module):
 
     def get_hooks(self) -> Dict[str, HookPoint]:
         """Get all hooks registered in this component."""
-        hooks = self._hook_registry.copy()
 
         # Add aliases if compatibility mode is enabled
         if self.compatibility_mode and self.hook_aliases:
+            # Only copy hook registry if compatibility mode is enabled to save memory
+            hooks = self._hook_registry.copy()
+
             for alias_name, target_name in self.hook_aliases.items():
                 # Use the existing alias system to resolve the target hook
                 target_hook = resolve_alias(self, alias_name, self.hook_aliases)
                 if target_hook is not None:
                     hooks[alias_name] = target_hook
-
-        return hooks
+            return hooks
+        else:
+            return self._hook_registry
 
     def _is_getattr_called_internally(self) -> bool:
         """This function checks if the __getattr__ method was being called internally
@@ -201,16 +200,17 @@ class GeneralizedComponent(nn.Module):
         if hasattr(self, "_modules") and name in self._modules:
             return self._modules[name]
 
-        # Check if this is a deprecated hook alias
-        resolved_hook = resolve_alias(self, name, self.hook_aliases)
-        if resolved_hook is not None and self.compatibility_mode == True:
-            return resolved_hook
+        # Only try to resolve aliases if compatibility mode is enabled
+        if self.compatibility_mode == True:
+            # Check if this is a deprecated hook alias
+            resolved_hook = resolve_alias(self, name, self.hook_aliases)
+            if resolved_hook is not None:
+                return resolved_hook
 
-        # If we reach here, we can resolve the alias normally
-        resolved_property = resolve_alias(self, name, self.property_aliases)
-
-        if resolved_property is not None and self.compatibility_mode == True:
-            return resolved_property
+            # Check if this is a deprecated property alias
+            resolved_property = resolve_alias(self, name, self.property_aliases)
+            if resolved_property is not None:
+                return resolved_property
 
         # Avoid recursion by checking if we're looking for original_component
         if name == "original_component":

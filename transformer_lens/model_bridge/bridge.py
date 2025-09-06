@@ -21,10 +21,12 @@ from typing import (
 
 import numpy as np
 import torch
+import tqdm
 from torch import nn
 
 from transformer_lens import utils
 from transformer_lens.ActivationCache import ActivationCache
+from transformer_lens.cache.key_value_cache import TransformerLensKeyValueCache
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
@@ -51,9 +53,10 @@ class TransformerBridge(nn.Module):
 
     # Top-level hook aliases for legacy TransformerLens names
     # Placing these on the main bridge ensures aliases like 'hook_embed' are available
-    hook_aliases = {
+    hook_aliases: Dict[str, Union[str, List[str]]] = {
         "hook_embed": "embed.hook_out",
-        "hook_pos_embed": "pos_embed.hook_out",
+        # rotary style models use rotary_emb.hook_out, but gpt2-style models use pos_embed.hook_out
+        "hook_pos_embed": ["pos_embed.hook_out", "rotary_emb.hook_out"],
         "hook_unembed": "unembed.hook_out",
     }
 
@@ -69,6 +72,7 @@ class TransformerBridge(nn.Module):
         self.original_model: nn.Module = model
         self.adapter = adapter
         self.cfg = adapter.cfg
+
         self.tokenizer = tokenizer
         self.compatibility_mode = False
         self._hook_cache = None  # Cache for hook discovery results
@@ -78,9 +82,9 @@ class TransformerBridge(nn.Module):
         self._hook_registry_initialized = False  # Track if registry has been initialized
 
         # Add device information to config from the loaded model
-        if not hasattr(self.cfg, "device"):
+        if not hasattr(self.cfg, "device") or self.cfg.device is None:
             try:
-                self.cfg.device = next(self.original_model.parameters()).device
+                self.cfg.device = str(next(self.original_model.parameters()).device)
             except StopIteration:
                 self.cfg.device = "cpu"
 
@@ -129,14 +133,6 @@ class TransformerBridge(nn.Module):
         # Scan existing components for hooks
         self._scan_existing_hooks(self, "")
 
-        # Add bridge aliases if compatibility mode is enabled
-        if self.compatibility_mode and self.hook_aliases:
-            for alias_name, target_name in self.hook_aliases.items():
-                # Use the existing alias system to resolve the target hook
-                target_hook = resolve_alias(self, alias_name, self.hook_aliases)
-                if target_hook is not None:
-                    self._hook_registry[alias_name] = target_hook
-
         self._hook_registry_initialized = True
 
     def _scan_existing_hooks(self, module: nn.Module, prefix: str = "") -> None:
@@ -164,41 +160,39 @@ class TransformerBridge(nn.Module):
                 except Exception:
                     # If get_hooks() fails, fall through to the else block
                     pass
-            else:
-                # Fall back to scanning attributes for non-GeneralizedComponent modules
-                for attr_name in dir(mod):
-                    if attr_name.startswith("_"):
-                        continue
-                    if attr_name == "original_component":
-                        continue
 
-                    try:
-                        attr = getattr(mod, attr_name)
-                    except Exception:
-                        continue
+            # Always scan attributes for additional hooks and submodules
+            for attr_name in dir(mod):
+                if attr_name.startswith("_"):
+                    continue
+                if attr_name == "original_component" or "original_model":
+                    continue
 
-                    name = f"{path}.{attr_name}" if path else attr_name
+                try:
+                    attr = getattr(mod, attr_name)
+                except Exception:
+                    continue
 
-                    if isinstance(attr, HookPoint):
-                        attr.name = name
-                        self._hook_registry[name] = attr
-                    elif isinstance(attr, HookPointWrapper):
-                        hook_in_name = f"{name}.hook_in"
-                        hook_out_name = f"{name}.hook_out"
-                        attr.hook_in.name = hook_in_name
-                        attr.hook_out.name = hook_out_name
-                        self._hook_registry[hook_in_name] = attr.hook_in
-                        self._hook_registry[hook_out_name] = attr.hook_out
-                    elif isinstance(attr, nn.Module) and attr is not mod:
-                        scan_module(attr, name)
-                    elif isinstance(attr, (list, tuple)):
-                        for i, item in enumerate(attr):
-                            if isinstance(item, nn.Module):
-                                scan_module(item, f"{name}[{i}]")
+                name = f"{path}.{attr_name}" if path else attr_name
+
+                if isinstance(attr, HookPoint):
+                    attr.name = name
+                    self._hook_registry[name] = attr
+                elif isinstance(attr, HookPointWrapper):
+                    hook_in_name = f"{name}.hook_in"
+                    hook_out_name = f"{name}.hook_out"
+                    attr.hook_in.name = hook_in_name
+                    attr.hook_out.name = hook_out_name
+                    self._hook_registry[hook_in_name] = attr.hook_in
+                    self._hook_registry[hook_out_name] = attr.hook_out
 
             # Check named children
             for child_name, child_module in mod.named_children():
-                if child_name == "original_component" or child_name == "_original_component":
+                if (
+                    child_name == "original_component"
+                    or child_name == "_original_component"
+                    or child_name == "original_model"
+                ):
                     continue
                 child_path = f"{path}.{child_name}" if path else child_name
                 scan_module(child_module, child_path)
@@ -209,15 +203,7 @@ class TransformerBridge(nn.Module):
     def hook_dict(self) -> dict[str, HookPoint]:
         """Get all HookPoint objects in the model for compatibility with HookedTransformer."""
         # Start with the current registry
-        hooks = self._hook_registry.copy()
-
-        # Add aliases if compatibility mode is enabled
-        if self.compatibility_mode:
-            for alias_name, target_name in self.hook_aliases.items():
-                if target_name in hooks:
-                    hooks[alias_name] = hooks[target_name]
-
-        return hooks
+        return self._hook_registry.copy()
 
     def _discover_hooks(self) -> dict[str, HookPoint]:
         """Get all HookPoint objects from the registry (deprecated, use hook_dict)."""
@@ -238,10 +224,10 @@ class TransformerBridge(nn.Module):
             return self.__dict__[name]
 
         # Check if this is a hook alias when compatibility mode is enabled
-        if self.compatibility_mode and name in self.hook_aliases:
-            target_name = self.hook_aliases[name]
-            if target_name in self._hook_registry:
-                return self._hook_registry[target_name]
+        if self.compatibility_mode:
+            resolved_hook = resolve_alias(self, name, self.hook_aliases)
+            if resolved_hook is not None:
+                return resolved_hook
 
         return super().__getattr__(name)
 
@@ -405,6 +391,26 @@ class TransformerBridge(nn.Module):
             tokens = tokens.to(self.cfg.device)
 
         return tokens
+
+    # ==================== PAST KV CACHE HELPERS ====================
+
+    def get_pos_offset(self, past_kv_cache, batch_size: int) -> int:
+        """Compute position offset from a TransformerLensKeyValueCache-like object.
+
+        Mirrors HookedTransformer.get_pos_offset behavior for compatibility.
+        """
+        if past_kv_cache is None:
+            return 0
+        cached_batch_size, cache_ctx_length, num_heads_in_cache, d_head_in_cache = past_kv_cache[
+            0
+        ].past_keys.shape
+        assert cached_batch_size == batch_size
+        if getattr(self.cfg, "n_key_value_heads", None) is None:
+            assert num_heads_in_cache == self.cfg.n_heads
+        else:
+            assert num_heads_in_cache == getattr(self.cfg, "n_key_value_heads")
+        assert d_head_in_cache == self.cfg.d_head
+        return cache_ctx_length
 
     def to_string(
         self,
@@ -757,6 +763,9 @@ class TransformerBridge(nn.Module):
         loss_per_token: bool = False,
         prepend_bos: Optional[bool] = None,
         padding_side: Optional[str] = None,
+        past_kv_cache: Optional[TransformerLensKeyValueCache] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        start_at_layer: int = 0,
         **kwargs,
     ) -> Any:
         """Forward pass through the model.
@@ -767,6 +776,8 @@ class TransformerBridge(nn.Module):
             loss_per_token: Whether to return loss per token
             prepend_bos: Whether to prepend BOS token
             padding_side: Which side to pad on
+            past_kv_cache: Optional TransformerLensKeyValueCache for generation
+            start_at_layer: Layer to start forward pass from
             **kwargs: Additional arguments passed to model
 
         Returns:
@@ -777,6 +788,61 @@ class TransformerBridge(nn.Module):
             input_ids = self.to_tokens(input, prepend_bos=prepend_bos, padding_side=padding_side)
         else:
             input_ids = input
+
+        # Handle explicit attention mask
+        if attention_mask is not None:
+            kwargs["attention_mask"] = attention_mask
+
+        # Handle KV cache if provided
+        if past_kv_cache is not None:
+            # Convert TransformerLensKeyValueCache to backend format
+            # Create a list of tuples (keys, values) for each layer in backend format
+            backend_cache = []
+            for entry in past_kv_cache.entries:
+                if entry.past_keys.numel() > 0:  # Only add if there are cached values
+                    # Convert from TL format [batch, pos, n_heads, d_head] to backend format [batch, n_heads, pos, d_head]
+                    cached_keys = entry.past_keys.transpose(1, 2)  # [batch, n_heads, pos, d_head]
+                    cached_values = entry.past_values.transpose(
+                        1, 2
+                    )  # [batch, n_heads, pos, d_head]
+                    backend_cache.append((cached_keys, cached_values))
+                # Note: We skip empty entries rather than adding (None, None) to maintain type consistency
+
+            kwargs["past_key_values"] = backend_cache
+
+            # Handle attention mask from the cache
+            if hasattr(past_kv_cache, "previous_attention_mask"):
+                # Build attention mask that includes past context
+                batch_size = input_ids.shape[0]
+                current_length = input_ids.shape[1]
+                past_length = past_kv_cache.previous_attention_mask.shape[1]
+
+                # Use explicit attention mask if provided, otherwise create one for current tokens
+                if attention_mask is not None:
+                    current_mask = attention_mask
+                else:
+                    current_mask = torch.ones(
+                        batch_size, current_length, dtype=torch.long, device=input_ids.device
+                    )
+
+                # Combine with past attention mask
+                if past_length > 0:
+                    full_attention_mask = torch.cat(
+                        [past_kv_cache.previous_attention_mask, current_mask], dim=1
+                    )
+                else:
+                    full_attention_mask = current_mask
+
+                kwargs["attention_mask"] = full_attention_mask
+
+            # Enable caching for the underlying model
+            kwargs["use_cache"] = True
+        elif "use_past_kv_cache" in kwargs and kwargs["use_past_kv_cache"]:
+            # If use_past_kv_cache is True but no cache provided, enable caching
+            kwargs["use_cache"] = True
+
+        # Store reference to original TransformerLensKeyValueCache for updating
+        original_tl_cache = past_kv_cache
 
         # Run model
         if hasattr(self.original_model, "forward"):
@@ -789,7 +855,84 @@ class TransformerBridge(nn.Module):
                 kwargs["labels"] = input_ids
             output = self.original_model(input_ids, **kwargs)
 
+        # Update TransformerLensKeyValueCache if it was provided and model returned new cache
+        if (
+            original_tl_cache is not None
+            and hasattr(output, "past_key_values")
+            and output.past_key_values is not None
+        ):
+            # Update the TransformerLensKeyValueCache with new key-value pairs from backend output
+            backend_cache = output.past_key_values
+
+            # Handle different backend cache formats
+            if isinstance(backend_cache, (list, tuple)):
+                # Standard format: list/tuple of (keys, values) tuples for each layer
+                for layer_idx, entry in enumerate(original_tl_cache.entries):
+                    if layer_idx < len(backend_cache):
+                        layer_cache = backend_cache[layer_idx]
+                        if isinstance(layer_cache, (list, tuple)) and len(layer_cache) >= 2:
+                            new_keys, new_values = layer_cache[0], layer_cache[1]
+                            if new_keys is not None and new_values is not None:
+                                # Convert from backend format [batch, n_heads, seq_len, d_head] to TL format [batch, seq_len, n_heads, d_head]
+                                new_keys_tl = new_keys.transpose(1, 2)
+                                new_values_tl = new_values.transpose(1, 2)
+
+                                # Only take the new tokens (not the cached ones)
+                                new_token_count = input_ids.shape[1]
+                                if new_keys_tl.shape[1] >= new_token_count:
+                                    new_keys_tl = new_keys_tl[:, -new_token_count:, :, :]
+                                    new_values_tl = new_values_tl[:, -new_token_count:, :, :]
+                                    entry.append(new_keys_tl, new_values_tl)
+            else:
+                # Handle cache objects with different APIs (like DynamicCache)
+                for layer_idx, entry in enumerate(original_tl_cache.entries):
+                    new_keys = None
+                    new_values = None
+
+                    # Try different access patterns
+                    if (
+                        hasattr(backend_cache, "layers")
+                        and hasattr(backend_cache.layers, "__len__")
+                        and layer_idx < len(backend_cache.layers)
+                    ):
+                        # New API: cache.layers[idx].keys/values
+                        layer = backend_cache.layers[layer_idx]
+                        if hasattr(layer, "keys") and hasattr(layer, "values"):
+                            new_keys = layer.keys
+                            new_values = layer.values
+                    elif hasattr(backend_cache, "key_cache") and hasattr(
+                        backend_cache, "value_cache"
+                    ):
+                        # Legacy API: cache.key_cache[idx], cache.value_cache[idx]
+                        if hasattr(backend_cache.key_cache, "__len__") and layer_idx < len(
+                            backend_cache.key_cache
+                        ):
+                            new_keys = backend_cache.key_cache[layer_idx]
+                            new_values = backend_cache.value_cache[layer_idx]
+
+                    if new_keys is not None and new_values is not None:
+                        # Convert from backend format to TL format and append to cache entry
+                        new_keys_tl = new_keys.transpose(1, 2)  # [batch, seq_len, n_heads, d_head]
+                        new_values_tl = new_values.transpose(
+                            1, 2
+                        )  # [batch, seq_len, n_heads, d_head]
+
+                        # Only take the new tokens (not the cached ones)
+                        new_token_count = input_ids.shape[1]
+                        if new_keys_tl.shape[1] >= new_token_count:
+                            new_keys_tl = new_keys_tl[:, -new_token_count:, :, :]
+                            new_values_tl = new_values_tl[:, -new_token_count:, :, :]
+                            entry.append(new_keys_tl, new_values_tl)
+
+            # Update attention mask in the cache
+            current_mask = torch.ones(
+                input_ids.shape[0], input_ids.shape[1], dtype=torch.long, device=input_ids.device
+            )
+            original_tl_cache.append_attention_mask(current_mask)
+
         # Handle different return types
+        if return_type == "raw":
+            return output
         if return_type == "logits":
             if hasattr(output, "logits"):
                 return output.logits
@@ -951,7 +1094,7 @@ class TransformerBridge(nn.Module):
             return cache_hook
 
         # Use cached hooks instead of re-discovering them
-        hook_dict = self.hook_dict
+        hook_dict = self._hook_registry
 
         # Filter hooks based on names_filter
         for hook_name, hook in hook_dict.items():
@@ -995,7 +1138,7 @@ class TransformerBridge(nn.Module):
 
                     # Add hook to the output of the last layer to be processed
                     block_hook_name = f"blocks.{last_layer_to_process}.hook_out"
-                    hook_dict = self.hook_dict
+                    hook_dict = self._hook_registry
                     if block_hook_name in hook_dict:
                         hook_dict[block_hook_name].add_hook(stop_hook)
                         hooks.append((hook_dict[block_hook_name], block_hook_name))
@@ -1040,7 +1183,15 @@ class TransformerBridge(nn.Module):
             # If compatibility mode is enabled, we need to handle aliases
             # Create duplicate cache entries for TransformerLens compatibility
             # Use the aliases collected from components (reverse mapping: new -> old)
-            reverse_aliases = {new_name: old_name for old_name, new_name in aliases.items()}
+            # Handle the case where some alias values might be lists
+            reverse_aliases = {}
+            for old_name, new_name in aliases.items():
+                if isinstance(new_name, list):
+                    # For list values, create a mapping for each item in the list
+                    for single_new_name in new_name:
+                        reverse_aliases[single_new_name] = old_name
+                else:
+                    reverse_aliases[new_name] = old_name
 
             # Create duplicate entries in cache
             cache_items_to_add = {}
@@ -1056,8 +1207,16 @@ class TransformerBridge(nn.Module):
 
             # Add cache entries for all aliases (both hook and cache aliases)
             for alias_name, target_name in aliases.items():
-                if target_name in cache and alias_name not in cache:
-                    cache[alias_name] = cache[target_name]
+                # Handle both string and list target names
+                if isinstance(target_name, list):
+                    # For list targets, find the first one that exists in cache
+                    for single_target in target_name:
+                        if single_target in cache and alias_name not in cache:
+                            cache[alias_name] = cache[single_target]
+                            break
+                else:
+                    if target_name in cache and alias_name not in cache:
+                        cache[alias_name] = cache[target_name]
 
         if return_cache_object:
             cache_obj = ActivationCache(cache, self, has_batch_dim=not remove_batch_dim)
@@ -1120,7 +1279,7 @@ class TransformerBridge(nn.Module):
 
                 # Add hook to the output of the last layer to be processed
                 block_hook_name = f"blocks.{last_layer_to_process}.hook_out"
-                hook_dict = self.hook_dict
+                hook_dict = self._hook_registry
                 if block_hook_name in hook_dict:
                     add_hook_to_point(hook_dict[block_hook_name], stop_hook, block_hook_name)
 
@@ -1150,7 +1309,7 @@ class TransformerBridge(nn.Module):
 
                 if isinstance(hook_name_or_filter, str):
                     # Direct hook name - check for aliases first
-                    hook_dict = self.hook_dict
+                    hook_dict = self._hook_registry
                     actual_hook_name = hook_name_or_filter
 
                     # If this is an alias, resolve it to the actual hook name
@@ -1161,7 +1320,7 @@ class TransformerBridge(nn.Module):
                         add_hook_to_point(hook_dict[actual_hook_name], hook_fn, actual_hook_name)
                 else:
                     # Filter function
-                    hook_dict = self.hook_dict
+                    hook_dict = self._hook_registry
                     for name, hook_point in hook_dict.items():
                         if hook_name_or_filter(name):
                             add_hook_to_point(hook_point, hook_fn, name)
@@ -1247,15 +1406,29 @@ class TransformerBridge(nn.Module):
                 "do_sample": do_sample,
                 "temperature": temperature,
             }
+
+            # Handle KV cache parameter
+            if use_past_kv_cache:
+                gen_kwargs["use_cache"] = True
+            else:
+                gen_kwargs["use_cache"] = False
+
+            # Add optional parameters
             if top_k is not None:
                 gen_kwargs["top_k"] = top_k
             if top_p is not None:
                 gen_kwargs["top_p"] = top_p
             if eos_token_id is not None:
                 gen_kwargs["eos_token_id"] = eos_token_id
+            if (
+                stop_at_eos
+                and eos_token_id is None
+                and hasattr(self.tokenizer, "eos_token_id")
+                and self.tokenizer.eos_token_id is not None
+            ):
+                gen_kwargs["eos_token_id"] = self.tokenizer.eos_token_id
 
-            if not hasattr(self.original_model, "generate"):
-                raise RuntimeError("Underlying model does not support generate method.")
+            # Call the original model's generate method
             output_ids = self.original_model.generate(input_ids, **gen_kwargs)  # type: ignore[operator]
 
             # Handle return type
@@ -1275,7 +1448,136 @@ class TransformerBridge(nn.Module):
             else:
                 return output_ids
         else:
-            raise RuntimeError("Underlying model does not support generate method.")
+            # Fallback to custom implementation if original model doesn't have generate method
+            # Handle input tokenization
+            if isinstance(input, (str, list)):
+                input_ids = self.to_tokens(
+                    input, prepend_bos=prepend_bos, padding_side=padding_side
+                )
+            else:
+                input_ids = input
+
+            if input_ids.ndim == 1:
+                input_ids = input_ids.unsqueeze(0)
+
+            batch_size, ctx_length = input_ids.shape[0], input_ids.shape[1]
+            device = input_ids.device
+
+            # Handle EOS token
+            stop_tokens = []
+            eos_token_for_padding = 0
+            if stop_at_eos:
+                if eos_token_id is None:
+                    if (
+                        hasattr(self.tokenizer, "eos_token_id")
+                        and self.tokenizer.eos_token_id is not None
+                    ):
+                        eos_token_id = self.tokenizer.eos_token_id
+                    else:
+                        raise ValueError(
+                            "Must pass eos_token_id if stop_at_eos is True and tokenizer has no eos_token_id"
+                        )
+
+                if isinstance(eos_token_id, int):
+                    stop_tokens = [eos_token_id]
+                    eos_token_for_padding = eos_token_id
+                else:
+                    stop_tokens = eos_token_id
+                    eos_token_for_padding = (
+                        self.tokenizer.eos_token_id
+                        if hasattr(self.tokenizer, "eos_token_id")
+                        and self.tokenizer.eos_token_id is not None
+                        else eos_token_id[0]
+                    )
+
+            # Track finished sequences
+            finished_sequences = torch.zeros(batch_size, dtype=torch.bool, device=device)
+
+            # Initialize a TL cache object if using a HookedTransformer backend and caching is enabled
+            past_kv_cache_obj = None
+            if use_past_kv_cache and getattr(
+                self.original_model.__class__, "__name__", ""
+            ).endswith("HookedTransformer"):
+                past_kv_cache_obj = TransformerLensKeyValueCache.init_cache(
+                    self.cfg, device, batch_size
+                )
+
+            # Generate tokens
+            self.eval()
+            sampled_tokens_list: list[torch.Tensor] = []
+
+            for index in tqdm.tqdm(range(max_new_tokens), disable=not verbose):
+                # Build the current sequence (use caching by feeding only the last token when enabled)
+                if use_past_kv_cache and index > 0:
+                    step_input = sampled_tokens_list[-1]
+                else:
+                    step_input = (
+                        input_ids
+                        if index == 0
+                        else torch.cat([input_ids] + sampled_tokens_list, dim=1)
+                    )
+
+                # Forward pass with optional KV cache (delegated to underlying model)
+                logits = self.forward(
+                    step_input,
+                    return_type="logits",
+                    prepend_bos=prepend_bos,
+                    padding_side=padding_side,
+                    past_kv_cache=past_kv_cache_obj,
+                    use_past_kv_cache=use_past_kv_cache,
+                )
+
+                # Get logits for the last position
+                final_logits = logits[:, -1, :]
+
+                # Sample next token
+                if do_sample:
+                    sampled_tokens = utils.sample_logits(
+                        final_logits,
+                        top_k=top_k,
+                        top_p=top_p,
+                        temperature=temperature,
+                    ).to(device)
+                else:
+                    sampled_tokens = final_logits.argmax(-1).to(device)
+
+                sampled_tokens_list.append(sampled_tokens.unsqueeze(1))
+
+                # Handle EOS tokens
+                if stop_at_eos:
+                    sampled_tokens[finished_sequences] = eos_token_for_padding
+                    finished_sequences.logical_or_(
+                        torch.isin(
+                            sampled_tokens.to(device),
+                            torch.tensor(stop_tokens).to(device),
+                        )
+                    )
+
+                # Stop if all sequences are finished
+                if stop_at_eos and finished_sequences.all():
+                    break
+
+            # Combine all generated tokens
+            sampled_tokens = torch.cat(sampled_tokens_list, dim=1)
+            output_tokens = torch.cat((input_ids, sampled_tokens), dim=1)
+
+            # Handle return type
+            if return_type == "input":
+                if isinstance(input, (str, list)):
+                    return_type = "str"
+                else:
+                    return_type = "tokens"
+
+            if return_type == "str":
+                decoded_texts = [
+                    self.tokenizer.decode(tokens, skip_special_tokens=True)
+                    for tokens in output_tokens
+                ]
+                return decoded_texts[0] if len(decoded_texts) == 1 else decoded_texts
+            elif return_type == "tokens":
+                return output_tokens
+            else:
+                return output_tokens
 
     # ==================== UTILITY METHODS ====================
 
@@ -1315,6 +1617,26 @@ class TransformerBridge(nn.Module):
             Self for chaining
         """
         return self.to(torch.device("cpu"))  # type: ignore
+
+    def get_embeddings(self, tokens: torch.Tensor) -> torch.Tensor:
+        """Get embeddings for tokens.
+
+        Args:
+            tokens: Input tokens
+
+        Returns:
+            Token embeddings
+        """
+        # Use the embed component if available
+        if hasattr(self, "embed") and hasattr(self.embed, "weight"):
+            return torch.nn.functional.embedding(tokens, self.embed.weight)
+        else:
+            # Fallback to using the underlying model's embedding layer
+            if hasattr(self.original_model, "get_input_embeddings"):
+                embedding_layer = self.original_model.get_input_embeddings()  # type: ignore[operator]
+                return embedding_layer(tokens)
+            else:
+                raise NotImplementedError("No embedding method available")
 
     def mps(self) -> "TransformerBridge":
         """Move model to MPS.

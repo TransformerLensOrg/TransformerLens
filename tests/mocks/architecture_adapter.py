@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import pytest
 import torch.nn as nn
 
+from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
@@ -19,8 +20,17 @@ class MockArchitectureAdapter(ArchitectureAdapter):
 
     def __init__(self, cfg=None):
         if cfg is None:
-            # Create a minimal config for testing
-            cfg = SimpleNamespace(d_mlp=512, intermediate_size=512, default_prepend_bos=True)
+            # Create a minimal TransformerBridgeConfig for testing
+            cfg = TransformerBridgeConfig(
+                d_model=512,
+                d_head=64,
+                n_layers=2,
+                n_ctx=1024,
+                d_vocab=1000,
+                d_mlp=2048,
+                default_prepend_bos=True,
+                architecture="GPT2LMHeadModel",  # Default test architecture
+            )
         super().__init__(cfg)
         # Use actual bridge instances instead of tuples
         # Provide minimal config to components that require it

@@ -10,11 +10,13 @@ from better_abc import abstract_attribute
 from jaxtyping import Float, Int
 from transformers.utils.import_utils import is_bitsandbytes_available
 
+from transformer_lens.cache.key_value_cache_entry import (
+    TransformerLensKeyValueCacheEntry,
+)
 from transformer_lens.components.rms_norm import RMSNorm
+from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookPoint
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
-from transformer_lens.past_key_value_caching import HookedTransformerKeyValueCacheEntry
 from transformer_lens.utilities.attention import complex_attn_linear, simple_attn_linear
 from transformer_lens.utils import get_offset_position_ids
 
@@ -195,7 +197,7 @@ class AbstractAttention(ABC, nn.Module):
             Float[torch.Tensor, "batch kv_pos head_index d_model"],
             Float[torch.Tensor, "batch kv_pos kv_head_index d_model"],
         ],
-        past_kv_cache_entry: Optional[HookedTransformerKeyValueCacheEntry] = None,
+        past_kv_cache_entry: Optional[TransformerLensKeyValueCacheEntry] = None,
         additive_attention_mask: Optional[Float[torch.Tensor, "batch 1 1 kv_pos"]] = None,
         attention_mask: Optional[Int[torch.Tensor, "batch offset_pos"]] = None,
         position_bias: Optional[Float[torch.Tensor, "1 head_index pos kv_pos"]] = None,

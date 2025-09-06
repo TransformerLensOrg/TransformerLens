@@ -42,6 +42,10 @@ from typing_extensions import Literal
 import transformer_lens.loading_from_pretrained as loading
 import transformer_lens.utils as utils
 from transformer_lens.ActivationCache import ActivationCache
+
+# Note - activation cache is used with run_with_cache, past_key_value_caching is used for
+# generation.
+from transformer_lens.cache.key_value_cache import TransformerLensKeyValueCache
 from transformer_lens.components import (
     Embed,
     LayerNorm,
@@ -52,15 +56,15 @@ from transformer_lens.components import (
     TransformerBlock,
     Unembed,
 )
+from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookedRootModule, HookPoint
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.loading_from_pretrained import NON_HF_HOSTED_MODEL_NAMES
-
-# Note - activation cache is used with run_with_cache, past_key_value_caching is used for
-# generation.
-from transformer_lens.past_key_value_caching import HookedTransformerKeyValueCache
-from transformer_lens.utilities import devices
+from transformer_lens.utilities import (
+    get_best_available_device,
+    get_device_for_block_index,
+)
+from transformer_lens.utilities.devices import move_to_and_update_config
 from transformer_lens.utils import (
     USE_DEFAULT_VALUE,
     init_kaiming_normal_,
@@ -296,7 +300,7 @@ class HookedTransformer(HookedRootModule):
         device=None,
     ):
         if device is None:
-            device = devices.get_device_for_block_index(0, self.cfg)
+            device = get_device_for_block_index(0, self.cfg)
 
         if tokens is None:
             # Because tokens only need for defining batch size and sequence length, we can simply synthesize them
@@ -341,7 +345,7 @@ class HookedTransformer(HookedRootModule):
         prepend_bos: Optional[Union[bool, None]] = USE_DEFAULT_VALUE,
         padding_side: Optional[Union[Literal["left", "right"], None]] = USE_DEFAULT_VALUE,
         attention_mask: Optional[torch.Tensor] = None,
-        past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
+        past_kv_cache: Optional[TransformerLensKeyValueCache] = None,
     ) -> Tuple[
         Float[torch.Tensor, "batch pos d_model"],  # residual
         Optional[Int[torch.Tensor, "batch pos"]],  # tokens
@@ -359,7 +363,7 @@ class HookedTransformer(HookedRootModule):
             padding_side ([Literal["left", "right"], optional): Overrides
                 self.tokenizer.padding_side. Specifies which side to pad when tokenizing
                 multiple strings of different lengths.
-            past_kv_cache (HookedTransformerKeyValueCache, optional): If passed, we're doing caching
+            past_kv_cache (TransformerLensKeyValueCache, optional): If passed, we're doing caching
                 and attention_mask will be stored in the cache.
         """
         if isinstance(input, str) or isinstance(input, list):
@@ -375,7 +379,7 @@ class HookedTransformer(HookedRootModule):
             # If tokens are a rank 1 tensor, add a dummy batch dimension to avoid things breaking.
             tokens = tokens[None]
         if tokens.device.type != self.cfg.device:
-            tokens = tokens.to(devices.get_device_for_block_index(0, self.cfg))
+            tokens = tokens.to(get_device_for_block_index(0, self.cfg))
 
         if (
             (self.tokenizer and self.tokenizer.padding_side == "left")
@@ -397,7 +401,7 @@ class HookedTransformer(HookedRootModule):
                 f"Attention mask shape {attention_mask.shape} does not match tokens shape "
                 f"{tokens.shape}"
             )
-            attention_mask = attention_mask.to(devices.get_device_for_block_index(0, self.cfg))
+            attention_mask = attention_mask.to(get_device_for_block_index(0, self.cfg))
             if past_kv_cache is not None:
                 # past_kv_cache is not None, so we're doing caching.
                 # We need to extend the previous attention_mask.
@@ -437,7 +441,7 @@ class HookedTransformer(HookedRootModule):
         shortformer_pos_embed: Optional[Float[torch.Tensor, "batch pos d_model"]] = None,
         attention_mask: Optional[torch.Tensor] = None,  # [batch pos]
         stop_at_layer: Optional[int] = None,
-        past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
+        past_kv_cache: Optional[TransformerLensKeyValueCache] = None,
     ) -> Loss:
         ...
 
@@ -454,7 +458,7 @@ class HookedTransformer(HookedRootModule):
         shortformer_pos_embed: Optional[Float[torch.Tensor, "batch pos d_model"]] = None,
         attention_mask: Optional[torch.Tensor] = None,  # [batch pos]
         stop_at_layer: Optional[int] = None,
-        past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
+        past_kv_cache: Optional[TransformerLensKeyValueCache] = None,
     ) -> Loss:
         ...
 
@@ -471,7 +475,7 @@ class HookedTransformer(HookedRootModule):
         shortformer_pos_embed: Optional[Float[torch.Tensor, "batch pos d_model"]] = None,
         attention_mask: Optional[torch.Tensor] = None,  # [batch pos]
         stop_at_layer: Optional[int] = None,
-        past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
+        past_kv_cache: Optional[TransformerLensKeyValueCache] = None,
     ) -> Tuple[Float[torch.Tensor, "batch pos d_vocab"], Loss]:
         ...
 
@@ -488,7 +492,7 @@ class HookedTransformer(HookedRootModule):
         shortformer_pos_embed: Optional[Float[torch.Tensor, "batch pos d_model"]] = None,
         attention_mask: Optional[torch.Tensor] = None,  # [batch pos]
         stop_at_layer: Optional[int] = None,
-        past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
+        past_kv_cache: Optional[TransformerLensKeyValueCache] = None,
     ) -> None:
         ...
 
@@ -509,7 +513,7 @@ class HookedTransformer(HookedRootModule):
         shortformer_pos_embed: Optional[Float[torch.Tensor, "batch pos d_model"]] = None,
         attention_mask: Optional[torch.Tensor] = None,  # [batch pos]
         stop_at_layer: Optional[int] = None,
-        past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
+        past_kv_cache: Optional[TransformerLensKeyValueCache] = None,
     ) -> Union[
         None,
         Float[torch.Tensor, "batch pos d_vocab"],
@@ -566,7 +570,7 @@ class HookedTransformer(HookedRootModule):
                 negative indexing. Useful for analysis of intermediate layers, eg finding neuron
                 activations in layer 3 of a 24 layer model. Defaults to None (run the full model).
                 If not None, we return the last residual stream computed.
-            past_kv_cache Optional[HookedTransformerKeyValueCache]: If not None, keys and values
+            past_kv_cache Optional[TransformerLensKeyValueCache]: If not None, keys and values
                 will be stored for every attention head (unless the cache is frozen). If there are
                 keys and values already in the cache, these will be prepended to the keys and values
                 for the new input, so that the new tokens can pay attention to previous tokens. This
@@ -610,15 +614,15 @@ class HookedTransformer(HookedRootModule):
                 # Note that each block includes skip connections, so we don't need
                 # residual + block(residual)
                 # If we're using multiple GPUs, we need to send the residual and shortformer_pos_embed to the correct GPU
-                residual = residual.to(devices.get_device_for_block_index(i, self.cfg))
+                residual = residual.to(get_device_for_block_index(i, self.cfg))
                 if shortformer_pos_embed is not None:
                     shortformer_pos_embed = shortformer_pos_embed.to(
-                        devices.get_device_for_block_index(i, self.cfg)
+                        get_device_for_block_index(i, self.cfg)
                     )
 
                 residual = block(
                     residual,
-                    # Cache contains a list of HookedTransformerKeyValueCache objects, one for each
+                    # Cache contains a list of TransformerLensKeyValueCache objects, one for each
                     # block
                     past_kv_cache_entry=past_kv_cache[i] if past_kv_cache is not None else None,
                     shortformer_pos_embed=shortformer_pos_embed,
@@ -1092,7 +1096,7 @@ class HookedTransformer(HookedRootModule):
         device_or_dtype: Union[torch.device, str, torch.dtype],
         print_details: bool = True,
     ):
-        return devices.move_to_and_update_config(self, device_or_dtype, print_details)
+        return move_to_and_update_config(self, device_or_dtype, print_details)
 
     def cuda(self: T, device: Optional[Union[int, torch.device]] = None) -> T:
         # TODO: Add support for kwargs
@@ -1110,17 +1114,17 @@ class HookedTransformer(HookedRootModule):
         return self.to(torch.device("mps"))
 
     def move_model_modules_to_device(self):
-        self.embed.to(devices.get_best_available_device(self.cfg))
-        self.hook_embed.to(devices.get_best_available_device(self.cfg))
+        self.embed.to(get_best_available_device(self.cfg))
+        self.hook_embed.to(get_best_available_device(self.cfg))
         if self.cfg.positional_embedding_type != "rotary":
-            self.pos_embed.to(devices.get_best_available_device(self.cfg))
-            self.hook_pos_embed.to(devices.get_best_available_device(self.cfg))
+            self.pos_embed.to(get_best_available_device(self.cfg))
+            self.hook_pos_embed.to(get_best_available_device(self.cfg))
 
         if hasattr(self, "ln_final"):
-            self.ln_final.to(devices.get_best_available_device(self.cfg))
-        self.unembed.to(devices.get_best_available_device(self.cfg))
+            self.ln_final.to(get_best_available_device(self.cfg))
+        self.unembed.to(get_best_available_device(self.cfg))
         for i, block in enumerate(self.blocks):
-            block.to(devices.get_best_available_device(self.cfg))
+            block.to(get_best_available_device(self.cfg))
 
     @classmethod
     def from_pretrained(
@@ -2208,10 +2212,10 @@ class HookedTransformer(HookedRootModule):
 
             input_tokens = input if input_type in ["str", "tokens"] else None
             batch_size, ctx_length = input.shape[0], input.shape[1]
-            device = devices.get_device_for_block_index(0, self.cfg)
+            device = get_device_for_block_index(0, self.cfg)
             input = input.to(device)
             if use_past_kv_cache:
-                past_kv_cache = HookedTransformerKeyValueCache.init_cache(
+                past_kv_cache = TransformerLensKeyValueCache.init_cache(
                     self.cfg, self.cfg.device, batch_size
                 )
             else:
@@ -2324,14 +2328,14 @@ class HookedTransformer(HookedRootModule):
                             )
                             if "sampled_tokens" in locals()
                             else input_tokens,
-                        ).to(devices.get_device_for_block_index(0, self.cfg))
+                        ).to(get_device_for_block_index(0, self.cfg))
                     else:
                         sampled_tokens = utils.sample_logits(
                             final_logits, top_k=top_k, top_p=top_p, temperature=temperature
-                        ).to(devices.get_device_for_block_index(0, self.cfg))
+                        ).to(get_device_for_block_index(0, self.cfg))
                 else:
                     sampled_tokens = final_logits.argmax(-1).to(
-                        devices.get_device_for_block_index(0, self.cfg)
+                        get_device_for_block_index(0, self.cfg)
                     )
                 sampled_tokens_list.append(sampled_tokens.unsqueeze(1))
                 if stop_at_eos:

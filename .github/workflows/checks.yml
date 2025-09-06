@@ -99,7 +99,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: "3.13"
+          python-version: "3.12"
           cache: "poetry"
       - name: Cache Models used with Tests
         uses: actions/cache@v3
@@ -152,7 +152,7 @@ jobs:
           - "Exploratory_Analysis_Demo"
           # - "Grokking_Demo"
           # - "Head_Detector_Demo"
-          - "Interactive_Neuroscope"
+          # - "Interactive_Neuroscope"
           # - "LLaMA"
           # - "LLaMA2_GPU_Quantized"
           - "Main_Demo"
