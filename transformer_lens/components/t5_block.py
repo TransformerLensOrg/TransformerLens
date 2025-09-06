@@ -4,11 +4,13 @@ import torch
 import torch.nn as nn
 from jaxtyping import Float
 
+from transformer_lens.cache.key_value_cache_entry import (
+    TransformerLensKeyValueCacheEntry,
+)
 from transformer_lens.components import RMSNorm, T5Attention
 from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.factories.mlp_factory import MLPFactory
 from transformer_lens.hook_points import HookPoint
-from transformer_lens.past_key_value_caching import HookedTransformerKeyValueCacheEntry
 from transformer_lens.utils import repeat_along_head_dimension
 
 
@@ -57,14 +59,14 @@ class T5Block(nn.Module):
         ] = None,
         position_bias: Optional[Float[torch.Tensor, "1 head_index pos kv_pos"]] = None,
         encoder_hidden_states: Optional[Float[torch.Tensor, "batch encoder_pos d_model"]] = None,
-        past_kv_cache_entry: Optional[HookedTransformerKeyValueCacheEntry] = None,
+        past_kv_cache_entry: Optional[TransformerLensKeyValueCacheEntry] = None,
     ) -> Float[torch.Tensor, "batch pos d_model"]:
         """A single Transformer block.
 
         Args:
             resid_pre (torch.Tensor): The residual stream - shape [batch, pos, d_model]
             encoder_hidden_states (torch.Tensor): The hidden states of the encoder for cross attention - shape [batch, encoder_pos, d_model]
-            cache (HookedTransformerKeyValueCache): A cache of previous keys and values, used only when generating text. Defaults to None.
+            cache (TransformerLensKeyValueCache): A cache of previous keys and values, used only when generating text. Defaults to None.
             attention_mask (torch.Tensor, optional): The attention mask for padded tokens. Defaults to None.
 
         Returns:

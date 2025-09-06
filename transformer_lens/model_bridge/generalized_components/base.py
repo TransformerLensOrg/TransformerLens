@@ -200,16 +200,17 @@ class GeneralizedComponent(nn.Module):
         if hasattr(self, "_modules") and name in self._modules:
             return self._modules[name]
 
-        # Check if this is a deprecated hook alias
-        resolved_hook = resolve_alias(self, name, self.hook_aliases)
-        if resolved_hook is not None and self.compatibility_mode == True:
-            return resolved_hook
+        # Only try to resolve aliases if compatibility mode is enabled
+        if self.compatibility_mode == True:
+            # Check if this is a deprecated hook alias
+            resolved_hook = resolve_alias(self, name, self.hook_aliases)
+            if resolved_hook is not None:
+                return resolved_hook
 
-        # If we reach here, we can resolve the alias normally
-        resolved_property = resolve_alias(self, name, self.property_aliases)
-
-        if resolved_property is not None and self.compatibility_mode == True:
-            return resolved_property
+            # Check if this is a deprecated property alias
+            resolved_property = resolve_alias(self, name, self.property_aliases)
+            if resolved_property is not None:
+                return resolved_property
 
         # Avoid recursion by checking if we're looking for original_component
         if name == "original_component":
