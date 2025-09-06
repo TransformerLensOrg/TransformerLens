@@ -6,7 +6,9 @@ key-value caches used in transformer models.
 
 from typing import Optional
 
-from transformer_lens.past_key_value_caching import HookedTransformerKeyValueCache
+from transformer_lens.cache.key_value_cache import (
+    KeyValueCache as HookedTransformerKeyValueCache,
+)
 
 
 def get_pos_offset(past_kv_cache: Optional[HookedTransformerKeyValueCache], batch_size: int) -> int:

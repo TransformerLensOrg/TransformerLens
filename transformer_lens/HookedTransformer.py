@@ -42,6 +42,12 @@ from typing_extensions import Literal
 import transformer_lens.loading_from_pretrained as loading
 import transformer_lens.utils as utils
 from transformer_lens.ActivationCache import ActivationCache
+
+# Note - activation cache is used with run_with_cache, past_key_value_caching is used for
+# generation.
+from transformer_lens.cache.key_value_cache import (
+    KeyValueCache as HookedTransformerKeyValueCache,
+)
 from transformer_lens.components import (
     Embed,
     LayerNorm,
@@ -56,10 +62,6 @@ from transformer_lens.config.HookedTransformerConfig import HookedTransformerCon
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookedRootModule, HookPoint
 from transformer_lens.loading_from_pretrained import NON_HF_HOSTED_MODEL_NAMES
-
-# Note - activation cache is used with run_with_cache, past_key_value_caching is used for
-# generation.
-from transformer_lens.past_key_value_caching import HookedTransformerKeyValueCache
 from transformer_lens.utilities import (
     get_best_available_device,
     get_device_for_block_index,

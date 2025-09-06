@@ -2,7 +2,9 @@ import pytest
 import torch
 
 from transformer_lens import HookedTransformer, utils
-from transformer_lens.past_key_value_caching import HookedTransformerKeyValueCache
+from transformer_lens.cache.key_value_cache import (
+    KeyValueCache as HookedTransformerKeyValueCache,
+)
 
 
 class TestLeftPadding:

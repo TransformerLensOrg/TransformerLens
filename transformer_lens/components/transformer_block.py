@@ -9,6 +9,7 @@ import torch
 import torch.nn as nn
 from jaxtyping import Float, Int
 
+from transformer_lens.cache.key_value_cache_entry import KeyValueCacheEntry
 from transformer_lens.components import (
     Attention,
     GroupedQueryAttention,
@@ -21,7 +22,6 @@ from transformer_lens.components.mlps.can_be_used_as_mlp import CanBeUsedAsMLP
 from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.factories.mlp_factory import MLPFactory
 from transformer_lens.hook_points import HookPoint
-from transformer_lens.past_key_value_caching import HookedTransformerKeyValueCacheEntry
 from transformer_lens.utils import repeat_along_head_dimension
 
 
@@ -102,7 +102,7 @@ class TransformerBlock(nn.Module):
         self,
         resid_pre: Float[torch.Tensor, "batch pos d_model"],
         shortformer_pos_embed: Optional[Float[torch.Tensor, "batch pos d_model"]] = None,
-        past_kv_cache_entry: Optional[HookedTransformerKeyValueCacheEntry] = None,
+        past_kv_cache_entry: Optional[KeyValueCacheEntry] = None,
         attention_mask: Optional[Int[torch.Tensor, "batch offset_pos"]] = None,
     ) -> Float[torch.Tensor, "batch pos d_model"]:
         """A single Transformer block.

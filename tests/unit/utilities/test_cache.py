@@ -6,9 +6,11 @@ This module tests the cache utility functions, particularly the get_pos_offset f
 import pytest
 import torch
 
-from transformer_lens.past_key_value_caching import (
-    HookedTransformerKeyValueCache,
-    HookedTransformerKeyValueCacheEntry,
+from transformer_lens.cache.key_value_cache import (
+    KeyValueCache as HookedTransformerKeyValueCache,
+)
+from transformer_lens.cache.key_value_cache_entry import (
+    KeyValueCacheEntry as HookedTransformerKeyValueCacheEntry,
 )
 from transformer_lens.utilities.cache import get_pos_offset
 
