@@ -13,13 +13,20 @@ class TestMatchHuggingFace:
     def model_name(self, request):
         return request.param
 
+    @pytest.fixture(scope="class")
+    def bridge_model(self, model_name):
+        """Load TransformerBridge once per test class."""
+        return TransformerBridge.boot_transformers(model_name, device="cpu")
+
+    @pytest.fixture(scope="class")
+    def hf_model(self, model_name):
+        """Load HuggingFace model once per test class."""
+        return AutoModelForCausalLM.from_pretrained(model_name, device_map="cpu")
+
     # tests
-    def test_compare_huggingface_mlp_match_local_implementation(self, model_name):
+    def test_compare_huggingface_mlp_match_local_implementation(self, bridge_model, hf_model):
         """Test that TransformerBridge MLP outputs match HuggingFace MLP outputs."""
         try:
-            bridge_model = TransformerBridge.boot_transformers(model_name, device="cpu")
-            hf_model = AutoModelForCausalLM.from_pretrained(model_name, device_map="cpu")
-
             tensor_shape = (3, 5, bridge_model.cfg.d_model)
             test_tensor = torch.randn(tensor_shape)
 
@@ -48,12 +55,9 @@ class TestMatchHuggingFace:
         except Exception as e:
             pytest.fail(f"Unexpected error in MLP comparison: {e}")
 
-    def test_compare_huggingface_attention_match_local_implementation(self, model_name):
+    def test_compare_huggingface_attention_match_local_implementation(self, bridge_model, hf_model):
         """Test that TransformerBridge attention outputs match HuggingFace attention outputs."""
         try:
-            bridge_model = TransformerBridge.boot_transformers(model_name, device="cpu")
-            hf_model = AutoModelForCausalLM.from_pretrained(model_name, device_map="cpu")
-
             batch, pos, d_model = 3, 5, bridge_model.cfg.d_model
             input_tensor = torch.randn(batch, pos, d_model)
 
@@ -113,12 +117,9 @@ class TestMatchHuggingFace:
         except Exception as e:
             pytest.fail(f"Unexpected error in attention comparison: {e}")
 
-    def test_full_model_output_match(self, model_name):
+    def test_full_model_output_match(self, bridge_model, hf_model):
         """Test that full TransformerBridge model output matches HuggingFace model output."""
         try:
-            bridge_model = TransformerBridge.boot_transformers(model_name, device="cpu")
-            hf_model = AutoModelForCausalLM.from_pretrained(model_name, device_map="cpu")
-
             # Test with a simple prompt
             prompt = "The capital of France is"
 
@@ -144,11 +145,9 @@ class TestMatchHuggingFace:
         except Exception as e:
             pytest.fail(f"Unexpected error in full model comparison: {e}")
 
-    def test_tokenizer_consistency(self, model_name):
+    def test_tokenizer_consistency(self, bridge_model):
         """Test that TransformerBridge tokenizer matches HuggingFace tokenizer."""
         try:
-            bridge_model = TransformerBridge.boot_transformers(model_name, device="cpu")
-
             # Test tokenization
             prompt = "Hello, world! This is a test."
             bridge_tokens = bridge_model.to_tokens(prompt)
@@ -171,12 +170,9 @@ class TestMatchHuggingFace:
         except Exception as e:
             pytest.fail(f"Unexpected error in tokenizer consistency: {e}")
 
-    def test_config_consistency(self, model_name):
+    def test_config_consistency(self, bridge_model, hf_model):
         """Test that TransformerBridge config matches HuggingFace config."""
         try:
-            bridge_model = TransformerBridge.boot_transformers(model_name, device="cpu")
-            hf_model = AutoModelForCausalLM.from_pretrained(model_name, device_map="cpu")
-
             bridge_cfg = bridge_model.cfg
             hf_cfg = hf_model.config
 
@@ -199,11 +195,9 @@ class TestMatchHuggingFace:
         except Exception as e:
             pytest.fail(f"Unexpected error in config consistency: {e}")
 
-    def test_weight_access_consistency(self, model_name):
+    def test_weight_access_consistency(self, bridge_model):
         """Test that TransformerBridge weight access provides expected values."""
         try:
-            bridge_model = TransformerBridge.boot_transformers(model_name, device="cpu")
-
             # Test basic weight access patterns
             weight_checks = []
 
