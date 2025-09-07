@@ -7,12 +7,6 @@ import pytest
 import torch
 
 import transformer_lens.utils as utils
-from transformer_lens.model_bridge.generalized_components.joint_qkv_attention import (
-                                                                                      JointQKVAttentionBridge,
-                                                                                      )
-from transformer_lens.model_bridge.generalized_components.joint_qkv_attention import (
-    JointQKVAttentionBridge,
-)
 
 
 class TestJointQKVAttentionBridgeIntegration:
