@@ -211,7 +211,7 @@ def test_joint_qkv_custom_conversion_rule():
     # This should not raise an error
     test_bridge = JointQKVAttentionBridge(
         name="test_joint_qkv_attention_bridge",
-        model_config=bridge.cfg,
+        config=bridge.cfg,
         split_qkv_matrix=lambda x: (x, x, x),  # Dummy function for test
         submodules={},
         qkv_conversion_rule=custom_qkv_conversion_rule,
