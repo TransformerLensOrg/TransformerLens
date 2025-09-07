@@ -127,6 +127,7 @@ class JointQKVAttentionBridge(AttentionBridge):
             Output tensor after qkv linear transformation
         """
 
+        # Fast path: if no hooks are registered, skip expensive reconstruction
         has_hooks = (
             self.q.hook_in.has_hooks()
             or self.k.hook_in.has_hooks()
@@ -136,21 +137,22 @@ class JointQKVAttentionBridge(AttentionBridge):
             or self.v.hook_out.has_hooks()
         )
 
-        if has_hooks:
-            # Apply input hook the same way as the super class
-            hooked_input = self._apply_attention_input_hook(*args, **kwargs)
+        if not has_hooks:
+            # No hooks registered - use fast path through parent
+            return super().forward(*args, **kwargs)
 
-            q_output = self.q(hooked_input)
-            k_output = self.k(hooked_input)
-            v_output = self.v(hooked_input)
+        # Hooks are present - use the full reconstruction path
+        hooked_input = self._apply_attention_input_hook(*args, **kwargs)
 
-            # Reconstruct attention computation using hooked Q, K, V
-            output = self._reconstruct_attention(q_output, k_output, v_output, **kwargs)
-            output = self._process_output(output)
+        q_output = self.q(hooked_input)
+        k_output = self.k(hooked_input)
+        v_output = self.v(hooked_input)
 
-            return output
+        # Reconstruct attention computation using hooked Q, K, V
+        output = self._reconstruct_attention(q_output, k_output, v_output, **kwargs)
+        output = self._process_output(output)
 
-        return super().forward(*args, **kwargs)
+        return output
 
     def _apply_attention_input_hook(self, *args: Any, **kwargs: Any) -> torch.Tensor:
         """Apply attention input hook to the input tensor.
