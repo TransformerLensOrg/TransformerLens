@@ -127,7 +127,6 @@ class JointQKVAttentionBridge(AttentionBridge):
             Output tensor after qkv linear transformation
         """
 
-        # Fast path: if no hooks are registered, skip expensive reconstruction
         has_hooks = (
             self.q.hook_in.has_hooks()
             or self.k.hook_in.has_hooks()
@@ -137,22 +136,21 @@ class JointQKVAttentionBridge(AttentionBridge):
             or self.v.hook_out.has_hooks()
         )
 
-        if not has_hooks:
-            # No hooks registered - use fast path through parent
-            return super().forward(*args, **kwargs)
+        if has_hooks:
+            # Apply input hook the same way as the super class
+            hooked_input = self._apply_attention_input_hook(*args, **kwargs)
 
-        # Hooks are present - use the full reconstruction path
-        hooked_input = self._apply_attention_input_hook(*args, **kwargs)
+            q_output = self.q(hooked_input)
+            k_output = self.k(hooked_input)
+            v_output = self.v(hooked_input)
 
-        q_output = self.q(hooked_input)
-        k_output = self.k(hooked_input)
-        v_output = self.v(hooked_input)
+            # Reconstruct attention computation using hooked Q, K, V
+            output = self._reconstruct_attention(q_output, k_output, v_output, **kwargs)
+            output = self._process_output(output)
 
-        # Reconstruct attention computation using hooked Q, K, V
-        output = self._reconstruct_attention(q_output, k_output, v_output, **kwargs)
-        output = self._process_output(output)
+            return output
 
-        return output
+        return super().forward(*args, **kwargs)
 
     def _apply_attention_input_hook(self, *args: Any, **kwargs: Any) -> torch.Tensor:
         """Apply attention input hook to the input tensor.
@@ -170,14 +168,16 @@ class JointQKVAttentionBridge(AttentionBridge):
         Raises:
             ValueError: If no input tensor is found in args or kwargs
         """
-        # Optimized input tensor extraction - check most common cases first
-        input_tensor = (
-            kwargs.get("query_input")
-            or kwargs.get("hidden_states")
-            or (args[0] if args and isinstance(args[0], torch.Tensor) else None)
-        )
+        # Extract input tensor using the same logic as the parent class
+        input_tensor = None
 
-        if input_tensor is None:
+        if "query_input" in kwargs:
+            input_tensor = kwargs["query_input"]
+        elif "hidden_states" in kwargs:
+            input_tensor = kwargs["hidden_states"]
+        elif len(args) > 0 and isinstance(args[0], torch.Tensor):
+            input_tensor = args[0]
+        else:
             raise ValueError("No input tensor found in args or kwargs")
 
         return self.hook_in(input_tensor)
@@ -189,21 +189,17 @@ class JointQKVAttentionBridge(AttentionBridge):
         original_component = self.original_component
         assert original_component is not None
 
-        # Try to use the original _attn method if available
         if self._has_attn_method:
-            # Cache shape information to avoid repeated access
             q_shape = q.shape
             q_ndim = len(q_shape)
 
             if q_ndim == 4:
-                # Batch transpose operations for better performance
                 q_attn, k_attn, v_attn = q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2)
             elif q_ndim == 3:
                 batch_size, seq_len, hidden_size = q_shape
                 num_heads = int(original_component.num_heads)  # type: ignore[arg-type]
                 head_dim: int = hidden_size // num_heads
 
-                # Combine view and transpose operations for better performance
                 target_shape = (batch_size, seq_len, num_heads, head_dim)
                 q_attn = q.view(target_shape).transpose(1, 2)
                 k_attn = k.view(target_shape).transpose(1, 2)
@@ -218,11 +214,10 @@ class JointQKVAttentionBridge(AttentionBridge):
                 attention_mask=kwargs.get("attention_mask"),
                 head_mask=kwargs.get("head_mask"),
             )
-            # Handle different return formats from _attn method
             if len(attn_result) == 2:
                 attn_output, attn_weights = attn_result
             elif len(attn_result) == 3:
-                attn_output, attn_weights, _ = attn_result  # Ignore past_key_value
+                attn_output, attn_weights, _ = attn_result
             else:
                 raise ValueError(
                     f"Unexpected number of return values from _attn: {len(attn_result)}"
@@ -233,7 +228,6 @@ class JointQKVAttentionBridge(AttentionBridge):
                     attn_output, original_component.num_heads, original_component.head_dim
                 )
             else:
-                # Optimize head merging with fewer intermediate tensors
                 batch_size, num_heads, seq_len, head_dim = attn_output.shape
                 attn_output_merged = (
                     attn_output.transpose(1, 2)
