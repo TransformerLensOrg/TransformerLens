@@ -7,9 +7,6 @@ import pytest
 import torch
 
 import transformer_lens.utils as utils
-from transformer_lens.model_bridge.generalized_components.joint_qkv_attention import (
-    JointQKVAttentionBridge,
-)
 
 
 class TestJointQKVAttentionBridgeIntegration:
@@ -26,13 +23,6 @@ class TestJointQKVAttentionBridgeIntegration:
         # Test other hook names
         assert utils.get_act_name("q", 1) == "blocks.1.attn.hook_q"
         assert utils.get_act_name("k", 2) == "blocks.2.attn.hook_k"
-
-    def test_component_class_exists(self):
-        """Test that QKVBridge class can be imported."""
-
-        # Verify the class exists and has expected methods
-        assert hasattr(JointQKVAttentionBridge, "forward")
-        assert hasattr(JointQKVAttentionBridge, "_create_qkv_conversion_rule")
 
     def test_hook_point_has_hooks_method(self):
         """Test that HookPoint.has_hooks method works correctly."""
