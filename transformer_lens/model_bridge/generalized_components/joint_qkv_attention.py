@@ -103,6 +103,10 @@ class JointQKVAttentionBridge(AttentionBridge):
 
         super().set_original_component(original_component)
 
+        # Cache attribute checks for better performance
+        self._has_attn_method = hasattr(original_component, "_attn")
+        self._has_merge_heads = hasattr(original_component, "_merge_heads")
+
         q_transformation, k_transformation, v_transformation = self.split_qkv_matrix(
             original_component
         )
@@ -164,16 +168,14 @@ class JointQKVAttentionBridge(AttentionBridge):
         Raises:
             ValueError: If no input tensor is found in args or kwargs
         """
-        # Extract input tensor using the same logic as the parent class
-        input_tensor = None
+        # Optimized input tensor extraction - check most common cases first
+        input_tensor = (
+            kwargs.get("query_input")
+            or kwargs.get("hidden_states")
+            or (args[0] if args and isinstance(args[0], torch.Tensor) else None)
+        )
 
-        if "query_input" in kwargs:
-            input_tensor = kwargs["query_input"]
-        elif "hidden_states" in kwargs:
-            input_tensor = kwargs["hidden_states"]
-        elif len(args) > 0 and isinstance(args[0], torch.Tensor):
-            input_tensor = args[0]
-        else:
+        if input_tensor is None:
             raise ValueError("No input tensor found in args or kwargs")
 
         return self.hook_in(input_tensor)
@@ -186,21 +188,26 @@ class JointQKVAttentionBridge(AttentionBridge):
         assert original_component is not None
 
         # Try to use the original _attn method if available
-        if hasattr(original_component, "_attn"):
-            if len(q.shape) == 4:
-                q_attn = q.transpose(1, 2)
-                k_attn = k.transpose(1, 2)
-                v_attn = v.transpose(1, 2)
-            elif len(q.shape) == 3:
-                batch_size, seq_len, hidden_size = q.shape
+        if self._has_attn_method:
+            # Cache shape information to avoid repeated access
+            q_shape = q.shape
+            q_ndim = len(q_shape)
+
+            if q_ndim == 4:
+                # Batch transpose operations for better performance
+                q_attn, k_attn, v_attn = q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2)
+            elif q_ndim == 3:
+                batch_size, seq_len, hidden_size = q_shape
                 num_heads = int(original_component.num_heads)  # type: ignore[arg-type]
                 head_dim: int = hidden_size // num_heads
 
-                q_attn = q.view(batch_size, seq_len, num_heads, head_dim).transpose(1, 2)
-                k_attn = k.view(batch_size, seq_len, num_heads, head_dim).transpose(1, 2)
-                v_attn = v.view(batch_size, seq_len, num_heads, head_dim).transpose(1, 2)
+                # Combine view and transpose operations for better performance
+                target_shape = (batch_size, seq_len, num_heads, head_dim)
+                q_attn = q.view(target_shape).transpose(1, 2)
+                k_attn = k.view(target_shape).transpose(1, 2)
+                v_attn = v.view(target_shape).transpose(1, 2)
             else:
-                raise ValueError(f"Unexpected Q tensor shape: {q.shape}")
+                raise ValueError(f"Unexpected Q tensor shape: {q_shape}")
 
             attn_result = original_component._attn(  # type: ignore[operator]
                 q_attn,
@@ -219,15 +226,17 @@ class JointQKVAttentionBridge(AttentionBridge):
                     f"Unexpected number of return values from _attn: {len(attn_result)}"
                 )
 
-            if hasattr(original_component, "_merge_heads"):
+            if self._has_merge_heads:
                 attn_output_merged = original_component._merge_heads(  # type: ignore[operator]
                     attn_output, original_component.num_heads, original_component.head_dim
                 )
             else:
+                # Optimize head merging with fewer intermediate tensors
                 batch_size, num_heads, seq_len, head_dim = attn_output.shape
-                hidden_size = num_heads * head_dim
                 attn_output_merged = (
-                    attn_output.transpose(1, 2).contiguous().view(batch_size, seq_len, hidden_size)
+                    attn_output.transpose(1, 2)
+                    .contiguous()
+                    .view(batch_size, seq_len, num_heads * head_dim)
                 )
 
             if hasattr(self, "o") and self.o is not None:
