@@ -1,17 +1,24 @@
+import pytest
+
 from transformer_lens.model_bridge import TransformerBridge
 
 MODEL = "gpt2"
-
 prompt = "Hello World!"
-bridge = TransformerBridge.boot_transformers(
-    MODEL,
-    device="cpu",
-    hf_config_overrides={
-        "attn_implementation": "eager",
-    },
-)
 
-bridge.enable_compatibility_mode(disable_warnings=False)
+
+@pytest.fixture(scope="module")
+def bridge():
+    """Load TransformerBridge once per module."""
+    bridge = TransformerBridge.boot_transformers(
+        MODEL,
+        device="cpu",
+        hf_config_overrides={
+            "attn_implementation": "eager",
+        },
+    )
+    bridge.enable_compatibility_mode(disable_warnings=False)
+    return bridge
+
 
 act_names_in_cache = [
     # "hook_embed",
@@ -38,7 +45,7 @@ act_names_in_cache = [
 ]
 
 
-def test_cache_hook_names():
+def test_cache_hook_names(bridge):
     """Test that TransformerBridge cache contains the expected hook names."""
     _, cache = bridge.run_with_cache(prompt)
 
