@@ -11,10 +11,10 @@ PUBLIC_MODEL_NAMES = [
     "gpt2",  # Use the base model name that TransformerBridge supports
 ]
 
-# Additional models to test if available
+# Additional models to test if available (disabled for CI memory constraints)
 EXTENDED_MODEL_NAMES = [
-    "gpt2-medium",
-    "gpt2-large",
+    # "gpt2-medium",  # Disabled for CI memory constraints
+    # "gpt2-large",   # Disabled for CI memory constraints
 ]
 
 # Test with small set by default, expand if HF_TOKEN available
@@ -26,11 +26,21 @@ if os.environ.get("HF_TOKEN", ""):
 class TestTransformerBridgeAcceptance:
     """Acceptance tests for TransformerBridge functionality."""
 
-    @pytest.fixture(params=BRIDGE_TEST_MODELS)
+    @pytest.fixture(autouse=True, scope="class")
+    def cleanup_after_class(self):
+        """Clean up memory after each test class."""
+        yield
+        # Force garbage collection and clear CUDA cache
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        for _ in range(3):
+            gc.collect()
+
+    @pytest.fixture(params=BRIDGE_TEST_MODELS, scope="class")
     def model_name(self, request):
         return request.param
 
-    @pytest.fixture
+    @pytest.fixture(scope="class")
     def bridge_model(self, model_name):
         """Create a TransformerBridge model for testing."""
         try:
