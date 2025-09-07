@@ -127,6 +127,7 @@ class JointQKVAttentionBridge(AttentionBridge):
             Output tensor after qkv linear transformation
         """
 
+        # Fast path: if no hooks are registered, skip expensive reconstruction
         has_hooks = (
             self.q.hook_in.has_hooks()
             or self.k.hook_in.has_hooks()
@@ -136,21 +137,22 @@ class JointQKVAttentionBridge(AttentionBridge):
             or self.v.hook_out.has_hooks()
         )
 
-        if has_hooks:
-            # Apply input hook the same way as the super class
-            hooked_input = self._apply_attention_input_hook(*args, **kwargs)
+        if not has_hooks:
+            # No hooks registered - use fast path through parent
+            return super().forward(*args, **kwargs)
 
-            q_output = self.q(hooked_input)
-            k_output = self.k(hooked_input)
-            v_output = self.v(hooked_input)
+        # Hooks are present - use the full reconstruction path
+        hooked_input = self._apply_attention_input_hook(*args, **kwargs)
 
-            # Reconstruct attention computation using hooked Q, K, V
-            output = self._reconstruct_attention(q_output, k_output, v_output, **kwargs)
-            output = self._process_output(output)
+        q_output = self.q(hooked_input)
+        k_output = self.k(hooked_input)
+        v_output = self.v(hooked_input)
 
-            return output
+        # Reconstruct attention computation using hooked Q, K, V
+        output = self._reconstruct_attention(q_output, k_output, v_output, **kwargs)
+        output = self._process_output(output)
 
-        return super().forward(*args, **kwargs)
+        return output
 
     def _apply_attention_input_hook(self, *args: Any, **kwargs: Any) -> torch.Tensor:
         """Apply attention input hook to the input tensor.
@@ -190,22 +192,20 @@ class JointQKVAttentionBridge(AttentionBridge):
         assert original_component is not None
 
         if self._has_attn_method:
-            q_shape = q.shape
-            q_ndim = len(q_shape)
-
-            if q_ndim == 4:
-                q_attn, k_attn, v_attn = q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2)
-            elif q_ndim == 3:
-                batch_size, seq_len, hidden_size = q_shape
+            if len(q.shape) == 4:
+                q_attn = q.transpose(1, 2)
+                k_attn = k.transpose(1, 2)
+                v_attn = v.transpose(1, 2)
+            elif len(q.shape) == 3:
+                batch_size, seq_len, hidden_size = q.shape
                 num_heads = int(original_component.num_heads)  # type: ignore[arg-type]
                 head_dim: int = hidden_size // num_heads
 
-                target_shape = (batch_size, seq_len, num_heads, head_dim)
-                q_attn = q.view(target_shape).transpose(1, 2)
-                k_attn = k.view(target_shape).transpose(1, 2)
-                v_attn = v.view(target_shape).transpose(1, 2)
+                q_attn = q.view(batch_size, seq_len, num_heads, head_dim).transpose(1, 2)
+                k_attn = k.view(batch_size, seq_len, num_heads, head_dim).transpose(1, 2)
+                v_attn = v.view(batch_size, seq_len, num_heads, head_dim).transpose(1, 2)
             else:
-                raise ValueError(f"Unexpected Q tensor shape: {q_shape}")
+                raise ValueError(f"Unexpected Q tensor shape: {q.shape}")
 
             attn_result = original_component._attn(  # type: ignore[operator]
                 q_attn,
@@ -229,10 +229,9 @@ class JointQKVAttentionBridge(AttentionBridge):
                 )
             else:
                 batch_size, num_heads, seq_len, head_dim = attn_output.shape
+                hidden_size = num_heads * head_dim
                 attn_output_merged = (
-                    attn_output.transpose(1, 2)
-                    .contiguous()
-                    .view(batch_size, seq_len, num_heads * head_dim)
+                    attn_output.transpose(1, 2).contiguous().view(batch_size, seq_len, hidden_size)
                 )
 
             if hasattr(self, "o") and self.o is not None:
