@@ -6,8 +6,13 @@ from transformer_lens.model_bridge import TransformerBridge
 MODEL = "gpt2"  # Use a model supported by TransformerBridge
 
 prompt = "Hello World!"
-model = TransformerBridge.boot_transformers(MODEL, device="cpu")
 embed = lambda name: name == "hook_embed"
+
+
+@pytest.fixture(scope="module")
+def model():
+    """Load model once per test module to reduce memory usage."""
+    return TransformerBridge.boot_transformers(MODEL, device="cpu")
 
 
 class Counter:
@@ -18,7 +23,7 @@ class Counter:
         self.count += 1
 
 
-def test_hook_attaches_normally():
+def test_hook_attaches_normally(model):
     """Test that hooks can be attached and removed normally with TransformerBridge."""
     c = Counter()
     _ = model.run_with_hooks(prompt, fwd_hooks=[(embed, c.inc)])
@@ -40,7 +45,7 @@ def test_hook_attaches_normally():
         pass
 
 
-def test_perma_hook_attaches_normally():
+def test_perma_hook_attaches_normally(model):
     """Test that permanent hooks can be attached with TransformerBridge."""
     c = Counter()
 
@@ -66,7 +71,7 @@ def test_perma_hook_attaches_normally():
         pass
 
 
-def test_hook_context_manager():
+def test_hook_context_manager(model):
     """Test that hook context manager works with TransformerBridge."""
     c = Counter()
 
@@ -95,7 +100,7 @@ def test_hook_context_manager():
         pass
 
 
-def test_run_with_cache_functionality():
+def test_run_with_cache_functionality(model):
     """Test that run_with_cache works with TransformerBridge."""
     try:
         output, cache = model.run_with_cache(prompt)
@@ -122,7 +127,7 @@ def test_run_with_cache_functionality():
         pytest.skip(f"run_with_cache not working on TransformerBridge: {e}")
 
 
-def test_hook_dict_access():
+def test_hook_dict_access(model):
     """Test that hook_dict property works with TransformerBridge."""
     try:
         hook_dict = model.hook_dict
@@ -141,7 +146,7 @@ def test_hook_dict_access():
         pytest.skip(f"hook_dict not working on TransformerBridge: {e}")
 
 
-def test_basic_forward_with_hooks():
+def test_basic_forward_with_hooks(model):
     """Test basic forward pass with hooks on TransformerBridge."""
 
     def simple_hook(tensor, hook):
@@ -168,7 +173,7 @@ def test_basic_forward_with_hooks():
         pytest.skip(f"Forward with hooks not working on TransformerBridge: {e}")
 
 
-def test_hook_names_consistency():
+def test_hook_names_consistency(model):
     """Test that hook names are consistent and follow expected patterns."""
     try:
         hook_dict = model.hook_dict
@@ -194,7 +199,7 @@ def test_hook_names_consistency():
         pytest.skip(f"Hook names check failed on TransformerBridge: {e}")
 
 
-def test_caching_with_names_filter():
+def test_caching_with_names_filter(model):
     """Test that caching with names filter works with TransformerBridge."""
     try:
         hook_dict = model.hook_dict
