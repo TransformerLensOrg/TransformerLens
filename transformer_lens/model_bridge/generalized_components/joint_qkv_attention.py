@@ -112,12 +112,11 @@ class JointQKVAttentionBridge(AttentionBridge):
         self.k.set_original_component(k_transformation)
         self.v.set_original_component(v_transformation)
 
-    def forward(self, input: torch.Tensor, *args: Any, **kwargs: Any) -> Any:
+    def forward(self, *args: Any, **kwargs: Any) -> Any:
         """Forward pass through the qkv linear transformation with hooks.
 
         Args:
-            input: Input tensor
-            *args: Additional positional arguments
+            *args: Input arguments, where the first argument should be the input tensor
             **kwargs: Additional keyword arguments
 
         Returns:
@@ -134,9 +133,12 @@ class JointQKVAttentionBridge(AttentionBridge):
         )
 
         if has_hooks:
-            q_output = self.q(input)
-            k_output = self.k(input)
-            v_output = self.v(input)
+            # Apply input hook the same way as the super class
+            hooked_input = self._apply_attention_input_hook(*args, **kwargs)
+
+            q_output = self.q(hooked_input)
+            k_output = self.k(hooked_input)
+            v_output = self.v(hooked_input)
 
             # Reconstruct attention computation using hooked Q, K, V
             output = self._reconstruct_attention(q_output, k_output, v_output, **kwargs)
@@ -144,7 +146,37 @@ class JointQKVAttentionBridge(AttentionBridge):
 
             return output
 
-        return super().forward(input, *args, **kwargs)
+        return super().forward(*args, **kwargs)
+
+    def _apply_attention_input_hook(self, *args: Any, **kwargs: Any) -> torch.Tensor:
+        """Apply attention input hook to the input tensor.
+
+        This method extracts the input tensor from args/kwargs and applies the attention
+        input hook in the same way as the super class.
+
+        Args:
+            *args: Input arguments, where the first argument should be the input tensor
+            **kwargs: Additional keyword arguments that might contain input
+
+        Returns:
+            Input tensor with attention input hook applied
+
+        Raises:
+            ValueError: If no input tensor is found in args or kwargs
+        """
+        # Extract input tensor using the same logic as the parent class
+        input_tensor = None
+
+        if "query_input" in kwargs:
+            input_tensor = kwargs["query_input"]
+        elif "hidden_states" in kwargs:
+            input_tensor = kwargs["hidden_states"]
+        elif len(args) > 0 and isinstance(args[0], torch.Tensor):
+            input_tensor = args[0]
+        else:
+            raise ValueError("No input tensor found in args or kwargs")
+
+        return self.hook_in(input_tensor)
 
     def _reconstruct_attention(
         self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, **kwargs

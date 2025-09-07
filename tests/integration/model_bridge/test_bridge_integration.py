@@ -10,7 +10,16 @@ import pytest
 import torch
 
 from transformer_lens.ActivationCache import ActivationCache
+from transformer_lens.conversion_utils.conversion_steps.rearrange_hook_conversion import (
+    RearrangeHookConversion,
+)
 from transformer_lens.model_bridge import TransformerBridge
+from transformer_lens.model_bridge.generalized_components.attention import (
+    AttentionBridge,
+)
+from transformer_lens.model_bridge.generalized_components.joint_qkv_attention import (
+    JointQKVAttentionBridge,
+)
 
 
 def test_model_initialization():
@@ -189,12 +198,6 @@ def test_component_access():
 
 def test_joint_qkv_custom_conversion_rule():
     """Test that custom QKV conversion rules can be passed to QKVBridge."""
-    from transformer_lens.conversion_utils.conversion_steps.rearrange_hook_conversion import (
-        RearrangeHookConversion,
-    )
-    from transformer_lens.model_bridge.generalized_components.joint_qkv_attention import (
-        JointQKVAttentionBridge,
-    )
 
     model_name = "gpt2"  # Use a smaller model for testing
     bridge = TransformerBridge.boot_transformers(model_name)
@@ -208,7 +211,8 @@ def test_joint_qkv_custom_conversion_rule():
     # This should not raise an error
     test_bridge = JointQKVAttentionBridge(
         name="test_joint_qkv_attention_bridge",
-        model_config=bridge.cfg,
+        model_config =bridge.cfg,
+        split_qkv_matrix=lambda x: (x, x, x),  # Dummy function for test
         submodules={},
         qkv_conversion_rule=custom_qkv_conversion_rule,
     )
@@ -240,9 +244,6 @@ def test_joint_qkv_custom_conversion_rule():
 
 def test_attention_pattern_hook_shape_custom_conversion():
     """Test that custom pattern conversion rules can be passed to attention components."""
-    from transformer_lens.conversion_utils.conversion_steps.rearrange_hook_conversion import (
-        RearrangeHookConversion,
-    )
 
     model_name = "gpt2"  # Use a smaller model for testing
     bridge = TransformerBridge.boot_transformers(model_name)
@@ -258,9 +259,6 @@ def test_attention_pattern_hook_shape_custom_conversion():
     # Verify that the attention bridge accepts the custom conversion parameter
     # We can't easily test this with the existing bridge without recreating it,
     # but we can at least verify the parameter is accepted without error
-    from transformer_lens.model_bridge.generalized_components.attention import (
-        AttentionBridge,
-    )
 
     # This should not raise an error
     test_bridge = AttentionBridge(

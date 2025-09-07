@@ -1,14 +1,26 @@
+import pytest
 import torch
 
 from transformer_lens import HookedTransformer
 from transformer_lens.model_bridge import TransformerBridge
 
 MODEL = "gpt2"
-
 prompt = "Hello World!"
-bridge = TransformerBridge.boot_transformers(MODEL, device="cpu")
-bridge.enable_compatibility_mode(disable_warnings=False)
-hooked_transformer = HookedTransformer.from_pretrained(MODEL, device="cpu")
+
+
+@pytest.fixture(scope="module")
+def bridge():
+    """Load TransformerBridge once per module."""
+    bridge = TransformerBridge.boot_transformers(MODEL, device="cpu")
+    bridge.enable_compatibility_mode(disable_warnings=False)
+    return bridge
+
+
+@pytest.fixture(scope="module")
+def hooked_transformer():
+    """Load HookedTransformer once per module."""
+    return HookedTransformer.from_pretrained(MODEL, device="cpu")
+
 
 act_names_in_cache = [
     # "hook_embed",
@@ -35,7 +47,7 @@ act_names_in_cache = [
 ]
 
 
-def test_cache_hook_names():
+def test_cache_hook_names(bridge, hooked_transformer):
     """Test that TransformerBridge cache contains the expected hook names."""
     _, bridge_cache = bridge.run_with_cache(prompt)
     _, hooked_transformer_cache = hooked_transformer.run_with_cache(prompt)
