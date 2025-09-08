@@ -343,5 +343,248 @@ def test_attention_pattern_hook_shape():
         bridge.blocks[0].attn.hook_pattern.remove_hooks()
 
 
+@pytest.mark.parametrize(
+    "model_name",
+    [
+        "gpt2",  # GPT-2 architecture
+        "distilgpt2",  # DistilGPT-2 architecture (smaller GPT-2)
+        "EleutherAI/pythia-160m",  # Pythia architecture (GPT-NeoX family)
+        "EleutherAI/gpt-neo-125M",  # GPT-Neo architecture
+        "google/gemma-2b",  # Gemma architecture (Multi-Query Attention)
+    ],
+)
+def test_get_params(model_name):
+    """Test that get_params works correctly with different model architectures.
+
+    This test verifies that the get_params function can successfully extract
+    parameters from various model types (GPT-2, DistilGPT-2, Pythia, GPT-Neo, Gemma)
+    without encountering attribute errors or missing component issues. This includes
+    models with different attention architectures like Multi-Query Attention.
+
+    Args:
+        model_name: The model name to test (parameterized)
+    """
+    bridge = TransformerBridge.boot_transformers(model_name)
+
+    # This should not raise any exceptions
+    params_dict = bridge.get_params()
+
+    # Verify that we got a dictionary with expected keys
+    assert isinstance(params_dict, dict), "get_params should return a dictionary"
+    assert len(params_dict) > 0, "Parameters dictionary should not be empty"
+
+    # Check for expected embedding parameters
+    assert "embed.W_E" in params_dict, "Should contain embedding weights"
+    assert "pos_embed.W_pos" in params_dict, "Should contain positional embedding weights"
+
+    # Check for expected layer parameters (at least layer 0)
+    assert "blocks.0.attn.W_Q" in params_dict, "Should contain query weights for layer 0"
+    assert "blocks.0.attn.W_K" in params_dict, "Should contain key weights for layer 0"
+    assert "blocks.0.attn.W_V" in params_dict, "Should contain value weights for layer 0"
+    assert "blocks.0.attn.W_O" in params_dict, "Should contain output weights for layer 0"
+
+    # Check for attention biases
+    assert "blocks.0.attn.b_Q" in params_dict, "Should contain query biases for layer 0"
+    assert "blocks.0.attn.b_K" in params_dict, "Should contain key biases for layer 0"
+    assert "blocks.0.attn.b_V" in params_dict, "Should contain value biases for layer 0"
+    assert "blocks.0.attn.b_O" in params_dict, "Should contain output biases for layer 0"
+
+    # Check for MLP parameters
+    assert "blocks.0.mlp.W_in" in params_dict, "Should contain MLP input weights for layer 0"
+    assert "blocks.0.mlp.W_out" in params_dict, "Should contain MLP output weights for layer 0"
+    assert "blocks.0.mlp.b_in" in params_dict, "Should contain MLP input biases for layer 0"
+    assert "blocks.0.mlp.b_out" in params_dict, "Should contain MLP output biases for layer 0"
+
+    # Check for unembedding weights
+    assert "unembed.W_U" in params_dict, "Should contain unembedding weights"
+
+    # Verify that all parameter values are tensors
+    for key, value in params_dict.items():
+        assert isinstance(
+            value, torch.Tensor
+        ), f"Parameter {key} should be a tensor, got {type(value)}"
+        assert value.numel() > 0, f"Parameter {key} should not be empty"
+
+    # Verify tensor shapes are reasonable (not zero-dimensional)
+    for key, value in params_dict.items():
+        assert (
+            len(value.shape) > 0
+        ), f"Parameter {key} should have at least 1 dimension, got shape {value.shape}"
+
+    # Check that we have parameters for all layers
+    for layer_idx in range(bridge.cfg.n_layers):
+        assert (
+            f"blocks.{layer_idx}.attn.W_Q" in params_dict
+        ), f"Should contain query weights for layer {layer_idx}"
+        assert (
+            f"blocks.{layer_idx}.attn.W_K" in params_dict
+        ), f"Should contain key weights for layer {layer_idx}"
+        assert (
+            f"blocks.{layer_idx}.attn.W_V" in params_dict
+        ), f"Should contain value weights for layer {layer_idx}"
+        assert (
+            f"blocks.{layer_idx}.attn.W_O" in params_dict
+        ), f"Should contain output weights for layer {layer_idx}"
+
+
+def test_get_params_parameter_shapes():
+    """Test that get_params returns parameters with expected shapes for GPT-2."""
+    model_name = "gpt2"
+    bridge = TransformerBridge.boot_transformers(model_name)
+
+    params_dict = bridge.get_params()
+
+    # Check embedding shapes
+    embed_weight = params_dict["embed.W_E"]
+    assert embed_weight.shape == (
+        bridge.cfg.d_vocab,
+        bridge.cfg.d_model,
+    ), f"Embedding weight shape should be ({bridge.cfg.d_vocab}, {bridge.cfg.d_model}), got {embed_weight.shape}"
+
+    pos_embed_weight = params_dict["pos_embed.W_pos"]
+    assert pos_embed_weight.shape == (
+        bridge.cfg.n_ctx,
+        bridge.cfg.d_model,
+    ), f"Position embedding weight shape should be ({bridge.cfg.n_ctx}, {bridge.cfg.d_model}), got {pos_embed_weight.shape}"
+
+    # Check attention weight shapes for first layer
+    w_q = params_dict["blocks.0.attn.W_Q"]
+    w_k = params_dict["blocks.0.attn.W_K"]
+    w_v = params_dict["blocks.0.attn.W_V"]
+    w_o = params_dict["blocks.0.attn.W_O"]
+
+    expected_qkv_shape = (bridge.cfg.n_heads, bridge.cfg.d_model, bridge.cfg.d_head)
+    expected_o_shape = (bridge.cfg.n_heads, bridge.cfg.d_head, bridge.cfg.d_model)
+
+    assert (
+        w_q.shape == expected_qkv_shape
+    ), f"W_Q shape should be {expected_qkv_shape}, got {w_q.shape}"
+    assert (
+        w_k.shape == expected_qkv_shape
+    ), f"W_K shape should be {expected_qkv_shape}, got {w_k.shape}"
+    assert (
+        w_v.shape == expected_qkv_shape
+    ), f"W_V shape should be {expected_qkv_shape}, got {w_v.shape}"
+    assert w_o.shape == expected_o_shape, f"W_O shape should be {expected_o_shape}, got {w_o.shape}"
+
+    # Check attention bias shapes
+    b_q = params_dict["blocks.0.attn.b_Q"]
+    b_k = params_dict["blocks.0.attn.b_K"]
+    b_v = params_dict["blocks.0.attn.b_V"]
+    b_o = params_dict["blocks.0.attn.b_O"]
+
+    expected_qkv_bias_shape = (bridge.cfg.n_heads, bridge.cfg.d_head)
+    expected_o_bias_shape = (bridge.cfg.d_model,)
+
+    assert (
+        b_q.shape == expected_qkv_bias_shape
+    ), f"b_Q shape should be {expected_qkv_bias_shape}, got {b_q.shape}"
+    assert (
+        b_k.shape == expected_qkv_bias_shape
+    ), f"b_K shape should be {expected_qkv_bias_shape}, got {b_k.shape}"
+    assert (
+        b_v.shape == expected_qkv_bias_shape
+    ), f"b_V shape should be {expected_qkv_bias_shape}, got {b_v.shape}"
+    assert (
+        b_o.shape == expected_o_bias_shape
+    ), f"b_O shape should be {expected_o_bias_shape}, got {b_o.shape}"
+
+
+def test_get_params_missing_components():
+    """Test that get_params gracefully handles missing components with zero tensors."""
+    model_name = "gpt2"
+    bridge = TransformerBridge.boot_transformers(model_name)
+
+    # Test that the method works normally first
+    params_dict = bridge.get_params()
+    assert isinstance(params_dict, dict)
+
+    # Test handling of missing components - should return zero tensors instead of exceptions
+    # Save original components
+    original_embed = bridge.embed
+    original_pos_embed = bridge.pos_embed
+    original_unembed = bridge.unembed
+
+    try:
+        # Test missing embed component - should return zero tensor
+        del bridge.embed
+        params_dict = bridge.get_params()
+        assert isinstance(params_dict, dict)
+        assert "embed.W_E" in params_dict
+        embed_weight = params_dict["embed.W_E"]
+        assert torch.all(embed_weight == 0), "Missing embed should be filled with zeros"
+        assert embed_weight.shape == (bridge.cfg.d_vocab, bridge.cfg.d_model)
+
+        # Restore embed, test missing pos_embed
+        bridge.embed = original_embed
+        del bridge.pos_embed
+        params_dict = bridge.get_params()
+        assert isinstance(params_dict, dict)
+        assert "pos_embed.W_pos" in params_dict
+        pos_embed_weight = params_dict["pos_embed.W_pos"]
+        assert torch.all(pos_embed_weight == 0), "Missing pos_embed should be filled with zeros"
+        assert pos_embed_weight.shape == (bridge.cfg.n_ctx, bridge.cfg.d_model)
+
+        # Restore pos_embed, test missing unembed
+        bridge.pos_embed = original_pos_embed
+        del bridge.unembed
+        params_dict = bridge.get_params()
+        assert isinstance(params_dict, dict)
+        assert "unembed.W_U" in params_dict
+        unembed_weight = params_dict["unembed.W_U"]
+        assert torch.all(unembed_weight == 0), "Missing unembed should be filled with zeros"
+        assert unembed_weight.shape == (bridge.cfg.d_model, bridge.cfg.d_vocab)
+
+    finally:
+        # Always restore components
+        bridge.embed = original_embed
+        bridge.pos_embed = original_pos_embed
+        bridge.unembed = original_unembed
+
+
+def test_get_params_consistency():
+    """Test that get_params returns consistent results across multiple calls."""
+    model_name = "gpt2"
+    bridge = TransformerBridge.boot_transformers(model_name)
+
+    # Get parameters twice
+    params1 = bridge.get_params()
+    params2 = bridge.get_params()
+
+    # Should have same keys
+    assert set(params1.keys()) == set(
+        params2.keys()
+    ), "Parameter keys should be consistent across calls"
+
+    # Should have same tensor shapes and values
+    for key in params1.keys():
+        assert params1[key].shape == params2[key].shape, f"Shape mismatch for {key}"
+        assert torch.equal(params1[key], params2[key]), f"Value mismatch for {key}"
+
+
+def test_get_params_configuration_mismatch():
+    """Test that get_params raises ValueError for configuration mismatches."""
+    model_name = "gpt2"
+    bridge = TransformerBridge.boot_transformers(model_name)
+
+    # Test that the method works normally first
+    params_dict = bridge.get_params()
+    assert isinstance(params_dict, dict)
+
+    # Save original configuration
+    original_n_layers = bridge.cfg.n_layers
+
+    try:
+        # Simulate configuration mismatch - more layers in config than actual blocks
+        bridge.cfg.n_layers = len(bridge.blocks) + 2
+
+        with pytest.raises(ValueError, match="Configuration mismatch.*blocks found"):
+            bridge.get_params()
+
+    finally:
+        # Always restore original configuration
+        bridge.cfg.n_layers = original_n_layers
+
+
 if __name__ == "__main__":
     pytest.main([__file__])
