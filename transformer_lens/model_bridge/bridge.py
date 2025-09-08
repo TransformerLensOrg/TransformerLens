@@ -976,14 +976,16 @@ class TransformerBridge(nn.Module):
             # MLP weights - handle missing components gracefully
             if not hasattr(block, "mlp"):
                 # Create zero MLP weights for missing MLP component
+                # Use a default d_mlp if None (common default is 4 * d_model)
+                d_mlp = self.cfg.d_mlp if self.cfg.d_mlp is not None else (4 * self.cfg.d_model)
                 params_dict[f"blocks.{layer_idx}.mlp.W_in"] = torch.zeros(
-                    self.cfg.d_model, self.cfg.d_mlp, device=device, dtype=dtype
+                    self.cfg.d_model, d_mlp, device=device, dtype=dtype
                 )
                 params_dict[f"blocks.{layer_idx}.mlp.W_out"] = torch.zeros(
-                    self.cfg.d_mlp, self.cfg.d_model, device=device, dtype=dtype
+                    d_mlp, self.cfg.d_model, device=device, dtype=dtype
                 )
                 params_dict[f"blocks.{layer_idx}.mlp.b_in"] = torch.zeros(
-                    self.cfg.d_mlp, device=device, dtype=dtype
+                    d_mlp, device=device, dtype=dtype
                 )
                 params_dict[f"blocks.{layer_idx}.mlp.b_out"] = torch.zeros(
                     self.cfg.d_model, device=device, dtype=dtype
@@ -991,13 +993,16 @@ class TransformerBridge(nn.Module):
             else:
                 mlp = block.mlp
 
+                # Use a default d_mlp if None (common default is 4 * d_model)
+                d_mlp = self.cfg.d_mlp if self.cfg.d_mlp is not None else (4 * self.cfg.d_model)
+
                 # MLP input weights - use getattr for 'in' since it's a reserved keyword
                 if hasattr(mlp, "in") and hasattr(getattr(mlp, "in"), "weight"):
                     mlp_in = getattr(mlp, "in")
                     params_dict[f"blocks.{layer_idx}.mlp.W_in"] = mlp_in.weight
                 else:
                     params_dict[f"blocks.{layer_idx}.mlp.W_in"] = torch.zeros(
-                        self.cfg.d_model, self.cfg.d_mlp, device=device, dtype=dtype
+                        self.cfg.d_model, d_mlp, device=device, dtype=dtype
                     )
                     mlp_in = None
 
@@ -1006,7 +1011,7 @@ class TransformerBridge(nn.Module):
                     params_dict[f"blocks.{layer_idx}.mlp.W_out"] = mlp.out.weight
                 else:
                     params_dict[f"blocks.{layer_idx}.mlp.W_out"] = torch.zeros(
-                        self.cfg.d_mlp, self.cfg.d_model, device=device, dtype=dtype
+                        d_mlp, self.cfg.d_model, device=device, dtype=dtype
                     )
 
                 # MLP biases - use zeros if missing or None
@@ -1014,7 +1019,7 @@ class TransformerBridge(nn.Module):
                     params_dict[f"blocks.{layer_idx}.mlp.b_in"] = mlp_in.bias
                 else:
                     params_dict[f"blocks.{layer_idx}.mlp.b_in"] = torch.zeros(
-                        self.cfg.d_mlp, device=device, dtype=dtype
+                        d_mlp, device=device, dtype=dtype
                     )
 
                 if hasattr(mlp, "out") and hasattr(mlp.out, "bias") and mlp.out.bias is not None:
