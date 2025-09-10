@@ -761,7 +761,8 @@ class TransformerBridge(nn.Module):
                         self.cfg.d_model,
                     ):
                         # Multi-Query Attention: single K head shared across all Q heads
-                        w_k = w_k.unsqueeze(0).expand(self.cfg.n_heads, -1, -1)
+                        # Need to transpose to match expected [n_heads, d_model, d_head] format
+                        w_k = w_k.transpose(0, 1).unsqueeze(0).expand(self.cfg.n_heads, -1, -1)
                     else:
                         # Try to reshape based on element count
                         if w_k.numel() == self.cfg.n_heads * self.cfg.d_model * self.cfg.d_head:
@@ -784,7 +785,8 @@ class TransformerBridge(nn.Module):
                         self.cfg.d_model,
                     ):
                         # Multi-Query Attention: single V head shared across all Q heads
-                        w_v = w_v.unsqueeze(0).expand(self.cfg.n_heads, -1, -1)
+                        # Need to transpose to match expected [n_heads, d_model, d_head] format
+                        w_v = w_v.transpose(0, 1).unsqueeze(0).expand(self.cfg.n_heads, -1, -1)
                     else:
                         # Try to reshape based on element count
                         if w_v.numel() == self.cfg.n_heads * self.cfg.d_model * self.cfg.d_head:

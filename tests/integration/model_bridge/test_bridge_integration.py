@@ -348,9 +348,9 @@ def test_attention_pattern_hook_shape():
     [
         "gpt2",  # GPT-2 architecture
         "distilgpt2",  # DistilGPT-2 architecture (smaller GPT-2)
-        "EleutherAI/pythia-160m",  # Pythia architecture (GPT-NeoX family)
+        "EleutherAI/pythia-70m",  # Pythia architecture (smallest, ~70M params)
         "EleutherAI/gpt-neo-125M",  # GPT-Neo architecture
-        "google/gemma-2b",  # Gemma architecture (Multi-Query Attention)
+        "google/gemma-2-2b-it",  # Gemma architecture (Grouped Query Attention)
     ],
 )
 def test_get_params(model_name):
@@ -359,7 +359,8 @@ def test_get_params(model_name):
     This test verifies that the get_params function can successfully extract
     parameters from various model types (GPT-2, DistilGPT-2, Pythia, GPT-Neo, Gemma)
     without encountering attribute errors or missing component issues. This includes
-    models with different attention architectures like Multi-Query Attention.
+    models with different attention architectures like Grouped Query Attention (GQA).
+    Covers a range of model sizes from 70M to 2B parameters.
 
     Args:
         model_name: The model name to test (parameterized)
@@ -367,7 +368,10 @@ def test_get_params(model_name):
     bridge = TransformerBridge.boot_transformers(model_name)
 
     # This should not raise any exceptions
-    params_dict = bridge.get_params()
+    try:
+        params_dict = bridge.get_params()
+    except Exception as e:
+        pytest.fail(f"get_params failed for {model_name}: {e}")
 
     # Verify that we got a dictionary with expected keys
     assert isinstance(params_dict, dict), "get_params should return a dictionary"
@@ -584,6 +588,73 @@ def test_get_params_configuration_mismatch():
     finally:
         # Always restore original configuration
         bridge.cfg.n_layers = original_n_layers
+
+
+def test_get_params_multi_query_attention_reshaping():
+    """Test Multi-Query Attention weight reshaping logic without requiring a large model.
+
+    This test verifies that the get_params function can correctly handle different
+    weight shapes that occur in Multi-Query Attention architectures, where K and V
+    weights have different shapes than Q weights.
+    """
+    model_name = "gpt2"
+    bridge = TransformerBridge.boot_transformers(model_name)
+
+    # Get the original attention layer to modify
+    original_attn = bridge.blocks[0].attn
+    original_k_weight = original_attn.k.weight.clone()
+    original_v_weight = original_attn.v.weight.clone()
+
+    try:
+        # Test case 1: Simulate MQA where K and V have shape [d_head, d_model]
+        # instead of [d_model, d_model]
+        d_head = bridge.cfg.d_head
+        d_model = bridge.cfg.d_model
+
+        # Create MQA-style K and V weights with shape [d_head, d_model]
+        mqa_k_weight = torch.randn(
+            d_head, d_model, dtype=original_k_weight.dtype, device=original_k_weight.device
+        )
+        mqa_v_weight = torch.randn(
+            d_head, d_model, dtype=original_v_weight.dtype, device=original_v_weight.device
+        )
+
+        # Temporarily replace the weights
+        original_attn.k.weight.data = mqa_k_weight
+        original_attn.v.weight.data = mqa_v_weight
+
+        # This should work without raising exceptions
+        params_dict = bridge.get_params()
+
+        # Verify the weights were reshaped correctly
+        # For MQA: K and V should be expanded from [d_head, d_model] to [n_heads, d_model, d_head] (same as Q)
+        k_param = params_dict["blocks.0.attn.W_K"]
+        v_param = params_dict["blocks.0.attn.W_V"]
+
+        expected_shape = (bridge.cfg.n_heads, bridge.cfg.d_model, bridge.cfg.d_head)
+        assert (
+            k_param.shape == expected_shape
+        ), f"K weight should be reshaped to {expected_shape}, got {k_param.shape}"
+        assert (
+            v_param.shape == expected_shape
+        ), f"V weight should be reshaped to {expected_shape}, got {v_param.shape}"
+
+        # Verify that all heads contain the transposed MQA weight (due to transpose + expand operation)
+        expected_k_per_head = mqa_k_weight.transpose(0, 1)  # [d_head, d_model] -> [d_model, d_head]
+        expected_v_per_head = mqa_v_weight.transpose(0, 1)  # [d_head, d_model] -> [d_model, d_head]
+
+        for head_idx in range(bridge.cfg.n_heads):
+            assert torch.allclose(
+                k_param[head_idx], expected_k_per_head
+            ), f"K head {head_idx} should match transposed MQA weight"
+            assert torch.allclose(
+                v_param[head_idx], expected_v_per_head
+            ), f"V head {head_idx} should match transposed MQA weight"
+
+    finally:
+        # Always restore original weights
+        original_attn.k.weight.data = original_k_weight
+        original_attn.v.weight.data = original_v_weight
 
 
 if __name__ == "__main__":
