@@ -120,7 +120,7 @@ class AttentionBridge(GeneralizedComponent):
         """Process the output from the original component.
 
         This method intercepts the output to create attention patterns
-        the same way as the old implementation.
+        the same way as the old implementation and applies hook_out.
 
         Args:
             output: Raw output from the original component
@@ -145,6 +145,17 @@ class AttentionBridge(GeneralizedComponent):
 
             # Apply the pattern to the output if needed
             output = self._apply_pattern_to_output(output, pattern)
+        else:
+            # If no attention scores found, still apply hooks to the output
+            if isinstance(output, tuple):
+                output = self._process_tuple_output(output)
+            elif isinstance(output, dict):
+                output = self._process_dict_output(output)
+            else:
+                output = self._process_single_output(output)
+
+        # Always apply hook_out to the main output
+        output = self._apply_hook_out_to_output(output)
 
         return output
 
@@ -219,12 +230,6 @@ class AttentionBridge(GeneralizedComponent):
                     element = pattern
             processed_output.append(element)
 
-        # Apply the main hook_out to the first element (hidden states) if it exists
-        if len(processed_output) > 0 and processed_output[0] is not None:
-            processed_output[0] = self._apply_hook_preserving_structure(
-                processed_output[0], self.hook_out
-            )
-
         return tuple(processed_output)
 
     def _apply_pattern_to_dict_output(
@@ -251,13 +256,6 @@ class AttentionBridge(GeneralizedComponent):
                 value = pattern
             processed_output[key] = value
 
-        # Apply hook_hidden_states and hook_out to the main output (usually hidden_states)
-        main_key = next((k for k in output.keys() if "hidden" in k.lower()), None)
-        if main_key and main_key in processed_output:
-            processed_output[main_key] = self._apply_hook_preserving_structure(
-                processed_output[main_key], self.hook_out
-            )
-
         return processed_output
 
     def _apply_pattern_to_single_output(
@@ -276,7 +274,6 @@ class AttentionBridge(GeneralizedComponent):
         output = self._apply_hook_preserving_structure(output, self.hook_hidden_states)
         # Apply the pattern to the output
         output = self._apply_pattern_to_hidden_states(output, pattern)
-        output = self._apply_hook_preserving_structure(output, self.hook_out)
         return output
 
     def _apply_pattern_to_hidden_states(
@@ -325,12 +322,6 @@ class AttentionBridge(GeneralizedComponent):
                     element = self._apply_hook_preserving_structure(element, self.hook_pattern)
             processed_output.append(element)
 
-        # Apply the main hook_out to the first element (hidden states) if it exists
-        if len(processed_output) > 0 and processed_output[0] is not None:
-            processed_output[0] = self._apply_hook_preserving_structure(
-                processed_output[0], self.hook_out
-            )
-
         return tuple(processed_output)
 
     def _process_dict_output(self, output: Dict[str, Any]) -> Dict[str, Any]:
@@ -351,13 +342,6 @@ class AttentionBridge(GeneralizedComponent):
                 value = self._apply_hook_preserving_structure(value, self.hook_pattern)
             processed_output[key] = value
 
-        # Apply hook_hidden_states and hook_out to the main output (usually hidden_states)
-        main_key = next((k for k in output.keys() if "hidden" in k.lower()), None)
-        if main_key and main_key in processed_output:
-            processed_output[main_key] = self._apply_hook_preserving_structure(
-                processed_output[main_key], self.hook_out
-            )
-
         return processed_output
 
     def _process_single_output(self, output: torch.Tensor) -> torch.Tensor:
@@ -371,7 +355,6 @@ class AttentionBridge(GeneralizedComponent):
         """
         # Apply hooks for single tensor output
         output = self._apply_hook_preserving_structure(output, self.hook_hidden_states)
-        output = self._apply_hook_preserving_structure(output, self.hook_out)
         return output
 
     def _apply_hook_preserving_structure(self, element: Any, hook_fn) -> Any:
@@ -394,6 +377,34 @@ class AttentionBridge(GeneralizedComponent):
             return tuple(processed_elements)
         else:
             return element
+
+    def _apply_hook_out_to_output(self, output: Any) -> Any:
+        """Apply hook_out to the main output tensor.
+
+        Args:
+            output: The output to process (can be tensor, tuple, or dict)
+
+        Returns:
+            The output with hook_out applied to the main tensor
+        """
+        if isinstance(output, torch.Tensor):
+            return self.hook_out(output)
+        elif isinstance(output, tuple) and len(output) > 0:
+            # Apply hook_out to the first element (typically hidden states)
+            processed_tuple = list(output)
+            if isinstance(output[0], torch.Tensor):
+                processed_tuple[0] = self.hook_out(output[0])
+            return tuple(processed_tuple)
+        elif isinstance(output, dict):
+            # Apply hook_out to the main hidden states in dictionary
+            processed_dict = output.copy()
+            for key in ["last_hidden_state", "hidden_states"]:
+                if key in processed_dict and isinstance(processed_dict[key], torch.Tensor):
+                    processed_dict[key] = self.hook_out(processed_dict[key])
+                    break  # Only apply to the first found key
+            return processed_dict
+        else:
+            return output
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         """Forward pass through the attention layer.
