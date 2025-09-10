@@ -51,57 +51,32 @@ class JointQKVAttentionBridge(AttentionBridge):
             pattern_conversion_rule: Optional conversion rule for attention patterns. If None,
                                    uses AttentionPatternConversion to ensure [n_heads, pos, pos] shape
         """
-        # Create QKV conversion rule first
-        if qkv_conversion_rule is not None:
-            qkv_conversion = qkv_conversion_rule
-        else:
-            # We need to create this inline since we can't call methods before super().__init__
-            pattern = (
-                "batch seq (num_attention_heads d_head) -> batch seq num_attention_heads d_head"
-            )
-            qkv_conversion = RearrangeHookConversion(
-                pattern,
-                num_attention_heads=config.n_heads,
-            )
-
-        # Create LinearBridge components for q, k, and v activations
-        q_bridge = LinearBridge(name="q")
-        k_bridge = LinearBridge(name="k")
-        v_bridge = LinearBridge(name="v")
-
-        q_bridge.hook_in.hook_conversion = qkv_conversion
-        k_bridge.hook_in.hook_conversion = qkv_conversion
-        v_bridge.hook_in.hook_conversion = qkv_conversion
-        q_bridge.hook_out.hook_conversion = qkv_conversion
-        k_bridge.hook_out.hook_conversion = qkv_conversion
-        v_bridge.hook_out.hook_conversion = qkv_conversion
-
-        # Combine user submodules with our q, k, v components
-        combined_submodules = submodules or {}
-        combined_submodules.update(
-            {
-                "q": q_bridge,
-                "k": k_bridge,
-                "v": v_bridge,
-            }
-        )
-
         super().__init__(
             name,
             config,
-            submodules=combined_submodules,
+            submodules=submodules,
             conversion_rule=attn_conversion_rule,
             pattern_conversion_rule=pattern_conversion_rule,
         )
 
-        # Store references after super().__init__
         self.split_qkv_matrix = split_qkv_matrix
-        self.qkv_conversion_rule = qkv_conversion
 
-        # Make q, k, v accessible as attributes for easy access
-        self.q = q_bridge
-        self.k = k_bridge
-        self.v = v_bridge
+        if qkv_conversion_rule is not None:
+            self.qkv_conversion_rule = qkv_conversion_rule
+        else:
+            self.qkv_conversion_rule = self._create_qkv_conversion_rule()
+
+        # Create LinearBridge components for q, k, and v activations
+        self.q = LinearBridge(name="q")
+        self.k = LinearBridge(name="k")
+        self.v = LinearBridge(name="v")
+
+        self.q.hook_in.hook_conversion = self.qkv_conversion_rule
+        self.k.hook_in.hook_conversion = self.qkv_conversion_rule
+        self.v.hook_in.hook_conversion = self.qkv_conversion_rule
+        self.q.hook_out.hook_conversion = self.qkv_conversion_rule
+        self.k.hook_out.hook_conversion = self.qkv_conversion_rule
+        self.v.hook_out.hook_conversion = self.qkv_conversion_rule
 
     def _create_qkv_conversion_rule(self) -> RearrangeHookConversion:
         """Create the appropriate conversion rule for the individual q, k, and v matrices.
@@ -128,10 +103,6 @@ class JointQKVAttentionBridge(AttentionBridge):
 
         super().set_original_component(original_component)
 
-        # Cache attribute checks for better performance
-        self._has_attn_method = hasattr(original_component, "_attn")
-        self._has_merge_heads = hasattr(original_component, "_merge_heads")
-
         q_transformation, k_transformation, v_transformation = self.split_qkv_matrix(
             original_component
         )
@@ -152,21 +123,30 @@ class JointQKVAttentionBridge(AttentionBridge):
             Output tensor after qkv linear transformation
         """
 
-        # Always process hooks like original attention components
-        # Apply input hook the same way as the super class
-        hooked_input = self._apply_attention_input_hook(*args, **kwargs)
+        has_hooks = (
+            self.q.hook_in.has_hooks()
+            or self.k.hook_in.has_hooks()
+            or self.v.hook_in.has_hooks()
+            or self.q.hook_out.has_hooks()
+            or self.k.hook_out.has_hooks()
+            or self.v.hook_out.has_hooks()
+        )
 
-        # Always call the individual Q, K, V transformations through their bridges
-        # This ensures hooks are always called, just like in original attention components
-        q_output = self.q(hooked_input)
-        k_output = self.k(hooked_input)
-        v_output = self.v(hooked_input)
+        if has_hooks:
+            # Apply input hook the same way as the super class
+            hooked_input = self._apply_attention_input_hook(*args, **kwargs)
 
-        # Reconstruct attention computation using hooked Q, K, V
-        output = self._reconstruct_attention(q_output, k_output, v_output, **kwargs)
-        output = self._process_output(output)
+            q_output = self.q(hooked_input)
+            k_output = self.k(hooked_input)
+            v_output = self.v(hooked_input)
 
-        return output
+            # Reconstruct attention computation using hooked Q, K, V
+            output = self._reconstruct_attention(q_output, k_output, v_output, **kwargs)
+            output = self._process_output(output)
+
+            return output
+
+        return super().forward(*args, **kwargs)
 
     def _apply_attention_input_hook(self, *args: Any, **kwargs: Any) -> torch.Tensor:
         """Apply attention input hook to the input tensor.
@@ -205,27 +185,23 @@ class JointQKVAttentionBridge(AttentionBridge):
         original_component = self.original_component
         assert original_component is not None
 
-        if self._has_attn_method:
-            # Optimize tensor reshaping by avoiding repeated operations
-            q_shape = q.shape
-            if len(q_shape) == 4:
-                # Already in the right shape, just transpose
-                q_attn, k_attn, v_attn = q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2)
-            elif len(q_shape) == 3:
-                # Cache dimensions to avoid repeated access
-                batch_size, seq_len, hidden_size = q_shape
+        # Try to use the original _attn method if available
+        if hasattr(original_component, "_attn"):
+            if len(q.shape) == 4:
+                q_attn = q.transpose(1, 2)
+                k_attn = k.transpose(1, 2)
+                v_attn = v.transpose(1, 2)
+            elif len(q.shape) == 3:
+                batch_size, seq_len, hidden_size = q.shape
                 num_heads = int(original_component.num_heads)  # type: ignore[arg-type]
-                head_dim = hidden_size // num_heads
+                head_dim: int = hidden_size // num_heads
 
-                # Use more efficient reshaping
-                target_shape = (batch_size, seq_len, num_heads, head_dim)
-                q_attn = q.view(target_shape).transpose(1, 2)
-                k_attn = k.view(target_shape).transpose(1, 2)
-                v_attn = v.view(target_shape).transpose(1, 2)
+                q_attn = q.view(batch_size, seq_len, num_heads, head_dim).transpose(1, 2)
+                k_attn = k.view(batch_size, seq_len, num_heads, head_dim).transpose(1, 2)
+                v_attn = v.view(batch_size, seq_len, num_heads, head_dim).transpose(1, 2)
             else:
-                raise ValueError(f"Unexpected Q tensor shape: {q_shape}")
+                raise ValueError(f"Unexpected Q tensor shape: {q.shape}")
 
-            # Call the original attention method
             attn_result = original_component._attn(  # type: ignore[operator]
                 q_attn,
                 k_attn,
@@ -233,35 +209,32 @@ class JointQKVAttentionBridge(AttentionBridge):
                 attention_mask=kwargs.get("attention_mask"),
                 head_mask=kwargs.get("head_mask"),
             )
-
-            # Handle different return formats efficiently
+            # Handle different return formats from _attn method
             if len(attn_result) == 2:
                 attn_output, attn_weights = attn_result
             elif len(attn_result) == 3:
-                attn_output, attn_weights = attn_result[0], attn_result[1]
+                attn_output, attn_weights, _ = attn_result  # Ignore past_key_value
             else:
                 raise ValueError(
                     f"Unexpected number of return values from _attn: {len(attn_result)}"
                 )
 
-            # Efficient head merging
-            if self._has_merge_heads:
+            if hasattr(original_component, "_merge_heads"):
                 attn_output_merged = original_component._merge_heads(  # type: ignore[operator]
                     attn_output, original_component.num_heads, original_component.head_dim
                 )
             else:
-                # Inline head merging to avoid function call overhead
                 batch_size, num_heads, seq_len, head_dim = attn_output.shape
+                hidden_size = num_heads * head_dim
                 attn_output_merged = (
-                    attn_output.transpose(1, 2)
-                    .contiguous()
-                    .view(batch_size, seq_len, num_heads * head_dim)
+                    attn_output.transpose(1, 2).contiguous().view(batch_size, seq_len, hidden_size)
                 )
 
-            # Apply output projection if present
             if hasattr(self, "o") and self.o is not None:
                 attn_output_merged = self.o(attn_output_merged)
 
+            # Return format should match what GPT2Block expects (exactly 2 values)
+            # The GPT2Block handles past_key_value separately
             return (attn_output_merged, attn_weights)
         else:
             return self._manual_attention_computation(q, k, v, **kwargs)
