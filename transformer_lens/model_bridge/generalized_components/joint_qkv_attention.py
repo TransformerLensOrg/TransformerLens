@@ -127,23 +127,12 @@ class JointQKVAttentionBridge(AttentionBridge):
             Output tensor after qkv linear transformation
         """
 
-        # Fast path: if no hooks are registered, skip expensive reconstruction
-        has_hooks = (
-            self.q.hook_in.has_hooks()
-            or self.k.hook_in.has_hooks()
-            or self.v.hook_in.has_hooks()
-            or self.q.hook_out.has_hooks()
-            or self.k.hook_out.has_hooks()
-            or self.v.hook_out.has_hooks()
-        )
-
-        if not has_hooks:
-            # No hooks registered - use fast path through parent
-            return super().forward(*args, **kwargs)
-
-        # Hooks are present - use the full reconstruction path
+        # Always process hooks like original attention components
+        # Apply input hook the same way as the super class
         hooked_input = self._apply_attention_input_hook(*args, **kwargs)
 
+        # Always call the individual Q, K, V transformations through their bridges
+        # This ensures hooks are always called, just like in original attention components
         q_output = self.q(hooked_input)
         k_output = self.k(hooked_input)
         v_output = self.v(hooked_input)
@@ -192,21 +181,26 @@ class JointQKVAttentionBridge(AttentionBridge):
         assert original_component is not None
 
         if self._has_attn_method:
-            if len(q.shape) == 4:
-                q_attn = q.transpose(1, 2)
-                k_attn = k.transpose(1, 2)
-                v_attn = v.transpose(1, 2)
-            elif len(q.shape) == 3:
-                batch_size, seq_len, hidden_size = q.shape
+            # Optimize tensor reshaping by avoiding repeated operations
+            q_shape = q.shape
+            if len(q_shape) == 4:
+                # Already in the right shape, just transpose
+                q_attn, k_attn, v_attn = q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2)
+            elif len(q_shape) == 3:
+                # Cache dimensions to avoid repeated access
+                batch_size, seq_len, hidden_size = q_shape
                 num_heads = int(original_component.num_heads)  # type: ignore[arg-type]
-                head_dim: int = hidden_size // num_heads
+                head_dim = hidden_size // num_heads
 
-                q_attn = q.view(batch_size, seq_len, num_heads, head_dim).transpose(1, 2)
-                k_attn = k.view(batch_size, seq_len, num_heads, head_dim).transpose(1, 2)
-                v_attn = v.view(batch_size, seq_len, num_heads, head_dim).transpose(1, 2)
+                # Use more efficient reshaping
+                target_shape = (batch_size, seq_len, num_heads, head_dim)
+                q_attn = q.view(target_shape).transpose(1, 2)
+                k_attn = k.view(target_shape).transpose(1, 2)
+                v_attn = v.view(target_shape).transpose(1, 2)
             else:
-                raise ValueError(f"Unexpected Q tensor shape: {q.shape}")
+                raise ValueError(f"Unexpected Q tensor shape: {q_shape}")
 
+            # Call the original attention method
             attn_result = original_component._attn(  # type: ignore[operator]
                 q_attn,
                 k_attn,
@@ -214,31 +208,35 @@ class JointQKVAttentionBridge(AttentionBridge):
                 attention_mask=kwargs.get("attention_mask"),
                 head_mask=kwargs.get("head_mask"),
             )
+
+            # Handle different return formats efficiently
             if len(attn_result) == 2:
                 attn_output, attn_weights = attn_result
             elif len(attn_result) == 3:
-                attn_output, attn_weights, _ = attn_result
+                attn_output, attn_weights = attn_result[0], attn_result[1]
             else:
                 raise ValueError(
                     f"Unexpected number of return values from _attn: {len(attn_result)}"
                 )
 
+            # Efficient head merging
             if self._has_merge_heads:
                 attn_output_merged = original_component._merge_heads(  # type: ignore[operator]
                     attn_output, original_component.num_heads, original_component.head_dim
                 )
             else:
+                # Inline head merging to avoid function call overhead
                 batch_size, num_heads, seq_len, head_dim = attn_output.shape
-                hidden_size = num_heads * head_dim
                 attn_output_merged = (
-                    attn_output.transpose(1, 2).contiguous().view(batch_size, seq_len, hidden_size)
+                    attn_output.transpose(1, 2)
+                    .contiguous()
+                    .view(batch_size, seq_len, num_heads * head_dim)
                 )
 
+            # Apply output projection if present
             if hasattr(self, "o") and self.o is not None:
                 attn_output_merged = self.o(attn_output_merged)
 
-            # Return format should match what GPT2Block expects (exactly 2 values)
-            # The GPT2Block handles past_key_value separately
             return (attn_output_merged, attn_weights)
         else:
             return self._manual_attention_computation(q, k, v, **kwargs)
