@@ -31,9 +31,6 @@ def cleanup_class_memory():
 # Configure pytest to be more memory-efficient
 def pytest_configure(config):
     """Configure pytest for better memory usage."""
-    # Set torch to use less memory
-    torch.set_num_threads(1)  # Reduce threading overhead
-
     # Configure garbage collection to be more aggressive
     gc.set_threshold(700, 10, 10)
 
