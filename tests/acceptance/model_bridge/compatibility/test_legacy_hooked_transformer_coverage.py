@@ -11,19 +11,11 @@ PUBLIC_MODEL_NAMES = [
     "gpt2",  # Use the base model name that TransformerBridge supports
 ]
 
-# Additional models to test if available (disabled for CI memory constraints)
-EXTENDED_MODEL_NAMES = [
-    # "gpt2-medium",  # Disabled for CI memory constraints
-    # "gpt2-large",   # Disabled for CI memory constraints
-]
-
-# Test with small set by default, expand if HF_TOKEN available
+# Test with small set by default
 BRIDGE_TEST_MODELS = PUBLIC_MODEL_NAMES
-if os.environ.get("HF_TOKEN", ""):
-    BRIDGE_TEST_MODELS.extend(EXTENDED_MODEL_NAMES)
 
 
-class TestTransformerBridgeAcceptance:
+class TestLegacyHookedTransformerCoverage:
     """Acceptance tests for TransformerBridge functionality."""
 
     @pytest.fixture(autouse=True, scope="class")
