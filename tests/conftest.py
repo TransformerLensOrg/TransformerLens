@@ -13,9 +13,8 @@ def cleanup_memory():
     # Clear torch cache
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
-    # Force garbage collection multiple times for better cleanup
-    for _ in range(3):
-        gc.collect()
+    # Force garbage collection for cleanup
+    gc.collect()
 
 
 @pytest.fixture(autouse=True, scope="class")
