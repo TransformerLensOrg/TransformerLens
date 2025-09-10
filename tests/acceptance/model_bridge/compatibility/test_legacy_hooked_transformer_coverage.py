@@ -11,8 +11,6 @@ PUBLIC_MODEL_NAMES = [
     "gpt2",  # Use the base model name that TransformerBridge supports
 ]
 
-# Test with small set by default
-BRIDGE_TEST_MODELS = PUBLIC_MODEL_NAMES
 
 
 class TestLegacyHookedTransformerCoverage:
@@ -28,7 +26,7 @@ class TestLegacyHookedTransformerCoverage:
         for _ in range(3):
             gc.collect()
 
-    @pytest.fixture(params=BRIDGE_TEST_MODELS, scope="class")
+    @pytest.fixture(params=PUBLIC_MODEL_NAMES, scope="class")
     def model_name(self, request):
         return request.param
 
