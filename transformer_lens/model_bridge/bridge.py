@@ -5,6 +5,7 @@ a consistent interface for accessing their weights and performing operations.
 """
 
 import warnings
+from contextlib import contextmanager
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -1631,7 +1632,6 @@ class TransformerBridge(nn.Module):
         Returns:
             Model output
         """
-        from transformer_lens.hook_points import HookPoint
 
         # Store hooks that we add so we can remove them later
         added_hooks: List[Tuple[HookPoint, str]] = []
@@ -2111,7 +2111,6 @@ class TransformerBridge(nn.Module):
 
     def hooks(self, fwd_hooks=[], bwd_hooks=[], reset_hooks_end=True, clear_contexts=False):
         """Context manager for temporarily adding hooks."""
-        from contextlib import contextmanager
 
         @contextmanager
         def _hooks_context():
@@ -2150,8 +2149,6 @@ class TransformerBridge(nn.Module):
 
     def set_use_hook_mlp_in(self, use_hook_mlp_in: bool):
         """Toggles whether to allow storing and editing inputs to each MLP layer."""
-        import warnings
-
         warnings.warn(
             "This function is now deprecated and no longer does anything. These options are turned on by default now.",
             DeprecationWarning,
@@ -2162,8 +2159,6 @@ class TransformerBridge(nn.Module):
         """
         Toggles whether to allow editing of inputs to each attention head.
         """
-        import warnings
-
         warnings.warn(
             "This function is now deprecated and no longer does anything. These options are turned on by default now.",
             DeprecationWarning,
