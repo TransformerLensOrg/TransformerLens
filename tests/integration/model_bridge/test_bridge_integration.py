@@ -4,6 +4,7 @@ This module contains tests that verify the core functionality of the model bridg
 including model initialization, text generation, hooks, and caching.
 """
 
+import gc
 import logging
 
 import pytest
@@ -365,6 +366,11 @@ def test_get_params(model_name):
     Args:
         model_name: The model name to test (parameterized)
     """
+    # Clear any existing cache/memory before loading models
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
     bridge = TransformerBridge.boot_transformers(model_name)
 
     # This should not raise any exceptions
@@ -429,6 +435,13 @@ def test_get_params(model_name):
         assert (
             f"blocks.{layer_idx}.attn.W_O" in params_dict
         ), f"Should contain output weights for layer {layer_idx}"
+
+    # Explicit cleanup to help CI memory management
+    del params_dict
+    del bridge
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
 
 
 def test_get_params_parameter_shapes():
