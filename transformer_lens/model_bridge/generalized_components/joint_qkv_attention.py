@@ -51,32 +51,57 @@ class JointQKVAttentionBridge(AttentionBridge):
             pattern_conversion_rule: Optional conversion rule for attention patterns. If None,
                                    uses AttentionPatternConversion to ensure [n_heads, pos, pos] shape
         """
+        # Create QKV conversion rule first
+        if qkv_conversion_rule is not None:
+            qkv_conversion = qkv_conversion_rule
+        else:
+            # We need to create this inline since we can't call methods before super().__init__
+            pattern = (
+                "batch seq (num_attention_heads d_head) -> batch seq num_attention_heads d_head"
+            )
+            qkv_conversion = RearrangeHookConversion(
+                pattern,
+                num_attention_heads=config.n_heads,
+            )
+
+        # Create LinearBridge components for q, k, and v activations
+        q_bridge = LinearBridge(name="q")
+        k_bridge = LinearBridge(name="k")
+        v_bridge = LinearBridge(name="v")
+
+        q_bridge.hook_in.hook_conversion = qkv_conversion
+        k_bridge.hook_in.hook_conversion = qkv_conversion
+        v_bridge.hook_in.hook_conversion = qkv_conversion
+        q_bridge.hook_out.hook_conversion = qkv_conversion
+        k_bridge.hook_out.hook_conversion = qkv_conversion
+        v_bridge.hook_out.hook_conversion = qkv_conversion
+
+        # Combine user submodules with our q, k, v components
+        combined_submodules = submodules or {}
+        combined_submodules.update(
+            {
+                "q": q_bridge,
+                "k": k_bridge,
+                "v": v_bridge,
+            }
+        )
+
         super().__init__(
             name,
             config,
-            submodules=submodules,
+            submodules=combined_submodules,
             conversion_rule=attn_conversion_rule,
             pattern_conversion_rule=pattern_conversion_rule,
         )
 
+        # Store references after super().__init__
         self.split_qkv_matrix = split_qkv_matrix
+        self.qkv_conversion_rule = qkv_conversion
 
-        if qkv_conversion_rule is not None:
-            self.qkv_conversion_rule = qkv_conversion_rule
-        else:
-            self.qkv_conversion_rule = self._create_qkv_conversion_rule()
-
-        # Create LinearBridge components for q, k, and v activations
-        self.q = LinearBridge(name="q")
-        self.k = LinearBridge(name="k")
-        self.v = LinearBridge(name="v")
-
-        self.q.hook_in.hook_conversion = self.qkv_conversion_rule
-        self.k.hook_in.hook_conversion = self.qkv_conversion_rule
-        self.v.hook_in.hook_conversion = self.qkv_conversion_rule
-        self.q.hook_out.hook_conversion = self.qkv_conversion_rule
-        self.k.hook_out.hook_conversion = self.qkv_conversion_rule
-        self.v.hook_out.hook_conversion = self.qkv_conversion_rule
+        # Make q, k, v accessible as attributes for easy access
+        self.q = q_bridge
+        self.k = k_bridge
+        self.v = v_bridge
 
     def _create_qkv_conversion_rule(self) -> RearrangeHookConversion:
         """Create the appropriate conversion rule for the individual q, k, and v matrices.
