@@ -387,10 +387,8 @@ class TransformerBridge(nn.Module):
                 )
 
             # shape [(head_index d_head)]
-            v_bias = self.blocks[layer].attn.v.bias
-            v_bias_rearranged = self.adapter.conversion_rules.get_conversion_action(
-                "blocks.{i}.attn.v.bias"
-            ).handle_conversion(v_bias)
+            v_bias = self.blocks[layer].attn.v.bias.data
+            v_bias_rearranged = einops.rearrange(v_bias.squeeze(0), "(head_index d_head) -> head_index d_head", head_index=self.cfg.n_heads, d_head=self.cfg.d_head)
 
             if self.cfg.n_key_value_heads is not None:
                 v_bias_rearranged = torch.repeat_interleave(
@@ -398,19 +396,17 @@ class TransformerBridge(nn.Module):
                 )
 
             # [(head_index d_head), d_model]
-            o_weight = self.blocks[layer].attn.o.weight
-            o_weight_rearranged = self.adapter.conversion_rules.get_conversion_action(
-                "blocks.{i}.attn.o.weight"
-            ).handle_conversion(o_weight)
+            o_weight = self.blocks[layer].attn.o.weight.data
+            o_weight_rearranged = einops.rearrange(o_weight, "(i h) m -> i h m", i=self.cfg.n_heads)
 
             # [d_model]
-            o_original_bias = self.blocks[layer].attn.o.bias
+            o_original_bias = self.blocks[layer].attn.o.bias.data
             o_bias_folded = o_original_bias + (
                 v_bias_rearranged[:, :, None] * o_weight_rearranged
             ).sum([0, 1])
 
-            self.blocks[layer].attn.o.bias = nn.Parameter(o_bias_folded)
-            self.blocks[layer].attn.v.bias = nn.Parameter(torch.zeros_like(v_bias))
+            self.blocks[layer].attn.o.bias.data = o_bias_folded
+            self.blocks[layer].attn.v.bias.data = torch.zeros_like(v_bias)
 
     def fold_layer_norm(self, fold_biases=True, center_weights=True):
         """Fold Layer Norm into the neighbouring weights. Can also be used to fold RMS Norm, when fold_biases and center_weights are set to False.
@@ -457,8 +453,6 @@ class TransformerBridge(nn.Module):
             fold_biases = False
             center_weights = False
 
-        assert self.adapter.conversion_rules is not None, "Conversion rules are not set"
-
         for l in range(self.cfg.n_layers):
             # Fold ln1 into attention - it's important to fold biases first, since biases depend on
             # weights but not vice versa The various indexing is just to broadcast ln.b and ln.w
@@ -466,76 +460,22 @@ class TransformerBridge(nn.Module):
             # the bias, we use the W_ matrix to map it to the hidden space of the layer, so we need
             # to sum along axis -2, which is the residual stream space axis.
 
-            q_weight_rearranged = self.adapter.conversion_rules.get_conversion_action(
-                "blocks.{i}.attn.q.weight"
-            ).handle_conversion(self.blocks[l].attn.q.weight)
-            k_weight_rearranged = self.adapter.conversion_rules.get_conversion_action(
-                "blocks.{i}.attn.k.weight"
-            ).handle_conversion(self.blocks[l].attn.k.weight)
-            v_weight_rearranged = self.adapter.conversion_rules.get_conversion_action(
-                "blocks.{i}.attn.v.weight"
-            ).handle_conversion(self.blocks[l].attn.v.weight)
-            ln1_weight_rearranged = self.adapter.conversion_rules.get_conversion_action(
-                "blocks.{i}.ln1.weight"
-            ).handle_conversion(self.blocks[l].ln1.weight)
-
             if fold_biases:
-                q_bias_rearranged = self.adapter.conversion_rules.get_conversion_action(
-                    "blocks.{i}.attn.q.bias"
-                ).handle_conversion(self.blocks[l].attn.q.bias)
-                k_bias_rearranged = self.adapter.conversion_rules.get_conversion_action(
-                    "blocks.{i}.attn.k.bias"
-                ).handle_conversion(self.blocks[l].attn.k.bias)
-                v_bias_rearranged = self.adapter.conversion_rules.get_conversion_action(
-                    "blocks.{i}.attn.v.bias"
-                ).handle_conversion(self.blocks[l].attn.v.bias)
-                ln1_bias_rearranged = self.adapter.conversion_rules.get_conversion_action(
-                    "blocks.{i}.ln1.bias"
-                ).handle_conversion(self.blocks[l].ln1.bias)
-
-                q_bias_folded = q_bias_rearranged + (
-                    q_weight_rearranged * ln1_bias_rearranged[None, :, None]
+                self.blocks[l].attn.q.bias.data = self.blocks[l].attn.q.bias.data + (
+                    self.blocks[l].attn.q.weight.data * self.blocks[l].ln1.bias.data[ :, None]
+                ).sum(-2    )
+                self.blocks[l].attn.k.bias.data = self.blocks[l].attn.k.bias.data + (
+                    self.blocks[l].attn.k.weight.data * self.blocks[l].ln1.bias.data[:, None]
                 ).sum(-2)
-                k_bias_folded = k_bias_rearranged + (
-                    k_weight_rearranged * ln1_bias_rearranged[None, :, None]
+                self.blocks[l].attn.v.bias.data = self.blocks[l].attn.v.bias.data + (
+                    self.blocks[l].attn.v.weight.data * self.blocks[l].ln1.bias.data[ :, None]
                 ).sum(-2)
-                v_bias_folded = v_bias_rearranged + (
-                    v_weight_rearranged * ln1_bias_rearranged[None, :, None]
-                ).sum(-2)
+                self.blocks[l].ln1.bias.data = torch.zeros_like(self.blocks[l].ln1.bias)
 
-                q_bias_folded_original_shape = self.adapter.conversion_rules.get_conversion_action(
-                    "blocks.{i}.attn.q.bias"
-                ).revert(q_bias_folded)
-                k_bias_folded_original_shape = self.adapter.conversion_rules.get_conversion_action(
-                    "blocks.{i}.attn.k.bias"
-                ).revert(k_bias_folded)
-                v_bias_folded_original_shape = self.adapter.conversion_rules.get_conversion_action(
-                    "blocks.{i}.attn.v.bias"
-                ).revert(v_bias_folded)
-
-                self.blocks[l].attn.q.bias = nn.Parameter(q_bias_folded_original_shape)
-                self.blocks[l].attn.k.bias = nn.Parameter(k_bias_folded_original_shape)
-                self.blocks[l].attn.v.bias = nn.Parameter(v_bias_folded_original_shape)
-                self.blocks[l].ln1.bias = nn.Parameter(torch.zeros_like(self.blocks[l].ln1.bias))
-
-            q_weight_folded = q_weight_rearranged * ln1_weight_rearranged[None, :, None]
-            k_weight_folded = k_weight_rearranged * ln1_weight_rearranged[None, :, None]
-            v_weight_folded = v_weight_rearranged * ln1_weight_rearranged[None, :, None]
-
-            q_weight_folded_original_shape = self.adapter.conversion_rules.get_conversion_action(
-                "blocks.{i}.attn.q.weight"
-            ).revert(q_weight_folded)
-            k_weight_folded_original_shape = self.adapter.conversion_rules.get_conversion_action(
-                "blocks.{i}.attn.k.weight"
-            ).revert(k_weight_folded)
-            v_weight_folded_original_shape = self.adapter.conversion_rules.get_conversion_action(
-                "blocks.{i}.attn.v.weight"
-            ).revert(v_weight_folded)
-
-            self.blocks[l].attn.q.weight = nn.Parameter(q_weight_folded_original_shape)
-            self.blocks[l].attn.k.weight = nn.Parameter(k_weight_folded_original_shape)
-            self.blocks[l].attn.v.weight = nn.Parameter(v_weight_folded_original_shape)
-            self.blocks[l].ln1.weight = nn.Parameter(torch.zeros_like(self.blocks[l].ln1.weight))
+            self.blocks[l].attn.q.weight.data = self.blocks[l].attn.q.weight.data * self.blocks[l].ln1.weight.data[ :, None]
+            self.blocks[l].attn.k.weight.data = self.blocks[l].attn.k.weight.data * self.blocks[l].ln1.weight.data[ :, None]
+            self.blocks[l].attn.v.weight.data = self.blocks[l].attn.v.weight.data * self.blocks[l].ln1.weight.data[ :, None]
+            self.blocks[l].ln1.weight.data = torch.zeros_like(self.blocks[l].ln1.weight)
 
             # Finally, we center the weights reading from the residual stream. The output of the
             # first part of the LayerNorm is mean 0 and standard deviation 1, so the mean of any
@@ -543,174 +483,63 @@ class TransformerBridge(nn.Module):
             # output of LayerNormPre is orthogonal to the vector of all 1s (because dotting with
             # that gets the sum), so we can remove the component of the matrix parallel to this.
             if center_weights:
-                q_weight_centered = q_weight_folded - einops.reduce(
-                    q_weight_folded, "head_index d_model d_head -> head_index 1 d_head", "mean"
-                )
-                k_weight_centered = k_weight_folded - einops.reduce(
-                    k_weight_folded, "head_index d_model d_head -> head_index 1 d_head", "mean"
-                )
-                v_weight_centered = v_weight_folded - einops.reduce(
-                    v_weight_folded, "head_index d_model d_head -> head_index 1 d_head", "mean"
-                )
+                q_weight_rearranged = einops.rearrange(self.blocks[l].attn.q.weight.data.squeeze(0), "out_features (head_index d_head) -> head_index out_features d_head", head_index=self.cfg.n_heads, d_head=self.cfg.d_head)
+                k_weight_rearranged = einops.rearrange(self.blocks[l].attn.k.weight.data.squeeze(0), "out_features (head_index d_head) -> head_index out_features d_head", head_index=self.cfg.n_heads, d_head=self.cfg.d_head)
+                v_weight_rearranged = einops.rearrange(self.blocks[l].attn.v.weight.data.squeeze(0), "out_features (head_index d_head) -> head_index out_features d_head", head_index=self.cfg.n_heads, d_head=self.cfg.d_head)
 
-                q_weight_centered_original_shape = (
-                    self.adapter.conversion_rules.get_conversion_action(
-                        "blocks.{i}.attn.q.weight"
-                    ).revert(q_weight_centered)
-                )
-                k_weight_centered_original_shape = (
-                    self.adapter.conversion_rules.get_conversion_action(
-                        "blocks.{i}.attn.k.weight"
-                    ).revert(k_weight_centered)
-                )
-                v_weight_centered_original_shape = (
-                    self.adapter.conversion_rules.get_conversion_action(
-                        "blocks.{i}.attn.v.weight"
-                    ).revert(v_weight_centered)
-                )
+                q_weight_rearranged = q_weight_rearranged - einops.reduce(q_weight_rearranged, "head_index d_model d_head -> head_index 1 d_head", "mean")
+                k_weight_rearranged = k_weight_rearranged - einops.reduce(k_weight_rearranged, "head_index d_model d_head -> head_index 1 d_head", "mean")
+                v_weight_rearranged = v_weight_rearranged - einops.reduce(v_weight_rearranged, "head_index d_model d_head -> head_index 1 d_head", "mean")
 
-                self.blocks[l].attn.q.weight = nn.Parameter(q_weight_centered_original_shape)
-                self.blocks[l].attn.k.weight = nn.Parameter(k_weight_centered_original_shape)
-                self.blocks[l].attn.v.weight = nn.Parameter(v_weight_centered_original_shape)
+                q_weight_rearranged = einops.rearrange(q_weight_rearranged, "head_index out_features d_head -> out_features (head_index d_head)", head_index=self.cfg.n_heads, d_head=self.cfg.d_head)
+                k_weight_rearranged = einops.rearrange(k_weight_rearranged, "head_index out_features d_head -> out_features (head_index d_head)", head_index=self.cfg.n_heads, d_head=self.cfg.d_head)
+                v_weight_rearranged = einops.rearrange(v_weight_rearranged, "head_index out_features d_head -> out_features (head_index d_head)", head_index=self.cfg.n_heads, d_head=self.cfg.d_head)
+
+                self.blocks[l].attn.q.weight.data = q_weight_rearranged
+                self.blocks[l].attn.k.weight.data = k_weight_rearranged
+                self.blocks[l].attn.v.weight.data = v_weight_rearranged
 
             # Fold ln2 into MLP
             if not self.cfg.attn_only:
-                mlp_input_weight_rearranged = self.adapter.conversion_rules.get_conversion_action(
-                    "blocks.{i}.mlp.input.weight"
-                ).handle_conversion(self.blocks[l].mlp.input.weight)
-                ln2_weight_rearranged = self.adapter.conversion_rules.get_conversion_action(
-                    "blocks.{i}.ln2.weight"
-                ).handle_conversion(self.blocks[l].ln2.weight)
 
                 if fold_biases:
-                    mlp_input_bias_rearranged = self.adapter.conversion_rules.get_conversion_action(
-                        "blocks.{i}.mlp.input.bias"
-                    ).handle_conversion(self.blocks[l].mlp.input.bias)
-                    ln2_bias_rearranged = self.adapter.conversion_rules.get_conversion_action(
-                        "blocks.{i}.ln2.bias"
-                    ).handle_conversion(self.blocks[l].ln2.bias)
-
-                    mlp_input_bias_folded = mlp_input_bias_rearranged + (
-                        mlp_input_weight_rearranged * ln2_bias_rearranged[:, None]
+                    self.blocks[l].mlp.input.bias.data = self.blocks[l].mlp.input.bias.data + (
+                        self.blocks[l].mlp.input.weight.data * self.blocks[l].ln2.bias.data[:, None]
                     ).sum(-2)
 
-                    mlp_input_bias_folded_original_shape = (
-                        self.adapter.conversion_rules.get_conversion_action(
-                            "blocks.{i}.mlp.input.bias"
-                        ).revert(mlp_input_bias_folded)
-                    )
+                    self.blocks[l].ln2.bias.data = torch.zeros_like(self.blocks[l].ln2.bias)
 
-                    self.blocks[l].mlp.input.bias = nn.Parameter(
-                        mlp_input_bias_folded_original_shape
-                    )
-                    self.blocks[l].ln2.bias = nn.Parameter(
-                        torch.zeros_like(self.blocks[l].ln2.bias)
-                    )
-
-                mlp_input_weight_folded = (
-                    mlp_input_weight_rearranged * ln2_weight_rearranged[:, None]
-                )
-
-                mlp_input_weight_folded_original_shape = (
-                    self.adapter.conversion_rules.get_conversion_action(
-                        "blocks.{i}.mlp.input.weight"
-                    ).revert(mlp_input_weight_folded)
-                )
-
-                self.blocks[l].mlp.input.weight = nn.Parameter(
-                    mlp_input_weight_folded_original_shape
-                )
+                self.blocks[l].mlp.input.weight.data = self.blocks[l].mlp.input.weight.data * self.blocks[l].ln2.weight.data[:, None]
 
                 if self.cfg.gated_mlp:
-                    mlp_gate_weight_rearranged = (
-                        self.adapter.conversion_rules.get_conversion_action(
-                            "blocks.{i}.mlp.gate.weight"
-                        ).handle_conversion(self.blocks[l].mlp.gate.weight)
-                    )
+                    self.blocks[l].mlp.gate.weight.data = self.blocks[l].mlp.gate.weight.data * self.blocks[l].ln2.weight.data[:, None]
 
-                    mlp_gate_weight_folded = (
-                        mlp_gate_weight_rearranged * ln2_weight_rearranged[:, None]
-                    )
-
-                    mlp_gate_weight_folded_original_shape = (
-                        self.adapter.conversion_rules.get_conversion_action(
-                            "blocks.{i}.mlp.gate.weight"
-                        ).revert(mlp_gate_weight_folded)
-                    )
-
-                    self.blocks[l].mlp.gate.weight = nn.Parameter(
-                        mlp_gate_weight_folded_original_shape
-                    )
-
-                self.blocks[l].ln2.weight = nn.Parameter(
-                    torch.zeros_like(self.blocks[l].ln2.weight)
-                )
+                self.blocks[l].ln2.weight.data = torch.zeros_like(self.blocks[l].ln2.weight)
 
                 if center_weights:
-                    mlp_input_weight_centered = mlp_input_weight_folded - einops.reduce(
-                        mlp_input_weight_folded,
+                    self.blocks[l].mlp.input.weight.data = self.blocks[l].mlp.input.weight.data - einops.reduce(
+                        self.blocks[l].mlp.input.weight.data,
                         "d_model d_mlp -> 1 d_mlp",
                         "mean",
                     )
-                    mlp_input_weight_centered_original_shape = (
-                        self.adapter.conversion_rules.get_conversion_action(
-                            "blocks.{i}.mlp.input.weight"
-                        ).revert(mlp_input_weight_centered)
-                    )
-
-                    # Center the weights that read in from the LayerNormPre
-                    self.blocks[l].mlp.input.weight = nn.Parameter(
-                        mlp_input_weight_centered_original_shape
-                    )
-
-        unembed_weight_rearranged = self.adapter.conversion_rules.get_conversion_action(
-            "unembed.weight"
-        ).handle_conversion(self.unembed.weight)
-        ln_final_weight_rearranged = self.adapter.conversion_rules.get_conversion_action(
-            "ln_final.weight"
-        ).handle_conversion(self.ln_final.weight)
 
         # Fold ln_final into Unembed
         if fold_biases and self.unembed.has_bias():
-            unembed_bias_rearranged = self.adapter.conversion_rules.get_conversion_action(
-                "unembed.bias"
-            ).handle_conversion(self.unembed.bias)
-            ln_final_bias_rearranged = self.adapter.conversion_rules.get_conversion_action(
-                "ln_final.bias"
-            ).handle_conversion(self.ln_final.bias)
-
-            unembed_bias_folded = unembed_bias_rearranged + (
-                unembed_weight_rearranged * ln_final_bias_rearranged[:, None]
+            self.unembed.bias.data = self.unembed.bias.data + (
+                self.unembed.weight.data * self.ln_final.bias.data[:, None]
             ).sum(-2)
-            unembed_bias_folded_original_shape = (
-                self.adapter.conversion_rules.get_conversion_action("unembed.bias").revert(
-                    unembed_bias_folded
-                )
-            )
 
-            self.unembed.bias = nn.Parameter(unembed_bias_folded_original_shape)
-            self.ln_final.bias = nn.Parameter(torch.zeros_like(self.ln_final.bias))
+            self.ln_final.bias.data = torch.zeros_like(self.ln_final.bias)
 
-        unembed_weight_folded = unembed_weight_rearranged * ln_final_weight_rearranged[:, None]
-        unembed_weight_folded_original_shape = self.adapter.conversion_rules.get_conversion_action(
-            "unembed.weight"
-        ).revert(unembed_weight_folded)
-
-        self.unembed.weight = nn.Parameter(unembed_weight_folded_original_shape)
-        self.ln_final.weight = nn.Parameter(torch.zeros_like(self.ln_final.weight))
+        print(self.unembed.weight.data.shape, self.ln_final.weight.data.shape)
+        self.unembed.weight.data = self.unembed.weight.data * self.ln_final.weight.data[None, :]
+        self.ln_final.weight.data = torch.zeros_like(self.ln_final.weight)
 
         if center_weights:
             # Center the weights that read in from the LayerNorm ln_final
-            unembed_weight_centered = unembed_weight_folded - einops.reduce(
-                unembed_weight_folded, "d_model d_vocab -> 1 d_vocab", "mean"
+            self.unembed.weight.data = self.unembed.weight.data - einops.reduce(
+                self.unembed.weight.data, "d_model d_vocab -> 1 d_vocab", "mean"
             )
-            unembed_weight_centered_original_shape = (
-                self.adapter.conversion_rules.get_conversion_action("unembed.weight").revert(
-                    unembed_weight_centered
-                )
-            )
-
-            self.unembed.weight = nn.Parameter(unembed_weight_centered_original_shape)
 
     # ==================== TOKENIZATION METHODS ====================
 

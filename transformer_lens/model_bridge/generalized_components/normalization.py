@@ -40,7 +40,7 @@ class NormalizationBridge(GeneralizedComponent):
 
     def forward(
         self,
-        hidden_states: torch.Tensor,
+        x: torch.Tensor,
         **kwargs: Any,
     ) -> torch.Tensor:
         """Forward pass through the normalization bridge.
@@ -52,13 +52,14 @@ class NormalizationBridge(GeneralizedComponent):
         Returns:
             Normalized output
         """
-        if self.original_component is None:
-            raise RuntimeError(
-                f"Original component not set for {self.name}. Call set_original_component() first."
-            )
+        x = self.hook_in(x)
+        x = x.to(torch.float32)
 
-        hidden_states = self.hook_in(hidden_states)
-        output = self.original_component(hidden_states, **kwargs)
+        x = x - x.mean(-1, keepdim=True)  # [batch, pos, length]
+        scale: Union[
+            Float[torch.Tensor, "batch pos 1"],
+            Float[torch.Tensor, "batch pos head_index 1"],
+        ] = (x.pow(2).mean(-1, keepdim=True) + 1e-5).sqrt()
+        output =  (x / scale)
         output = self.hook_out(output)
-
         return output
