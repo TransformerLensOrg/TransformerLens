@@ -80,7 +80,10 @@ class TransformerLensConfig:
     # Gated MLP
     gated_mlp: bool = False
 
-    # Epsilon
+    # Normalization configuration
+    uses_rms_norm: bool = False
+
+    # Epsilon for normalization
     eps: float = 1e-5
 
     # Layer norm folding activated

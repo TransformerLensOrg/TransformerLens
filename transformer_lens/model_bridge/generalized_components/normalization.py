@@ -4,18 +4,17 @@ from typing import Any, Dict, Optional
 
 import torch
 
+from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
 
 
 class NormalizationBridge(GeneralizedComponent):
-    """Normalization bridge that wraps transformer normalization layers.
+    """Normalization bridge that wraps transformer normalization layers but implements the calculation from scratch.
 
     This component provides standardized input/output hooks.
     """
-
-    hook_aliases = {"hook_normalized": "hook_out", "hook_scale": "hook_out"}
 
     property_aliases = {
         "w": "weight",
@@ -36,7 +35,9 @@ class NormalizationBridge(GeneralizedComponent):
             submodules: Dictionary of GeneralizedComponent submodules to register
         """
         super().__init__(name, config, submodules=submodules)
-        # No extra hooks; use only hook_in and hook_out
+
+        self.hook_normalized = HookPoint()
+        self.hook_scale = HookPoint()
 
     def forward(
         self,

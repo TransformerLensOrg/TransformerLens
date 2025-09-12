@@ -27,6 +27,8 @@ class Gemma1ArchitectureAdapter(ArchitectureAdapter):
 
         self.cfg.gated_mlp = True
 
+        self.cfg.uses_rms_norm = True
+
         self.conversion_rules = HookConversionSet(
             {
                 # Gemma1 scales embeddings by sqrt(d_model)

@@ -26,6 +26,8 @@ class GPTOSSArchitectureAdapter(ArchitectureAdapter):
 
         self.cfg.gated_mlp = True
 
+        self.cfg.uses_rms_norm = True
+
         self.component_mapping = {
             "embed": EmbeddingBridge(name="model.embed_tokens"),
             "rotary_emb": EmbeddingBridge(name="model.rotary_emb"),

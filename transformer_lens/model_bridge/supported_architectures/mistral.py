@@ -35,6 +35,8 @@ class MistralArchitectureAdapter(ArchitectureAdapter):
 
         self.cfg.gated_mlp = True
 
+        self.cfg.uses_rms_norm = True
+
         self.conversion_rules = HookConversionSet(
             {
                 "embed.e": "model.embed_tokens.weight",
