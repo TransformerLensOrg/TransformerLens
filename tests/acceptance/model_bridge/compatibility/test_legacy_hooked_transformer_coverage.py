@@ -1,5 +1,4 @@
 import gc
-import os
 
 import pytest
 import torch
@@ -10,7 +9,6 @@ from transformer_lens.model_bridge import TransformerBridge
 PUBLIC_MODEL_NAMES = [
     "gpt2",  # Use the base model name that TransformerBridge supports
 ]
-
 
 
 class TestLegacyHookedTransformerCoverage:

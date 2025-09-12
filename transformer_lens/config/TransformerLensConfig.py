@@ -83,6 +83,9 @@ class TransformerLensConfig:
     # Epsilon
     eps: float = 1e-5
 
+    # Layer norm folding activated
+    layer_norm_folding: bool = False
+
     def __post_init__(self):
         """Post-initialization processing and validation."""
         # Set n_heads if not specified

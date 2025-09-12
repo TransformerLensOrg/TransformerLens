@@ -40,7 +40,7 @@ class NormalizationBridge(GeneralizedComponent):
 
     def forward(
         self,
-        x: torch.Tensor,
+        hidden_states: torch.Tensor,
         **kwargs: Any,
     ) -> torch.Tensor:
         """Forward pass through the normalization bridge.
@@ -52,10 +52,7 @@ class NormalizationBridge(GeneralizedComponent):
         Returns:
             Normalized output
         """
-<<<<<<< HEAD
-        x = self.hook_in(x)
-        x = x.to(torch.float32)
-=======
+
         if self.original_component is None:
             raise RuntimeError(
                 f"Original component not set for {self.name}. Call set_original_component() first."
@@ -75,19 +72,13 @@ class NormalizationBridge(GeneralizedComponent):
         )
         hidden_states = self.hook_normalized(hidden_states / scale)
 
-        if self.config.uses_rms_norm:
-            # No bias if using RMSNorm
-            output = hidden_states * self.weight
-        else:
-            # Add bias if using LayerNorm
-            output = hidden_states * self.weight + self.bias
->>>>>>> 668af11b (Add configuration dictionary during initialization)
+        if not self.config.layer_norm_folding:
+            if self.config.uses_rms_norm:
+                # No bias if using RMSNorm
+                hidden_states = hidden_states * self.weight
+            else:
+                # Add bias if using LayerNorm
+                hidden_states = hidden_states * self.weight + self.bias
 
-        x = x - x.mean(-1, keepdim=True)  # [batch, pos, length]
-        scale: Union[
-            Float[torch.Tensor, "batch pos 1"],
-            Float[torch.Tensor, "batch pos head_index 1"],
-        ] = (x.pow(2).mean(-1, keepdim=True) + 1e-5).sqrt()
-        output =  (x / scale)
-        output = self.hook_out(output)
+        output = self.hook_out(hidden_states)
         return output

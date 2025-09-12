@@ -346,25 +346,9 @@ class TransformerBridge(nn.Module):
         self._initialize_hook_registry()
 
         if not no_processing:
+            self.cfg.layer_norm_folding = True
             self.fold_layer_norm()
             self.fold_value_biases()
-
-    def uses_rms_norm(self) -> bool:
-        """Check if the model uses RMS norm."""
-        from transformer_lens.utilities.bridge_components import (
-            apply_fn_to_all_components,
-        )
-
-        def is_rms_norm(component: Any) -> bool:
-            if "rms" in str(type(component)).lower():
-                return True
-            return False
-
-        return_values = apply_fn_to_all_components(self, is_rms_norm)
-
-        if True in return_values.values():
-            return True
-        return False
 
     def fold_value_biases(self):
         """Fold the value biases into the output bias.
@@ -388,7 +372,12 @@ class TransformerBridge(nn.Module):
 
             # shape [(head_index d_head)]
             v_bias = self.blocks[layer].attn.v.bias.data
-            v_bias_rearranged = einops.rearrange(v_bias.squeeze(0), "(head_index d_head) -> head_index d_head", head_index=self.cfg.n_heads, d_head=self.cfg.d_head)
+            v_bias_rearranged = einops.rearrange(
+                v_bias.squeeze(0),
+                "(head_index d_head) -> head_index d_head",
+                head_index=self.cfg.n_heads,
+                d_head=self.cfg.d_head,
+            )
 
             if self.cfg.n_key_value_heads is not None:
                 v_bias_rearranged = torch.repeat_interleave(
@@ -444,9 +433,7 @@ class TransformerBridge(nn.Module):
             center_weights (bool): Enables the centering of weights after folding in LN. Should be disabled when RMS Norm is used.
         """
 
-        uses_rms_norm = self.uses_rms_norm()
-
-        if uses_rms_norm:
+        if self.cfg.uses_rms_norm:
             warnings.warn(
                 "This model uses RMS norm, so in order to fold the layer norm weights, fold_biases and center_weights will automatically be set to False."
             )
@@ -462,19 +449,25 @@ class TransformerBridge(nn.Module):
 
             if fold_biases:
                 self.blocks[l].attn.q.bias.data = self.blocks[l].attn.q.bias.data + (
-                    self.blocks[l].attn.q.weight.data * self.blocks[l].ln1.bias.data[ :, None]
-                ).sum(-2    )
+                    self.blocks[l].attn.q.weight.data * self.blocks[l].ln1.bias.data[:, None]
+                ).sum(-2)
                 self.blocks[l].attn.k.bias.data = self.blocks[l].attn.k.bias.data + (
                     self.blocks[l].attn.k.weight.data * self.blocks[l].ln1.bias.data[:, None]
                 ).sum(-2)
                 self.blocks[l].attn.v.bias.data = self.blocks[l].attn.v.bias.data + (
-                    self.blocks[l].attn.v.weight.data * self.blocks[l].ln1.bias.data[ :, None]
+                    self.blocks[l].attn.v.weight.data * self.blocks[l].ln1.bias.data[:, None]
                 ).sum(-2)
                 self.blocks[l].ln1.bias.data = torch.zeros_like(self.blocks[l].ln1.bias)
 
-            self.blocks[l].attn.q.weight.data = self.blocks[l].attn.q.weight.data * self.blocks[l].ln1.weight.data[ :, None]
-            self.blocks[l].attn.k.weight.data = self.blocks[l].attn.k.weight.data * self.blocks[l].ln1.weight.data[ :, None]
-            self.blocks[l].attn.v.weight.data = self.blocks[l].attn.v.weight.data * self.blocks[l].ln1.weight.data[ :, None]
+            self.blocks[l].attn.q.weight.data = (
+                self.blocks[l].attn.q.weight.data * self.blocks[l].ln1.weight.data[:, None]
+            )
+            self.blocks[l].attn.k.weight.data = (
+                self.blocks[l].attn.k.weight.data * self.blocks[l].ln1.weight.data[:, None]
+            )
+            self.blocks[l].attn.v.weight.data = (
+                self.blocks[l].attn.v.weight.data * self.blocks[l].ln1.weight.data[:, None]
+            )
             self.blocks[l].ln1.weight.data = torch.zeros_like(self.blocks[l].ln1.weight)
 
             # Finally, we center the weights reading from the residual stream. The output of the
@@ -483,17 +476,53 @@ class TransformerBridge(nn.Module):
             # output of LayerNormPre is orthogonal to the vector of all 1s (because dotting with
             # that gets the sum), so we can remove the component of the matrix parallel to this.
             if center_weights:
-                q_weight_rearranged = einops.rearrange(self.blocks[l].attn.q.weight.data.squeeze(0), "out_features (head_index d_head) -> head_index out_features d_head", head_index=self.cfg.n_heads, d_head=self.cfg.d_head)
-                k_weight_rearranged = einops.rearrange(self.blocks[l].attn.k.weight.data.squeeze(0), "out_features (head_index d_head) -> head_index out_features d_head", head_index=self.cfg.n_heads, d_head=self.cfg.d_head)
-                v_weight_rearranged = einops.rearrange(self.blocks[l].attn.v.weight.data.squeeze(0), "out_features (head_index d_head) -> head_index out_features d_head", head_index=self.cfg.n_heads, d_head=self.cfg.d_head)
+                q_weight_rearranged = einops.rearrange(
+                    self.blocks[l].attn.q.weight.data.squeeze(0),
+                    "out_features (head_index d_head) -> head_index out_features d_head",
+                    head_index=self.cfg.n_heads,
+                    d_head=self.cfg.d_head,
+                )
+                k_weight_rearranged = einops.rearrange(
+                    self.blocks[l].attn.k.weight.data.squeeze(0),
+                    "out_features (head_index d_head) -> head_index out_features d_head",
+                    head_index=self.cfg.n_heads,
+                    d_head=self.cfg.d_head,
+                )
+                v_weight_rearranged = einops.rearrange(
+                    self.blocks[l].attn.v.weight.data.squeeze(0),
+                    "out_features (head_index d_head) -> head_index out_features d_head",
+                    head_index=self.cfg.n_heads,
+                    d_head=self.cfg.d_head,
+                )
 
-                q_weight_rearranged = q_weight_rearranged - einops.reduce(q_weight_rearranged, "head_index d_model d_head -> head_index 1 d_head", "mean")
-                k_weight_rearranged = k_weight_rearranged - einops.reduce(k_weight_rearranged, "head_index d_model d_head -> head_index 1 d_head", "mean")
-                v_weight_rearranged = v_weight_rearranged - einops.reduce(v_weight_rearranged, "head_index d_model d_head -> head_index 1 d_head", "mean")
+                q_weight_rearranged = q_weight_rearranged - einops.reduce(
+                    q_weight_rearranged, "head_index d_model d_head -> head_index 1 d_head", "mean"
+                )
+                k_weight_rearranged = k_weight_rearranged - einops.reduce(
+                    k_weight_rearranged, "head_index d_model d_head -> head_index 1 d_head", "mean"
+                )
+                v_weight_rearranged = v_weight_rearranged - einops.reduce(
+                    v_weight_rearranged, "head_index d_model d_head -> head_index 1 d_head", "mean"
+                )
 
-                q_weight_rearranged = einops.rearrange(q_weight_rearranged, "head_index out_features d_head -> out_features (head_index d_head)", head_index=self.cfg.n_heads, d_head=self.cfg.d_head)
-                k_weight_rearranged = einops.rearrange(k_weight_rearranged, "head_index out_features d_head -> out_features (head_index d_head)", head_index=self.cfg.n_heads, d_head=self.cfg.d_head)
-                v_weight_rearranged = einops.rearrange(v_weight_rearranged, "head_index out_features d_head -> out_features (head_index d_head)", head_index=self.cfg.n_heads, d_head=self.cfg.d_head)
+                q_weight_rearranged = einops.rearrange(
+                    q_weight_rearranged,
+                    "head_index out_features d_head -> out_features (head_index d_head)",
+                    head_index=self.cfg.n_heads,
+                    d_head=self.cfg.d_head,
+                )
+                k_weight_rearranged = einops.rearrange(
+                    k_weight_rearranged,
+                    "head_index out_features d_head -> out_features (head_index d_head)",
+                    head_index=self.cfg.n_heads,
+                    d_head=self.cfg.d_head,
+                )
+                v_weight_rearranged = einops.rearrange(
+                    v_weight_rearranged,
+                    "head_index out_features d_head -> out_features (head_index d_head)",
+                    head_index=self.cfg.n_heads,
+                    d_head=self.cfg.d_head,
+                )
 
                 self.blocks[l].attn.q.weight.data = q_weight_rearranged
                 self.blocks[l].attn.k.weight.data = k_weight_rearranged
@@ -501,7 +530,6 @@ class TransformerBridge(nn.Module):
 
             # Fold ln2 into MLP
             if not self.cfg.attn_only:
-
                 if fold_biases:
                     self.blocks[l].mlp.input.bias.data = self.blocks[l].mlp.input.bias.data + (
                         self.blocks[l].mlp.input.weight.data * self.blocks[l].ln2.bias.data[:, None]
@@ -509,15 +537,22 @@ class TransformerBridge(nn.Module):
 
                     self.blocks[l].ln2.bias.data = torch.zeros_like(self.blocks[l].ln2.bias)
 
-                self.blocks[l].mlp.input.weight.data = self.blocks[l].mlp.input.weight.data * self.blocks[l].ln2.weight.data[:, None]
+                self.blocks[l].mlp.input.weight.data = (
+                    self.blocks[l].mlp.input.weight.data * self.blocks[l].ln2.weight.data[:, None]
+                )
 
                 if self.cfg.gated_mlp:
-                    self.blocks[l].mlp.gate.weight.data = self.blocks[l].mlp.gate.weight.data * self.blocks[l].ln2.weight.data[:, None]
+                    self.blocks[l].mlp.gate.weight.data = (
+                        self.blocks[l].mlp.gate.weight.data
+                        * self.blocks[l].ln2.weight.data[:, None]
+                    )
 
                 self.blocks[l].ln2.weight.data = torch.zeros_like(self.blocks[l].ln2.weight)
 
                 if center_weights:
-                    self.blocks[l].mlp.input.weight.data = self.blocks[l].mlp.input.weight.data - einops.reduce(
+                    self.blocks[l].mlp.input.weight.data = self.blocks[
+                        l
+                    ].mlp.input.weight.data - einops.reduce(
                         self.blocks[l].mlp.input.weight.data,
                         "d_model d_mlp -> 1 d_mlp",
                         "mean",
