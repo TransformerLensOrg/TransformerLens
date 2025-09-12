@@ -62,7 +62,7 @@ class GptjArchitectureAdapter(ArchitectureAdapter):
             "blocks": BlockBridge(
                 name="transformer.h",
                 submodules={
-                    "ln1": NormalizationBridge(name="ln_1"),
+                    "ln1": NormalizationBridge(name="ln_1", config=self.cfg),
                     "attn": AttentionBridge(
                         name="attn",
                         config=self.cfg,
@@ -82,6 +82,6 @@ class GptjArchitectureAdapter(ArchitectureAdapter):
                     ),
                 },
             ),
-            "ln_final": NormalizationBridge(name="transformer.ln_f"),
+            "ln_final": NormalizationBridge(name="transformer.ln_f", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head"),
         }

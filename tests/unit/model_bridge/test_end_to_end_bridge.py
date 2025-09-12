@@ -31,11 +31,11 @@ class TestEndToEndBridge:
         adapter = MockArchitectureAdapter()
         # The mapping should now reflect the different names in the remote model
         adapter.component_mapping = {
-            "ln_final": NormalizationBridge(name="final_norm"),
+            "ln_final": NormalizationBridge(name="final_norm", config={}),
             "blocks": BlockBridge(
                 name="encoder.layers",
                 submodules={
-                    "ln1": NormalizationBridge(name="norm1"),
+                    "ln1": NormalizationBridge(name="norm1", config={}),
                     "attn": AttentionBridge(name="self_attn", config=SimpleNamespace(n_heads=1)),
                 },
             ),
