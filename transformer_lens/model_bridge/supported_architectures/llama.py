@@ -32,6 +32,8 @@ class LlamaArchitectureAdapter(ArchitectureAdapter):
             "d_vocab": cfg.d_vocab,
         }
 
+        self.cfg.gated_mlp = True
+
         self.cfg.uses_rms_norm = True
 
         self.conversion_rules = HookConversionSet(

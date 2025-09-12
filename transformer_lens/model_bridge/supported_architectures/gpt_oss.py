@@ -24,6 +24,8 @@ class GPTOSSArchitectureAdapter(ArchitectureAdapter):
         """Initialize the GPT-OSS architecture adapter."""
         super().__init__(cfg)
 
+        self.cfg.gated_mlp = True
+
         self.cfg.uses_rms_norm = True
 
         self.component_mapping = {

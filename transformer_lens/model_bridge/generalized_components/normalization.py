@@ -53,6 +53,7 @@ class NormalizationBridge(GeneralizedComponent):
         Returns:
             Normalized output
         """
+
         if self.original_component is None:
             raise RuntimeError(
                 f"Original component not set for {self.name}. Call set_original_component() first."
@@ -72,12 +73,13 @@ class NormalizationBridge(GeneralizedComponent):
         )
         hidden_states = self.hook_normalized(hidden_states / scale)
 
-        if self.config.uses_rms_norm:
-            # No bias if using RMSNorm
-            output = hidden_states * self.weight
-        else:
-            # Add bias if using LayerNorm
-            output = hidden_states * self.weight + self.bias
+        if not self.config.layer_norm_folding:
+            if self.config.uses_rms_norm:
+                # No bias if using RMSNorm
+                hidden_states = hidden_states * self.weight
+            else:
+                # Add bias if using LayerNorm
+                hidden_states = hidden_states * self.weight + self.bias
 
-        output = self.hook_out(output)
+        output = self.hook_out(hidden_states)
         return output

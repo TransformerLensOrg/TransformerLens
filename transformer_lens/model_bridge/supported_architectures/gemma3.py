@@ -26,6 +26,8 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
         """Initialize the Gemma3 architecture adapter."""
         super().__init__(cfg)
 
+        self.cfg.gated_mlp = True
+
         self.cfg.uses_rms_norm = True
 
         self.conversion_rules = HookConversionSet(
