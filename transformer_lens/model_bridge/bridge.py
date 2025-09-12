@@ -4,6 +4,8 @@ This module provides the bridge components that wrap remote model components and
 a consistent interface for accessing their weights and performing operations.
 """
 
+import warnings
+from contextlib import contextmanager
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -19,6 +21,7 @@ from typing import (
     overload,
 )
 
+import einops
 import numpy as np
 import torch
 import tqdm
@@ -60,7 +63,12 @@ class TransformerBridge(nn.Module):
         "hook_unembed": "unembed.hook_out",
     }
 
-    def __init__(self, model: nn.Module, adapter: ArchitectureAdapter, tokenizer: Any):
+    def __init__(
+        self,
+        model: nn.Module,
+        adapter: ArchitectureAdapter,
+        tokenizer: Any,
+    ):
         """Initialize the bridge.
 
         Args:
@@ -307,7 +315,9 @@ class TransformerBridge(nn.Module):
         lines.extend(self._format_component_mapping(mapping, indent=1))
         return "\n".join(lines)
 
-    def enable_compatibility_mode(self, disable_warnings: bool = False) -> None:
+    def enable_compatibility_mode(
+        self, disable_warnings: bool = False, no_processing: bool = False
+    ) -> None:
         """Enable compatibility mode for the bridge.
 
         This sets up the bridge to work with legacy HookedTransformer components/hooks.
@@ -315,6 +325,7 @@ class TransformerBridge(nn.Module):
 
         Args:
             disable_warnings: Whether to disable warnings about legacy components/hooks
+            no_processing: Whether to disable pre-processing steps of the model (e.g. folding layer norm weights, folding value biases)
         """
         # Avoid circular import
         from transformer_lens.utilities.bridge_components import (
@@ -333,6 +344,237 @@ class TransformerBridge(nn.Module):
         # Re-initialize the hook registry to include aliases from components
         self.clear_hook_registry()
         self._initialize_hook_registry()
+
+        if not no_processing:
+            self.cfg.layer_norm_folding = True
+            self.fold_layer_norm()
+            self.fold_value_biases()
+
+    def fold_value_biases(self):
+        """Fold the value biases into the output bias.
+
+        Because attention patterns add up to 1, the value biases always have a constant effect on a
+        head's output. Further, as the outputs of each head in a layer add together, each head's
+        value bias has a constant effect on the *layer's* output, which can make it harder to
+        interpret the effect of any given head, and it doesn't matter which head a bias is
+        associated with. We can factor this all into a single output bias to the layer, and make it
+        easier to interpret the head's output. Formally, we take b_O_new = b_O_original +
+        sum_head(b_V_head @ W_O_head).
+        """
+
+        assert self.adapter.conversion_rules is not None, "Conversion rules are not set"
+
+        for layer in range(self.cfg.n_layers):
+            if not self.blocks[layer].attn.v.has_bias():
+                raise ValueError(
+                    f"The current model seems to not have value biases. Cannot fold value biases."
+                )
+
+            # shape [(head_index d_head)]
+            v_bias = self.blocks[layer].attn.v.bias.data
+            v_bias_rearranged = einops.rearrange(
+                v_bias.squeeze(0),
+                "(head_index d_head) -> head_index d_head",
+                head_index=self.cfg.n_heads,
+                d_head=self.cfg.d_head,
+            )
+
+            if self.cfg.n_key_value_heads is not None:
+                v_bias_rearranged = torch.repeat_interleave(
+                    v_bias_rearranged, dim=0, repeats=self.cfg.n_heads // self.cfg.n_key_value_heads
+                )
+
+            # [(head_index d_head), d_model]
+            o_weight = self.blocks[layer].attn.o.weight.data
+            o_weight_rearranged = einops.rearrange(o_weight, "(i h) m -> i h m", i=self.cfg.n_heads)
+
+            # [d_model]
+            o_original_bias = self.blocks[layer].attn.o.bias.data
+            o_bias_folded = o_original_bias + (
+                v_bias_rearranged[:, :, None] * o_weight_rearranged
+            ).sum([0, 1])
+
+            self.blocks[layer].attn.o.bias.data = o_bias_folded
+            self.blocks[layer].attn.v.bias.data = torch.zeros_like(v_bias)
+
+    def fold_layer_norm(self, fold_biases=True, center_weights=True):
+        """Fold Layer Norm into the neighbouring weights. Can also be used to fold RMS Norm, when fold_biases and center_weights are set to False.
+
+            Folding the LayerNorm weights to the subsequent linear layer does not change the computation.
+
+            `LayerNorm
+            <https://wandb.ai/wandb_fc/LayerNorm/reports/Layer-Normalization-in-Pytorch-With-Examples---VmlldzoxMjk5MTk1>`_
+            is a common regularization technique used in transformers. Unlike BatchNorm, it
+            cannot be turned off at inference time, as it significantly alters the mathematical
+            function implemented by the transformer.
+
+            When 'no_processing' is set to False, this function folds the LayerNorm weights into the subsequent linear layer.
+            This transformation is computationally equivalent and simplifies the model's interpretability.
+            It essentially merges LayerNorm weights into the subsequent linear layer's weights,
+            which is handled by HookedTransformer when loading pre-trained weights.
+            Set 'no_processing' to True when enabling compatibility mode if you wish to turn this off.
+
+            Mathematically, LayerNorm is defined as follows:
+
+            .. math::
+                x_1 &= x_0 - \\text{mean}(x_0)
+
+                x_2 &= \\frac{x_1}{\\sqrt{\\text{mean}(x_1^2)}}
+
+                x_3 &= x_2 \\cdot w
+
+                x_4 &= x_3 + b
+
+            For further details, refer to `this document
+            <https://transformer-circuits.pub/2021/framework/index.html#:~:text=Handling%20Layer%20Normalization>`_.
+
+        Args:
+            fold_biases (bool): Enables folding of LN biases. Should be disabled when RMS Norm is used.
+            center_weights (bool): Enables the centering of weights after folding in LN. Should be disabled when RMS Norm is used.
+        """
+
+        if self.cfg.uses_rms_norm:
+            warnings.warn(
+                "This model uses RMS norm, so in order to fold the layer norm weights, fold_biases and center_weights will automatically be set to False."
+            )
+            fold_biases = False
+            center_weights = False
+
+        for l in range(self.cfg.n_layers):
+            # Fold ln1 into attention - it's important to fold biases first, since biases depend on
+            # weights but not vice versa The various indexing is just to broadcast ln.b and ln.w
+            # along every axis other than d_model. Each weight matrix right multiplies. To fold in
+            # the bias, we use the W_ matrix to map it to the hidden space of the layer, so we need
+            # to sum along axis -2, which is the residual stream space axis.
+
+            if fold_biases:
+                self.blocks[l].attn.q.bias.data = self.blocks[l].attn.q.bias.data + (
+                    self.blocks[l].attn.q.weight.data * self.blocks[l].ln1.bias.data[:, None]
+                ).sum(-2)
+                self.blocks[l].attn.k.bias.data = self.blocks[l].attn.k.bias.data + (
+                    self.blocks[l].attn.k.weight.data * self.blocks[l].ln1.bias.data[:, None]
+                ).sum(-2)
+                self.blocks[l].attn.v.bias.data = self.blocks[l].attn.v.bias.data + (
+                    self.blocks[l].attn.v.weight.data * self.blocks[l].ln1.bias.data[:, None]
+                ).sum(-2)
+                self.blocks[l].ln1.bias.data = torch.zeros_like(self.blocks[l].ln1.bias)
+
+            self.blocks[l].attn.q.weight.data = (
+                self.blocks[l].attn.q.weight.data * self.blocks[l].ln1.weight.data[:, None]
+            )
+            self.blocks[l].attn.k.weight.data = (
+                self.blocks[l].attn.k.weight.data * self.blocks[l].ln1.weight.data[:, None]
+            )
+            self.blocks[l].attn.v.weight.data = (
+                self.blocks[l].attn.v.weight.data * self.blocks[l].ln1.weight.data[:, None]
+            )
+            self.blocks[l].ln1.weight.data = torch.zeros_like(self.blocks[l].ln1.weight)
+
+            # Finally, we center the weights reading from the residual stream. The output of the
+            # first part of the LayerNorm is mean 0 and standard deviation 1, so the mean of any
+            # input vector of the matrix doesn't matter and can be set to zero. Equivalently, the
+            # output of LayerNormPre is orthogonal to the vector of all 1s (because dotting with
+            # that gets the sum), so we can remove the component of the matrix parallel to this.
+            if center_weights:
+                q_weight_rearranged = einops.rearrange(
+                    self.blocks[l].attn.q.weight.data.squeeze(0),
+                    "out_features (head_index d_head) -> head_index out_features d_head",
+                    head_index=self.cfg.n_heads,
+                    d_head=self.cfg.d_head,
+                )
+                k_weight_rearranged = einops.rearrange(
+                    self.blocks[l].attn.k.weight.data.squeeze(0),
+                    "out_features (head_index d_head) -> head_index out_features d_head",
+                    head_index=self.cfg.n_heads,
+                    d_head=self.cfg.d_head,
+                )
+                v_weight_rearranged = einops.rearrange(
+                    self.blocks[l].attn.v.weight.data.squeeze(0),
+                    "out_features (head_index d_head) -> head_index out_features d_head",
+                    head_index=self.cfg.n_heads,
+                    d_head=self.cfg.d_head,
+                )
+
+                q_weight_rearranged = q_weight_rearranged - einops.reduce(
+                    q_weight_rearranged, "head_index d_model d_head -> head_index 1 d_head", "mean"
+                )
+                k_weight_rearranged = k_weight_rearranged - einops.reduce(
+                    k_weight_rearranged, "head_index d_model d_head -> head_index 1 d_head", "mean"
+                )
+                v_weight_rearranged = v_weight_rearranged - einops.reduce(
+                    v_weight_rearranged, "head_index d_model d_head -> head_index 1 d_head", "mean"
+                )
+
+                q_weight_rearranged = einops.rearrange(
+                    q_weight_rearranged,
+                    "head_index out_features d_head -> out_features (head_index d_head)",
+                    head_index=self.cfg.n_heads,
+                    d_head=self.cfg.d_head,
+                )
+                k_weight_rearranged = einops.rearrange(
+                    k_weight_rearranged,
+                    "head_index out_features d_head -> out_features (head_index d_head)",
+                    head_index=self.cfg.n_heads,
+                    d_head=self.cfg.d_head,
+                )
+                v_weight_rearranged = einops.rearrange(
+                    v_weight_rearranged,
+                    "head_index out_features d_head -> out_features (head_index d_head)",
+                    head_index=self.cfg.n_heads,
+                    d_head=self.cfg.d_head,
+                )
+
+                self.blocks[l].attn.q.weight.data = q_weight_rearranged
+                self.blocks[l].attn.k.weight.data = k_weight_rearranged
+                self.blocks[l].attn.v.weight.data = v_weight_rearranged
+
+            # Fold ln2 into MLP
+            if not self.cfg.attn_only:
+                if fold_biases:
+                    self.blocks[l].mlp.input.bias.data = self.blocks[l].mlp.input.bias.data + (
+                        self.blocks[l].mlp.input.weight.data * self.blocks[l].ln2.bias.data[:, None]
+                    ).sum(-2)
+
+                    self.blocks[l].ln2.bias.data = torch.zeros_like(self.blocks[l].ln2.bias)
+
+                self.blocks[l].mlp.input.weight.data = (
+                    self.blocks[l].mlp.input.weight.data * self.blocks[l].ln2.weight.data[:, None]
+                )
+
+                if self.cfg.gated_mlp:
+                    self.blocks[l].mlp.gate.weight.data = (
+                        self.blocks[l].mlp.gate.weight.data
+                        * self.blocks[l].ln2.weight.data[:, None]
+                    )
+
+                self.blocks[l].ln2.weight.data = torch.zeros_like(self.blocks[l].ln2.weight)
+
+                if center_weights:
+                    self.blocks[l].mlp.input.weight.data = self.blocks[
+                        l
+                    ].mlp.input.weight.data - einops.reduce(
+                        self.blocks[l].mlp.input.weight.data,
+                        "d_model d_mlp -> 1 d_mlp",
+                        "mean",
+                    )
+
+        # Fold ln_final into Unembed
+        if fold_biases and self.unembed.has_bias():
+            self.unembed.bias.data = self.unembed.bias.data + (
+                self.unembed.weight.data * self.ln_final.bias.data[:, None]
+            ).sum(-2)
+
+            self.ln_final.bias.data = torch.zeros_like(self.ln_final.bias)
+
+        print(self.unembed.weight.data.shape, self.ln_final.weight.data.shape)
+        self.unembed.weight.data = self.unembed.weight.data * self.ln_final.weight.data[None, :]
+        self.ln_final.weight.data = torch.zeros_like(self.ln_final.weight)
+
+        if center_weights:
+            # Center the weights that read in from the LayerNorm ln_final
+            self.unembed.weight.data = self.unembed.weight.data - einops.reduce(
+                self.unembed.weight.data, "d_model d_vocab -> 1 d_vocab", "mean"
+            )
 
     # ==================== TOKENIZATION METHODS ====================
 
@@ -1094,7 +1336,7 @@ class TransformerBridge(nn.Module):
             return cache_hook
 
         # Use cached hooks instead of re-discovering them
-        hook_dict = self._hook_registry
+        hook_dict = self.hook_dict
 
         # Filter hooks based on names_filter
         for hook_name, hook in hook_dict.items():
@@ -1138,7 +1380,7 @@ class TransformerBridge(nn.Module):
 
                     # Add hook to the output of the last layer to be processed
                     block_hook_name = f"blocks.{last_layer_to_process}.hook_out"
-                    hook_dict = self._hook_registry
+                    hook_dict = self.hook_dict
                     if block_hook_name in hook_dict:
                         hook_dict[block_hook_name].add_hook(stop_hook)
                         hooks.append((hook_dict[block_hook_name], block_hook_name))
@@ -1254,7 +1496,6 @@ class TransformerBridge(nn.Module):
         Returns:
             Model output
         """
-        from transformer_lens.hook_points import HookPoint
 
         # Store hooks that we add so we can remove them later
         added_hooks: List[Tuple[HookPoint, str]] = []
@@ -1279,7 +1520,7 @@ class TransformerBridge(nn.Module):
 
                 # Add hook to the output of the last layer to be processed
                 block_hook_name = f"blocks.{last_layer_to_process}.hook_out"
-                hook_dict = self._hook_registry
+                hook_dict = self.hook_dict
                 if block_hook_name in hook_dict:
                     add_hook_to_point(hook_dict[block_hook_name], stop_hook, block_hook_name)
 
@@ -1309,7 +1550,7 @@ class TransformerBridge(nn.Module):
 
                 if isinstance(hook_name_or_filter, str):
                     # Direct hook name - check for aliases first
-                    hook_dict = self._hook_registry
+                    hook_dict = self.hook_dict
                     actual_hook_name = hook_name_or_filter
 
                     # If this is an alias, resolve it to the actual hook name
@@ -1320,7 +1561,7 @@ class TransformerBridge(nn.Module):
                         add_hook_to_point(hook_dict[actual_hook_name], hook_fn, actual_hook_name)
                 else:
                     # Filter function
-                    hook_dict = self._hook_registry
+                    hook_dict = self.hook_dict
                     for name, hook_point in hook_dict.items():
                         if hook_name_or_filter(name):
                             add_hook_to_point(hook_point, hook_fn, name)
@@ -1734,7 +1975,6 @@ class TransformerBridge(nn.Module):
 
     def hooks(self, fwd_hooks=[], bwd_hooks=[], reset_hooks_end=True, clear_contexts=False):
         """Context manager for temporarily adding hooks."""
-        from contextlib import contextmanager
 
         @contextmanager
         def _hooks_context():
@@ -1773,8 +2013,6 @@ class TransformerBridge(nn.Module):
 
     def set_use_hook_mlp_in(self, use_hook_mlp_in: bool):
         """Toggles whether to allow storing and editing inputs to each MLP layer."""
-        import warnings
-
         warnings.warn(
             "This function is now deprecated and no longer does anything. These options are turned on by default now.",
             DeprecationWarning,
@@ -1785,8 +2023,6 @@ class TransformerBridge(nn.Module):
         """
         Toggles whether to allow editing of inputs to each attention head.
         """
-        import warnings
-
         warnings.warn(
             "This function is now deprecated and no longer does anything. These options are turned on by default now.",
             DeprecationWarning,

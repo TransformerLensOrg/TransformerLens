@@ -66,7 +66,7 @@ class NeoArchitectureAdapter(ArchitectureAdapter):
             "blocks": BlockBridge(
                 name="transformer.h",
                 submodules={
-                    "ln1": NormalizationBridge(name="ln_1"),
+                    "ln1": NormalizationBridge(name="ln_1", config=self.cfg),
                     "attn": AttentionBridge(
                         name="attn.attention",
                         config=self.cfg,
@@ -77,7 +77,7 @@ class NeoArchitectureAdapter(ArchitectureAdapter):
                             "W_O": LinearBridge(name="out_proj"),
                         },
                     ),
-                    "ln2": NormalizationBridge(name="ln_2"),
+                    "ln2": NormalizationBridge(name="ln_2", config=self.cfg),
                     "mlp": MLPBridge(
                         name="mlp",
                         submodules={
@@ -87,6 +87,6 @@ class NeoArchitectureAdapter(ArchitectureAdapter):
                     ),
                 },
             ),
-            "ln_final": NormalizationBridge(name="transformer.ln_f"),
+            "ln_final": NormalizationBridge(name="transformer.ln_f", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head"),
         }

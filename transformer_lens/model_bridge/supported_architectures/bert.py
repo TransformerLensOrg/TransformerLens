@@ -93,12 +93,12 @@ class BertArchitectureAdapter(ArchitectureAdapter):
             "blocks": BlockBridge(
                 name="bert.encoder.layer",
                 submodules={
-                    "ln1": NormalizationBridge(name="attention.output.LayerNorm"),
-                    "ln2": NormalizationBridge(name="output.LayerNorm"),
+                    "ln1": NormalizationBridge(name="attention.output.LayerNorm", config=self.cfg),
+                    "ln2": NormalizationBridge(name="output.LayerNorm", config=self.cfg),
                     "attn": AttentionBridge(name="attention", config=self.cfg),
                     "mlp": MLPBridge(name="intermediate"),
                 },
             ),
             "unembed": UnembeddingBridge(name="cls.predictions"),
-            "ln_final": NormalizationBridge(name="bert.pooler.dense"),
+            "ln_final": NormalizationBridge(name="bert.pooler.dense", config=self.cfg),
         }

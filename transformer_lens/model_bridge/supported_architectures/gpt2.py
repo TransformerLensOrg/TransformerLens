@@ -36,49 +36,59 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
             {
                 "pos_embed.pos": "transformer.wpe.weight",
                 "embed.e": "transformer.wte.weight",
-                "blocks.{i}.ln1.w": "transformer.h.{i}.ln_1.weight",
-                "blocks.{i}.ln1.b": "transformer.h.{i}.ln_1.bias",
-                "blocks.{i}.attn.q": (
+                "blocks.{i}.ln1.weight": "transformer.h.{i}.ln_1.weight",
+                "blocks.{i}.ln1.bias": "transformer.h.{i}.ln_1.bias",
+                "blocks.{i}.attn.q.weight": (
                     "transformer.h.{i}.attn.c_attn.weight",
                     RearrangeHookConversion(
-                        "m (three n h) -> three n m h",
-                        three=3,
+                        "(n h) m-> n m h",
                         n=self.cfg.n_heads,
                     ),
                 ),
-                "blocks.{i}.attn.k": (
+                "blocks.{i}.attn.k.weight": (
                     "transformer.h.{i}.attn.c_attn.weight",
                     RearrangeHookConversion(
-                        "m (three n h) -> three n m h",
-                        three=3,
+                        "(n h) m-> n m h",
                         n=self.cfg.n_heads,
                     ),
                 ),
-                "blocks.{i}.attn.v": (
+                "blocks.{i}.attn.v.weight": (
                     "transformer.h.{i}.attn.c_attn.weight",
                     RearrangeHookConversion(
-                        "m (three n h) -> three n m h",
-                        three=3,
+                        "(n h) m-> n m h",
                         n=self.cfg.n_heads,
                     ),
                 ),
-                "blocks.{i}.attn.o": (
+                "blocks.{i}.attn.o.weight": (
                     "transformer.h.{i}.attn.c_proj.weight",
                     RearrangeHookConversion("(n h) m -> n h m", n=self.cfg.n_heads),
                 ),
-                "blocks.{i}.attn.b_Q": "transformer.h.{i}.attn.c_attn.bias",
-                "blocks.{i}.attn.b_K": "transformer.h.{i}.attn.c_attn.bias",
-                "blocks.{i}.attn.b_V": "transformer.h.{i}.attn.c_attn.bias",
-                "blocks.{i}.attn.b_O": "transformer.h.{i}.attn.c_proj.bias",
-                "blocks.{i}.ln2.w": "transformer.h.{i}.ln_2.weight",
-                "blocks.{i}.ln2.b": "transformer.h.{i}.ln_2.bias",
-                "blocks.{i}.mlp.in": "transformer.h.{i}.mlp.c_fc.weight",
-                "blocks.{i}.mlp.b_in": "transformer.h.{i}.mlp.c_fc.bias",
+                "blocks.{i}.attn.q.bias": (
+                    "transformer.h.{i}.attn.c_attn.bias",
+                    RearrangeHookConversion("(n d_head) -> n d_head", n=self.cfg.n_heads),
+                ),
+                "blocks.{i}.attn.k.bias": (
+                    "transformer.h.{i}.attn.c_attn.bias",
+                    RearrangeHookConversion("(n d_head) -> n d_head", n=self.cfg.n_heads),
+                ),
+                "blocks.{i}.attn.v.bias": (
+                    "transformer.h.{i}.attn.c_attn.bias",
+                    RearrangeHookConversion("(n d_head) -> n d_head", n=self.cfg.n_heads),
+                ),
+                "blocks.{i}.attn.o.bias": "transformer.h.{i}.attn.c_proj.bias",
+                "blocks.{i}.ln2.weight": "transformer.h.{i}.ln_2.weight",
+                "blocks.{i}.ln2.bias": "transformer.h.{i}.ln_2.bias",
+                "blocks.{i}.mlp.input.weight": "transformer.h.{i}.mlp.c_fc.weight",
+                "blocks.{i}.mlp.input.bias": "transformer.h.{i}.mlp.c_fc.bias",
                 "blocks.{i}.mlp.out": "transformer.h.{i}.mlp.c_proj.weight",
                 "blocks.{i}.mlp.b_out": "transformer.h.{i}.mlp.c_proj.bias",
-                "ln_final.w": "transformer.ln_f.weight",
-                "ln_final.b": "transformer.ln_f.bias",
-                "unembed.u": "lm_head.weight",
+                "ln_final.weight": "transformer.ln_f.weight",
+                "ln_final.bias": "transformer.ln_f.bias",
+                "unembed.weight": (
+                    "lm_head.weight",
+                    RearrangeHookConversion("d_model d_vocab -> d_vocab d_model"),
+                ),
+                "unembed.bias": "lm_head.bias",
             }
         )
 
@@ -88,7 +98,7 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
             "blocks": BlockBridge(
                 name="transformer.h",
                 submodules={
-                    "ln1": NormalizationBridge(name="ln_1"),
+                    "ln1": NormalizationBridge(name="ln_1", config=self.cfg),
                     "attn": JointQKVAttentionBridge(
                         name="attn",
                         config=self.cfg,
@@ -98,17 +108,17 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
                             "o": LinearBridge(name="c_proj"),
                         },
                     ),
-                    "ln2": NormalizationBridge(name="ln_2"),
+                    "ln2": NormalizationBridge(name="ln_2", config=self.cfg),
                     "mlp": MLPBridge(
                         name="mlp",
                         submodules={
-                            "in": LinearBridge(name="c_fc"),
+                            "input": LinearBridge(name="c_fc"),
                             "out": LinearBridge(name="c_proj"),
                         },
                     ),
                 },
             ),
-            "ln_final": NormalizationBridge(name="transformer.ln_f"),
+            "ln_final": NormalizationBridge(name="transformer.ln_f", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head"),
         }
 

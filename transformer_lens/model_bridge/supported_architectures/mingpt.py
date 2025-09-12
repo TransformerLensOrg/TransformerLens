@@ -83,8 +83,10 @@ class MingptArchitectureAdapter(ArchitectureAdapter):
             "blocks": BlockBridge(
                 name="transformer.h",  # Base path for blocks
                 submodules={
-                    "ln1": NormalizationBridge(name="ln_1"),  # Pre-attention layer norm
-                    "ln2": NormalizationBridge(name="ln_2"),  # Pre-MLP layer norm
+                    "ln1": NormalizationBridge(
+                        name="ln_1", config=self.cfg
+                    ),  # Pre-attention layer norm
+                    "ln2": NormalizationBridge(name="ln_2", config=self.cfg),  # Pre-MLP layer norm
                     "attn": AttentionBridge(
                         name="attn",
                         config=self.cfg,
@@ -97,6 +99,8 @@ class MingptArchitectureAdapter(ArchitectureAdapter):
                     "mlp": MLPBridge(name="mlp"),  # Full MLP module
                 },
             ),
-            "ln_final": NormalizationBridge(name="transformer.ln_f"),  # Final layer norm
+            "ln_final": NormalizationBridge(
+                name="transformer.ln_f", config=self.cfg
+            ),  # Final layer norm
             "unembed": UnembeddingBridge(name="lm_head"),  # Language model head
         }
