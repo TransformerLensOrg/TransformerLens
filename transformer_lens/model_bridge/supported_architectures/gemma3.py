@@ -26,6 +26,10 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
         """Initialize the Gemma3 architecture adapter."""
         super().__init__(cfg)
 
+        self.cfg.gated_mlp = True
+
+        self.cfg.uses_rms_norm = True
+
         self.conversion_rules = HookConversionSet(
             {
                 # Gemma3 scales embeddings by sqrt(d_model)
@@ -84,10 +88,14 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
             "blocks": BlockBridge(
                 name="model.layers",
                 submodules={
-                    "ln1": NormalizationBridge(name="input_layernorm"),
-                    "ln1_post": NormalizationBridge(name="post_attention_layernorm"),
-                    "ln2": NormalizationBridge(name="pre_feedforward_layernorm"),
-                    "ln2_post": NormalizationBridge(name="post_feedforward_layernorm"),
+                    "ln1": NormalizationBridge(name="input_layernorm", config=self.cfg),
+                    "ln1_post": NormalizationBridge(
+                        name="post_attention_layernorm", config=self.cfg
+                    ),
+                    "ln2": NormalizationBridge(name="pre_feedforward_layernorm", config=self.cfg),
+                    "ln2_post": NormalizationBridge(
+                        name="post_feedforward_layernorm", config=self.cfg
+                    ),
                     "attn": AttentionBridge(
                         name="self_attn",
                         config=self.cfg,
@@ -96,8 +104,8 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
                             "k": LinearBridge(name="k_proj"),
                             "v": LinearBridge(name="v_proj"),
                             "o": LinearBridge(name="o_proj"),
-                            "q_norm": NormalizationBridge(name="q_norm"),
-                            "k_norm": NormalizationBridge(name="k_norm"),
+                            "q_norm": NormalizationBridge(name="q_norm", config=self.cfg),
+                            "k_norm": NormalizationBridge(name="k_norm", config=self.cfg),
                         },
                     ),
                     "mlp": MLPBridge(
@@ -110,6 +118,6 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
                     ),
                 },
             ),
-            "ln_final": NormalizationBridge(name="model.norm"),
+            "ln_final": NormalizationBridge(name="model.norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head"),
         }

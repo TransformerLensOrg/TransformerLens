@@ -49,12 +49,12 @@ class T5ArchitectureAdapter(ArchitectureAdapter):
             "blocks": BlockBridge(
                 name="encoder.block",
                 submodules={
-                    "ln1": NormalizationBridge(name="layer.0.layer_norm"),
+                    "ln1": NormalizationBridge(name="layer.0.layer_norm", config=self.cfg),
                     "attn": AttentionBridge(name="layer.0.SelfAttention", config=self.cfg),
-                    "ln2": NormalizationBridge(name="layer.1.layer_norm"),
+                    "ln2": NormalizationBridge(name="layer.1.layer_norm", config=self.cfg),
                     "mlp": MLPBridge(name="layer.1.DenseReluDense"),
                 },
             ),
-            "ln_final": NormalizationBridge(name="encoder.final_layer_norm"),
+            "ln_final": NormalizationBridge(name="encoder.final_layer_norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head"),
         }

@@ -79,12 +79,14 @@ class BloomArchitectureAdapter(ArchitectureAdapter):
 
         self.component_mapping = {
             "embed": EmbeddingBridge(name="transformer.word_embeddings"),
-            "embed_ln": NormalizationBridge(name="transformer.word_embeddings_layernorm"),
+            "embed_ln": NormalizationBridge(
+                name="transformer.word_embeddings_layernorm", config=self.cfg
+            ),
             "blocks": BlockBridge(
                 name="transformer.h",
                 submodules={
-                    "ln1": NormalizationBridge(name="input_layernorm"),
-                    "ln2": NormalizationBridge(name="post_attention_layernorm"),
+                    "ln1": NormalizationBridge(name="input_layernorm", config=self.cfg),
+                    "ln2": NormalizationBridge(name="post_attention_layernorm", config=self.cfg),
                     "attn": JointQKVAttentionBridge(
                         name="self_attention",
                         config=self.cfg,
@@ -103,7 +105,7 @@ class BloomArchitectureAdapter(ArchitectureAdapter):
                     ),
                 },
             ),
-            "ln_final": NormalizationBridge(name="transformer.ln_f"),
+            "ln_final": NormalizationBridge(name="transformer.ln_f", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head"),
         }
 
