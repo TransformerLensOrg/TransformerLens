@@ -58,6 +58,9 @@ class NormalizationBridge(GeneralizedComponent):
                 f"Original component not set for {self.name}. Call set_original_component() first."
             )
 
+        # keep mypy happy
+        assert self.config is not None
+
         hidden_states = self.hook_in(hidden_states)
 
         if not self.config.uses_rms_norm:
