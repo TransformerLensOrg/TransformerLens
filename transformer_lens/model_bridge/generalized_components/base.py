@@ -78,20 +78,17 @@ class GeneralizedComponent(nn.Module):
 
     def get_hooks(self) -> Dict[str, HookPoint]:
         """Get all hooks registered in this component."""
+        hooks = self._hook_registry.copy()
 
         # Add aliases if compatibility mode is enabled
         if self.compatibility_mode and self.hook_aliases:
-            # Only copy hook registry if compatibility mode is enabled to save memory
-            hooks = self._hook_registry.copy()
-
             for alias_name, target_name in self.hook_aliases.items():
                 # Use the existing alias system to resolve the target hook
                 target_hook = resolve_alias(self, alias_name, self.hook_aliases)
                 if target_hook is not None:
                     hooks[alias_name] = target_hook
-            return hooks
-        else:
-            return self._hook_registry
+
+        return hooks
 
     def _is_getattr_called_internally(self) -> bool:
         """This function checks if the __getattr__ method was being called internally
@@ -284,3 +281,11 @@ class GeneralizedComponent(nn.Module):
 
         # Fall back to normal attribute setting
         super().__setattr__(name, value)
+
+    def has_bias(self) -> bool:
+        """Check if the linear layer has a bias."""
+        if self.original_component is None:
+            raise RuntimeError(
+                f"Original component not set for {self.name}. Call set_original_component() first."
+            )
+        return self.original_component.bias is not None
