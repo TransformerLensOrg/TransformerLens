@@ -73,13 +73,13 @@ class NeelSoluOldArchitectureAdapter(ArchitectureAdapter):
             "blocks": BlockBridge(
                 name="blocks",
                 submodules={
-                    "ln1": NormalizationBridge(name="ln1"),
+                    "ln1": NormalizationBridge(name="ln1", config=self.cfg),
                     "attn": AttentionBridge(name="attn", config=self.cfg),
-                    "ln2": NormalizationBridge(name="ln2"),
+                    "ln2": NormalizationBridge(name="ln2", config=self.cfg),
                     "mlp": MLPBridge(name="mlp"),
                 },
             ),
-            "ln_final": NormalizationBridge(name="ln_f"),
+            "ln_final": NormalizationBridge(name="ln_f", config=self.cfg),
             "unembed": UnembeddingBridge(name="unembed"),
         }
 

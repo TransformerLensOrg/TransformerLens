@@ -4,18 +4,17 @@ from typing import Any, Dict, Optional
 
 import torch
 
+from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
 
 
 class NormalizationBridge(GeneralizedComponent):
-    """Normalization bridge that wraps transformer normalization layers.
+    """Normalization bridge that wraps transformer normalization layers but implements the calculation from scratch.
 
     This component provides standardized input/output hooks.
     """
-
-    hook_aliases = {"hook_normalized": "hook_out", "hook_scale": "hook_out"}
 
     property_aliases = {
         "w": "weight",
@@ -25,18 +24,20 @@ class NormalizationBridge(GeneralizedComponent):
     def __init__(
         self,
         name: str,
-        config: Optional[Any] = None,
+        config: Any,
         submodules: Optional[Dict[str, GeneralizedComponent]] = {},
     ):
         """Initialize the normalization bridge.
 
         Args:
             name: The name of this component
-            config: Optional configuration (unused for NormalizationBridge)
+            config: Optional configuration
             submodules: Dictionary of GeneralizedComponent submodules to register
         """
         super().__init__(name, config, submodules=submodules)
-        # No extra hooks; use only hook_in and hook_out
+
+        self.hook_normalized = HookPoint()
+        self.hook_scale = HookPoint()
 
     def forward(
         self,
@@ -52,13 +53,33 @@ class NormalizationBridge(GeneralizedComponent):
         Returns:
             Normalized output
         """
+
         if self.original_component is None:
             raise RuntimeError(
                 f"Original component not set for {self.name}. Call set_original_component() first."
             )
 
-        hidden_states = self.hook_in(hidden_states)
-        output = self.original_component(hidden_states, **kwargs)
-        output = self.hook_out(output)
+        # keep mypy happy
+        assert self.config is not None
 
+        hidden_states = self.hook_in(hidden_states)
+
+        if not self.config.uses_rms_norm:
+            # Only center if not using RMSNorm
+            hidden_states = hidden_states - hidden_states.mean(-1, keepdim=True)
+
+        scale = self.hook_scale(
+            (hidden_states.pow(2).mean(-1, keepdim=True) + self.config.eps).sqrt()
+        )
+        hidden_states = self.hook_normalized(hidden_states / scale)
+
+        if not self.config.layer_norm_folding:
+            if self.config.uses_rms_norm:
+                # No bias if using RMSNorm
+                hidden_states = hidden_states * self.weight
+            else:
+                # Add bias if using LayerNorm
+                hidden_states = hidden_states * self.weight + self.bias
+
+        output = self.hook_out(hidden_states)
         return output

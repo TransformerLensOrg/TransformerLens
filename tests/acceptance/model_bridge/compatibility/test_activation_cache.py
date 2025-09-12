@@ -1,3 +1,5 @@
+import gc
+
 import pytest
 import torch
 
@@ -8,12 +10,22 @@ from transformer_lens.model_bridge import TransformerBridge
 class TestActivationCacheCompatibility:
     """Test that ActivationCache works with TransformerBridge."""
 
-    @pytest.fixture
+    @pytest.fixture(autouse=True, scope="class")
+    def cleanup_after_class(self):
+        """Clean up memory after each test class."""
+        yield
+        # Force garbage collection and clear CUDA cache
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        for _ in range(3):
+            gc.collect()
+
+    @pytest.fixture(scope="class")
     def bridge_model(self):
         """Create a TransformerBridge model for testing."""
         return TransformerBridge.boot_transformers("gpt2", device="cpu")
 
-    @pytest.fixture
+    @pytest.fixture(scope="class")
     def sample_cache(self, bridge_model):
         """Create a sample cache for testing."""
         prompt = "The quick brown fox jumps over the lazy dog."

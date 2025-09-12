@@ -111,7 +111,7 @@ class TestComponentSetup:
     def test_setup_submodules_empty(self):
         """Test setting up submodules when there are none."""
         adapter = MockArchitectureAdapter()
-        component = NormalizationBridge(name="ln1")  # No submodules
+        component = NormalizationBridge(name="ln1", config={})  # No submodules
         original_ln = nn.LayerNorm(10)
 
         # Should not raise any errors
@@ -125,7 +125,7 @@ class TestComponentSetup:
 
         components = {
             "embed": EmbeddingBridge(name="embed"),
-            "ln_final": NormalizationBridge(name="ln_final"),
+            "ln_final": NormalizationBridge(name="ln_final", config={}),
         }
 
         # Store original components before setup
@@ -148,7 +148,7 @@ class TestComponentSetup:
 
         components = {
             "embed": EmbeddingBridge(
-                name="embed", submodules={"norm": NormalizationBridge(name="norm")}
+                name="embed", submodules={"norm": NormalizationBridge(name="norm", config={})}
             ),
         }
 
@@ -173,8 +173,8 @@ class TestComponentSetup:
         blocks_template = BlockBridge(
             name="blocks",
             submodules={
-                "ln1": NormalizationBridge(name="ln1"),
-                "ln2": NormalizationBridge(name="ln2"),
+                "ln1": NormalizationBridge(name="ln1", config={}),
+                "ln2": NormalizationBridge(name="ln2", config={}),
                 "attn": AttentionBridge(name="attn", config=SimpleNamespace(n_heads=1)),
                 "mlp": MLPBridge(name="mlp"),
             },
@@ -215,7 +215,7 @@ class TestComponentSetup:
         blocks_template = BlockBridge(
             name="blocks",
             submodules={
-                "ln1": NormalizationBridge(name="ln1"),
+                "ln1": NormalizationBridge(name="ln1", config={}),
             },
         )
 
@@ -240,12 +240,12 @@ class TestComponentSetup:
                 self.component_mapping = {
                     "embed": EmbeddingBridge(name="embed"),
                     "unembed": EmbeddingBridge(name="unembed"),
-                    "ln_final": NormalizationBridge(name="ln_final"),
+                    "ln_final": NormalizationBridge(name="ln_final", config={}),
                     "blocks": BlockBridge(
                         name="blocks",
                         submodules={
-                            "ln1": NormalizationBridge(name="ln1"),
-                            "ln2": NormalizationBridge(name="ln2"),
+                            "ln1": NormalizationBridge(name="ln1", config={}),
+                            "ln2": NormalizationBridge(name="ln2", config={}),
                             "attn": AttentionBridge(name="attn", config=SimpleNamespace(n_heads=1)),
                             "mlp": MLPBridge(name="mlp"),
                         },

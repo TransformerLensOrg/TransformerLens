@@ -10,6 +10,7 @@ from transformer_lens.conversion_utils.hook_conversion_utils import (
 )
 
 from .base_hook_conversion import BaseHookConversion
+from .rearrange_hook_conversion import RearrangeHookConversion
 
 
 class HookConversionSet(BaseHookConversion):
@@ -87,6 +88,14 @@ class HookConversionSet(BaseHookConversion):
 
         else:
             return conversion.convert(field, *[input_value, *full_context])
+
+    def get_conversion_action(self, field: str) -> BaseHookConversion:
+        conversion_details = self.fields[field]
+        if isinstance(conversion_details, tuple):
+            return conversion_details[1]
+        else:
+            # Return no op if not a specific conversion
+            return RearrangeHookConversion("... -> ...")
 
     def __repr__(self) -> str:
         conversion_string = (
