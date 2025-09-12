@@ -135,12 +135,12 @@ class PythiaArchitectureAdapter(ArchitectureAdapter):
             "blocks": BlockBridge(
                 name="gpt_neox.layers",
                 submodules={
-                    "ln1": NormalizationBridge(name="input_layernorm"),
-                    "ln2": NormalizationBridge(name="post_attention_layernorm"),
+                    "ln1": NormalizationBridge(name="input_layernorm", config=self.cfg),
+                    "ln2": NormalizationBridge(name="post_attention_layernorm", config=self.cfg),
                     "attn": AttentionBridge(name="attention", config=self.cfg),
                     "mlp": MLPBridge(name="mlp"),
                 },
             ),
-            "ln_final": NormalizationBridge(name="gpt_neox.final_layer_norm"),
+            "ln_final": NormalizationBridge(name="gpt_neox.final_layer_norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="embed_out"),
         }

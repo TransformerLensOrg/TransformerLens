@@ -32,7 +32,7 @@ class GPTOSSArchitectureAdapter(ArchitectureAdapter):
             "blocks": BlockBridge(
                 name="model.layers",
                 submodules={
-                    "ln1": NormalizationBridge(name="input_layernorm"),
+                    "ln1": NormalizationBridge(name="input_layernorm", config=self.cfg),
                     "attn": AttentionBridge(
                         name="self_attn",
                         config=self.cfg,
@@ -43,7 +43,7 @@ class GPTOSSArchitectureAdapter(ArchitectureAdapter):
                             "o": LinearBridge(name="o_proj"),
                         },
                     ),
-                    "ln2": NormalizationBridge(name="post_attention_layernorm"),
+                    "ln2": NormalizationBridge(name="post_attention_layernorm", config=self.cfg),
                     "mlp": MLPBridge(
                         name="mlp",
                         submodules={
@@ -64,7 +64,7 @@ class GPTOSSArchitectureAdapter(ArchitectureAdapter):
                     ),
                 },
             ),
-            "ln_final": NormalizationBridge(name="model.norm"),
+            "ln_final": NormalizationBridge(name="model.norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head"),
         }
 

@@ -88,7 +88,7 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
             "blocks": BlockBridge(
                 name="transformer.h",
                 submodules={
-                    "ln1": NormalizationBridge(name="ln_1"),
+                    "ln1": NormalizationBridge(name="ln_1", config=self.cfg),
                     "attn": JointQKVAttentionBridge(
                         name="attn",
                         config=self.cfg,
@@ -98,7 +98,7 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
                             "o": LinearBridge(name="c_proj"),
                         },
                     ),
-                    "ln2": NormalizationBridge(name="ln_2"),
+                    "ln2": NormalizationBridge(name="ln_2", config=self.cfg),
                     "mlp": MLPBridge(
                         name="mlp",
                         submodules={
@@ -108,7 +108,7 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
                     ),
                 },
             ),
-            "ln_final": NormalizationBridge(name="transformer.ln_f"),
+            "ln_final": NormalizationBridge(name="transformer.ln_f", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head"),
         }
 
