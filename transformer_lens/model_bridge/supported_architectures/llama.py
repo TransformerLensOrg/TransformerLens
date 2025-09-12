@@ -32,6 +32,8 @@ class LlamaArchitectureAdapter(ArchitectureAdapter):
             "d_vocab": cfg.d_vocab,
         }
 
+        self.cfg.uses_rms_norm = True
+
         self.conversion_rules = HookConversionSet(
             {
                 "embed.e": "model.embed_tokens.weight",

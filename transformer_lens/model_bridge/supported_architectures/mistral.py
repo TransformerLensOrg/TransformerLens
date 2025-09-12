@@ -33,6 +33,8 @@ class MistralArchitectureAdapter(ArchitectureAdapter):
             "n_key_value_heads": cfg.n_key_value_heads,
         }
 
+        self.cfg.uses_rms_norm = True
+
         self.conversion_rules = HookConversionSet(
             {
                 "embed.e": "model.embed_tokens.weight",

@@ -4,18 +4,17 @@ from typing import Any, Dict, Optional
 
 import torch
 
+from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
 
 
 class NormalizationBridge(GeneralizedComponent):
-    """Normalization bridge that wraps transformer normalization layers.
+    """Normalization bridge that wraps transformer normalization layers but implements the calculation from scratch.
 
     This component provides standardized input/output hooks.
     """
-
-    hook_aliases = {"hook_normalized": "hook_out", "hook_scale": "hook_out"}
 
     property_aliases = {
         "w": "weight",
@@ -36,7 +35,9 @@ class NormalizationBridge(GeneralizedComponent):
             submodules: Dictionary of GeneralizedComponent submodules to register
         """
         super().__init__(name, config, submodules=submodules)
-        # No extra hooks; use only hook_in and hook_out
+
+        self.hook_normalized = HookPoint()
+        self.hook_scale = HookPoint()
 
     def forward(
         self,
@@ -58,7 +59,20 @@ class NormalizationBridge(GeneralizedComponent):
             )
 
         hidden_states = self.hook_in(hidden_states)
-        output = self.original_component(hidden_states, **kwargs)
-        output = self.hook_out(output)
 
+        if not self.cfg.uses_rms_norm:
+            # Only center if not using RMSNorm
+            hidden_states = hidden_states - hidden_states.mean(-1, keepdim=True)
+
+        scale = self.hook_scale((hidden_states.pow(2).mean(-1, keepdim=True) + self.cfg.eps).sqrt())
+        hidden_states = self.hook_normalized(hidden_states / scale)
+
+        if self.cfg.uses_rms_norm:
+            # No bias if using RMSNorm
+            output = hidden_states * self.weight
+        else:
+            # Add bias if using LayerNorm
+            output = hidden_states * self.weight + self.bias
+
+        output = self.hook_out(output)
         return output

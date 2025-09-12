@@ -74,6 +74,12 @@ class TransformerLensConfig:
     # GQA configuration
     n_key_value_heads: Optional[int] = None
 
+    # Normalization configuration
+    uses_rms_norm: bool = False
+
+    # Epsilon for normalization
+    eps: float = 1e-5
+
     def __post_init__(self):
         """Post-initialization processing and validation."""
         # Set n_heads if not specified
