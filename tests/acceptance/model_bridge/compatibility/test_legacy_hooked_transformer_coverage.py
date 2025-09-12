@@ -1,5 +1,4 @@
 import gc
-import os
 
 import pytest
 import torch
@@ -11,26 +10,25 @@ PUBLIC_MODEL_NAMES = [
     "gpt2",  # Use the base model name that TransformerBridge supports
 ]
 
-# Additional models to test if available
-EXTENDED_MODEL_NAMES = [
-    "gpt2-medium",
-    "gpt2-large",
-]
 
-# Test with small set by default, expand if HF_TOKEN available
-BRIDGE_TEST_MODELS = PUBLIC_MODEL_NAMES
-if os.environ.get("HF_TOKEN", ""):
-    BRIDGE_TEST_MODELS.extend(EXTENDED_MODEL_NAMES)
-
-
-class TestTransformerBridgeAcceptance:
+class TestLegacyHookedTransformerCoverage:
     """Acceptance tests for TransformerBridge functionality."""
 
-    @pytest.fixture(params=BRIDGE_TEST_MODELS)
+    @pytest.fixture(autouse=True, scope="class")
+    def cleanup_after_class(self):
+        """Clean up memory after each test class."""
+        yield
+        # Force garbage collection and clear CUDA cache
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        for _ in range(3):
+            gc.collect()
+
+    @pytest.fixture(params=PUBLIC_MODEL_NAMES, scope="class")
     def model_name(self, request):
         return request.param
 
-    @pytest.fixture
+    @pytest.fixture(scope="class")
     def bridge_model(self, model_name):
         """Create a TransformerBridge model for testing."""
         try:

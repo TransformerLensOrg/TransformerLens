@@ -25,6 +25,10 @@ class MixtralArchitectureAdapter(ArchitectureAdapter):
         """Initialize the Mixtral architecture adapter."""
         super().__init__(cfg)
 
+        self.cfg.gated_mlp = True
+
+        self.cfg.uses_rms_norm = True
+
         self.conversion_rules = HookConversionSet(
             {
                 "embed.e": "model.embed_tokens.weight",
@@ -79,8 +83,8 @@ class MixtralArchitectureAdapter(ArchitectureAdapter):
             "blocks": BlockBridge(
                 name="model.layers",
                 submodules={
-                    "ln1": NormalizationBridge(name="input_layernorm"),
-                    "ln2": NormalizationBridge(name="post_attention_layernorm"),
+                    "ln1": NormalizationBridge(name="input_layernorm", config=self.cfg),
+                    "ln2": NormalizationBridge(name="post_attention_layernorm", config=self.cfg),
                     "attn": AttentionBridge(
                         name="self_attn",
                         config=self.cfg,
@@ -107,6 +111,6 @@ class MixtralArchitectureAdapter(ArchitectureAdapter):
                     ),
                 },
             ),
-            "ln_final": NormalizationBridge(name="model.norm"),
+            "ln_final": NormalizationBridge(name="model.norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head"),
         }
