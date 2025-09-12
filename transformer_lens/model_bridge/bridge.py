@@ -918,64 +918,265 @@ class TransformerBridge(nn.Module):
         return FactoredMatrix(self.W_V, self.W_O)
 
     def get_params(self):
-        """Access to model parameters in the format expected by SVDInterpreter."""
+        """Access to model parameters in the format expected by SVDInterpreter.
+
+        For missing weights, returns zero tensors of appropriate shape instead of raising exceptions.
+        This ensures compatibility across different model architectures.
+
+        Returns:
+            dict: Dictionary of parameter tensors with TransformerLens naming convention
+
+        Raises:
+            ValueError: If configuration is inconsistent (e.g., cfg.n_layers != len(blocks))
+        """
         params_dict = {}
 
+        # Helper function to get device and dtype from existing weights
+        def _get_device_dtype():
+            device = self.cfg.device if hasattr(self.cfg, "device") else torch.device("cpu")
+            dtype = torch.float32  # Default dtype
+
+            # Try to get dtype from existing weights
+            try:
+                device = self.embed.weight.device
+                dtype = self.embed.weight.dtype
+            except AttributeError:
+                try:
+                    device = self.pos_embed.weight.device
+                    dtype = self.pos_embed.weight.dtype
+                except AttributeError:
+                    if len(self.blocks) > 0:
+                        try:
+                            device = self.blocks[0].attn.q.weight.device
+                            dtype = self.blocks[0].attn.q.weight.dtype
+                        except AttributeError:
+                            pass
+            return device, dtype
+
         # Add embedding weights
-        params_dict["embed.W_E"] = self.embed.weight
-        params_dict["pos_embed.W_pos"] = self.pos_embed.weight
+        try:
+            params_dict["embed.W_E"] = self.embed.weight
+        except AttributeError:
+            device, dtype = _get_device_dtype()
+            params_dict["embed.W_E"] = torch.zeros(
+                self.cfg.d_vocab, self.cfg.d_model, device=device, dtype=dtype
+            )
+
+        try:
+            params_dict["pos_embed.W_pos"] = self.pos_embed.weight
+        except AttributeError:
+            device, dtype = _get_device_dtype()
+            params_dict["pos_embed.W_pos"] = torch.zeros(
+                self.cfg.n_ctx, self.cfg.d_model, device=device, dtype=dtype
+            )
 
         # Add attention weights
         for layer_idx in range(self.cfg.n_layers):
+            # Validate that the layer actually exists
+            if layer_idx >= len(self.blocks):
+                raise ValueError(
+                    f"Configuration mismatch: cfg.n_layers={self.cfg.n_layers} but only "
+                    f"{len(self.blocks)} blocks found. Layer {layer_idx} does not exist."
+                )
+
             block = self.blocks[layer_idx]
 
-            # Attention weights - reshape to expected format
-            w_q = block.attn.q.weight
-            w_k = block.attn.k.weight
-            w_v = block.attn.v.weight
-            w_o = block.attn.o.weight
+            try:
+                # Attention weights - reshape to expected format
+                w_q = block.attn.q.weight
+                w_k = block.attn.k.weight
+                w_v = block.attn.v.weight
+                w_o = block.attn.o.weight
 
-            # Reshape from [d_model, d_model] to [n_heads, d_model, d_head] and [n_heads, d_head, d_model]
-            if w_q.shape == (self.cfg.d_model, self.cfg.d_model):
-                d_head = self.cfg.d_model // self.cfg.n_heads
-                w_q = w_q.reshape(self.cfg.n_heads, self.cfg.d_model, d_head)
-                w_k = w_k.reshape(self.cfg.n_heads, self.cfg.d_model, d_head)
-                w_v = w_v.reshape(self.cfg.n_heads, self.cfg.d_model, d_head)
-                w_o = w_o.reshape(self.cfg.n_heads, d_head, self.cfg.d_model)
+                # Reshape from [d_model, d_model] to [n_heads, d_model, d_head] and [n_heads, d_head, d_model]
+                # Handle different attention architectures (Multi-Head, Multi-Query, Grouped Query)
+                if w_q.shape == (self.cfg.d_model, self.cfg.d_model):
+                    d_head = self.cfg.d_model // self.cfg.n_heads
+                    w_q = w_q.reshape(self.cfg.n_heads, self.cfg.d_model, d_head)
+                    w_o = w_o.reshape(self.cfg.n_heads, d_head, self.cfg.d_model)
 
-            params_dict[f"blocks.{layer_idx}.attn.W_Q"] = w_q
-            params_dict[f"blocks.{layer_idx}.attn.W_K"] = w_k
-            params_dict[f"blocks.{layer_idx}.attn.W_V"] = w_v
-            params_dict[f"blocks.{layer_idx}.attn.W_O"] = w_o
+                    # Handle K and V weights - they might have different shapes in Multi-Query Attention
+                    if w_k.shape == (self.cfg.d_model, self.cfg.d_model):
+                        w_k = w_k.reshape(self.cfg.n_heads, self.cfg.d_model, d_head)
+                    elif w_k.shape == (self.cfg.d_head, self.cfg.d_model) or w_k.shape == (
+                        self.cfg.d_model // self.cfg.n_heads,
+                        self.cfg.d_model,
+                    ):
+                        # Multi-Query Attention: single K head shared across all Q heads
+                        # Need to transpose to match expected [n_heads, d_model, d_head] format
+                        w_k = w_k.transpose(0, 1).unsqueeze(0).expand(self.cfg.n_heads, -1, -1)
+                    else:
+                        # Try to reshape based on element count
+                        if w_k.numel() == self.cfg.n_heads * self.cfg.d_model * self.cfg.d_head:
+                            w_k = w_k.view(self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head)
+                        else:
+                            # Create zero tensor if can't reshape
+                            device, dtype = _get_device_dtype()
+                            w_k = torch.zeros(
+                                self.cfg.n_heads,
+                                self.cfg.d_model,
+                                self.cfg.d_head,
+                                device=device,
+                                dtype=dtype,
+                            )
 
-            # Attention biases
-            params_dict[f"blocks.{layer_idx}.attn.b_Q"] = block.attn.q.bias.reshape(
-                self.cfg.n_heads, -1
-            )
-            params_dict[f"blocks.{layer_idx}.attn.b_K"] = block.attn.k.bias.reshape(
-                self.cfg.n_heads, -1
-            )
-            params_dict[f"blocks.{layer_idx}.attn.b_V"] = block.attn.v.bias.reshape(
-                self.cfg.n_heads, -1
-            )
-            params_dict[f"blocks.{layer_idx}.attn.b_O"] = block.attn.o.bias
+                    if w_v.shape == (self.cfg.d_model, self.cfg.d_model):
+                        w_v = w_v.reshape(self.cfg.n_heads, self.cfg.d_model, d_head)
+                    elif w_v.shape == (self.cfg.d_head, self.cfg.d_model) or w_v.shape == (
+                        self.cfg.d_model // self.cfg.n_heads,
+                        self.cfg.d_model,
+                    ):
+                        # Multi-Query Attention: single V head shared across all Q heads
+                        # Need to transpose to match expected [n_heads, d_model, d_head] format
+                        w_v = w_v.transpose(0, 1).unsqueeze(0).expand(self.cfg.n_heads, -1, -1)
+                    else:
+                        # Try to reshape based on element count
+                        if w_v.numel() == self.cfg.n_heads * self.cfg.d_model * self.cfg.d_head:
+                            w_v = w_v.view(self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head)
+                        else:
+                            # Create zero tensor if can't reshape
+                            device, dtype = _get_device_dtype()
+                            w_v = torch.zeros(
+                                self.cfg.n_heads,
+                                self.cfg.d_model,
+                                self.cfg.d_head,
+                                device=device,
+                                dtype=dtype,
+                            )
 
-            # MLP weights - access the actual weight tensors
-            params_dict[f"blocks.{layer_idx}.mlp.W_in"] = getattr(block.mlp, "in").weight
-            params_dict[f"blocks.{layer_idx}.mlp.W_out"] = block.mlp.out.weight
+                params_dict[f"blocks.{layer_idx}.attn.W_Q"] = w_q
+                params_dict[f"blocks.{layer_idx}.attn.W_K"] = w_k
+                params_dict[f"blocks.{layer_idx}.attn.W_V"] = w_v
+                params_dict[f"blocks.{layer_idx}.attn.W_O"] = w_o
 
-            # MLP biases
-            params_dict[f"blocks.{layer_idx}.mlp.b_in"] = getattr(block.mlp, "in").bias
-            params_dict[f"blocks.{layer_idx}.mlp.b_out"] = block.mlp.out.bias
+                # Attention biases - handle None biases
+                if block.attn.q.bias is not None:
+                    params_dict[f"blocks.{layer_idx}.attn.b_Q"] = block.attn.q.bias.reshape(
+                        self.cfg.n_heads, -1
+                    )
+                else:
+                    device, dtype = _get_device_dtype()
+                    params_dict[f"blocks.{layer_idx}.attn.b_Q"] = torch.zeros(
+                        self.cfg.n_heads, self.cfg.d_head, device=device, dtype=dtype
+                    )
 
-            # Add gate weights if they exist
-            if hasattr(block.mlp, "gate") and hasattr(block.mlp.gate, "weight"):
-                params_dict[f"blocks.{layer_idx}.mlp.W_gate"] = block.mlp.gate.weight
-                if hasattr(block.mlp.gate, "bias") and block.mlp.gate.bias is not None:
-                    params_dict[f"blocks.{layer_idx}.mlp.b_gate"] = block.mlp.gate.bias
+                if block.attn.k.bias is not None:
+                    params_dict[f"blocks.{layer_idx}.attn.b_K"] = block.attn.k.bias.reshape(
+                        self.cfg.n_heads, -1
+                    )
+                else:
+                    device, dtype = _get_device_dtype()
+                    params_dict[f"blocks.{layer_idx}.attn.b_K"] = torch.zeros(
+                        self.cfg.n_heads, self.cfg.d_head, device=device, dtype=dtype
+                    )
+
+                if block.attn.v.bias is not None:
+                    params_dict[f"blocks.{layer_idx}.attn.b_V"] = block.attn.v.bias.reshape(
+                        self.cfg.n_heads, -1
+                    )
+                else:
+                    device, dtype = _get_device_dtype()
+                    params_dict[f"blocks.{layer_idx}.attn.b_V"] = torch.zeros(
+                        self.cfg.n_heads, self.cfg.d_head, device=device, dtype=dtype
+                    )
+
+                if block.attn.o.bias is not None:
+                    params_dict[f"blocks.{layer_idx}.attn.b_O"] = block.attn.o.bias
+                else:
+                    device, dtype = _get_device_dtype()
+                    params_dict[f"blocks.{layer_idx}.attn.b_O"] = torch.zeros(
+                        self.cfg.d_model, device=device, dtype=dtype
+                    )
+
+            except AttributeError:
+                # Create zero attention weights for missing attention component
+                device, dtype = _get_device_dtype()
+                expected_qkv_shape = (self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head)
+                expected_o_shape = (self.cfg.n_heads, self.cfg.d_head, self.cfg.d_model)
+                expected_qkv_bias_shape = (self.cfg.n_heads, self.cfg.d_head)
+                expected_o_bias_shape = (self.cfg.d_model,)
+
+                params_dict[f"blocks.{layer_idx}.attn.W_Q"] = torch.zeros(
+                    *expected_qkv_shape, device=device, dtype=dtype
+                )
+                params_dict[f"blocks.{layer_idx}.attn.W_K"] = torch.zeros(
+                    *expected_qkv_shape, device=device, dtype=dtype
+                )
+                params_dict[f"blocks.{layer_idx}.attn.W_V"] = torch.zeros(
+                    *expected_qkv_shape, device=device, dtype=dtype
+                )
+                params_dict[f"blocks.{layer_idx}.attn.W_O"] = torch.zeros(
+                    *expected_o_shape, device=device, dtype=dtype
+                )
+                params_dict[f"blocks.{layer_idx}.attn.b_Q"] = torch.zeros(
+                    *expected_qkv_bias_shape, device=device, dtype=dtype
+                )
+                params_dict[f"blocks.{layer_idx}.attn.b_K"] = torch.zeros(
+                    *expected_qkv_bias_shape, device=device, dtype=dtype
+                )
+                params_dict[f"blocks.{layer_idx}.attn.b_V"] = torch.zeros(
+                    *expected_qkv_bias_shape, device=device, dtype=dtype
+                )
+                params_dict[f"blocks.{layer_idx}.attn.b_O"] = torch.zeros(
+                    *expected_o_bias_shape, device=device, dtype=dtype
+                )
+
+            try:
+                # MLP weights - access the actual weight tensors
+                params_dict[f"blocks.{layer_idx}.mlp.W_in"] = getattr(block.mlp, "in").weight
+                params_dict[f"blocks.{layer_idx}.mlp.W_out"] = block.mlp.out.weight
+
+                # MLP biases - handle None biases
+                mlp_in_bias = getattr(block.mlp, "in").bias
+                if mlp_in_bias is not None:
+                    params_dict[f"blocks.{layer_idx}.mlp.b_in"] = mlp_in_bias
+                else:
+                    device, dtype = _get_device_dtype()
+                    d_mlp = self.cfg.d_mlp if self.cfg.d_mlp is not None else (4 * self.cfg.d_model)
+                    params_dict[f"blocks.{layer_idx}.mlp.b_in"] = torch.zeros(
+                        d_mlp, device=device, dtype=dtype
+                    )
+
+                mlp_out_bias = block.mlp.out.bias
+                if mlp_out_bias is not None:
+                    params_dict[f"blocks.{layer_idx}.mlp.b_out"] = mlp_out_bias
+                else:
+                    device, dtype = _get_device_dtype()
+                    params_dict[f"blocks.{layer_idx}.mlp.b_out"] = torch.zeros(
+                        self.cfg.d_model, device=device, dtype=dtype
+                    )
+
+                # Add gate weights if they exist
+                if hasattr(block.mlp, "gate") and hasattr(block.mlp.gate, "weight"):
+                    params_dict[f"blocks.{layer_idx}.mlp.W_gate"] = block.mlp.gate.weight
+                    if hasattr(block.mlp.gate, "bias") and block.mlp.gate.bias is not None:
+                        params_dict[f"blocks.{layer_idx}.mlp.b_gate"] = block.mlp.gate.bias
+
+            except AttributeError:
+                # Create zero MLP weights for missing MLP component
+                device, dtype = _get_device_dtype()
+                d_mlp = self.cfg.d_mlp if self.cfg.d_mlp is not None else (4 * self.cfg.d_model)
+                params_dict[f"blocks.{layer_idx}.mlp.W_in"] = torch.zeros(
+                    self.cfg.d_model, d_mlp, device=device, dtype=dtype
+                )
+                params_dict[f"blocks.{layer_idx}.mlp.W_out"] = torch.zeros(
+                    d_mlp, self.cfg.d_model, device=device, dtype=dtype
+                )
+                params_dict[f"blocks.{layer_idx}.mlp.b_in"] = torch.zeros(
+                    d_mlp, device=device, dtype=dtype
+                )
+                params_dict[f"blocks.{layer_idx}.mlp.b_out"] = torch.zeros(
+                    self.cfg.d_model, device=device, dtype=dtype
+                )
 
         # Add unembedding weights
-        params_dict["unembed.W_U"] = self.unembed.weight.T
+        try:
+            params_dict["unembed.W_U"] = self.unembed.weight.T
+        except AttributeError:
+            device, dtype = _get_device_dtype()
+            params_dict["unembed.W_U"] = torch.zeros(
+                self.cfg.d_model, self.cfg.d_vocab, device=device, dtype=dtype
+            )
 
         return params_dict
 
