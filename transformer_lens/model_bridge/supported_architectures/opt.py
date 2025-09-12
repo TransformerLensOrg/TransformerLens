@@ -68,12 +68,12 @@ class OptArchitectureAdapter(ArchitectureAdapter):
             "blocks": BlockBridge(
                 name="model.decoder.layers",
                 submodules={
-                    "ln1": NormalizationBridge(name="self_attn_layer_norm"),
+                    "ln1": NormalizationBridge(name="self_attn_layer_norm", config=self.cfg),
                     "attn": AttentionBridge(name="self_attn", config=self.cfg),
-                    "ln2": NormalizationBridge(name="final_layer_norm"),
+                    "ln2": NormalizationBridge(name="final_layer_norm", config=self.cfg),
                     "mlp": MLPBridge(name="mlp"),
                 },
             ),
-            "ln_final": NormalizationBridge(name="model.decoder.final_layer_norm"),
+            "ln_final": NormalizationBridge(name="model.decoder.final_layer_norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head"),
         }

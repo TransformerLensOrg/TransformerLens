@@ -81,12 +81,12 @@ class PhiArchitectureAdapter(ArchitectureAdapter):
             "blocks": BlockBridge(
                 name="model.layers",
                 submodules={
-                    "ln1": NormalizationBridge(name="input_layernorm"),
-                    "ln2": NormalizationBridge(name="input_layernorm"),
+                    "ln1": NormalizationBridge(name="input_layernorm", config=self.cfg),
+                    "ln2": NormalizationBridge(name="input_layernorm", config=self.cfg),
                     "attn": AttentionBridge(name="self_attn", config=self.cfg),
                     "mlp": MLPBridge(name="mlp"),
                 },
             ),
-            "ln_final": NormalizationBridge(name="model.final_layernorm"),
+            "ln_final": NormalizationBridge(name="model.final_layernorm", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head"),
         }

@@ -25,14 +25,14 @@ class NormalizationBridge(GeneralizedComponent):
     def __init__(
         self,
         name: str,
-        config: Optional[Any] = None,
+        config: Any,
         submodules: Optional[Dict[str, GeneralizedComponent]] = {},
     ):
         """Initialize the normalization bridge.
 
         Args:
             name: The name of this component
-            config: Optional configuration (unused for NormalizationBridge)
+            config: Optional configuration
             submodules: Dictionary of GeneralizedComponent submodules to register
         """
         super().__init__(name, config, submodules=submodules)
@@ -52,8 +52,33 @@ class NormalizationBridge(GeneralizedComponent):
         Returns:
             Normalized output
         """
+<<<<<<< HEAD
         x = self.hook_in(x)
         x = x.to(torch.float32)
+=======
+        if self.original_component is None:
+            raise RuntimeError(
+                f"Original component not set for {self.name}. Call set_original_component() first."
+            )
+
+        hidden_states = self.hook_in(hidden_states)
+
+        if not self.config.uses_rms_norm:
+            # Only center if not using RMSNorm
+            hidden_states = hidden_states - hidden_states.mean(-1, keepdim=True)
+
+        scale = self.hook_scale(
+            (hidden_states.pow(2).mean(-1, keepdim=True) + self.config.eps).sqrt()
+        )
+        hidden_states = self.hook_normalized(hidden_states / scale)
+
+        if self.config.uses_rms_norm:
+            # No bias if using RMSNorm
+            output = hidden_states * self.weight
+        else:
+            # Add bias if using LayerNorm
+            output = hidden_states * self.weight + self.bias
+>>>>>>> 668af11b (Add configuration dictionary during initialization)
 
         x = x - x.mean(-1, keepdim=True)  # [batch, pos, length]
         scale: Union[

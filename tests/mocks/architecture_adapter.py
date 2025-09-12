@@ -38,12 +38,12 @@ class MockArchitectureAdapter(ArchitectureAdapter):
         self.component_mapping = {
             "embed": EmbeddingBridge(name="embed"),
             "unembed": EmbeddingBridge(name="unembed"),
-            "ln_final": NormalizationBridge(name="ln_final"),
+            "ln_final": NormalizationBridge(name="ln_final", config=self.cfg),
             "blocks": BlockBridge(
                 name="blocks",
                 submodules={
-                    "ln1": NormalizationBridge(name="ln1"),
-                    "ln2": NormalizationBridge(name="ln2"),
+                    "ln1": NormalizationBridge(name="ln1", config=self.cfg),
+                    "ln2": NormalizationBridge(name="ln2", config=self.cfg),
                     "attn": AttentionBridge(name="attn", config=attn_cfg),
                     "mlp": MLPBridge(name="mlp"),
                 },
@@ -53,7 +53,7 @@ class MockArchitectureAdapter(ArchitectureAdapter):
                 submodules={
                     "inner_blocks": BlockBridge(
                         name="inner_blocks",
-                        submodules={"ln": NormalizationBridge(name="ln")},
+                        submodules={"ln": NormalizationBridge(name="ln", config=self.cfg)},
                     )
                 },
             ),

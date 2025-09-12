@@ -118,7 +118,7 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
                     ),
                 },
             ),
-            "ln_final": NormalizationBridge(name="transformer.ln_f"),
+            "ln_final": NormalizationBridge(name="transformer.ln_f", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head"),
         }
 
