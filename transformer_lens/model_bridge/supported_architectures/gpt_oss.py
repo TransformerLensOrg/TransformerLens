@@ -24,13 +24,17 @@ class GPTOSSArchitectureAdapter(ArchitectureAdapter):
         """Initialize the GPT-OSS architecture adapter."""
         super().__init__(cfg)
 
+        self.cfg.gated_mlp = True
+
+        self.cfg.uses_rms_norm = True
+
         self.component_mapping = {
             "embed": EmbeddingBridge(name="model.embed_tokens"),
             "rotary_emb": EmbeddingBridge(name="model.rotary_emb"),
             "blocks": BlockBridge(
                 name="model.layers",
                 submodules={
-                    "ln1": NormalizationBridge(name="input_layernorm"),
+                    "ln1": NormalizationBridge(name="input_layernorm", config=self.cfg),
                     "attn": AttentionBridge(
                         name="self_attn",
                         config=self.cfg,
@@ -41,7 +45,7 @@ class GPTOSSArchitectureAdapter(ArchitectureAdapter):
                             "o": LinearBridge(name="o_proj"),
                         },
                     ),
-                    "ln2": NormalizationBridge(name="post_attention_layernorm"),
+                    "ln2": NormalizationBridge(name="post_attention_layernorm", config=self.cfg),
                     "mlp": MLPBridge(
                         name="mlp",
                         submodules={
@@ -62,7 +66,7 @@ class GPTOSSArchitectureAdapter(ArchitectureAdapter):
                     ),
                 },
             ),
-            "ln_final": NormalizationBridge(name="model.norm"),
+            "ln_final": NormalizationBridge(name="model.norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head"),
         }
 
