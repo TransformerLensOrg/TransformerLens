@@ -670,14 +670,20 @@ class TransformerBridge(nn.Module):
             # Fold ln2 into MLP
             if not self.cfg.attn_only:
                 if fold_biases:
-                    self.blocks[l].mlp.input.bias.data = self.blocks[l].mlp.input.bias.data + (
-                        self.blocks[l].mlp.input.weight.data * self.blocks[l].ln2.bias.data[:, None]
-                    ).sum(-2)
+                    getattr(self.blocks[l].mlp, "in").bias.data = getattr(
+                        self.blocks[l].mlp, "in"
+                    ).bias.data + (
+                        getattr(self.blocks[l].mlp, "in").weight.data
+                        * self.blocks[l].ln2.bias.data[:, None]
+                    ).sum(
+                        -2
+                    )
 
                     self.blocks[l].ln2.bias.data = torch.zeros_like(self.blocks[l].ln2.bias)
 
-                self.blocks[l].mlp.input.weight.data = (
-                    self.blocks[l].mlp.input.weight.data * self.blocks[l].ln2.weight.data[:, None]
+                getattr(self.blocks[l].mlp, "in").weight.data = (
+                    getattr(self.blocks[l].mlp, "in").weight.data
+                    * self.blocks[l].ln2.weight.data[:, None]
                 )
 
                 if self.cfg.gated_mlp:
@@ -689,10 +695,10 @@ class TransformerBridge(nn.Module):
                 self.blocks[l].ln2.weight.data = torch.zeros_like(self.blocks[l].ln2.weight)
 
                 if center_weights:
-                    self.blocks[l].mlp.input.weight.data = self.blocks[
-                        l
-                    ].mlp.input.weight.data - einops.reduce(
-                        self.blocks[l].mlp.input.weight.data,
+                    getattr(self.blocks[l].mlp, "in").weight.data = getattr(
+                        self.blocks[l].mlp, "in"
+                    ).weight.data - einops.reduce(
+                        getattr(self.blocks[l].mlp, "in").weight.data,
                         "d_model d_mlp -> 1 d_mlp",
                         "mean",
                     )
