@@ -1847,7 +1847,7 @@ class TransformerBridge(nn.Module):
         added_hooks: List[Tuple[HookPoint, str]] = []
 
         def add_hook_to_point(
-            hook_point: HookPoint, hook_fn: Callable, name: str, dir: str = "fwd"
+            hook_point: HookPoint, hook_fn: Callable, name: str, dir: Literal["fwd", "bwd"] = "fwd"
         ):
             hook_point.add_hook(hook_fn, dir=dir)
             added_hooks.append((hook_point, name))
@@ -1874,7 +1874,7 @@ class TransformerBridge(nn.Module):
 
         # Helper function to apply hooks based on name or filter function
         def apply_hooks(hooks: List[Tuple[Union[str, Callable], Callable]], is_fwd: bool):
-            direction = "fwd" if is_fwd else "bwd"
+            direction: Literal["fwd", "bwd"] = "fwd" if is_fwd else "bwd"
             # Collect aliases for resolving legacy hook names
             aliases = collect_aliases_recursive(self)
 
