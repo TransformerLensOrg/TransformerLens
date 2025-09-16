@@ -31,6 +31,8 @@ class PhiArchitectureAdapter(ArchitectureAdapter):
         """
         super().__init__(cfg)
 
+        self.cfg.default_prepend_bos = False
+
         self.conversion_rules = HookConversionSet(
             {
                 "embed.e": "transformer.wte.weight",
