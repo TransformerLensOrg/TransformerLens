@@ -21,6 +21,8 @@ from transformer_lens.model_bridge.generalized_components import (
 class PhiArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for Phi models."""
 
+    default_cfg = {"use_fast": False}
+
     def __init__(self, cfg: Any) -> None:
         """Initialize the Phi architecture adapter.
 
@@ -28,8 +30,6 @@ class PhiArchitectureAdapter(ArchitectureAdapter):
             cfg: The configuration object.
         """
         super().__init__(cfg)
-
-        self.default_cfg = {"use_fast": False}
 
         self.conversion_rules = HookConversionSet(
             {
@@ -96,8 +96,6 @@ class PhiArchitectureAdapter(ArchitectureAdapter):
                             "o": LinearBridge(name="dense"),
                         },
                     ),
-                    # Layer norm 1 and 2 are tied.
-                    "ln2": NormalizationBridge(name="input_layernorm", config=self.cfg),
                     "mlp": MLPBridge(
                         name="mlp",
                         submodules={
