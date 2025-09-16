@@ -288,4 +288,7 @@ class GeneralizedComponent(nn.Module):
             raise RuntimeError(
                 f"Original component not set for {self.name}. Call set_original_component() first."
             )
+
+        if not hasattr(self.original_component, "bias"):
+            return False
         return self.original_component.bias is not None

@@ -74,11 +74,11 @@ class NormalizationBridge(GeneralizedComponent):
         hidden_states = self.hook_normalized(hidden_states / scale)
 
         if not self.config.layer_norm_folding:
-            if self.config.uses_rms_norm:
-                # No bias if using RMSNorm
+            if self.config.uses_rms_norm or not self.has_bias():
+                # No bias if using RMSNorm or if the original component has no bias
                 hidden_states = hidden_states * self.weight
             else:
-                # Add bias if using LayerNorm
+                # Add bias if using LayerNorm and the original component has a bias
                 hidden_states = hidden_states * self.weight + self.bias
 
         output = self.hook_out(hidden_states)
