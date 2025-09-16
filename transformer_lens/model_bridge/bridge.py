@@ -1846,8 +1846,10 @@ class TransformerBridge(nn.Module):
         # Store hooks that we add so we can remove them later
         added_hooks: List[Tuple[HookPoint, str]] = []
 
-        def add_hook_to_point(hook_point: HookPoint, hook_fn: Callable, name: str):
-            hook_point.add_hook(hook_fn)
+        def add_hook_to_point(
+            hook_point: HookPoint, hook_fn: Callable, name: str, dir: str = "fwd"
+        ):
+            hook_point.add_hook(hook_fn, dir=dir)
             added_hooks.append((hook_point, name))
 
         # Add stop_at_layer hook if specified
@@ -1868,10 +1870,11 @@ class TransformerBridge(nn.Module):
                 block_hook_name = f"blocks.{last_layer_to_process}.hook_out"
                 hook_dict = self.hook_dict
                 if block_hook_name in hook_dict:
-                    add_hook_to_point(hook_dict[block_hook_name], stop_hook, block_hook_name)
+                    add_hook_to_point(hook_dict[block_hook_name], stop_hook, block_hook_name, "fwd")
 
         # Helper function to apply hooks based on name or filter function
         def apply_hooks(hooks: List[Tuple[Union[str, Callable], Callable]], is_fwd: bool):
+            direction = "fwd" if is_fwd else "bwd"
             # Collect aliases for resolving legacy hook names
             aliases = collect_aliases_recursive(self)
 
@@ -1904,13 +1907,15 @@ class TransformerBridge(nn.Module):
                         actual_hook_name = aliases[hook_name_or_filter]
 
                     if actual_hook_name in hook_dict:
-                        add_hook_to_point(hook_dict[actual_hook_name], hook_fn, actual_hook_name)
+                        add_hook_to_point(
+                            hook_dict[actual_hook_name], hook_fn, actual_hook_name, direction
+                        )
                 else:
                     # Filter function
                     hook_dict = self.hook_dict
                     for name, hook_point in hook_dict.items():
                         if hook_name_or_filter(name):
-                            add_hook_to_point(hook_point, hook_fn, name)
+                            add_hook_to_point(hook_point, hook_fn, name, direction)
 
         try:
             # Apply forward hooks
@@ -2330,10 +2335,18 @@ class TransformerBridge(nn.Module):
                 # Add forward hooks
                 for hook_name, hook_fn in fwd_hooks:
                     try:
-                        self.add_hook(hook_name, hook_fn)
+                        self.add_hook(hook_name, hook_fn, dir="fwd")
                         added_hooks.append((hook_name, hook_fn))
                     except Exception as e:
-                        print(f"Warning: Failed to add hook {hook_name}: {e}")
+                        print(f"Warning: Failed to add forward hook {hook_name}: {e}")
+
+                # Add backward hooks
+                for hook_name, hook_fn in bwd_hooks:
+                    try:
+                        self.add_hook(hook_name, hook_fn, dir="bwd")
+                        added_hooks.append((hook_name, hook_fn))
+                    except Exception as e:
+                        print(f"Warning: Failed to add backward hook {hook_name}: {e}")
 
                 yield
 
