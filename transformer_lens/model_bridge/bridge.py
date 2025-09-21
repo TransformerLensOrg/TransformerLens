@@ -262,14 +262,11 @@ class TransformerBridge(nn.Module):
             if isinstance(target, list):
                 # For list targets, try each one until one works
                 for single_target in target:
-                    try:
-                        target_hook = resolve_alias(self, alias_name, {alias_name: single_target})
-                        if target_hook is not None:
-                            hooks[alias_name] = target_hook
-                            break
-                    except AttributeError:
-                        # Skip this target if it can't be resolved (e.g., during initialization)
-                        continue
+                    target_hook = resolve_alias(self, alias_name, {alias_name: single_target})
+                    if target_hook is not None:
+                        hooks[alias_name] = target_hook
+                        break
+                    continue
             else:
                 try:
                     target_hook = resolve_alias(self, alias_name, {alias_name: target})
@@ -328,11 +325,7 @@ class TransformerBridge(nn.Module):
                 ]:
                     continue
 
-                try:
-                    attr = getattr(mod, attr_name)
-                except AttributeError:
-                    # Skip attributes that can't be accessed during initialization
-                    continue
+                attr = getattr(mod, attr_name)
 
                 name = f"{path}.{attr_name}" if path else attr_name
 
@@ -2045,88 +2038,6 @@ class TransformerBridge(nn.Module):
         Toggles whether to allow editing of inputs to each attention head.
         """
         self.cfg.use_split_qkv_input = use_split_qkv_input
-
-    def state_dict(self, destination=None, prefix="", keep_vars=False):
-        """Get state dict with _original_component references filtered out.
-
-        This method provides a clean state dict without the internal _original_component
-        references that are used internally by the bridge architecture.
-
-        Args:
-            destination: Optional dict to store state dict in
-            prefix: Optional prefix to add to all keys
-            keep_vars: Whether to keep variables as Variables instead of tensors
-
-        Returns:
-            Dict containing the state dict with clean parameter names
-        """
-        # Get the raw state dict from the original model
-        raw_state_dict = self.original_model.state_dict(destination, prefix, keep_vars)
-
-        # Filter out _original_component references
-        clean_state_dict = {}
-        for key, value in raw_state_dict.items():
-            # Filter out keys that are exactly "_original_component" or start with "_original_component."
-            # This allows submodules like "attn._original_component.OV.weight" to be included
-            if key == "_original_component" or key.startswith("_original_component."):
-                continue
-
-            # Remove any ._original_component patterns from the key
-            clean_key = key.replace("._original_component", "")
-            clean_state_dict[clean_key] = value
-
-        return clean_state_dict
-
-    def load_state_dict(self, state_dict, strict=True, assign=False):
-        """Load state dict into the model, handling both clean keys and original keys with _original_component references.
-
-        Args:
-            state_dict: Dictionary containing a whole state of the module
-            strict: Whether to strictly enforce that the keys in state_dict match the keys returned by this module's state_dict() function
-            assign: Whether to assign items in the state dictionary to their corresponding keys in the module instead of copying them
-
-        Returns:
-            NamedTuple with missing_keys and unexpected_keys fields
-        """
-        # Get the current state dict to understand the mapping
-        current_state_dict = self.original_model.state_dict()
-
-        # Create mappings for both directions
-        clean_to_actual = {}
-        actual_to_clean = {}
-        for actual_key in current_state_dict.keys():
-            # Only exclude the exact key "_original_component", not keys that contain it
-            if actual_key != "_original_component":
-                # Replace all occurrences of "._original_component" to handle nested references
-                clean_key = actual_key.replace("._original_component", "")
-                clean_to_actual[clean_key] = actual_key
-                actual_to_clean[actual_key] = clean_key
-
-        # Map the input state dict keys to the actual keys using the architecture adapter
-        mapped_state_dict = {}
-        for input_key, value in state_dict.items():
-            # Check if this is an original key (with _original_component)
-            if input_key in current_state_dict:
-                # Direct match - use as-is
-                mapped_state_dict[input_key] = value
-            else:
-                # Use the architecture adapter to convert HuggingFace keys to bridge keys
-                bridge_key = self.adapter.convert_hf_key_to_bridge_key(input_key)
-                if bridge_key in current_state_dict:
-                    mapped_state_dict[bridge_key] = value
-                else:
-                    # Fallback: try the old clean key mapping
-                    if input_key in clean_to_actual:
-                        actual_key = clean_to_actual[input_key]
-                        mapped_state_dict[actual_key] = value
-                    else:
-                        # No mapping found - use as-is (for backward compatibility)
-                        mapped_state_dict[input_key] = value
-
-        # Forward the load_state_dict call to the original model with mapped keys
-        # For partial state dicts (like processed weights), use strict=False to allow partial loading
-        effective_strict = strict and len(mapped_state_dict) == len(current_state_dict)
-        return self.original_model.load_state_dict(mapped_state_dict, strict=effective_strict, assign=assign)
 
     def get_params(self):
         """Access to model parameters in the format expected by SVDInterpreter.
