@@ -59,10 +59,21 @@ class QKVSplitRearrangeConversion(BaseHookConversion):
         return einops.rearrange(selected_part, self.rearrange_pattern, **self.axes_lengths)
 
     def revert(self, input_value: torch.Tensor, *full_context) -> torch.Tensor:
-        """Revert the conversion (not fully implemented for QKV case)."""
-        # This is complex for QKV case since we need to reconstruct the full tensor
-        # For now, just return the input
-        return input_value
+        """Revert the conversion by reconstructing the QKV tensor from Q, K, V components."""
+        # This method expects to be called with all three QKV components available
+        # in the full_context or needs to be coordinated with other conversions
+
+        # For now, reverse the rearrangement first
+        import einops
+
+        # Reverse the rearrange operation
+        left, right = self.rearrange_pattern.split("->")
+        reverse_pattern = f"{right.strip()} -> {left.strip()}"
+        reversed_tensor = einops.rearrange(input_value, reverse_pattern, **self.axes_lengths)
+
+        # Note: The full QKV reconstruction needs to be handled at a higher level
+        # where all Q, K, V components are available together
+        return reversed_tensor
 
     def __repr__(self):
         return f'QKVSplitRearrangeConversion(qkv_index={self.qkv_index}, pattern="{self.rearrange_pattern}")'
@@ -187,6 +198,8 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
                 ),
                 "unembed.bias": "lm_head.bias",
                 # TransformerLens parameter names (for weight processing functions)
+                "embed.W_E": "transformer.wte.weight",
+                "pos_embed.W_pos": "transformer.wpe.weight",
                 "blocks.{i}.attn.W_Q": (
                     "transformer.h.{i}.attn.c_attn.weight",
                     QKVSplitRearrangeConversion(
@@ -264,7 +277,7 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
             "blocks": BlockBridge(
                 name="transformer.h",
                 submodules={
-                    "ln1": NormalizationBridge(name="ln_1", config=self.cfg),
+                    "ln1": self._create_normalization_bridge("ln_1"),
                     "attn": JointQKVAttentionBridge(
                         name="attn",
                         config=self.cfg,
@@ -274,7 +287,7 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
                             "o": LinearBridge(name="c_proj"),
                         },
                     ),
-                    "ln2": NormalizationBridge(name="ln_2", config=self.cfg),
+                    "ln2": self._create_normalization_bridge("ln_2"),
                     "mlp": MLPBridge(
                         name="mlp",
                         submodules={
@@ -284,9 +297,30 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
                     ),
                 },
             ),
-            "ln_final": NormalizationBridge(name="transformer.ln_f", config=self.cfg),
+            "ln_final": self._create_normalization_bridge("transformer.ln_f"),
             "unembed": UnembeddingBridge(name="lm_head"),
         }
+
+    def _create_normalization_bridge(self, name: str) -> NormalizationBridge:
+        """Create a normalization bridge with appropriate identity settings based on configuration.
+
+        Args:
+            name: The name of the normalization component
+
+        Returns:
+            NormalizationBridge configured for the current layer norm folding setting
+        """
+        # Check if layer norm folding is enabled
+        if hasattr(self.cfg, 'layer_norm_folding') and self.cfg.layer_norm_folding:
+            # Use identity normalization when layer norm folding is enabled
+            return NormalizationBridge(
+                name=name,
+                config=self.cfg,
+                force_identity=True,  # Use normalized identity for folded weights
+            )
+        else:
+            # Standard normalization when folding is disabled
+            return NormalizationBridge(name=name, config=self.cfg)
 
     def split_qkv_matrix(
         self, original_attention_component: Any

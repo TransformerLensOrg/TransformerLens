@@ -767,6 +767,150 @@ class ArchitectureAdapter:
 
         return items
 
+    def extract_weights_using_components(self, model) -> dict[str, torch.Tensor]:
+        """Extract weights in TransformerLens format using component-based weight processing.
+
+        This method uses the architecture adapter's component mapping to process weights
+        through each component's process_weights() method, ensuring consistency with
+        the component-based approach.
+
+        Args:
+            model: The original model to extract weights from
+
+        Returns:
+            dict[str, torch.Tensor]: Weights in TransformerLens format
+        """
+        if self.component_mapping is None:
+            raise ValueError("Architecture adapter component mapping not initialized")
+
+        tl_state_dict = {}
+
+        # Process top-level components (embed, pos_embed, ln_final, unembed)
+        for comp_name, component in self.component_mapping.items():
+            if comp_name != "blocks":
+                try:
+                    # Get the original component from the model
+                    original_component = self.get_component(model, comp_name)
+
+                    # Create a fresh instance to avoid any state issues
+                    component_class = type(component)
+                    if comp_name in ["ln_final"]:
+                        # Components that need config
+                        fresh_component = component_class(name=component.name, config=self.cfg)
+                    else:
+                        # Components that don't need config
+                        fresh_component = component_class(name=component.name)
+
+                    fresh_component.set_original_component(original_component)
+                    fresh_component.process_weights()
+                    component_weights = fresh_component.get_processed_state_dict()
+
+                    # Add weights with component prefix
+                    for key, value in component_weights.items():
+                        tl_state_dict[f"{comp_name}.{key}"] = value.clone()
+                except Exception as e:
+                    print(f"Warning: Failed to process component {comp_name}: {e}")
+
+        # Process transformer blocks using the configured component mapping
+        blocks_component = self.component_mapping["blocks"]
+        for layer_idx in range(self.cfg.n_layers):
+            try:
+                # Process each subcomponent for this layer
+                for subcomp_name, subcomponent in blocks_component.submodules.items():
+                    try:
+                        # Get the original subcomponent for this layer
+                        original_subcomponent = self.get_component(model, f"blocks.{layer_idx}.{subcomp_name}")
+
+                        # Create a fresh instance using the configured component
+                        component_class = type(subcomponent)
+                        if subcomp_name in ["ln1", "ln2"]:
+                            # Normalization components need config
+                            fresh_component = component_class(name=subcomponent.name, config=self.cfg)
+                        elif subcomp_name == "attn":
+                            # Attention component needs config and split function
+                            if hasattr(self, 'split_qkv_matrix'):
+                                fresh_component = component_class(
+                                    name=subcomponent.name,
+                                    config=self.cfg,
+                                    split_qkv_matrix=self.split_qkv_matrix
+                                )
+                            else:
+                                # Fallback for non-GPT2 architectures
+                                def dummy_split_qkv_matrix(attn_layer):
+                                    return None, None, None
+                                fresh_component = component_class(
+                                    name=subcomponent.name,
+                                    config=self.cfg,
+                                    split_qkv_matrix=dummy_split_qkv_matrix
+                                )
+                        elif subcomp_name == "mlp":
+                            # MLP component - process its subcomponents
+                            if hasattr(subcomponent, 'submodules'):
+                                for mlp_subcomp_name, mlp_subcomponent in subcomponent.submodules.items():
+                                    try:
+                                        # Get the original MLP subcomponent
+                                        original_mlp_subcomp = self.get_component(
+                                            model, f"blocks.{layer_idx}.mlp.{mlp_subcomp_name}"
+                                        )
+
+                                        # Create specialized linear component with correct key naming
+                                        from transformer_lens.model_bridge.generalized_components.linear import LinearBridge
+                                        if mlp_subcomp_name == "input":
+                                            class MLPInputLinearBridge(LinearBridge):
+                                                def process_weights(self, **kwargs):
+                                                    if self.original_component is None:
+                                                        return
+                                                    self._processed_weights = {
+                                                        "W_in": self.original_component.weight.clone(),
+                                                    }
+                                                    if hasattr(self.original_component, 'bias') and self.original_component.bias is not None:
+                                                        self._processed_weights["b_in"] = self.original_component.bias.clone()
+                                            mlp_fresh_component = MLPInputLinearBridge(name=mlp_subcomponent.name)
+                                        elif mlp_subcomp_name == "out":
+                                            class MLPOutputLinearBridge(LinearBridge):
+                                                def process_weights(self, **kwargs):
+                                                    if self.original_component is None:
+                                                        return
+                                                    self._processed_weights = {
+                                                        "W_out": self.original_component.weight.clone(),
+                                                    }
+                                                    if hasattr(self.original_component, 'bias') and self.original_component.bias is not None:
+                                                        self._processed_weights["b_out"] = self.original_component.bias.clone()
+                                            mlp_fresh_component = MLPOutputLinearBridge(name=mlp_subcomponent.name)
+                                        else:
+                                            mlp_fresh_component = LinearBridge(name=mlp_subcomponent.name)
+
+                                        mlp_fresh_component.set_original_component(original_mlp_subcomp)
+                                        mlp_fresh_component.process_weights()
+                                        mlp_weights = mlp_fresh_component.get_processed_state_dict()
+
+                                        # Add MLP weights with proper prefixes
+                                        for key, value in mlp_weights.items():
+                                            tl_state_dict[f"blocks.{layer_idx}.mlp.{key}"] = value.clone()
+                                    except Exception as e:
+                                        print(f"Warning: Failed to process MLP subcomponent {mlp_subcomp_name} for layer {layer_idx}: {e}")
+                            continue  # Skip the rest of the MLP processing
+                        else:
+                            # Unknown component type, use generic
+                            fresh_component = component_class(name=subcomponent.name)
+
+                        # Process the component
+                        fresh_component.set_original_component(original_subcomponent)
+                        fresh_component.process_weights()
+                        comp_weights = fresh_component.get_processed_state_dict()
+
+                        # Add weights with proper prefixes
+                        for key, value in comp_weights.items():
+                            tl_state_dict[f"blocks.{layer_idx}.{subcomp_name}.{key}"] = value.clone()
+
+                    except Exception as e:
+                        print(f"Warning: Failed to process subcomponent {subcomp_name} for layer {layer_idx}: {e}")
+
+            except Exception as e:
+                print(f"Warning: Failed to process layer {layer_idx}: {e}")
+
+        return tl_state_dict
+
     def convert_hf_key_to_bridge_key(self, hf_key: str) -> str:
         """Convert a HuggingFace-style key to a bridge key with _original_component references.
         

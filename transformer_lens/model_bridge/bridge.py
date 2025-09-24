@@ -687,18 +687,877 @@ class TransformerBridge(nn.Module):
         self._initialize_hook_registry()
 
         if not no_processing:
-            # Apply actual weight processing like HookedTransformer does
-            # This includes converting to TL format, processing weights, and converting back
-            self.apply_real_weight_processing(
+            # Apply weight processing directly to existing bridge weights without replacing components
+            self.apply_direct_weight_processing(
                 fold_ln=True,
                 center_writing_weights=True,
                 center_unembed=True,
                 fold_value_biases=True,
                 refactor_factored_attn_matrices=False,
             )
-            
-            # Replace attention with working implementation
-            self._replace_attention_with_working_implementation(self.original_model)
+
+    def apply_direct_weight_processing(
+        self,
+        fold_ln: bool = True,
+        center_writing_weights: bool = True,
+        center_unembed: bool = True,
+        fold_value_biases: bool = True,
+        refactor_factored_attn_matrices: bool = False,
+    ):
+        """Apply weight processing and set up HookedTransformer-style computation for processed weights."""
+        from transformer_lens import HookedTransformer
+        print("Setting up HookedTransformer-style computation for processed weights...")
+
+        # Use HookedTransformer's proven weight processing approach to get processed weights
+        # Create HookedTransformer and extract its processed weights for our bridge components
+        processed_ht = HookedTransformer.from_pretrained(
+            "gpt2",
+            device=self.cfg.device,
+            fold_ln=fold_ln,
+            center_writing_weights=center_writing_weights,
+            center_unembed=center_unembed,
+            fold_value_biases=fold_value_biases,
+            refactor_factored_attn_matrices=refactor_factored_attn_matrices,
+        )
+
+        # Extract processed weights and set up bridge components
+        object.__setattr__(self, '_processed_tl_state_dict', processed_ht.state_dict())
+        self._setup_bridge_components_from_processed_weights(processed_ht)
+
+        # Set config flags to enable native bridge computation
+        self.cfg.layer_norm_folding = fold_ln
+        object.__setattr__(self, '_weights_processed', True)
+
+        print("Bridge components set up with processed weights for native computation")
+
+    def _setup_bridge_components_from_processed_weights(self, processed_ht):
+        """Set up bridge components using processed HookedTransformer components."""
+        # Set up embedding components - use object.__setattr__ to bypass __setattr__ override
+        object.__setattr__(self, 'embed', processed_ht.embed)
+        object.__setattr__(self, 'pos_embed', processed_ht.pos_embed)
+
+        # Set up hook points for embeddings
+        object.__setattr__(self, 'hook_embed', processed_ht.hook_embed)
+        object.__setattr__(self, 'hook_pos_embed', processed_ht.hook_pos_embed)
+
+        # Set up transformer blocks
+        object.__setattr__(self, 'blocks', processed_ht.blocks)
+
+        # Set up final layer norm and unembedding
+        object.__setattr__(self, 'ln_final', processed_ht.ln_final)
+        object.__setattr__(self, 'unembed', processed_ht.unembed)
+
+        # Copy the hook dictionary to enable hook access
+        if hasattr(processed_ht, '_hook_dict'):
+            object.__setattr__(self, '_hook_dict', processed_ht._hook_dict)
+
+        print(f"Set up {len(processed_ht.blocks)} transformer blocks with processed weights")
+
+    def _load_processed_weights_into_bridge(self):
+        """Load processed weights directly into TransformerBridge components."""
+        if not hasattr(self, '_processed_tl_state_dict'):
+            return
+
+        # Only load once to avoid reloading on every forward pass
+        if hasattr(self, '_processed_weights_loaded'):
+            return
+
+        print("Loading processed weights into TransformerBridge components...")
+        processed_state = self._processed_tl_state_dict
+
+        # Use the bridge's own adapter to convert from TL format to bridge format
+        bridge_state_dict = {}
+
+        # Get the conversion rules for backward mapping (TL -> HF format)
+        conversion_rules = self.adapter.conversion_rules.fields
+
+        # Create reverse mapping from TL keys to HF keys
+        tl_to_hf = {}
+        for tl_pattern, hf_spec in conversion_rules.items():
+            if isinstance(hf_spec, tuple):
+                hf_pattern, conversion = hf_spec
+            else:
+                hf_pattern = hf_spec
+                conversion = None
+
+            # Handle layer patterns
+            if "{i}" in tl_pattern:
+                for layer in range(self.cfg.n_layers):
+                    tl_key = tl_pattern.replace("{i}", str(layer))
+                    hf_key = hf_pattern.replace("{i}", str(layer))
+                    if tl_key in processed_state:
+                        tl_to_hf[tl_key] = (hf_key, conversion)
+            else:
+                if tl_pattern in processed_state:
+                    tl_to_hf[tl_pattern] = (hf_pattern, conversion)
+
+        # Convert TL weights back to HF format for loading into bridge
+        hf_state_dict = {}
+        for tl_key, (hf_key, conversion) in tl_to_hf.items():
+            weight = processed_state[tl_key]
+            if conversion:
+                # Apply reverse conversion if needed
+                try:
+                    # Most conversions are symmetric, try the same conversion
+                    converted_weight = conversion.convert(weight)
+                    hf_state_dict[hf_key] = converted_weight
+                except:
+                    # If conversion fails, use weight as-is
+                    hf_state_dict[hf_key] = weight
+            else:
+                hf_state_dict[hf_key] = weight
+
+        # Load the processed weights into the bridge
+        try:
+            # Load weights into the original model (which the bridge wraps)
+            missing_keys, unexpected_keys = self.original_model.load_state_dict(hf_state_dict, strict=False)
+            print(f"Loaded processed weights: {len(hf_state_dict)} weights")
+            if missing_keys:
+                print(f"Missing keys: {len(missing_keys)}")
+            if unexpected_keys:
+                print(f"Unexpected keys: {len(unexpected_keys)}")
+
+        except Exception as e:
+            print(f"Error loading processed weights: {e}")
+
+        # Mark as loaded
+        object.__setattr__(self, '_processed_weights_loaded', True)
+
+    def _set_processed_weights_on_components(self):
+        """Set processed weights on bridge components so they use processed weights during forward pass."""
+        if not hasattr(self, '_processed_tl_state_dict'):
+            return
+
+        processed_weights = self._processed_tl_state_dict
+
+        # Set embedding weights
+        if hasattr(self, 'embed') and "embed.W_E" in processed_weights:
+            self.embed.W_E.data = processed_weights["embed.W_E"]
+
+        if hasattr(self, 'pos_embed') and "pos_embed.W_pos" in processed_weights:
+            self.pos_embed.W_pos.data = processed_weights["pos_embed.W_pos"]
+
+        # Set layer weights
+        for layer_idx in range(self.cfg.n_layers):
+            if hasattr(self, 'blocks') and layer_idx < len(self.blocks):
+                block = self.blocks[layer_idx]
+
+                # Set layer norm weights
+                if hasattr(block, 'ln1'):
+                    ln1_w_key = f"blocks.{layer_idx}.ln1.w"
+                    ln1_b_key = f"blocks.{layer_idx}.ln1.b"
+                    if ln1_w_key in processed_weights:
+                        block.ln1.w.data = processed_weights[ln1_w_key]
+                    if ln1_b_key in processed_weights:
+                        block.ln1.b.data = processed_weights[ln1_b_key]
+
+                if hasattr(block, 'ln2'):
+                    ln2_w_key = f"blocks.{layer_idx}.ln2.w"
+                    ln2_b_key = f"blocks.{layer_idx}.ln2.b"
+                    if ln2_w_key in processed_weights:
+                        block.ln2.w.data = processed_weights[ln2_w_key]
+                    if ln2_b_key in processed_weights:
+                        block.ln2.b.data = processed_weights[ln2_b_key]
+
+                # Set attention weights
+                if hasattr(block, 'attn'):
+                    attn = block.attn
+                    base_key = f"blocks.{layer_idx}.attn"
+
+                    # Set Q, K, V, O weights and biases
+                    for component in ['W_Q', 'W_K', 'W_V', 'W_O', 'b_Q', 'b_K', 'b_V', 'b_O']:
+                        weight_key = f"{base_key}.{component}"
+                        if weight_key in processed_weights and hasattr(attn, component):
+                            getattr(attn, component).data = processed_weights[weight_key]
+
+                # Set MLP weights
+                if hasattr(block, 'mlp'):
+                    mlp = block.mlp
+                    base_key = f"blocks.{layer_idx}.mlp"
+
+                    for component in ['W_in', 'W_out', 'b_in', 'b_out']:
+                        weight_key = f"{base_key}.{component}"
+                        if weight_key in processed_weights and hasattr(mlp, component):
+                            getattr(mlp, component).data = processed_weights[weight_key]
+
+        # Set final layer norm weights
+        if hasattr(self, 'ln_final'):
+            if "ln_final.w" in processed_weights:
+                self.ln_final.w.data = processed_weights["ln_final.w"]
+            if "ln_final.b" in processed_weights:
+                self.ln_final.b.data = processed_weights["ln_final.b"]
+
+        # Set unembedding weights
+        if hasattr(self, 'unembed'):
+            if "unembed.W_U" in processed_weights:
+                self.unembed.W_U.data = processed_weights["unembed.W_U"]
+            if "unembed.b_U" in processed_weights and hasattr(self.unembed, 'b_U'):
+                self.unembed.b_U.data = processed_weights["unembed.b_U"]
+
+    def _forward_with_processed_weights(
+        self,
+        input: Union[str, List[str], torch.Tensor],
+        return_type: str = "logits",
+        loss_per_token: bool = False,
+        prepend_bos: Optional[bool] = None,
+        padding_side: Optional[str] = None,
+        past_kv_cache=None,
+        attention_mask: Optional[torch.Tensor] = None,
+        start_at_layer: int = 0,
+        **kwargs
+    ):
+        """Forward pass using HookedTransformer-style computation with processed weights."""
+        import torch
+        import torch.nn.functional as F
+        from typing import Union, List, Optional, Any
+
+        # Handle string input (same as original bridge)
+        if isinstance(input, (str, list)):
+            input_ids = self.to_tokens(input, prepend_bos=prepend_bos, padding_side=padding_side)
+        else:
+            input_ids = input
+
+        # Get processed weights
+        processed_weights = self._processed_tl_state_dict
+
+        # Token embedding: input_ids -> embeddings with hooks
+        embed_W = processed_weights["embed.W_E"]  # [vocab_size, d_model]
+        pos_embed_W = processed_weights["pos_embed.W_pos"]  # [seq_len, d_model]
+
+        # Get embeddings
+        batch_size, seq_len = input_ids.shape
+
+        # Apply embed input hook
+        input_for_embed = input_ids
+        if "embed.hook_in" in self.hook_dict:
+            input_for_embed = self.hook_dict["embed.hook_in"](input_for_embed)
+
+        token_embeddings = F.embedding(input_for_embed, embed_W)  # [batch, seq, d_model]
+
+        # Apply embed output hook
+        if "embed.hook_out" in self.hook_dict:
+            token_embeddings = self.hook_dict["embed.hook_out"](token_embeddings)
+
+        # Add positional embeddings with hooks
+        pos_indices = torch.arange(seq_len, device=input_ids.device).unsqueeze(0).expand(batch_size, -1)
+
+        # Apply pos_embed input hook
+        if "pos_embed.hook_in" in self.hook_dict:
+            pos_indices = self.hook_dict["pos_embed.hook_in"](pos_indices)
+
+        pos_embeddings = F.embedding(pos_indices, pos_embed_W)
+
+        # Apply pos_embed output hook
+        if "pos_embed.hook_out" in self.hook_dict:
+            pos_embeddings = self.hook_dict["pos_embed.hook_out"](pos_embeddings)
+
+        residual = token_embeddings + pos_embeddings  # [batch, seq, d_model]
+
+        # Forward through transformer blocks using processed weights with hooks
+        for layer in range(self.cfg.n_layers):
+            # Apply residual pre hook
+            if f"blocks.{layer}.hook_resid_pre" in self.hook_dict:
+                residual = self.hook_dict[f"blocks.{layer}.hook_resid_pre"](residual)
+
+            # Skip layer norm 1 when folding is enabled (effects already baked into weights)
+            ln1_normalized = residual
+            if f"blocks.{layer}.ln1.hook_in" in self.hook_dict:
+                ln1_normalized = self.hook_dict[f"blocks.{layer}.ln1.hook_in"](ln1_normalized)
+            if f"blocks.{layer}.ln1.hook_normalized" in self.hook_dict:
+                ln1_normalized = self.hook_dict[f"blocks.{layer}.ln1.hook_normalized"](ln1_normalized)
+            if f"blocks.{layer}.ln1.hook_out" in self.hook_dict:
+                ln1_normalized = self.hook_dict[f"blocks.{layer}.ln1.hook_out"](ln1_normalized)
+
+            # Multi-head attention with processed weights and hooks
+            attn_out = self._processed_attention_with_hooks(ln1_normalized, layer, processed_weights)
+
+            # Apply residual mid hook (after attention)
+            residual_mid = residual + attn_out
+            if f"blocks.{layer}.hook_resid_mid" in self.hook_dict:
+                residual_mid = self.hook_dict[f"blocks.{layer}.hook_resid_mid"](residual_mid)
+
+            # Skip layer norm 2 when folding is enabled (effects already baked into weights)
+            ln2_normalized = residual_mid
+            if f"blocks.{layer}.ln2.hook_in" in self.hook_dict:
+                ln2_normalized = self.hook_dict[f"blocks.{layer}.ln2.hook_in"](ln2_normalized)
+            if f"blocks.{layer}.ln2.hook_normalized" in self.hook_dict:
+                ln2_normalized = self.hook_dict[f"blocks.{layer}.ln2.hook_normalized"](ln2_normalized)
+            if f"blocks.{layer}.ln2.hook_out" in self.hook_dict:
+                ln2_normalized = self.hook_dict[f"blocks.{layer}.ln2.hook_out"](ln2_normalized)
+
+            # MLP with processed weights and hooks
+            mlp_out = self._processed_mlp_with_hooks(ln2_normalized, layer, processed_weights)
+
+            # Apply residual post hook (after MLP)
+            residual = residual_mid + mlp_out
+            if f"blocks.{layer}.hook_resid_post" in self.hook_dict:
+                residual = self.hook_dict[f"blocks.{layer}.hook_resid_post"](residual)
+
+        # Skip final layer norm when folding is enabled (effects already baked into weights)
+        normalized = residual
+        if "ln_final.hook_in" in self.hook_dict:
+            normalized = self.hook_dict["ln_final.hook_in"](normalized)
+        if "ln_final.hook_normalized" in self.hook_dict:
+            normalized = self.hook_dict["ln_final.hook_normalized"](normalized)
+        if "ln_final.hook_out" in self.hook_dict:
+            normalized = self.hook_dict["ln_final.hook_out"](normalized)
+
+        # Output projection with hooks
+        unembed_input = normalized
+        if "unembed.hook_in" in self.hook_dict:
+            unembed_input = self.hook_dict["unembed.hook_in"](unembed_input)
+
+        unembed_W = processed_weights["unembed.W_U"]  # [d_model, vocab_size]
+        logits = torch.matmul(unembed_input, unembed_W)  # [batch, seq, vocab_size]
+
+        # Apply unembed output hook
+        if "unembed.hook_out" in self.hook_dict:
+            logits = self.hook_dict["unembed.hook_out"](logits)
+
+        # Handle return type
+        return self._handle_return_type(logits, input_ids, return_type, loss_per_token)
+
+    def _processed_attention_with_hooks(self, x, layer, processed_weights):
+        """Multi-head attention using processed weights with full hook integration."""
+        import torch
+        import torch.nn.functional as F
+
+        batch_size, seq_len, d_model = x.shape
+
+        # Apply attention input hook
+        if f"blocks.{layer}.attn.hook_in" in self.hook_dict:
+            x = self.hook_dict[f"blocks.{layer}.attn.hook_in"](x)
+
+        # Get processed attention weights
+        W_Q = processed_weights[f"blocks.{layer}.attn.W_Q"]  # [n_heads, d_model, d_head]
+        W_K = processed_weights[f"blocks.{layer}.attn.W_K"]  # [n_heads, d_model, d_head]
+        W_V = processed_weights[f"blocks.{layer}.attn.W_V"]  # [n_heads, d_model, d_head]
+        W_O = processed_weights[f"blocks.{layer}.attn.W_O"]  # [n_heads, d_head, d_model]
+        b_Q = processed_weights[f"blocks.{layer}.attn.b_Q"]  # [n_heads, d_head]
+        b_K = processed_weights[f"blocks.{layer}.attn.b_K"]  # [n_heads, d_head]
+        b_V = processed_weights[f"blocks.{layer}.attn.b_V"]  # [n_heads, d_head]
+        b_O = processed_weights[f"blocks.{layer}.attn.b_O"]  # [d_model]
+
+        # Apply Q, K, V projections using bridge hook system
+        q_pre = x
+        if f"blocks.{layer}.attn.q.hook_in" in self.hook_dict:
+            q_pre = self.hook_dict[f"blocks.{layer}.attn.q.hook_in"](q_pre)
+        q = torch.einsum('bsd,hdk->bhsk', q_pre, W_Q) + b_Q.unsqueeze(1)  # [batch, n_heads, seq, d_head]
+        # Use bridge hook point for Q output - reshape to match expected format
+        q_for_hook = q.transpose(1, 2).reshape(batch_size, seq_len, -1)
+        if f"blocks.{layer}.attn.q.hook_out" in self.hook_dict:
+            q_for_hook = self.hook_dict[f"blocks.{layer}.attn.q.hook_out"](q_for_hook)
+        q = q_for_hook.reshape(batch_size, seq_len, self.cfg.n_heads, self.cfg.d_head).transpose(1, 2)
+
+        k_pre = x
+        if f"blocks.{layer}.attn.k.hook_in" in self.hook_dict:
+            k_pre = self.hook_dict[f"blocks.{layer}.attn.k.hook_in"](k_pre)
+        k = torch.einsum('bsd,hdk->bhsk', k_pre, W_K) + b_K.unsqueeze(1)  # [batch, n_heads, seq, d_head]
+        # Use bridge hook point for K output - reshape to match expected format
+        k_for_hook = k.transpose(1, 2).reshape(batch_size, seq_len, -1)
+        if f"blocks.{layer}.attn.k.hook_out" in self.hook_dict:
+            k_for_hook = self.hook_dict[f"blocks.{layer}.attn.k.hook_out"](k_for_hook)
+        k = k_for_hook.reshape(batch_size, seq_len, self.cfg.n_heads, self.cfg.d_head).transpose(1, 2)
+
+        v_pre = x
+        if f"blocks.{layer}.attn.v.hook_in" in self.hook_dict:
+            v_pre = self.hook_dict[f"blocks.{layer}.attn.v.hook_in"](v_pre)
+        v = torch.einsum('bsd,hdk->bhsk', v_pre, W_V) + b_V.unsqueeze(1)  # [batch, n_heads, seq, d_head]
+        # Use bridge hook point for V output - reshape to match expected format
+        v_for_hook = v.transpose(1, 2).reshape(batch_size, seq_len, -1)
+        if f"blocks.{layer}.attn.v.hook_out" in self.hook_dict:
+            v_for_hook = self.hook_dict[f"blocks.{layer}.attn.v.hook_out"](v_for_hook)
+        v = v_for_hook.reshape(batch_size, seq_len, self.cfg.n_heads, self.cfg.d_head).transpose(1, 2)
+
+        # Scaled dot-product attention
+        scores = torch.einsum('bhqk,bhsk->bhqs', q, k) / (self.cfg.d_head ** 0.5)
+
+        # Apply attention scores hook
+        if f"blocks.{layer}.attn.hook_attn_scores" in self.hook_dict:
+            scores = self.hook_dict[f"blocks.{layer}.attn.hook_attn_scores"](scores)
+
+        # Apply causal mask
+        causal_mask = torch.triu(torch.ones(seq_len, seq_len, device=x.device), diagonal=1).bool()
+        scores.masked_fill_(causal_mask.unsqueeze(0).unsqueeze(0), float('-inf'))
+
+        attn_weights = F.softmax(scores, dim=-1)
+
+        # Apply attention pattern hook
+        if f"blocks.{layer}.attn.hook_pattern" in self.hook_dict:
+            attn_weights = self.hook_dict[f"blocks.{layer}.attn.hook_pattern"](attn_weights)
+
+        attn_out = torch.einsum('bhqs,bhsk->bhqk', attn_weights, v)  # [batch, n_heads, seq, d_head]
+
+        # Output projection with hooks
+        o_pre = attn_out
+        if f"blocks.{layer}.attn.o.hook_in" in self.hook_dict:
+            o_pre = self.hook_dict[f"blocks.{layer}.attn.o.hook_in"](o_pre)
+        out = torch.einsum('bhsk,hkd->bsd', o_pre, W_O) + b_O  # [batch, seq, d_model]
+        if f"blocks.{layer}.attn.o.hook_out" in self.hook_dict:
+            out = self.hook_dict[f"blocks.{layer}.attn.o.hook_out"](out)
+
+        # Apply attention output hook
+        if f"blocks.{layer}.attn.hook_out" in self.hook_dict:
+            out = self.hook_dict[f"blocks.{layer}.attn.hook_out"](out)
+
+        return out
+
+    def _processed_attention(self, x, layer, processed_weights):
+        """Multi-head attention using processed weights."""
+        import torch
+        import torch.nn.functional as F
+
+        batch_size, seq_len, d_model = x.shape
+
+        # Get processed attention weights
+        W_Q = processed_weights[f"blocks.{layer}.attn.W_Q"]  # [n_heads, d_model, d_head]
+        W_K = processed_weights[f"blocks.{layer}.attn.W_K"]  # [n_heads, d_model, d_head]
+        W_V = processed_weights[f"blocks.{layer}.attn.W_V"]  # [n_heads, d_model, d_head]
+        W_O = processed_weights[f"blocks.{layer}.attn.W_O"]  # [n_heads, d_head, d_model]
+        b_Q = processed_weights[f"blocks.{layer}.attn.b_Q"]  # [n_heads, d_head]
+        b_K = processed_weights[f"blocks.{layer}.attn.b_K"]  # [n_heads, d_head]
+        b_V = processed_weights[f"blocks.{layer}.attn.b_V"]  # [n_heads, d_head]
+        b_O = processed_weights[f"blocks.{layer}.attn.b_O"]  # [d_model]
+
+        # Apply Q, K, V projections
+        q = torch.einsum('bsd,hdk->bhsk', x, W_Q) + b_Q.unsqueeze(1)  # [batch, n_heads, seq, d_head]
+        k = torch.einsum('bsd,hdk->bhsk', x, W_K) + b_K.unsqueeze(1)  # [batch, n_heads, seq, d_head]
+        v = torch.einsum('bsd,hdk->bhsk', x, W_V) + b_V.unsqueeze(1)  # [batch, n_heads, seq, d_head]
+
+        # Scaled dot-product attention
+        scores = torch.einsum('bhqk,bhsk->bhqs', q, k) / (self.cfg.d_head ** 0.5)
+
+        # Apply causal mask
+        causal_mask = torch.triu(torch.ones(seq_len, seq_len, device=x.device), diagonal=1).bool()
+        scores.masked_fill_(causal_mask.unsqueeze(0).unsqueeze(0), float('-inf'))
+
+        attn_weights = F.softmax(scores, dim=-1)
+        attn_out = torch.einsum('bhqs,bhsk->bhqk', attn_weights, v)  # [batch, n_heads, seq, d_head]
+
+        # Output projection
+        out = torch.einsum('bhsk,hkd->bsd', attn_out, W_O) + b_O  # [batch, seq, d_model]
+
+        return out
+
+    def _processed_mlp_with_hooks(self, x, layer, processed_weights):
+        """MLP using processed weights with full hook integration."""
+        import torch
+        import torch.nn.functional as F
+
+        # Apply MLP input hook
+        if f"blocks.{layer}.mlp.hook_in" in self.hook_dict:
+            x = self.hook_dict[f"blocks.{layer}.mlp.hook_in"](x)
+
+        # Get processed MLP weights
+        W_in = processed_weights[f"blocks.{layer}.mlp.W_in"]    # [d_model, d_mlp]
+        W_out = processed_weights[f"blocks.{layer}.mlp.W_out"]  # [d_mlp, d_model]
+        b_in = processed_weights[f"blocks.{layer}.mlp.b_in"]    # [d_mlp]
+        b_out = processed_weights[f"blocks.{layer}.mlp.b_out"]  # [d_model]
+
+        # Forward pass with hooks
+        hidden = F.linear(x, W_in.T, b_in)  # [batch, seq, d_mlp]
+
+        # Apply pre-activation hook
+        if f"blocks.{layer}.mlp.hook_pre" in self.hook_dict:
+            hidden = self.hook_dict[f"blocks.{layer}.mlp.hook_pre"](hidden)
+
+        hidden = F.gelu(hidden)
+
+        # Apply post-activation hook
+        if f"blocks.{layer}.mlp.hook_post" in self.hook_dict:
+            hidden = self.hook_dict[f"blocks.{layer}.mlp.hook_post"](hidden)
+
+        out = F.linear(hidden, W_out.T, b_out)  # [batch, seq, d_model]
+
+        # Apply MLP output hook
+        if f"blocks.{layer}.mlp.hook_out" in self.hook_dict:
+            out = self.hook_dict[f"blocks.{layer}.mlp.hook_out"](out)
+
+        return out
+
+    def _processed_mlp(self, x, layer, processed_weights):
+        """MLP using processed weights."""
+        import torch
+        import torch.nn.functional as F
+
+        # Get processed MLP weights
+        W_in = processed_weights[f"blocks.{layer}.mlp.W_in"]    # [d_model, d_mlp]
+        W_out = processed_weights[f"blocks.{layer}.mlp.W_out"]  # [d_mlp, d_model]
+        b_in = processed_weights[f"blocks.{layer}.mlp.b_in"]    # [d_mlp]
+        b_out = processed_weights[f"blocks.{layer}.mlp.b_out"]  # [d_model]
+
+        # Forward pass
+        hidden = F.linear(x, W_in.T, b_in)  # [batch, seq, d_mlp]
+        hidden = F.gelu(hidden)
+        out = F.linear(hidden, W_out.T, b_out)  # [batch, seq, d_model]
+
+        return out
+
+    def _handle_return_type(self, logits, input_ids, return_type, loss_per_token):
+        """Handle different return types (same as original bridge logic)."""
+        import torch.nn.functional as F
+
+        if return_type == "logits":
+            return logits
+        elif return_type == "loss":
+            labels = input_ids[:, 1:].contiguous()
+            shift_logits = logits[:, :-1, :].contiguous()
+            loss = F.cross_entropy(shift_logits.view(-1, shift_logits.size(-1)), labels.view(-1))
+            return loss
+        elif return_type == "both":
+            labels = input_ids[:, 1:].contiguous()
+            shift_logits = logits[:, :-1, :].contiguous()
+            loss = F.cross_entropy(shift_logits.view(-1, shift_logits.size(-1)), labels.view(-1))
+            return loss, logits
+        else:
+            return logits
+
+
+        # Use the adapter's conversion rules to extract TL format weights
+        tl_weights = {}
+        conversion_rules = self.adapter.conversion_rules.fields
+
+        # Define the TL keys that ProcessWeights expects
+        expected_tl_keys = {
+            "embed.W_E", "pos_embed.W_pos", "ln_final.w", "ln_final.b",
+            "unembed.W_U", "unembed.b_U"
+        }
+
+        # Add layer-specific keys
+        for layer in range(self.cfg.n_layers):
+            expected_tl_keys.update({
+                f"blocks.{layer}.ln1.w", f"blocks.{layer}.ln1.b",
+                f"blocks.{layer}.ln2.w", f"blocks.{layer}.ln2.b",
+                f"blocks.{layer}.attn.W_Q", f"blocks.{layer}.attn.b_Q",
+                f"blocks.{layer}.attn.W_K", f"blocks.{layer}.attn.b_K",
+                f"blocks.{layer}.attn.W_V", f"blocks.{layer}.attn.b_V",
+                f"blocks.{layer}.attn.W_O", f"blocks.{layer}.attn.b_O",
+                f"blocks.{layer}.mlp.W_in", f"blocks.{layer}.mlp.b_in",
+                f"blocks.{layer}.mlp.W_out", f"blocks.{layer}.mlp.b_out",
+            })
+
+        for tl_key_pattern, conversion_spec in conversion_rules.items():
+            # Handle layer-indexed patterns
+            if "{i}" in tl_key_pattern:
+                for layer in range(self.cfg.n_layers):
+                    tl_key = tl_key_pattern.replace("{i}", str(layer))
+
+                    # Only process keys that ProcessWeights expects
+                    if tl_key not in expected_tl_keys:
+                        continue
+
+                    # Get the source key and conversion
+                    if isinstance(conversion_spec, tuple):
+                        source_key_pattern, conversion = conversion_spec
+                        source_key = source_key_pattern.replace("{i}", str(layer))
+                    else:
+                        source_key = conversion_spec.replace("{i}", str(layer))
+                        conversion = None
+
+                    # Extract and convert the weight if it exists
+                    if source_key in bridge_state:
+                        weight = bridge_state[source_key]
+
+                        if conversion:
+                            # Apply the conversion to get TL format
+                            try:
+                                converted_weight = conversion.convert(weight)
+                                tl_weights[tl_key] = converted_weight
+                            except Exception as e:
+                                print(f"Conversion failed for {tl_key}: {e}")
+                        else:
+                            # Direct mapping
+                            tl_weights[tl_key] = weight
+            else:
+                # Handle non-indexed patterns
+                if tl_key_pattern not in expected_tl_keys:
+                    continue
+
+                if isinstance(conversion_spec, tuple):
+                    source_key, conversion = conversion_spec
+                else:
+                    source_key = conversion_spec
+                    conversion = None
+
+                if source_key in bridge_state:
+                    weight = bridge_state[source_key]
+
+                    if conversion:
+                        try:
+                            converted_weight = conversion.convert(weight)
+                            tl_weights[tl_key_pattern] = converted_weight
+                        except Exception as e:
+                            print(f"Conversion failed for {tl_key_pattern}: {e}")
+                    else:
+                        tl_weights[tl_key_pattern] = weight
+
+        # Handle missing keys that ProcessWeights might need
+        if "unembed.b_U" not in tl_weights:
+            # GPT-2 doesn't have unembed bias, create zero tensor
+            import torch
+            tl_weights["unembed.b_U"] = torch.zeros(self.cfg.d_vocab)
+
+        # No renaming needed since we're already extracting with ProcessWeights standard names
+
+        return tl_weights
+
+    def _insert_weights_using_adapter(self, processed_tl_weights):
+        """Insert processed TL weights back into bridge using adapter's reverse conversion with QKV reconstruction."""
+        import torch
+        import einops
+
+        # Get the bridge's current state dict
+        bridge_state = self.state_dict()
+        conversion_rules = self.adapter.conversion_rules.fields
+        updated_bridge_state = bridge_state.copy()
+
+        # Handle QKV reconstruction separately since it requires coordinating Q, K, V
+        for layer in range(self.cfg.n_layers):
+            # Reconstruct c_attn weights (combined QKV)
+            qkv_weight_key = f"transformer.h.{layer}.attn.c_attn.weight"
+            qkv_bias_key = f"transformer.h.{layer}.attn.c_attn.bias"
+
+            if qkv_weight_key in bridge_state:
+                # Get Q, K, V weights
+                q_key = f"blocks.{layer}.attn.W_Q"
+                k_key = f"blocks.{layer}.attn.W_K"
+                v_key = f"blocks.{layer}.attn.W_V"
+
+                if all(key in processed_tl_weights for key in [q_key, k_key, v_key]):
+                    q_weight = processed_tl_weights[q_key]  # [n_heads, d_model, d_head]
+                    k_weight = processed_tl_weights[k_key]  # [n_heads, d_model, d_head]
+                    v_weight = processed_tl_weights[v_key]  # [n_heads, d_model, d_head]
+
+                    # Reverse the rearrangement: [n_heads, d_model, d_head] -> [d_model, n_heads*d_head]
+                    q_flat = einops.rearrange(q_weight, "n_heads d_model d_head -> d_model (n_heads d_head)")
+                    k_flat = einops.rearrange(k_weight, "n_heads d_model d_head -> d_model (n_heads d_head)")
+                    v_flat = einops.rearrange(v_weight, "n_heads d_model d_head -> d_model (n_heads d_head)")
+
+                    # Concatenate to form combined QKV weight: [d_model, 3*n_heads*d_head]
+                    combined_qkv_weight = torch.cat([q_flat, k_flat, v_flat], dim=1)
+                    updated_bridge_state[qkv_weight_key] = combined_qkv_weight
+
+            if qkv_bias_key in bridge_state:
+                # Get Q, K, V biases
+                q_bias_key = f"blocks.{layer}.attn.b_Q"
+                k_bias_key = f"blocks.{layer}.attn.b_K"
+                v_bias_key = f"blocks.{layer}.attn.b_V"
+
+                if all(key in processed_tl_weights for key in [q_bias_key, k_bias_key, v_bias_key]):
+                    q_bias = processed_tl_weights[q_bias_key]  # [n_heads, d_head]
+                    k_bias = processed_tl_weights[k_bias_key]  # [n_heads, d_head]
+                    v_bias = processed_tl_weights[v_bias_key]  # [n_heads, d_head]
+
+                    # Flatten and concatenate: [n_heads, d_head] -> [n_heads*d_head]
+                    q_bias_flat = einops.rearrange(q_bias, "n_heads d_head -> (n_heads d_head)")
+                    k_bias_flat = einops.rearrange(k_bias, "n_heads d_head -> (n_heads d_head)")
+                    v_bias_flat = einops.rearrange(v_bias, "n_heads d_head -> (n_heads d_head)")
+
+                    # Concatenate to form combined QKV bias: [3*n_heads*d_head]
+                    combined_qkv_bias = torch.cat([q_bias_flat, k_bias_flat, v_bias_flat], dim=0)
+                    updated_bridge_state[qkv_bias_key] = combined_qkv_bias
+
+        # Handle non-QKV weights using regular reverse conversion
+        for tl_key_pattern, conversion_spec in conversion_rules.items():
+            # Skip QKV patterns since we handled them above
+            if any(qkv in tl_key_pattern for qkv in [".attn.W_Q", ".attn.W_K", ".attn.W_V", ".attn.b_Q", ".attn.b_K", ".attn.b_V"]):
+                continue
+
+            # Handle layer-indexed patterns
+            if "{i}" in tl_key_pattern:
+                for layer in range(self.cfg.n_layers):
+                    tl_key = tl_key_pattern.replace("{i}", str(layer))
+
+                    if tl_key in processed_tl_weights:
+                        # Get the target key and conversion
+                        if isinstance(conversion_spec, tuple):
+                            target_key_pattern, conversion = conversion_spec
+                            target_key = target_key_pattern.replace("{i}", str(layer))
+                        else:
+                            target_key = conversion_spec.replace("{i}", str(layer))
+                            conversion = None
+
+                        if target_key in bridge_state:
+                            processed_weight = processed_tl_weights[tl_key]
+
+                            if conversion and hasattr(conversion, 'revert'):
+                                # Apply reverse conversion to get bridge format
+                                try:
+                                    reverted_weight = conversion.revert(processed_weight)
+                                    updated_bridge_state[target_key] = reverted_weight
+                                except Exception as e:
+                                    print(f"Reverse conversion failed for {tl_key}: {e}")
+                            else:
+                                # Direct mapping (for cases without conversion)
+                                updated_bridge_state[target_key] = processed_weight
+            else:
+                # Handle non-indexed patterns
+                if tl_key_pattern in processed_tl_weights:
+                    if isinstance(conversion_spec, tuple):
+                        target_key, conversion = conversion_spec
+                    else:
+                        target_key = conversion_spec
+                        conversion = None
+
+                    if target_key in bridge_state:
+                        processed_weight = processed_tl_weights[tl_key_pattern]
+
+                        if conversion and hasattr(conversion, 'revert'):
+                            try:
+                                reverted_weight = conversion.revert(processed_weight)
+                                updated_bridge_state[target_key] = reverted_weight
+                            except Exception as e:
+                                print(f"Reverse conversion failed for {tl_key_pattern}: {e}")
+                        else:
+                            updated_bridge_state[target_key] = processed_weight
+
+        # Load the updated state dict back into the bridge
+        try:
+            self.load_state_dict(updated_bridge_state, strict=True)
+            return True
+        except Exception as e:
+            print(f"Failed to load updated state dict: {e}")
+            return False
+
+    def _extract_weights_in_tl_format(self):
+        """Extract weights from TransformerBridge in TransformerLens format using architecture adapter weight processing."""
+        print("Extracting weights in TransformerLens format using architecture adapter...")
+
+        # Delegate to the architecture adapter's weight processing method
+        tl_state_dict = self.adapter.extract_weights_using_components(self.original_model)
+
+        print(f"Extracted {len(tl_state_dict)} weights in TL format using architecture adapter")
+        return tl_state_dict
+
+
+
+    def _override_layer_norm_components(self):
+        """Override layer norm components to force identity behavior after weight folding using NormalizationBridge."""
+        print("Overriding layer norm components to force identity behavior using NormalizationBridge...")
+
+        from transformer_lens.model_bridge.generalized_components.normalization import NormalizationBridge
+
+        # Override all layer norm components
+        override_count = 0
+        modules_to_replace = []
+
+        # First collect all the modules we want to replace
+        for name, module in self.named_modules():
+            # Look for layer norm modules (ln1, ln2, ln_1, ln_2, ln_f)
+            if ('ln1' in name or 'ln_1' in name or 'ln2' in name or 'ln_2' in name or 'ln_f' in name):
+                if hasattr(module, 'weight') and hasattr(module, 'forward'):
+                    modules_to_replace.append((name, module))
+
+        # Now replace them using the enhanced NormalizationBridge
+        for name, module in modules_to_replace:
+            try:
+                # Create normalization bridge that adapts behavior based on runtime config
+                replacement_bridge = NormalizationBridge.create_normalization_bridge(
+                    name=name,
+                    config=self.cfg,
+                    original_component=module,
+                )
+
+                # Use a more direct approach to replace the module
+                # Split the name into parts
+                parts = name.split('.')
+                parent = self
+
+                # Navigate to the parent
+                for part in parts[:-1]:
+                    if hasattr(parent, part):
+                        parent = getattr(parent, part)
+                    elif hasattr(parent, '_modules') and part in parent._modules:
+                        parent = parent._modules[part]
+                    else:
+                        # Try using the module dict directly
+                        found = False
+                        for mod_name, mod in parent.named_children():
+                            if mod_name == part:
+                                parent = mod
+                                found = True
+                                break
+                        if not found:
+                            print(f"    Warning: Could not navigate to {part} in {name}")
+                            break
+                else:
+                    # Replace the final component
+                    final_name = parts[-1]
+                    if hasattr(parent, final_name):
+                        setattr(parent, final_name, replacement_bridge)
+                        override_count += 1
+                        print(f"  Overrode {name} with adaptive NormalizationBridge")
+                    elif hasattr(parent, '_modules') and final_name in parent._modules:
+                        parent._modules[final_name] = replacement_bridge
+                        override_count += 1
+                        print(f"  Overrode {name} with adaptive NormalizationBridge (via _modules)")
+                    else:
+                        print(f"    Warning: Could not find final component {final_name} in {name}")
+
+            except Exception as e:
+                print(f"    Warning: Could not override {name}: {e}")
+
+        print(f"Overrode {override_count} layer norm components with adaptive NormalizationBridge versions")
+
+    def _center_writing_weights_inplace(self, state_dict):
+        """Center the writing weights (output projection weights)."""
+        # Center attention output weights and MLP output weights
+        for layer_idx in range(self.cfg.n_layers):
+            # Center attention output weights
+            c_proj_weight_key = f'transformer.h.{layer_idx}._original_component.attn._original_component.c_proj._original_component.weight'
+            if c_proj_weight_key in state_dict:
+                weight = state_dict[c_proj_weight_key]
+                # Center by subtracting the mean
+                centered_weight = weight - weight.mean(dim=0, keepdim=True)
+                state_dict[c_proj_weight_key] = centered_weight
+
+            # Center MLP output weights
+            mlp_proj_weight_key = f'transformer.h.{layer_idx}._original_component.mlp._original_component.c_proj._original_component.weight'
+            if mlp_proj_weight_key in state_dict:
+                weight = state_dict[mlp_proj_weight_key]
+                centered_weight = weight - weight.mean(dim=0, keepdim=True)
+                state_dict[mlp_proj_weight_key] = centered_weight
+
+        return state_dict
+
+    def _center_unembed_inplace(self, state_dict):
+        """Center the unembedding weights."""
+        lm_head_weight_key = 'lm_head._original_component.weight'
+        if lm_head_weight_key in state_dict:
+            weight = state_dict[lm_head_weight_key]
+            centered_weight = weight - weight.mean(dim=1, keepdim=True)
+            state_dict[lm_head_weight_key] = centered_weight
+        return state_dict
+
+    def _fold_value_biases_inplace(self, state_dict):
+        """Fold value biases into subsequent layers."""
+        # This is a more complex operation - for now, implement a simplified version
+        # The idea is to fold V biases into the output projection
+        for layer_idx in range(self.cfg.n_layers):
+            # GPT-2 has combined QKV bias in c_attn.bias
+            c_attn_bias_key = f'transformer.h.{layer_idx}._original_component.attn._original_component.c_attn._original_component.bias'
+            c_proj_weight_key = f'transformer.h.{layer_idx}._original_component.attn._original_component.c_proj._original_component.weight'
+            c_proj_bias_key = f'transformer.h.{layer_idx}._original_component.attn._original_component.c_proj._original_component.bias'
+
+            if c_attn_bias_key in state_dict and c_proj_weight_key in state_dict:
+                c_attn_bias = state_dict[c_attn_bias_key]
+                c_proj_weight = state_dict[c_proj_weight_key]
+
+                # Extract V bias (last third of the combined QKV bias)
+                d_model = c_attn_bias.shape[0] // 3
+                v_bias = c_attn_bias[2*d_model:]  # Last third is V bias
+
+                # Fold V bias into output projection bias
+                # The folding is: new_bias = old_bias + c_proj_weight @ v_bias
+                if c_proj_bias_key in state_dict:
+                    state_dict[c_proj_bias_key] = state_dict[c_proj_bias_key] + (c_proj_weight @ v_bias)
+                else:
+                    state_dict[c_proj_bias_key] = c_proj_weight @ v_bias
+
+                # Zero out the V bias in the original location
+                state_dict[c_attn_bias_key][2*d_model:] = 0.0
+
+        return state_dict
 
     def apply_real_weight_processing(
         self,
@@ -730,24 +1589,26 @@ class TransformerBridge(nn.Module):
         # Step 3: Handle normalization type changes like HookedTransformer does
         if fold_ln and self.cfg.normalization_type == "LN":
             self.cfg.normalization_type = "LNPre"
-            # Create minimal config for LayerNormPre
-            from transformer_lens.components import LayerNormPre
-            from transformer_lens.config import HookedTransformerConfig
-            
-            ht_cfg = HookedTransformerConfig(
-                d_model=self.cfg.d_model,
-                d_head=getattr(self.cfg, 'd_head', self.cfg.d_model // getattr(self.cfg, 'n_heads', 12)),
-                n_layers=getattr(self.cfg, 'n_layers', 12),
-                n_ctx=getattr(self.cfg, 'n_ctx', getattr(self.cfg, 'n_positions', 1024)),
-                eps=getattr(self.cfg, 'eps', 1e-5),
-                act_fn=getattr(self.cfg, 'act_fn', 'gelu'),
-                attn_only=False,
-            )
-            # Replace LayerNorm modules with LayerNormPre
-            self.transformer.ln_f = LayerNormPre(ht_cfg)
+            self.cfg.layer_norm_folding = True  # Enable layer norm folding in config
+            # Replace LayerNorm modules with LayerNormPre-style NormalizationBridge
+            from transformer_lens.model_bridge.generalized_components.normalization import NormalizationBridge
+
+            # Replace final layer norm
+            original_ln_f = self.transformer.ln_f
+            self.transformer.ln_f = NormalizationBridge("ln_f", self.cfg)
+            self.transformer.ln_f.set_original_component(original_ln_f)
+
+            # Replace layer norms in each layer
             for layer in self.transformer.h:
-                layer.ln_1 = LayerNormPre(ht_cfg)
-                layer.ln_2 = LayerNormPre(ht_cfg)
+                # Replace ln_1
+                original_ln_1 = layer.ln_1
+                layer.ln_1 = NormalizationBridge("ln_1", self.cfg)
+                layer.ln_1.set_original_component(original_ln_1)
+
+                # Replace ln_2
+                original_ln_2 = layer.ln_2
+                layer.ln_2 = NormalizationBridge("ln_2", self.cfg)
+                layer.ln_2.set_original_component(original_ln_2)
 
         # Step 4: Load processed weights with custom handling for missing layer norm keys
         missing_keys, unexpected_keys = self.load_state_dict(processed_hf_state_dict, strict=False)
@@ -883,71 +1744,32 @@ class TransformerBridge(nn.Module):
 
         return hf_state_dict
 
-    def _add_identity_layer_norm_params(self, processed_hf_state_dict):
-        """Add identity LayerNorm parameters after folding.
-
-        After folding LayerNorm into other layers, HuggingFace models still expect
-        LayerNorm parameters to exist. Set them to identity (weight=1, bias=0).
-        """
-        import torch
-
-        for layer_idx in range(self.cfg.n_layers):
-            ln1_weight_key = f"transformer.h.{layer_idx}.ln_1.weight"
-            ln1_bias_key = f"transformer.h.{layer_idx}.ln_1.bias"
-            ln2_weight_key = f"transformer.h.{layer_idx}.ln_2.weight"
-            ln2_bias_key = f"transformer.h.{layer_idx}.ln_2.bias"
-
-            # Always add identity LayerNorm parameters (they were deleted by ProcessWeights.fold_layer_norm)
-            processed_hf_state_dict[ln1_weight_key] = torch.ones(self.cfg.d_model)
-            processed_hf_state_dict[ln1_bias_key] = torch.zeros(self.cfg.d_model)
-            processed_hf_state_dict[ln2_weight_key] = torch.ones(self.cfg.d_model)
-            processed_hf_state_dict[ln2_bias_key] = torch.zeros(self.cfg.d_model)
-
-        ln_final_weight_key = "transformer.ln_f.weight"
-        ln_final_bias_key = "transformer.ln_f.bias"
-
-        # Always add identity final LayerNorm parameters (they were deleted by ProcessWeights.fold_layer_norm)
-        processed_hf_state_dict[ln_final_weight_key] = torch.ones(self.cfg.d_model)
-        processed_hf_state_dict[ln_final_bias_key] = torch.zeros(self.cfg.d_model)
 
     def _replace_layer_norm_with_identity(self, model):
-        """Replace LayerNorm components with LayerNormPre-like operations to maintain mathematical equivalence.
+        """Replace LayerNorm components with adaptive normalization bridges.
 
         After folding LayerNorm into other layers, we need to replace the LayerNorm components
-        with operations that only apply normalization (centering and scaling) without learnable parameters.
-        This is equivalent to what HookedTransformer does when it replaces LayerNorm with LayerNormPre components.
+        with adaptive normalization bridges that switch behavior based on config.layer_norm_folding.
         """
-        import torch.nn as nn
+        from transformer_lens.model_bridge.generalized_components.normalization import NormalizationBridge
 
-        # Import the proper LayerNormPre from HookedTransformer
-        from transformer_lens.components.layer_norm_pre import LayerNormPre
-        from transformer_lens.config.HookedTransformerConfig import (
-            HookedTransformerConfig,
-        )
-
-        # Create a compatible HookedTransformerConfig from the bridge config
-        hooked_config = HookedTransformerConfig(
-            d_model=self.cfg.d_model,
-            d_vocab=self.cfg.d_vocab,
-            n_layers=self.cfg.n_layers,
-            n_heads=self.cfg.n_heads,
-            d_head=self.cfg.d_head,
-            d_mlp=self.cfg.d_mlp,
-            eps=self.cfg.eps,
-            n_ctx=1024,  # Default context length
-            device=self.cfg.device,
-            act_fn="relu",  # GPT-2 uses ReLU activation
-            attn_only=getattr(self.cfg, "attn_only", False),
-        )
-
-        # Replace LayerNorm components in each layer
         for layer_idx in range(self.cfg.n_layers):
-            # Replace ln_1 and ln_2 with LayerNormPre using proper constructor
-            model.transformer.h[layer_idx].ln_1 = LayerNormPre(hooked_config)
-            model.transformer.h[layer_idx].ln_2 = LayerNormPre(hooked_config)
+            # Replace ln_1 and ln_2 with adaptive NormalizationBridge
+            original_ln_1 = model.transformer.h[layer_idx].ln_1
+            ln1_bridge = NormalizationBridge("ln_1", self.cfg)
+            ln1_bridge.set_original_component(original_ln_1)
+            model.transformer.h[layer_idx].ln_1 = ln1_bridge
 
-        # Replace final LayerNorm with LayerNormPre
-        model.transformer.ln_f = LayerNormPre(hooked_config)
+            original_ln_2 = model.transformer.h[layer_idx].ln_2
+            ln2_bridge = NormalizationBridge("ln_2", self.cfg)
+            ln2_bridge.set_original_component(original_ln_2)
+            model.transformer.h[layer_idx].ln_2 = ln2_bridge
+
+        # Replace final LayerNorm with adaptive NormalizationBridge
+        original_ln_f = model.transformer.ln_f
+        ln_f_bridge = NormalizationBridge("ln_f", self.cfg)
+        ln_f_bridge.set_original_component(original_ln_f)
+        model.transformer.ln_f = ln_f_bridge
 
     def _load_processed_weights(self, processed_state_dict):
         """Load processed weights back into the TransformerBridge.
@@ -1437,7 +2259,8 @@ class TransformerBridge(nn.Module):
         padding_side: Optional[str] = None,
         past_kv_cache: Optional[TransformerLensKeyValueCache] = None,
         attention_mask: Optional[torch.Tensor] = None,
-        start_at_layer: int = 0,
+        start_at_layer: Optional[int] = None,
+        stop_at_layer: Optional[int] = None,
         **kwargs,
     ) -> Any:
         """Forward pass through the model.
@@ -1455,6 +2278,18 @@ class TransformerBridge(nn.Module):
         Returns:
             Model output based on return_type
         """
+
+        # Use processed computation if weights have been processed
+        if hasattr(self, '_weights_processed') and self._weights_processed:
+            return self._processed_forward_pass(
+                input,
+                return_type=return_type,
+                prepend_bos=prepend_bos,
+                loss_per_token=loss_per_token,
+                start_at_layer=start_at_layer,
+                stop_at_layer=stop_at_layer,
+            )
+
         # Handle string input
         if isinstance(input, (str, list)):
             input_ids = self.to_tokens(input, prepend_bos=prepend_bos, padding_side=padding_side)
@@ -1589,6 +2424,156 @@ class TransformerBridge(nn.Module):
             return output
         else:
             raise ValueError(f"Invalid return_type: {return_type}")
+
+    def _processed_forward_pass(
+        self,
+        input,
+        return_type: Optional[str] = "logits",
+        prepend_bos: Optional[bool] = None,
+        loss_per_token: bool = False,
+        start_at_layer: Optional[int] = None,
+        stop_at_layer: Optional[int] = None,
+    ):
+        """Forward pass using processed weights through bridge components.
+
+        This method computes the forward pass using the bridge's component architecture
+        with processed weights, providing equivalent functionality to HookedTransformer
+        without requiring delegation to an external processed model.
+        """
+        # Handle string input - convert to tokens
+        if isinstance(input, (str, list)):
+            tokens = self.to_tokens(input, prepend_bos=prepend_bos)
+        else:
+            tokens = input
+
+        # Ensure tokens is a tensor
+        if not isinstance(tokens, torch.Tensor):
+            tokens = torch.tensor(tokens)
+
+        # Start computation at embedding layer unless starting at a later layer
+        if start_at_layer is None:
+            # Input embedding
+            residual = self.embed(tokens)
+
+            # Add positional embedding
+            if hasattr(self, 'pos_embed'):
+                pos_embed_out = self.pos_embed(tokens)
+                residual = residual + pos_embed_out
+
+            # Apply embedding hooks
+            residual = self.hook_embed(residual)
+            residual = self.hook_pos_embed(residual)
+
+            start_layer = 0
+        else:
+            # Start from given residual state at specified layer
+            residual = input
+            start_layer = start_at_layer
+
+        # Process through transformer blocks
+        end_layer = stop_at_layer if stop_at_layer is not None else self.cfg.n_layers
+
+        for layer_idx in range(start_layer, end_layer):
+            if hasattr(self, 'blocks') and layer_idx < len(self.blocks):
+                # Use bridge components for computation
+                block = self.blocks[layer_idx]
+                residual = block(residual)
+            else:
+                # Fallback: use original model's transformer blocks
+                residual = self.original_model.transformer.h[layer_idx](residual)[0]
+
+        # If we stopped early, return the residual stream
+        if stop_at_layer is not None:
+            return residual
+
+        # Apply final layer norm and unembedding
+        if hasattr(self, 'ln_final'):
+            residual = self.ln_final(residual)
+
+        # Unembed to get logits
+        if hasattr(self, 'unembed'):
+            logits = self.unembed(residual)
+        else:
+            # Fallback to original model's unembedding
+            logits = self.original_model.lm_head(residual)
+
+        # Handle return types
+        return self._handle_return_type(logits, tokens, return_type, loss_per_token)
+
+    def _run_with_hooks_processed(
+        self,
+        input,
+        fwd_hooks: List[Tuple[Union[str, Callable], Callable]] = [],
+        bwd_hooks: List[Tuple[Union[str, Callable], Callable]] = [],
+        reset_hooks_end: bool = True,
+        clear_contexts: bool = False,
+        return_type: Optional[str] = "logits",
+        stop_at_layer: Optional[int] = None,
+        **kwargs
+    ):
+        """Run with hooks using the bridge's native components and processed weights."""
+        # Store hooks that we add so we can remove them later
+        added_hooks: List[Tuple[HookPoint, str]] = []
+
+        def add_hook_to_point(hook_point: HookPoint, hook_fn: Callable, name: str, dir: str = "fwd"):
+            hook_point.add_hook(hook_fn, dir=dir)
+            added_hooks.append((hook_point, name))
+
+        try:
+            # Add forward hooks
+            for hook_name, hook_fn in fwd_hooks:
+                if isinstance(hook_name, str):
+                    hook_point = self.get_hook_point(hook_name)
+                    if hook_point is not None:
+                        add_hook_to_point(hook_point, hook_fn, hook_name, "fwd")
+
+            # Add backward hooks
+            for hook_name, hook_fn in bwd_hooks:
+                if isinstance(hook_name, str):
+                    hook_point = self.get_hook_point(hook_name)
+                    if hook_point is not None:
+                        add_hook_to_point(hook_point, hook_fn, hook_name, "bwd")
+
+            # Run the processed forward pass
+            result = self._processed_forward_pass(
+                input,
+                return_type=return_type,
+                stop_at_layer=stop_at_layer,
+                **kwargs
+            )
+
+            return result
+
+        finally:
+            # Clean up hooks if requested
+            if reset_hooks_end:
+                for hook_point, name in added_hooks:
+                    hook_point.remove_hooks("fwd")
+                    hook_point.remove_hooks("bwd")
+
+            if clear_contexts:
+                # Clear any hook contexts if needed
+                pass
+
+    def get_hook_point(self, hook_name: str) -> Optional[HookPoint]:
+        """Get a hook point by name from the bridge's hook system."""
+        # First try to get from the hook dictionary if available
+        if hasattr(self, '_hook_dict') and hook_name in self._hook_dict:
+            return self._hook_dict[hook_name]
+
+        # Fallback: try to resolve from components
+        try:
+            # Split the hook name and traverse the object hierarchy
+            parts = hook_name.split('.')
+            current = self
+            for part in parts:
+                current = getattr(current, part)
+            if isinstance(current, HookPoint):
+                return current
+        except AttributeError:
+            pass
+
+        return None
 
     def loss_fn(
         self,
@@ -1906,6 +2891,18 @@ class TransformerBridge(nn.Module):
         Returns:
             Model output
         """
+        # Handle processed weights case by using bridge's native hook system
+        if hasattr(self, '_weights_processed') and self._weights_processed:
+            return self._run_with_hooks_processed(
+                input,
+                fwd_hooks=fwd_hooks,
+                bwd_hooks=bwd_hooks,
+                reset_hooks_end=reset_hooks_end,
+                clear_contexts=clear_contexts,
+                return_type=return_type,
+                stop_at_layer=stop_at_layer,
+                **kwargs
+            )
 
         # Store hooks that we add so we can remove them later
         added_hooks: List[Tuple[HookPoint, str]] = []

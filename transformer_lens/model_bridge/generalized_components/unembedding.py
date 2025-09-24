@@ -102,3 +102,37 @@ class UnembeddingBridge(GeneralizedComponent):
             dtype = weight.dtype
             vocab_size: int = int(weight.shape[0])  # lm_head weight is [d_vocab, d_model]
             return torch.zeros(vocab_size, device=device, dtype=dtype)
+
+    def process_weights(
+        self,
+        fold_ln: bool = False,
+        center_writing_weights: bool = False,
+        center_unembed: bool = False,
+        fold_value_biases: bool = False,
+        refactor_factored_attn_matrices: bool = False,
+    ) -> None:
+        """Process unembedding weights according to GPT2 pretrained logic.
+
+        The unembedding weight processing involves transposing the lm_head weight,
+        which is already handled in the W_U property.
+        """
+        # Store processed weights in TransformerLens format
+        if self.original_component is None:
+            return
+
+        self._processed_weights = {
+            "W_U": self.W_U,  # This already applies the transpose
+            "b_U": self.b_U,  # This handles bias or zero bias appropriately
+        }
+
+    def get_processed_state_dict(self) -> Dict[str, torch.Tensor]:
+        """Get the processed weights in TransformerLens format.
+
+        Returns:
+            Dictionary mapping TransformerLens parameter names to processed tensors
+        """
+        if not hasattr(self, '_processed_weights') or self._processed_weights is None:
+            # If weights haven't been processed, process them now
+            self.process_weights()
+
+        return self._processed_weights.copy()

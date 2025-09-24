@@ -96,3 +96,44 @@ class EmbeddingBridge(GeneralizedComponent):
         output = self.hook_out(output)
 
         return output
+
+    def process_weights(
+        self,
+        fold_ln: bool = False,
+        center_writing_weights: bool = False,
+        center_unembed: bool = False,
+        fold_value_biases: bool = False,
+        refactor_factored_attn_matrices: bool = False,
+    ) -> None:
+        """Process embedding weights according to GPT2 pretrained logic.
+
+        For embeddings, this is a direct mapping without transformation.
+        """
+        if self.original_component is None:
+            return
+
+        # Determine the weight key based on the component name
+        if "wte" in self.name or "embed" in self.name:
+            weight_key = "W_E"
+        elif "wpe" in self.name or "pos" in self.name:
+            weight_key = "W_pos"
+        else:
+            # Default key
+            weight_key = "W_E"
+
+        # Store processed weights in TransformerLens format (direct mapping)
+        self._processed_weights = {
+            weight_key: self.original_component.weight.clone(),
+        }
+
+    def get_processed_state_dict(self) -> Dict[str, torch.Tensor]:
+        """Get the processed weights in TransformerLens format.
+
+        Returns:
+            Dictionary mapping TransformerLens parameter names to processed tensors
+        """
+        if not hasattr(self, '_processed_weights') or self._processed_weights is None:
+            # If weights haven't been processed, process them now
+            self.process_weights()
+
+        return self._processed_weights.copy()

@@ -147,6 +147,38 @@ class GeneralizedComponent(nn.Module):
                 f"Hook name '{hook_name}' not supported. Supported names are 'output' and 'input'."
             )
 
+    def process_weights(
+        self,
+        fold_ln: bool = False,
+        center_writing_weights: bool = False,
+        center_unembed: bool = False,
+        fold_value_biases: bool = False,
+        refactor_factored_attn_matrices: bool = False,
+    ) -> None:
+        """Process weights according to weight processing flags.
+
+        This method should be overridden by specific components that need
+        custom weight processing (e.g., QKV splitting, weight rearrangement).
+
+        Args:
+            fold_ln: Whether to fold layer norm weights
+            center_writing_weights: Whether to center writing weights
+            center_unembed: Whether to center unembedding weights
+            fold_value_biases: Whether to fold value biases
+            refactor_factored_attn_matrices: Whether to refactor factored attention matrices
+        """
+        # Base implementation does nothing - components override this
+        pass
+
+    def get_processed_state_dict(self) -> Dict[str, torch.Tensor]:
+        """Get the state dict after weight processing.
+
+        Returns:
+            Dictionary mapping parameter names to processed tensors
+        """
+        # Base implementation returns the standard state dict
+        return self.state_dict()
+
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         """Generic forward pass for bridge components with input/output hooks."""
         # Since we use add_module, the component is stored in _modules
