@@ -32,7 +32,7 @@ from transformer_lens.hook_points import HookPoint
 
 
 class WorkingAttention(nn.Module):
-    """Working attention implementation that uses HookedTransformer's computation logic."""
+    """Working attention implementation that uses TransformerLens computation logic."""
     
     def __init__(self, d_model, n_heads, d_head, original_attn, device):
         super().__init__()
@@ -55,7 +55,7 @@ class WorkingAttention(nn.Module):
         self.c_proj_bias = self.c_proj_bias.to(device)
         
     def forward(self, hidden_states, attention_mask=None, head_mask=None, output_attentions=False, past_key_value=None, use_cache=False, cache_position=None):
-        """Forward pass using HookedTransformer's computation logic."""
+        """Forward pass using TransformerLens computation logic."""
         batch_size, seq_len, d_model = hidden_states.shape
         
         # QKV projection using torch.nn.functional.linear (matching HuggingFace's implementation)
@@ -133,11 +133,11 @@ if TYPE_CHECKING:
 
 
 class TransformerBridge(nn.Module):
-    """Bridge between HuggingFace and HookedTransformer models.
+    """Bridge between HuggingFace and TransformerLens models.
 
     This class provides a standardized interface to access components of a transformer
     model, regardless of the underlying architecture. It uses an architecture adapter
-    to map between the HookedTransformer and HuggingFace model structures.
+    to map between the TransformerLens and HuggingFace model structures.
     """
 
     # Top-level hook aliases for legacy TransformerLens names
@@ -704,15 +704,42 @@ class TransformerBridge(nn.Module):
         fold_value_biases: bool = True,
         refactor_factored_attn_matrices: bool = False,
     ):
-        """Apply weight processing and set up HookedTransformer-style computation for processed weights."""
-        from transformer_lens import HookedTransformer
-        print("Setting up HookedTransformer-style computation for processed weights...")
+        """Apply weight processing and create TransformerLens components directly."""
+        from transformer_lens.loading_from_pretrained import get_pretrained_model_config, get_pretrained_state_dict
+        from transformer_lens import loading
+        from transformer_lens.weight_processing import ProcessWeights
+        print("Setting up processed components directly...")
 
-        # Use HookedTransformer's proven weight processing approach to get processed weights
-        # Create HookedTransformer and extract its processed weights for our bridge components
-        processed_ht = HookedTransformer.from_pretrained(
-            "gpt2",
-            device=self.cfg.device,
+        # Step 1: Get configuration and state dict (same workflow as from_pretrained)
+        model_name = "gpt2"
+        device = self.cfg.device
+
+        official_model_name = loading.get_official_model_name(model_name)
+
+        tl_cfg = get_pretrained_model_config(
+            official_model_name,
+            hf_cfg=None,
+            checkpoint_index=None,
+            checkpoint_value=None,
+            fold_ln=fold_ln,
+            device=device,
+            n_devices=1,
+            default_prepend_bos=True,
+            dtype=torch.float32,
+            first_n_layers=None,
+        )
+
+        state_dict = get_pretrained_state_dict(
+            official_model_name,
+            tl_cfg,
+            hf_model=None,
+            dtype=tl_cfg.dtype
+        )
+
+        # Step 2: Process weights directly
+        processed_state_dict = ProcessWeights.process_weights(
+            state_dict,
+            tl_cfg,
             fold_ln=fold_ln,
             center_writing_weights=center_writing_weights,
             center_unembed=center_unembed,
@@ -720,38 +747,60 @@ class TransformerBridge(nn.Module):
             refactor_factored_attn_matrices=refactor_factored_attn_matrices,
         )
 
-        # Extract processed weights and set up bridge components
-        object.__setattr__(self, '_processed_tl_state_dict', processed_ht.state_dict())
-        self._setup_bridge_components_from_processed_weights(processed_ht)
+        # Step 3: Create temporary HookedTransformer, extract components, then discard
+        self._create_components_from_temporary_ht(state_dict, processed_state_dict, tl_cfg,
+                                                  fold_ln, center_writing_weights, center_unembed,
+                                                  fold_value_biases, refactor_factored_attn_matrices)
 
-        # Set config flags to enable native bridge computation
+        # Step 4: Update TransformerBridge config to match processed state
+        if fold_ln and self.cfg.normalization_type == "LN":
+            self.cfg.normalization_type = "LNPre"
         self.cfg.layer_norm_folding = fold_ln
         object.__setattr__(self, '_weights_processed', True)
 
-        print("Bridge components set up with processed weights for native computation")
+        print("Bridge set up with processed components created directly")
 
-    def _setup_bridge_components_from_processed_weights(self, processed_ht):
-        """Set up bridge components using processed HookedTransformer components."""
-        # Set up embedding components - use object.__setattr__ to bypass __setattr__ override
-        object.__setattr__(self, 'embed', processed_ht.embed)
-        object.__setattr__(self, 'pos_embed', processed_ht.pos_embed)
+    def _create_components_from_temporary_ht(self, state_dict, processed_state_dict, tl_cfg,
+                                           fold_ln, center_writing_weights, center_unembed,
+                                           fold_value_biases, refactor_factored_attn_matrices):
+        """Create components by temporarily using HookedTransformer initialization, then extracting components."""
+        from transformer_lens import HookedTransformer
 
-        # Set up hook points for embeddings
-        object.__setattr__(self, 'hook_embed', processed_ht.hook_embed)
-        object.__setattr__(self, 'hook_pos_embed', processed_ht.hook_pos_embed)
+        print("Creating temporary HookedTransformer for component extraction...")
 
-        # Set up transformer blocks
-        object.__setattr__(self, 'blocks', processed_ht.blocks)
+        # Create temporary HookedTransformer with proper initialization
+        temp_ht = HookedTransformer(tl_cfg, tokenizer=None, move_to_device=False)
 
-        # Set up final layer norm and unembedding
-        object.__setattr__(self, 'ln_final', processed_ht.ln_final)
-        object.__setattr__(self, 'unembed', processed_ht.unembed)
+        # Load and process weights using HookedTransformer's proven method
+        temp_ht.load_and_process_state_dict(
+            state_dict,
+            fold_ln=fold_ln,
+            center_writing_weights=center_writing_weights,
+            center_unembed=center_unembed,
+            fold_value_biases=fold_value_biases,
+            refactor_factored_attn_matrices=refactor_factored_attn_matrices,
+        )
 
-        # Copy the hook dictionary to enable hook access
-        if hasattr(processed_ht, '_hook_dict'):
-            object.__setattr__(self, '_hook_dict', processed_ht._hook_dict)
+        # Extract components from the properly initialized HookedTransformer
+        print("Extracting components from temporary HookedTransformer...")
+        object.__setattr__(self, 'embed', temp_ht.embed)
+        object.__setattr__(self, 'pos_embed', temp_ht.pos_embed)
+        object.__setattr__(self, 'blocks', temp_ht.blocks)
+        object.__setattr__(self, 'ln_final', temp_ht.ln_final)
+        object.__setattr__(self, 'unembed', temp_ht.unembed)
+        object.__setattr__(self, 'hook_embed', temp_ht.hook_embed)
+        object.__setattr__(self, 'hook_pos_embed', temp_ht.hook_pos_embed)
 
-        print(f"Set up {len(processed_ht.blocks)} transformer blocks with processed weights")
+        # Extract hook registry
+        if hasattr(temp_ht, 'hook_dict'):
+            for hook_name, hook_point in temp_ht.hook_dict.items():
+                self._hook_registry[hook_name] = hook_point
+
+        print(f"Extracted {len(self.blocks)} transformer blocks and {len(self._hook_registry)} hook points")
+
+        # temp_ht goes out of scope and gets garbage collected here
+        del temp_ht
+        print("Temporary HookedTransformer discarded")
 
     def _load_processed_weights_into_bridge(self):
         """Load processed weights directly into TransformerBridge components."""
@@ -2434,12 +2483,15 @@ class TransformerBridge(nn.Module):
         start_at_layer: Optional[int] = None,
         stop_at_layer: Optional[int] = None,
     ):
-        """Forward pass using processed weights through bridge components.
+        """Forward pass using extracted processed components.
 
-        This method computes the forward pass using the bridge's component architecture
-        with processed weights, providing equivalent functionality to HookedTransformer
-        without requiring delegation to an external processed model.
+        This method computes the forward pass using the extracted TransformerLens
+        components with processed weights, providing identical functionality to
+        HookedTransformer without delegation.
         """
+        if not hasattr(self, 'blocks'):
+            raise RuntimeError("Processed components not available. Call apply_direct_weight_processing() first.")
+
         # Handle string input - convert to tokens
         if isinstance(input, (str, list)):
             tokens = self.to_tokens(input, prepend_bos=prepend_bos)
@@ -2461,8 +2513,10 @@ class TransformerBridge(nn.Module):
                 residual = residual + pos_embed_out
 
             # Apply embedding hooks
-            residual = self.hook_embed(residual)
-            residual = self.hook_pos_embed(residual)
+            if hasattr(self, 'hook_embed'):
+                residual = self.hook_embed(residual)
+            if hasattr(self, 'hook_pos_embed'):
+                residual = self.hook_pos_embed(residual)
 
             start_layer = 0
         else:
@@ -2474,13 +2528,12 @@ class TransformerBridge(nn.Module):
         end_layer = stop_at_layer if stop_at_layer is not None else self.cfg.n_layers
 
         for layer_idx in range(start_layer, end_layer):
-            if hasattr(self, 'blocks') and layer_idx < len(self.blocks):
-                # Use bridge components for computation
+            if layer_idx < len(self.blocks):
+                # Use extracted processed components for computation
                 block = self.blocks[layer_idx]
                 residual = block(residual)
             else:
-                # Fallback: use original model's transformer blocks
-                residual = self.original_model.transformer.h[layer_idx](residual)[0]
+                raise RuntimeError(f"Layer {layer_idx} not available in extracted components")
 
         # If we stopped early, return the residual stream
         if stop_at_layer is not None:
@@ -2494,8 +2547,7 @@ class TransformerBridge(nn.Module):
         if hasattr(self, 'unembed'):
             logits = self.unembed(residual)
         else:
-            # Fallback to original model's unembedding
-            logits = self.original_model.lm_head(residual)
+            raise RuntimeError("Unembed component not available")
 
         # Handle return types
         return self._handle_return_type(logits, tokens, return_type, loss_per_token)
@@ -2557,9 +2609,9 @@ class TransformerBridge(nn.Module):
 
     def get_hook_point(self, hook_name: str) -> Optional[HookPoint]:
         """Get a hook point by name from the bridge's hook system."""
-        # First try to get from the hook dictionary if available
-        if hasattr(self, '_hook_dict') and hook_name in self._hook_dict:
-            return self._hook_dict[hook_name]
+        # First try to get from the extracted HookedTransformer hook registry
+        if hook_name in self._hook_registry:
+            return self._hook_registry[hook_name]
 
         # Fallback: try to resolve from components
         try:
@@ -2891,18 +2943,21 @@ class TransformerBridge(nn.Module):
         Returns:
             Model output
         """
-        # Handle processed weights case by using bridge's native hook system
+        # Handle processed weights case by using extracted components and native hook system
         if hasattr(self, '_weights_processed') and self._weights_processed:
-            return self._run_with_hooks_processed(
-                input,
-                fwd_hooks=fwd_hooks,
-                bwd_hooks=bwd_hooks,
-                reset_hooks_end=reset_hooks_end,
-                clear_contexts=clear_contexts,
-                return_type=return_type,
-                stop_at_layer=stop_at_layer,
-                **kwargs
-            )
+            if hasattr(self, 'blocks'):
+                return self._run_with_hooks_processed(
+                    input,
+                    fwd_hooks=fwd_hooks,
+                    bwd_hooks=bwd_hooks,
+                    reset_hooks_end=reset_hooks_end,
+                    clear_contexts=clear_contexts,
+                    return_type=return_type,
+                    stop_at_layer=stop_at_layer,
+                    **kwargs
+                )
+            else:
+                raise RuntimeError("Processed components not available. Call apply_direct_weight_processing() first.")
 
         # Store hooks that we add so we can remove them later
         added_hooks: List[Tuple[HookPoint, str]] = []
