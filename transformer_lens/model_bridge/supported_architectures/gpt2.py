@@ -590,3 +590,79 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
         # For now, we'll return the components and let the bridge handle hook extraction
 
         print(f"GPT-2 adapter: Ready for hook extraction from components")
+
+    def test_round_trip_conversion(
+        self,
+        processed_weights: dict[str, torch.Tensor],
+        model_name: str,
+        tolerance: float = 1e-6
+    ) -> dict[str, Any]:
+        """Test round-trip conversion for processed weights through HF format.
+
+        This method validates that processed weights can be converted to HuggingFace
+        format and back to TransformerLens format without loss of precision.
+
+        Args:
+            processed_weights: Dictionary of processed TLens weights
+            model_name: Name of the model (e.g., "gpt2")
+            tolerance: Maximum allowed difference for validation
+
+        Returns:
+            Dictionary containing validation results
+        """
+        from transformer_lens.conversion_utils.round_trip_validator import RoundTripValidator
+        from transformers import AutoModelForCausalLM
+
+        # Load original HF weights for reference
+        hf_model = AutoModelForCausalLM.from_pretrained(model_name)
+        original_hf_weights = hf_model.state_dict()
+
+        # Run round-trip validation
+        validator = RoundTripValidator(tolerance=tolerance)
+        results = validator.validate_processed_weight_conversion(
+            original_hf_weights, processed_weights, self.cfg, model_name
+        )
+
+        return results
+
+    def export_processed_weights_to_hf(
+        self,
+        processed_weights: dict[str, torch.Tensor],
+        model_name: str
+    ) -> dict[str, torch.Tensor]:
+        """Export processed TransformerLens weights to HuggingFace format.
+
+        Args:
+            processed_weights: Dictionary of processed TLens weights
+            model_name: Name of the model for conversion context
+
+        Returns:
+            Dictionary of weights in HuggingFace format
+        """
+        from transformer_lens.conversion_utils.reversible_weight_converter import ReversibleWeightConverter
+
+        converter = ReversibleWeightConverter()
+        hf_weights = converter.tlens_to_hf(processed_weights, self.cfg, model_name)
+
+        return hf_weights
+
+    def import_hf_weights_to_tlens(
+        self,
+        hf_weights: dict[str, torch.Tensor],
+        model_name: str
+    ) -> dict[str, torch.Tensor]:
+        """Import HuggingFace weights to TransformerLens format.
+
+        Args:
+            hf_weights: Dictionary of HF weights
+            model_name: Name of the model for conversion context
+
+        Returns:
+            Dictionary of weights in TransformerLens format
+        """
+        from transformer_lens.conversion_utils.reversible_weight_converter import ReversibleWeightConverter
+
+        converter = ReversibleWeightConverter()
+        tlens_weights = converter.hf_to_tlens(hf_weights, self.cfg, model_name)
+
+        return tlens_weights

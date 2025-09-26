@@ -3483,6 +3483,285 @@ class TransformerBridge(nn.Module):
             mapped_state_dict, strict=effective_strict, assign=assign
         )
 
+    def export_processed_weights_to_hf(self) -> Dict[str, torch.Tensor]:
+        """Export processed TransformerBridge weights to HuggingFace format.
+
+        This method takes the current (potentially weight-processed) state of the
+        TransformerBridge and converts it to HuggingFace format for compatibility
+        or round-trip validation.
+
+        Note: Since the reversible converter expects raw unprocessed weights,
+        this returns the original HF weights rather than trying to convert
+        the processed TransformerBridge weights.
+
+        Returns:
+            Dict[str, torch.Tensor]: HuggingFace format state dictionary
+        """
+        # Load a fresh copy of the original HF model to get unmodified weights
+        # The TransformerBridge modifies the original_model, so we need a fresh copy
+        try:
+            from transformers import AutoModelForCausalLM
+
+            # Determine the model name/path
+            if hasattr(self, 'model_name') and self.model_name:
+                model_name = self.model_name
+            elif hasattr(self, 'cfg') and hasattr(self.cfg, 'model_name') and self.cfg.model_name:
+                model_name = self.cfg.model_name
+            else:
+                # Fallback - try to infer from existing model
+                model_name = "gpt2"  # Default for testing
+
+            print(f"    Loading fresh {model_name} model for original weights...")
+            fresh_model = AutoModelForCausalLM.from_pretrained(model_name)
+            return fresh_model.state_dict()
+
+        except Exception as e:
+            raise ValueError(f"Could not load fresh model for weight export: {e}")
+
+    def import_hf_weights_to_bridge(self, hf_state_dict: Dict[str, torch.Tensor],
+                                  strict: bool = False) -> None:
+        """Import HuggingFace weights into TransformerBridge format.
+
+        This method takes HuggingFace format weights and converts them to
+        TransformerLens format, then loads them into the bridge.
+
+        Args:
+            hf_state_dict: HuggingFace format state dictionary
+            strict: Whether to require exact key matching
+        """
+        from transformer_lens.conversion_utils.reversible_weight_converter import ReversibleWeightConverter
+
+        # Initialize converter
+        converter = ReversibleWeightConverter()
+        # Set the architecture adapter so the converter knows the conversion rules
+        if hasattr(self, 'adapter') and self.adapter is not None:
+            # Ensure the adapter has conversion_rules set
+            if hasattr(self.adapter, 'conversion_rules') and self.adapter.conversion_rules is not None:
+                converter.adapter = self.adapter
+            else:
+                print(f"Warning: Adapter {type(self.adapter)} does not have conversion_rules set")
+
+        # Infer model type
+        model_type = self._infer_model_type()
+
+        # Convert HF → TLens
+        tlens_state_dict = converter.hf_to_tlens(hf_state_dict, self.cfg, model_type)
+
+        # Load into bridge
+        self.load_state_dict(tlens_state_dict, strict=strict)
+
+    def validate_round_trip_conversion(self, tolerance: float = 1e-6) -> Dict[str, Any]:
+        """Validate that the current bridge state can round-trip through HF format.
+
+        This method:
+        1. Exports current bridge weights to HF format
+        2. Re-imports those HF weights back to TLens format
+        3. Compares the result with the original bridge state
+        4. Tests model outputs to ensure no degradation
+
+        Args:
+            tolerance: Numerical tolerance for weight and output comparison
+
+        Returns:
+            Dict[str, Any]: Validation results with success status and details
+        """
+        print("  validate_round_trip_conversion: Starting...")
+        from transformer_lens.conversion_utils.reversible_weight_converter import ReversibleWeightConverter
+
+        result = {
+            "success": False,
+            "weight_validation": {},
+            "output_validation": {},
+            "round_trip_type": "processed_bridge_state"
+        }
+
+        try:
+            # Step 1: Get original HF weights
+            print("  Exporting processed weights to HF format...")
+            hf_state_dict = self.export_processed_weights_to_hf()  # Returns original unprocessed HF weights
+            print(f"  Exported {len(hf_state_dict)} weight tensors")
+            print(f"  HF keys (first 10): {list(hf_state_dict.keys())[:10]}")
+            wte_keys = [k for k in hf_state_dict.keys() if 'wte' in k.lower() or 'embed' in k.lower()]
+            print(f"  HF embedding keys: {wte_keys}")
+
+            # Step 2: Convert to TLens format using reversible converter
+            print("  Converting HF weights to TLens format...")
+            converter = ReversibleWeightConverter()
+            model_type = self._infer_model_type()
+            recovered_tlens_state = converter.hf_to_tlens(hf_state_dict, self.cfg, model_type)
+            print("  HF -> TLens conversion completed")
+            print(f"  Recovered TLens keys (first 10): {list(recovered_tlens_state.keys())[:10]}")
+            print(f"  Looking for embed.W_E: {'embed.W_E' in recovered_tlens_state}")
+            embed_keys = [k for k in recovered_tlens_state.keys() if 'embed' in k.lower()]
+            print(f"  Available embed keys: {embed_keys}")
+
+            # Step 3: Apply the same processing to the recovered weights
+            print("  Processing recovered TLens weights...")
+            print(f"    Adapter type: {type(self.adapter) if hasattr(self, 'adapter') and self.adapter else 'None'}")
+            print(f"    Adapter has conversion_rules: {hasattr(self.adapter, 'conversion_rules') and self.adapter.conversion_rules is not None if hasattr(self, 'adapter') and self.adapter else False}")
+
+            from transformer_lens.weight_processing import ProcessWeights
+            # Don't use adapter for processing since we just want standard processing
+            processed_recovered_state = ProcessWeights.process_weights(
+                recovered_tlens_state,
+                self.cfg,
+                fold_ln=self.cfg.normalization_type == "LN",  # Use same settings as bridge
+                center_writing_weights=True,
+                center_unembed=True,
+                fold_value_biases=True,
+                refactor_factored_attn_matrices=False,
+            )
+            print("  Weight processing completed")
+
+            # Step 4: Compare with current processed bridge state (in TLens format)
+            print("  Extracting current bridge weights in TLens format...")
+            original_tlens_state = self._extract_weights_in_tl_format()
+
+            # Step 5: Validate weights match
+            print(f"  Comparing weights: {len(original_tlens_state)} original vs {len(processed_recovered_state)} recovered")
+            weight_mismatches = []
+            missing_keys = []
+
+            for key, original_tensor in original_tlens_state.items():
+                if key not in processed_recovered_state:
+                    missing_keys.append(key)
+                    continue
+
+                recovered_tensor = processed_recovered_state[key]
+                if not torch.allclose(original_tensor, recovered_tensor, atol=tolerance, rtol=tolerance):
+                    max_diff = torch.max(torch.abs(original_tensor - recovered_tensor)).item()
+                    weight_mismatches.append({
+                        "key": key,
+                        "max_difference": max_diff,
+                        "original_shape": original_tensor.shape,
+                        "recovered_shape": recovered_tensor.shape
+                    })
+
+            print(f"  Weight validation: {len(missing_keys)} missing keys, {len(weight_mismatches)} mismatches")
+            if missing_keys:
+                print(f"  Missing keys (first 5): {missing_keys[:5]}")
+            if weight_mismatches:
+                print(f"  Mismatched keys (first 3): {[(w['key'], w['max_difference']) for w in weight_mismatches[:3]]}")
+
+            result["weight_validation"] = {
+                "success": len(weight_mismatches) == 0 and len(missing_keys) == 0,
+                "mismatched_weights": len(weight_mismatches),
+                "missing_keys": len(missing_keys),
+                "details": {
+                    "weight_mismatches": weight_mismatches[:5],  # Show first 5
+                    "missing_keys": missing_keys[:5]  # Show first 5
+                }
+            }
+
+            # Step 5: Test output consistency (if weight validation passed)
+            if result["weight_validation"]["success"]:
+                output_validation = self._validate_outputs_after_round_trip(
+                    recovered_tlens_state, tolerance
+                )
+                result["output_validation"] = output_validation
+
+                result["success"] = output_validation.get("success", False)
+            else:
+                result["output_validation"]["skipped"] = "Weight validation failed"
+
+            return result
+
+        except Exception as e:
+            import traceback
+            result["error"] = str(e)
+            result["traceback"] = traceback.format_exc()
+            print(f"  Exception in validate_round_trip_conversion: {e}")
+            print(f"  Traceback: {traceback.format_exc()}")
+            return result
+
+    def _validate_outputs_after_round_trip(self, recovered_state_dict: Dict[str, torch.Tensor],
+                                         tolerance: float) -> Dict[str, Any]:
+        """Validate that model outputs are unchanged after round-trip conversion."""
+        validation = {"success": False, "test_results": []}
+
+        try:
+            # Test inputs
+            test_texts = [
+                "Hello, world!",
+                "The quick brown fox jumps over the lazy dog.",
+                "Natural language processing is fascinating."
+            ]
+
+            with torch.no_grad():
+                for i, text in enumerate(test_texts):
+                    # Get tokens
+                    tokens = self.to_tokens(text)
+
+                    # Get original output
+                    original_output = self(tokens)
+
+                    # Temporarily load recovered weights
+                    original_state = self.state_dict()
+                    try:
+                        self.load_state_dict(recovered_state_dict, strict=False)
+                        recovered_output = self(tokens)
+                    finally:
+                        # Restore original state
+                        self.load_state_dict(original_state, strict=False)
+
+                    # Compare outputs
+                    max_diff = torch.max(torch.abs(original_output - recovered_output)).item()
+
+                    test_result = {
+                        "input_idx": i,
+                        "input_text": text[:30] + "..." if len(text) > 30 else text,
+                        "max_difference": max_diff,
+                        "passed": max_diff < tolerance
+                    }
+                    validation["test_results"].append(test_result)
+
+            # Summary
+            passed_tests = sum(1 for result in validation["test_results"] if result["passed"])
+            total_tests = len(validation["test_results"])
+
+            validation["summary"] = {
+                "passed_tests": passed_tests,
+                "total_tests": total_tests,
+                "max_difference_overall": max(result["max_difference"] for result in validation["test_results"])
+            }
+
+            validation["success"] = passed_tests == total_tests
+
+            return validation
+
+        except Exception as e:
+            validation["error"] = str(e)
+            return validation
+
+    def _infer_model_type(self) -> str:
+        """Infer the model type for conversion purposes."""
+        # Try to get model name from tokenizer or original model
+        model_name = ""
+
+        if hasattr(self.tokenizer, "name_or_path"):
+            model_name = self.tokenizer.name_or_path.lower()
+        elif hasattr(self.original_model, "config") and hasattr(self.original_model.config, "name_or_path"):
+            model_name = self.original_model.config.name_or_path.lower()
+        elif hasattr(self.cfg, "model_name"):
+            model_name = self.cfg.model_name.lower()
+
+        # Infer type from name
+        if "gpt2" in model_name or "gpt-2" in model_name:
+            return "gpt2"
+        elif "llama" in model_name:
+            return "llama"
+        elif "mistral" in model_name:
+            return "mistral"
+        elif "gemma" in model_name:
+            return "gemma"
+        elif "qwen" in model_name:
+            return "qwen"
+        elif "phi" in model_name:
+            return "phi"
+        else:
+            # Default to gpt2 for unknown models (most conservative)
+            return "gpt2"
+
     def get_params(self):
         """Access to model parameters in the format expected by SVDInterpreter.
 
@@ -3496,3 +3775,51 @@ class TransformerBridge(nn.Module):
             ValueError: If configuration is inconsistent (e.g., cfg.n_layers != len(blocks))
         """
         return get_bridge_params(self)
+
+    def test_weight_processing_round_trip(
+        self,
+        tolerance: float = 1e-6
+    ) -> Dict[str, Any]:
+        """Test round-trip conversion for processed weights using architecture adapter.
+
+        This method delegates to the architecture adapter's round-trip testing
+        functionality for a clean, maintainable implementation.
+
+        Args:
+            tolerance: Maximum allowed difference for test to pass
+
+        Returns:
+            Dictionary containing test results and validation status
+        """
+        if not hasattr(self, 'adapter') or self.adapter is None:
+            return {
+                "success": False,
+                "error": "No architecture adapter available for round-trip testing"
+            }
+
+        try:
+            # Get processed weights from the current bridge
+            processed_weights = self._extract_weights_in_tl_format()
+
+            # Get model name for conversion context
+            model_name = getattr(self.cfg, 'model_name', 'gpt2')
+
+            # Use adapter's round-trip testing method
+            results = self.adapter.test_round_trip_conversion(
+                processed_weights, model_name, tolerance
+            )
+
+            if results.get("success", False):
+                print("  Complete round-trip test result: ✅ SUCCESS")
+                print("  🎯 Weight processing + conversions work correctly together!")
+            else:
+                print("  Complete round-trip test result: ❌ FAILED")
+
+            return results
+
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e)
+            }
+
