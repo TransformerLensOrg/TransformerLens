@@ -1090,171 +1090,240 @@ class ProcessWeights:
         return cleaned_state_dict
 
     @staticmethod
-    def convert_hf_to_tl_format(hf_state_dict, cfg):
-        """Convert HuggingFace format state dict to TransformerLens format.
-        
-        This method creates a temporary HuggingFace model structure and uses
-        the existing convert_gpt2_weights function to convert to TransformerLens format.
-        
+    def convert_hf_to_tl_format(hf_model, architecture_adapter):
+        """Convert HuggingFace format state dict to TransformerLens format using architecture adapter.
+
+        This method uses the architecture adapter's conversion rules to convert weights
+        from HuggingFace format to TransformerLens format without creating fake model structures.
+
         Args:
-            hf_state_dict: State dict in HuggingFace format
-            cfg: Model configuration object
-            
+            hf_model: The original HuggingFace nn.Module model to convert from
+            architecture_adapter: Architecture adapter with conversion rules
+
         Returns:
             State dict in TransformerLens format
         """
-        from transformer_lens.pretrained.weight_conversions.gpt2 import (
-            convert_gpt2_weights,
-        )
+        if not hasattr(architecture_adapter, 'conversion_rules') or architecture_adapter.conversion_rules is None:
+            raise ValueError("Architecture adapter must have conversion_rules set")
 
-        # Create a temporary HF model structure to use the conversion function
-        # We need to reconstruct the model structure that convert_gpt2_weights expects
-        class TempHFModel:
-            def __init__(self, state_dict, cfg):
-                self.state_dict_data = state_dict
-                self.cfg = cfg
+        # Get the HF state dict
+        hf_state_dict = hf_model.state_dict()
 
-            def state_dict(self):
-                return self.state_dict_data
+        # Extract target keys from component mapping via conversion rules instead of hardcoded list
+        target_keys = ProcessWeights._extract_tl_keys_from_conversion_rules(architecture_adapter)
 
-            # Create the nested structure that convert_gpt2_weights expects
-            @property
-            def transformer(self):
-                return self
+        # Apply conversion rules from architecture adapter for only the target keys
+        tl_state_dict = {}
+        conversion_rules = architecture_adapter.conversion_rules.fields
 
-            @property
-            def wte(self):
-                class WTE:
-                    def __init__(self, weight):
-                        self.weight = weight
-                return WTE(self.state_dict_data.get('transformer.wte.weight'))
+        print(f"Converting {len(hf_state_dict)} HF weights to {len(target_keys)} target TL weights...")
 
-            @property
-            def wpe(self):
-                class WPE:
-                    def __init__(self, weight):
-                        self.weight = weight
-                return WPE(self.state_dict_data.get('transformer.wpe.weight'))
+        for tl_key in target_keys:
+            # Find matching conversion rule (may use template format)
+            conversion_info = None
+            layer_idx = None
 
-            @property
-            def ln_f(self):
-                class LN_F:
-                    def __init__(self, weight, bias):
-                        self.weight = weight
-                        self.bias = bias
-                return LN_F(
-                    self.state_dict_data.get('transformer.ln_f.weight'),
-                    self.state_dict_data.get('transformer.ln_f.bias')
+            # Check for exact match first
+            if tl_key in conversion_rules:
+                conversion_info = conversion_rules[tl_key]
+            else:
+                # Check for template match (e.g., "blocks.5.attn.W_Q" matches "blocks.{i}.attn.W_Q")
+                if "blocks." in tl_key:
+                    parts = tl_key.split('.')
+                    if len(parts) >= 2 and parts[0] == "blocks":
+                        try:
+                            layer_idx = int(parts[1])
+                            # Create template key
+                            template_key = tl_key.replace(f"blocks.{layer_idx}.", "blocks.{i}.")
+                            if template_key in conversion_rules:
+                                conversion_info = conversion_rules[template_key]
+                        except ValueError:
+                            pass
+
+            if conversion_info is not None:
+                ProcessWeights._convert_single_weight(
+                    tl_key, conversion_info, hf_state_dict, tl_state_dict, layer_idx, architecture_adapter
                 )
+            else:
+                print(f"Warning: No conversion rule found for target key: {tl_key}")
 
-            @property
-            def h(self):
-                layers = []
-                for i in range(self.cfg.n_layers):
-                    layer_dict = {k: v for k, v in self.state_dict_data.items() if f'transformer.h.{i}.' in k}
-                    layers.append(self._create_layer(layer_dict, i))
-                return layers
+        print(f"Converted to {len(tl_state_dict)} TL weights")
+        return tl_state_dict
 
-            def _create_layer(self, layer_dict, layer_idx):
-                class Layer:
-                    def __init__(self, layer_dict, layer_idx):
-                        self.layer_dict = layer_dict
-                        self.layer_idx = layer_idx
+    @staticmethod
+    def _extract_tl_keys_from_conversion_rules(architecture_adapter):
+        """Extract TransformerLens target keys by traversing the component mapping structure."""
+        keys = []
+        conversion_rules = architecture_adapter.conversion_rules.fields
+        cfg = architecture_adapter.cfg
 
-                    @property
-                    def ln_1(self):
-                        class LN1:
-                            def __init__(self, weight, bias):
-                                self.weight = weight
-                                self.bias = bias
-                        return LN1(
-                            self.layer_dict.get(f'transformer.h.{self.layer_idx}.ln_1.weight'),
-                            self.layer_dict.get(f'transformer.h.{self.layer_idx}.ln_1.bias')
-                        )
+        # Helper function to recursively extract keys with proper template handling
+        def _extract_keys_from_component(component, comp_name, parent_template_parts=None):
+            """Extract keys from a component, handling list items dynamically."""
+            extracted_keys = []
 
-                    @property
-                    def ln_2(self):
-                        class LN2:
-                            def __init__(self, weight, bias):
-                                self.weight = weight
-                                self.bias = bias
-                        return LN2(
-                            self.layer_dict.get(f'transformer.h.{self.layer_idx}.ln_2.weight'),
-                            self.layer_dict.get(f'transformer.h.{self.layer_idx}.ln_2.bias')
-                        )
+            # Build template parts for tracking list indices
+            template_parts = parent_template_parts.copy() if parent_template_parts else []
 
-                    @property
-                    def attn(self):
-                        class Attn:
-                            def __init__(self, layer_dict, layer_idx):
-                                self.layer_dict = layer_dict
-                                self.layer_idx = layer_idx
+            if component.is_list_item:
+                # This component represents a list (like blocks, experts, etc.)
+                # Get the count from the component itself
+                count = component.get_list_size()
 
-                            @property
-                            def c_attn(self):
-                                # HuggingFace GPT-2 already has combined c_attn weights
-                                class CAttn:
-                                    def __init__(self, weight, bias):
-                                        self.weight = weight
-                                        self.bias = bias
-                                return CAttn(
-                                    self.layer_dict.get(f'transformer.h.{self.layer_idx}.attn.c_attn.weight'),
-                                    self.layer_dict.get(f'transformer.h.{self.layer_idx}.attn.c_attn.bias')
-                                )
+                # Track this as a template component
+                template_parts.append((comp_name, "{i}"))
 
-                            @property
-                            def c_proj(self):
-                                class CProj:
-                                    def __init__(self, weight, bias):
-                                        self.weight = weight
-                                        self.bias = bias
-                                return CProj(
-                                    self.layer_dict.get(f'transformer.h.{self.layer_idx}.attn.c_proj.weight'),
-                                    self.layer_dict.get(f'transformer.h.{self.layer_idx}.attn.c_proj.bias')
-                                )
-                        return Attn(self.layer_dict, self.layer_idx)
+                # Expand for all indices
+                for idx in range(count):
+                    # Build the prefix with the actual index
+                    prefix_parts = []
+                    for part_name, part_template in template_parts:
+                        if part_template == "{i}":
+                            prefix_parts.append(f"{part_name}.{idx}")
+                        else:
+                            prefix_parts.append(part_name)
+                    prefix = ".".join(prefix_parts) if prefix_parts else ""
 
-                    @property
-                    def mlp(self):
-                        class MLP:
-                            def __init__(self, layer_dict, layer_idx):
-                                self.layer_dict = layer_dict
-                                self.layer_idx = layer_idx
+                    # Get parameter names for this instance
+                    param_keys = component.get_expected_parameter_names(prefix)
+                    extracted_keys.extend(param_keys)
+            else:
+                # Regular component - build prefix from template parts
+                if template_parts:
+                    prefix_parts = [part[0] for part in template_parts]
+                    prefix = ".".join(prefix_parts + [comp_name])
+                else:
+                    prefix = comp_name
 
-                            @property
-                            def c_fc(self):
-                                class CFC:
-                                    def __init__(self, weight, bias):
-                                        self.weight = weight
-                                        self.bias = bias
-                                return CFC(
-                                    self.layer_dict.get(f'transformer.h.{self.layer_idx}.mlp.c_fc.weight'),
-                                    self.layer_dict.get(f'transformer.h.{self.layer_idx}.mlp.c_fc.bias')
-                                )
+                # Get parameter names
+                param_keys = component.get_expected_parameter_names(prefix)
+                extracted_keys.extend(param_keys)
 
-                            @property
-                            def c_proj(self):
-                                class CProj:
-                                    def __init__(self, weight, bias):
-                                        self.weight = weight
-                                        self.bias = bias
-                                return CProj(
-                                    self.layer_dict.get(f'transformer.h.{self.layer_idx}.mlp.c_proj.weight'),
-                                    self.layer_dict.get(f'transformer.h.{self.layer_idx}.mlp.c_proj.bias')
-                                )
-                        return MLP(self.layer_dict, self.layer_idx)
+            return extracted_keys
 
-                return Layer(layer_dict, layer_idx)
+        # Process each component in the mapping
+        component_mapping = architecture_adapter.component_mapping
+        for comp_name, component in component_mapping.items():
+            component_keys = _extract_keys_from_component(component, comp_name)
+            keys.extend(component_keys)
 
-            @property
-            def lm_head(self):
-                class LMHead:
-                    def __init__(self, weight):
-                        self.weight = weight
-                return LMHead(self.state_dict_data.get('lm_head.weight'))
+        # Filter to only include keys that exist in conversion rules
+        filtered_keys = []
+        for key in keys:
+            # Build template key by replacing indices with {i}
+            template_key = key
+            parts = key.split('.')
 
-        temp_model = TempHFModel(hf_state_dict, cfg)
-        return convert_gpt2_weights(temp_model, cfg)
+            # Look for numeric parts and replace with {i} to match template format
+            template_parts = []
+            for i, part in enumerate(parts):
+                if i > 0 and parts[i-1] in component_mapping and component_mapping[parts[i-1]].is_list_item:
+                    # Previous part was a list component, this should be an index
+                    if part.isdigit():
+                        template_parts.append("{i}")
+                    else:
+                        template_parts.append(part)
+                else:
+                    template_parts.append(part)
+
+            if len(template_parts) > 0:
+                # Reconstruct template key
+                rebuilt_parts = []
+                for i, part in enumerate(parts):
+                    if template_parts[i] == "{i}":
+                        if i > 0:
+                            rebuilt_parts[-1] = rebuilt_parts[-1] + ".{i}"
+                    else:
+                        rebuilt_parts.append(part)
+                template_key = ".".join(rebuilt_parts)
+
+            if key in conversion_rules or template_key in conversion_rules:
+                filtered_keys.append(key)
+
+        return sorted(filtered_keys)
+
+    @staticmethod
+    def _get_target_tl_keys(cfg):
+        """Get the exact keys that convert_gpt2_weights produces."""
+        keys = []
+
+        # Global keys
+        keys.extend([
+            "embed.W_E",
+            "pos_embed.W_pos",
+            "ln_final.w",
+            "ln_final.b",
+            "unembed.W_U",
+        ])
+
+        # Layer-specific keys
+        for layer_idx in range(cfg.n_layers):
+            layer_keys = [
+                f"blocks.{layer_idx}.ln1.w",
+                f"blocks.{layer_idx}.ln1.b",
+                f"blocks.{layer_idx}.attn.W_Q",
+                f"blocks.{layer_idx}.attn.W_K",
+                f"blocks.{layer_idx}.attn.W_V",
+                f"blocks.{layer_idx}.attn.b_Q",
+                f"blocks.{layer_idx}.attn.b_K",
+                f"blocks.{layer_idx}.attn.b_V",
+                f"blocks.{layer_idx}.attn.W_O",
+                f"blocks.{layer_idx}.attn.b_O",
+                f"blocks.{layer_idx}.ln2.w",
+                f"blocks.{layer_idx}.ln2.b",
+                f"blocks.{layer_idx}.mlp.W_in",
+                f"blocks.{layer_idx}.mlp.b_in",
+                f"blocks.{layer_idx}.mlp.W_out",
+                f"blocks.{layer_idx}.mlp.b_out",
+            ]
+            keys.extend(layer_keys)
+
+        return keys
+
+    @staticmethod
+    def _convert_single_weight(tl_key, conversion_info, hf_state_dict, tl_state_dict, layer_idx, architecture_adapter):
+        """Convert a single weight using the conversion rule."""
+        # Handle different conversion_info formats
+        if isinstance(conversion_info, str):
+            # Simple string mapping
+            hf_key = conversion_info
+            if layer_idx is not None:
+                hf_key = hf_key.format(i=layer_idx)
+
+            if hf_key in hf_state_dict:
+                tl_state_dict[tl_key] = hf_state_dict[hf_key].clone()
+
+        elif isinstance(conversion_info, tuple) and len(conversion_info) == 2:
+            # (hf_key, conversion_function) tuple
+            hf_key_template, conversion_func = conversion_info
+            hf_key = hf_key_template
+            if layer_idx is not None:
+                hf_key = hf_key.format(i=layer_idx)
+
+            if hf_key in hf_state_dict:
+                # Apply the conversion function
+                original_weight = hf_state_dict[hf_key]
+                converted_weight = conversion_func.handle_conversion(original_weight)
+                tl_state_dict[tl_key] = converted_weight
+
+        else:
+            print(f"Warning: Unknown conversion format for {tl_key}: {conversion_info}")
+
+    @staticmethod
+    def _is_transformerlens_key(key_template):
+        """Check if a key follows TransformerLens naming convention.
+
+        TransformerLens keys use patterns like:
+        - W_E, W_pos, W_Q, W_K, W_V, W_O, W_in, W_out, W_U
+        - w, b (for layer norm)
+        - b_Q, b_K, b_V, b_O, b_in, b_out, b_U (for biases)
+        """
+        # TransformerLens keys typically have W_ or b_ patterns, or specific patterns like .w, .b
+        transformerlens_patterns = [
+            '.W_', '.b_', '.w', '.b', 'W_E', 'W_pos', 'W_U'
+        ]
+
+        return any(pattern in key_template for pattern in transformerlens_patterns)
 
     @staticmethod
     def convert_tl_to_hf_format(tl_state_dict, cfg):

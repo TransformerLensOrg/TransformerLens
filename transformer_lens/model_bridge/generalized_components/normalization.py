@@ -171,6 +171,20 @@ class NormalizationBridge(GeneralizedComponent):
 
         return self._processed_weights.copy()
 
+    def get_expected_parameter_names(self, prefix: str = "") -> list[str]:
+        """Get the expected TransformerLens parameter names for this normalization component.
+
+        Args:
+            prefix: Prefix to add to parameter names (e.g., "blocks.0")
+
+        Returns:
+            List of expected parameter names in TransformerLens format
+        """
+        # Normalization components always have weight 'w' and bias 'b'
+        weight_name = f"{prefix}.w" if prefix else "w"
+        bias_name = f"{prefix}.b" if prefix else "b"
+        return [weight_name, bias_name]
+
     @classmethod
     def create_normalization_bridge(
         cls,

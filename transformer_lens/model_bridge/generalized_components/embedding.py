@@ -137,3 +137,24 @@ class EmbeddingBridge(GeneralizedComponent):
             self.process_weights()
 
         return self._processed_weights.copy()
+
+    def get_expected_parameter_names(self, prefix: str = "") -> list[str]:
+        """Get the expected TransformerLens parameter names for this embedding component.
+
+        Args:
+            prefix: Prefix to add to parameter names (e.g., "blocks.0")
+
+        Returns:
+            List of expected parameter names in TransformerLens format
+        """
+        # Determine the weight key based on the component name (same logic as process_weights)
+        if "wte" in self.name or "embed" in self.name:
+            weight_key = "W_E"
+        elif "wpe" in self.name or "pos" in self.name:
+            weight_key = "W_pos"
+        else:
+            # Default key
+            weight_key = "W_E"
+
+        full_name = f"{prefix}.{weight_key}" if prefix else weight_key
+        return [full_name]

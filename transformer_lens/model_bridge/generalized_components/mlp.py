@@ -73,3 +73,20 @@ class MLPBridge(GeneralizedComponent):
         output = self.hook_out(output)
 
         return output
+
+    def get_expected_parameter_names(self, prefix: str = "") -> list[str]:
+        """Get the expected TransformerLens parameter names for this MLP component.
+
+        Args:
+            prefix: Prefix to add to parameter names (e.g., "blocks.0")
+
+        Returns:
+            List of expected parameter names in TransformerLens format
+        """
+        # MLP components always have input and output weights/biases
+        base_names = ["W_in", "b_in", "W_out", "b_out"]
+
+        if prefix:
+            return [f"{prefix}.{name}" for name in base_names]
+        else:
+            return base_names

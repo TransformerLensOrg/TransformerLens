@@ -427,7 +427,7 @@ class TransformerBridge(nn.Module):
 
     @property
     def hook_dict(self) -> dict[str, HookPoint]:
-        """Get all HookPoint objects in the model for compatibility with HookedTransformer."""
+        """Get all HookPoint objects in the model for compatibility with TransformerLens."""
         hooks = self._hook_registry.copy()
 
         # Add aliases if compatibility mode is enabled
@@ -522,7 +522,7 @@ class TransformerBridge(nn.Module):
     ) -> None:
         """Set the hooks to cache when running the model with cache.
 
-        You can specify hook names that were only available in the old HookedTransformer,
+        You can specify hook names that were available in the legacy TransformerLens,
         but in this case you need to make sure to enable compatibility mode.
 
         Args:
@@ -544,7 +544,7 @@ class TransformerBridge(nn.Module):
                     hooks_to_cache[hook_name] = self._hook_registry[hook_name]
                 else:
                     raise ValueError(
-                        f"Hook {hook_name} does not exist. If you are using a hook name used with the old HookedTransformer, make sure to enable compatibility mode."
+                        f"Hook {hook_name} does not exist. If you are using a hook name from legacy TransformerLens, make sure to enable compatibility mode."
                     )
         else:
             raise ValueError("hook_names must be provided if include_all is False")
@@ -661,7 +661,7 @@ class TransformerBridge(nn.Module):
     ) -> None:
         """Enable compatibility mode for the bridge.
 
-        This sets up the bridge to work with legacy HookedTransformer components/hooks.
+        This sets up the bridge to work with legacy TransformerLens components/hooks.
         It will also disable warnings about the usage of legacy components/hooks if specified.
 
         Args:
@@ -747,10 +747,10 @@ class TransformerBridge(nn.Module):
             refactor_factored_attn_matrices=refactor_factored_attn_matrices,
         )
 
-        # Step 3: Create temporary HookedTransformer, extract components, then discard
-        self._create_components_from_temporary_ht(state_dict, processed_state_dict, tl_cfg,
-                                                  fold_ln, center_writing_weights, center_unembed,
-                                                  fold_value_biases, refactor_factored_attn_matrices)
+        # Step 3: Use architecture adapter to process weights and create components
+        self._create_components_with_adapter_processing(state_dict, processed_state_dict, tl_cfg,
+                                                        fold_ln, center_writing_weights, center_unembed,
+                                                        fold_value_biases, refactor_factored_attn_matrices)
 
         # Step 4: Update TransformerBridge config to match processed state
         if fold_ln and self.cfg.normalization_type == "LN":
@@ -760,20 +760,60 @@ class TransformerBridge(nn.Module):
 
         print("Bridge set up with processed components created directly")
 
-    def _create_components_from_temporary_ht(self, state_dict, processed_state_dict, tl_cfg,
-                                           fold_ln, center_writing_weights, center_unembed,
-                                           fold_value_biases, refactor_factored_attn_matrices):
-        """Create components by temporarily using HookedTransformer initialization, then extracting components."""
-        from transformer_lens import HookedTransformer
+    def _create_components_with_adapter_processing(self, state_dict, processed_state_dict, tl_cfg,
+                                                   fold_ln, center_writing_weights, center_unembed,
+                                                   fold_value_biases, refactor_factored_attn_matrices):
+        """Use architecture adapter to process weights and create components."""
+        print("Using architecture adapter for weight processing and component creation...")
 
-        print("Creating temporary HookedTransformer for component extraction...")
+        # Check if adapter supports weight processing
+        if hasattr(self.adapter, 'process_weights_and_create_components'):
+            print(f"Using {type(self.adapter).__name__} for integrated weight processing")
 
-        # Create temporary HookedTransformer with proper initialization
-        temp_ht = HookedTransformer(tl_cfg, tokenizer=None, move_to_device=False)
+            # Use adapter's integrated processing
+            components_dict = self.adapter.process_weights_and_create_components(
+                state_dict, tl_cfg,
+                fold_ln=fold_ln,
+                center_writing_weights=center_writing_weights,
+                center_unembed=center_unembed,
+                fold_value_biases=fold_value_biases,
+                refactor_factored_attn_matrices=refactor_factored_attn_matrices,
+            )
 
-        # Load and process weights using HookedTransformer's proven method
-        temp_ht.load_and_process_state_dict(
-            state_dict,
+            # Set components on bridge from adapter results
+            for component_name, component_value in components_dict.items():
+                object.__setattr__(self, component_name, component_value)
+
+            # Extract hooks from all created components
+            self._extract_hooks_from_created_components()
+
+        else:
+            print(f"Adapter {type(self.adapter).__name__} doesn't support integrated processing, falling back...")
+            # Fall back to the previous method
+            self._create_components_with_integrated_folding(state_dict, processed_state_dict, tl_cfg,
+                                                           fold_ln, center_writing_weights, center_unembed,
+                                                           fold_value_biases, refactor_factored_attn_matrices)
+
+        print(f"Bridge components created via adapter processing")
+
+    def _create_components_with_integrated_folding(self, state_dict, processed_state_dict, tl_cfg,
+                                                 fold_ln, center_writing_weights, center_unembed,
+                                                 fold_value_biases, refactor_factored_attn_matrices):
+        """Create TransformerLens components directly with integrated layer norm folding."""
+        print("Creating TransformerLens components with integrated processing...")
+
+        # Process weights first using our proven method
+        from transformer_lens.loading_from_pretrained import fill_missing_keys
+        from transformer_lens.weight_processing import ProcessWeights
+
+        # Fill missing keys using a temporary minimal structure for compatibility
+        temp_structure = self._create_minimal_structure_for_filling_keys(tl_cfg)
+        complete_state_dict = fill_missing_keys(temp_structure, state_dict)
+
+        # Process weights with exact same parameters
+        processed_weights = ProcessWeights.process_weights(
+            complete_state_dict,
+            tl_cfg,
             fold_ln=fold_ln,
             center_writing_weights=center_writing_weights,
             center_unembed=center_unembed,
@@ -781,26 +821,200 @@ class TransformerBridge(nn.Module):
             refactor_factored_attn_matrices=refactor_factored_attn_matrices,
         )
 
-        # Extract components from the properly initialized HookedTransformer
-        print("Extracting components from temporary HookedTransformer...")
-        object.__setattr__(self, 'embed', temp_ht.embed)
-        object.__setattr__(self, 'pos_embed', temp_ht.pos_embed)
-        object.__setattr__(self, 'blocks', temp_ht.blocks)
-        object.__setattr__(self, 'ln_final', temp_ht.ln_final)
-        object.__setattr__(self, 'unembed', temp_ht.unembed)
-        object.__setattr__(self, 'hook_embed', temp_ht.hook_embed)
-        object.__setattr__(self, 'hook_pos_embed', temp_ht.hook_pos_embed)
+        # Create components directly based on the processing that was applied
+        self._create_folded_components_directly(tl_cfg, processed_weights, fold_ln)
 
-        # Extract hook registry
-        if hasattr(temp_ht, 'hook_dict'):
-            for hook_name, hook_point in temp_ht.hook_dict.items():
-                self._hook_registry[hook_name] = hook_point
+        print(f"Created {len(self.blocks)} transformer blocks with integrated folding")
 
-        print(f"Extracted {len(self.blocks)} transformer blocks and {len(self._hook_registry)} hook points")
+    def _create_minimal_structure_for_filling_keys(self, tl_cfg):
+        """Create minimal structure needed for fill_missing_keys compatibility."""
+        import torch.nn as nn
+        from transformer_lens.components import (
+            Embed, LayerNorm, LayerNormPre, PosEmbed, RMSNorm, RMSNormPre,
+            TransformerBlock, Unembed
+        )
+        from transformer_lens.hook_points import HookPoint
 
-        # temp_ht goes out of scope and gets garbage collected here
-        del temp_ht
-        print("Temporary HookedTransformer discarded")
+        # Create minimal structure that matches what fill_missing_keys expects
+        temp_structure = nn.Module()
+        temp_structure.cfg = tl_cfg
+
+        # Create components without processing - just for fill_missing_keys
+        temp_structure.embed = Embed(tl_cfg)
+
+        if tl_cfg.positional_embedding_type != "rotary":
+            temp_structure.pos_embed = PosEmbed(tl_cfg)
+
+        temp_structure.blocks = nn.ModuleList([
+            TransformerBlock(tl_cfg, block_index) for block_index in range(tl_cfg.n_layers)
+        ])
+
+        # Create ln_final based on original config (before folding)
+        if tl_cfg.normalization_type in ["RMS", "RMSPre"]:
+            temp_structure.ln_final = RMSNorm(tl_cfg) if tl_cfg.normalization_type == "RMS" else RMSNormPre(tl_cfg)
+        elif tl_cfg.normalization_type in ["LN", "LNPre"]:
+            if tl_cfg.final_rms:
+                temp_structure.ln_final = RMSNorm(tl_cfg)
+            else:
+                temp_structure.ln_final = LayerNorm(tl_cfg) if tl_cfg.normalization_type == "LN" else LayerNormPre(tl_cfg)
+
+        temp_structure.unembed = Unembed(tl_cfg)
+        return temp_structure
+
+    def _create_folded_components_directly(self, tl_cfg, processed_weights, fold_ln):
+        """Create components directly with processed weights, respecting folding."""
+        import torch.nn as nn
+        from transformer_lens.components import (
+            Embed, LayerNorm, LayerNormPre, PosEmbed, RMSNorm, RMSNormPre,
+            TransformerBlock, Unembed
+        )
+        from transformer_lens.hook_points import HookPoint
+
+        print("Creating components with folded configuration...")
+
+        # Create embed component
+        embed_component = Embed(tl_cfg)
+        hook_embed = HookPoint()
+
+        # Create pos_embed if needed
+        pos_embed_component = None
+        hook_pos_embed = None
+        if tl_cfg.positional_embedding_type != "rotary":
+            pos_embed_component = PosEmbed(tl_cfg)
+            hook_pos_embed = HookPoint()
+
+        # Create transformer blocks
+        blocks = nn.ModuleList([
+            TransformerBlock(tl_cfg, block_index) for block_index in range(tl_cfg.n_layers)
+        ])
+
+        # Create final layer norm - if folded, use LayerNormPre
+        ln_final = None
+        if fold_ln and tl_cfg.normalization_type == "LN":
+            # When folded, LN becomes LNPre
+            ln_final = LayerNormPre(tl_cfg)
+        elif tl_cfg.normalization_type == "RMS":
+            ln_final = RMSNorm(tl_cfg)
+        elif tl_cfg.normalization_type == "RMSPre":
+            ln_final = RMSNormPre(tl_cfg)
+        elif tl_cfg.normalization_type == "LN":
+            if tl_cfg.final_rms:
+                ln_final = RMSNorm(tl_cfg)
+            else:
+                ln_final = LayerNorm(tl_cfg)
+        elif tl_cfg.normalization_type == "LNPre":
+            if tl_cfg.final_rms:
+                ln_final = RMSNormPre(tl_cfg)
+            else:
+                ln_final = LayerNormPre(tl_cfg)
+
+        # Create unembed
+        unembed_component = Unembed(tl_cfg)
+
+        # Load processed weights directly into components
+        self._load_processed_weights_into_components(
+            processed_weights, embed_component, pos_embed_component, blocks, ln_final, unembed_component
+        )
+
+        # Set components on bridge
+        object.__setattr__(self, 'embed', embed_component)
+        object.__setattr__(self, 'hook_embed', hook_embed)
+        if pos_embed_component is not None:
+            object.__setattr__(self, 'pos_embed', pos_embed_component)
+            object.__setattr__(self, 'hook_pos_embed', hook_pos_embed)
+        object.__setattr__(self, 'blocks', blocks)
+        if ln_final is not None:
+            object.__setattr__(self, 'ln_final', ln_final)
+        object.__setattr__(self, 'unembed', unembed_component)
+
+        # Extract hooks from all created components
+        self._extract_hooks_from_created_components()
+
+    def _load_processed_weights_into_components(self, processed_weights, embed_component,
+                                              pos_embed_component, blocks, ln_final, unembed_component):
+        """Load processed weights directly into components."""
+        print("Loading processed weights into components...")
+
+        # Load embed weights
+        if 'embed.W_E' in processed_weights:
+            embed_component.W_E.data = processed_weights['embed.W_E']
+
+        # Load pos_embed weights
+        if pos_embed_component is not None and 'pos_embed.W_pos' in processed_weights:
+            pos_embed_component.W_pos.data = processed_weights['pos_embed.W_pos']
+
+        # Load block weights
+        for i, block in enumerate(blocks):
+            prefix = f"blocks.{i}"
+
+            # Attention weights
+            if f"{prefix}.attn.W_Q" in processed_weights:
+                block.attn.W_Q.data = processed_weights[f"{prefix}.attn.W_Q"]
+            if f"{prefix}.attn.W_K" in processed_weights:
+                block.attn.W_K.data = processed_weights[f"{prefix}.attn.W_K"]
+            if f"{prefix}.attn.W_V" in processed_weights:
+                block.attn.W_V.data = processed_weights[f"{prefix}.attn.W_V"]
+            if f"{prefix}.attn.W_O" in processed_weights:
+                block.attn.W_O.data = processed_weights[f"{prefix}.attn.W_O"]
+
+            # Attention biases (if they exist)
+            if hasattr(block.attn, 'b_Q') and f"{prefix}.attn.b_Q" in processed_weights:
+                block.attn.b_Q.data = processed_weights[f"{prefix}.attn.b_Q"]
+            if hasattr(block.attn, 'b_K') and f"{prefix}.attn.b_K" in processed_weights:
+                block.attn.b_K.data = processed_weights[f"{prefix}.attn.b_K"]
+            if hasattr(block.attn, 'b_V') and f"{prefix}.attn.b_V" in processed_weights:
+                block.attn.b_V.data = processed_weights[f"{prefix}.attn.b_V"]
+            if hasattr(block.attn, 'b_O') and f"{prefix}.attn.b_O" in processed_weights:
+                block.attn.b_O.data = processed_weights[f"{prefix}.attn.b_O"]
+
+            # MLP weights
+            if f"{prefix}.mlp.W_in" in processed_weights:
+                block.mlp.W_in.data = processed_weights[f"{prefix}.mlp.W_in"]
+            if f"{prefix}.mlp.W_out" in processed_weights:
+                block.mlp.W_out.data = processed_weights[f"{prefix}.mlp.W_out"]
+            if hasattr(block.mlp, 'b_in') and f"{prefix}.mlp.b_in" in processed_weights:
+                block.mlp.b_in.data = processed_weights[f"{prefix}.mlp.b_in"]
+            if hasattr(block.mlp, 'b_out') and f"{prefix}.mlp.b_out" in processed_weights:
+                block.mlp.b_out.data = processed_weights[f"{prefix}.mlp.b_out"]
+
+        # Load final layer norm weights
+        if ln_final is not None:
+            if hasattr(ln_final, 'w') and 'ln_final.w' in processed_weights:
+                ln_final.w.data = processed_weights['ln_final.w']
+            if hasattr(ln_final, 'b') and 'ln_final.b' in processed_weights:
+                ln_final.b.data = processed_weights['ln_final.b']
+
+        # Load unembed weights
+        if 'unembed.W_U' in processed_weights:
+            unembed_component.W_U.data = processed_weights['unembed.W_U']
+        if hasattr(unembed_component, 'b_U') and 'unembed.b_U' in processed_weights:
+            unembed_component.b_U.data = processed_weights['unembed.b_U']
+
+    def _extract_hooks_from_created_components(self):
+        """Extract hooks from all created components."""
+        print("Extracting hooks from created components...")
+
+        # Extract hooks from main components
+        if hasattr(self, 'hook_embed'):
+            self._hook_registry['hook_embed'] = self.hook_embed
+        if hasattr(self, 'hook_pos_embed'):
+            self._hook_registry['hook_pos_embed'] = self.hook_pos_embed
+
+        # Extract hooks from all components using existing scan method
+        if hasattr(self, 'embed'):
+            self._scan_existing_hooks(self.embed, "embed")
+        if hasattr(self, 'pos_embed'):
+            self._scan_existing_hooks(self.pos_embed, "pos_embed")
+        if hasattr(self, 'blocks'):
+            for i, block in enumerate(self.blocks):
+                self._scan_existing_hooks(block, f"blocks.{i}")
+        if hasattr(self, 'ln_final'):
+            self._scan_existing_hooks(self.ln_final, "ln_final")
+        if hasattr(self, 'unembed'):
+            self._scan_existing_hooks(self.unembed, "unembed")
+
+        print(f"Extracted {len(self._hook_registry)} hook points")
+
 
     def _load_processed_weights_into_bridge(self):
         """Load processed weights directly into TransformerBridge components."""
@@ -955,7 +1169,7 @@ class TransformerBridge(nn.Module):
         start_at_layer: int = 0,
         **kwargs
     ):
-        """Forward pass using HookedTransformer-style computation with processed weights."""
+        """Forward pass using TransformerLens-style computation with processed weights."""
         import torch
         import torch.nn.functional as F
         from typing import Union, List, Optional, Any
@@ -1635,7 +1849,7 @@ class TransformerBridge(nn.Module):
             adapter=self.adapter,  # Pass adapter to enable format conversion
         )
 
-        # Step 3: Handle normalization type changes like HookedTransformer does
+        # Step 3: Handle normalization type changes like TransformerLens does
         if fold_ln and self.cfg.normalization_type == "LN":
             self.cfg.normalization_type = "LNPre"
             self.cfg.layer_norm_folding = True  # Enable layer norm folding in config
@@ -1678,7 +1892,7 @@ class TransformerBridge(nn.Module):
                 print(f"Successfully loaded processed weights with {len(expected_missing_keys)} expected missing layer norm keys")
 
     def _replace_attention_with_working_implementation(self, original_model):
-        """Replace attention components with working implementation that uses HookedTransformer's computation."""
+        """Replace attention components with working implementation that uses TransformerLens computation."""
         print("Replacing attention with working implementation...")
         
         # Get device from the original model's embedding weights
@@ -1702,9 +1916,9 @@ class TransformerBridge(nn.Module):
             print(f"  Replaced attention in layer {layer_idx}")
 
     def apply_minimal_processing_offset(self):
-        """Apply minimal offset to match HookedTransformer's processed behavior.
+        """Apply minimal offset to match TransformerLens processed behavior.
 
-        Since HookedTransformer's processing has minimal effect (only 0.000011 difference),
+        Since TransformerLens processing has minimal effect (only 0.000011 difference),
         we apply a tiny offset to match this effect, including proper ablation behavior.
         """
         from transformer_lens.weight_processing import ProcessWeights
@@ -1718,7 +1932,7 @@ class TransformerBridge(nn.Module):
         fold_value_biases: bool = True,
         refactor_factored_attn_matrices: bool = False,
     ):
-        """Apply weight processing exactly like HookedTransformer does."""
+        """Apply weight processing exactly like TransformerLens does."""
         # Use the centralized processing method
         self.apply_real_weight_processing(
             fold_ln=fold_ln,
@@ -1750,7 +1964,7 @@ class TransformerBridge(nn.Module):
         # # Step 1: Extract HuggingFace weights from original model
         hf_state_dict = self._extract_hf_weights()
 
-        # Step 2: Apply ProcessWeights processing with exact same parameters as HookedTransformer
+        # Step 2: Apply ProcessWeights processing with exact same parameters as TransformerLens
         processed_hf_state_dict = ProcessWeights.process_weights(
             hf_state_dict,
             self.cfg,
@@ -2003,7 +2217,7 @@ class TransformerBridge(nn.Module):
     def get_pos_offset(self, past_kv_cache, batch_size: int) -> int:
         """Compute position offset from a TransformerLensKeyValueCache-like object.
 
-        Mirrors HookedTransformer.get_pos_offset behavior for compatibility.
+        Mirrors TransformerLens.get_pos_offset behavior for compatibility.
         """
         if past_kv_cache is None:
             return 0
@@ -2288,7 +2502,7 @@ class TransformerBridge(nn.Module):
     def named_parameters(
         self, prefix: str = "", recurse: bool = True, remove_duplicate: bool = True
     ) -> Iterator[Tuple[str, torch.nn.Parameter]]:
-        """Return named parameters in the same format as HookedTransformer.
+        """Return named parameters in the same format as TransformerLens.
 
         This ensures compatibility with tools like SVDInterpreter that expect
         parameter names like 'blocks.0.attn.W_Q' instead of the raw model names.
@@ -2487,7 +2701,7 @@ class TransformerBridge(nn.Module):
 
         This method computes the forward pass using the extracted TransformerLens
         components with processed weights, providing identical functionality to
-        HookedTransformer without delegation.
+        TransformerLens without delegation.
         """
         if not hasattr(self, 'blocks'):
             raise RuntimeError("Processed components not available. Call apply_direct_weight_processing() first.")
@@ -2609,7 +2823,7 @@ class TransformerBridge(nn.Module):
 
     def get_hook_point(self, hook_name: str) -> Optional[HookPoint]:
         """Get a hook point by name from the bridge's hook system."""
-        # First try to get from the extracted HookedTransformer hook registry
+        # First try to get from the extracted TransformerLens hook registry
         if hook_name in self._hook_registry:
             return self._hook_registry[hook_name]
 

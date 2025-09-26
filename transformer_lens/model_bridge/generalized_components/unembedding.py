@@ -136,3 +136,17 @@ class UnembeddingBridge(GeneralizedComponent):
             self.process_weights()
 
         return self._processed_weights.copy()
+
+    def get_expected_parameter_names(self, prefix: str = "") -> list[str]:
+        """Get the expected TransformerLens parameter names for this unembedding component.
+
+        Args:
+            prefix: Prefix to add to parameter names (e.g., "blocks.0")
+
+        Returns:
+            List of expected parameter names in TransformerLens format
+        """
+        # Unembedding components always have W_U and b_U (bias is zero if not present)
+        w_name = f"{prefix}.W_U" if prefix else "W_U"
+        b_name = f"{prefix}.b_U" if prefix else "b_U"
+        return [w_name, b_name]

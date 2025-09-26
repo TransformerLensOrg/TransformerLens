@@ -413,3 +413,20 @@ class JointQKVAttentionBridge(AttentionBridge):
             return {}
 
         return self._processed_weights.copy()
+
+    def get_expected_parameter_names(self, prefix: str = "") -> list[str]:
+        """Get the expected TransformerLens parameter names for this QKV attention component.
+
+        Args:
+            prefix: Prefix to add to parameter names (e.g., "blocks.0")
+
+        Returns:
+            List of expected parameter names in TransformerLens format
+        """
+        # QKV attention components always have Q, K, V weights and biases, and output projection
+        base_names = ["W_Q", "b_Q", "W_K", "b_K", "W_V", "b_V", "W_O", "b_O"]
+
+        if prefix:
+            return [f"{prefix}.{name}" for name in base_names]
+        else:
+            return base_names

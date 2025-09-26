@@ -179,6 +179,40 @@ class GeneralizedComponent(nn.Module):
         # Base implementation returns the standard state dict
         return self.state_dict()
 
+    def get_expected_parameter_names(self, prefix: str = "") -> list[str]:
+        """Get the expected TransformerLens parameter names for this component.
+
+        This method should be overridden by specific components to return
+        the parameter names they expect in the TransformerLens format.
+
+        Args:
+            prefix: Prefix to add to parameter names (e.g., "blocks.0.attn")
+
+        Returns:
+            List of expected parameter names in TransformerLens format
+        """
+        # Base implementation returns empty list - components should override
+        return []
+
+    def get_list_size(self) -> int:
+        """Get the number of items if this is a list component.
+
+        For components where is_list_item=True, this should return the number
+        of items in the list (e.g., number of layers for blocks, number of experts
+        for MoE experts).
+
+        Subclasses should override this method to return the correct count
+        based on their specific configuration attribute.
+
+        Returns:
+            Number of items in the list, or 0 if not a list component
+        """
+        if not self.is_list_item:
+            return 0
+
+        # Base implementation returns 0 - subclasses should override
+        return 0
+
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         """Generic forward pass for bridge components with input/output hooks."""
         # Since we use add_module, the component is stored in _modules
