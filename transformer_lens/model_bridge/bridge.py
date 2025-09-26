@@ -31,71 +31,6 @@ from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookPoint
 
 
-class WorkingAttention(nn.Module):
-    """Working attention implementation that uses TransformerLens computation logic."""
-    
-    def __init__(self, d_model, n_heads, d_head, original_attn, device):
-        super().__init__()
-        self.d_model = d_model
-        self.n_heads = n_heads
-        self.d_head = d_head
-        self.original_attn = original_attn
-        self.device = device
-        
-        # Extract weights from original attention
-        self.c_attn_weight = original_attn.c_attn.weight.clone().detach()
-        self.c_attn_bias = original_attn.c_attn.bias.clone().detach()
-        self.c_proj_weight = original_attn.c_proj.weight.clone().detach()
-        self.c_proj_bias = original_attn.c_proj.bias.clone().detach()
-        
-        # Move to device
-        self.c_attn_weight = self.c_attn_weight.to(device)
-        self.c_attn_bias = self.c_attn_bias.to(device)
-        self.c_proj_weight = self.c_proj_weight.to(device)
-        self.c_proj_bias = self.c_proj_bias.to(device)
-        
-    def forward(self, hidden_states, attention_mask=None, head_mask=None, output_attentions=False, past_key_value=None, use_cache=False, cache_position=None):
-        """Forward pass using TransformerLens computation logic."""
-        batch_size, seq_len, d_model = hidden_states.shape
-        
-        # QKV projection using torch.nn.functional.linear (matching HuggingFace's implementation)
-        # Note: torch.nn.functional.linear expects weight to be [output_features, input_features]
-        # but HuggingFace stores it as [input_features, output_features], so we need to transpose
-        qkv = torch.nn.functional.linear(hidden_states, self.c_attn_weight.T, self.c_attn_bias)
-        
-        # Split into Q, K, V
-        qkv = qkv.view(batch_size, seq_len, 3, self.d_model)
-        q, k, v = qkv[:, :, 0], qkv[:, :, 1], qkv[:, :, 2]
-        
-        # Reshape for multi-head attention
-        q = q.view(batch_size, seq_len, self.n_heads, self.d_head).transpose(1, 2)  # [batch, heads, seq, d_head]
-        k = k.view(batch_size, seq_len, self.n_heads, self.d_head).transpose(1, 2)  # [batch, heads, seq, d_head]
-        v = v.view(batch_size, seq_len, self.n_heads, self.d_head).transpose(1, 2)  # [batch, heads, seq, d_head]
-        
-        # Attention scores
-        scores = torch.matmul(q, k.transpose(-2, -1)) / (self.d_head ** 0.5)
-        
-        # Apply causal mask
-        causal_mask = torch.tril(torch.ones(seq_len, seq_len, device=self.device))
-        scores = scores.masked_fill(causal_mask == 0, float('-inf'))
-        
-        # Softmax
-        attn_weights = torch.softmax(scores, dim=-1)
-        
-        # Apply attention to values
-        attn_output = torch.matmul(attn_weights, v)  # [batch, heads, seq, d_head]
-        
-        # Reshape back
-        attn_output = attn_output.transpose(1, 2).contiguous().view(batch_size, seq_len, self.d_model)
-        
-        # Output projection using torch.nn.functional.linear (matching HuggingFace's implementation)
-        # Note: torch.nn.functional.linear expects weight to be [output_features, input_features]
-        # but HuggingFace stores it as [input_features, output_features], so we need to transpose
-        attn_output = torch.nn.functional.linear(attn_output, self.c_proj_weight.T, self.c_proj_bias)
-        
-        return attn_output, attn_weights if output_attentions else None
-
-
 class StopAtLayerException(Exception):
     """Exception to stop forward pass at a specific layer."""
 
@@ -1891,30 +1826,6 @@ class TransformerBridge(nn.Module):
             else:
                 print(f"Successfully loaded processed weights with {len(expected_missing_keys)} expected missing layer norm keys")
 
-    def _replace_attention_with_working_implementation(self, original_model):
-        """Replace attention components with working implementation that uses TransformerLens computation."""
-        print("Replacing attention with working implementation...")
-        
-        # Get device from the original model's embedding weights
-        device = original_model.transformer.wte.weight.device
-        
-        for layer_idx, layer in enumerate(self.transformer.h):
-            # Get the original attention weights from the original model
-            original_attn = original_model.transformer.h[layer_idx].attn
-            
-            # Create WorkingAttention module
-            working_attn = WorkingAttention(
-                d_model=self.cfg.d_model,
-                n_heads=self.cfg.n_heads,
-                d_head=self.cfg.d_head,
-                original_attn=original_attn,
-                device=device
-            )
-            
-            # Replace the attention module
-            layer.attn = working_attn
-            print(f"  Replaced attention in layer {layer_idx}")
-
     def apply_minimal_processing_offset(self):
         """Apply minimal offset to match TransformerLens processed behavior.
 
@@ -1956,12 +1867,9 @@ class TransformerBridge(nn.Module):
         using the centralized ProcessWeights class with the architecture adapter to handle parameter
         name translation from TransformerLens format to HuggingFace format.
         """
-        # import torch
-        # import torch.nn as nn
-
         from transformer_lens.weight_processing import ProcessWeights
 
-        # # Step 1: Extract HuggingFace weights from original model
+        # Step 1: Extract HuggingFace weights from original model
         hf_state_dict = self._extract_hf_weights()
 
         # Step 2: Apply ProcessWeights processing with exact same parameters as TransformerLens
@@ -1976,7 +1884,7 @@ class TransformerBridge(nn.Module):
             adapter=self.adapter,
         )
 
-        # # Step 3: Load processed weights with fixed configuration
+        # Step 3: Load processed weights with fixed configuration
         self.load_state_dict(processed_hf_state_dict, strict=False, assign=False)
 
     def _extract_hf_weights(self):
