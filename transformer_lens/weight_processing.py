@@ -169,6 +169,27 @@ class ProcessWeights:
         return centered_wq, centered_wk, centered_wv
 
     @staticmethod
+    def _detect_state_dict_format(state_dict: Dict[str, torch.Tensor], layer: int, adapter) -> tuple[bool, bool]:
+        """Detect whether state_dict uses TransformerLens or HuggingFace format.
+
+        Args:
+            state_dict: The state dictionary to check
+            layer: Layer index to check
+            adapter: Optional adapter for key translation
+
+        Returns:
+            Tuple of (uses_tl_format, uses_hf_format)
+        """
+        # Sample keys to check format
+        tl_key_sample = f"blocks.{layer}.attn.W_Q"
+        hf_key_sample = ProcessWeights._get_param_key(tl_key_sample, adapter) if adapter else None
+
+        uses_tl_format = tl_key_sample in state_dict
+        uses_hf_format = adapter and hf_key_sample and hf_key_sample in state_dict
+
+        return uses_tl_format, uses_hf_format
+
+    @staticmethod
     def extract_attention_tensors_for_folding(
         state_dict: Dict[str, torch.Tensor],
         cfg,
@@ -176,13 +197,13 @@ class ProcessWeights:
         adapter,
     ) -> Dict[str, torch.Tensor]:
         """Extract attention tensors in TransformerLens format for layer norm folding.
-        
+
         Args:
             state_dict: The state dictionary containing tensors
             cfg: Model configuration object
             layer: Layer index
             adapter: Optional architecture adapter for parameter key translation
-            
+
         Returns:
             Dictionary with keys: 'wq', 'wk', 'wv', 'bq', 'bk', 'bv', 'ln1_b', 'ln1_w'
             All tensors are in TransformerLens format for consistent processing
@@ -197,9 +218,12 @@ class ProcessWeights:
         ln1_b_key = ProcessWeights._get_param_key(f"blocks.{layer}.ln1.b", adapter)
         ln1_w_key = ProcessWeights._get_param_key(f"blocks.{layer}.ln1.w", adapter)
 
-        # Extract tensors and convert to TransformerLens format
-        if adapter:
-            # Convert from HuggingFace format to TransformerLens format
+        # Determine the actual format of the state_dict to avoid key mismatch
+        uses_tl_format, uses_hf_format = ProcessWeights._detect_state_dict_format(state_dict, layer, adapter)
+
+        # Extract tensors based on actual format detection, not just adapter presence
+        if adapter and uses_hf_format and not uses_tl_format:
+            # State dict is in HuggingFace format - convert to TransformerLens format
             wq_tensor = ProcessWeights.convert_tensor_to_tl_format(
                 f"blocks.{layer}.attn.W_Q", adapter, state_dict, cfg, layer
             )
@@ -219,17 +243,21 @@ class ProcessWeights:
                 f"blocks.{layer}.attn.b_V", adapter, state_dict, cfg, layer
             )
         else:
-            # Use tensors directly from state dict (already in TransformerLens format)
-            wq_tensor = state_dict[W_Q_key]
-            wk_tensor = state_dict[W_K_key]
-            wv_tensor = state_dict[W_V_key]
-            bq_tensor = state_dict[b_Q_key]
-            bk_tensor = state_dict[b_K_key]
-            bv_tensor = state_dict[b_V_key]
+            # State dict is already in TransformerLens format - use directly
+            wq_tensor = state_dict[f"blocks.{layer}.attn.W_Q"]
+            wk_tensor = state_dict[f"blocks.{layer}.attn.W_K"]
+            wv_tensor = state_dict[f"blocks.{layer}.attn.W_V"]
+            bq_tensor = state_dict[f"blocks.{layer}.attn.b_Q"]
+            bk_tensor = state_dict[f"blocks.{layer}.attn.b_K"]
+            bv_tensor = state_dict[f"blocks.{layer}.attn.b_V"]
 
-        # Extract LayerNorm parameters
-        ln1_b = state_dict[ln1_b_key] if ln1_b_key in state_dict else None
-        ln1_w = state_dict[ln1_w_key] if ln1_w_key in state_dict else None
+        # Extract LayerNorm parameters using same format detection
+        if uses_tl_format:
+            ln1_b = state_dict.get(f"blocks.{layer}.ln1.b", None)
+            ln1_w = state_dict.get(f"blocks.{layer}.ln1.w", None)
+        else:
+            ln1_b = state_dict.get(ln1_b_key, None)
+            ln1_w = state_dict.get(ln1_w_key, None)
 
         return {
             'wq': wq_tensor,
@@ -240,16 +268,16 @@ class ProcessWeights:
             'bv': bv_tensor,
             'ln1_b': ln1_b,
             'ln1_w': ln1_w,
-            # Store original keys for later use
+            # Store the actual keys used based on format detection
             'keys': {
-                'W_Q': W_Q_key,
-                'W_K': W_K_key,
-                'W_V': W_V_key,
-                'b_Q': b_Q_key,
-                'b_K': b_K_key,
-                'b_V': b_V_key,
-                'ln1_b': ln1_b_key,
-                'ln1_w': ln1_w_key,
+                'W_Q': f"blocks.{layer}.attn.W_Q",
+                'W_K': f"blocks.{layer}.attn.W_K",
+                'W_V': f"blocks.{layer}.attn.W_V",
+                'b_Q': f"blocks.{layer}.attn.b_Q",
+                'b_K': f"blocks.{layer}.attn.b_K",
+                'b_V': f"blocks.{layer}.attn.b_V",
+                'ln1_b': f"blocks.{layer}.ln1.b",
+                'ln1_w': f"blocks.{layer}.ln1.w",
             }
         }
 
@@ -300,13 +328,15 @@ class ProcessWeights:
                 bq_tensor, bk_tensor, bv_tensor = ProcessWeights.fold_layer_norm_biases(
                     wq_tensor, wk_tensor, wv_tensor, bq_tensor, bk_tensor, bv_tensor, ln1_b
                 )
-                del state_dict[keys['ln1_b']]
+                if keys['ln1_b'] in state_dict:
+                    del state_dict[keys['ln1_b']]
 
             # TODO this is causing slight divergence
             wq_tensor, wk_tensor, wv_tensor = ProcessWeights.fold_layer_norm_weights(
                 wq_tensor, wk_tensor, wv_tensor, ln1_w
             )
-            del state_dict[keys['ln1_w']]
+            if keys['ln1_w'] in state_dict:
+                del state_dict[keys['ln1_w']]
 
         # Center the weights if requested
         if center_weights:
@@ -347,17 +377,24 @@ class ProcessWeights:
         if getattr(cfg, "attn_only", False):
             return
 
-        # Get translated MLP parameter keys
-        mlp_b_in_key = ProcessWeights._get_param_key(f"blocks.{layer}.mlp.b_in", adapter)
-        mlp_W_in_key = ProcessWeights._get_param_key(f"blocks.{layer}.mlp.W_in", adapter)
+        # Determine the actual format of the state_dict to avoid key mismatch
+        uses_tl_format, uses_hf_format = ProcessWeights._detect_state_dict_format(state_dict, layer, adapter)
 
-        # Only get gate key if model has gated MLPs
-        mlp_W_gate_key = None
-        if getattr(cfg, "gated_mlp", False):
-            mlp_W_gate_key = ProcessWeights._get_param_key(f"blocks.{layer}.mlp.W_gate", adapter)
-
-        ln2_b_key = ProcessWeights._get_param_key(f"blocks.{layer}.ln2.b", adapter)
-        ln2_w_key = ProcessWeights._get_param_key(f"blocks.{layer}.ln2.w", adapter)
+        # Get appropriate MLP parameter keys based on format detection
+        if uses_tl_format:
+            # State dict is in TransformerLens format - use TL keys directly
+            mlp_b_in_key = f"blocks.{layer}.mlp.b_in"
+            mlp_W_in_key = f"blocks.{layer}.mlp.W_in"
+            mlp_W_gate_key = f"blocks.{layer}.mlp.W_gate" if getattr(cfg, "gated_mlp", False) else None
+            ln2_b_key = f"blocks.{layer}.ln2.b"
+            ln2_w_key = f"blocks.{layer}.ln2.w"
+        else:
+            # State dict is in HuggingFace format - use translated keys
+            mlp_b_in_key = ProcessWeights._get_param_key(f"blocks.{layer}.mlp.b_in", adapter)
+            mlp_W_in_key = ProcessWeights._get_param_key(f"blocks.{layer}.mlp.W_in", adapter)
+            mlp_W_gate_key = ProcessWeights._get_param_key(f"blocks.{layer}.mlp.W_gate", adapter) if getattr(cfg, "gated_mlp", False) else None
+            ln2_b_key = ProcessWeights._get_param_key(f"blocks.{layer}.ln2.b", adapter)
+            ln2_w_key = ProcessWeights._get_param_key(f"blocks.{layer}.ln2.w", adapter)
 
         # Check if MLP LayerNorm parameters exist (they might not for already processed models)
         if ln2_b_key in state_dict and ln2_w_key in state_dict:
@@ -387,11 +424,19 @@ class ProcessWeights:
             )
 
         if getattr(cfg, "act_fn", None) is not None and cfg.act_fn.startswith("solu"):
-            # Get translated SoLU LayerNorm parameter keys
-            mlp_b_out_key = ProcessWeights._get_param_key(f"blocks.{layer}.mlp.b_out", adapter)
-            mlp_W_out_key = ProcessWeights._get_param_key(f"blocks.{layer}.mlp.W_out", adapter)
-            mlp_ln_b_key = ProcessWeights._get_param_key(f"blocks.{layer}.mlp.ln.b", adapter)
-            mlp_ln_w_key = ProcessWeights._get_param_key(f"blocks.{layer}.mlp.ln.w", adapter)
+            # Get appropriate SoLU LayerNorm parameter keys based on format detection
+            if uses_tl_format:
+                # State dict is in TransformerLens format - use TL keys directly
+                mlp_b_out_key = f"blocks.{layer}.mlp.b_out"
+                mlp_W_out_key = f"blocks.{layer}.mlp.W_out"
+                mlp_ln_b_key = f"blocks.{layer}.mlp.ln.b"
+                mlp_ln_w_key = f"blocks.{layer}.mlp.ln.w"
+            else:
+                # State dict is in HuggingFace format - use translated keys
+                mlp_b_out_key = ProcessWeights._get_param_key(f"blocks.{layer}.mlp.b_out", adapter)
+                mlp_W_out_key = ProcessWeights._get_param_key(f"blocks.{layer}.mlp.W_out", adapter)
+                mlp_ln_b_key = ProcessWeights._get_param_key(f"blocks.{layer}.mlp.ln.b", adapter)
+                mlp_ln_w_key = ProcessWeights._get_param_key(f"blocks.{layer}.mlp.ln.w", adapter)
 
             # Fold ln3 into activation
             if fold_biases:
@@ -399,7 +444,8 @@ class ProcessWeights:
                     state_dict[mlp_W_out_key] * state_dict[mlp_ln_b_key][:, None]
                 ).sum(-2)
 
-                del state_dict[mlp_ln_b_key]
+                if mlp_ln_b_key in state_dict:
+                    del state_dict[mlp_ln_b_key]
 
             state_dict[mlp_W_out_key] = (
                 state_dict[mlp_W_out_key] * state_dict[mlp_ln_w_key][:, None]
@@ -413,7 +459,8 @@ class ProcessWeights:
                     "mean",
                 )
 
-            del state_dict[mlp_ln_w_key]
+            if mlp_ln_w_key in state_dict:
+                del state_dict[mlp_ln_w_key]
 
     @staticmethod
     def _store_processed_attention_tensors(
@@ -509,6 +556,26 @@ class ProcessWeights:
             state_dict[keys['b_V']] = bv_tensor
 
     @staticmethod
+    def _detect_unembed_format(state_dict: Dict[str, torch.Tensor], adapter) -> tuple[bool, bool]:
+        """Detect whether state_dict uses TransformerLens or HuggingFace format for unembed parameters.
+
+        Args:
+            state_dict: The state dictionary to check
+            adapter: Optional adapter for key translation
+
+        Returns:
+            Tuple of (uses_tl_format, uses_hf_format)
+        """
+        # Sample keys to check format
+        tl_key_sample = "unembed.W_U"
+        hf_key_sample = ProcessWeights._get_param_key(tl_key_sample, adapter) if adapter else None
+
+        uses_tl_format = tl_key_sample in state_dict
+        uses_hf_format = bool(adapter and hf_key_sample and hf_key_sample in state_dict)
+
+        return uses_tl_format, uses_hf_format
+
+    @staticmethod
     def _fold_unembed_layer_norm(
         state_dict: Dict[str, torch.Tensor],
         cfg,
@@ -525,11 +592,34 @@ class ProcessWeights:
             center_weights: Whether to center weights after folding
             adapter: Optional architecture adapter for parameter key translation
         """
-        # Get parameter keys
-        unembed_b_U_key = ProcessWeights._get_param_key("unembed.b_U", adapter)
-        unembed_W_U_key = ProcessWeights._get_param_key("unembed.W_U", adapter)
-        ln_final_b_key = ProcessWeights._get_param_key("ln_final.b", adapter)
-        ln_final_w_key = ProcessWeights._get_param_key("ln_final.w", adapter)
+        # Determine the actual format of the state_dict to avoid key mismatch
+        uses_tl_format, uses_hf_format = ProcessWeights._detect_unembed_format(state_dict, adapter)
+
+        # Get parameter keys based on format detection
+        if uses_tl_format and not uses_hf_format:
+            # State dict is in TransformerLens format - use TL keys directly
+            unembed_b_U_key = "unembed.b_U"
+            unembed_W_U_key = "unembed.W_U"
+            ln_final_b_key = "ln_final.b"
+            ln_final_w_key = "ln_final.w"
+        elif adapter and uses_hf_format and not uses_tl_format:
+            # State dict is in HuggingFace format - use adapter translation
+            unembed_b_U_key = ProcessWeights._get_param_key("unembed.b_U", adapter)
+            unembed_W_U_key = ProcessWeights._get_param_key("unembed.W_U", adapter)
+            ln_final_b_key = ProcessWeights._get_param_key("ln_final.b", adapter)
+            ln_final_w_key = ProcessWeights._get_param_key("ln_final.w", adapter)
+        else:
+            # Fallback: prefer TL format if possible, otherwise use adapter translation
+            if uses_tl_format:
+                unembed_b_U_key = "unembed.b_U"
+                unembed_W_U_key = "unembed.W_U"
+                ln_final_b_key = "ln_final.b"
+                ln_final_w_key = "ln_final.w"
+            else:
+                unembed_b_U_key = ProcessWeights._get_param_key("unembed.b_U", adapter)
+                unembed_W_U_key = ProcessWeights._get_param_key("unembed.W_U", adapter)
+                ln_final_b_key = ProcessWeights._get_param_key("ln_final.b", adapter)
+                ln_final_w_key = ProcessWeights._get_param_key("ln_final.w", adapter)
 
         # Check if unembedding bias actually exists (some models like GPT-2 don't have it)
         has_unembed_bias = unembed_b_U_key in state_dict
@@ -557,7 +647,8 @@ class ProcessWeights:
             raise ValueError(
                 f"Unexpected tensor shapes: unembedding {unembed_weight.shape}, layer norm {ln_weight.shape}"
             )
-        del state_dict[ln_final_w_key]
+        if ln_final_w_key in state_dict:
+            del state_dict[ln_final_w_key]
 
         if center_weights:
             # Center the weights that read in from the LayerNormPre
@@ -591,10 +682,30 @@ class ProcessWeights:
             fold_biases: Whether to fold LayerNorm biases
             adapter: Optional architecture adapter for parameter key translation
         """
-        # Get parameter keys
-        unembed_b_U_key = ProcessWeights._get_param_key("unembed.b_U", adapter)
-        unembed_W_U_key = ProcessWeights._get_param_key("unembed.W_U", adapter)
-        ln_final_b_key = ProcessWeights._get_param_key("ln_final.b", adapter)
+        # Determine the actual format of the state_dict to avoid key mismatch
+        uses_tl_format, uses_hf_format = ProcessWeights._detect_unembed_format(state_dict, adapter)
+
+        # Get parameter keys based on format detection
+        if uses_tl_format and not uses_hf_format:
+            # State dict is in TransformerLens format - use TL keys directly
+            unembed_b_U_key = "unembed.b_U"
+            unembed_W_U_key = "unembed.W_U"
+            ln_final_b_key = "ln_final.b"
+        elif adapter and uses_hf_format and not uses_tl_format:
+            # State dict is in HuggingFace format - use adapter translation
+            unembed_b_U_key = ProcessWeights._get_param_key("unembed.b_U", adapter)
+            unembed_W_U_key = ProcessWeights._get_param_key("unembed.W_U", adapter)
+            ln_final_b_key = ProcessWeights._get_param_key("ln_final.b", adapter)
+        else:
+            # Fallback: prefer TL format if possible, otherwise use adapter translation
+            if uses_tl_format:
+                unembed_b_U_key = "unembed.b_U"
+                unembed_W_U_key = "unembed.W_U"
+                ln_final_b_key = "ln_final.b"
+            else:
+                unembed_b_U_key = ProcessWeights._get_param_key("unembed.b_U", adapter)
+                unembed_W_U_key = ProcessWeights._get_param_key("unembed.W_U", adapter)
+                ln_final_b_key = ProcessWeights._get_param_key("ln_final.b", adapter)
 
         # Check if unembedding bias actually exists (some models like GPT-2 don't have it)
         has_unembed_bias = unembed_b_U_key in state_dict
@@ -624,7 +735,8 @@ class ProcessWeights:
 
             # TODO this is causing slight divergence - FIXED
             state_dict[unembed_b_U_key] = state_dict[unembed_b_U_key] + bias_contribution
-            del state_dict[ln_final_b_key]
+            if ln_final_b_key in state_dict:
+                del state_dict[ln_final_b_key]
 
     @staticmethod
     def fold_layer_norm(
@@ -696,24 +808,79 @@ class ProcessWeights:
         # Make a copy to avoid modifying the original
         state_dict = state_dict.copy()
 
-        # Get translated parameter keys
-        embed_W_E_key = ProcessWeights._get_param_key("embed.W_E", adapter)
-        pos_embed_W_pos_key = ProcessWeights._get_param_key("pos_embed.W_pos", adapter)
+        # Determine the actual format of the state_dict to avoid key mismatch
+        layer = 0  # Use layer 0 for format detection
+        uses_tl_format, uses_hf_format = ProcessWeights._detect_state_dict_format(state_dict, layer, adapter)
+
+        # Get parameter keys based on format detection
+        if uses_tl_format and not uses_hf_format:
+            # State dict is in TransformerLens format - use TL keys directly
+            embed_W_E_key = "embed.W_E"
+            pos_embed_W_pos_key = "pos_embed.W_pos"
+        elif adapter and uses_hf_format and not uses_tl_format:
+            # State dict is in HuggingFace format - use adapter translation
+            embed_W_E_key = ProcessWeights._get_param_key("embed.W_E", adapter)
+            pos_embed_W_pos_key = ProcessWeights._get_param_key("pos_embed.W_pos", adapter)
+        else:
+            # Fallback: prefer TL format if possible, otherwise use adapter translation
+            if uses_tl_format:
+                embed_W_E_key = "embed.W_E"
+                pos_embed_W_pos_key = "pos_embed.W_pos"
+            else:
+                embed_W_E_key = ProcessWeights._get_param_key("embed.W_E", adapter)
+                pos_embed_W_pos_key = ProcessWeights._get_param_key("pos_embed.W_pos", adapter)
+
+        # Validate that the embedding key exists before accessing it
+        if embed_W_E_key not in state_dict:
+            raise KeyError(f"Expected embedding key '{embed_W_E_key}' not found in state_dict. "
+                         f"Available keys: {list(state_dict.keys())[:10]}...")
 
         state_dict[embed_W_E_key] = state_dict[embed_W_E_key] - state_dict[embed_W_E_key].mean(
             -1, keepdim=True
         )
         if getattr(cfg, "positional_embedding_type", "standard") != "rotary":
+            # Validate that the positional embedding key exists before accessing it
+            if pos_embed_W_pos_key not in state_dict:
+                raise KeyError(f"Expected positional embedding key '{pos_embed_W_pos_key}' not found in state_dict. "
+                             f"Available keys: {list(state_dict.keys())[:10]}...")
             state_dict[pos_embed_W_pos_key] = state_dict[pos_embed_W_pos_key] - state_dict[
                 pos_embed_W_pos_key
             ].mean(-1, keepdim=True)
 
         for l in range(cfg.n_layers):
-            # Get translated parameter keys for this layer
-            attn_W_O_key = ProcessWeights._get_param_key(f"blocks.{l}.attn.W_O", adapter)
-            attn_b_O_key = ProcessWeights._get_param_key(f"blocks.{l}.attn.b_O", adapter)
-            mlp_W_out_key = ProcessWeights._get_param_key(f"blocks.{l}.mlp.W_out", adapter)
-            mlp_b_out_key = ProcessWeights._get_param_key(f"blocks.{l}.mlp.b_out", adapter)
+            # Get parameter keys for this layer based on format detection
+            if uses_tl_format and not uses_hf_format:
+                # State dict is in TransformerLens format - use TL keys directly
+                attn_W_O_key = f"blocks.{l}.attn.W_O"
+                attn_b_O_key = f"blocks.{l}.attn.b_O"
+                mlp_W_out_key = f"blocks.{l}.mlp.W_out"
+                mlp_b_out_key = f"blocks.{l}.mlp.b_out"
+            elif adapter and uses_hf_format and not uses_tl_format:
+                # State dict is in HuggingFace format - use adapter translation
+                attn_W_O_key = ProcessWeights._get_param_key(f"blocks.{l}.attn.W_O", adapter)
+                attn_b_O_key = ProcessWeights._get_param_key(f"blocks.{l}.attn.b_O", adapter)
+                mlp_W_out_key = ProcessWeights._get_param_key(f"blocks.{l}.mlp.W_out", adapter)
+                mlp_b_out_key = ProcessWeights._get_param_key(f"blocks.{l}.mlp.b_out", adapter)
+            else:
+                # Fallback: prefer TL format if possible, otherwise use adapter translation
+                if uses_tl_format:
+                    attn_W_O_key = f"blocks.{l}.attn.W_O"
+                    attn_b_O_key = f"blocks.{l}.attn.b_O"
+                    mlp_W_out_key = f"blocks.{l}.mlp.W_out"
+                    mlp_b_out_key = f"blocks.{l}.mlp.b_out"
+                else:
+                    attn_W_O_key = ProcessWeights._get_param_key(f"blocks.{l}.attn.W_O", adapter)
+                    attn_b_O_key = ProcessWeights._get_param_key(f"blocks.{l}.attn.b_O", adapter)
+                    mlp_W_out_key = ProcessWeights._get_param_key(f"blocks.{l}.mlp.W_out", adapter)
+                    mlp_b_out_key = ProcessWeights._get_param_key(f"blocks.{l}.mlp.b_out", adapter)
+
+            # Validate that attention keys exist before accessing them
+            if attn_W_O_key not in state_dict:
+                raise KeyError(f"Expected attention W_O key '{attn_W_O_key}' not found in state_dict for layer {l}. "
+                             f"Available keys: {list(state_dict.keys())[:10]}...")
+            if attn_b_O_key not in state_dict:
+                raise KeyError(f"Expected attention b_O key '{attn_b_O_key}' not found in state_dict for layer {l}. "
+                             f"Available keys: {list(state_dict.keys())[:10]}...")
 
             state_dict[attn_W_O_key] = state_dict[attn_W_O_key] - state_dict[attn_W_O_key].mean(
                 -1, keepdim=True
@@ -722,6 +889,14 @@ class ProcessWeights:
                 state_dict[attn_b_O_key] - state_dict[attn_b_O_key].mean()
             )  # b_O is [d_model]
             if not getattr(cfg, "attn_only", False):
+                # Validate that MLP keys exist before accessing them
+                if mlp_W_out_key not in state_dict:
+                    raise KeyError(f"Expected MLP W_out key '{mlp_W_out_key}' not found in state_dict for layer {l}. "
+                                 f"Available keys: {list(state_dict.keys())[:10]}...")
+                if mlp_b_out_key not in state_dict:
+                    raise KeyError(f"Expected MLP b_out key '{mlp_b_out_key}' not found in state_dict for layer {l}. "
+                                 f"Available keys: {list(state_dict.keys())[:10]}...")
+
                 state_dict[mlp_W_out_key] = state_dict[mlp_W_out_key] - state_dict[
                     mlp_W_out_key
                 ].mean(-1, keepdim=True)
@@ -752,9 +927,31 @@ class ProcessWeights:
         # Make a copy to avoid modifying the original
         state_dict = state_dict.copy()
 
-        # Get translated parameter keys
-        unembed_W_U_key = ProcessWeights._get_param_key("unembed.W_U", adapter)
-        unembed_b_U_key = ProcessWeights._get_param_key("unembed.b_U", adapter)
+        # Determine the actual format of the state_dict to avoid key mismatch
+        uses_tl_format, uses_hf_format = ProcessWeights._detect_unembed_format(state_dict, adapter)
+
+        # Get parameter keys based on format detection
+        if uses_tl_format and not uses_hf_format:
+            # State dict is in TransformerLens format - use TL keys directly
+            unembed_W_U_key = "unembed.W_U"
+            unembed_b_U_key = "unembed.b_U"
+        elif adapter and uses_hf_format and not uses_tl_format:
+            # State dict is in HuggingFace format - use adapter translation
+            unembed_W_U_key = ProcessWeights._get_param_key("unembed.W_U", adapter)
+            unembed_b_U_key = ProcessWeights._get_param_key("unembed.b_U", adapter)
+        else:
+            # Fallback: prefer TL format if possible, otherwise use adapter translation
+            if uses_tl_format:
+                unembed_W_U_key = "unembed.W_U"
+                unembed_b_U_key = "unembed.b_U"
+            else:
+                unembed_W_U_key = ProcessWeights._get_param_key("unembed.W_U", adapter)
+                unembed_b_U_key = ProcessWeights._get_param_key("unembed.b_U", adapter)
+
+        # Validate that the unembedding weight key exists before accessing it
+        if unembed_W_U_key not in state_dict:
+            raise KeyError(f"Expected unembedding weight key '{unembed_W_U_key}' not found in state_dict. "
+                         f"Available keys: {list(state_dict.keys())[:10]}...")
 
         state_dict[unembed_W_U_key] = state_dict[unembed_W_U_key] - state_dict[
             unembed_W_U_key
@@ -792,16 +989,44 @@ class ProcessWeights:
         # Make a copy to avoid modifying the original
         state_dict = state_dict.copy()
 
-        for layer in range(cfg.n_layers):
-            # Get translated parameter keys
-            if getattr(cfg, "n_key_value_heads", None) is None:
-                b_V_key = ProcessWeights._get_param_key(f"blocks.{layer}.attn.b_V", adapter)
-            else:
-                b_V_key = ProcessWeights._get_param_key(f"blocks.{layer}.attn._b_V", adapter)
+        # Determine the actual format of the state_dict to avoid key mismatch
+        layer = 0  # Use layer 0 for format detection
+        uses_tl_format, uses_hf_format = ProcessWeights._detect_state_dict_format(state_dict, layer, adapter)
 
-            # Get other translated parameter keys
-            W_O_key = ProcessWeights._get_param_key(f"blocks.{layer}.attn.W_O", adapter)
-            b_O_key = ProcessWeights._get_param_key(f"blocks.{layer}.attn.b_O", adapter)
+        for layer in range(cfg.n_layers):
+            # Get parameter keys for this layer based on format detection
+            if uses_tl_format and not uses_hf_format:
+                # State dict is in TransformerLens format - use TL keys directly
+                if getattr(cfg, "n_key_value_heads", None) is None:
+                    b_V_key = f"blocks.{layer}.attn.b_V"
+                else:
+                    b_V_key = f"blocks.{layer}.attn._b_V"
+                W_O_key = f"blocks.{layer}.attn.W_O"
+                b_O_key = f"blocks.{layer}.attn.b_O"
+            elif adapter and uses_hf_format and not uses_tl_format:
+                # State dict is in HuggingFace format - use adapter translation
+                if getattr(cfg, "n_key_value_heads", None) is None:
+                    b_V_key = ProcessWeights._get_param_key(f"blocks.{layer}.attn.b_V", adapter)
+                else:
+                    b_V_key = ProcessWeights._get_param_key(f"blocks.{layer}.attn._b_V", adapter)
+                W_O_key = ProcessWeights._get_param_key(f"blocks.{layer}.attn.W_O", adapter)
+                b_O_key = ProcessWeights._get_param_key(f"blocks.{layer}.attn.b_O", adapter)
+            else:
+                # Fallback: prefer TL format if possible, otherwise use adapter translation
+                if uses_tl_format:
+                    if getattr(cfg, "n_key_value_heads", None) is None:
+                        b_V_key = f"blocks.{layer}.attn.b_V"
+                    else:
+                        b_V_key = f"blocks.{layer}.attn._b_V"
+                    W_O_key = f"blocks.{layer}.attn.W_O"
+                    b_O_key = f"blocks.{layer}.attn.b_O"
+                else:
+                    if getattr(cfg, "n_key_value_heads", None) is None:
+                        b_V_key = ProcessWeights._get_param_key(f"blocks.{layer}.attn.b_V", adapter)
+                    else:
+                        b_V_key = ProcessWeights._get_param_key(f"blocks.{layer}.attn._b_V", adapter)
+                    W_O_key = ProcessWeights._get_param_key(f"blocks.{layer}.attn.W_O", adapter)
+                    b_O_key = ProcessWeights._get_param_key(f"blocks.{layer}.attn.b_O", adapter)
 
             # Check if we have combined QKV format (HuggingFace) or separate format (TransformerLens)
             if b_V_key in state_dict:
@@ -927,16 +1152,52 @@ class ProcessWeights:
         # Make a copy to avoid modifying the original
         state_dict = state_dict.copy()
 
+        # Determine the actual format of the state_dict to avoid key mismatch
+        layer = 0  # Use layer 0 for format detection
+        uses_tl_format, uses_hf_format = ProcessWeights._detect_state_dict_format(state_dict, layer, adapter)
+
         for l in range(cfg.n_layers):
-            # Get translated parameter keys
-            W_Q_key = ProcessWeights._get_param_key(f"blocks.{l}.attn.W_Q", adapter)
-            b_Q_key = ProcessWeights._get_param_key(f"blocks.{l}.attn.b_Q", adapter)
-            W_K_key = ProcessWeights._get_param_key(f"blocks.{l}.attn.W_K", adapter)
-            b_K_key = ProcessWeights._get_param_key(f"blocks.{l}.attn.b_K", adapter)
-            W_V_key = ProcessWeights._get_param_key(f"blocks.{l}.attn.W_V", adapter)
-            W_O_key = ProcessWeights._get_param_key(f"blocks.{l}.attn.W_O", adapter)
-            b_V_key = ProcessWeights._get_param_key(f"blocks.{l}.attn.b_V", adapter)
-            b_O_key = ProcessWeights._get_param_key(f"blocks.{l}.attn.b_O", adapter)
+            # Get parameter keys for this layer based on format detection
+            if uses_tl_format and not uses_hf_format:
+                # State dict is in TransformerLens format - use TL keys directly
+                W_Q_key = f"blocks.{l}.attn.W_Q"
+                b_Q_key = f"blocks.{l}.attn.b_Q"
+                W_K_key = f"blocks.{l}.attn.W_K"
+                b_K_key = f"blocks.{l}.attn.b_K"
+                W_V_key = f"blocks.{l}.attn.W_V"
+                W_O_key = f"blocks.{l}.attn.W_O"
+                b_V_key = f"blocks.{l}.attn.b_V"
+                b_O_key = f"blocks.{l}.attn.b_O"
+            elif adapter and uses_hf_format and not uses_tl_format:
+                # State dict is in HuggingFace format - use adapter translation
+                W_Q_key = ProcessWeights._get_param_key(f"blocks.{l}.attn.W_Q", adapter)
+                b_Q_key = ProcessWeights._get_param_key(f"blocks.{l}.attn.b_Q", adapter)
+                W_K_key = ProcessWeights._get_param_key(f"blocks.{l}.attn.W_K", adapter)
+                b_K_key = ProcessWeights._get_param_key(f"blocks.{l}.attn.b_K", adapter)
+                W_V_key = ProcessWeights._get_param_key(f"blocks.{l}.attn.W_V", adapter)
+                W_O_key = ProcessWeights._get_param_key(f"blocks.{l}.attn.W_O", adapter)
+                b_V_key = ProcessWeights._get_param_key(f"blocks.{l}.attn.b_V", adapter)
+                b_O_key = ProcessWeights._get_param_key(f"blocks.{l}.attn.b_O", adapter)
+            else:
+                # Fallback: prefer TL format if possible, otherwise use adapter translation
+                if uses_tl_format:
+                    W_Q_key = f"blocks.{l}.attn.W_Q"
+                    b_Q_key = f"blocks.{l}.attn.b_Q"
+                    W_K_key = f"blocks.{l}.attn.W_K"
+                    b_K_key = f"blocks.{l}.attn.b_K"
+                    W_V_key = f"blocks.{l}.attn.W_V"
+                    W_O_key = f"blocks.{l}.attn.W_O"
+                    b_V_key = f"blocks.{l}.attn.b_V"
+                    b_O_key = f"blocks.{l}.attn.b_O"
+                else:
+                    W_Q_key = ProcessWeights._get_param_key(f"blocks.{l}.attn.W_Q", adapter)
+                    b_Q_key = ProcessWeights._get_param_key(f"blocks.{l}.attn.b_Q", adapter)
+                    W_K_key = ProcessWeights._get_param_key(f"blocks.{l}.attn.W_K", adapter)
+                    b_K_key = ProcessWeights._get_param_key(f"blocks.{l}.attn.b_K", adapter)
+                    W_V_key = ProcessWeights._get_param_key(f"blocks.{l}.attn.W_V", adapter)
+                    W_O_key = ProcessWeights._get_param_key(f"blocks.{l}.attn.W_O", adapter)
+                    b_V_key = ProcessWeights._get_param_key(f"blocks.{l}.attn.b_V", adapter)
+                    b_O_key = ProcessWeights._get_param_key(f"blocks.{l}.attn.b_O", adapter)
 
             # W_QK = W_Q @ W_K.T
             # Concatenate biases to make a d_model+1 input dimension
