@@ -9,8 +9,8 @@ across different model formats.
 import pytest
 import torch
 
-from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.HookedTransformer import HookedTransformer
+from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.weight_processing import ProcessWeights
 
 

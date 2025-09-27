@@ -386,7 +386,6 @@ class TestRoundTripValidationIntegration(unittest.TestCase):
         self.assertEqual(hf_weights["lm_head.weight"].dtype, recovered_hf["lm_head.weight"].dtype)
 
 
-
 class TestRealModelCompatibility(unittest.TestCase):
     """Test compatibility with real model architectures (structure only)."""
 
