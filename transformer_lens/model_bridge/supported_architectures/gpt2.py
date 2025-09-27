@@ -435,7 +435,7 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
 
         # Create minimal structure that matches what fill_missing_keys expects
         temp_structure = nn.Module()
-        setattr(temp_structure, 'cfg', component_cfg)
+        setattr(temp_structure, "cfg", component_cfg)
 
         # Create components without processing - just for fill_missing_keys
         temp_structure.embed = Embed(component_cfg)
@@ -538,7 +538,6 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
         # Create final layer norm using NormalizationBridge that adapts based on layer_norm_folding
         from typing import Union
 
-        from transformer_lens.components import RMSNorm, RMSNormPre
         from transformer_lens.model_bridge.generalized_components.normalization import (
             NormalizationBridge,
         )
@@ -810,7 +809,7 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
         # Note: This requires access to the bridge's _scan_existing_hooks method
         # For now, we'll return the components and let the bridge handle hook extraction
 
-        print(f"GPT-2 adapter: Ready for hook extraction from components")
+        print("GPT-2 adapter: Ready for hook extraction from components")
 
     def test_round_trip_conversion(
         self, processed_weights: dict[str, torch.Tensor], model_name: str, tolerance: float = 1e-6
@@ -858,13 +857,15 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
         Returns:
             Dictionary of weights in HuggingFace format
         """
+        from transformer_lens.config import HookedTransformerConfig
         from transformer_lens.conversion_utils.reversible_weight_converter import (
             ReversibleWeightConverter,
         )
 
-        from transformer_lens.config import HookedTransformerConfig
         converter = ReversibleWeightConverter()
-        hf_weights = converter.tlens_to_hf(processed_weights, cast(HookedTransformerConfig, self.cfg), model_name)
+        hf_weights = converter.tlens_to_hf(
+            processed_weights, cast(HookedTransformerConfig, self.cfg), model_name
+        )
 
         return hf_weights
 
@@ -880,12 +881,14 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
         Returns:
             Dictionary of weights in TransformerLens format
         """
+        from transformer_lens.config import HookedTransformerConfig
         from transformer_lens.conversion_utils.reversible_weight_converter import (
             ReversibleWeightConverter,
         )
 
-        from transformer_lens.config import HookedTransformerConfig
         converter = ReversibleWeightConverter()
-        tlens_weights = converter.hf_to_tlens(hf_weights, cast(HookedTransformerConfig, self.cfg), model_name)
+        tlens_weights = converter.hf_to_tlens(
+            hf_weights, cast(HookedTransformerConfig, self.cfg), model_name
+        )
 
         return tlens_weights

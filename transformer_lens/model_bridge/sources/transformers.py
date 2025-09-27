@@ -6,7 +6,6 @@ This module provides functionality to load and convert models from HuggingFace t
 import copy
 import logging
 import os
-from typing import Union, cast
 
 import torch
 from transformers import (

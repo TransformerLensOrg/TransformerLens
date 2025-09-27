@@ -794,7 +794,7 @@ class TransformerBridge(nn.Module):
                 refactor_factored_attn_matrices,
             )
 
-        print(f"Bridge components created via adapter processing")
+        print("Bridge components created via adapter processing")
 
     def _create_components_with_integrated_folding(
         self,
@@ -847,7 +847,6 @@ class TransformerBridge(nn.Module):
             TransformerBlock,
             Unembed,
         )
-        from transformer_lens.hook_points import HookPoint
 
         # Create minimal structure that matches what fill_missing_keys expects
         temp_structure = nn.Module()
@@ -922,7 +921,6 @@ class TransformerBridge(nn.Module):
         # Create final layer norm using NormalizationBridge that adapts based on layer_norm_folding
         from typing import Union
 
-        from transformer_lens.components import RMSNorm, RMSNormPre
         from transformer_lens.model_bridge.generalized_components.normalization import (
             NormalizationBridge,
         )
@@ -1224,7 +1222,6 @@ class TransformerBridge(nn.Module):
         **kwargs,
     ):
         """Forward pass using TransformerLens-style computation with processed weights."""
-        from typing import Any, List, Optional, Union
 
         import torch
         import torch.nn.functional as F
@@ -1485,7 +1482,6 @@ class TransformerBridge(nn.Module):
 
     def _processed_mlp_with_hooks(self, x, layer, processed_weights):
         """MLP using processed weights with full hook integration."""
-        import torch
         import torch.nn.functional as F
 
         # Apply MLP input hook
@@ -1521,7 +1517,6 @@ class TransformerBridge(nn.Module):
 
     def _processed_mlp(self, x, layer, processed_weights):
         """MLP using processed weights."""
-        import torch
         import torch.nn.functional as F
 
         # Get processed MLP weights
@@ -4136,7 +4131,9 @@ class TransformerBridge(nn.Module):
         """
         # Get the raw state dict from the original model
         if destination is not None:
-            raw_state_dict = self.original_model.state_dict(destination=destination, prefix=prefix, keep_vars=keep_vars)
+            raw_state_dict = self.original_model.state_dict(
+                destination=destination, prefix=prefix, keep_vars=keep_vars
+            )
         else:
             raw_state_dict = self.original_model.state_dict(prefix=prefix, keep_vars=keep_vars)
 
@@ -4278,7 +4275,10 @@ class TransformerBridge(nn.Module):
 
         # Convert HF → TLens
         from transformer_lens.config import HookedTransformerConfig
-        tlens_state_dict = converter.hf_to_tlens(hf_state_dict, cast(HookedTransformerConfig, self.cfg), model_type)
+
+        tlens_state_dict = converter.hf_to_tlens(
+            hf_state_dict, cast(HookedTransformerConfig, self.cfg), model_type
+        )
 
         # Load into bridge
         self.load_state_dict(tlens_state_dict, strict=strict)
@@ -4326,9 +4326,12 @@ class TransformerBridge(nn.Module):
             # Step 2: Convert to TLens format using reversible converter
             print("  Converting HF weights to TLens format...")
             from transformer_lens.config import HookedTransformerConfig
+
             converter = ReversibleWeightConverter()
             model_type = self._infer_model_type()
-            recovered_tlens_state = converter.hf_to_tlens(hf_state_dict, cast(HookedTransformerConfig, self.cfg), model_type)
+            recovered_tlens_state = converter.hf_to_tlens(
+                hf_state_dict, cast(HookedTransformerConfig, self.cfg), model_type
+            )
             print("  HF -> TLens conversion completed")
             print(f"  Recovered TLens keys (first 10): {list(recovered_tlens_state.keys())[:10]}")
             print(f"  Looking for embed.W_E: {'embed.W_E' in recovered_tlens_state}")

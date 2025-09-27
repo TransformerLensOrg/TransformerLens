@@ -1882,7 +1882,6 @@ class ProcessWeights:
         Returns:
             The same module with processed weights loaded
         """
-        import torch
 
         # If the module has a custom load_state_dict method (like TransformerBridge), use it directly
         if (
@@ -1928,7 +1927,6 @@ class ProcessWeights:
         Returns:
             A new model instance with processed weights loaded
         """
-        import torch
 
         # if model_class is None:
         #     model_class = type(original_model)

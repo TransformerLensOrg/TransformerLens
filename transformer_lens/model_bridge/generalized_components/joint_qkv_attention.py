@@ -347,7 +347,9 @@ class JointQKVAttentionBridge(AttentionBridge):
         # Apply QKV projection using torch.nn.functional.linear
         # Note: torch.nn.functional.linear expects weight to be [output_features, input_features]
         # but HuggingFace stores it as [input_features, output_features], so we transpose
-        qkv = torch.nn.functional.linear(hidden_states, cast(torch.Tensor, qkv_weight.T), cast(torch.Tensor, qkv_bias))
+        qkv = torch.nn.functional.linear(
+            hidden_states, cast(torch.Tensor, qkv_weight.T), cast(torch.Tensor, qkv_bias)
+        )
 
         # Split into Q, K, V - reshape to separate the 3 components
         qkv = qkv.view(batch_size, seq_len, 3, d_model)
@@ -384,7 +386,9 @@ class JointQKVAttentionBridge(AttentionBridge):
         # Apply output projection using torch.nn.functional.linear
         # Note: torch.nn.functional.linear expects weight to be [output_features, input_features]
         # but HuggingFace stores it as [input_features, output_features], so we transpose
-        output = torch.nn.functional.linear(attn_output, cast(torch.Tensor, proj_weight.T), cast(torch.Tensor, proj_bias))
+        output = torch.nn.functional.linear(
+            attn_output, cast(torch.Tensor, proj_weight.T), cast(torch.Tensor, proj_bias)
+        )
 
         return output
 
@@ -445,7 +449,11 @@ class JointQKVAttentionBridge(AttentionBridge):
             index=self.config.n_heads,
             head=self.config.d_head,
         )
-        b_Q, b_K, b_V = cast(torch.Tensor, qkv_bias[0]), cast(torch.Tensor, qkv_bias[1]), cast(torch.Tensor, qkv_bias[2])
+        b_Q, b_K, b_V = (
+            cast(torch.Tensor, qkv_bias[0]),
+            cast(torch.Tensor, qkv_bias[1]),
+            cast(torch.Tensor, qkv_bias[2]),
+        )
 
         # Process output projection weight if it exists
         W_O = None
