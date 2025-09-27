@@ -32,9 +32,6 @@ except ImportError:
 
 
 from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
-from transformer_lens.conversion_utils.compare_script_integration import (
-    CompareScriptIntegration,
-)
 from transformer_lens.conversion_utils.reversible_weight_converter import (
     ReversibleWeightConverter,
 )
@@ -388,71 +385,6 @@ class TestRoundTripValidationIntegration(unittest.TestCase):
         )
         self.assertEqual(hf_weights["lm_head.weight"].dtype, recovered_hf["lm_head.weight"].dtype)
 
-
-class TestCompareScriptIntegration(unittest.TestCase):
-    """Test integration with compare script functionality."""
-
-    def setUp(self):
-        """Set up test fixtures."""
-        self.integration = CompareScriptIntegration(tolerance=1e-6)
-
-    @patch(
-        "transformer_lens.conversion_utils.compare_script_integration.HookedTransformer",
-        MockHookedTransformer,
-    )
-    @patch(
-        "transformer_lens.conversion_utils.compare_script_integration.TransformerBridge",
-        MockTransformerBridge,
-    )
-    @patch("transformer_lens.conversion_utils.compare_script_integration.AutoModelForCausalLM")
-    def test_run_original_comparison(self, mock_auto_model):
-        """Test running the original comparison logic."""
-        # Set up mock
-        mock_hf_model = MockModel({})
-        mock_auto_model.from_pretrained.return_value = mock_hf_model
-
-        # Run comparison
-        result = self.integration._run_original_comparison("gpt2", "cpu")
-
-        self.assertIn("success", result)
-        # Should be True since we're using consistent mock outputs
-        self.assertTrue(result.get("success", False))
-
-    def test_generate_validation_report(self):
-        """Test generation of validation reports."""
-        # Create mock results
-        results = {
-            "model_name": "gpt2",
-            "device": "cpu",
-            "overall_success": True,
-            "original_comparison": {"success": True, "max_difference": 1e-8},
-            "round_trip_validation": {
-                "success": True,
-                "hf_to_tlens_round_trip": {"success": True},
-                "tlens_to_hf_round_trip": {"success": True},
-            },
-            "round_trip_comparison": {
-                "success": True,
-                "hf_round_trip_max_diff": 1e-7,
-                "tlens_round_trip_max_diff": 1e-7,
-            },
-        }
-
-        report = self.integration.generate_validation_report(results)
-
-        # Check report contains expected sections
-        self.assertIn("Round-Trip Validation Report", report)
-        self.assertIn("Model: gpt2", report)
-        self.assertIn("Overall Status: ✓ PASSED", report)
-        self.assertIn("Original Comparison: ✓", report)
-
-    def test_error_handling_in_integration(self):
-        """Test error handling in integration methods."""
-        # Test with invalid model name
-        result = self.integration._run_original_comparison("invalid-model", "cpu")
-
-        # Should handle errors gracefully
-        self.assertIn("error", result)
 
 
 class TestRealModelCompatibility(unittest.TestCase):
