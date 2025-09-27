@@ -299,10 +299,13 @@ class AbstractAttention(ABC, nn.Module):
                 if self.b_O.device != z.device:
                     z = z.to(self.b_O.device)
 
-                out = F.linear(
-                    z.reshape(z.shape[0], z.shape[1], self.cfg.d_head * self.cfg.n_heads),
-                    w,
-                    self.b_O,
+                z = einops.rearrange(
+                    z, "batch pos head_index d_head -> batch pos (head_index d_head)"
+                )
+
+                out = (
+                    einops.einsum(z, w, "batch pos d_heads, d_model d_heads -> batch pos d_model")
+                    + self.b_O
                 )
         else:
             # Explicitly calculate the attention result so it can be accessed by a hook
