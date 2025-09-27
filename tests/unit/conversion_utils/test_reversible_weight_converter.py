@@ -7,22 +7,20 @@ weight conversion system with round-trip guarantees.
 """
 
 import unittest
-from unittest.mock import Mock, patch
-import warnings
 
-import torch
 import numpy as np
+import torch
 
 from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.conversion_utils.reversible_weight_converter import (
-    ReversibleWeightConverter,
-    EmbeddingConverter,
     AttentionConverter,
+    ConversionError,
+    EmbeddingConverter,
     MLPConverter,
     NormalizationConverter,
+    ReversibleWeightConverter,
+    RoundTripError,
     UnembeddingConverter,
-    ConversionError,
-    RoundTripError
 )
 
 
@@ -39,7 +37,7 @@ class TestEmbeddingConverter(unittest.TestCase):
             n_ctx=1024,
             d_vocab=50257,
             act_fn="gelu",
-            normalization_type="LN"
+            normalization_type="LN",
         )
 
     def test_gpt2_embedding_conversion(self):
@@ -47,7 +45,7 @@ class TestEmbeddingConverter(unittest.TestCase):
         # Create mock HF weights
         hf_weights = {
             "transformer.wte.weight": torch.randn(50257, 768),
-            "transformer.wpe.weight": torch.randn(1024, 768)
+            "transformer.wpe.weight": torch.randn(1024, 768),
         }
 
         # Convert HF → TLens
@@ -65,15 +63,21 @@ class TestEmbeddingConverter(unittest.TestCase):
         recovered_hf = self.converter.tlens_to_hf(tlens_weights, self.config, model_type="gpt2")
 
         # Check round-trip
-        self.assertTrue(torch.equal(hf_weights["transformer.wte.weight"], recovered_hf["transformer.wte.weight"]))
-        self.assertTrue(torch.equal(hf_weights["transformer.wpe.weight"], recovered_hf["transformer.wpe.weight"]))
+        self.assertTrue(
+            torch.equal(
+                hf_weights["transformer.wte.weight"], recovered_hf["transformer.wte.weight"]
+            )
+        )
+        self.assertTrue(
+            torch.equal(
+                hf_weights["transformer.wpe.weight"], recovered_hf["transformer.wpe.weight"]
+            )
+        )
 
     def test_llama_embedding_conversion(self):
         """Test LLaMA style embedding conversion."""
         # Create mock HF weights
-        hf_weights = {
-            "model.embed_tokens.weight": torch.randn(32000, 4096)
-        }
+        hf_weights = {"model.embed_tokens.weight": torch.randn(32000, 4096)}
 
         config = HookedTransformerConfig(
             d_model=4096,
@@ -82,7 +86,7 @@ class TestEmbeddingConverter(unittest.TestCase):
             n_ctx=2048,
             d_vocab=32000,
             act_fn="silu",
-            normalization_type="RMS"
+            normalization_type="RMS",
         )
 
         # Convert HF → TLens
@@ -96,21 +100,29 @@ class TestEmbeddingConverter(unittest.TestCase):
         recovered_hf = self.converter.tlens_to_hf(tlens_weights, config, model_type="llama")
 
         # Check round-trip
-        self.assertTrue(torch.equal(hf_weights["model.embed_tokens.weight"], recovered_hf["model.embed_tokens.weight"]))
+        self.assertTrue(
+            torch.equal(
+                hf_weights["model.embed_tokens.weight"], recovered_hf["model.embed_tokens.weight"]
+            )
+        )
 
     def test_round_trip_validation(self):
         """Test round-trip validation method."""
         hf_weights = {
             "transformer.wte.weight": torch.randn(50257, 768),
-            "transformer.wpe.weight": torch.randn(1024, 768)
+            "transformer.wpe.weight": torch.randn(1024, 768),
         }
 
         # Should pass validation
-        self.assertTrue(self.converter.validate_round_trip(hf_weights, self.config, model_type="gpt2"))
+        self.assertTrue(
+            self.converter.validate_round_trip(hf_weights, self.config, model_type="gpt2")
+        )
 
         # Test with corrupted weights
         hf_weights_corrupted = hf_weights.copy()
-        hf_weights_corrupted["transformer.wte.weight"] = torch.randn(50257, 768) * 1000  # Different values
+        hf_weights_corrupted["transformer.wte.weight"] = (
+            torch.randn(50257, 768) * 1000
+        )  # Different values
 
         with self.assertRaises(RoundTripError):
             self.converter.validate_round_trip(hf_weights_corrupted, self.config, model_type="gpt2")
@@ -130,7 +142,7 @@ class TestAttentionConverter(unittest.TestCase):
             d_vocab=50257,
             d_head=64,
             act_fn="gelu",
-            normalization_type="LN"
+            normalization_type="LN",
         )
 
     def test_gpt2_attention_conversion(self):
@@ -142,17 +154,25 @@ class TestAttentionConverter(unittest.TestCase):
             f"transformer.h.{layer_idx}.attn.c_attn.weight": torch.randn(768, 2304),  # 3 * 768
             f"transformer.h.{layer_idx}.attn.c_attn.bias": torch.randn(2304),
             f"transformer.h.{layer_idx}.attn.c_proj.weight": torch.randn(768, 768),
-            f"transformer.h.{layer_idx}.attn.c_proj.bias": torch.randn(768)
+            f"transformer.h.{layer_idx}.attn.c_proj.bias": torch.randn(768),
         }
 
         # Convert HF → TLens
-        tlens_weights = self.converter.hf_to_tlens(hf_weights, self.config, layer_idx=layer_idx, model_type="gpt2")
+        tlens_weights = self.converter.hf_to_tlens(
+            hf_weights, self.config, layer_idx=layer_idx, model_type="gpt2"
+        )
 
         # Check expected keys
-        expected_keys = [f"blocks.{layer_idx}.attn.W_Q", f"blocks.{layer_idx}.attn.W_K",
-                        f"blocks.{layer_idx}.attn.W_V", f"blocks.{layer_idx}.attn.W_O",
-                        f"blocks.{layer_idx}.attn.b_Q", f"blocks.{layer_idx}.attn.b_K",
-                        f"blocks.{layer_idx}.attn.b_V", f"blocks.{layer_idx}.attn.b_O"]
+        expected_keys = [
+            f"blocks.{layer_idx}.attn.W_Q",
+            f"blocks.{layer_idx}.attn.W_K",
+            f"blocks.{layer_idx}.attn.W_V",
+            f"blocks.{layer_idx}.attn.W_O",
+            f"blocks.{layer_idx}.attn.b_Q",
+            f"blocks.{layer_idx}.attn.b_K",
+            f"blocks.{layer_idx}.attn.b_V",
+            f"blocks.{layer_idx}.attn.b_O",
+        ]
 
         for key in expected_keys:
             self.assertIn(key, tlens_weights)
@@ -162,13 +182,15 @@ class TestAttentionConverter(unittest.TestCase):
         self.assertEqual(tlens_weights[f"blocks.{layer_idx}.attn.b_Q"].shape, (12, 64))
 
         # Convert back TLens → HF
-        recovered_hf = self.converter.tlens_to_hf(tlens_weights, self.config, layer_idx=layer_idx, model_type="gpt2")
+        recovered_hf = self.converter.tlens_to_hf(
+            tlens_weights, self.config, layer_idx=layer_idx, model_type="gpt2"
+        )
 
         # Check round-trip (with tolerance due to reshaping operations)
         for key in hf_weights:
             self.assertTrue(
                 torch.allclose(hf_weights[key], recovered_hf[key], atol=1e-6),
-                f"Mismatch for key {key}"
+                f"Mismatch for key {key}",
             )
 
     def test_llama_attention_conversion(self):
@@ -183,7 +205,7 @@ class TestAttentionConverter(unittest.TestCase):
             d_vocab=32000,
             d_head=128,
             act_fn="silu",
-            normalization_type="RMS"
+            normalization_type="RMS",
         )
 
         # Create mock HF weights
@@ -191,27 +213,35 @@ class TestAttentionConverter(unittest.TestCase):
             f"model.layers.{layer_idx}.self_attn.q_proj.weight": torch.randn(4096, 4096),
             f"model.layers.{layer_idx}.self_attn.k_proj.weight": torch.randn(4096, 4096),
             f"model.layers.{layer_idx}.self_attn.v_proj.weight": torch.randn(4096, 4096),
-            f"model.layers.{layer_idx}.self_attn.o_proj.weight": torch.randn(4096, 4096)
+            f"model.layers.{layer_idx}.self_attn.o_proj.weight": torch.randn(4096, 4096),
         }
 
         # Convert HF → TLens
-        tlens_weights = self.converter.hf_to_tlens(hf_weights, config, layer_idx=layer_idx, model_type="llama")
+        tlens_weights = self.converter.hf_to_tlens(
+            hf_weights, config, layer_idx=layer_idx, model_type="llama"
+        )
 
         # Check expected keys
-        expected_keys = [f"blocks.{layer_idx}.attn.W_Q", f"blocks.{layer_idx}.attn.W_K",
-                        f"blocks.{layer_idx}.attn.W_V", f"blocks.{layer_idx}.attn.W_O"]
+        expected_keys = [
+            f"blocks.{layer_idx}.attn.W_Q",
+            f"blocks.{layer_idx}.attn.W_K",
+            f"blocks.{layer_idx}.attn.W_V",
+            f"blocks.{layer_idx}.attn.W_O",
+        ]
 
         for key in expected_keys:
             self.assertIn(key, tlens_weights)
 
         # Convert back TLens → HF
-        recovered_hf = self.converter.tlens_to_hf(tlens_weights, config, layer_idx=layer_idx, model_type="llama")
+        recovered_hf = self.converter.tlens_to_hf(
+            tlens_weights, config, layer_idx=layer_idx, model_type="llama"
+        )
 
         # Check round-trip
         for key in hf_weights:
             self.assertTrue(
                 torch.allclose(hf_weights[key], recovered_hf[key], atol=1e-6),
-                f"Mismatch for key {key}"
+                f"Mismatch for key {key}",
             )
 
 
@@ -229,7 +259,7 @@ class TestMLPConverter(unittest.TestCase):
             d_vocab=50257,
             d_mlp=3072,
             act_fn="gelu",
-            normalization_type="LN"
+            normalization_type="LN",
         )
 
     def test_gpt2_mlp_conversion(self):
@@ -241,27 +271,34 @@ class TestMLPConverter(unittest.TestCase):
             f"transformer.h.{layer_idx}.mlp.c_fc.weight": torch.randn(768, 3072),
             f"transformer.h.{layer_idx}.mlp.c_fc.bias": torch.randn(3072),
             f"transformer.h.{layer_idx}.mlp.c_proj.weight": torch.randn(3072, 768),
-            f"transformer.h.{layer_idx}.mlp.c_proj.bias": torch.randn(768)
+            f"transformer.h.{layer_idx}.mlp.c_proj.bias": torch.randn(768),
         }
 
         # Convert HF → TLens
-        tlens_weights = self.converter.hf_to_tlens(hf_weights, self.config, layer_idx=layer_idx, model_type="gpt2")
+        tlens_weights = self.converter.hf_to_tlens(
+            hf_weights, self.config, layer_idx=layer_idx, model_type="gpt2"
+        )
 
         # Check expected keys
-        expected_keys = [f"blocks.{layer_idx}.mlp.W_in", f"blocks.{layer_idx}.mlp.b_in",
-                        f"blocks.{layer_idx}.mlp.W_out", f"blocks.{layer_idx}.mlp.b_out"]
+        expected_keys = [
+            f"blocks.{layer_idx}.mlp.W_in",
+            f"blocks.{layer_idx}.mlp.b_in",
+            f"blocks.{layer_idx}.mlp.W_out",
+            f"blocks.{layer_idx}.mlp.b_out",
+        ]
 
         for key in expected_keys:
             self.assertIn(key, tlens_weights)
 
         # Convert back TLens → HF
-        recovered_hf = self.converter.tlens_to_hf(tlens_weights, self.config, layer_idx=layer_idx, model_type="gpt2")
+        recovered_hf = self.converter.tlens_to_hf(
+            tlens_weights, self.config, layer_idx=layer_idx, model_type="gpt2"
+        )
 
         # Check round-trip
         for key in hf_weights:
             self.assertTrue(
-                torch.equal(hf_weights[key], recovered_hf[key]),
-                f"Mismatch for key {key}"
+                torch.equal(hf_weights[key], recovered_hf[key]), f"Mismatch for key {key}"
             )
 
     def test_llama_mlp_conversion(self):
@@ -276,34 +313,40 @@ class TestMLPConverter(unittest.TestCase):
             d_vocab=32000,
             d_mlp=11008,
             act_fn="silu",
-            normalization_type="RMS"
+            normalization_type="RMS",
         )
 
         # Create mock HF weights
         hf_weights = {
             f"model.layers.{layer_idx}.mlp.gate_proj.weight": torch.randn(11008, 4096),
             f"model.layers.{layer_idx}.mlp.up_proj.weight": torch.randn(11008, 4096),
-            f"model.layers.{layer_idx}.mlp.down_proj.weight": torch.randn(4096, 11008)
+            f"model.layers.{layer_idx}.mlp.down_proj.weight": torch.randn(4096, 11008),
         }
 
         # Convert HF → TLens
-        tlens_weights = self.converter.hf_to_tlens(hf_weights, config, layer_idx=layer_idx, model_type="llama")
+        tlens_weights = self.converter.hf_to_tlens(
+            hf_weights, config, layer_idx=layer_idx, model_type="llama"
+        )
 
         # Check expected keys
-        expected_keys = [f"blocks.{layer_idx}.mlp.W_gate", f"blocks.{layer_idx}.mlp.W_in",
-                        f"blocks.{layer_idx}.mlp.W_out"]
+        expected_keys = [
+            f"blocks.{layer_idx}.mlp.W_gate",
+            f"blocks.{layer_idx}.mlp.W_in",
+            f"blocks.{layer_idx}.mlp.W_out",
+        ]
 
         for key in expected_keys:
             self.assertIn(key, tlens_weights)
 
         # Convert back TLens → HF
-        recovered_hf = self.converter.tlens_to_hf(tlens_weights, config, layer_idx=layer_idx, model_type="llama")
+        recovered_hf = self.converter.tlens_to_hf(
+            tlens_weights, config, layer_idx=layer_idx, model_type="llama"
+        )
 
         # Check round-trip
         for key in hf_weights:
             self.assertTrue(
-                torch.equal(hf_weights[key], recovered_hf[key]),
-                f"Mismatch for key {key}"
+                torch.equal(hf_weights[key], recovered_hf[key]), f"Mismatch for key {key}"
             )
 
 
@@ -320,7 +363,7 @@ class TestNormalizationConverter(unittest.TestCase):
             n_ctx=1024,
             d_vocab=50257,
             act_fn="gelu",
-            normalization_type="LN"
+            normalization_type="LN",
         )
 
     def test_gpt2_layernorm_conversion(self):
@@ -332,7 +375,7 @@ class TestNormalizationConverter(unittest.TestCase):
             hf_norm_name = "ln_1" if norm_type == "ln1" else "ln_2"
             hf_weights = {
                 f"transformer.h.{layer_idx}.{hf_norm_name}.weight": torch.randn(768),
-                f"transformer.h.{layer_idx}.{hf_norm_name}.bias": torch.randn(768)
+                f"transformer.h.{layer_idx}.{hf_norm_name}.bias": torch.randn(768),
             }
 
             # Convert HF → TLens
@@ -341,13 +384,20 @@ class TestNormalizationConverter(unittest.TestCase):
             )
 
             # Check expected keys
-            expected_keys = [f"blocks.{layer_idx}.{norm_type}.w", f"blocks.{layer_idx}.{norm_type}.b"]
+            expected_keys = [
+                f"blocks.{layer_idx}.{norm_type}.w",
+                f"blocks.{layer_idx}.{norm_type}.b",
+            ]
             for key in expected_keys:
                 self.assertIn(key, tlens_weights)
 
             # Convert back TLens → HF
             recovered_hf = self.converter.tlens_to_hf(
-                tlens_weights, self.config, layer_idx=layer_idx, norm_type=norm_type, model_type="gpt2"
+                tlens_weights,
+                self.config,
+                layer_idx=layer_idx,
+                norm_type=norm_type,
+                model_type="gpt2",
             )
 
             # Check round-trip
@@ -357,7 +407,7 @@ class TestNormalizationConverter(unittest.TestCase):
         # Test final norm
         hf_weights = {
             "transformer.ln_f.weight": torch.randn(768),
-            "transformer.ln_f.bias": torch.randn(768)
+            "transformer.ln_f.bias": torch.randn(768),
         }
 
         tlens_weights = self.converter.hf_to_tlens(
@@ -378,7 +428,7 @@ class TestNormalizationConverter(unittest.TestCase):
             n_ctx=2048,
             d_vocab=32000,
             act_fn="silu",
-            normalization_type="RMS"
+            normalization_type="RMS",
         )
 
         # Test layer norms
@@ -421,16 +471,13 @@ class TestUnembeddingConverter(unittest.TestCase):
             n_ctx=1024,
             d_vocab=50257,
             act_fn="gelu",
-            normalization_type="LN"
+            normalization_type="LN",
         )
 
     def test_gpt2_unembedding_conversion(self):
         """Test GPT-2 style unembedding conversion."""
         # Create mock HF weights
-        hf_weights = {
-            "lm_head.weight": torch.randn(50257, 768),
-            "lm_head.bias": torch.randn(50257)
-        }
+        hf_weights = {"lm_head.weight": torch.randn(50257, 768), "lm_head.bias": torch.randn(50257)}
 
         # Convert HF → TLens
         tlens_weights = self.converter.hf_to_tlens(hf_weights, self.config, model_type="gpt2")
@@ -459,13 +506,11 @@ class TestUnembeddingConverter(unittest.TestCase):
             n_ctx=2048,
             d_vocab=32000,
             act_fn="silu",
-            normalization_type="RMS"
+            normalization_type="RMS",
         )
 
         # Create mock HF weights (no bias)
-        hf_weights = {
-            "model.lm_head.weight": torch.randn(32000, 4096)
-        }
+        hf_weights = {"model.lm_head.weight": torch.randn(32000, 4096)}
 
         # Convert HF → TLens
         tlens_weights = self.converter.hf_to_tlens(hf_weights, config, model_type="llama")
@@ -482,7 +527,9 @@ class TestUnembeddingConverter(unittest.TestCase):
 
         # Should not include bias in recovered weights (since it's zero)
         self.assertNotIn("model.lm_head.bias", recovered_hf)
-        self.assertTrue(torch.equal(hf_weights["model.lm_head.weight"], recovered_hf["model.lm_head.weight"]))
+        self.assertTrue(
+            torch.equal(hf_weights["model.lm_head.weight"], recovered_hf["model.lm_head.weight"])
+        )
 
 
 class TestReversibleWeightConverter(unittest.TestCase):
@@ -500,7 +547,7 @@ class TestReversibleWeightConverter(unittest.TestCase):
             d_head=64,
             d_mlp=3072,
             act_fn="gelu",
-            normalization_type="LN"
+            normalization_type="LN",
         )
 
     def create_mock_gpt2_state_dict(self):
@@ -548,11 +595,18 @@ class TestReversibleWeightConverter(unittest.TestCase):
 
         # Check expected TLens keys exist
         expected_tlens_keys = [
-            "embed.W_E", "pos_embed.W_pos",
-            "blocks.0.attn.W_Q", "blocks.0.attn.W_K", "blocks.0.attn.W_V", "blocks.0.attn.W_O",
-            "blocks.0.mlp.W_in", "blocks.0.mlp.W_out",
-            "blocks.0.ln1.w", "blocks.0.ln2.w",
-            "ln_final.w", "unembed.W_U"
+            "embed.W_E",
+            "pos_embed.W_pos",
+            "blocks.0.attn.W_Q",
+            "blocks.0.attn.W_K",
+            "blocks.0.attn.W_V",
+            "blocks.0.attn.W_O",
+            "blocks.0.mlp.W_in",
+            "blocks.0.mlp.W_out",
+            "blocks.0.ln1.w",
+            "blocks.0.ln2.w",
+            "ln_final.w",
+            "unembed.W_U",
         ]
 
         for key in expected_tlens_keys:
@@ -584,7 +638,9 @@ class TestReversibleWeightConverter(unittest.TestCase):
         tlens_state_dict = self.converter.hf_to_tlens(hf_state_dict, self.config, "gpt2")
 
         # Should pass validation
-        result = self.converter.validate_round_trip_tlens_to_hf(tlens_state_dict, self.config, "gpt2")
+        result = self.converter.validate_round_trip_tlens_to_hf(
+            tlens_state_dict, self.config, "gpt2"
+        )
         self.assertTrue(result)
 
     def test_conversion_error_handling(self):
@@ -618,12 +674,7 @@ class TestErrorHandling(unittest.TestCase):
         """Set up test fixtures."""
         self.converter = ReversibleWeightConverter()
         self.config = HookedTransformerConfig(
-            d_model=768,
-            n_heads=12,
-            n_layers=1,
-            n_ctx=1024,
-            d_vocab=50257,
-            act_fn="gelu"
+            d_model=768, n_heads=12, n_layers=1, n_ctx=1024, d_vocab=50257, act_fn="gelu"
         )
 
     def test_shape_mismatch_detection(self):
@@ -658,8 +709,9 @@ class TestErrorHandling(unittest.TestCase):
         recovered_hf = self.converter.embedding_converter.tlens_to_hf(tlens_weights, self.config)
 
         # Check dtype preservation
-        self.assertEqual(hf_weights["transformer.wte.weight"].dtype,
-                        recovered_hf["transformer.wte.weight"].dtype)
+        self.assertEqual(
+            hf_weights["transformer.wte.weight"].dtype, recovered_hf["transformer.wte.weight"].dtype
+        )
 
 
 if __name__ == "__main__":

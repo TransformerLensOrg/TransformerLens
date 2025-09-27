@@ -4,9 +4,13 @@ This module provides validation for HF ↔ TLens weight conversions after proces
 ensuring that weight folding and other transformations preserve model behavior.
 """
 
+from typing import Any, Dict
+
 import torch
-from typing import Dict, Any, Optional, Tuple
-from transformer_lens.conversion_utils.reversible_weight_converter import ReversibleWeightConverter
+
+from transformer_lens.conversion_utils.reversible_weight_converter import (
+    ReversibleWeightConverter,
+)
 
 
 class RoundTripValidator:
@@ -26,7 +30,7 @@ class RoundTripValidator:
         original_hf_weights: Dict[str, torch.Tensor],
         processed_tlens_weights: Dict[str, torch.Tensor],
         config: Any,
-        model_type: str
+        model_type: str,
     ) -> Dict[str, Any]:
         """Validate that processed TLens weights can round-trip through HF format.
 
@@ -44,7 +48,7 @@ class RoundTripValidator:
             "conversions": {},
             "shape_validation": {},
             "precision_validation": {},
-            "errors": []
+            "errors": [],
         }
 
         try:
@@ -54,7 +58,7 @@ class RoundTripValidator:
             )
             results["conversions"]["tlens_to_hf"] = {
                 "original_keys": len(processed_tlens_weights),
-                "converted_keys": len(hf_weights_from_processed)
+                "converted_keys": len(hf_weights_from_processed),
             }
 
             # Step 2: Convert HF → TLens (round-trip)
@@ -72,16 +76,14 @@ class RoundTripValidator:
                     original_shape = processed_tlens_weights[key].shape
                     roundtrip_shape = tlens_weights_roundtrip[key].shape
                     if original_shape != roundtrip_shape:
-                        shape_mismatches.append({
-                            "key": key,
-                            "original": original_shape,
-                            "roundtrip": roundtrip_shape
-                        })
+                        shape_mismatches.append(
+                            {"key": key, "original": original_shape, "roundtrip": roundtrip_shape}
+                        )
 
             results["shape_validation"] = {
                 "total_keys_checked": len(processed_tlens_weights),
                 "shape_mismatches": shape_mismatches,
-                "shapes_match": len(shape_mismatches) == 0
+                "shapes_match": len(shape_mismatches) == 0,
             }
 
             # Step 4: Validate precision
@@ -91,29 +93,27 @@ class RoundTripValidator:
             for key in processed_tlens_weights.keys():
                 if key in tlens_weights_roundtrip:
                     if processed_tlens_weights[key].shape == tlens_weights_roundtrip[key].shape:
-                        diff = torch.max(torch.abs(
-                            processed_tlens_weights[key] - tlens_weights_roundtrip[key]
-                        )).item()
+                        diff = torch.max(
+                            torch.abs(processed_tlens_weights[key] - tlens_weights_roundtrip[key])
+                        ).item()
                         max_difference = max(max_difference, diff)
 
                         if diff > self.tolerance:
-                            precision_errors.append({
-                                "key": key,
-                                "difference": diff,
-                                "tolerance": self.tolerance
-                            })
+                            precision_errors.append(
+                                {"key": key, "difference": diff, "tolerance": self.tolerance}
+                            )
 
             results["precision_validation"] = {
                 "max_difference": max_difference,
                 "tolerance": self.tolerance,
                 "precision_errors": precision_errors,
-                "precision_ok": len(precision_errors) == 0
+                "precision_ok": len(precision_errors) == 0,
             }
 
             # Overall success
             results["success"] = (
-                results["shape_validation"]["shapes_match"] and
-                results["precision_validation"]["precision_ok"]
+                results["shape_validation"]["shapes_match"]
+                and results["precision_validation"]["precision_ok"]
             )
 
         except Exception as e:
@@ -126,7 +126,7 @@ class RoundTripValidator:
         self,
         processed_tlens_weights: Dict[str, torch.Tensor],
         tlens_weights_roundtrip: Dict[str, torch.Tensor],
-        sample_size: int = 5
+        sample_size: int = 5,
     ) -> Dict[str, Any]:
         """Quick validation using a sample of keys for debugging.
 
@@ -150,13 +150,13 @@ class RoundTripValidator:
                     "key": key,
                     "original_shape": original_shape,
                     "roundtrip_shape": roundtrip_shape,
-                    "shapes_match": original_shape == roundtrip_shape
+                    "shapes_match": original_shape == roundtrip_shape,
                 }
 
                 if original_shape == roundtrip_shape:
-                    diff = torch.max(torch.abs(
-                        processed_tlens_weights[key] - tlens_weights_roundtrip[key]
-                    )).item()
+                    diff = torch.max(
+                        torch.abs(processed_tlens_weights[key] - tlens_weights_roundtrip[key])
+                    ).item()
                     result_entry["difference"] = diff
                     result_entry["precision_ok"] = diff <= self.tolerance
 

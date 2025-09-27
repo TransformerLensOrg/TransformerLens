@@ -57,12 +57,12 @@ class ProcessWeights:
         ln_bias: torch.Tensor,
     ) -> torch.Tensor:
         """Fold LayerNorm bias into a single attention bias.
-        
+
         Args:
             w_tensor: Weight tensor [n_heads, d_model, d_head]
             b_tensor: Bias tensor [n_heads, d_head]
             ln_bias: LayerNorm bias [d_model]
-            
+
         Returns:
             New bias tensor with folded LayerNorm bias
         """
@@ -74,11 +74,11 @@ class ProcessWeights:
         ln_weight: torch.Tensor,
     ) -> torch.Tensor:
         """Fold LayerNorm weight into a single attention weight.
-        
+
         Args:
             w_tensor: Weight tensor [n_heads, d_model, d_head]
             ln_weight: LayerNorm weight [d_model]
-            
+
         Returns:
             New weight tensor with folded LayerNorm weight
         """
@@ -89,10 +89,10 @@ class ProcessWeights:
         w_tensor: torch.Tensor,
     ) -> torch.Tensor:
         """Center a single attention weight by subtracting the mean.
-        
+
         Args:
             w_tensor: Weight tensor [n_heads, d_model, d_head]
-            
+
         Returns:
             Centered weight tensor
         """
@@ -111,19 +111,19 @@ class ProcessWeights:
         ln_bias: torch.Tensor,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Fold LayerNorm bias into attention biases.
-        
+
         Args:
             wq_tensor, wk_tensor, wv_tensor: Weight tensors [n_heads, d_model, d_head]
             bq_tensor, bk_tensor, bv_tensor: Bias tensors [n_heads, d_head]
             ln_bias: LayerNorm bias [d_model]
-            
+
         Returns:
             Tuple of (new_bq, new_bk, new_bv) with folded biases
         """
         new_bq = ProcessWeights.fold_layer_norm_bias_single(wq_tensor, bq_tensor, ln_bias)
         new_bk = ProcessWeights.fold_layer_norm_bias_single(wk_tensor, bk_tensor, ln_bias)
         new_bv = ProcessWeights.fold_layer_norm_bias_single(wv_tensor, bv_tensor, ln_bias)
-        
+
         return new_bq, new_bk, new_bv
 
     @staticmethod
@@ -134,18 +134,18 @@ class ProcessWeights:
         ln_weight: torch.Tensor,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Fold LayerNorm weight into attention weights.
-        
+
         Args:
             wq_tensor, wk_tensor, wv_tensor: Weight tensors [n_heads, d_model, d_head]
             ln_weight: LayerNorm weight [d_model]
-            
+
         Returns:
             Tuple of (new_wq, new_wk, new_wv) with folded weights
         """
         new_wq = ProcessWeights.fold_layer_norm_weight_single(wq_tensor, ln_weight)
         new_wk = ProcessWeights.fold_layer_norm_weight_single(wk_tensor, ln_weight)
         new_wv = ProcessWeights.fold_layer_norm_weight_single(wv_tensor, ln_weight)
-        
+
         return new_wq, new_wk, new_wv
 
     @staticmethod
@@ -155,21 +155,23 @@ class ProcessWeights:
         wv_tensor: torch.Tensor,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Center attention weights by subtracting the mean.
-        
+
         Args:
             wq_tensor, wk_tensor, wv_tensor: Weight tensors [n_heads, d_model, d_head]
-            
+
         Returns:
             Tuple of (centered_wq, centered_wk, centered_wv)
         """
         centered_wq = ProcessWeights.center_weight_single(wq_tensor)
         centered_wk = ProcessWeights.center_weight_single(wk_tensor)
         centered_wv = ProcessWeights.center_weight_single(wv_tensor)
-        
+
         return centered_wq, centered_wk, centered_wv
 
     @staticmethod
-    def _detect_state_dict_format(state_dict: Dict[str, torch.Tensor], layer: int, adapter) -> tuple[bool, bool]:
+    def _detect_state_dict_format(
+        state_dict: Dict[str, torch.Tensor], layer: int, adapter
+    ) -> tuple[bool, bool]:
         """Detect whether state_dict uses TransformerLens or HuggingFace format.
 
         Args:
@@ -219,7 +221,9 @@ class ProcessWeights:
         ln1_w_key = ProcessWeights._get_param_key(f"blocks.{layer}.ln1.w", adapter)
 
         # Determine the actual format of the state_dict to avoid key mismatch
-        uses_tl_format, uses_hf_format = ProcessWeights._detect_state_dict_format(state_dict, layer, adapter)
+        uses_tl_format, uses_hf_format = ProcessWeights._detect_state_dict_format(
+            state_dict, layer, adapter
+        )
 
         # Extract tensors based on actual format detection, not just adapter presence
         if adapter and uses_hf_format and not uses_tl_format:
@@ -260,25 +264,25 @@ class ProcessWeights:
             ln1_w = state_dict.get(ln1_w_key, None)
 
         return {
-            'wq': wq_tensor,
-            'wk': wk_tensor,
-            'wv': wv_tensor,
-            'bq': bq_tensor,
-            'bk': bk_tensor,
-            'bv': bv_tensor,
-            'ln1_b': ln1_b,
-            'ln1_w': ln1_w,
+            "wq": wq_tensor,
+            "wk": wk_tensor,
+            "wv": wv_tensor,
+            "bq": bq_tensor,
+            "bk": bk_tensor,
+            "bv": bv_tensor,
+            "ln1_b": ln1_b,
+            "ln1_w": ln1_w,
             # Store the actual keys used based on format detection
-            'keys': {
-                'W_Q': f"blocks.{layer}.attn.W_Q",
-                'W_K': f"blocks.{layer}.attn.W_K",
-                'W_V': f"blocks.{layer}.attn.W_V",
-                'b_Q': f"blocks.{layer}.attn.b_Q",
-                'b_K': f"blocks.{layer}.attn.b_K",
-                'b_V': f"blocks.{layer}.attn.b_V",
-                'ln1_b': f"blocks.{layer}.ln1.b",
-                'ln1_w': f"blocks.{layer}.ln1.w",
-            }
+            "keys": {
+                "W_Q": f"blocks.{layer}.attn.W_Q",
+                "W_K": f"blocks.{layer}.attn.W_K",
+                "W_V": f"blocks.{layer}.attn.W_V",
+                "b_Q": f"blocks.{layer}.attn.b_Q",
+                "b_K": f"blocks.{layer}.attn.b_K",
+                "b_V": f"blocks.{layer}.attn.b_V",
+                "ln1_b": f"blocks.{layer}.ln1.b",
+                "ln1_w": f"blocks.{layer}.ln1.w",
+            },
         }
 
     @staticmethod
@@ -308,17 +312,17 @@ class ProcessWeights:
         tensors = ProcessWeights.extract_attention_tensors_for_folding(
             state_dict, cfg, layer, adapter
         )
-        
+
         # Get local variables for clean processing
-        wq_tensor = tensors['wq']
-        wk_tensor = tensors['wk']
-        wv_tensor = tensors['wv']
-        bq_tensor = tensors['bq']
-        bk_tensor = tensors['bk']
-        bv_tensor = tensors['bv']
-        ln1_b = tensors['ln1_b']
-        ln1_w = tensors['ln1_w']
-        keys = tensors['keys']
+        wq_tensor = tensors["wq"]
+        wk_tensor = tensors["wk"]
+        wv_tensor = tensors["wv"]
+        bq_tensor = tensors["bq"]
+        bk_tensor = tensors["bk"]
+        bv_tensor = tensors["bv"]
+        ln1_b = tensors["ln1_b"]
+        ln1_w = tensors["ln1_w"]
+        keys = tensors["keys"]
 
         # Apply layer norm folding if parameters exist
         if ln1_b is not None and ln1_w is not None:
@@ -328,15 +332,15 @@ class ProcessWeights:
                 bq_tensor, bk_tensor, bv_tensor = ProcessWeights.fold_layer_norm_biases(
                     wq_tensor, wk_tensor, wv_tensor, bq_tensor, bk_tensor, bv_tensor, ln1_b
                 )
-                if keys['ln1_b'] in state_dict:
-                    del state_dict[keys['ln1_b']]
+                if keys["ln1_b"] in state_dict:
+                    del state_dict[keys["ln1_b"]]
 
             # TODO this is causing slight divergence
             wq_tensor, wk_tensor, wv_tensor = ProcessWeights.fold_layer_norm_weights(
                 wq_tensor, wk_tensor, wv_tensor, ln1_w
             )
-            if keys['ln1_w'] in state_dict:
-                del state_dict[keys['ln1_w']]
+            if keys["ln1_w"] in state_dict:
+                del state_dict[keys["ln1_w"]]
 
         # Center the weights if requested
         if center_weights:
@@ -346,8 +350,17 @@ class ProcessWeights:
 
         # Store processed tensors back to state dict
         ProcessWeights._store_processed_attention_tensors(
-            state_dict, keys, wq_tensor, wk_tensor, wv_tensor, bq_tensor, bk_tensor, bv_tensor, 
-            adapter, cfg, layer
+            state_dict,
+            keys,
+            wq_tensor,
+            wk_tensor,
+            wv_tensor,
+            bq_tensor,
+            bk_tensor,
+            bv_tensor,
+            adapter,
+            cfg,
+            layer,
         )
 
         # # Fold ln2 into MLP
@@ -378,21 +391,29 @@ class ProcessWeights:
             return
 
         # Determine the actual format of the state_dict to avoid key mismatch
-        uses_tl_format, uses_hf_format = ProcessWeights._detect_state_dict_format(state_dict, layer, adapter)
+        uses_tl_format, uses_hf_format = ProcessWeights._detect_state_dict_format(
+            state_dict, layer, adapter
+        )
 
         # Get appropriate MLP parameter keys based on format detection
         if uses_tl_format:
             # State dict is in TransformerLens format - use TL keys directly
             mlp_b_in_key = f"blocks.{layer}.mlp.b_in"
             mlp_W_in_key = f"blocks.{layer}.mlp.W_in"
-            mlp_W_gate_key = f"blocks.{layer}.mlp.W_gate" if getattr(cfg, "gated_mlp", False) else None
+            mlp_W_gate_key = (
+                f"blocks.{layer}.mlp.W_gate" if getattr(cfg, "gated_mlp", False) else None
+            )
             ln2_b_key = f"blocks.{layer}.ln2.b"
             ln2_w_key = f"blocks.{layer}.ln2.w"
         else:
             # State dict is in HuggingFace format - use translated keys
             mlp_b_in_key = ProcessWeights._get_param_key(f"blocks.{layer}.mlp.b_in", adapter)
             mlp_W_in_key = ProcessWeights._get_param_key(f"blocks.{layer}.mlp.W_in", adapter)
-            mlp_W_gate_key = ProcessWeights._get_param_key(f"blocks.{layer}.mlp.W_gate", adapter) if getattr(cfg, "gated_mlp", False) else None
+            mlp_W_gate_key = (
+                ProcessWeights._get_param_key(f"blocks.{layer}.mlp.W_gate", adapter)
+                if getattr(cfg, "gated_mlp", False)
+                else None
+            )
             ln2_b_key = ProcessWeights._get_param_key(f"blocks.{layer}.ln2.b", adapter)
             ln2_w_key = ProcessWeights._get_param_key(f"blocks.{layer}.ln2.w", adapter)
 
@@ -517,7 +538,9 @@ class ProcessWeights:
 
                 # Update state dict with combined format
                 state_dict[hf_w_q_key] = new_qkv_weight
-                state_dict[adapter.translate_transformer_lens_path(f"blocks.{layer}.attn.b_Q")] = new_qkv_bias
+                state_dict[
+                    adapter.translate_transformer_lens_path(f"blocks.{layer}.attn.b_Q")
+                ] = new_qkv_bias
             else:
                 # Separate Q, K, V format - convert back individually
                 # Get translated keys for separate format
@@ -527,7 +550,7 @@ class ProcessWeights:
                 hf_b_q_key = adapter.translate_transformer_lens_path(f"blocks.{layer}.attn.b_Q")
                 hf_b_k_key = adapter.translate_transformer_lens_path(f"blocks.{layer}.attn.b_K")
                 hf_b_v_key = adapter.translate_transformer_lens_path(f"blocks.{layer}.attn.b_V")
-                
+
                 state_dict[hf_w_q_key] = ProcessWeights.convert_tensor_to_hf_format(
                     wq_tensor, f"blocks.{layer}.attn.W_Q", adapter, cfg, layer
                 )
@@ -548,12 +571,12 @@ class ProcessWeights:
                 )
         else:
             # Store directly (TransformerLens format)
-            state_dict[keys['W_Q']] = wq_tensor
-            state_dict[keys['W_K']] = wk_tensor
-            state_dict[keys['W_V']] = wv_tensor
-            state_dict[keys['b_Q']] = bq_tensor
-            state_dict[keys['b_K']] = bk_tensor
-            state_dict[keys['b_V']] = bv_tensor
+            state_dict[keys["W_Q"]] = wq_tensor
+            state_dict[keys["W_K"]] = wk_tensor
+            state_dict[keys["W_V"]] = wv_tensor
+            state_dict[keys["b_Q"]] = bq_tensor
+            state_dict[keys["b_K"]] = bk_tensor
+            state_dict[keys["b_V"]] = bv_tensor
 
     @staticmethod
     def _detect_unembed_format(state_dict: Dict[str, torch.Tensor], adapter) -> tuple[bool, bool]:
@@ -776,9 +799,7 @@ class ProcessWeights:
             )
 
         # Fold final RMS bias into unembedding (separate from regular unembed folding)
-        ProcessWeights._fold_final_rms_bias(
-            state_dict, cfg, fold_biases, adapter
-        )
+        ProcessWeights._fold_final_rms_bias(state_dict, cfg, fold_biases, adapter)
 
         # Fold ln_final into Unembed
         ProcessWeights._fold_unembed_layer_norm(
@@ -810,7 +831,9 @@ class ProcessWeights:
 
         # Determine the actual format of the state_dict to avoid key mismatch
         layer = 0  # Use layer 0 for format detection
-        uses_tl_format, uses_hf_format = ProcessWeights._detect_state_dict_format(state_dict, layer, adapter)
+        uses_tl_format, uses_hf_format = ProcessWeights._detect_state_dict_format(
+            state_dict, layer, adapter
+        )
 
         # Get parameter keys based on format detection
         if uses_tl_format and not uses_hf_format:
@@ -832,8 +855,10 @@ class ProcessWeights:
 
         # Validate that the embedding key exists before accessing it
         if embed_W_E_key not in state_dict:
-            raise KeyError(f"Expected embedding key '{embed_W_E_key}' not found in state_dict. "
-                         f"Available keys: {list(state_dict.keys())[:10]}...")
+            raise KeyError(
+                f"Expected embedding key '{embed_W_E_key}' not found in state_dict. "
+                f"Available keys: {list(state_dict.keys())[:10]}..."
+            )
 
         state_dict[embed_W_E_key] = state_dict[embed_W_E_key] - state_dict[embed_W_E_key].mean(
             -1, keepdim=True
@@ -841,8 +866,10 @@ class ProcessWeights:
         if getattr(cfg, "positional_embedding_type", "standard") != "rotary":
             # Validate that the positional embedding key exists before accessing it
             if pos_embed_W_pos_key not in state_dict:
-                raise KeyError(f"Expected positional embedding key '{pos_embed_W_pos_key}' not found in state_dict. "
-                             f"Available keys: {list(state_dict.keys())[:10]}...")
+                raise KeyError(
+                    f"Expected positional embedding key '{pos_embed_W_pos_key}' not found in state_dict. "
+                    f"Available keys: {list(state_dict.keys())[:10]}..."
+                )
             state_dict[pos_embed_W_pos_key] = state_dict[pos_embed_W_pos_key] - state_dict[
                 pos_embed_W_pos_key
             ].mean(-1, keepdim=True)
@@ -876,11 +903,15 @@ class ProcessWeights:
 
             # Validate that attention keys exist before accessing them
             if attn_W_O_key not in state_dict:
-                raise KeyError(f"Expected attention W_O key '{attn_W_O_key}' not found in state_dict for layer {l}. "
-                             f"Available keys: {list(state_dict.keys())[:10]}...")
+                raise KeyError(
+                    f"Expected attention W_O key '{attn_W_O_key}' not found in state_dict for layer {l}. "
+                    f"Available keys: {list(state_dict.keys())[:10]}..."
+                )
             if attn_b_O_key not in state_dict:
-                raise KeyError(f"Expected attention b_O key '{attn_b_O_key}' not found in state_dict for layer {l}. "
-                             f"Available keys: {list(state_dict.keys())[:10]}...")
+                raise KeyError(
+                    f"Expected attention b_O key '{attn_b_O_key}' not found in state_dict for layer {l}. "
+                    f"Available keys: {list(state_dict.keys())[:10]}..."
+                )
 
             state_dict[attn_W_O_key] = state_dict[attn_W_O_key] - state_dict[attn_W_O_key].mean(
                 -1, keepdim=True
@@ -891,11 +922,15 @@ class ProcessWeights:
             if not getattr(cfg, "attn_only", False):
                 # Validate that MLP keys exist before accessing them
                 if mlp_W_out_key not in state_dict:
-                    raise KeyError(f"Expected MLP W_out key '{mlp_W_out_key}' not found in state_dict for layer {l}. "
-                                 f"Available keys: {list(state_dict.keys())[:10]}...")
+                    raise KeyError(
+                        f"Expected MLP W_out key '{mlp_W_out_key}' not found in state_dict for layer {l}. "
+                        f"Available keys: {list(state_dict.keys())[:10]}..."
+                    )
                 if mlp_b_out_key not in state_dict:
-                    raise KeyError(f"Expected MLP b_out key '{mlp_b_out_key}' not found in state_dict for layer {l}. "
-                                 f"Available keys: {list(state_dict.keys())[:10]}...")
+                    raise KeyError(
+                        f"Expected MLP b_out key '{mlp_b_out_key}' not found in state_dict for layer {l}. "
+                        f"Available keys: {list(state_dict.keys())[:10]}..."
+                    )
 
                 state_dict[mlp_W_out_key] = state_dict[mlp_W_out_key] - state_dict[
                     mlp_W_out_key
@@ -950,8 +985,10 @@ class ProcessWeights:
 
         # Validate that the unembedding weight key exists before accessing it
         if unembed_W_U_key not in state_dict:
-            raise KeyError(f"Expected unembedding weight key '{unembed_W_U_key}' not found in state_dict. "
-                         f"Available keys: {list(state_dict.keys())[:10]}...")
+            raise KeyError(
+                f"Expected unembedding weight key '{unembed_W_U_key}' not found in state_dict. "
+                f"Available keys: {list(state_dict.keys())[:10]}..."
+            )
 
         state_dict[unembed_W_U_key] = state_dict[unembed_W_U_key] - state_dict[
             unembed_W_U_key
@@ -991,7 +1028,9 @@ class ProcessWeights:
 
         # Determine the actual format of the state_dict to avoid key mismatch
         layer = 0  # Use layer 0 for format detection
-        uses_tl_format, uses_hf_format = ProcessWeights._detect_state_dict_format(state_dict, layer, adapter)
+        uses_tl_format, uses_hf_format = ProcessWeights._detect_state_dict_format(
+            state_dict, layer, adapter
+        )
 
         for layer in range(cfg.n_layers):
             # Get parameter keys for this layer based on format detection
@@ -1024,7 +1063,9 @@ class ProcessWeights:
                     if getattr(cfg, "n_key_value_heads", None) is None:
                         b_V_key = ProcessWeights._get_param_key(f"blocks.{layer}.attn.b_V", adapter)
                     else:
-                        b_V_key = ProcessWeights._get_param_key(f"blocks.{layer}.attn._b_V", adapter)
+                        b_V_key = ProcessWeights._get_param_key(
+                            f"blocks.{layer}.attn._b_V", adapter
+                        )
                     W_O_key = ProcessWeights._get_param_key(f"blocks.{layer}.attn.W_O", adapter)
                     b_O_key = ProcessWeights._get_param_key(f"blocks.{layer}.attn.b_O", adapter)
 
@@ -1078,15 +1119,15 @@ class ProcessWeights:
                     n_heads = cfg.n_heads
                     d_head = cfg.d_head
                     d_model = cfg.d_model
-                    
+
                     if getattr(cfg, "n_key_value_heads", None) is not None:
                         b_V = torch.repeat_interleave(
                             b_V, dim=0, repeats=cfg.n_heads // cfg.n_key_value_heads
                         )
-                    
+
                     # Convert W_O from HuggingFace format [d_model, d_model] to TransformerLens format [n_heads, d_head, d_model]
                     W_O_reshaped = W_O.T.reshape(n_heads, d_head, d_model)
-                    
+
                     # Compute the folded bias: sum over heads and d_head dimensions
                     folded_b_O = b_O_original + (b_V[:, :, None] * W_O_reshaped).sum([0, 1])
                     state_dict[b_V_key] = torch.zeros_like(b_V)
@@ -1154,7 +1195,9 @@ class ProcessWeights:
 
         # Determine the actual format of the state_dict to avoid key mismatch
         layer = 0  # Use layer 0 for format detection
-        uses_tl_format, uses_hf_format = ProcessWeights._detect_state_dict_format(state_dict, layer, adapter)
+        uses_tl_format, uses_hf_format = ProcessWeights._detect_state_dict_format(
+            state_dict, layer, adapter
+        )
 
         for l in range(cfg.n_layers):
             # Get parameter keys for this layer based on format detection
@@ -1364,7 +1407,10 @@ class ProcessWeights:
         Returns:
             State dict in TransformerLens format
         """
-        if not hasattr(architecture_adapter, 'conversion_rules') or architecture_adapter.conversion_rules is None:
+        if (
+            not hasattr(architecture_adapter, "conversion_rules")
+            or architecture_adapter.conversion_rules is None
+        ):
             raise ValueError("Architecture adapter must have conversion_rules set")
 
         # Get the HF state dict
@@ -1377,7 +1423,9 @@ class ProcessWeights:
         tl_state_dict = {}
         conversion_rules = architecture_adapter.conversion_rules.fields
 
-        print(f"Converting {len(hf_state_dict)} HF weights to {len(target_keys)} target TL weights...")
+        print(
+            f"Converting {len(hf_state_dict)} HF weights to {len(target_keys)} target TL weights..."
+        )
 
         for tl_key in target_keys:
             # Find matching conversion rule (may use template format)
@@ -1390,7 +1438,7 @@ class ProcessWeights:
             else:
                 # Check for template match (e.g., "blocks.5.attn.W_Q" matches "blocks.{i}.attn.W_Q")
                 if "blocks." in tl_key:
-                    parts = tl_key.split('.')
+                    parts = tl_key.split(".")
                     if len(parts) >= 2 and parts[0] == "blocks":
                         try:
                             layer_idx = int(parts[1])
@@ -1403,7 +1451,12 @@ class ProcessWeights:
 
             if conversion_info is not None:
                 ProcessWeights._convert_single_weight(
-                    tl_key, conversion_info, hf_state_dict, tl_state_dict, layer_idx, architecture_adapter
+                    tl_key,
+                    conversion_info,
+                    hf_state_dict,
+                    tl_state_dict,
+                    layer_idx,
+                    architecture_adapter,
                 )
             else:
                 print(f"Warning: No conversion rule found for target key: {tl_key}")
@@ -1473,12 +1526,16 @@ class ProcessWeights:
         for key in keys:
             # Build template key by replacing indices with {i}
             template_key = key
-            parts = key.split('.')
+            parts = key.split(".")
 
             # Look for numeric parts and replace with {i} to match template format
             template_parts = []
             for i, part in enumerate(parts):
-                if i > 0 and parts[i-1] in component_mapping and component_mapping[parts[i-1]].is_list_item:
+                if (
+                    i > 0
+                    and parts[i - 1] in component_mapping
+                    and component_mapping[parts[i - 1]].is_list_item
+                ):
                     # Previous part was a list component, this should be an index
                     if part.isdigit():
                         template_parts.append("{i}")
@@ -1509,13 +1566,15 @@ class ProcessWeights:
         keys = []
 
         # Global keys
-        keys.extend([
-            "embed.W_E",
-            "pos_embed.W_pos",
-            "ln_final.w",
-            "ln_final.b",
-            "unembed.W_U",
-        ])
+        keys.extend(
+            [
+                "embed.W_E",
+                "pos_embed.W_pos",
+                "ln_final.w",
+                "ln_final.b",
+                "unembed.W_U",
+            ]
+        )
 
         # Layer-specific keys
         for layer_idx in range(cfg.n_layers):
@@ -1542,7 +1601,9 @@ class ProcessWeights:
         return keys
 
     @staticmethod
-    def _convert_single_weight(tl_key, conversion_info, hf_state_dict, tl_state_dict, layer_idx, architecture_adapter):
+    def _convert_single_weight(
+        tl_key, conversion_info, hf_state_dict, tl_state_dict, layer_idx, architecture_adapter
+    ):
         """Convert a single weight using the conversion rule."""
         # Handle different conversion_info formats
         if isinstance(conversion_info, str):
@@ -1580,74 +1641,85 @@ class ProcessWeights:
         - b_Q, b_K, b_V, b_O, b_in, b_out, b_U (for biases)
         """
         # TransformerLens keys typically have W_ or b_ patterns, or specific patterns like .w, .b
-        transformerlens_patterns = [
-            '.W_', '.b_', '.w', '.b', 'W_E', 'W_pos', 'W_U'
-        ]
+        transformerlens_patterns = [".W_", ".b_", ".w", ".b", "W_E", "W_pos", "W_U"]
 
         return any(pattern in key_template for pattern in transformerlens_patterns)
 
     @staticmethod
     def convert_tl_to_hf_format(tl_state_dict, cfg):
         """Convert TransformerLens format state dict back to HuggingFace format.
-        
+
         Args:
             tl_state_dict: State dict in TransformerLens format
             cfg: Model configuration object
-            
+
         Returns:
             State dict in HuggingFace format
         """
         import torch
+
         hf_state_dict = {}
 
         # Convert embeddings
-        if 'embed.W_E' in tl_state_dict:
-            hf_state_dict['transformer.wte.weight'] = tl_state_dict['embed.W_E']
-        if 'pos_embed.W_pos' in tl_state_dict:
-            hf_state_dict['transformer.wpe.weight'] = tl_state_dict['pos_embed.W_pos']
-        if 'unembed.W_U' in tl_state_dict:
-            hf_state_dict['lm_head.weight'] = tl_state_dict['unembed.W_U'].T
+        if "embed.W_E" in tl_state_dict:
+            hf_state_dict["transformer.wte.weight"] = tl_state_dict["embed.W_E"]
+        if "pos_embed.W_pos" in tl_state_dict:
+            hf_state_dict["transformer.wpe.weight"] = tl_state_dict["pos_embed.W_pos"]
+        if "unembed.W_U" in tl_state_dict:
+            hf_state_dict["lm_head.weight"] = tl_state_dict["unembed.W_U"].T
 
         # Convert final layer norm
-        if 'ln_final.w' in tl_state_dict:
-            hf_state_dict['transformer.ln_f.weight'] = tl_state_dict['ln_final.w']
-        if 'ln_final.b' in tl_state_dict:
-            hf_state_dict['transformer.ln_f.bias'] = tl_state_dict['ln_final.b']
+        if "ln_final.w" in tl_state_dict:
+            hf_state_dict["transformer.ln_f.weight"] = tl_state_dict["ln_final.w"]
+        if "ln_final.b" in tl_state_dict:
+            hf_state_dict["transformer.ln_f.bias"] = tl_state_dict["ln_final.b"]
 
         # Convert layers
         for layer_idx in range(cfg.n_layers):
-            layer_prefix = f'blocks.{layer_idx}'
-            hf_layer_prefix = f'transformer.h.{layer_idx}'
+            layer_prefix = f"blocks.{layer_idx}"
+            hf_layer_prefix = f"transformer.h.{layer_idx}"
 
             # Layer norms
-            if f'{layer_prefix}.ln1.w' in tl_state_dict:
-                hf_state_dict[f'{hf_layer_prefix}.ln_1.weight'] = tl_state_dict[f'{layer_prefix}.ln1.w']
-            if f'{layer_prefix}.ln1.b' in tl_state_dict:
-                hf_state_dict[f'{hf_layer_prefix}.ln_1.bias'] = tl_state_dict[f'{layer_prefix}.ln1.b']
-            if f'{layer_prefix}.ln2.w' in tl_state_dict:
-                hf_state_dict[f'{hf_layer_prefix}.ln_2.weight'] = tl_state_dict[f'{layer_prefix}.ln2.w']
-            if f'{layer_prefix}.ln2.b' in tl_state_dict:
-                hf_state_dict[f'{hf_layer_prefix}.ln_2.bias'] = tl_state_dict[f'{layer_prefix}.ln2.b']
+            if f"{layer_prefix}.ln1.w" in tl_state_dict:
+                hf_state_dict[f"{hf_layer_prefix}.ln_1.weight"] = tl_state_dict[
+                    f"{layer_prefix}.ln1.w"
+                ]
+            if f"{layer_prefix}.ln1.b" in tl_state_dict:
+                hf_state_dict[f"{hf_layer_prefix}.ln_1.bias"] = tl_state_dict[
+                    f"{layer_prefix}.ln1.b"
+                ]
+            if f"{layer_prefix}.ln2.w" in tl_state_dict:
+                hf_state_dict[f"{hf_layer_prefix}.ln_2.weight"] = tl_state_dict[
+                    f"{layer_prefix}.ln2.w"
+                ]
+            if f"{layer_prefix}.ln2.b" in tl_state_dict:
+                hf_state_dict[f"{hf_layer_prefix}.ln_2.bias"] = tl_state_dict[
+                    f"{layer_prefix}.ln2.b"
+                ]
 
             # Attention weights - convert TL separated format to HF combined format
-            if f'{layer_prefix}.attn.W_Q' in tl_state_dict:
-                W_Q = tl_state_dict[f'{layer_prefix}.attn.W_Q']  # [n_heads, d_model, d_head]
-                W_K = tl_state_dict[f'{layer_prefix}.attn.W_K']
-                W_V = tl_state_dict[f'{layer_prefix}.attn.W_V']
+            if f"{layer_prefix}.attn.W_Q" in tl_state_dict:
+                W_Q = tl_state_dict[f"{layer_prefix}.attn.W_Q"]  # [n_heads, d_model, d_head]
+                W_K = tl_state_dict[f"{layer_prefix}.attn.W_K"]
+                W_V = tl_state_dict[f"{layer_prefix}.attn.W_V"]
 
                 # Reshape and combine into HF format
                 # TL format: [n_heads, d_model, d_head] -> HF format: [d_model, n_heads * d_head]
-                W_Q_flat = W_Q.permute(1, 0, 2).reshape(W_Q.shape[1], -1)  # [d_model, n_heads * d_head]
+                W_Q_flat = W_Q.permute(1, 0, 2).reshape(
+                    W_Q.shape[1], -1
+                )  # [d_model, n_heads * d_head]
                 W_K_flat = W_K.permute(1, 0, 2).reshape(W_K.shape[1], -1)
                 W_V_flat = W_V.permute(1, 0, 2).reshape(W_V.shape[1], -1)
 
-                c_attn_weight = torch.cat([W_Q_flat, W_K_flat, W_V_flat], dim=1)  # [d_model, 3 * n_heads * d_head]
-                hf_state_dict[f'{hf_layer_prefix}.attn.c_attn.weight'] = c_attn_weight
+                c_attn_weight = torch.cat(
+                    [W_Q_flat, W_K_flat, W_V_flat], dim=1
+                )  # [d_model, 3 * n_heads * d_head]
+                hf_state_dict[f"{hf_layer_prefix}.attn.c_attn.weight"] = c_attn_weight
 
-            if f'{layer_prefix}.attn.b_Q' in tl_state_dict:
-                b_Q = tl_state_dict[f'{layer_prefix}.attn.b_Q']  # [n_heads, d_head]
-                b_K = tl_state_dict[f'{layer_prefix}.attn.b_K']
-                b_V = tl_state_dict[f'{layer_prefix}.attn.b_V']
+            if f"{layer_prefix}.attn.b_Q" in tl_state_dict:
+                b_Q = tl_state_dict[f"{layer_prefix}.attn.b_Q"]  # [n_heads, d_head]
+                b_K = tl_state_dict[f"{layer_prefix}.attn.b_K"]
+                b_V = tl_state_dict[f"{layer_prefix}.attn.b_V"]
 
                 # Flatten and combine
                 b_Q_flat = b_Q.reshape(-1)
@@ -1655,27 +1727,39 @@ class ProcessWeights:
                 b_V_flat = b_V.reshape(-1)
 
                 c_attn_bias = torch.cat([b_Q_flat, b_K_flat, b_V_flat], dim=0)
-                hf_state_dict[f'{hf_layer_prefix}.attn.c_attn.bias'] = c_attn_bias
+                hf_state_dict[f"{hf_layer_prefix}.attn.c_attn.bias"] = c_attn_bias
 
             # Attention output projection
-            if f'{layer_prefix}.attn.W_O' in tl_state_dict:
-                W_O = tl_state_dict[f'{layer_prefix}.attn.W_O']  # [n_heads, d_head, d_model]
+            if f"{layer_prefix}.attn.W_O" in tl_state_dict:
+                W_O = tl_state_dict[f"{layer_prefix}.attn.W_O"]  # [n_heads, d_head, d_model]
                 # TL format: [n_heads, d_head, d_model] -> HF format: [n_heads * d_head, d_model]
-                W_O_flat = W_O.reshape(W_O.shape[0] * W_O.shape[1], W_O.shape[2])  # [n_heads * d_head, d_model]
-                hf_state_dict[f'{hf_layer_prefix}.attn.c_proj.weight'] = W_O_flat
+                W_O_flat = W_O.reshape(
+                    W_O.shape[0] * W_O.shape[1], W_O.shape[2]
+                )  # [n_heads * d_head, d_model]
+                hf_state_dict[f"{hf_layer_prefix}.attn.c_proj.weight"] = W_O_flat
 
-            if f'{layer_prefix}.attn.b_O' in tl_state_dict:
-                hf_state_dict[f'{hf_layer_prefix}.attn.c_proj.bias'] = tl_state_dict[f'{layer_prefix}.attn.b_O']
+            if f"{layer_prefix}.attn.b_O" in tl_state_dict:
+                hf_state_dict[f"{hf_layer_prefix}.attn.c_proj.bias"] = tl_state_dict[
+                    f"{layer_prefix}.attn.b_O"
+                ]
 
             # MLP weights
-            if f'{layer_prefix}.mlp.W_in' in tl_state_dict:
-                hf_state_dict[f'{hf_layer_prefix}.mlp.c_fc.weight'] = tl_state_dict[f'{layer_prefix}.mlp.W_in']
-            if f'{layer_prefix}.mlp.b_in' in tl_state_dict:
-                hf_state_dict[f'{hf_layer_prefix}.mlp.c_fc.bias'] = tl_state_dict[f'{layer_prefix}.mlp.b_in']
-            if f'{layer_prefix}.mlp.W_out' in tl_state_dict:
-                hf_state_dict[f'{hf_layer_prefix}.mlp.c_proj.weight'] = tl_state_dict[f'{layer_prefix}.mlp.W_out']
-            if f'{layer_prefix}.mlp.b_out' in tl_state_dict:
-                hf_state_dict[f'{hf_layer_prefix}.mlp.c_proj.bias'] = tl_state_dict[f'{layer_prefix}.mlp.b_out']
+            if f"{layer_prefix}.mlp.W_in" in tl_state_dict:
+                hf_state_dict[f"{hf_layer_prefix}.mlp.c_fc.weight"] = tl_state_dict[
+                    f"{layer_prefix}.mlp.W_in"
+                ]
+            if f"{layer_prefix}.mlp.b_in" in tl_state_dict:
+                hf_state_dict[f"{hf_layer_prefix}.mlp.c_fc.bias"] = tl_state_dict[
+                    f"{layer_prefix}.mlp.b_in"
+                ]
+            if f"{layer_prefix}.mlp.W_out" in tl_state_dict:
+                hf_state_dict[f"{hf_layer_prefix}.mlp.c_proj.weight"] = tl_state_dict[
+                    f"{layer_prefix}.mlp.W_out"
+                ]
+            if f"{layer_prefix}.mlp.b_out" in tl_state_dict:
+                hf_state_dict[f"{hf_layer_prefix}.mlp.c_proj.bias"] = tl_state_dict[
+                    f"{layer_prefix}.mlp.b_out"
+                ]
 
         return hf_state_dict
 
@@ -1691,10 +1775,10 @@ class ProcessWeights:
         adapter=None,
     ) -> Dict[str, torch.Tensor]:
         """Apply weight processing with format conversion for bridge models.
-        
+
         This method is specifically designed for TransformerBridge models that need
         to convert between HuggingFace and TransformerLens formats during processing.
-        
+
         Args:
             hf_state_dict: State dict in HuggingFace format
             cfg: Model configuration object
@@ -1704,14 +1788,14 @@ class ProcessWeights:
             fold_value_biases: Whether to fold value biases
             refactor_factored_attn_matrices: Whether to refactor attention matrices
             adapter: Optional architecture adapter (if provided, enables format conversion)
-            
+
         Returns:
             State dict in HuggingFace format after processing
         """
         if adapter is not None:
             # Step 1: Convert HuggingFace format to TransformerLens format
             tl_state_dict = ProcessWeights.convert_hf_to_tl_format(hf_state_dict, cfg)
-            
+
             # Step 2: Apply ProcessWeights processing to TL format state dict
             processed_tl_state_dict = ProcessWeights.process_weights(
                 tl_state_dict,
@@ -1723,10 +1807,12 @@ class ProcessWeights:
                 refactor_factored_attn_matrices=refactor_factored_attn_matrices,
                 adapter=None,  # No adapter needed for TL format
             )
-            
+
             # Step 3: Convert processed TL format back to HF format
-            processed_hf_state_dict = ProcessWeights.convert_tl_to_hf_format(processed_tl_state_dict, cfg)
-            
+            processed_hf_state_dict = ProcessWeights.convert_tl_to_hf_format(
+                processed_tl_state_dict, cfg
+            )
+
             return processed_hf_state_dict
         else:
             # No adapter provided, use standard processing
@@ -1747,7 +1833,7 @@ class ProcessWeights:
 
         Since HookedTransformer's processing has minimal effect (only 0.000011 difference),
         we apply a tiny offset to match this effect, including proper ablation behavior.
-        
+
         Args:
             module: The PyTorch module to apply offsets to
             cfg: Model configuration object
@@ -1755,20 +1841,20 @@ class ProcessWeights:
         import torch
 
         # Add a tiny offset to the token embedding to match HookedTransformer baseline
-        if hasattr(module.transformer, 'wte') and hasattr(module.transformer.wte, 'weight'):
+        if hasattr(module.transformer, "wte") and hasattr(module.transformer.wte, "weight"):
             baseline_offset = torch.full_like(module.transformer.wte.weight, 1e-5)
             module.transformer.wte.weight.data += baseline_offset
 
         # Also add a small offset to attention output projections to ensure ablation effects match
         # This helps ensure that when attention heads are ablated, the effect matches HookedTransformer
-        for layer_idx in range(getattr(cfg, 'n_layers', 12)):
-            if hasattr(module.transformer, 'h') and layer_idx < len(module.transformer.h):
+        for layer_idx in range(getattr(cfg, "n_layers", 12)):
+            if hasattr(module.transformer, "h") and layer_idx < len(module.transformer.h):
                 layer = module.transformer.h[layer_idx]
-                if hasattr(layer, 'attn') and hasattr(layer.attn, 'c_proj'):
+                if hasattr(layer, "attn") and hasattr(layer.attn, "c_proj"):
                     # Add small offset to attention output projection
                     attn_offset = torch.full_like(layer.attn.c_proj.weight, 5e-6)
                     layer.attn.c_proj.weight.data += attn_offset
-                    if hasattr(layer.attn.c_proj, 'bias') and layer.attn.c_proj.bias is not None:
+                    if hasattr(layer.attn.c_proj, "bias") and layer.attn.c_proj.bias is not None:
                         bias_offset = torch.full_like(layer.attn.c_proj.bias, 5e-6)
                         layer.attn.c_proj.bias.data += attn_offset
 
@@ -2131,7 +2217,7 @@ class ProcessWeights:
         center_unembed: bool = False,
         fold_value_biases: bool = False,
         refactor_factored_attn_matrices: bool = False,
-        bypass_default_processing: Optional[Dict[str, bool]] = None
+        bypass_default_processing: Optional[Dict[str, bool]] = None,
     ) -> Dict[str, torch.Tensor]:
         """Process raw HuggingFace weights through custom components and general folding.
 
@@ -2170,6 +2256,7 @@ class ProcessWeights:
             # For now, just use the standard HookedTransformer processing approach
             # Create a HookedTransformer to get the standard TL weights
             from transformer_lens import HookedTransformer
+
             temp_hooked = HookedTransformer.from_pretrained(
                 "gpt2",  # Use the model name directly
                 device="cpu",
@@ -2177,7 +2264,7 @@ class ProcessWeights:
                 center_writing_weights=False,
                 center_unembed=False,
                 fold_value_biases=False,
-                refactor_factored_attn_matrices=False
+                refactor_factored_attn_matrices=False,
             )
             all_tl_weights = temp_hooked.state_dict()
 
@@ -2188,32 +2275,39 @@ class ProcessWeights:
             processed_weights = all_tl_weights
         else:
             # Fall back to direct copy for HookedTransformer case
-            remaining_weights = {k: v for k, v in raw_hf_state_dict.items()
-                               if k not in processed_weights}
+            remaining_weights = {
+                k: v for k, v in raw_hf_state_dict.items() if k not in processed_weights
+            }
             processed_weights.update(remaining_weights)
 
         # Step 3: Apply standard processing pipeline (with bypass support)
-        if not bypass_default_processing.get('fold_ln', False) and fold_ln:
+        if not bypass_default_processing.get("fold_ln", False) and fold_ln:
             processed_weights = ProcessWeights.fold_layer_norm(
                 processed_weights, cfg, adapter=architecture_adapter
             )
 
-        if not bypass_default_processing.get('center_writing_weights', False) and center_writing_weights:
+        if (
+            not bypass_default_processing.get("center_writing_weights", False)
+            and center_writing_weights
+        ):
             processed_weights = ProcessWeights.center_writing_weights(
                 processed_weights, cfg, adapter=architecture_adapter
             )
 
-        if not bypass_default_processing.get('center_unembed', False) and center_unembed:
+        if not bypass_default_processing.get("center_unembed", False) and center_unembed:
             processed_weights = ProcessWeights.center_unembed(
                 processed_weights, architecture_adapter or cfg
             )
 
-        if not bypass_default_processing.get('fold_value_biases', False) and fold_value_biases:
+        if not bypass_default_processing.get("fold_value_biases", False) and fold_value_biases:
             processed_weights = ProcessWeights.fold_value_biases(
                 processed_weights, cfg, adapter=architecture_adapter
             )
 
-        if not bypass_default_processing.get('refactor_factored_attn_matrices', False) and refactor_factored_attn_matrices:
+        if (
+            not bypass_default_processing.get("refactor_factored_attn_matrices", False)
+            and refactor_factored_attn_matrices
+        ):
             processed_weights = ProcessWeights.refactor_factored_attn_matrices(
                 processed_weights, cfg, adapter=architecture_adapter
             )
@@ -2222,8 +2316,7 @@ class ProcessWeights:
 
     @staticmethod
     def _run_custom_component_processing(
-        hf_state_dict: Dict[str, torch.Tensor],
-        adapter
+        hf_state_dict: Dict[str, torch.Tensor], adapter
     ) -> Dict[str, torch.Tensor]:
         """Run custom weight processing for each component that supports it."""
         processed_weights = {}
@@ -2233,7 +2326,7 @@ class ProcessWeights:
 
         # Process each component that has custom weight processing
         for component_name, component in component_mapping.items():
-            if hasattr(component, 'custom_weight_processing'):
+            if hasattr(component, "custom_weight_processing"):
                 print(f"  Processing {component_name} with custom processing...")
 
                 # Determine prefix for this component
@@ -2246,7 +2339,7 @@ class ProcessWeights:
 
                         # Get subcomponents for this layer
                         for sub_name, sub_component in component.submodules.items():
-                            if hasattr(sub_component, 'custom_weight_processing'):
+                            if hasattr(sub_component, "custom_weight_processing"):
                                 sub_prefix = f"{layer_prefix}.{ProcessWeights._get_subcomponent_hf_prefix(sub_name)}"
                                 sub_weights = sub_component.custom_weight_processing(
                                     hf_state_dict, sub_prefix
@@ -2257,9 +2350,7 @@ class ProcessWeights:
                                     processed_weights[full_key] = weight
                 else:
                     # Run custom processing
-                    component_weights = component.custom_weight_processing(
-                        hf_state_dict, prefix
-                    )
+                    component_weights = component.custom_weight_processing(hf_state_dict, prefix)
 
                     # Add component prefix to weight keys
                     for key, weight in component_weights.items():
@@ -2279,32 +2370,25 @@ class ProcessWeights:
             "embed": "transformer.wte",
             "pos_embed": "transformer.wpe",
             "unembed": "lm_head",
-            "ln_final": "transformer.ln_f"
+            "ln_final": "transformer.ln_f",
         }
         return mapping.get(component_name, component_name)
 
     @staticmethod
     def _get_subcomponent_hf_prefix(sub_name: str) -> str:
         """Get HF prefix for subcomponent."""
-        mapping = {
-            "ln1": "ln_1",
-            "ln2": "ln_2",
-            "attn": "attn",
-            "mlp": "mlp"
-        }
+        mapping = {"ln1": "ln_1", "ln2": "ln_2", "attn": "attn", "mlp": "mlp"}
         return mapping.get(sub_name, sub_name)
 
     @staticmethod
     def _convert_remaining_via_adapter(
-        hf_state_dict: Dict[str, torch.Tensor],
-        already_processed: Dict[str, torch.Tensor],
-        adapter
+        hf_state_dict: Dict[str, torch.Tensor], already_processed: Dict[str, torch.Tensor], adapter
     ) -> Dict[str, torch.Tensor]:
         """Convert any remaining HF weights to TL format using adapter mapping."""
         remaining_weights = {}
 
         # Use existing conversion mapping from adapter if available
-        if hasattr(adapter, 'weight_mapping'):
+        if hasattr(adapter, "weight_mapping"):
             for tl_key, hf_source in adapter.weight_mapping.items():
                 if tl_key not in already_processed:
                     if isinstance(hf_source, str) and hf_source in hf_state_dict:
@@ -2312,7 +2396,7 @@ class ProcessWeights:
                     elif isinstance(hf_source, tuple) and hf_source[0] in hf_state_dict:
                         # Handle conversion rules
                         weight = hf_state_dict[hf_source[0]]
-                        if len(hf_source) > 1 and hasattr(hf_source[1], 'handle_conversion'):
+                        if len(hf_source) > 1 and hasattr(hf_source[1], "handle_conversion"):
                             weight = hf_source[1].handle_conversion(weight)
                         remaining_weights[tl_key] = weight
 

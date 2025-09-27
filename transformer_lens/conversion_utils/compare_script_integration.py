@@ -6,18 +6,18 @@ This module provides comprehensive testing to ensure that:
 3. All model variants produce equivalent outputs
 """
 
+from typing import Any, Dict, Optional
+
 import torch
-from typing import Dict, Any, Optional, Tuple
 from transformers import AutoModelForCausalLM
+
 from transformer_lens import HookedTransformer
-from transformer_lens.model_bridge.bridge import TransformerBridge
 from transformer_lens.conversion_utils.round_trip_validator import RoundTripValidator
+from transformer_lens.model_bridge.bridge import TransformerBridge
 
 
 def run_weight_processing_integration_test(
-    model_name: str = "gpt2",
-    device: str = "cpu",
-    test_tokens: Optional[torch.Tensor] = None
+    model_name: str = "gpt2", device: str = "cpu", test_tokens: Optional[torch.Tensor] = None
 ) -> Dict[str, Any]:
     """Run comprehensive integration test for weight processing workflow.
 
@@ -42,7 +42,7 @@ def run_weight_processing_integration_test(
         "loss_comparisons": {},
         "ablation_tests": {},
         "round_trip_validation": {},
-        "overall_success": False
+        "overall_success": False,
     }
 
     try:
@@ -64,9 +64,7 @@ def run_weight_processing_integration_test(
         # Test round-trip conversion
         print("Testing round-trip conversion...")
         if "bridge_processed" in models:
-            round_trip_results = _test_round_trip_conversion(
-                models["bridge_processed"], model_name
-            )
+            round_trip_results = _test_round_trip_conversion(models["bridge_processed"], model_name)
             results["round_trip_validation"] = round_trip_results
         else:
             results["round_trip_validation"] = {"error": "No processed bridge model available"}
@@ -91,15 +89,12 @@ def _load_all_model_variants(model_name: str, device: str) -> Dict[str, Any]:
     # HookedTransformer with processing
     print("  Loading HookedTransformer with processing...")
     models["hooked_processed"] = HookedTransformer.from_pretrained(
-        model_name, device=device, fold_ln=True, center_writing_weights=True,
-        fold_value_biases=True
+        model_name, device=device, fold_ln=True, center_writing_weights=True, fold_value_biases=True
     )
 
     # TransformerBridge with processing
     print("  Loading TransformerBridge with processing...")
-    models["bridge_processed"] = TransformerBridge.boot_transformers(
-        model_name, device=device
-    )
+    models["bridge_processed"] = TransformerBridge.boot_transformers(model_name, device=device)
 
     # Manual processing for comparison
     print("  Creating manual processed model...")
@@ -171,20 +166,22 @@ def _test_ablations(models: Dict[str, Any], test_tokens: torch.Tensor) -> Dict[s
                 original_output = model(test_tokens)
                 original_loss = torch.nn.functional.cross_entropy(
                     original_output[:, :-1, :].contiguous().view(-1, original_output.size(-1)),
-                    test_tokens[:, 1:].contiguous().view(-1)
+                    test_tokens[:, 1:].contiguous().view(-1),
                 ).item()
 
                 # Ablated output
-                ablated_output = model.run_with_hooks(test_tokens, fwd_hooks=[(hook_name, ablation_fn)])
+                ablated_output = model.run_with_hooks(
+                    test_tokens, fwd_hooks=[(hook_name, ablation_fn)]
+                )
                 ablated_loss = torch.nn.functional.cross_entropy(
                     ablated_output[:, :-1, :].contiguous().view(-1, ablated_output.size(-1)),
-                    test_tokens[:, 1:].contiguous().view(-1)
+                    test_tokens[:, 1:].contiguous().view(-1),
                 ).item()
 
                 ablation_results[name] = {
                     "original_loss": original_loss,
                     "ablated_loss": ablated_loss,
-                    "difference": ablated_loss - original_loss
+                    "difference": ablated_loss - original_loss,
                 }
                 print(f"    {name}: original={original_loss:.6f}, ablated={ablated_loss:.6f}")
 
@@ -215,9 +212,12 @@ def _test_round_trip_conversion(bridge_model: TransformerBridge, model_name: str
             sample_results = validator.validate_conversion_with_sample_keys(
                 processed_weights,
                 validator.converter.hf_to_tlens(
-                    validator.converter.tlens_to_hf(processed_weights, bridge_model.cfg, model_name),
-                    bridge_model.cfg, model_name
-                )
+                    validator.converter.tlens_to_hf(
+                        processed_weights, bridge_model.cfg, model_name
+                    ),
+                    bridge_model.cfg,
+                    model_name,
+                ),
             )
             results.update(sample_results)
 
@@ -241,8 +241,7 @@ def _determine_overall_success(results: Dict[str, Any]) -> bool:
     # Check if ablations worked
     ablation_results = results.get("ablation_tests", {})
     ablation_success = all(
-        isinstance(result, dict) and "error" not in result
-        for result in ablation_results.values()
+        isinstance(result, dict) and "error" not in result for result in ablation_results.values()
     )
     if not ablation_success:
         return False

@@ -9,32 +9,36 @@ conversion pipeline with real models and compare outputs.
 import unittest
 import warnings
 from unittest.mock import patch
-import tempfile
-import os
 
-import torch
 import numpy as np
+import torch
 
 # Mock transformers import to avoid dependency issues in testing
 try:
-    from transformers import AutoModelForCausalLM, AutoTokenizer
     TRANSFORMERS_AVAILABLE = True
 except ImportError:
     TRANSFORMERS_AVAILABLE = False
+
     # Create mock classes
     class AutoModelForCausalLM:
         @classmethod
         def from_pretrained(cls, *args, **kwargs):
             pass
+
     class AutoTokenizer:
         @classmethod
         def from_pretrained(cls, *args, **kwargs):
             pass
 
+
 from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
-from transformer_lens.conversion_utils.reversible_weight_converter import ReversibleWeightConverter
+from transformer_lens.conversion_utils.compare_script_integration import (
+    CompareScriptIntegration,
+)
+from transformer_lens.conversion_utils.reversible_weight_converter import (
+    ReversibleWeightConverter,
+)
 from transformer_lens.conversion_utils.round_trip_validator import RoundTripValidator
-from transformer_lens.conversion_utils.compare_script_integration import CompareScriptIntegration
 
 
 class MockModel:
@@ -163,7 +167,7 @@ class MockTransformerBridge:
             d_head=64,
             d_mlp=3072,
             act_fn="gelu",
-            normalization_type="LN"
+            normalization_type="LN",
         )
 
     def to_tokens(self, text):
@@ -201,7 +205,7 @@ class TestRoundTripValidationIntegration(unittest.TestCase):
             d_head=64,
             d_mlp=3072,
             act_fn="gelu",
-            normalization_type="LN"
+            normalization_type="LN",
         )
 
     def create_mock_hf_state_dict(self):
@@ -240,10 +244,16 @@ class TestRoundTripValidationIntegration(unittest.TestCase):
 
         return state_dict
 
-    @patch('transformer_lens.conversion_utils.round_trip_validator.HookedTransformer', MockHookedTransformer)
-    @patch('transformer_lens.conversion_utils.round_trip_validator.TransformerBridge', MockTransformerBridge)
-    @patch('transformer_lens.conversion_utils.round_trip_validator.AutoModelForCausalLM')
-    @patch('transformer_lens.conversion_utils.round_trip_validator.AutoTokenizer')
+    @patch(
+        "transformer_lens.conversion_utils.round_trip_validator.HookedTransformer",
+        MockHookedTransformer,
+    )
+    @patch(
+        "transformer_lens.conversion_utils.round_trip_validator.TransformerBridge",
+        MockTransformerBridge,
+    )
+    @patch("transformer_lens.conversion_utils.round_trip_validator.AutoModelForCausalLM")
+    @patch("transformer_lens.conversion_utils.round_trip_validator.AutoTokenizer")
     def test_validate_model_round_trip_mocked(self, mock_tokenizer, mock_auto_model):
         """Test complete model round-trip validation with mocked components."""
         # Set up mocks
@@ -251,14 +261,18 @@ class TestRoundTripValidationIntegration(unittest.TestCase):
         mock_hf_model = MockModel(mock_hf_state_dict)
         mock_auto_model.from_pretrained.return_value = mock_hf_model
 
-        mock_tokenizer_instance = type('MockTokenizer', (), {
-            'pad_token': None,
-            'eos_token': '[EOS]',
-            '__call__': lambda self, text, **kwargs: {
-                'input_ids': torch.tensor([[1, 2, 3, 4, 5]]),
-                'attention_mask': torch.tensor([[1, 1, 1, 1, 1]])
-            }
-        })()
+        mock_tokenizer_instance = type(
+            "MockTokenizer",
+            (),
+            {
+                "pad_token": None,
+                "eos_token": "[EOS]",
+                "__call__": lambda self, text, **kwargs: {
+                    "input_ids": torch.tensor([[1, 2, 3, 4, 5]]),
+                    "attention_mask": torch.tensor([[1, 1, 1, 1, 1]]),
+                },
+            },
+        )()
         mock_tokenizer.from_pretrained.return_value = mock_tokenizer_instance
 
         # Run validation
@@ -275,7 +289,7 @@ class TestRoundTripValidationIntegration(unittest.TestCase):
         # Test embedding conversion
         hf_weights = {
             "transformer.wte.weight": torch.randn(50257, 768),
-            "transformer.wpe.weight": torch.randn(1024, 768)
+            "transformer.wpe.weight": torch.randn(1024, 768),
         }
 
         result = self.validator.validate_component_round_trip(
@@ -288,9 +302,7 @@ class TestRoundTripValidationIntegration(unittest.TestCase):
     def test_debug_failed_conversion(self):
         """Test debugging functionality for failed conversions."""
         # Create weights that will cause issues
-        problematic_weights = {
-            "transformer.wte.weight": torch.randn(100, 768)  # Wrong vocab size
-        }
+        problematic_weights = {"transformer.wte.weight": torch.randn(100, 768)}  # Wrong vocab size
 
         # This should complete without crashing
         debug_info = self.converter.debug_conversion_mismatch(
@@ -327,13 +339,16 @@ class TestRoundTripValidationIntegration(unittest.TestCase):
             ("meta-llama/Llama-2-7b-hf", "llama"),
             ("mistralai/Mistral-7B-v0.1", "mistral"),
             ("google/gemma-7b", "gemma"),
-            ("unknown-model", "gpt2")  # Default fallback
+            ("unknown-model", "gpt2"),  # Default fallback
         ]
 
         for model_name, expected_type in test_cases:
             inferred_type = self.validator._infer_model_type(model_name)
-            self.assertEqual(inferred_type, expected_type,
-                           f"Failed for {model_name}: expected {expected_type}, got {inferred_type}")
+            self.assertEqual(
+                inferred_type,
+                expected_type,
+                f"Failed for {model_name}: expected {expected_type}, got {inferred_type}",
+            )
 
     def test_weight_shape_validation(self):
         """Test validation of weight shapes during conversion."""
@@ -360,7 +375,7 @@ class TestRoundTripValidationIntegration(unittest.TestCase):
         # Create weights with different dtypes
         hf_weights = {
             "transformer.wte.weight": torch.randn(50257, 768, dtype=torch.float16),
-            "lm_head.weight": torch.randn(50257, 768, dtype=torch.float32)
+            "lm_head.weight": torch.randn(50257, 768, dtype=torch.float32),
         }
 
         # Convert and back
@@ -368,10 +383,10 @@ class TestRoundTripValidationIntegration(unittest.TestCase):
         recovered_hf = self.converter.tlens_to_hf(tlens_weights, self.config, "gpt2")
 
         # Check dtype preservation
-        self.assertEqual(hf_weights["transformer.wte.weight"].dtype,
-                        recovered_hf["transformer.wte.weight"].dtype)
-        self.assertEqual(hf_weights["lm_head.weight"].dtype,
-                        recovered_hf["lm_head.weight"].dtype)
+        self.assertEqual(
+            hf_weights["transformer.wte.weight"].dtype, recovered_hf["transformer.wte.weight"].dtype
+        )
+        self.assertEqual(hf_weights["lm_head.weight"].dtype, recovered_hf["lm_head.weight"].dtype)
 
 
 class TestCompareScriptIntegration(unittest.TestCase):
@@ -381,9 +396,15 @@ class TestCompareScriptIntegration(unittest.TestCase):
         """Set up test fixtures."""
         self.integration = CompareScriptIntegration(tolerance=1e-6)
 
-    @patch('transformer_lens.conversion_utils.compare_script_integration.HookedTransformer', MockHookedTransformer)
-    @patch('transformer_lens.conversion_utils.compare_script_integration.TransformerBridge', MockTransformerBridge)
-    @patch('transformer_lens.conversion_utils.compare_script_integration.AutoModelForCausalLM')
+    @patch(
+        "transformer_lens.conversion_utils.compare_script_integration.HookedTransformer",
+        MockHookedTransformer,
+    )
+    @patch(
+        "transformer_lens.conversion_utils.compare_script_integration.TransformerBridge",
+        MockTransformerBridge,
+    )
+    @patch("transformer_lens.conversion_utils.compare_script_integration.AutoModelForCausalLM")
     def test_run_original_comparison(self, mock_auto_model):
         """Test running the original comparison logic."""
         # Set up mock
@@ -408,13 +429,13 @@ class TestCompareScriptIntegration(unittest.TestCase):
             "round_trip_validation": {
                 "success": True,
                 "hf_to_tlens_round_trip": {"success": True},
-                "tlens_to_hf_round_trip": {"success": True}
+                "tlens_to_hf_round_trip": {"success": True},
             },
             "round_trip_comparison": {
                 "success": True,
                 "hf_round_trip_max_diff": 1e-7,
-                "tlens_round_trip_max_diff": 1e-7
-            }
+                "tlens_round_trip_max_diff": 1e-7,
+            },
         }
 
         report = self.integration.generate_validation_report(results)
@@ -451,14 +472,16 @@ class TestRealModelCompatibility(unittest.TestCase):
             d_vocab=50257,
             d_head=64,
             act_fn="gelu",
-            normalization_type="LN"
+            normalization_type="LN",
         )
 
         # Test that we can get expected keys
         embedding_keys = self.converter.embedding_converter.get_hf_keys(config, model_type="gpt2")
         self.assertIn("transformer.wte.weight", embedding_keys)
 
-        attention_keys = self.converter.attention_converter.get_hf_keys(config, layer_idx=0, model_type="gpt2")
+        attention_keys = self.converter.attention_converter.get_hf_keys(
+            config, layer_idx=0, model_type="gpt2"
+        )
         self.assertIn("transformer.h.0.attn.c_attn.weight", attention_keys)
 
     def test_llama_config_compatibility(self):
@@ -471,26 +494,22 @@ class TestRealModelCompatibility(unittest.TestCase):
             d_vocab=32000,
             d_head=128,
             act_fn="silu",
-            normalization_type="RMS"
+            normalization_type="RMS",
         )
 
         # Test that we can get expected keys
         embedding_keys = self.converter.embedding_converter.get_hf_keys(config, model_type="llama")
         self.assertIn("model.embed_tokens.weight", embedding_keys)
 
-        attention_keys = self.converter.attention_converter.get_hf_keys(config, layer_idx=0, model_type="llama")
+        attention_keys = self.converter.attention_converter.get_hf_keys(
+            config, layer_idx=0, model_type="llama"
+        )
         self.assertIn("model.layers.0.self_attn.q_proj.weight", attention_keys)
 
     def test_converter_key_consistency(self):
         """Test that converter key mappings are consistent."""
         config = HookedTransformerConfig(
-            d_model=768,
-            n_heads=12,
-            n_layers=2,
-            n_ctx=1024,
-            d_vocab=50257,
-            d_head=64,
-            act_fn="gelu"
+            d_model=768, n_heads=12, n_layers=2, n_ctx=1024, d_vocab=50257, d_head=64, act_fn="gelu"
         )
 
         # For each converter, check that get_hf_keys and get_tlens_keys are consistent
@@ -499,7 +518,7 @@ class TestRealModelCompatibility(unittest.TestCase):
             (self.converter.attention_converter, {"layer_idx": 0}),
             (self.converter.mlp_converter, {"layer_idx": 0}),
             (self.converter.norm_converter, {"layer_idx": 0, "norm_type": "ln1"}),
-            (self.converter.unembed_converter, {})
+            (self.converter.unembed_converter, {}),
         ]
 
         for converter, kwargs in converters:

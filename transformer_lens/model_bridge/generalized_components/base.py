@@ -171,10 +171,7 @@ class GeneralizedComponent(nn.Module):
         pass
 
     def custom_weight_processing(
-        self,
-        hf_state_dict: Dict[str, torch.Tensor],
-        component_prefix: str,
-        **processing_kwargs
+        self, hf_state_dict: Dict[str, torch.Tensor], component_prefix: str, **processing_kwargs
     ) -> Dict[str, torch.Tensor]:
         """Custom weight processing for component-specific transformations.
 

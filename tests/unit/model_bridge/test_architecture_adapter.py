@@ -678,64 +678,86 @@ def test_hf_key_filled_into_original_components():
 
     # Load a small model for testing
     bridge = TransformerBridge.boot_transformers("gpt2", device="cpu")
-    
+
     # Get the original state dict to see the _original_component structure
     original_state_dict = bridge.original_model.state_dict()
-    
+
     # Test cases: HF key -> expected _original_component key
     test_cases = [
-        ("transformer.h.0.attn.c_attn.weight", "transformer.h.0._original_component.attn._original_component.c_attn._original_component.weight"),
-        ("transformer.h.0.attn.c_attn.bias", "transformer.h.0._original_component.attn._original_component.c_attn._original_component.bias"),
-        ("transformer.h.0.mlp.c_fc.weight", "transformer.h.0._original_component.mlp._original_component.c_fc._original_component.weight"),
-        ("transformer.h.0.mlp.c_fc.bias", "transformer.h.0._original_component.mlp._original_component.c_fc._original_component.bias"),
+        (
+            "transformer.h.0.attn.c_attn.weight",
+            "transformer.h.0._original_component.attn._original_component.c_attn._original_component.weight",
+        ),
+        (
+            "transformer.h.0.attn.c_attn.bias",
+            "transformer.h.0._original_component.attn._original_component.c_attn._original_component.bias",
+        ),
+        (
+            "transformer.h.0.mlp.c_fc.weight",
+            "transformer.h.0._original_component.mlp._original_component.c_fc._original_component.weight",
+        ),
+        (
+            "transformer.h.0.mlp.c_fc.bias",
+            "transformer.h.0._original_component.mlp._original_component.c_fc._original_component.bias",
+        ),
         ("transformer.wte.weight", "transformer.wte._original_component.weight"),
         ("transformer.wpe.weight", "transformer.wpe._original_component.weight"),
         ("lm_head.weight", "lm_head._original_component.weight"),
     ]
-    
+
     for hf_key, expected_bridge_key in test_cases:
         # Convert the HF key to bridge key using the adapter
         converted_key = bridge.adapter.convert_hf_key_to_bridge_key(hf_key)
-        
+
         # Assert the conversion is correct
-        assert converted_key == expected_bridge_key, f"Key conversion failed for {hf_key}: got {converted_key}, expected {expected_bridge_key}"
-        
+        assert (
+            converted_key == expected_bridge_key
+        ), f"Key conversion failed for {hf_key}: got {converted_key}, expected {expected_bridge_key}"
+
         # Assert the converted key exists in the original model's state dict
-        assert converted_key in original_state_dict, f"Converted key {converted_key} not found in original model state dict"
-        
+        assert (
+            converted_key in original_state_dict
+        ), f"Converted key {converted_key} not found in original model state dict"
+
         # Test that we can actually load a value using this key
         # Create a test state dict with the HF key
         test_value = torch.randn_like(original_state_dict[converted_key])
         test_state_dict = {hf_key: test_value}
-        
+
         # Load it using the bridge's load_state_dict (which should convert the key)
         result = bridge.load_state_dict(test_state_dict, strict=False, assign=False)
-        
+
         # Assert no unexpected keys (meaning the conversion worked)
-        assert len(result.unexpected_keys) == 0, f"Unexpected keys found when loading {hf_key}: {result.unexpected_keys}"
-        
+        assert (
+            len(result.unexpected_keys) == 0
+        ), f"Unexpected keys found when loading {hf_key}: {result.unexpected_keys}"
+
         # Verify the value was actually loaded by checking if it changed
         # (We'll compare with a small tolerance due to floating point precision)
         loaded_value = bridge.original_model.state_dict()[converted_key]
-        assert torch.allclose(loaded_value, test_value, atol=1e-6), f"Value not properly loaded for key {hf_key}"
-    
-    print("✅ All HuggingFace keys properly converted and filled into _original_component structure!")
+        assert torch.allclose(
+            loaded_value, test_value, atol=1e-6
+        ), f"Value not properly loaded for key {hf_key}"
+
+    print(
+        "✅ All HuggingFace keys properly converted and filled into _original_component structure!"
+    )
 
 
 def test_correct_key_mapping():
     """Test correct key mapping for processed weights."""
     from transformer_lens.model_bridge import TransformerBridge
     from transformer_lens.weight_processing import ProcessWeights
-    
+
     model_name = "gpt2"
     device = "cpu"
-    
+
     # Load TransformerBridge
     bridge = TransformerBridge.boot_transformers(model_name, device=device)
-    
+
     # Get original weights
     original_state_dict = bridge._extract_hf_weights()
-    
+
     # Process weights
     processed_state_dict = ProcessWeights.process_weights(
         original_state_dict,
@@ -747,53 +769,63 @@ def test_correct_key_mapping():
         refactor_factored_attn_matrices=False,
         adapter=bridge.adapter,
     )
-    
+
     # Get bridge keys
     bridge_keys = list(bridge.original_model.state_dict().keys())
-    
+
     # Test specific key mapping
     layer = 0
     hf_key = f"transformer.h.{layer}.attn.c_attn.weight"
     expected_bridge_key = f"transformer.h.{layer}._original_component.attn._original_component.c_attn._original_component.weight"
-    
-    assert hf_key in processed_state_dict, f"HuggingFace key {hf_key} should exist in processed state dict"
-    assert expected_bridge_key in bridge_keys, f"Bridge key {expected_bridge_key} should exist in bridge state dict"
-    
+
+    assert (
+        hf_key in processed_state_dict
+    ), f"HuggingFace key {hf_key} should exist in processed state dict"
+    assert (
+        expected_bridge_key in bridge_keys
+    ), f"Bridge key {expected_bridge_key} should exist in bridge state dict"
+
     # Test key conversion using adapter
     converted_key = bridge.adapter.convert_hf_key_to_bridge_key(hf_key)
-    assert converted_key == expected_bridge_key, f"Key conversion failed: got {converted_key}, expected {expected_bridge_key}"
-    
+    assert (
+        converted_key == expected_bridge_key
+    ), f"Key conversion failed: got {converted_key}, expected {expected_bridge_key}"
+
     # Test that we can load the processed weight
     processed_weight = processed_state_dict[hf_key]
     bridge_weight = bridge.original_model.state_dict()[expected_bridge_key]
-    
-    assert processed_weight.shape == bridge_weight.shape, f"Shape mismatch: {processed_weight.shape} vs {bridge_weight.shape}"
-    
+
+    assert (
+        processed_weight.shape == bridge_weight.shape
+    ), f"Shape mismatch: {processed_weight.shape} vs {bridge_weight.shape}"
+
     # Test loading the weight
     mapped_state_dict = {expected_bridge_key: processed_weight}
     result = bridge.load_state_dict(mapped_state_dict, strict=False, assign=False)
-    
+
     assert len(result.unexpected_keys) == 0, f"Unexpected keys: {result.unexpected_keys}"
-    
+
     # Verify the weight was loaded
     loaded_weight = bridge.original_model.state_dict()[expected_bridge_key]
-    assert torch.allclose(loaded_weight, processed_weight, atol=1e-6), "Weight was not loaded correctly"
+    assert torch.allclose(
+        loaded_weight, processed_weight, atol=1e-6
+    ), "Weight was not loaded correctly"
 
 
 def test_adapter_key_mapping_comprehensive():
     """Test comprehensive key mapping using architecture adapter."""
     from transformer_lens.model_bridge import TransformerBridge
     from transformer_lens.weight_processing import ProcessWeights
-    
+
     model_name = "gpt2"
     device = "cpu"
-    
+
     # Load TransformerBridge
     bridge = TransformerBridge.boot_transformers(model_name, device=device)
-    
+
     # Get original weights
     original_state_dict = bridge._extract_hf_weights()
-    
+
     # Process weights
     processed_state_dict = ProcessWeights.process_weights(
         original_state_dict,
@@ -805,31 +837,37 @@ def test_adapter_key_mapping_comprehensive():
         refactor_factored_attn_matrices=False,
         adapter=bridge.adapter,
     )
-    
+
     # Get bridge keys
     bridge_keys = list(bridge.original_model.state_dict().keys())
-    
+
     # Test key conversion for all processed keys
     successful_conversions = 0
     total_conversions = 0
-    
+
     for processed_key, value in processed_state_dict.items():
         total_conversions += 1
-        
+
         # Convert HuggingFace key to bridge key using adapter
         bridge_key = bridge.adapter.convert_hf_key_to_bridge_key(processed_key)
-        
+
         if bridge_key in bridge_keys:
             successful_conversions += 1
-            
+
             # Test that we can load this weight
             mapped_state_dict = {bridge_key: value}
             result = bridge.load_state_dict(mapped_state_dict, strict=False, assign=False)
-            
+
             # Should have no unexpected keys
-            assert len(result.unexpected_keys) == 0, f"Unexpected keys for {processed_key}: {result.unexpected_keys}"
-    
+            assert (
+                len(result.unexpected_keys) == 0
+            ), f"Unexpected keys for {processed_key}: {result.unexpected_keys}"
+
     conversion_rate = successful_conversions / total_conversions
-    assert conversion_rate >= 0.8, f"Key conversion rate too low: {conversion_rate*100:.1f}% ({successful_conversions}/{total_conversions})"
-    
-    print(f"✅ Key conversion successful: {conversion_rate*100:.1f}% ({successful_conversions}/{total_conversions})")
+    assert (
+        conversion_rate >= 0.8
+    ), f"Key conversion rate too low: {conversion_rate*100:.1f}% ({successful_conversions}/{total_conversions})"
+
+    print(
+        f"✅ Key conversion successful: {conversion_rate*100:.1f}% ({successful_conversions}/{total_conversions})"
+    )

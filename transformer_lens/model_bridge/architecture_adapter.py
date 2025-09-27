@@ -819,34 +819,42 @@ class ArchitectureAdapter:
                 for subcomp_name, subcomponent in blocks_component.submodules.items():
                     try:
                         # Get the original subcomponent for this layer
-                        original_subcomponent = self.get_component(model, f"blocks.{layer_idx}.{subcomp_name}")
+                        original_subcomponent = self.get_component(
+                            model, f"blocks.{layer_idx}.{subcomp_name}"
+                        )
 
                         # Create a fresh instance using the configured component
                         component_class = type(subcomponent)
                         if subcomp_name in ["ln1", "ln2"]:
                             # Normalization components need config
-                            fresh_component = component_class(name=subcomponent.name, config=self.cfg)
+                            fresh_component = component_class(
+                                name=subcomponent.name, config=self.cfg
+                            )
                         elif subcomp_name == "attn":
                             # Attention component needs config and split function
-                            if hasattr(self, 'split_qkv_matrix'):
+                            if hasattr(self, "split_qkv_matrix"):
                                 fresh_component = component_class(
                                     name=subcomponent.name,
                                     config=self.cfg,
-                                    split_qkv_matrix=self.split_qkv_matrix
+                                    split_qkv_matrix=self.split_qkv_matrix,
                                 )
                             else:
                                 # Fallback for non-GPT2 architectures
                                 def dummy_split_qkv_matrix(attn_layer):
                                     return None, None, None
+
                                 fresh_component = component_class(
                                     name=subcomponent.name,
                                     config=self.cfg,
-                                    split_qkv_matrix=dummy_split_qkv_matrix
+                                    split_qkv_matrix=dummy_split_qkv_matrix,
                                 )
                         elif subcomp_name == "mlp":
                             # MLP component - process its subcomponents
-                            if hasattr(subcomponent, 'submodules'):
-                                for mlp_subcomp_name, mlp_subcomponent in subcomponent.submodules.items():
+                            if hasattr(subcomponent, "submodules"):
+                                for (
+                                    mlp_subcomp_name,
+                                    mlp_subcomponent,
+                                ) in subcomponent.submodules.items():
                                     try:
                                         # Get the original MLP subcomponent
                                         original_mlp_subcomp = self.get_component(
@@ -854,41 +862,106 @@ class ArchitectureAdapter:
                                         )
 
                                         # Create specialized linear component with correct key naming
-                                        from transformer_lens.model_bridge.generalized_components.linear import LinearBridge
-                                        if mlp_subcomp_name == "input":
-                                            class MLPInputLinearBridge(LinearBridge):
-                                                def process_weights(self, **kwargs):
-                                                    if self.original_component is None:
-                                                        return
-                                                    self._processed_weights = {
-                                                        "W_in": self.original_component.weight.clone(),
-                                                    }
-                                                    if hasattr(self.original_component, 'bias') and self.original_component.bias is not None:
-                                                        self._processed_weights["b_in"] = self.original_component.bias.clone()
-                                            mlp_fresh_component = MLPInputLinearBridge(name=mlp_subcomponent.name)
-                                        elif mlp_subcomp_name == "out":
-                                            class MLPOutputLinearBridge(LinearBridge):
-                                                def process_weights(self, **kwargs):
-                                                    if self.original_component is None:
-                                                        return
-                                                    self._processed_weights = {
-                                                        "W_out": self.original_component.weight.clone(),
-                                                    }
-                                                    if hasattr(self.original_component, 'bias') and self.original_component.bias is not None:
-                                                        self._processed_weights["b_out"] = self.original_component.bias.clone()
-                                            mlp_fresh_component = MLPOutputLinearBridge(name=mlp_subcomponent.name)
-                                        else:
-                                            mlp_fresh_component = LinearBridge(name=mlp_subcomponent.name)
+                                        from typing import Union
 
-                                        mlp_fresh_component.set_original_component(original_mlp_subcomp)
+                                        from transformer_lens.model_bridge.generalized_components.linear import (
+                                            LinearBridge,
+                                        )
+
+                                        mlp_fresh_component: Union[
+                                            "LinearBridge",
+                                            "MLPInputLinearBridge",
+                                            "MLPOutputLinearBridge",
+                                        ]
+
+                                        if mlp_subcomp_name == "input":
+
+                                            class MLPInputLinearBridge(LinearBridge):
+                                                def process_weights(
+                                                    self,
+                                                    fold_ln: bool = False,
+                                                    center_writing_weights: bool = False,
+                                                    center_unembed: bool = False,
+                                                    fold_value_biases: bool = False,
+                                                    refactor_factored_attn_matrices: bool = False,
+                                                    **kwargs,
+                                                ) -> None:
+                                                    if self.original_component is None:
+                                                        return
+                                                    weight_tensor = getattr(
+                                                        self.original_component, "weight", None
+                                                    )
+                                                    bias_tensor = getattr(
+                                                        self.original_component, "bias", None
+                                                    )
+                                                    processed_weights = {}
+                                                    if weight_tensor is not None:
+                                                        processed_weights[
+                                                            "W_in"
+                                                        ] = weight_tensor.clone()
+                                                    if bias_tensor is not None:
+                                                        processed_weights[
+                                                            "b_in"
+                                                        ] = bias_tensor.clone()
+                                                    self._processed_weights = processed_weights
+
+                                            mlp_fresh_component = MLPInputLinearBridge(
+                                                name=mlp_subcomponent.name
+                                            )
+                                        elif mlp_subcomp_name == "out":
+
+                                            class MLPOutputLinearBridge(LinearBridge):
+                                                def process_weights(
+                                                    self,
+                                                    fold_ln: bool = False,
+                                                    center_writing_weights: bool = False,
+                                                    center_unembed: bool = False,
+                                                    fold_value_biases: bool = False,
+                                                    refactor_factored_attn_matrices: bool = False,
+                                                    **kwargs,
+                                                ) -> None:
+                                                    if self.original_component is None:
+                                                        return
+                                                    weight_tensor = getattr(
+                                                        self.original_component, "weight", None
+                                                    )
+                                                    bias_tensor = getattr(
+                                                        self.original_component, "bias", None
+                                                    )
+                                                    processed_weights = {}
+                                                    if weight_tensor is not None:
+                                                        processed_weights[
+                                                            "W_out"
+                                                        ] = weight_tensor.clone()
+                                                    if bias_tensor is not None:
+                                                        processed_weights[
+                                                            "b_out"
+                                                        ] = bias_tensor.clone()
+                                                    self._processed_weights = processed_weights
+
+                                            mlp_fresh_component = MLPOutputLinearBridge(
+                                                name=mlp_subcomponent.name
+                                            )
+                                        else:
+                                            mlp_fresh_component = LinearBridge(
+                                                name=mlp_subcomponent.name
+                                            )
+
+                                        mlp_fresh_component.set_original_component(
+                                            original_mlp_subcomp
+                                        )
                                         mlp_fresh_component.process_weights()
                                         mlp_weights = mlp_fresh_component.get_processed_state_dict()
 
                                         # Add MLP weights with proper prefixes
                                         for key, value in mlp_weights.items():
-                                            tl_state_dict[f"blocks.{layer_idx}.mlp.{key}"] = value.clone()
+                                            tl_state_dict[
+                                                f"blocks.{layer_idx}.mlp.{key}"
+                                            ] = value.clone()
                                     except Exception as e:
-                                        print(f"Warning: Failed to process MLP subcomponent {mlp_subcomp_name} for layer {layer_idx}: {e}")
+                                        print(
+                                            f"Warning: Failed to process MLP subcomponent {mlp_subcomp_name} for layer {layer_idx}: {e}"
+                                        )
                             continue  # Skip the rest of the MLP processing
                         else:
                             # Unknown component type, use generic
@@ -901,10 +974,14 @@ class ArchitectureAdapter:
 
                         # Add weights with proper prefixes
                         for key, value in comp_weights.items():
-                            tl_state_dict[f"blocks.{layer_idx}.{subcomp_name}.{key}"] = value.clone()
+                            tl_state_dict[
+                                f"blocks.{layer_idx}.{subcomp_name}.{key}"
+                            ] = value.clone()
 
                     except Exception as e:
-                        print(f"Warning: Failed to process subcomponent {subcomp_name} for layer {layer_idx}: {e}")
+                        print(
+                            f"Warning: Failed to process subcomponent {subcomp_name} for layer {layer_idx}: {e}"
+                        )
 
             except Exception as e:
                 print(f"Warning: Failed to process layer {layer_idx}: {e}")
@@ -913,10 +990,10 @@ class ArchitectureAdapter:
 
     def convert_hf_key_to_bridge_key(self, hf_key: str) -> str:
         """Convert a HuggingFace-style key to a bridge key with _original_component references.
-        
+
         Args:
             hf_key: The HuggingFace-style key (e.g., "transformer.h.0.attn.c_attn.weight")
-            
+
         Returns:
             The bridge key with _original_component references (e.g., "transformer.h.0._original_component.attn._original_component.c_attn._original_component.weight")
         """
@@ -925,69 +1002,69 @@ class ArchitectureAdapter:
             parts = hf_key.split(".")
             if len(parts) >= 4 and parts[2].isdigit():
                 layer = parts[2]
-                
+
                 # Pattern: transformer.h.X.attn.c_attn.weight -> transformer.h.X._original_component.attn._original_component.c_attn._original_component.weight
                 if "attn.c_attn" in hf_key:
                     return f"transformer.h.{layer}._original_component.attn._original_component.c_attn._original_component.{parts[-1]}"
-                
+
                 # Pattern: transformer.h.X.attn.c_proj.weight -> transformer.h.X._original_component.attn._original_component.c_proj._original_component.weight
                 elif "attn.c_proj" in hf_key:
                     return f"transformer.h.{layer}._original_component.attn._original_component.c_proj._original_component.{parts[-1]}"
-                
+
                 # Pattern: transformer.h.X.mlp.c_fc.weight -> transformer.h.X._original_component.mlp._original_component.c_fc._original_component.weight
                 elif "mlp.c_fc" in hf_key:
                     return f"transformer.h.{layer}._original_component.mlp._original_component.c_fc._original_component.{parts[-1]}"
-                
+
                 # Pattern: transformer.h.X.mlp.c_proj.weight -> transformer.h.X._original_component.mlp._original_component.c_proj._original_component.weight
                 elif "mlp.c_proj" in hf_key:
                     return f"transformer.h.{layer}._original_component.mlp._original_component.c_proj._original_component.{parts[-1]}"
-                
+
                 # Pattern: transformer.h.X.attn.qkv.weight -> transformer.h.X._original_component.attn.qkv._original_component.weight
                 elif "attn.qkv" in hf_key:
                     return f"transformer.h.{layer}._original_component.attn.qkv._original_component.{parts[-1]}"
-                
+
                 # Pattern: transformer.h.X.attn.o.weight -> transformer.h.X._original_component.attn.o._original_component.weight
                 elif "attn.o" in hf_key:
                     return f"transformer.h.{layer}._original_component.attn.o._original_component.{parts[-1]}"
-                
+
                 # Pattern: transformer.h.X.mlp.input.weight -> transformer.h.X._original_component.mlp.input._original_component.weight
                 elif "mlp.input" in hf_key:
                     return f"transformer.h.{layer}._original_component.mlp.input._original_component.{parts[-1]}"
-                
+
                 # Pattern: transformer.h.X.mlp.out.weight -> transformer.h.X._original_component.mlp.out._original_component.weight
                 elif "mlp.out" in hf_key:
                     return f"transformer.h.{layer}._original_component.mlp.out._original_component.{parts[-1]}"
-                
+
                 # Pattern: transformer.h.X.ln1.weight -> transformer.h.X._original_component.ln1._original_component.weight
                 elif "ln1" in hf_key:
                     return f"transformer.h.{layer}._original_component.ln1._original_component.{parts[-1]}"
-                
+
                 # Pattern: transformer.h.X.ln2.weight -> transformer.h.X._original_component.ln2._original_component.weight
                 elif "ln2" in hf_key:
                     return f"transformer.h.{layer}._original_component.ln2._original_component.{parts[-1]}"
-                
+
                 # Pattern: transformer.h.X.ln_2.weight -> transformer.h.X._original_component.ln_2._original_component.weight
                 elif "ln_2" in hf_key:
                     return f"transformer.h.{layer}._original_component.ln_2._original_component.{parts[-1]}"
-        
+
         # Pattern: transformer.wte.weight -> transformer.wte._original_component.weight
         elif hf_key == "transformer.wte.weight":
             return "transformer.wte._original_component.weight"
-        
+
         # Pattern: transformer.wpe.weight -> transformer.wpe._original_component.weight
         elif hf_key == "transformer.wpe.weight":
             return "transformer.wpe._original_component.weight"
-        
+
         # Pattern: lm_head.weight -> lm_head._original_component.weight
         elif hf_key == "lm_head.weight":
             return "lm_head._original_component.weight"
-        
+
         # Pattern: transformer.ln_f.bias -> transformer.ln_f._original_component.bias
         elif "transformer.ln_f" in hf_key:
             if "weight" in hf_key:
                 return "transformer.ln_f._original_component.weight"
             elif "bias" in hf_key:
                 return "transformer.ln_f._original_component.bias"
-        
+
         # If no pattern matches, return the original key
         return hf_key

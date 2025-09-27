@@ -1227,57 +1227,53 @@ def test_mlp_layer_norm_folding():
     device = "cpu"
     model_name = "gpt2"
     layer = 0
-    
+
     # Load HookedTransformer
     hooked_model = HookedTransformer.from_pretrained(
-        model_name, 
-        device=device, 
-        fold_ln=False, 
-        center_writing_weights=False, 
-        center_unembed=False
+        model_name, device=device, fold_ln=False, center_writing_weights=False, center_unembed=False
     )
-    
+
     state_dict = hooked_model.state_dict()
     cfg = hooked_model.cfg
-    
+
     # Check if MLP parameters exist
     mlp_b_in_key = f"blocks.{layer}.mlp.b_in"
     mlp_W_in_key = f"blocks.{layer}.mlp.W_in"
     ln2_b_key = f"blocks.{layer}.ln2.b"
     ln2_w_key = f"blocks.{layer}.ln2.w"
-    
+
     if not all(key in state_dict for key in [mlp_b_in_key, mlp_W_in_key, ln2_b_key, ln2_w_key]):
         pytest.skip("MLP or LayerNorm parameters not found - cannot test")
-    
+
     # Test bias folding
     test_state_dict = {k: v.clone() for k, v in state_dict.items()}
-    
+
     # Get original values
     original_mlp_b_in = test_state_dict[mlp_b_in_key].clone()
     original_mlp_W_in = test_state_dict[mlp_W_in_key].clone()
     original_ln2_b = test_state_dict[ln2_b_key].clone()
     original_ln2_w = test_state_dict[ln2_w_key].clone()
-    
+
     # Apply MLP layer norm folding with bias folding
     ProcessWeights._fold_mlp_layer_norm(
         test_state_dict, cfg, layer, fold_biases=True, center_weights=False, adapter=None
     )
-    
+
     # Check that LayerNorm parameters were removed
     assert ln2_b_key not in test_state_dict, "LayerNorm bias should be removed"
     assert ln2_w_key not in test_state_dict, "LayerNorm weight should be removed"
-    
+
     # Verify the math for bias folding
     expected_mlp_b_in = original_mlp_b_in + (original_mlp_W_in * original_ln2_b[:, None]).sum(-2)
     actual_mlp_b_in = test_state_dict[mlp_b_in_key]
-    
+
     max_diff = torch.max(torch.abs(expected_mlp_b_in - actual_mlp_b_in)).item()
     assert max_diff < 1e-6, f"MLP bias folding math incorrect: max_diff={max_diff:.2e}"
-    
+
     # Verify the math for weight folding
     expected_mlp_W_in = original_mlp_W_in * original_ln2_w[:, None]
     actual_mlp_W_in = test_state_dict[mlp_W_in_key]
-    
+
     max_diff = torch.max(torch.abs(expected_mlp_W_in - actual_mlp_W_in)).item()
     assert max_diff < 1e-6, f"MLP weight folding math incorrect: max_diff={max_diff:.2e}"
 
@@ -1286,45 +1282,41 @@ def test_unembed_layer_norm_folding():
     """Test that the unembedding layer norm folding function works correctly."""
     device = "cpu"
     model_name = "gpt2"
-    
+
     # Load HookedTransformer to get real config
     hooked_model = HookedTransformer.from_pretrained(
-        model_name, 
-        device=device, 
-        fold_ln=False, 
-        center_writing_weights=False, 
-        center_unembed=False
+        model_name, device=device, fold_ln=False, center_writing_weights=False, center_unembed=False
     )
-    
+
     cfg = hooked_model.cfg
-    
+
     # Create test tensors in TransformerLens format
     d_model = cfg.d_model
     vocab_size = cfg.d_vocab
-    
+
     # TransformerLens format: [d_model, vocab_size]
     unembed_weight = torch.randn(d_model, vocab_size)
     unembed_bias = torch.randn(vocab_size)
     ln_final_weight = torch.randn(d_model)
     ln_final_bias = torch.randn(d_model)
-    
+
     # Create state dict
     state_dict = {
         "unembed.W_U": unembed_weight.clone(),
         "unembed.b_U": unembed_bias.clone(),
         "ln_final.w": ln_final_weight.clone(),
-        "ln_final.b": ln_final_bias.clone()
+        "ln_final.b": ln_final_bias.clone(),
     }
-    
+
     # Apply unembedding layer norm folding
     ProcessWeights._fold_unembed_layer_norm(
         state_dict, cfg, fold_biases=True, center_weights=True, adapter=None
     )
-    
+
     # Check that LayerNorm weight was removed (but bias should remain since it's handled separately)
     assert "ln_final.w" not in state_dict, "LayerNorm weight should be removed"
     assert "ln_final.b" in state_dict, "LayerNorm bias should be preserved (handled separately)"
-    
+
     # Verify the math for weight folding (accounting for centering)
     # First apply weight folding
     folded_weight = unembed_weight * ln_final_weight[:, None]
@@ -1333,14 +1325,16 @@ def test_unembed_layer_norm_folding():
         folded_weight, "d_model d_vocab -> 1 d_vocab", "mean"
     )
     actual_unembed_weight = state_dict["unembed.W_U"]
-    
+
     max_diff = torch.max(torch.abs(centered_weight - actual_unembed_weight)).item()
-    assert max_diff < 1e-6, f"Unembedding weight folding + centering math incorrect: max_diff={max_diff:.2e}"
-    
+    assert (
+        max_diff < 1e-6
+    ), f"Unembedding weight folding + centering math incorrect: max_diff={max_diff:.2e}"
+
     # Verify that bias was NOT modified (since bias folding is handled separately)
     expected_unembed_bias = unembed_bias  # Should remain unchanged
     actual_unembed_bias = state_dict["unembed.b_U"]
-    
+
     max_diff = torch.max(torch.abs(expected_unembed_bias - actual_unembed_bias)).item()
     assert max_diff < 1e-6, f"Unembedding bias was unexpectedly modified: max_diff={max_diff:.2e}"
 
@@ -1350,85 +1344,91 @@ def test_math_functions_consistency():
     device = "cpu"
     model_name = "gpt2"
     layer = 0
-    
+
     # Load HookedTransformer
     hooked_model = HookedTransformer.from_pretrained(
-        model_name, 
-        device=device, 
-        fold_ln=False, 
-        center_writing_weights=False, 
-        center_unembed=False
+        model_name, device=device, fold_ln=False, center_writing_weights=False, center_unembed=False
     )
-    
+
     hooked_state_dict = hooked_model.state_dict()
-    
+
     # Extract tensors using our extraction function
     tensors = ProcessWeights.extract_attention_tensors_for_folding(
         hooked_state_dict, hooked_model.cfg, layer, adapter=None
     )
-    
-    if tensors['ln1_b'] is None or tensors['ln1_w'] is None:
+
+    if tensors["ln1_b"] is None or tensors["ln1_w"] is None:
         pytest.skip("No LayerNorm parameters found - cannot test math functions")
-    
+
     # Test 1: fold_layer_norm_bias_single
     # Create identical copies of the input data
-    wq_copy1 = tensors['wq'].clone()
-    wq_copy2 = tensors['wq'].clone()
-    bq_copy1 = tensors['bq'].clone()
-    bq_copy2 = tensors['bq'].clone()
-    ln1_b_copy1 = tensors['ln1_b'].clone()
-    ln1_b_copy2 = tensors['ln1_b'].clone()
-    
+    wq_copy1 = tensors["wq"].clone()
+    wq_copy2 = tensors["wq"].clone()
+    bq_copy1 = tensors["bq"].clone()
+    bq_copy2 = tensors["bq"].clone()
+    ln1_b_copy1 = tensors["ln1_b"].clone()
+    ln1_b_copy2 = tensors["ln1_b"].clone()
+
     # Apply the same function to identical data
     result1 = ProcessWeights.fold_layer_norm_bias_single(wq_copy1, bq_copy1, ln1_b_copy1)
     result2 = ProcessWeights.fold_layer_norm_bias_single(wq_copy2, bq_copy2, ln1_b_copy2)
-    
+
     # Results should be identical
     max_diff = torch.max(torch.abs(result1 - result2)).item()
-    assert max_diff < 1e-10, f"fold_layer_norm_bias_single not deterministic: max_diff={max_diff:.2e}"
-    
+    assert (
+        max_diff < 1e-10
+    ), f"fold_layer_norm_bias_single not deterministic: max_diff={max_diff:.2e}"
+
     # Verify the math is correct
     expected = bq_copy1 + (wq_copy1 * ln1_b_copy1[None, :, None]).sum(-2)
     math_diff = torch.max(torch.abs(result1 - expected)).item()
-    assert math_diff < 1e-10, f"fold_layer_norm_bias_single math incorrect: max_diff={math_diff:.2e}"
-    
+    assert (
+        math_diff < 1e-10
+    ), f"fold_layer_norm_bias_single math incorrect: max_diff={math_diff:.2e}"
+
     # Test 2: fold_layer_norm_weight_single
     # Create identical copies
-    wq_copy1 = tensors['wq'].clone()
-    wq_copy2 = tensors['wq'].clone()
-    ln1_w_copy1 = tensors['ln1_w'].clone()
-    ln1_w_copy2 = tensors['ln1_w'].clone()
-    
+    wq_copy1 = tensors["wq"].clone()
+    wq_copy2 = tensors["wq"].clone()
+    ln1_w_copy1 = tensors["ln1_w"].clone()
+    ln1_w_copy2 = tensors["ln1_w"].clone()
+
     # Apply the same function to identical data
     result1 = ProcessWeights.fold_layer_norm_weight_single(wq_copy1, ln1_w_copy1)
     result2 = ProcessWeights.fold_layer_norm_weight_single(wq_copy2, ln1_w_copy2)
-    
+
     # Results should be identical
     max_diff = torch.max(torch.abs(result1 - result2)).item()
-    assert max_diff < 1e-10, f"fold_layer_norm_weight_single not deterministic: max_diff={max_diff:.2e}"
-    
+    assert (
+        max_diff < 1e-10
+    ), f"fold_layer_norm_weight_single not deterministic: max_diff={max_diff:.2e}"
+
     # Verify the math is correct
     expected = wq_copy1 * ln1_w_copy1[None, :, None]
     math_diff = torch.max(torch.abs(result1 - expected)).item()
-    assert math_diff < 1e-10, f"fold_layer_norm_weight_single math incorrect: max_diff={math_diff:.2e}"
-    
+    assert (
+        math_diff < 1e-10
+    ), f"fold_layer_norm_weight_single math incorrect: max_diff={math_diff:.2e}"
+
     # Test 3: center_weight_single
     # Create identical copies
-    wq_copy1 = tensors['wq'].clone()
-    wq_copy2 = tensors['wq'].clone()
-    
+    wq_copy1 = tensors["wq"].clone()
+    wq_copy2 = tensors["wq"].clone()
+
     # Apply the same function to identical data
     result1 = ProcessWeights.center_weight_single(wq_copy1)
     result2 = ProcessWeights.center_weight_single(wq_copy2)
-    
+
     # Results should be identical
     max_diff = torch.max(torch.abs(result1 - result2)).item()
     assert max_diff < 1e-10, f"center_weight_single not deterministic: max_diff={max_diff:.2e}"
-    
+
     # Verify the math is correct - mean should be close to zero
     wq_mean = result1.mean(dim=1, keepdim=True)
     mean_diff = torch.max(torch.abs(wq_mean)).item()
-    assert mean_diff < 1e-6, f"center_weight_single math incorrect: mean not zero, max={mean_diff:.2e}"
+    assert (
+        mean_diff < 1e-6
+    ), f"center_weight_single math incorrect: mean not zero, max={mean_diff:.2e}"
 
 
 class TestExtractionAndMathConsistency:
@@ -1439,23 +1439,21 @@ class TestExtractionAndMathConsistency:
         self.device = "cpu"
         self.model_name = "gpt2"
         self.layer = 0
-        
+
         # Load HookedTransformer (no processing)
         self.hooked_model = HookedTransformer.from_pretrained(
-            self.model_name, 
-            device=self.device, 
-            fold_ln=False, 
-            center_writing_weights=False, 
-            center_unembed=False
+            self.model_name,
+            device=self.device,
+            fold_ln=False,
+            center_writing_weights=False,
+            center_unembed=False,
         )
-        
+
         # Load TransformerBridge (no processing)
         from transformer_lens.model_bridge import TransformerBridge
-        self.bridge_model = TransformerBridge.boot_transformers(
-            self.model_name, 
-            device=self.device
-        )
-        
+
+        self.bridge_model = TransformerBridge.boot_transformers(self.model_name, device=self.device)
+
         # Get state dicts
         self.hooked_state_dict = self.hooked_model.state_dict()
         self.bridge_state_dict = self.bridge_model.original_model.state_dict()
@@ -1466,26 +1464,30 @@ class TestExtractionAndMathConsistency:
         hooked_tensors = ProcessWeights.extract_attention_tensors_for_folding(
             self.hooked_state_dict, self.hooked_model.cfg, self.layer, adapter=None
         )
-        
+
         # Extract tensors from TransformerBridge (with adapter)
         bridge_tensors = ProcessWeights.extract_attention_tensors_for_folding(
-            self.bridge_state_dict, self.bridge_model.cfg, self.layer, adapter=self.bridge_model.adapter
+            self.bridge_state_dict,
+            self.bridge_model.cfg,
+            self.layer,
+            adapter=self.bridge_model.adapter,
         )
-        
+
         # Test shapes match
-        tensor_names = ['wq', 'wk', 'wv', 'bq', 'bk', 'bv', 'ln1_b', 'ln1_w']
-        
+        tensor_names = ["wq", "wk", "wv", "bq", "bk", "bv", "ln1_b", "ln1_w"]
+
         for tensor_name in tensor_names:
             hooked_tensor = hooked_tensors[tensor_name]
             bridge_tensor = bridge_tensors[tensor_name]
-            
+
             if hooked_tensor is None and bridge_tensor is None:
                 continue
             elif hooked_tensor is None or bridge_tensor is None:
                 pytest.fail(f"{tensor_name}: One is None, other is not")
-            
-            assert hooked_tensor.shape == bridge_tensor.shape, \
-                f"{tensor_name} shape mismatch: HookedTransformer {hooked_tensor.shape} vs TransformerBridge {bridge_tensor.shape}"
+
+            assert (
+                hooked_tensor.shape == bridge_tensor.shape
+            ), f"{tensor_name} shape mismatch: HookedTransformer {hooked_tensor.shape} vs TransformerBridge {bridge_tensor.shape}"
 
     def test_extract_attention_tensors_returns_same_values(self):
         """Test that tensor extraction returns the same values for both models."""
@@ -1493,26 +1495,30 @@ class TestExtractionAndMathConsistency:
         hooked_tensors = ProcessWeights.extract_attention_tensors_for_folding(
             self.hooked_state_dict, self.hooked_model.cfg, self.layer, adapter=None
         )
-        
+
         bridge_tensors = ProcessWeights.extract_attention_tensors_for_folding(
-            self.bridge_state_dict, self.bridge_model.cfg, self.layer, adapter=self.bridge_model.adapter
+            self.bridge_state_dict,
+            self.bridge_model.cfg,
+            self.layer,
+            adapter=self.bridge_model.adapter,
         )
-        
+
         # Test values match
-        tensor_names = ['wq', 'wk', 'wv', 'bq', 'bk', 'bv', 'ln1_b', 'ln1_w']
-        
+        tensor_names = ["wq", "wk", "wv", "bq", "bk", "bv", "ln1_b", "ln1_w"]
+
         for tensor_name in tensor_names:
             hooked_tensor = hooked_tensors[tensor_name]
             bridge_tensor = bridge_tensors[tensor_name]
-            
+
             if hooked_tensor is None or bridge_tensor is None:
                 continue
-            
+
             max_diff = torch.max(torch.abs(hooked_tensor - bridge_tensor)).item()
             mean_diff = torch.mean(torch.abs(hooked_tensor - bridge_tensor)).item()
-            
-            assert max_diff < 1e-6, \
-                f"{tensor_name} value mismatch: max_diff={max_diff:.2e}, mean_diff={mean_diff:.2e}"
+
+            assert (
+                max_diff < 1e-6
+            ), f"{tensor_name} value mismatch: max_diff={max_diff:.2e}, mean_diff={mean_diff:.2e}"
 
 
 def test_attention_tensor_storage():
@@ -1520,58 +1526,65 @@ def test_attention_tensor_storage():
     device = "cpu"
     model_name = "gpt2"
     layer = 0
-    
+
     # Load HookedTransformer to get real config
     hooked_model = HookedTransformer.from_pretrained(
-        model_name, 
-        device=device, 
-        fold_ln=False, 
-        center_writing_weights=False, 
-        center_unembed=False
+        model_name, device=device, fold_ln=False, center_writing_weights=False, center_unembed=False
     )
-    
+
     cfg = hooked_model.cfg
-    
+
     # Create test tensors in TransformerLens format
     n_heads = cfg.n_heads
     d_head = cfg.d_head
     d_model = cfg.d_model
-    
+
     wq_tensor = torch.randn(n_heads, d_model, d_head)
     wk_tensor = torch.randn(n_heads, d_model, d_head)
     wv_tensor = torch.randn(n_heads, d_model, d_head)
     bq_tensor = torch.randn(n_heads, d_head)
     bk_tensor = torch.randn(n_heads, d_head)
     bv_tensor = torch.randn(n_heads, d_head)
-    
+
     # Create state dict and keys
     state_dict = {}
     keys = {
-        'W_Q': f"blocks.{layer}.attn.W_Q",
-        'W_K': f"blocks.{layer}.attn.W_K", 
-        'W_V': f"blocks.{layer}.attn.W_V",
-        'b_Q': f"blocks.{layer}.attn.b_Q",
-        'b_K': f"blocks.{layer}.attn.b_K",
-        'b_V': f"blocks.{layer}.attn.b_V"
+        "W_Q": f"blocks.{layer}.attn.W_Q",
+        "W_K": f"blocks.{layer}.attn.W_K",
+        "W_V": f"blocks.{layer}.attn.W_V",
+        "b_Q": f"blocks.{layer}.attn.b_Q",
+        "b_K": f"blocks.{layer}.attn.b_K",
+        "b_V": f"blocks.{layer}.attn.b_V",
     }
-    
+
     # Store tensors using the function
     ProcessWeights._store_processed_attention_tensors(
-        state_dict, keys, wq_tensor, wk_tensor, wv_tensor, bq_tensor, bk_tensor, bv_tensor,
-        adapter=None, cfg=cfg, layer=layer
+        state_dict,
+        keys,
+        wq_tensor,
+        wk_tensor,
+        wv_tensor,
+        bq_tensor,
+        bk_tensor,
+        bv_tensor,
+        adapter=None,
+        cfg=cfg,
+        layer=layer,
     )
-    
+
     # Verify all keys are present
     expected_keys = list(keys.values())
     actual_keys = list(state_dict.keys())
-    
+
     all_keys_present = all(key in state_dict for key in expected_keys)
-    assert all_keys_present, f"Not all expected keys present. Expected: {expected_keys}, Actual: {actual_keys}"
-    
+    assert (
+        all_keys_present
+    ), f"Not all expected keys present. Expected: {expected_keys}, Actual: {actual_keys}"
+
     # Verify tensor values are stored correctly
-    assert torch.equal(state_dict[keys['W_Q']], wq_tensor), "W_Q tensor not stored correctly"
-    assert torch.equal(state_dict[keys['W_K']], wk_tensor), "W_K tensor not stored correctly"
-    assert torch.equal(state_dict[keys['W_V']], wv_tensor), "W_V tensor not stored correctly"
-    assert torch.equal(state_dict[keys['b_Q']], bq_tensor), "b_Q tensor not stored correctly"
-    assert torch.equal(state_dict[keys['b_K']], bk_tensor), "b_K tensor not stored correctly"
-    assert torch.equal(state_dict[keys['b_V']], bv_tensor), "b_V tensor not stored correctly"
+    assert torch.equal(state_dict[keys["W_Q"]], wq_tensor), "W_Q tensor not stored correctly"
+    assert torch.equal(state_dict[keys["W_K"]], wk_tensor), "W_K tensor not stored correctly"
+    assert torch.equal(state_dict[keys["W_V"]], wv_tensor), "W_V tensor not stored correctly"
+    assert torch.equal(state_dict[keys["b_Q"]], bq_tensor), "b_Q tensor not stored correctly"
+    assert torch.equal(state_dict[keys["b_K"]], bk_tensor), "b_K tensor not stored correctly"
+    assert torch.equal(state_dict[keys["b_V"]], bv_tensor), "b_V tensor not stored correctly"

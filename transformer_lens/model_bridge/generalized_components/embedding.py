@@ -122,9 +122,15 @@ class EmbeddingBridge(GeneralizedComponent):
             weight_key = "W_E"
 
         # Store processed weights in TransformerLens format (direct mapping)
-        self._processed_weights = {
-            weight_key: self.original_component.weight,
-        }
+        weight_tensor = getattr(self.original_component, "weight", None)
+        if weight_tensor is not None:
+            self._processed_weights = {
+                weight_key: weight_tensor.clone()
+                if hasattr(weight_tensor, "clone")
+                else weight_tensor,
+            }
+        else:
+            self._processed_weights = {}
 
     def get_processed_state_dict(self) -> Dict[str, torch.Tensor]:
         """Get the processed weights in TransformerLens format.
@@ -132,7 +138,7 @@ class EmbeddingBridge(GeneralizedComponent):
         Returns:
             Dictionary mapping TransformerLens parameter names to processed tensors
         """
-        if not hasattr(self, '_processed_weights') or self._processed_weights is None:
+        if not hasattr(self, "_processed_weights") or self._processed_weights is None:
             # If weights haven't been processed, process them now
             self.process_weights()
 
@@ -160,10 +166,7 @@ class EmbeddingBridge(GeneralizedComponent):
         return [full_name]
 
     def custom_weight_processing(
-        self,
-        hf_state_dict: Dict[str, torch.Tensor],
-        component_prefix: str,
-        **processing_kwargs
+        self, hf_state_dict: Dict[str, torch.Tensor], component_prefix: str, **processing_kwargs
     ) -> Dict[str, torch.Tensor]:
         """Custom weight processing for embeddings - direct mapping.
 

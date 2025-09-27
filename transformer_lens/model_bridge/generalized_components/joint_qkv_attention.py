@@ -276,7 +276,7 @@ class JointQKVAttentionBridge(AttentionBridge):
 
         # Apply causal mask using the same approach as WorkingAttention
         causal_mask = torch.tril(torch.ones(seq_len, seq_len, device=q.device))
-        attn_scores = attn_scores.masked_fill(causal_mask == 0, float('-inf'))
+        attn_scores = attn_scores.masked_fill(causal_mask == 0, float("-inf"))
 
         attention_mask = kwargs.get("attention_mask", None)
         if attention_mask is not None:
@@ -304,7 +304,7 @@ class JointQKVAttentionBridge(AttentionBridge):
         )
 
         # Apply output projection - use functional linear if available
-        if hasattr(original_component, 'c_proj'):
+        if hasattr(original_component, "c_proj"):
             attn_output = self._apply_output_projection_with_functional_linear(attn_output)
         elif hasattr(self, "o") and self.o is not None:
             attn_output = self.o(attn_output)
@@ -313,7 +313,9 @@ class JointQKVAttentionBridge(AttentionBridge):
         # The GPT2Block handles past_key_value separately
         return (attn_output, attn_weights)  # (output, weights)
 
-    def _apply_qkv_projection_with_functional_linear(self, hidden_states: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def _apply_qkv_projection_with_functional_linear(
+        self, hidden_states: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Apply QKV projection using torch.nn.functional.linear with transposed weights.
 
         This method implements the TransformerLens computation logic from WorkingAttention,
@@ -330,11 +332,13 @@ class JointQKVAttentionBridge(AttentionBridge):
         assert self.config is not None
 
         # Extract weights from original attention component
-        if hasattr(original_component, 'c_attn'):
+        if hasattr(original_component, "c_attn"):
             qkv_weight = original_component.c_attn.weight  # Shape: [d_model, 3*d_model]
-            qkv_bias = original_component.c_attn.bias      # Shape: [3*d_model]
+            qkv_bias = original_component.c_attn.bias  # Shape: [3*d_model]
         else:
-            raise AttributeError("Original component doesn't have c_attn attribute for QKV projection")
+            raise AttributeError(
+                "Original component doesn't have c_attn attribute for QKV projection"
+            )
 
         batch_size, seq_len, d_model = hidden_states.shape
 
@@ -349,7 +353,9 @@ class JointQKVAttentionBridge(AttentionBridge):
 
         return q, k, v
 
-    def _apply_output_projection_with_functional_linear(self, attn_output: torch.Tensor) -> torch.Tensor:
+    def _apply_output_projection_with_functional_linear(
+        self, attn_output: torch.Tensor
+    ) -> torch.Tensor:
         """Apply output projection using torch.nn.functional.linear with transposed weights.
 
         This method implements the output projection logic from WorkingAttention,
@@ -365,9 +371,9 @@ class JointQKVAttentionBridge(AttentionBridge):
         assert original_component is not None
 
         # Extract output projection weights from original attention component
-        if hasattr(original_component, 'c_proj'):
+        if hasattr(original_component, "c_proj"):
             proj_weight = original_component.c_proj.weight  # Shape: [d_model, d_model]
-            proj_bias = original_component.c_proj.bias      # Shape: [d_model]
+            proj_bias = original_component.c_proj.bias  # Shape: [d_model]
         else:
             # If no output projection, return the input unchanged
             return attn_output
@@ -399,14 +405,14 @@ class JointQKVAttentionBridge(AttentionBridge):
             return
 
         # Get the combined QKV weight and bias from the original component
-        if hasattr(original_component, 'c_attn'):
+        if hasattr(original_component, "c_attn"):
             qkv_weight = original_component.c_attn.weight  # Shape: [d_model, 3*d_model]
-            qkv_bias = original_component.c_attn.bias      # Shape: [3*n_heads*d_head]
+            qkv_bias = original_component.c_attn.bias  # Shape: [3*n_heads*d_head]
         else:
             # Try to get from submodules mapping
             qkv_submodule = None
             for name, module in self.submodules.items():
-                if hasattr(module, 'name') and module.name == "c_attn":
+                if hasattr(module, "name") and module.name == "c_attn":
                     qkv_submodule = getattr(original_component, module.name, None)
                     break
 
@@ -438,7 +444,7 @@ class JointQKVAttentionBridge(AttentionBridge):
         # Process output projection weight if it exists
         W_O = None
         b_O = None
-        if hasattr(original_component, 'c_proj'):
+        if hasattr(original_component, "c_proj"):
             W_O = original_component.c_proj.weight
             b_O = original_component.c_proj.bias
             # Rearrange W_O following GPT2 pretrained logic: "(i h) m->i h m"
@@ -446,7 +452,7 @@ class JointQKVAttentionBridge(AttentionBridge):
         else:
             # Try to get from submodules mapping
             for name, module in self.submodules.items():
-                if hasattr(module, 'name') and module.name == "c_proj":
+                if hasattr(module, "name") and module.name == "c_proj":
                     proj_submodule = getattr(original_component, module.name, None)
                     if proj_submodule is not None:
                         W_O = proj_submodule.weight
@@ -499,10 +505,7 @@ class JointQKVAttentionBridge(AttentionBridge):
             return base_names
 
     def custom_weight_processing(
-        self,
-        hf_state_dict: Dict[str, torch.Tensor],
-        component_prefix: str,
-        **processing_kwargs
+        self, hf_state_dict: Dict[str, torch.Tensor], component_prefix: str, **processing_kwargs
     ) -> Dict[str, torch.Tensor]:
         """Custom weight processing for QKV attention - handles QKV splitting.
 
@@ -527,25 +530,32 @@ class JointQKVAttentionBridge(AttentionBridge):
             split_size = qkv_weight.shape[1] // 3
 
             q_weight = qkv_weight[:, :split_size]
-            k_weight = qkv_weight[:, split_size:2*split_size]
-            v_weight = qkv_weight[:, 2*split_size:]
+            k_weight = qkv_weight[:, split_size : 2 * split_size]
+            v_weight = qkv_weight[:, 2 * split_size :]
 
             # Rearrange for attention heads
             import einops
+
             n_heads = self.config.n_heads
             d_head = self.config.d_head
 
             processed_weights["W_Q"] = einops.rearrange(
-                q_weight, "d_model (n_heads d_head) -> n_heads d_model d_head",
-                n_heads=n_heads, d_head=d_head
+                q_weight,
+                "d_model (n_heads d_head) -> n_heads d_model d_head",
+                n_heads=n_heads,
+                d_head=d_head,
             )
             processed_weights["W_K"] = einops.rearrange(
-                k_weight, "d_model (n_heads d_head) -> n_heads d_model d_head",
-                n_heads=n_heads, d_head=d_head
+                k_weight,
+                "d_model (n_heads d_head) -> n_heads d_model d_head",
+                n_heads=n_heads,
+                d_head=d_head,
             )
             processed_weights["W_V"] = einops.rearrange(
-                v_weight, "d_model (n_heads d_head) -> n_heads d_model d_head",
-                n_heads=n_heads, d_head=d_head
+                v_weight,
+                "d_model (n_heads d_head) -> n_heads d_model d_head",
+                n_heads=n_heads,
+                d_head=d_head,
             )
 
         if qkv_bias_key in hf_state_dict:
@@ -553,25 +563,23 @@ class JointQKVAttentionBridge(AttentionBridge):
             split_size = qkv_bias.shape[0] // 3
 
             q_bias = qkv_bias[:split_size]
-            k_bias = qkv_bias[split_size:2*split_size]
-            v_bias = qkv_bias[2*split_size:]
+            k_bias = qkv_bias[split_size : 2 * split_size]
+            v_bias = qkv_bias[2 * split_size :]
 
             # Rearrange bias for attention heads
             import einops
+
             n_heads = self.config.n_heads
             d_head = self.config.d_head
 
             processed_weights["b_Q"] = einops.rearrange(
-                q_bias, "(n_heads d_head) -> n_heads d_head",
-                n_heads=n_heads, d_head=d_head
+                q_bias, "(n_heads d_head) -> n_heads d_head", n_heads=n_heads, d_head=d_head
             )
             processed_weights["b_K"] = einops.rearrange(
-                k_bias, "(n_heads d_head) -> n_heads d_head",
-                n_heads=n_heads, d_head=d_head
+                k_bias, "(n_heads d_head) -> n_heads d_head", n_heads=n_heads, d_head=d_head
             )
             processed_weights["b_V"] = einops.rearrange(
-                v_bias, "(n_heads d_head) -> n_heads d_head",
-                n_heads=n_heads, d_head=d_head
+                v_bias, "(n_heads d_head) -> n_heads d_head", n_heads=n_heads, d_head=d_head
             )
 
         # Handle output projection
@@ -581,8 +589,10 @@ class JointQKVAttentionBridge(AttentionBridge):
         if out_weight_key in hf_state_dict:
             out_weight = hf_state_dict[out_weight_key]
             processed_weights["W_O"] = einops.rearrange(
-                out_weight, "(n_heads d_head) d_model -> n_heads d_head d_model",
-                n_heads=n_heads, d_head=d_head
+                out_weight,
+                "(n_heads d_head) d_model -> n_heads d_head d_model",
+                n_heads=n_heads,
+                d_head=d_head,
             )
 
         if out_bias_key in hf_state_dict:

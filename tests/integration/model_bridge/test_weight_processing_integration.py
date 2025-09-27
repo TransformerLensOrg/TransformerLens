@@ -297,15 +297,16 @@ def test_weight_processing_results_loaded_into_model():
     """Test that weight processing results affect model output when loaded via state dict."""
     model_name = "gpt2"
     device = "cpu"
-    
+
     # Load TransformerBridge
     bridge = TransformerBridge.boot_transformers(model_name, device=device)
-    
+
     # Get original weights before processing
     original_state_dict = bridge._extract_hf_weights()
-    
+
     # Process weights with all available processing options
     from transformer_lens.weight_processing import ProcessWeights
+
     processed_state_dict = ProcessWeights.process_weights(
         original_state_dict,
         bridge.cfg,
@@ -316,96 +317,101 @@ def test_weight_processing_results_loaded_into_model():
         refactor_factored_attn_matrices=False,  # Keep attention matrices as-is
         adapter=bridge.adapter,
     )
-    
+
     # Verify that processing changed the weights
     processed_keys = set(processed_state_dict.keys())
     original_keys = set(original_state_dict.keys())
-    
+
     # Some keys should be removed (e.g., layer norm weights)
     removed_keys = original_keys - processed_keys
     print(f"Keys removed during processing: {len(removed_keys)}")
     print(f"Sample removed keys: {sorted(list(removed_keys))[:5]}...")
-    
+
     # Some keys might be added (e.g., combined QKV weights)
     added_keys = processed_keys - original_keys
     print(f"Keys added during processing: {len(added_keys)}")
-    
+
     # Load processed weights into the bridge model
     result = bridge.load_state_dict(processed_state_dict, strict=False, assign=True)
-    
+
     # Verify loading was successful
     assert len(result.unexpected_keys) == 0, f"Unexpected keys found: {result.unexpected_keys}"
     print(f"Missing keys (expected for processed weights): {len(result.missing_keys)}")
-    
+
     # Test that layer norm weights were properly removed
-    ln_keys_in_processed = [k for k in processed_state_dict.keys() if "ln" in k and ("weight" in k or "bias" in k)]
+    ln_keys_in_processed = [
+        k for k in processed_state_dict.keys() if "ln" in k and ("weight" in k or "bias" in k)
+    ]
     print(f"Layer norm keys in processed state dict: {len(ln_keys_in_processed)}")
-    
+
     # Most layer norm keys should be removed during processing
-    assert len(ln_keys_in_processed) < len([k for k in original_keys if "ln" in k and ("weight" in k or "bias" in k)]), \
-        "Layer norm keys should be removed during processing"
-    
+    assert len(ln_keys_in_processed) < len(
+        [k for k in original_keys if "ln" in k and ("weight" in k or "bias" in k)]
+    ), "Layer norm keys should be removed during processing"
+
     # Test model output to ensure it's using the processed weights
     test_input = torch.tensor([[1, 2, 3]], device=device)  # Simple test input
-    
+
     # Verify the model can run with processed weights
     with torch.no_grad():
         output = bridge(test_input)
         assert output is not None, "Model should produce output with processed weights"
         assert output.shape[0] == test_input.shape[0], "Output batch size should match input"
         print(f"✅ Model produces valid output with processed weights: {output.shape}")
-    
+
     # Verify that the model's forward pass uses the loaded weights
     # by checking that the output is different from a fresh model
     fresh_bridge = TransformerBridge.boot_transformers(model_name, device=device)
     with torch.no_grad():
         fresh_output = fresh_bridge(test_input)
         processed_output = bridge(test_input)
-        
+
         # The outputs should be different since we loaded processed weights
         outputs_different = not torch.allclose(fresh_output, processed_output, atol=1e-6)
         if outputs_different:
             print("✅ Model output changed after loading processed weights")
-            
+
             # Calculate the difference magnitude
             max_diff = torch.max(torch.abs(fresh_output - processed_output)).item()
             print(f"Maximum output difference: {max_diff:.6f}")
-            
+
             # Verify the difference is significant (not just numerical noise)
             assert max_diff > 1e-5, f"Output difference too small: {max_diff:.6f}"
         else:
             print("ℹ️ Model output unchanged (may indicate processing had no effect)")
-    
+
     # Test key conversion functionality
     test_key = "transformer.h.0.attn.c_attn.weight"
     if test_key in processed_state_dict:
         bridge_key = bridge.adapter.convert_hf_key_to_bridge_key(test_key)
-        assert bridge_key in bridge.original_model.state_dict(), f"Bridge key {bridge_key} should exist in model"
+        assert (
+            bridge_key in bridge.original_model.state_dict()
+        ), f"Bridge key {bridge_key} should exist in model"
         print(f"✅ Key conversion works: {test_key} -> {bridge_key}")
-    
+
     # Comprehensive test: verify all processed tensors are properly loaded into original components
     print("\n=== COMPREHENSIVE TENSOR LOADING VERIFICATION ===")
-    
+
     # Get final state dict after loading
     final_state_dict = bridge.original_model.state_dict()
-    
+
     # Test all processed keys
     total_processed = len(processed_state_dict)
     loaded_correctly = 0
     not_found_in_bridge = 0
     not_loaded_correctly = 0
     expected_not_found = 0
-    
+
     print(f"Testing {total_processed} processed keys...")
-    
+
     for processed_key, processed_value in processed_state_dict.items():
         # Convert to bridge key
         bridge_key = bridge.adapter.convert_hf_key_to_bridge_key(processed_key)
-        
+
         # Check if bridge key exists in the final state dict
         if bridge_key in final_state_dict:
             final_value = final_state_dict[bridge_key]
-            
+
             # Check if values match (allowing for small numerical differences)
             if torch.allclose(processed_value, final_value, atol=1e-6):
                 loaded_correctly += 1
@@ -414,62 +420,86 @@ def test_weight_processing_results_loaded_into_model():
                 max_diff = torch.max(torch.abs(processed_value - final_value)).item()
                 # Only show first few failures to avoid spam
                 if not_loaded_correctly <= 3:
-                    print(f"❌ {processed_key} -> {bridge_key} NOT loaded correctly (max diff: {max_diff:.6f})")
+                    print(
+                        f"❌ {processed_key} -> {bridge_key} NOT loaded correctly (max diff: {max_diff:.6f})"
+                    )
         else:
             not_found_in_bridge += 1
-            
+
             # Check if this key was expected to be removed during processing
             if "ln" in processed_key and ("weight" in processed_key or "bias" in processed_key):
                 expected_not_found += 1
                 # Layer norm keys are expected to be removed, so this is OK
                 if expected_not_found <= 3:
-                    print(f"ℹ️ {processed_key} -> {bridge_key} not found (expected - layer norm removed)")
+                    print(
+                        f"ℹ️ {processed_key} -> {bridge_key} not found (expected - layer norm removed)"
+                    )
             else:
                 # This is unexpected
                 if not_found_in_bridge - expected_not_found <= 3:
                     print(f"❌ {processed_key} -> {bridge_key} not found in bridge (unexpected)")
-    
+
     print(f"\n=== LOADING VERIFICATION SUMMARY ===")
     print(f"Total processed keys: {total_processed}")
     print(f"Loaded correctly: {loaded_correctly} ({loaded_correctly/total_processed*100:.1f}%)")
-    print(f"Not loaded correctly: {not_loaded_correctly} ({not_loaded_correctly/total_processed*100:.1f}%)")
-    print(f"Not found in bridge: {not_found_in_bridge} ({not_found_in_bridge/total_processed*100:.1f}%)")
-    print(f"Expected not found (layer norms): {expected_not_found} ({expected_not_found/total_processed*100:.1f}%)")
-    print(f"Unexpected not found: {not_found_in_bridge - expected_not_found} ({(not_found_in_bridge - expected_not_found)/total_processed*100:.1f}%)")
-    
+    print(
+        f"Not loaded correctly: {not_loaded_correctly} ({not_loaded_correctly/total_processed*100:.1f}%)"
+    )
+    print(
+        f"Not found in bridge: {not_found_in_bridge} ({not_found_in_bridge/total_processed*100:.1f}%)"
+    )
+    print(
+        f"Expected not found (layer norms): {expected_not_found} ({expected_not_found/total_processed*100:.1f}%)"
+    )
+    print(
+        f"Unexpected not found: {not_found_in_bridge - expected_not_found} ({(not_found_in_bridge - expected_not_found)/total_processed*100:.1f}%)"
+    )
+
     # Assertions - adjusted for realistic expectations
     # 1. Some keys should load correctly (partial state dict loading is expected to be incomplete)
     success_rate = loaded_correctly / total_processed
     print(f"Success rate: {success_rate*100:.1f}%")
-    
+
     # The key insight is that when loading a partial state dict, PyTorch only updates the keys present
     # So we should focus on ensuring the keys that ARE loaded are loaded correctly
     if loaded_correctly + not_loaded_correctly > 0:
         actual_loading_success_rate = loaded_correctly / (loaded_correctly + not_loaded_correctly)
-        print(f"Actual loading success rate (excluding not found): {actual_loading_success_rate*100:.1f}%")
-        assert actual_loading_success_rate >= 0.5, f"Only {actual_loading_success_rate*100:.1f}% of found keys loaded correctly"
-    
+        print(
+            f"Actual loading success rate (excluding not found): {actual_loading_success_rate*100:.1f}%"
+        )
+        assert (
+            actual_loading_success_rate >= 0.5
+        ), f"Only {actual_loading_success_rate*100:.1f}% of found keys loaded correctly"
+
     # 2. Unexpected not found keys should be minimal (only layer norms should be missing)
     unexpected_not_found_rate = (not_found_in_bridge - expected_not_found) / total_processed
-    assert unexpected_not_found_rate <= 0.05, f"Too many unexpected not found keys: {unexpected_not_found_rate*100:.1f}% (expected <= 5%)"
-    
+    assert (
+        unexpected_not_found_rate <= 0.05
+    ), f"Too many unexpected not found keys: {unexpected_not_found_rate*100:.1f}% (expected <= 5%)"
+
     # 3. Layer norm keys should be properly removed
-    ln_keys_processed = [k for k in processed_state_dict.keys() if "ln" in k and ("weight" in k or "bias" in k)]
+    ln_keys_processed = [
+        k for k in processed_state_dict.keys() if "ln" in k and ("weight" in k or "bias" in k)
+    ]
     print(f"Layer norm keys in processed dict: {len(ln_keys_processed)}")
-    
+
     # 4. Test that key conversion works for all processed keys
     conversion_success = 0
     for processed_key in processed_state_dict.keys():
         bridge_key = bridge.adapter.convert_hf_key_to_bridge_key(processed_key)
         if bridge_key != processed_key:  # Key was converted
             conversion_success += 1
-    
+
     conversion_rate = conversion_success / total_processed
-    print(f"Key conversion rate: {conversion_rate*100:.1f}% ({conversion_success}/{total_processed})")
-    assert conversion_rate >= 0.9, f"Key conversion rate too low: {conversion_rate*100:.1f}% (expected >= 90%)"
-    
+    print(
+        f"Key conversion rate: {conversion_rate*100:.1f}% ({conversion_success}/{total_processed})"
+    )
+    assert (
+        conversion_rate >= 0.9
+    ), f"Key conversion rate too low: {conversion_rate*100:.1f}% (expected >= 90%)"
+
     # 5. Most importantly: verify that critical keys (embeddings, global weights) load correctly
-    critical_keys = ['transformer.wte.weight', 'transformer.wpe.weight', 'lm_head.weight']
+    critical_keys = ["transformer.wte.weight", "transformer.wpe.weight", "lm_head.weight"]
     critical_loaded = 0
     for critical_key in critical_keys:
         if critical_key in processed_state_dict:
@@ -484,11 +514,15 @@ def test_weight_processing_results_loaded_into_model():
                     print(f"❌ Critical key {critical_key} NOT loaded correctly")
             else:
                 print(f"❌ Critical key {critical_key} bridge key not found")
-    
+
     critical_success_rate = critical_loaded / len(critical_keys)
-    print(f"Critical keys loaded: {critical_loaded}/{len(critical_keys)} ({critical_success_rate*100:.1f}%)")
-    assert critical_success_rate >= 0.8, f"Only {critical_success_rate*100:.1f}% of critical keys loaded correctly"
-    
+    print(
+        f"Critical keys loaded: {critical_loaded}/{len(critical_keys)} ({critical_success_rate*100:.1f}%)"
+    )
+    assert (
+        critical_success_rate >= 0.8
+    ), f"Only {critical_success_rate*100:.1f}% of critical keys loaded correctly"
+
     print("✅ All processed tensors properly loaded into original components!")
     print("✅ Weight processing results successfully affect model behavior!")
 
@@ -497,16 +531,17 @@ def test_attention_weight_loading():
     """Test that attention weights are properly loaded after processing."""
     model_name = "gpt2"
     device = "cpu"
-    
+
     # Load TransformerBridge
     bridge = TransformerBridge.boot_transformers(model_name, device=device)
-    
+
     # Get original weights
     original_state_dict = bridge._extract_hf_weights()
     original_q_weight = bridge.transformer.h[0].attn.c_attn.weight.clone()
-    
+
     # Process weights (this should fold layer norms into attention weights)
     from transformer_lens.weight_processing import ProcessWeights
+
     processed_state_dict = ProcessWeights.process_weights(
         original_state_dict,
         bridge.cfg,
@@ -517,51 +552,54 @@ def test_attention_weight_loading():
         refactor_factored_attn_matrices=False,
         adapter=bridge.adapter,
     )
-    
+
     # Get processed weights
     processed_q_weight = processed_state_dict["transformer.h.0.attn.c_attn.weight"]
-    
+
     # Assert that processing changed the weights (layer norm folding occurred)
-    assert not torch.allclose(original_q_weight, processed_q_weight, atol=1e-6), \
-        "Layer norm folding should change attention weights"
-    
+    assert not torch.allclose(
+        original_q_weight, processed_q_weight, atol=1e-6
+    ), "Layer norm folding should change attention weights"
+
     # Map processed weights to bridge format and load them
     bridge_key = "transformer.h.0._original_component.attn._original_component.c_attn._original_component.weight"
     mapped_state_dict = {bridge_key: processed_q_weight}
-    
+
     # Load the processed weights
     result = bridge.load_state_dict(mapped_state_dict, strict=False, assign=False)
-    
+
     # Assert no unexpected keys
     assert len(result.unexpected_keys) == 0, f"Unexpected keys: {result.unexpected_keys}"
-    
+
     # Get the loaded weight from the bridge
     loaded_q_weight = bridge.transformer.h[0].attn.c_attn.weight
-    
+
     # Assert that the loaded weight matches the processed weight
-    assert torch.allclose(loaded_q_weight, processed_q_weight, atol=1e-6), \
-        f"Loaded weight should match processed weight. " \
-        f"Expected: {processed_q_weight[0, :5]}, " \
+    assert torch.allclose(loaded_q_weight, processed_q_weight, atol=1e-6), (
+        f"Loaded weight should match processed weight. "
+        f"Expected: {processed_q_weight[0, :5]}, "
         f"Got: {loaded_q_weight[0, :5]}"
+    )
 
 
 def test_layer_norm_weights_removed():
     """Test that layer norm weights are properly removed after processing."""
     model_name = "gpt2"
     device = "cpu"
-    
+
     # Load TransformerBridge
     bridge = TransformerBridge.boot_transformers(model_name, device=device)
-    
+
     # Get original state dict
     original_state_dict = bridge._extract_hf_weights()
-    
+
     # Check that layer norm weights exist in original
-    ln_keys = [k for k in original_state_dict.keys() if 'ln1' in k or 'ln_f' in k]
+    ln_keys = [k for k in original_state_dict.keys() if "ln1" in k or "ln_f" in k]
     assert len(ln_keys) > 0, "Layer norm weights should exist in original state dict"
-    
+
     # Process weights (this should remove layer norm weights)
     from transformer_lens.weight_processing import ProcessWeights
+
     processed_state_dict = ProcessWeights.process_weights(
         original_state_dict,
         bridge.cfg,
@@ -572,90 +610,98 @@ def test_layer_norm_weights_removed():
         refactor_factored_attn_matrices=False,
         adapter=bridge.adapter,
     )
-    
+
     # Check that layer norm weights are removed
-    processed_ln_keys = [k for k in processed_state_dict.keys() if 'ln1' in k or 'ln_f' in k]
-    assert len(processed_ln_keys) == 0, \
-        f"Layer norm weights should be removed after processing. Found: {processed_ln_keys}"
+    processed_ln_keys = [k for k in processed_state_dict.keys() if "ln1" in k or "ln_f" in k]
+    assert (
+        len(processed_ln_keys) == 0
+    ), f"Layer norm weights should be removed after processing. Found: {processed_ln_keys}"
 
 
 def test_processing_verification():
     """Verify that weight processing is actually happening."""
     device = "cpu"
     model_name = "gpt2"
-    
+
     # Load unprocessed HookedTransformer
     hooked_unprocessed = HookedTransformer.from_pretrained(
-        model_name, 
+        model_name,
         device=device,
         fold_ln=False,
         center_writing_weights=False,
         center_unembed=False,
-        fold_value_biases=False
+        fold_value_biases=False,
     )
-    
+
     # Load processed HookedTransformer
     hooked_processed = HookedTransformer.from_pretrained(
-        model_name, 
+        model_name,
         device=device,
         fold_ln=True,
         center_writing_weights=True,
         center_unembed=True,
-        fold_value_biases=True
+        fold_value_biases=True,
     )
-    
+
     # Load unprocessed TransformerBridge
     bridge_unprocessed = TransformerBridge.boot_transformers(model_name, device=device)
     bridge_unprocessed.enable_compatibility_mode()  # Prevent processing
-    
+
     # Load processed TransformerBridge
     bridge_processed = TransformerBridge.boot_transformers(model_name, device=device)
     # Processing is enabled by default
-    
+
     test_text = "Hello world"
-    
+
     # Test losses
     hooked_unprocessed_loss = hooked_unprocessed(test_text, return_type="loss").item()
     hooked_processed_loss = hooked_processed(test_text, return_type="loss").item()
     bridge_unprocessed_loss = bridge_unprocessed(test_text, return_type="loss").item()
     bridge_processed_loss = bridge_processed(test_text, return_type="loss").item()
-    
+
     # Check if processing actually changed the models
     hooked_processing_worked = abs(hooked_processed_loss - hooked_unprocessed_loss) > 0.01
     bridge_processing_worked = abs(bridge_processed_loss - bridge_unprocessed_loss) > 0.01
-    
+
     # Check if processed models match
     models_match = abs(hooked_processed_loss - bridge_processed_loss) < 0.01
-    
+
     # Check if LayerNorm parameters were removed (indicating folding happened)
     hooked_state = hooked_processed.state_dict()
     bridge_state = bridge_processed.original_model.state_dict()
-    
+
     # Look for LayerNorm bias parameters that should be removed after folding
     hooked_ln_keys = [k for k in hooked_state.keys() if "ln1.b" in k or "ln2.b" in k]
     bridge_ln_keys = [k for k in bridge_state.keys() if "ln_1.bias" in k or "ln_2.bias" in k]
-    
+
     # Assertions
     assert hooked_processing_worked, "HookedTransformer processing did not work"
     assert bridge_processing_worked, "Bridge processing did not work"
-    assert models_match, f"Processed models do not match (diff: {abs(hooked_processed_loss - bridge_processed_loss):.6f})"
-    assert len(hooked_ln_keys) == 0, "HookedTransformer LayerNorm biases still present - folding may not have worked"
-    assert len(bridge_ln_keys) == 0, "Bridge LayerNorm biases still present - folding may not have worked"
+    assert (
+        models_match
+    ), f"Processed models do not match (diff: {abs(hooked_processed_loss - bridge_processed_loss):.6f})"
+    assert (
+        len(hooked_ln_keys) == 0
+    ), "HookedTransformer LayerNorm biases still present - folding may not have worked"
+    assert (
+        len(bridge_ln_keys) == 0
+    ), "Bridge LayerNorm biases still present - folding may not have worked"
 
 
 def test_final_integration_root_cause():
     """Final integration test demonstrating the root cause and solution."""
     model_name = "gpt2"
     device = "cpu"
-    
+
     # Load TransformerBridge
     bridge = TransformerBridge.boot_transformers(model_name, device=device)
-    
+
     # Get original weights
     original_state_dict = bridge._extract_hf_weights()
-    
+
     # Process weights with all transformations
     from transformer_lens.weight_processing import ProcessWeights
+
     processed_state_dict = ProcessWeights.process_weights(
         original_state_dict,
         bridge.cfg,
@@ -666,104 +712,107 @@ def test_final_integration_root_cause():
         refactor_factored_attn_matrices=False,
         adapter=bridge.adapter,
     )
-    
+
     # Get bridge keys
     bridge_keys = list(bridge.original_model.state_dict().keys())
-    
+
     # Create proper mapping
     clean_to_bridge = {}
     for bridge_key in bridge_keys:
         clean_key = bridge_key.replace("._original_component", "")
         clean_to_bridge[clean_key] = bridge_key
-    
+
     proper_mapping = {}
     for processed_key, value in processed_state_dict.items():
         if processed_key in clean_to_bridge:
             bridge_key = clean_to_bridge[processed_key]
             proper_mapping[bridge_key] = value
-    
+
     # Test input
     test_input = "Hello world"
     input_ids = bridge.tokenizer.encode(test_input, return_tensors="pt")
-    
+
     # Get output before loading processed weights
     with torch.no_grad():
         output_before = bridge.forward(input_ids)
-        logits_before = output_before.logits if hasattr(output_before, 'logits') else output_before
-    
+        logits_before = output_before.logits if hasattr(output_before, "logits") else output_before
+
     # Load processed weights
     result = bridge.load_state_dict(proper_mapping, strict=False, assign=False)
-    
+
     # Get output after loading processed weights
     with torch.no_grad():
         output_after = bridge.forward(input_ids)
-        logits_after = output_before.logits if hasattr(output_after, 'logits') else output_after
-    
+        logits_after = output_before.logits if hasattr(output_after, "logits") else output_after
+
     # Check if outputs are different
     output_changed = not torch.allclose(logits_before, logits_after, atol=1e-6)
-    
+
     # The key assertion: processed weights should change the model output
     assert output_changed, "Processed weights should change the model output"
-    
+
     # Verify that the processed weights are correctly loaded
     layer = 0
     hf_key = f"transformer.h.{layer}.attn.c_attn.weight"
     bridge_key = f"transformer.h.{layer}._original_component.attn._original_component.c_attn._original_component.weight"
-    
+
     if hf_key in processed_state_dict and bridge_key in bridge_keys:
         processed_weight = processed_state_dict[hf_key]
         bridge_weight = bridge.original_model.state_dict()[bridge_key]
-        
-        assert torch.allclose(processed_weight, bridge_weight, atol=1e-6), \
-            "Processed weights should be correctly loaded into bridge"
+
+        assert torch.allclose(
+            processed_weight, bridge_weight, atol=1e-6
+        ), "Processed weights should be correctly loaded into bridge"
 
 
 def test_gpt2_weight_processing_comparison():
     """Test GPT-2 weight processing comparison between different paths."""
     model_name = "gpt2"
     device = "cpu"
-    
+
     # Load HuggingFace GPT-2
     from transformers import GPT2LMHeadModel, GPT2Tokenizer
+
     hf_model = GPT2LMHeadModel.from_pretrained(model_name)
     hf_tokenizer = GPT2Tokenizer.from_pretrained(model_name)
-    
+
     # Load HookedTransformer
     tl_model = HookedTransformer.from_pretrained(model_name, device=device)
-    
+
     # Create TransformerBridge
     from transformer_lens.config import TransformerBridgeConfig
     from transformer_lens.model_bridge.supported_architectures.gpt2 import (
         GPT2ArchitectureAdapter,
     )
-    
+
     bridge_config = TransformerBridgeConfig.from_dict(tl_model.cfg.__dict__)
     bridge_config.architecture = "GPT2LMHeadModel"
     adapter = GPT2ArchitectureAdapter(bridge_config)
     bridge = TransformerBridge.boot_transformers(model_name, device=device)
-    
+
     # Get original state dicts
     hf_state_dict = hf_model.state_dict()
     tl_state_dict = tl_model.state_dict()
     bridge_state_dict = bridge.state_dict()
-    
+
     # Test 1: Direct GPT-2 processing through LayerNorm folding
     hf_processed = hf_state_dict.copy()
-    
+
     # Apply LayerNorm folding to HuggingFace model
     from transformer_lens.weight_processing import ProcessWeights
+
     hf_processed = ProcessWeights.fold_layer_norm(
         hf_processed, tl_model.cfg, fold_biases=True, center_weights=True, adapter=adapter
     )
-    
+
     # Test 2: TransformerBridge processing
     bridge.process_weights(
         fold_ln=True, fold_value_biases=True, center_writing_weights=True, center_unembed=True
     )
-    
+
     # Get processed state dicts
     bridge_processed_state_dict = bridge.state_dict()
-    
+
     # Test 3: Compare key weights
     comparison_keys = [
         "transformer.h.0.attn.c_attn.weight",
@@ -773,46 +822,51 @@ def test_gpt2_weight_processing_comparison():
         "transformer.wte.weight",
         "transformer.wpe.weight",
     ]
-    
+
     max_diff = 0.0
     total_comparisons = 0
     successful_comparisons = 0
-    
+
     for key in comparison_keys:
         if key in hf_processed and key in bridge_processed_state_dict:
             hf_weight = hf_processed[key]
             bridge_weight = bridge_processed_state_dict[key]
-            
+
             # Check shapes match
-            assert hf_weight.shape == bridge_weight.shape, \
-                f"Shape mismatch for {key}: HF {hf_weight.shape} vs Bridge {bridge_weight.shape}"
-            
+            assert (
+                hf_weight.shape == bridge_weight.shape
+            ), f"Shape mismatch for {key}: HF {hf_weight.shape} vs Bridge {bridge_weight.shape}"
+
             # Calculate difference
             diff = torch.abs(hf_weight - bridge_weight).max().item()
             max_diff = max(max_diff, diff)
             total_comparisons += 1
-            
+
             assert diff < 1e-5, f"{key}: max diff = {diff:.2e} (too large)"
             successful_comparisons += 1
-    
+
     # Test 4: Check if LayerNorm parameters were properly folded
     # Check if LayerNorm parameters are gone from processed state dicts
     ln_keys_hf = [k for k in hf_processed.keys() if "ln" in k.lower()]
     ln_keys_bridge = [k for k in bridge_processed_state_dict.keys() if "ln" in k.lower()]
-    
+
     # LayerNorm parameters should be folded out
     assert len(ln_keys_hf) == 0, f"LayerNorm parameters still present in HF processed: {ln_keys_hf}"
-    assert len(ln_keys_bridge) == 0, f"LayerNorm parameters still present in Bridge processed: {ln_keys_bridge}"
-    
+    assert (
+        len(ln_keys_bridge) == 0
+    ), f"LayerNorm parameters still present in Bridge processed: {ln_keys_bridge}"
+
     # Test 5: Check attention weight structure
     # Check if attention weights were split properly
     attn_keys_hf = [k for k in hf_processed.keys() if "attn" in k and "weight" in k]
-    attn_keys_bridge = [k for k in bridge_processed_state_dict.keys() if "attn" in k and "weight" in k]
-    
+    attn_keys_bridge = [
+        k for k in bridge_processed_state_dict.keys() if "attn" in k and "weight" in k
+    ]
+
     # Look for split attention weights (q, k, v separate)
     split_attn_hf = [k for k in attn_keys_hf if any(x in k for x in [".q.", ".k.", ".v."])]
     split_attn_bridge = [k for k in attn_keys_bridge if any(x in k for x in [".q.", ".k.", ".v."])]
-    
+
     # Attention weights should be split properly
     assert len(split_attn_hf) > 0, "Attention weights should be split in HF processed"
     assert len(split_attn_bridge) > 0, "Attention weights should be split in Bridge processed"
@@ -822,101 +876,93 @@ def test_tensor_conversion_compatibility():
     """Test that conversion functions match HookedTransformer exactly."""
     model_name = "gpt2"
     device = "cpu"
-    
+
     # Load HookedTransformer WITHOUT processing to get unprocessed weights
     tl_model = HookedTransformer.from_pretrained_no_processing(model_name, device=device)
     bridge = TransformerBridge.boot_transformers(model_name, device=device)
-    
+
     # Test layer 0 (first layer)
     layer_idx = 0
-    
+
     # Get HookedTransformer state dict
     tl_state_dict = tl_model.state_dict()
-    
+
     # Test attention weights
     attention_params = ["W_Q", "W_K", "W_V", "W_O"]
     for param in attention_params:
         tl_key = f"blocks.{layer_idx}.attn.{param}"
         hf_key = bridge.adapter.translate_transformer_lens_path(tl_key)
-        
+
         # Get HookedTransformer value
         tl_value = tl_state_dict[tl_key]
-        
+
         # Convert using the component directly (it will get the tensor from state dict)
         from transformer_lens.weight_processing import ProcessWeights
+
         converted_value = ProcessWeights.convert_tensor_to_tl_format(
-            bridge.original_model.state_dict()[hf_key], 
-            hf_key, 
-            bridge.adapter, 
-            bridge.cfg
+            bridge.original_model.state_dict()[hf_key], hf_key, bridge.adapter, bridge.cfg
         )
-        
+
         # Compare shapes
-        assert tl_value.shape == converted_value.shape, \
-            f"Shape mismatch for {param}: TL {tl_value.shape} vs Converted {converted_value.shape}"
-        
+        assert (
+            tl_value.shape == converted_value.shape
+        ), f"Shape mismatch for {param}: TL {tl_value.shape} vs Converted {converted_value.shape}"
+
         # Compare values
         max_diff = torch.max(torch.abs(tl_value - converted_value)).item()
-        assert max_diff < 1e-6, \
-            f"Value mismatch for {param}: max_diff={max_diff:.2e}"
-    
+        assert max_diff < 1e-6, f"Value mismatch for {param}: max_diff={max_diff:.2e}"
+
     # Test MLP weights
     mlp_params = ["W_in", "W_out"]
     for param in mlp_params:
         tl_key = f"blocks.{layer_idx}.mlp.{param}"
         hf_key = bridge.adapter.translate_transformer_lens_path(tl_key)
-        
+
         # Get HookedTransformer value
         tl_value = tl_state_dict[tl_key]
-        
+
         # Convert using the component directly
         converted_value = ProcessWeights.convert_tensor_to_tl_format(
-            bridge.original_model.state_dict()[hf_key], 
-            hf_key, 
-            bridge.adapter, 
-            bridge.cfg
+            bridge.original_model.state_dict()[hf_key], hf_key, bridge.adapter, bridge.cfg
         )
-        
+
         # Compare shapes
-        assert tl_value.shape == converted_value.shape, \
-            f"Shape mismatch for MLP {param}: TL {tl_value.shape} vs Converted {converted_value.shape}"
-        
+        assert (
+            tl_value.shape == converted_value.shape
+        ), f"Shape mismatch for MLP {param}: TL {tl_value.shape} vs Converted {converted_value.shape}"
+
         # Compare values
         max_diff = torch.max(torch.abs(tl_value - converted_value)).item()
-        assert max_diff < 1e-6, \
-            f"Value mismatch for MLP {param}: max_diff={max_diff:.2e}"
-    
+        assert max_diff < 1e-6, f"Value mismatch for MLP {param}: max_diff={max_diff:.2e}"
+
     # Test embeddings
     embedding_params = ["W_E", "W_pos"]
     for param in embedding_params:
         tl_key = f"embed.{param}"
         hf_key = bridge.adapter.translate_transformer_lens_path(tl_key)
-        
+
         # Get HookedTransformer value
         tl_value = tl_state_dict[tl_key]
-        
+
         # Convert using the component directly
         converted_value = ProcessWeights.convert_tensor_to_tl_format(
-            bridge.original_model.state_dict()[hf_key], 
-            hf_key, 
-            bridge.adapter, 
-            bridge.cfg
+            bridge.original_model.state_dict()[hf_key], hf_key, bridge.adapter, bridge.cfg
         )
-        
+
         # Compare shapes
-        assert tl_value.shape == converted_value.shape, \
-            f"Shape mismatch for {param}: TL {tl_value.shape} vs Converted {converted_value.shape}"
-        
+        assert (
+            tl_value.shape == converted_value.shape
+        ), f"Shape mismatch for {param}: TL {tl_value.shape} vs Converted {converted_value.shape}"
+
         # Compare values
         max_diff = torch.max(torch.abs(tl_value - converted_value)).item()
-        assert max_diff < 1e-6, \
-            f"Value mismatch for {param}: max_diff={max_diff:.2e}"
+        assert max_diff < 1e-6, f"Value mismatch for {param}: max_diff={max_diff:.2e}"
 
 
 if __name__ == "__main__":
     success = test_integration_compatibility()
     if success:
         print("\n🚀 INTEGRATION READY FOR PRODUCTION! 🚀")
-    
+
     # Run the comprehensive weight processing test
     test_weight_processing_results_loaded_into_model()

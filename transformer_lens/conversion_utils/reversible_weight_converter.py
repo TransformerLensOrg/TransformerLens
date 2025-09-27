@@ -13,24 +13,24 @@ Key Features:
 - Integration with existing compare scripts
 """
 
-import warnings
-from typing import Any, Dict, List, Optional, Tuple, Union
 from abc import ABC, abstractmethod
+from typing import Any, Dict, List, Optional
 
 import einops
 import torch
-from torch import nn
 
 from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 
 
 class ConversionError(Exception):
     """Exception raised during weight conversion."""
+
     pass
 
 
 class RoundTripError(Exception):
     """Exception raised when round-trip conversion fails validation."""
+
     pass
 
 
@@ -38,14 +38,16 @@ class BaseComponentConverter(ABC):
     """Base class for component-specific weight converters."""
 
     @abstractmethod
-    def hf_to_tlens(self, hf_weights: Dict[str, torch.Tensor],
-                   config: HookedTransformerConfig, **kwargs) -> Dict[str, torch.Tensor]:
+    def hf_to_tlens(
+        self, hf_weights: Dict[str, torch.Tensor], config: HookedTransformerConfig, **kwargs
+    ) -> Dict[str, torch.Tensor]:
         """Convert HuggingFace weights to TransformerLens format."""
         pass
 
     @abstractmethod
-    def tlens_to_hf(self, tlens_weights: Dict[str, torch.Tensor],
-                   config: HookedTransformerConfig, **kwargs) -> Dict[str, torch.Tensor]:
+    def tlens_to_hf(
+        self, tlens_weights: Dict[str, torch.Tensor], config: HookedTransformerConfig, **kwargs
+    ) -> Dict[str, torch.Tensor]:
         """Convert TransformerLens weights to HuggingFace format."""
         pass
 
@@ -59,8 +61,13 @@ class BaseComponentConverter(ABC):
         """Get expected TransformerLens parameter keys for this component."""
         pass
 
-    def validate_round_trip(self, original_weights: Dict[str, torch.Tensor],
-                          config: HookedTransformerConfig, tolerance: float = 1e-6, **kwargs) -> bool:
+    def validate_round_trip(
+        self,
+        original_weights: Dict[str, torch.Tensor],
+        config: HookedTransformerConfig,
+        tolerance: float = 1e-6,
+        **kwargs,
+    ) -> bool:
         """Validate that HF → TLens → HF conversion preserves weights."""
         try:
             # Forward conversion
@@ -76,7 +83,9 @@ class BaseComponentConverter(ABC):
             # Check values match within tolerance
             for key, original_tensor in original_weights.items():
                 recovered_tensor = recovered_weights[key]
-                if not torch.allclose(original_tensor, recovered_tensor, atol=tolerance, rtol=tolerance):
+                if not torch.allclose(
+                    original_tensor, recovered_tensor, atol=tolerance, rtol=tolerance
+                ):
                     max_diff = torch.max(torch.abs(original_tensor - recovered_tensor)).item()
                     raise RoundTripError(
                         f"Round-trip mismatch for {key}: max difference {max_diff} > {tolerance}"
@@ -91,8 +100,9 @@ class BaseComponentConverter(ABC):
 class EmbeddingConverter(BaseComponentConverter):
     """Converter for embedding layers."""
 
-    def hf_to_tlens(self, hf_weights: Dict[str, torch.Tensor],
-                   config: HookedTransformerConfig, **kwargs) -> Dict[str, torch.Tensor]:
+    def hf_to_tlens(
+        self, hf_weights: Dict[str, torch.Tensor], config: HookedTransformerConfig, **kwargs
+    ) -> Dict[str, torch.Tensor]:
         """Convert HF embedding weights to TLens format."""
         tlens_weights = {}
 
@@ -108,8 +118,9 @@ class EmbeddingConverter(BaseComponentConverter):
 
         return tlens_weights
 
-    def tlens_to_hf(self, tlens_weights: Dict[str, torch.Tensor],
-                   config: HookedTransformerConfig, **kwargs) -> Dict[str, torch.Tensor]:
+    def tlens_to_hf(
+        self, tlens_weights: Dict[str, torch.Tensor], config: HookedTransformerConfig, **kwargs
+    ) -> Dict[str, torch.Tensor]:
         """Convert TLens embedding weights to HF format."""
         hf_weights = {}
 
@@ -144,7 +155,7 @@ class EmbeddingConverter(BaseComponentConverter):
     def get_tlens_keys(self, config: HookedTransformerConfig, **kwargs) -> List[str]:
         """Get expected TLens keys for embeddings."""
         keys = ["embed.W_E"]
-        if hasattr(config, 'n_ctx') and config.n_ctx > 0:
+        if hasattr(config, "n_ctx") and config.n_ctx > 0:
             keys.append("pos_embed.W_pos")
         return keys
 
@@ -152,8 +163,9 @@ class EmbeddingConverter(BaseComponentConverter):
 class AttentionConverter(BaseComponentConverter):
     """Converter for attention layers with support for various architectures."""
 
-    def hf_to_tlens(self, hf_weights: Dict[str, torch.Tensor],
-                   config: HookedTransformerConfig, **kwargs) -> Dict[str, torch.Tensor]:
+    def hf_to_tlens(
+        self, hf_weights: Dict[str, torch.Tensor], config: HookedTransformerConfig, **kwargs
+    ) -> Dict[str, torch.Tensor]:
         """Convert HF attention weights to TLens format."""
         tlens_weights = {}
         layer_idx = kwargs.get("layer_idx", 0)
@@ -168,8 +180,9 @@ class AttentionConverter(BaseComponentConverter):
         else:
             raise ConversionError(f"Unsupported model type for attention: {model_type}")
 
-    def tlens_to_hf(self, tlens_weights: Dict[str, torch.Tensor],
-                   config: HookedTransformerConfig, **kwargs) -> Dict[str, torch.Tensor]:
+    def tlens_to_hf(
+        self, tlens_weights: Dict[str, torch.Tensor], config: HookedTransformerConfig, **kwargs
+    ) -> Dict[str, torch.Tensor]:
         """Convert TLens attention weights to HF format."""
         layer_idx = kwargs.get("layer_idx", 0)
         model_type = kwargs.get("model_type", "gpt2")
@@ -183,8 +196,9 @@ class AttentionConverter(BaseComponentConverter):
         else:
             raise ConversionError(f"Unsupported model type for attention: {model_type}")
 
-    def _convert_gpt2_attention_hf_to_tlens(self, hf_weights: Dict[str, torch.Tensor],
-                                          config: HookedTransformerConfig, layer_idx: int) -> Dict[str, torch.Tensor]:
+    def _convert_gpt2_attention_hf_to_tlens(
+        self, hf_weights: Dict[str, torch.Tensor], config: HookedTransformerConfig, layer_idx: int
+    ) -> Dict[str, torch.Tensor]:
         """Convert GPT-2 style attention from HF to TLens."""
         tlens_weights = {}
         prefix = f"transformer.h.{layer_idx}.attn"
@@ -228,8 +242,12 @@ class AttentionConverter(BaseComponentConverter):
 
         return tlens_weights
 
-    def _convert_gpt2_attention_tlens_to_hf(self, tlens_weights: Dict[str, torch.Tensor],
-                                          config: HookedTransformerConfig, layer_idx: int) -> Dict[str, torch.Tensor]:
+    def _convert_gpt2_attention_tlens_to_hf(
+        self,
+        tlens_weights: Dict[str, torch.Tensor],
+        config: HookedTransformerConfig,
+        layer_idx: int,
+    ) -> Dict[str, torch.Tensor]:
         """Convert GPT-2 style attention from TLens to HF."""
         hf_weights = {}
         prefix = f"transformer.h.{layer_idx}.attn"
@@ -271,8 +289,9 @@ class AttentionConverter(BaseComponentConverter):
 
         return hf_weights
 
-    def _convert_llama_attention_hf_to_tlens(self, hf_weights: Dict[str, torch.Tensor],
-                                           config: HookedTransformerConfig, layer_idx: int) -> Dict[str, torch.Tensor]:
+    def _convert_llama_attention_hf_to_tlens(
+        self, hf_weights: Dict[str, torch.Tensor], config: HookedTransformerConfig, layer_idx: int
+    ) -> Dict[str, torch.Tensor]:
         """Convert LLaMA style attention from HF to TLens."""
         tlens_weights = {}
         prefix = f"model.layers.{layer_idx}.self_attn"
@@ -284,7 +303,7 @@ class AttentionConverter(BaseComponentConverter):
                 weight = hf_weights[hf_key]
                 # Reshape for multi-head format
                 tlens_key = proj_name[0].upper()  # q_proj -> Q, etc.
-                if proj_name == "k_proj" and hasattr(config, 'n_key_value_heads'):
+                if proj_name == "k_proj" and hasattr(config, "n_key_value_heads"):
                     # Handle GQA (Grouped Query Attention)
                     n_heads = config.n_key_value_heads
                 else:
@@ -301,8 +320,12 @@ class AttentionConverter(BaseComponentConverter):
 
         return tlens_weights
 
-    def _convert_llama_attention_tlens_to_hf(self, tlens_weights: Dict[str, torch.Tensor],
-                                           config: HookedTransformerConfig, layer_idx: int) -> Dict[str, torch.Tensor]:
+    def _convert_llama_attention_tlens_to_hf(
+        self,
+        tlens_weights: Dict[str, torch.Tensor],
+        config: HookedTransformerConfig,
+        layer_idx: int,
+    ) -> Dict[str, torch.Tensor]:
         """Convert LLaMA style attention from TLens to HF."""
         hf_weights = {}
         prefix = f"model.layers.{layer_idx}.self_attn"
@@ -326,14 +349,19 @@ class AttentionConverter(BaseComponentConverter):
 
         return hf_weights
 
-    def _convert_gemma_attention_hf_to_tlens(self, hf_weights: Dict[str, torch.Tensor],
-                                           config: HookedTransformerConfig, layer_idx: int) -> Dict[str, torch.Tensor]:
+    def _convert_gemma_attention_hf_to_tlens(
+        self, hf_weights: Dict[str, torch.Tensor], config: HookedTransformerConfig, layer_idx: int
+    ) -> Dict[str, torch.Tensor]:
         """Convert Gemma style attention from HF to TLens."""
         # Gemma has similar structure to LLaMA but with some differences
         return self._convert_llama_attention_hf_to_tlens(hf_weights, config, layer_idx)
 
-    def _convert_gemma_attention_tlens_to_hf(self, tlens_weights: Dict[str, torch.Tensor],
-                                           config: HookedTransformerConfig, layer_idx: int) -> Dict[str, torch.Tensor]:
+    def _convert_gemma_attention_tlens_to_hf(
+        self,
+        tlens_weights: Dict[str, torch.Tensor],
+        config: HookedTransformerConfig,
+        layer_idx: int,
+    ) -> Dict[str, torch.Tensor]:
         """Convert Gemma style attention from TLens to HF."""
         return self._convert_llama_attention_tlens_to_hf(tlens_weights, config, layer_idx)
 
@@ -344,29 +372,44 @@ class AttentionConverter(BaseComponentConverter):
 
         if model_type == "gpt2":
             prefix = f"transformer.h.{layer_idx}.attn"
-            return [f"{prefix}.c_attn.weight", f"{prefix}.c_attn.bias",
-                   f"{prefix}.c_proj.weight", f"{prefix}.c_proj.bias"]
+            return [
+                f"{prefix}.c_attn.weight",
+                f"{prefix}.c_attn.bias",
+                f"{prefix}.c_proj.weight",
+                f"{prefix}.c_proj.bias",
+            ]
         elif model_type in ["llama", "mistral", "gemma"]:
             prefix = f"model.layers.{layer_idx}.self_attn"
-            return [f"{prefix}.q_proj.weight", f"{prefix}.k_proj.weight",
-                   f"{prefix}.v_proj.weight", f"{prefix}.o_proj.weight"]
+            return [
+                f"{prefix}.q_proj.weight",
+                f"{prefix}.k_proj.weight",
+                f"{prefix}.v_proj.weight",
+                f"{prefix}.o_proj.weight",
+            ]
         else:
             return []
 
     def get_tlens_keys(self, config: HookedTransformerConfig, **kwargs) -> List[str]:
         """Get expected TLens keys for attention."""
         layer_idx = kwargs.get("layer_idx", 0)
-        return [f"blocks.{layer_idx}.attn.W_Q", f"blocks.{layer_idx}.attn.W_K",
-               f"blocks.{layer_idx}.attn.W_V", f"blocks.{layer_idx}.attn.W_O",
-               f"blocks.{layer_idx}.attn.b_Q", f"blocks.{layer_idx}.attn.b_K",
-               f"blocks.{layer_idx}.attn.b_V", f"blocks.{layer_idx}.attn.b_O"]
+        return [
+            f"blocks.{layer_idx}.attn.W_Q",
+            f"blocks.{layer_idx}.attn.W_K",
+            f"blocks.{layer_idx}.attn.W_V",
+            f"blocks.{layer_idx}.attn.W_O",
+            f"blocks.{layer_idx}.attn.b_Q",
+            f"blocks.{layer_idx}.attn.b_K",
+            f"blocks.{layer_idx}.attn.b_V",
+            f"blocks.{layer_idx}.attn.b_O",
+        ]
 
 
 class MLPConverter(BaseComponentConverter):
     """Converter for MLP layers."""
 
-    def hf_to_tlens(self, hf_weights: Dict[str, torch.Tensor],
-                   config: HookedTransformerConfig, **kwargs) -> Dict[str, torch.Tensor]:
+    def hf_to_tlens(
+        self, hf_weights: Dict[str, torch.Tensor], config: HookedTransformerConfig, **kwargs
+    ) -> Dict[str, torch.Tensor]:
         """Convert HF MLP weights to TLens format."""
         tlens_weights = {}
         layer_idx = kwargs.get("layer_idx", 0)
@@ -381,8 +424,9 @@ class MLPConverter(BaseComponentConverter):
         else:
             raise ConversionError(f"Unsupported model type for MLP: {model_type}")
 
-    def tlens_to_hf(self, tlens_weights: Dict[str, torch.Tensor],
-                   config: HookedTransformerConfig, **kwargs) -> Dict[str, torch.Tensor]:
+    def tlens_to_hf(
+        self, tlens_weights: Dict[str, torch.Tensor], config: HookedTransformerConfig, **kwargs
+    ) -> Dict[str, torch.Tensor]:
         """Convert TLens MLP weights to HF format."""
         layer_idx = kwargs.get("layer_idx", 0)
         model_type = kwargs.get("model_type", "gpt2")
@@ -396,8 +440,9 @@ class MLPConverter(BaseComponentConverter):
         else:
             raise ConversionError(f"Unsupported model type for MLP: {model_type}")
 
-    def _convert_gpt2_mlp_hf_to_tlens(self, hf_weights: Dict[str, torch.Tensor],
-                                    config: HookedTransformerConfig, layer_idx: int) -> Dict[str, torch.Tensor]:
+    def _convert_gpt2_mlp_hf_to_tlens(
+        self, hf_weights: Dict[str, torch.Tensor], config: HookedTransformerConfig, layer_idx: int
+    ) -> Dict[str, torch.Tensor]:
         """Convert GPT-2 style MLP from HF to TLens."""
         tlens_weights = {}
         prefix = f"transformer.h.{layer_idx}.mlp"
@@ -416,8 +461,12 @@ class MLPConverter(BaseComponentConverter):
 
         return tlens_weights
 
-    def _convert_gpt2_mlp_tlens_to_hf(self, tlens_weights: Dict[str, torch.Tensor],
-                                    config: HookedTransformerConfig, layer_idx: int) -> Dict[str, torch.Tensor]:
+    def _convert_gpt2_mlp_tlens_to_hf(
+        self,
+        tlens_weights: Dict[str, torch.Tensor],
+        config: HookedTransformerConfig,
+        layer_idx: int,
+    ) -> Dict[str, torch.Tensor]:
         """Convert GPT-2 style MLP from TLens to HF."""
         hf_weights = {}
         prefix = f"transformer.h.{layer_idx}.mlp"
@@ -436,45 +485,63 @@ class MLPConverter(BaseComponentConverter):
 
         return hf_weights
 
-    def _convert_llama_mlp_hf_to_tlens(self, hf_weights: Dict[str, torch.Tensor],
-                                     config: HookedTransformerConfig, layer_idx: int) -> Dict[str, torch.Tensor]:
+    def _convert_llama_mlp_hf_to_tlens(
+        self, hf_weights: Dict[str, torch.Tensor], config: HookedTransformerConfig, layer_idx: int
+    ) -> Dict[str, torch.Tensor]:
         """Convert LLaMA style MLP from HF to TLens (SwiGLU/GeGLU)."""
         tlens_weights = {}
         prefix = f"model.layers.{layer_idx}.mlp"
 
         # For SwiGLU, we have gate_proj and up_proj that get combined
         if f"{prefix}.gate_proj.weight" in hf_weights:
-            tlens_weights[f"blocks.{layer_idx}.mlp.W_gate"] = hf_weights[f"{prefix}.gate_proj.weight"]
+            tlens_weights[f"blocks.{layer_idx}.mlp.W_gate"] = hf_weights[
+                f"{prefix}.gate_proj.weight"
+            ]
         if f"{prefix}.up_proj.weight" in hf_weights:
             tlens_weights[f"blocks.{layer_idx}.mlp.W_in"] = hf_weights[f"{prefix}.up_proj.weight"]
         if f"{prefix}.down_proj.weight" in hf_weights:
-            tlens_weights[f"blocks.{layer_idx}.mlp.W_out"] = hf_weights[f"{prefix}.down_proj.weight"]
+            tlens_weights[f"blocks.{layer_idx}.mlp.W_out"] = hf_weights[
+                f"{prefix}.down_proj.weight"
+            ]
 
         return tlens_weights
 
-    def _convert_llama_mlp_tlens_to_hf(self, tlens_weights: Dict[str, torch.Tensor],
-                                     config: HookedTransformerConfig, layer_idx: int) -> Dict[str, torch.Tensor]:
+    def _convert_llama_mlp_tlens_to_hf(
+        self,
+        tlens_weights: Dict[str, torch.Tensor],
+        config: HookedTransformerConfig,
+        layer_idx: int,
+    ) -> Dict[str, torch.Tensor]:
         """Convert LLaMA style MLP from TLens to HF (SwiGLU/GeGLU)."""
         hf_weights = {}
         prefix = f"model.layers.{layer_idx}.mlp"
 
         # For SwiGLU, map back to gate_proj, up_proj, down_proj
         if f"blocks.{layer_idx}.mlp.W_gate" in tlens_weights:
-            hf_weights[f"{prefix}.gate_proj.weight"] = tlens_weights[f"blocks.{layer_idx}.mlp.W_gate"]
+            hf_weights[f"{prefix}.gate_proj.weight"] = tlens_weights[
+                f"blocks.{layer_idx}.mlp.W_gate"
+            ]
         if f"blocks.{layer_idx}.mlp.W_in" in tlens_weights:
             hf_weights[f"{prefix}.up_proj.weight"] = tlens_weights[f"blocks.{layer_idx}.mlp.W_in"]
         if f"blocks.{layer_idx}.mlp.W_out" in tlens_weights:
-            hf_weights[f"{prefix}.down_proj.weight"] = tlens_weights[f"blocks.{layer_idx}.mlp.W_out"]
+            hf_weights[f"{prefix}.down_proj.weight"] = tlens_weights[
+                f"blocks.{layer_idx}.mlp.W_out"
+            ]
 
         return hf_weights
 
-    def _convert_gemma_mlp_hf_to_tlens(self, hf_weights: Dict[str, torch.Tensor],
-                                     config: HookedTransformerConfig, layer_idx: int) -> Dict[str, torch.Tensor]:
+    def _convert_gemma_mlp_hf_to_tlens(
+        self, hf_weights: Dict[str, torch.Tensor], config: HookedTransformerConfig, layer_idx: int
+    ) -> Dict[str, torch.Tensor]:
         """Convert Gemma style MLP from HF to TLens."""
         return self._convert_llama_mlp_hf_to_tlens(hf_weights, config, layer_idx)
 
-    def _convert_gemma_mlp_tlens_to_hf(self, tlens_weights: Dict[str, torch.Tensor],
-                                     config: HookedTransformerConfig, layer_idx: int) -> Dict[str, torch.Tensor]:
+    def _convert_gemma_mlp_tlens_to_hf(
+        self,
+        tlens_weights: Dict[str, torch.Tensor],
+        config: HookedTransformerConfig,
+        layer_idx: int,
+    ) -> Dict[str, torch.Tensor]:
         """Convert Gemma style MLP from TLens to HF."""
         return self._convert_llama_mlp_tlens_to_hf(tlens_weights, config, layer_idx)
 
@@ -485,12 +552,19 @@ class MLPConverter(BaseComponentConverter):
 
         if model_type == "gpt2":
             prefix = f"transformer.h.{layer_idx}.mlp"
-            return [f"{prefix}.c_fc.weight", f"{prefix}.c_fc.bias",
-                   f"{prefix}.c_proj.weight", f"{prefix}.c_proj.bias"]
+            return [
+                f"{prefix}.c_fc.weight",
+                f"{prefix}.c_fc.bias",
+                f"{prefix}.c_proj.weight",
+                f"{prefix}.c_proj.bias",
+            ]
         elif model_type in ["llama", "mistral", "gemma"]:
             prefix = f"model.layers.{layer_idx}.mlp"
-            return [f"{prefix}.gate_proj.weight", f"{prefix}.up_proj.weight",
-                   f"{prefix}.down_proj.weight"]
+            return [
+                f"{prefix}.gate_proj.weight",
+                f"{prefix}.up_proj.weight",
+                f"{prefix}.down_proj.weight",
+            ]
         else:
             return []
 
@@ -512,8 +586,9 @@ class MLPConverter(BaseComponentConverter):
 class NormalizationConverter(BaseComponentConverter):
     """Converter for normalization layers (LayerNorm/RMSNorm)."""
 
-    def hf_to_tlens(self, hf_weights: Dict[str, torch.Tensor],
-                   config: HookedTransformerConfig, **kwargs) -> Dict[str, torch.Tensor]:
+    def hf_to_tlens(
+        self, hf_weights: Dict[str, torch.Tensor], config: HookedTransformerConfig, **kwargs
+    ) -> Dict[str, torch.Tensor]:
         """Convert HF normalization weights to TLens format."""
         tlens_weights = {}
         layer_idx = kwargs.get("layer_idx", None)
@@ -527,8 +602,9 @@ class NormalizationConverter(BaseComponentConverter):
         else:
             raise ConversionError(f"Unsupported model type for normalization: {model_type}")
 
-    def tlens_to_hf(self, tlens_weights: Dict[str, torch.Tensor],
-                   config: HookedTransformerConfig, **kwargs) -> Dict[str, torch.Tensor]:
+    def tlens_to_hf(
+        self, tlens_weights: Dict[str, torch.Tensor], config: HookedTransformerConfig, **kwargs
+    ) -> Dict[str, torch.Tensor]:
         """Convert TLens normalization weights to HF format."""
         layer_idx = kwargs.get("layer_idx", None)
         norm_type = kwargs.get("norm_type", "ln1")
@@ -541,9 +617,13 @@ class NormalizationConverter(BaseComponentConverter):
         else:
             raise ConversionError(f"Unsupported model type for normalization: {model_type}")
 
-    def _convert_gpt2_norm_hf_to_tlens(self, hf_weights: Dict[str, torch.Tensor],
-                                     config: HookedTransformerConfig, layer_idx: Optional[int],
-                                     norm_type: str) -> Dict[str, torch.Tensor]:
+    def _convert_gpt2_norm_hf_to_tlens(
+        self,
+        hf_weights: Dict[str, torch.Tensor],
+        config: HookedTransformerConfig,
+        layer_idx: Optional[int],
+        norm_type: str,
+    ) -> Dict[str, torch.Tensor]:
         """Convert GPT-2 style normalization from HF to TLens."""
         tlens_weights = {}
 
@@ -560,15 +640,23 @@ class NormalizationConverter(BaseComponentConverter):
 
             prefix = f"transformer.h.{layer_idx}.{hf_norm_name}"
             if f"{prefix}.weight" in hf_weights:
-                tlens_weights[f"blocks.{layer_idx}.{tlens_norm_name}.w"] = hf_weights[f"{prefix}.weight"]
+                tlens_weights[f"blocks.{layer_idx}.{tlens_norm_name}.w"] = hf_weights[
+                    f"{prefix}.weight"
+                ]
             if f"{prefix}.bias" in hf_weights:
-                tlens_weights[f"blocks.{layer_idx}.{tlens_norm_name}.b"] = hf_weights[f"{prefix}.bias"]
+                tlens_weights[f"blocks.{layer_idx}.{tlens_norm_name}.b"] = hf_weights[
+                    f"{prefix}.bias"
+                ]
 
         return tlens_weights
 
-    def _convert_gpt2_norm_tlens_to_hf(self, tlens_weights: Dict[str, torch.Tensor],
-                                     config: HookedTransformerConfig, layer_idx: Optional[int],
-                                     norm_type: str) -> Dict[str, torch.Tensor]:
+    def _convert_gpt2_norm_tlens_to_hf(
+        self,
+        tlens_weights: Dict[str, torch.Tensor],
+        config: HookedTransformerConfig,
+        layer_idx: Optional[int],
+        norm_type: str,
+    ) -> Dict[str, torch.Tensor]:
         """Convert GPT-2 style normalization from TLens to HF."""
         hf_weights = {}
 
@@ -585,15 +673,23 @@ class NormalizationConverter(BaseComponentConverter):
 
             prefix = f"transformer.h.{layer_idx}.{hf_norm_name}"
             if f"blocks.{layer_idx}.{tlens_norm_name}.w" in tlens_weights:
-                hf_weights[f"{prefix}.weight"] = tlens_weights[f"blocks.{layer_idx}.{tlens_norm_name}.w"]
+                hf_weights[f"{prefix}.weight"] = tlens_weights[
+                    f"blocks.{layer_idx}.{tlens_norm_name}.w"
+                ]
             if f"blocks.{layer_idx}.{tlens_norm_name}.b" in tlens_weights:
-                hf_weights[f"{prefix}.bias"] = tlens_weights[f"blocks.{layer_idx}.{tlens_norm_name}.b"]
+                hf_weights[f"{prefix}.bias"] = tlens_weights[
+                    f"blocks.{layer_idx}.{tlens_norm_name}.b"
+                ]
 
         return hf_weights
 
-    def _convert_llama_norm_hf_to_tlens(self, hf_weights: Dict[str, torch.Tensor],
-                                      config: HookedTransformerConfig, layer_idx: Optional[int],
-                                      norm_type: str) -> Dict[str, torch.Tensor]:
+    def _convert_llama_norm_hf_to_tlens(
+        self,
+        hf_weights: Dict[str, torch.Tensor],
+        config: HookedTransformerConfig,
+        layer_idx: Optional[int],
+        norm_type: str,
+    ) -> Dict[str, torch.Tensor]:
         """Convert LLaMA style normalization from HF to TLens."""
         tlens_weights = {}
 
@@ -615,9 +711,13 @@ class NormalizationConverter(BaseComponentConverter):
 
         return tlens_weights
 
-    def _convert_llama_norm_tlens_to_hf(self, tlens_weights: Dict[str, torch.Tensor],
-                                      config: HookedTransformerConfig, layer_idx: Optional[int],
-                                      norm_type: str) -> Dict[str, torch.Tensor]:
+    def _convert_llama_norm_tlens_to_hf(
+        self,
+        tlens_weights: Dict[str, torch.Tensor],
+        config: HookedTransformerConfig,
+        layer_idx: Optional[int],
+        norm_type: str,
+    ) -> Dict[str, torch.Tensor]:
         """Convert LLaMA style normalization from TLens to HF."""
         hf_weights = {}
 
@@ -690,8 +790,9 @@ class NormalizationConverter(BaseComponentConverter):
 class UnembeddingConverter(BaseComponentConverter):
     """Converter for unembedding/lm_head layers."""
 
-    def hf_to_tlens(self, hf_weights: Dict[str, torch.Tensor],
-                   config: HookedTransformerConfig, **kwargs) -> Dict[str, torch.Tensor]:
+    def hf_to_tlens(
+        self, hf_weights: Dict[str, torch.Tensor], config: HookedTransformerConfig, **kwargs
+    ) -> Dict[str, torch.Tensor]:
         """Convert HF unembedding weights to TLens format."""
         tlens_weights = {}
         model_type = kwargs.get("model_type", "gpt2")
@@ -712,14 +813,17 @@ class UnembeddingConverter(BaseComponentConverter):
             # Create zero bias if none exists
             if "unembed.W_U" in tlens_weights:
                 vocab_size = tlens_weights["unembed.W_U"].shape[1]
-                tlens_weights["unembed.b_U"] = torch.zeros(vocab_size,
-                                                         dtype=tlens_weights["unembed.W_U"].dtype,
-                                                         device=tlens_weights["unembed.W_U"].device)
+                tlens_weights["unembed.b_U"] = torch.zeros(
+                    vocab_size,
+                    dtype=tlens_weights["unembed.W_U"].dtype,
+                    device=tlens_weights["unembed.W_U"].device,
+                )
 
         return tlens_weights
 
-    def tlens_to_hf(self, tlens_weights: Dict[str, torch.Tensor],
-                   config: HookedTransformerConfig, **kwargs) -> Dict[str, torch.Tensor]:
+    def tlens_to_hf(
+        self, tlens_weights: Dict[str, torch.Tensor], config: HookedTransformerConfig, **kwargs
+    ) -> Dict[str, torch.Tensor]:
         """Convert TLens unembedding weights to HF format."""
         hf_weights = {}
         model_type = kwargs.get("model_type", "gpt2")
@@ -769,9 +873,12 @@ class ReversibleWeightConverter:
         self.norm_converter = NormalizationConverter()
         self.unembed_converter = UnembeddingConverter()
 
-    def hf_to_tlens(self, hf_state_dict: Dict[str, torch.Tensor],
-                   config: HookedTransformerConfig,
-                   model_type: str = "gpt2") -> Dict[str, torch.Tensor]:
+    def hf_to_tlens(
+        self,
+        hf_state_dict: Dict[str, torch.Tensor],
+        config: HookedTransformerConfig,
+        model_type: str = "gpt2",
+    ) -> Dict[str, torch.Tensor]:
         """
         Convert complete HuggingFace state dict to TransformerLens format.
 
@@ -808,8 +915,11 @@ class ReversibleWeightConverter:
             # Normalization layers
             for norm_type in ["ln1", "ln2"]:
                 norm_weights = self.norm_converter.hf_to_tlens(
-                    hf_state_dict, config, layer_idx=layer_idx,
-                    norm_type=norm_type, model_type=model_type
+                    hf_state_dict,
+                    config,
+                    layer_idx=layer_idx,
+                    norm_type=norm_type,
+                    model_type=model_type,
                 )
                 tlens_state_dict.update(norm_weights)
 
@@ -827,9 +937,12 @@ class ReversibleWeightConverter:
 
         return tlens_state_dict
 
-    def tlens_to_hf(self, tlens_state_dict: Dict[str, torch.Tensor],
-                   config: HookedTransformerConfig,
-                   model_type: str = "gpt2") -> Dict[str, torch.Tensor]:
+    def tlens_to_hf(
+        self,
+        tlens_state_dict: Dict[str, torch.Tensor],
+        config: HookedTransformerConfig,
+        model_type: str = "gpt2",
+    ) -> Dict[str, torch.Tensor]:
         """
         Convert complete TransformerLens state dict to HuggingFace format.
 
@@ -866,8 +979,11 @@ class ReversibleWeightConverter:
             # Normalization layers
             for norm_type in ["ln1", "ln2"]:
                 norm_weights = self.norm_converter.tlens_to_hf(
-                    tlens_state_dict, config, layer_idx=layer_idx,
-                    norm_type=norm_type, model_type=model_type
+                    tlens_state_dict,
+                    config,
+                    layer_idx=layer_idx,
+                    norm_type=norm_type,
+                    model_type=model_type,
                 )
                 hf_state_dict.update(norm_weights)
 
@@ -885,10 +1001,13 @@ class ReversibleWeightConverter:
 
         return hf_state_dict
 
-    def validate_round_trip_hf_to_tlens(self, hf_state_dict: Dict[str, torch.Tensor],
-                                       config: HookedTransformerConfig,
-                                       model_type: str = "gpt2",
-                                       tolerance: float = 1e-6) -> bool:
+    def validate_round_trip_hf_to_tlens(
+        self,
+        hf_state_dict: Dict[str, torch.Tensor],
+        config: HookedTransformerConfig,
+        model_type: str = "gpt2",
+        tolerance: float = 1e-6,
+    ) -> bool:
         """
         Validate HF → TLens → HF round-trip conversion.
 
@@ -921,7 +1040,9 @@ class ReversibleWeightConverter:
             for key, original_tensor in hf_state_dict.items():
                 if key in recovered_hf_dict:
                     recovered_tensor = recovered_hf_dict[key]
-                    if not torch.allclose(original_tensor, recovered_tensor, atol=tolerance, rtol=tolerance):
+                    if not torch.allclose(
+                        original_tensor, recovered_tensor, atol=tolerance, rtol=tolerance
+                    ):
                         max_diff = torch.max(torch.abs(original_tensor - recovered_tensor)).item()
                         mismatched_keys.append((key, max_diff))
 
@@ -936,10 +1057,13 @@ class ReversibleWeightConverter:
         except Exception as e:
             raise RoundTripError(f"HF→TLens→HF round-trip failed: {str(e)}")
 
-    def validate_round_trip_tlens_to_hf(self, tlens_state_dict: Dict[str, torch.Tensor],
-                                       config: HookedTransformerConfig,
-                                       model_type: str = "gpt2",
-                                       tolerance: float = 1e-6) -> bool:
+    def validate_round_trip_tlens_to_hf(
+        self,
+        tlens_state_dict: Dict[str, torch.Tensor],
+        config: HookedTransformerConfig,
+        model_type: str = "gpt2",
+        tolerance: float = 1e-6,
+    ) -> bool:
         """
         Validate TLens → HF → TLens round-trip conversion.
 
@@ -972,7 +1096,9 @@ class ReversibleWeightConverter:
             for key, original_tensor in tlens_state_dict.items():
                 if key in recovered_tlens_dict:
                     recovered_tensor = recovered_tlens_dict[key]
-                    if not torch.allclose(original_tensor, recovered_tensor, atol=tolerance, rtol=tolerance):
+                    if not torch.allclose(
+                        original_tensor, recovered_tensor, atol=tolerance, rtol=tolerance
+                    ):
                         max_diff = torch.max(torch.abs(original_tensor - recovered_tensor)).item()
                         mismatched_keys.append((key, max_diff))
 
@@ -987,9 +1113,12 @@ class ReversibleWeightConverter:
         except Exception as e:
             raise RoundTripError(f"TLens→HF→TLens round-trip failed: {str(e)}")
 
-    def debug_conversion_mismatch(self, original_dict: Dict[str, torch.Tensor],
-                                 recovered_dict: Dict[str, torch.Tensor],
-                                 tolerance: float = 1e-6) -> Dict[str, Any]:
+    def debug_conversion_mismatch(
+        self,
+        original_dict: Dict[str, torch.Tensor],
+        recovered_dict: Dict[str, torch.Tensor],
+        tolerance: float = 1e-6,
+    ) -> Dict[str, Any]:
         """
         Debug conversion mismatches by analyzing differences.
 
@@ -1007,7 +1136,7 @@ class ReversibleWeightConverter:
             "shape_mismatches": [],
             "dtype_mismatches": [],
             "value_mismatches": [],
-            "summary": {}
+            "summary": {},
         }
 
         original_keys = set(original_dict.keys())
@@ -1026,31 +1155,38 @@ class ReversibleWeightConverter:
 
             # Shape mismatch
             if orig_tensor.shape != rec_tensor.shape:
-                debug_info["shape_mismatches"].append({
-                    "key": key,
-                    "original_shape": orig_tensor.shape,
-                    "recovered_shape": rec_tensor.shape
-                })
+                debug_info["shape_mismatches"].append(
+                    {
+                        "key": key,
+                        "original_shape": orig_tensor.shape,
+                        "recovered_shape": rec_tensor.shape,
+                    }
+                )
                 continue
 
             # Dtype mismatch
             if orig_tensor.dtype != rec_tensor.dtype:
-                debug_info["dtype_mismatches"].append({
-                    "key": key,
-                    "original_dtype": orig_tensor.dtype,
-                    "recovered_dtype": rec_tensor.dtype
-                })
+                debug_info["dtype_mismatches"].append(
+                    {
+                        "key": key,
+                        "original_dtype": orig_tensor.dtype,
+                        "recovered_dtype": rec_tensor.dtype,
+                    }
+                )
 
             # Value mismatch
             if not torch.allclose(orig_tensor, rec_tensor, atol=tolerance, rtol=tolerance):
                 max_diff = torch.max(torch.abs(orig_tensor - rec_tensor)).item()
                 mean_diff = torch.mean(torch.abs(orig_tensor - rec_tensor)).item()
-                debug_info["value_mismatches"].append({
-                    "key": key,
-                    "max_difference": max_diff,
-                    "mean_difference": mean_diff,
-                    "relative_error": max_diff / (torch.max(torch.abs(orig_tensor)).item() + 1e-8)
-                })
+                debug_info["value_mismatches"].append(
+                    {
+                        "key": key,
+                        "max_difference": max_diff,
+                        "mean_difference": mean_diff,
+                        "relative_error": max_diff
+                        / (torch.max(torch.abs(orig_tensor)).item() + 1e-8),
+                    }
+                )
 
         # Summary
         debug_info["summary"] = {
@@ -1060,7 +1196,7 @@ class ReversibleWeightConverter:
             "extra_count": len(debug_info["extra_keys"]),
             "shape_mismatch_count": len(debug_info["shape_mismatches"]),
             "dtype_mismatch_count": len(debug_info["dtype_mismatches"]),
-            "value_mismatch_count": len(debug_info["value_mismatches"])
+            "value_mismatch_count": len(debug_info["value_mismatches"]),
         }
 
         return debug_info

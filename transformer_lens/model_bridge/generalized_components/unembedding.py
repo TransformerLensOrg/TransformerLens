@@ -131,7 +131,7 @@ class UnembeddingBridge(GeneralizedComponent):
         Returns:
             Dictionary mapping TransformerLens parameter names to processed tensors
         """
-        if not hasattr(self, '_processed_weights') or self._processed_weights is None:
+        if not hasattr(self, "_processed_weights") or self._processed_weights is None:
             # If weights haven't been processed, process them now
             self.process_weights()
 

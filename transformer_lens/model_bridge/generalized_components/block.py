@@ -108,4 +108,4 @@ class BlockBridge(GeneralizedComponent):
         """
         if self.config is None:
             return 0
-        return getattr(self.config, 'n_layers', 0)
+        return getattr(self.config, "n_layers", 0)

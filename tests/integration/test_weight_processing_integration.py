@@ -6,7 +6,6 @@ fold_layer_norm_weights, center_attention_weights) produce consistent results
 across different model formats.
 """
 
-import numpy as np
 import pytest
 import torch
 
@@ -32,26 +31,26 @@ class TestWeightProcessingIntegration:
     def sample_tensors(self):
         """Create sample tensors for testing math functions."""
         torch.manual_seed(42)
-        
+
         # Create sample tensors with realistic dimensions
         n_heads = 12
         d_model = 768
         d_head = 64
-        
+
         # Weight tensors: [n_heads, d_model, d_head]
         wq_tensor = torch.randn(n_heads, d_model, d_head)
         wk_tensor = torch.randn(n_heads, d_model, d_head)
         wv_tensor = torch.randn(n_heads, d_model, d_head)
-        
+
         # Bias tensors: [n_heads, d_head]
         bq_tensor = torch.randn(n_heads, d_head)
         bk_tensor = torch.randn(n_heads, d_head)
         bv_tensor = torch.randn(n_heads, d_head)
-        
+
         # LayerNorm tensors: [d_model]
         ln_bias = torch.randn(d_model)
         ln_weight = torch.randn(d_model)
-        
+
         return {
             "weights": (wq_tensor, wk_tensor, wv_tensor),
             "biases": (bq_tensor, bk_tensor, bv_tensor),
@@ -64,22 +63,22 @@ class TestWeightProcessingIntegration:
         wq_tensor, wk_tensor, wv_tensor = sample_tensors["weights"]
         bq_tensor, bk_tensor, bv_tensor = sample_tensors["biases"]
         ln_bias = sample_tensors["ln_bias"]
-        
+
         # Test the function
         new_bq, new_bk, new_bv = ProcessWeights.fold_layer_norm_biases(
             wq_tensor, wk_tensor, wv_tensor, bq_tensor, bk_tensor, bv_tensor, ln_bias
         )
-        
+
         # Verify shapes are preserved
         assert new_bq.shape == bq_tensor.shape
         assert new_bk.shape == bk_tensor.shape
         assert new_bv.shape == bv_tensor.shape
-        
+
         # Verify the mathematical correctness
         expected_bq = bq_tensor + (wq_tensor * ln_bias[None, :, None]).sum(-2)
         expected_bk = bk_tensor + (wk_tensor * ln_bias[None, :, None]).sum(-2)
         expected_bv = bv_tensor + (wv_tensor * ln_bias[None, :, None]).sum(-2)
-        
+
         torch.testing.assert_close(new_bq, expected_bq)
         torch.testing.assert_close(new_bk, expected_bk)
         torch.testing.assert_close(new_bv, expected_bv)
@@ -88,22 +87,22 @@ class TestWeightProcessingIntegration:
         """Test that fold_layer_norm_weights produces consistent results."""
         wq_tensor, wk_tensor, wv_tensor = sample_tensors["weights"]
         ln_weight = sample_tensors["ln_weight"]
-        
+
         # Test the function
         new_wq, new_wk, new_wv = ProcessWeights.fold_layer_norm_weights(
             wq_tensor, wk_tensor, wv_tensor, ln_weight
         )
-        
+
         # Verify shapes are preserved
         assert new_wq.shape == wq_tensor.shape
         assert new_wk.shape == wk_tensor.shape
         assert new_wv.shape == wv_tensor.shape
-        
+
         # Verify the mathematical correctness
         expected_wq = wq_tensor * ln_weight[None, :, None]
         expected_wk = wk_tensor * ln_weight[None, :, None]
         expected_wv = wv_tensor * ln_weight[None, :, None]
-        
+
         torch.testing.assert_close(new_wq, expected_wq)
         torch.testing.assert_close(new_wk, expected_wk)
         torch.testing.assert_close(new_wv, expected_wv)
@@ -111,19 +110,20 @@ class TestWeightProcessingIntegration:
     def test_center_attention_weights_consistency(self, sample_tensors):
         """Test that center_attention_weights produces consistent results."""
         wq_tensor, wk_tensor, wv_tensor = sample_tensors["weights"]
-        
+
         # Test the function
         centered_wq, centered_wk, centered_wv = ProcessWeights.center_attention_weights(
             wq_tensor, wk_tensor, wv_tensor
         )
-        
+
         # Verify shapes are preserved
         assert centered_wq.shape == wq_tensor.shape
         assert centered_wk.shape == wk_tensor.shape
         assert centered_wv.shape == wv_tensor.shape
-        
+
         # Verify the mathematical correctness
         import einops
+
         expected_wq = wq_tensor - einops.reduce(
             wq_tensor, "head_index d_model d_head -> head_index 1 d_head", "mean"
         )
@@ -133,7 +133,7 @@ class TestWeightProcessingIntegration:
         expected_wv = wv_tensor - einops.reduce(
             wv_tensor, "head_index d_model d_head -> head_index 1 d_head", "mean"
         )
-        
+
         torch.testing.assert_close(centered_wq, expected_wq)
         torch.testing.assert_close(centered_wk, expected_wk)
         torch.testing.assert_close(centered_wv, expected_wv)
@@ -144,7 +144,7 @@ class TestWeightProcessingIntegration:
         state_dict = model.state_dict()
         cfg = model.cfg
         layer = 0
-        
+
         # Get parameter keys (no adapter needed for HookedTransformer)
         W_Q_key = f"blocks.{layer}.attn.W_Q"
         W_K_key = f"blocks.{layer}.attn.W_K"
@@ -152,26 +152,26 @@ class TestWeightProcessingIntegration:
         b_Q_key = f"blocks.{layer}.attn.b_Q"
         b_K_key = f"blocks.{layer}.attn.b_K"
         b_V_key = f"blocks.{layer}.attn.b_V"
-        
+
         # Extract tensors
         tensors, combined_qkv_info = ProcessWeights._extract_attention_tensors(
             state_dict, cfg, layer, None, W_Q_key, W_K_key, W_V_key, b_Q_key, b_K_key, b_V_key
         )
-        
+
         wq_tensor, wk_tensor, wv_tensor = tensors["weights"]
         bq_tensor, bk_tensor, bv_tensor = tensors["biases"]
-        
+
         # Verify shapes
         expected_shape = (cfg.n_heads, cfg.d_model, cfg.d_head)
         assert wq_tensor.shape == expected_shape
         assert wk_tensor.shape == expected_shape
         assert wv_tensor.shape == expected_shape
-        
+
         expected_bias_shape = (cfg.n_heads, cfg.d_head)
         assert bq_tensor.shape == expected_bias_shape
         assert bk_tensor.shape == expected_bias_shape
         assert bv_tensor.shape == expected_bias_shape
-        
+
         # Verify no combined QKV info (HookedTransformer uses separate format)
         assert combined_qkv_info is None
 
@@ -181,28 +181,28 @@ class TestWeightProcessingIntegration:
         d_model = 768
         n_heads = 12
         d_head = 64
-        
+
         # Combined QKV weight: [d_model, 3*d_model]
         combined_qkv_weight = torch.randn(d_model, 3 * d_model)
         # Combined QKV bias: [3*d_model]
         combined_qkv_bias = torch.randn(3 * d_model)
-        
+
         # Mock state dict
         state_dict = {
             "transformer.h.0.attn.c_attn.weight": combined_qkv_weight,
             "transformer.h.0.attn.c_attn.bias": combined_qkv_bias,
         }
-        
+
         # Mock config
         class MockConfig:
             n_heads = n_heads
             d_head = d_head
             d_model = d_model
-        
+
         cfg = MockConfig()
         layer = 0
         adapter = gpt2_small_adapter
-        
+
         # Get parameter keys
         W_Q_key = adapter.translate_transformer_lens_path(f"blocks.{layer}.attn.W_Q")
         W_K_key = adapter.translate_transformer_lens_path(f"blocks.{layer}.attn.W_K")
@@ -210,26 +210,26 @@ class TestWeightProcessingIntegration:
         b_Q_key = adapter.translate_transformer_lens_path(f"blocks.{layer}.attn.b_Q")
         b_K_key = adapter.translate_transformer_lens_path(f"blocks.{layer}.attn.b_K")
         b_V_key = adapter.translate_transformer_lens_path(f"blocks.{layer}.attn.b_V")
-        
+
         # Extract tensors
         tensors, combined_qkv_info = ProcessWeights._extract_attention_tensors(
             state_dict, cfg, layer, adapter, W_Q_key, W_K_key, W_V_key, b_Q_key, b_K_key, b_V_key
         )
-        
+
         wq_tensor, wk_tensor, wv_tensor = tensors["weights"]
         bq_tensor, bk_tensor, bv_tensor = tensors["biases"]
-        
+
         # Verify shapes (should be in TransformerLens format)
         expected_shape = (n_heads, d_model, d_head)
         assert wq_tensor.shape == expected_shape
         assert wk_tensor.shape == expected_shape
         assert wv_tensor.shape == expected_shape
-        
+
         expected_bias_shape = (n_heads, d_head)
         assert bq_tensor.shape == expected_bias_shape
         assert bk_tensor.shape == expected_bias_shape
         assert bv_tensor.shape == expected_bias_shape
-        
+
         # Verify combined QKV info exists
         assert combined_qkv_info is not None
         assert combined_qkv_info["n_heads"] == n_heads
@@ -242,7 +242,7 @@ class TestWeightProcessingIntegration:
         state_dict = model.state_dict()
         cfg = model.cfg
         layer = 0
-        
+
         # Get parameter keys
         W_Q_key = f"blocks.{layer}.attn.W_Q"
         W_K_key = f"blocks.{layer}.attn.W_K"
@@ -250,33 +250,33 @@ class TestWeightProcessingIntegration:
         b_Q_key = f"blocks.{layer}.attn.b_Q"
         b_K_key = f"blocks.{layer}.attn.b_K"
         b_V_key = f"blocks.{layer}.attn.b_V"
-        
+
         # Extract tensors
         tensors, combined_qkv_info = ProcessWeights._extract_attention_tensors(
             state_dict, cfg, layer, None, W_Q_key, W_K_key, W_V_key, b_Q_key, b_K_key, b_V_key
         )
-        
+
         wq_tensor, wk_tensor, wv_tensor = tensors["weights"]
         bq_tensor, bk_tensor, bv_tensor = tensors["biases"]
-        
+
         # Test LayerNorm folding if parameters exist
         ln1_b_key = f"blocks.{layer}.ln1.b"
         ln1_w_key = f"blocks.{layer}.ln1.w"
-        
+
         if ln1_b_key in state_dict and ln1_w_key in state_dict:
             ln1_b = state_dict[ln1_b_key]
             ln1_w = state_dict[ln1_w_key]
-            
+
             # Test bias folding
             new_bq, new_bk, new_bv = ProcessWeights.fold_layer_norm_biases(
                 wq_tensor, wk_tensor, wv_tensor, bq_tensor, bk_tensor, bv_tensor, ln1_b
             )
-            
+
             # Test weight folding
             new_wq, new_wk, new_wv = ProcessWeights.fold_layer_norm_weights(
                 wq_tensor, wk_tensor, wv_tensor, ln1_w
             )
-            
+
             # Verify shapes are preserved
             assert new_bq.shape == bq_tensor.shape
             assert new_bk.shape == bk_tensor.shape
@@ -284,12 +284,12 @@ class TestWeightProcessingIntegration:
             assert new_wq.shape == wq_tensor.shape
             assert new_wk.shape == wk_tensor.shape
             assert new_wv.shape == wv_tensor.shape
-        
+
         # Test weight centering
         centered_wq, centered_wk, centered_wv = ProcessWeights.center_attention_weights(
             wq_tensor, wk_tensor, wv_tensor
         )
-        
+
         # Verify shapes are preserved
         assert centered_wq.shape == wq_tensor.shape
         assert centered_wk.shape == wk_tensor.shape
@@ -300,7 +300,7 @@ class TestWeightProcessingIntegration:
         model = gpt2_small_model
         cfg = model.cfg
         layer = 0
-        
+
         # Get tensors from HookedTransformer format
         state_dict_tl = model.state_dict()
         W_Q_key = f"blocks.{layer}.attn.W_Q"
@@ -309,16 +309,16 @@ class TestWeightProcessingIntegration:
         b_Q_key = f"blocks.{layer}.attn.b_Q"
         b_K_key = f"blocks.{layer}.attn.b_K"
         b_V_key = f"blocks.{layer}.attn.b_V"
-        
+
         tensors_tl, _ = ProcessWeights._extract_attention_tensors(
             state_dict_tl, cfg, layer, None, W_Q_key, W_K_key, W_V_key, b_Q_key, b_K_key, b_V_key
         )
         wq_tl, wk_tl, wv_tl = tensors_tl["weights"]
         bq_tl, bk_tl, bv_tl = tensors_tl["biases"]
-        
+
         # Convert to HuggingFace format and back
         adapter = gpt2_small_adapter
-        
+
         # Convert TL tensors to HF format
         wq_hf = ProcessWeights.convert_tensor_to_hf_format(
             wq_tl, f"blocks.{layer}.attn.W_Q", adapter, cfg, layer
@@ -338,7 +338,7 @@ class TestWeightProcessingIntegration:
         bv_hf = ProcessWeights.convert_tensor_to_hf_format(
             bv_tl, f"blocks.{layer}.attn.b_V", adapter, cfg, layer
         )
-        
+
         # Convert back to TL format
         wq_tl_converted = ProcessWeights.convert_tensor_to_tl_format(
             f"blocks.{layer}.attn.W_Q", adapter, {"dummy": wq_hf}, cfg, layer
@@ -358,11 +358,11 @@ class TestWeightProcessingIntegration:
         bv_tl_converted = ProcessWeights.convert_tensor_to_tl_format(
             f"blocks.{layer}.attn.b_V", adapter, {"dummy": bv_hf}, cfg, layer
         )
-        
+
         # Test that the math functions produce the same results
         ln_bias = torch.randn(cfg.d_model)
         ln_weight = torch.randn(cfg.d_model)
-        
+
         # Apply operations to original TL tensors
         new_bq_tl, new_bk_tl, new_bv_tl = ProcessWeights.fold_layer_norm_biases(
             wq_tl, wk_tl, wv_tl, bq_tl, bk_tl, bv_tl, ln_bias
@@ -373,18 +373,36 @@ class TestWeightProcessingIntegration:
         centered_wq_tl, centered_wk_tl, centered_wv_tl = ProcessWeights.center_attention_weights(
             wq_tl, wk_tl, wv_tl
         )
-        
+
         # Apply operations to converted TL tensors
-        new_bq_converted, new_bk_converted, new_bv_converted = ProcessWeights.fold_layer_norm_biases(
-            wq_tl_converted, wk_tl_converted, wv_tl_converted, bq_tl_converted, bk_tl_converted, bv_tl_converted, ln_bias
+        (
+            new_bq_converted,
+            new_bk_converted,
+            new_bv_converted,
+        ) = ProcessWeights.fold_layer_norm_biases(
+            wq_tl_converted,
+            wk_tl_converted,
+            wv_tl_converted,
+            bq_tl_converted,
+            bk_tl_converted,
+            bv_tl_converted,
+            ln_bias,
         )
-        new_wq_converted, new_wk_converted, new_wv_converted = ProcessWeights.fold_layer_norm_weights(
+        (
+            new_wq_converted,
+            new_wk_converted,
+            new_wv_converted,
+        ) = ProcessWeights.fold_layer_norm_weights(
             wq_tl_converted, wk_tl_converted, wv_tl_converted, ln_weight
         )
-        centered_wq_converted, centered_wk_converted, centered_wv_converted = ProcessWeights.center_attention_weights(
+        (
+            centered_wq_converted,
+            centered_wk_converted,
+            centered_wv_converted,
+        ) = ProcessWeights.center_attention_weights(
             wq_tl_converted, wk_tl_converted, wv_tl_converted
         )
-        
+
         # Verify results are consistent (within numerical precision)
         torch.testing.assert_close(new_bq_tl, new_bq_converted, atol=1e-6, rtol=1e-6)
         torch.testing.assert_close(new_bk_tl, new_bk_converted, atol=1e-6, rtol=1e-6)

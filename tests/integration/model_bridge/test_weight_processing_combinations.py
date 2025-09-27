@@ -13,26 +13,23 @@ from transformer_lens.model_bridge import TransformerBridge
     [
         # Test individual flags
         (False, False, False, False, True),  # No processing
-        (True, False, False, False, True),   # Only fold_ln
-        (False, True, False, False, True),   # Only center_writing
-        (False, False, True, False, True),   # Only center_unembed
-        (False, False, False, True, True),   # Only fold_value_biases
-
+        (True, False, False, False, True),  # Only fold_ln
+        (False, True, False, False, True),  # Only center_writing
+        (False, False, True, False, True),  # Only center_unembed
+        (False, False, False, True, True),  # Only fold_value_biases
         # Test combinations
-        (True, True, False, False, True),    # fold_ln + center_writing
-        (True, False, True, False, True),    # fold_ln + center_unembed
-        (True, False, False, True, True),    # fold_ln + fold_value_biases
-        (False, True, True, False, True),    # center_writing + center_unembed
-
+        (True, True, False, False, True),  # fold_ln + center_writing
+        (True, False, True, False, True),  # fold_ln + center_unembed
+        (True, False, False, True, True),  # fold_ln + fold_value_biases
+        (False, True, True, False, True),  # center_writing + center_unembed
         # Test all except one
-        (True, True, True, False, True),     # All except fold_value_biases
-        (True, True, False, True, True),     # All except center_unembed
-        (True, False, True, True, True),     # All except center_writing
-        (False, True, True, True, True),     # All except fold_ln
-
+        (True, True, True, False, True),  # All except fold_value_biases
+        (True, True, False, True, True),  # All except center_unembed
+        (True, False, True, True, True),  # All except center_writing
+        (False, True, True, True, True),  # All except fold_ln
         # Test all processing
-        (True, True, True, True, True),      # All processing
-    ]
+        (True, True, True, True, True),  # All processing
+    ],
 )
 def test_weight_processing_flag_combinations(
     fold_ln, center_writing_weights, center_unembed, fold_value_biases, expected_close_match
@@ -57,6 +54,7 @@ def test_weight_processing_flag_combinations(
 
     # Test ablation effect
     hook_name = utils.get_act_name("v", 0)
+
     def ablation_hook(activation, hook):
         activation[:, :, 8, :] = 0  # Ablate head 8 in layer 0
         return activation
@@ -114,9 +112,7 @@ def test_no_processing_matches_unprocessed_hooked_transformer():
 
     # Load TransformerBridge without processing
     bridge = TransformerBridge.boot_transformers(
-        model_name,
-        device=device,
-        apply_weight_processing=False
+        model_name, device=device, apply_weight_processing=False
     )
     bridge.enable_compatibility_mode()
     bridge_loss = bridge(test_text, return_type="loss")

@@ -66,23 +66,25 @@ class NormalizationBridge(GeneralizedComponent):
 
         # Handle different normalization modes based on runtime config
         # Check if we should use LayerNormPre behavior (when layer norm folding is enabled)
-        if hasattr(self.config, 'layer_norm_folding') and self.config.layer_norm_folding:
+        if hasattr(self.config, "layer_norm_folding") and self.config.layer_norm_folding:
             # LayerNormPre mode: center and normalize without learnable parameters
             # This matches LayerNormPre behavior exactly
             result = self._layernorm_pre_forward(hidden_states)
         else:
             # Standard normalization behavior with learnable parameters
-            if not getattr(self.config, 'uses_rms_norm', False):
+            if not getattr(self.config, "uses_rms_norm", False):
                 # Only center if not using RMSNorm
                 hidden_states = hidden_states - hidden_states.mean(-1, keepdim=True)
 
             scale = self.hook_scale(
-                (hidden_states.pow(2).mean(-1, keepdim=True) + getattr(self.config, 'eps', 1e-5)).sqrt()
+                (
+                    hidden_states.pow(2).mean(-1, keepdim=True) + getattr(self.config, "eps", 1e-5)
+                ).sqrt()
             )
             hidden_states = self.hook_normalized(hidden_states / scale)
 
             # Apply learnable parameters if not folding layer norms
-            if getattr(self.config, 'uses_rms_norm', False):
+            if getattr(self.config, "uses_rms_norm", False):
                 # No bias if using RMSNorm
                 hidden_states = hidden_states * self.weight
             else:
@@ -109,7 +111,7 @@ class NormalizationBridge(GeneralizedComponent):
         """
         # Handle dtype conversion like LayerNormPre
         original_dtype = x.dtype
-        config_dtype = getattr(self.config, 'dtype', torch.float32)
+        config_dtype = getattr(self.config, "dtype", torch.float32)
         if config_dtype not in [torch.float32, torch.float64]:
             x = x.to(torch.float32)
 
@@ -117,7 +119,7 @@ class NormalizationBridge(GeneralizedComponent):
         x = x - x.mean(-1, keepdim=True)
 
         # Normalize: apply scaling with hook
-        eps = getattr(self.config, 'eps', 1e-5)
+        eps = getattr(self.config, "eps", 1e-5)
         scale = self.hook_scale((x.pow(2).mean(-1, keepdim=True) + eps).sqrt())
         result = self.hook_normalized(x / scale)
 
@@ -154,8 +156,8 @@ class NormalizationBridge(GeneralizedComponent):
             bias_key = "b"
 
         # Store processed weights in TransformerLens format (direct mapping)
-        weight_tensor = getattr(self.original_component, 'weight', None)
-        bias_tensor = getattr(self.original_component, 'bias', None)
+        weight_tensor = getattr(self.original_component, "weight", None)
+        bias_tensor = getattr(self.original_component, "bias", None)
 
         processed_weights = {}
         if weight_tensor is not None:
@@ -171,7 +173,7 @@ class NormalizationBridge(GeneralizedComponent):
         Returns:
             Dictionary mapping TransformerLens parameter names to processed tensors
         """
-        if not hasattr(self, '_processed_weights') or self._processed_weights is None:
+        if not hasattr(self, "_processed_weights") or self._processed_weights is None:
             # If weights haven't been processed, process them now
             self.process_weights()
 

@@ -5,8 +5,9 @@ This test suite ensures that the TransformerBridge hook system works correctly
 and maintains compatibility with HookedTransformer hook behavior.
 """
 
-import torch
 import pytest
+import torch
+
 from transformer_lens import HookedTransformer
 from transformer_lens.model_bridge import TransformerBridge
 
@@ -31,9 +32,13 @@ class TestTransformerBridgeHooks:
         model_name = "gpt2"
 
         return HookedTransformer.from_pretrained(
-            model_name, device=device,
-            fold_ln=True, center_writing_weights=True, center_unembed=True,
-            fold_value_biases=True, refactor_factored_attn_matrices=False,
+            model_name,
+            device=device,
+            fold_ln=True,
+            center_writing_weights=True,
+            center_unembed=True,
+            fold_value_biases=True,
+            refactor_factored_attn_matrices=False,
         )
 
     def test_hook_registry_completeness(self, bridge_model, reference_ht):
@@ -53,7 +58,9 @@ class TestTransformerBridgeHooks:
             assert hook_name in bridge_model._hook_registry, f"Bridge missing {hook_name}"
 
         # Bridge should have substantial number of hooks
-        assert len(bridge_model._hook_registry) > 100, "Bridge should have substantial hook registry"
+        assert (
+            len(bridge_model._hook_registry) > 100
+        ), "Bridge should have substantial hook registry"
 
     def test_basic_hook_functionality(self, bridge_model):
         """Test that hooks fire and can modify activations."""
@@ -69,9 +76,7 @@ class TestTransformerBridgeHooks:
 
         # Run with hook
         result = bridge_model.run_with_hooks(
-            test_text,
-            return_type="logits",
-            fwd_hooks=[("hook_embed", test_hook)]
+            test_text, return_type="logits", fwd_hooks=[("hook_embed", test_hook)]
         )
 
         assert hook_fired, "Hook should have fired"
@@ -91,9 +96,7 @@ class TestTransformerBridgeHooks:
 
         # Run with ablation
         ablated_loss = bridge_model.run_with_hooks(
-            test_text,
-            return_type="loss",
-            fwd_hooks=[("blocks.0.attn.hook_v", ablation_hook)]
+            test_text, return_type="loss", fwd_hooks=[("blocks.0.attn.hook_v", ablation_hook)]
         )
 
         # Should see meaningful change
@@ -112,17 +115,13 @@ class TestTransformerBridgeHooks:
         # Test reference HookedTransformer
         ht_baseline = reference_ht(test_text, return_type="loss")
         ht_ablated = reference_ht.run_with_hooks(
-            test_text,
-            return_type="loss",
-            fwd_hooks=[("blocks.0.attn.hook_v", ablation_hook)]
+            test_text, return_type="loss", fwd_hooks=[("blocks.0.attn.hook_v", ablation_hook)]
         )
 
         # Test TransformerBridge
         bridge_baseline = bridge_model(test_text, return_type="loss")
         bridge_ablated = bridge_model.run_with_hooks(
-            test_text,
-            return_type="loss",
-            fwd_hooks=[("blocks.0.attn.hook_v", ablation_hook)]
+            test_text, return_type="loss", fwd_hooks=[("blocks.0.attn.hook_v", ablation_hook)]
         )
 
         # Effects should be similar
@@ -130,7 +129,9 @@ class TestTransformerBridgeHooks:
         bridge_effect = bridge_ablated - bridge_baseline
 
         effect_diff = abs(ht_effect - bridge_effect)
-        assert effect_diff < 1e-5, f"Hook effects should match between models (diff: {effect_diff:.6f})"
+        assert (
+            effect_diff < 1e-5
+        ), f"Hook effects should match between models (diff: {effect_diff:.6f})"
 
     def test_multiple_hooks(self, bridge_model):
         """Test that multiple hooks can be applied simultaneously."""
@@ -141,6 +142,7 @@ class TestTransformerBridgeHooks:
             def hook_fn(activation, hook):
                 hooks_fired.add(hook_id)
                 return activation
+
             return hook_fn
 
         # Apply multiple hooks
@@ -151,7 +153,7 @@ class TestTransformerBridgeHooks:
                 ("hook_embed", make_hook("embed")),
                 ("blocks.0.attn.hook_q", make_hook("q")),
                 ("blocks.0.attn.hook_v", make_hook("v")),
-            ]
+            ],
         )
 
         # All hooks should have fired
@@ -167,6 +169,7 @@ class TestTransformerBridgeHooks:
             def hook_fn(activation, hook):
                 captured_shapes[hook_name] = activation.shape
                 return activation
+
             return hook_fn
 
         # Test various hook points
@@ -177,7 +180,7 @@ class TestTransformerBridgeHooks:
                 ("hook_embed", capture_shape_hook("embed")),
                 ("blocks.0.attn.hook_v", capture_shape_hook("v")),
                 ("blocks.0.mlp.hook_pre", capture_shape_hook("mlp_pre")),
-            ]
+            ],
         )
 
         # Verify shapes make sense
@@ -228,6 +231,7 @@ def test_standalone_hook_functionality():
 
     # Test basic hook
     hook_called = False
+
     def test_hook(activation, hook):
         nonlocal hook_called
         hook_called = True
@@ -235,9 +239,7 @@ def test_standalone_hook_functionality():
         return activation
 
     result = bridge.run_with_hooks(
-        test_text,
-        return_type="loss",
-        fwd_hooks=[("blocks.0.attn.hook_v", test_hook)]
+        test_text, return_type="loss", fwd_hooks=[("blocks.0.attn.hook_v", test_hook)]
     )
 
     assert hook_called, "Hook should have been called"
