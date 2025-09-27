@@ -269,17 +269,8 @@ def boot(
         tokenizer,
     )
 
-    # Enable compatibility mode to get correct layer norm folding
-    # This uses TL format internally but we'll provide HF format access
-    bridge.enable_compatibility_mode()
-
-    # Add a method to export the folded weights in HF format
-    def get_hf_format_folded_weights():
-        """Get the correctly folded weights in HF format."""
-        return bridge.export_processed_weights_to_hf()
-
-    # Attach the method to the bridge
-    bridge.get_hf_format_folded_weights = get_hf_format_folded_weights
+    # Note: enable_compatibility_mode() is available to apply folding if needed
+    # This should be called manually when folding is desired
 
     return bridge
 
