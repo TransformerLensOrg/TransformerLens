@@ -858,14 +858,16 @@ class TransformerBridge(nn.Module):
         ])
 
         # Create final layer norm using NormalizationBridge that adapts based on layer_norm_folding
-        ln_final = None
+        from typing import Union
+        from transformer_lens.components import RMSNorm, RMSNormPre
+        from transformer_lens.model_bridge.generalized_components.normalization import NormalizationBridge
+        ln_final: Union[NormalizationBridge, RMSNorm, RMSNormPre, None] = None
 
         # Set layer_norm_folding flag in config for NormalizationBridge behavior
         tl_cfg.layer_norm_folding = fold_ln
 
         if tl_cfg.normalization_type in ["LN", "LNPre"]:
             # Use NormalizationBridge that automatically switches between LayerNorm and LayerNormPre behavior
-            from transformer_lens.model_bridge.generalized_components.normalization import NormalizationBridge
             ln_final = NormalizationBridge.create_normalization_bridge(
                 name="ln_final",
                 config=tl_cfg,

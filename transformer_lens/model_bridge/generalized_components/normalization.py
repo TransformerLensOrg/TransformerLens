@@ -154,10 +154,16 @@ class NormalizationBridge(GeneralizedComponent):
             bias_key = "b"
 
         # Store processed weights in TransformerLens format (direct mapping)
-        self._processed_weights = {
-            weight_key: self.original_component.weight.clone(),
-            bias_key: self.original_component.bias.clone(),
-        }
+        weight_tensor = getattr(self.original_component, 'weight', None)
+        bias_tensor = getattr(self.original_component, 'bias', None)
+
+        processed_weights = {}
+        if weight_tensor is not None:
+            processed_weights[weight_key] = weight_tensor.clone()
+        if bias_tensor is not None:
+            processed_weights[bias_key] = bias_tensor.clone()
+
+        self._processed_weights = processed_weights
 
     def get_processed_state_dict(self) -> Dict[str, torch.Tensor]:
         """Get the processed weights in TransformerLens format.
