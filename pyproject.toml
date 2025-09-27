@@ -26,10 +26,10 @@
             {version=">=1.26,<2", python=">=3.12,<3.13"},
         ]
         pandas=">=1.1.5"
-        python=">=3.9,<3.14"
+        python=">=3.8,<4.0"
         rich=">=12.6.0"
         sentencepiece="*"
-        torch="2.8.0"
+        torch=[{version="<2.6", python=">=3.8,<3.9"}, {version=">=2.6", python=">=3.9"}]
         tqdm=">=4.64.1"
         transformers=[{version="<4.51", python=">=3.8,<3.9"}, {version=">=4.51", python=">=3.9"}]
         transformers-stream-generator="^0.0.5"
