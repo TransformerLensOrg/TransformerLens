@@ -262,6 +262,17 @@ def _determine_overall_success(results: Dict[str, Any]) -> bool:
     return True
 
 
+class CompareScriptIntegration:
+    """Integration class for weight processing comparison scripts."""
+
+    @staticmethod
+    def run_weight_processing_integration_test(
+        model_name: str = "gpt2", device: str = "cpu", test_tokens: Optional[torch.Tensor] = None
+    ) -> Dict[str, Any]:
+        """Run comprehensive integration test for weight processing workflow."""
+        return run_weight_processing_integration_test(model_name, device, test_tokens)
+
+
 if __name__ == "__main__":
     # Run the integration test
     results = run_weight_processing_integration_test("gpt2", "cpu")
