@@ -819,7 +819,13 @@ class TransformerBridge(nn.Module):
             if tl_cfg.final_rms:
                 temp_structure.ln_final = RMSNorm(tl_cfg)
             else:
-                temp_structure.ln_final = LayerNorm(tl_cfg) if tl_cfg.normalization_type == "LN" else LayerNormPre(tl_cfg)
+                # Use NormalizationBridge for unified LayerNorm/LayerNormPre behavior
+                from transformer_lens.model_bridge.generalized_components.normalization import NormalizationBridge
+                temp_structure.ln_final = NormalizationBridge.create_normalization_bridge(
+                    name="ln_final",
+                    config=tl_cfg,
+                    original_component=LayerNorm(tl_cfg)  # Create LayerNorm component for weights
+                )
 
         temp_structure.unembed = Unembed(tl_cfg)
         return temp_structure
@@ -851,25 +857,27 @@ class TransformerBridge(nn.Module):
             TransformerBlock(tl_cfg, block_index) for block_index in range(tl_cfg.n_layers)
         ])
 
-        # Create final layer norm - if folded, use LayerNormPre
+        # Create final layer norm using NormalizationBridge that adapts based on layer_norm_folding
         ln_final = None
-        if fold_ln and tl_cfg.normalization_type == "LN":
-            # When folded, LN becomes LNPre
-            ln_final = LayerNormPre(tl_cfg)
+
+        # Set layer_norm_folding flag in config for NormalizationBridge behavior
+        tl_cfg.layer_norm_folding = fold_ln
+
+        if tl_cfg.normalization_type in ["LN", "LNPre"]:
+            # Use NormalizationBridge that automatically switches between LayerNorm and LayerNormPre behavior
+            from transformer_lens.model_bridge.generalized_components.normalization import NormalizationBridge
+            ln_final = NormalizationBridge.create_normalization_bridge(
+                name="ln_final",
+                config=tl_cfg,
+                original_component=None  # We'll create a dummy LayerNorm component for weights
+            )
+            # Create a dummy LayerNorm component to hold the weights
+            dummy_ln = LayerNorm(tl_cfg)
+            ln_final.set_original_component(dummy_ln)
         elif tl_cfg.normalization_type == "RMS":
             ln_final = RMSNorm(tl_cfg)
         elif tl_cfg.normalization_type == "RMSPre":
             ln_final = RMSNormPre(tl_cfg)
-        elif tl_cfg.normalization_type == "LN":
-            if tl_cfg.final_rms:
-                ln_final = RMSNorm(tl_cfg)
-            else:
-                ln_final = LayerNorm(tl_cfg)
-        elif tl_cfg.normalization_type == "LNPre":
-            if tl_cfg.final_rms:
-                ln_final = RMSNormPre(tl_cfg)
-            else:
-                ln_final = LayerNormPre(tl_cfg)
 
         # Create unembed
         unembed_component = Unembed(tl_cfg)
