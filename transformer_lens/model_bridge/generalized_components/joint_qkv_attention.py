@@ -497,3 +497,95 @@ class JointQKVAttentionBridge(AttentionBridge):
             return [f"{prefix}.{name}" for name in base_names]
         else:
             return base_names
+
+    def custom_weight_processing(
+        self,
+        hf_state_dict: Dict[str, torch.Tensor],
+        component_prefix: str,
+        **processing_kwargs
+    ) -> Dict[str, torch.Tensor]:
+        """Custom weight processing for QKV attention - handles QKV splitting.
+
+        Args:
+            hf_state_dict: Raw HuggingFace state dict
+            component_prefix: Prefix for this component's weights (e.g., "transformer.h.0.attn")
+            **processing_kwargs: Additional processing arguments
+
+        Returns:
+            Dictionary of processed weights for Q, K, V components
+        """
+        processed_weights = {}
+
+        # Handle QKV weight splitting
+        qkv_weight_key = f"{component_prefix}.c_attn.weight"
+        qkv_bias_key = f"{component_prefix}.c_attn.bias"
+
+        if qkv_weight_key in hf_state_dict:
+            qkv_weight = hf_state_dict[qkv_weight_key]
+            # Split into Q, K, V (assuming equal sizes)
+            d_model = qkv_weight.shape[0]
+            split_size = qkv_weight.shape[1] // 3
+
+            q_weight = qkv_weight[:, :split_size]
+            k_weight = qkv_weight[:, split_size:2*split_size]
+            v_weight = qkv_weight[:, 2*split_size:]
+
+            # Rearrange for attention heads
+            import einops
+            n_heads = self.config.n_heads
+            d_head = self.config.d_head
+
+            processed_weights["W_Q"] = einops.rearrange(
+                q_weight, "d_model (n_heads d_head) -> n_heads d_model d_head",
+                n_heads=n_heads, d_head=d_head
+            )
+            processed_weights["W_K"] = einops.rearrange(
+                k_weight, "d_model (n_heads d_head) -> n_heads d_model d_head",
+                n_heads=n_heads, d_head=d_head
+            )
+            processed_weights["W_V"] = einops.rearrange(
+                v_weight, "d_model (n_heads d_head) -> n_heads d_model d_head",
+                n_heads=n_heads, d_head=d_head
+            )
+
+        if qkv_bias_key in hf_state_dict:
+            qkv_bias = hf_state_dict[qkv_bias_key]
+            split_size = qkv_bias.shape[0] // 3
+
+            q_bias = qkv_bias[:split_size]
+            k_bias = qkv_bias[split_size:2*split_size]
+            v_bias = qkv_bias[2*split_size:]
+
+            # Rearrange bias for attention heads
+            import einops
+            n_heads = self.config.n_heads
+            d_head = self.config.d_head
+
+            processed_weights["b_Q"] = einops.rearrange(
+                q_bias, "(n_heads d_head) -> n_heads d_head",
+                n_heads=n_heads, d_head=d_head
+            )
+            processed_weights["b_K"] = einops.rearrange(
+                k_bias, "(n_heads d_head) -> n_heads d_head",
+                n_heads=n_heads, d_head=d_head
+            )
+            processed_weights["b_V"] = einops.rearrange(
+                v_bias, "(n_heads d_head) -> n_heads d_head",
+                n_heads=n_heads, d_head=d_head
+            )
+
+        # Handle output projection
+        out_weight_key = f"{component_prefix}.c_proj.weight"
+        out_bias_key = f"{component_prefix}.c_proj.bias"
+
+        if out_weight_key in hf_state_dict:
+            out_weight = hf_state_dict[out_weight_key]
+            processed_weights["W_O"] = einops.rearrange(
+                out_weight, "(n_heads d_head) d_model -> n_heads d_head d_model",
+                n_heads=n_heads, d_head=d_head
+            )
+
+        if out_bias_key in hf_state_dict:
+            processed_weights["b_O"] = hf_state_dict[out_bias_key]
+
+        return processed_weights

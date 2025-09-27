@@ -278,7 +278,7 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
                 name="transformer.h",
                 config=self.cfg,
                 submodules={
-                    "ln1": self._create_normalization_bridge("ln_1"),
+                    "ln1": NormalizationBridge(name="ln_1", config=self.cfg),
                     "attn": JointQKVAttentionBridge(
                         name="attn",
                         config=self.cfg,
@@ -288,7 +288,7 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
                             "o": LinearBridge(name="c_proj"),
                         },
                     ),
-                    "ln2": self._create_normalization_bridge("ln_2"),
+                    "ln2": NormalizationBridge(name="ln_2", config=self.cfg),
                     "mlp": MLPBridge(
                         name="mlp",
                         submodules={
@@ -298,30 +298,10 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
                     ),
                 },
             ),
-            "ln_final": self._create_normalization_bridge("transformer.ln_f"),
+            "ln_final": NormalizationBridge(name="transformer.ln_f", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head"),
         }
 
-    def _create_normalization_bridge(self, name: str) -> NormalizationBridge:
-        """Create a normalization bridge with appropriate identity settings based on configuration.
-
-        Args:
-            name: The name of the normalization component
-
-        Returns:
-            NormalizationBridge configured for the current layer norm folding setting
-        """
-        # Check if layer norm folding is enabled
-        if hasattr(self.cfg, 'layer_norm_folding') and self.cfg.layer_norm_folding:
-            # Use identity normalization when layer norm folding is enabled
-            return NormalizationBridge(
-                name=name,
-                config=self.cfg,
-                force_identity=True,  # Use normalized identity for folded weights
-            )
-        else:
-            # Standard normalization when folding is disabled
-            return NormalizationBridge(name=name, config=self.cfg)
 
     def split_qkv_matrix(
         self, original_attention_component: Any

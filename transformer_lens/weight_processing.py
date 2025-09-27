@@ -2120,3 +2120,200 @@ class ProcessWeights:
 
         # Reshape from TransformerLens format: [n_heads, d_head, d_model] -> [d_model, d_model]
         return tensor.reshape(d_model, d_model)
+
+    @staticmethod
+    def process_raw_weights(
+        raw_hf_state_dict: Dict[str, torch.Tensor],
+        cfg: Any,
+        architecture_adapter=None,
+        fold_ln: bool = False,
+        center_writing_weights: bool = False,
+        center_unembed: bool = False,
+        fold_value_biases: bool = False,
+        refactor_factored_attn_matrices: bool = False,
+        bypass_default_processing: Optional[Dict[str, bool]] = None
+    ) -> Dict[str, torch.Tensor]:
+        """Process raw HuggingFace weights through custom components and general folding.
+
+        This method extends the centralized weight processing to work directly with
+        raw HuggingFace weights, using the architecture adapter for component-specific
+        processing before applying general folding operations.
+
+        Args:
+            raw_hf_state_dict: Raw HuggingFace state dict
+            cfg: Model configuration
+            architecture_adapter: Architecture adapter with component mapping
+            fold_ln: Whether to fold layer norm weights
+            center_writing_weights: Whether to center writing weights
+            center_unembed: Whether to center unembedding weights
+            fold_value_biases: Whether to fold value biases
+            refactor_factored_attn_matrices: Whether to refactor factored attention matrices
+            bypass_default_processing: Dict of component names to bypass flags
+
+        Returns:
+            Processed state dict ready for loading into model
+        """
+        bypass_default_processing = bypass_default_processing or {}
+        processed_weights = {}
+
+        # Step 1: Run custom component processing if architecture adapter provided
+        if architecture_adapter is not None:
+            print("Running custom component processing...")
+            custom_processed = ProcessWeights._run_custom_component_processing(
+                raw_hf_state_dict, architecture_adapter
+            )
+            processed_weights.update(custom_processed)
+
+        # Step 2: Convert remaining HF weights to TL format using existing conversion
+        print("Converting remaining weights to TL format...")
+        if architecture_adapter is not None:
+            # For now, just use the standard HookedTransformer processing approach
+            # Create a HookedTransformer to get the standard TL weights
+            from transformer_lens import HookedTransformer
+            temp_hooked = HookedTransformer.from_pretrained(
+                "gpt2",  # Use the model name directly
+                device="cpu",
+                fold_ln=False,  # Don't fold yet
+                center_writing_weights=False,
+                center_unembed=False,
+                fold_value_biases=False,
+                refactor_factored_attn_matrices=False
+            )
+            all_tl_weights = temp_hooked.state_dict()
+
+            # Override with custom processed weights
+            for key, value in processed_weights.items():
+                all_tl_weights[key] = value
+
+            processed_weights = all_tl_weights
+        else:
+            # Fall back to direct copy for HookedTransformer case
+            remaining_weights = {k: v for k, v in raw_hf_state_dict.items()
+                               if k not in processed_weights}
+            processed_weights.update(remaining_weights)
+
+        # Step 3: Apply standard processing pipeline (with bypass support)
+        if not bypass_default_processing.get('fold_ln', False) and fold_ln:
+            processed_weights = ProcessWeights.fold_layer_norm(
+                processed_weights, cfg, adapter=architecture_adapter
+            )
+
+        if not bypass_default_processing.get('center_writing_weights', False) and center_writing_weights:
+            processed_weights = ProcessWeights.center_writing_weights(
+                processed_weights, cfg, adapter=architecture_adapter
+            )
+
+        if not bypass_default_processing.get('center_unembed', False) and center_unembed:
+            processed_weights = ProcessWeights.center_unembed(
+                processed_weights, architecture_adapter or cfg
+            )
+
+        if not bypass_default_processing.get('fold_value_biases', False) and fold_value_biases:
+            processed_weights = ProcessWeights.fold_value_biases(
+                processed_weights, cfg, adapter=architecture_adapter
+            )
+
+        if not bypass_default_processing.get('refactor_factored_attn_matrices', False) and refactor_factored_attn_matrices:
+            processed_weights = ProcessWeights.refactor_factored_attn_matrices(
+                processed_weights, cfg, adapter=architecture_adapter
+            )
+
+        return processed_weights
+
+    @staticmethod
+    def _run_custom_component_processing(
+        hf_state_dict: Dict[str, torch.Tensor],
+        adapter
+    ) -> Dict[str, torch.Tensor]:
+        """Run custom weight processing for each component that supports it."""
+        processed_weights = {}
+
+        # Get component mapping from adapter
+        component_mapping = adapter.component_mapping
+
+        # Process each component that has custom weight processing
+        for component_name, component in component_mapping.items():
+            if hasattr(component, 'custom_weight_processing'):
+                print(f"  Processing {component_name} with custom processing...")
+
+                # Determine prefix for this component
+                prefix = ProcessWeights._get_component_hf_prefix(component_name, adapter)
+
+                if component_name == "blocks":
+                    # Handle blocks specially - iterate through layers
+                    for layer_idx in range(adapter.cfg.n_layers):
+                        layer_prefix = f"transformer.h.{layer_idx}"
+
+                        # Get subcomponents for this layer
+                        for sub_name, sub_component in component.submodules.items():
+                            if hasattr(sub_component, 'custom_weight_processing'):
+                                sub_prefix = f"{layer_prefix}.{ProcessWeights._get_subcomponent_hf_prefix(sub_name)}"
+                                sub_weights = sub_component.custom_weight_processing(
+                                    hf_state_dict, sub_prefix
+                                )
+                                # Add layer prefix to weight keys
+                                for key, weight in sub_weights.items():
+                                    full_key = f"blocks.{layer_idx}.{sub_name}.{key}"
+                                    processed_weights[full_key] = weight
+                else:
+                    # Run custom processing
+                    component_weights = component.custom_weight_processing(
+                        hf_state_dict, prefix
+                    )
+
+                    # Add component prefix to weight keys
+                    for key, weight in component_weights.items():
+                        if component_name in ["embed", "pos_embed"]:
+                            # Special case: embeddings use direct keys
+                            processed_weights[key] = weight
+                        else:
+                            full_key = f"{component_name}.{key}"
+                            processed_weights[full_key] = weight
+
+        return processed_weights
+
+    @staticmethod
+    def _get_component_hf_prefix(component_name: str, adapter) -> str:
+        """Get HuggingFace prefix for component."""
+        mapping = {
+            "embed": "transformer.wte",
+            "pos_embed": "transformer.wpe",
+            "unembed": "lm_head",
+            "ln_final": "transformer.ln_f"
+        }
+        return mapping.get(component_name, component_name)
+
+    @staticmethod
+    def _get_subcomponent_hf_prefix(sub_name: str) -> str:
+        """Get HF prefix for subcomponent."""
+        mapping = {
+            "ln1": "ln_1",
+            "ln2": "ln_2",
+            "attn": "attn",
+            "mlp": "mlp"
+        }
+        return mapping.get(sub_name, sub_name)
+
+    @staticmethod
+    def _convert_remaining_via_adapter(
+        hf_state_dict: Dict[str, torch.Tensor],
+        already_processed: Dict[str, torch.Tensor],
+        adapter
+    ) -> Dict[str, torch.Tensor]:
+        """Convert any remaining HF weights to TL format using adapter mapping."""
+        remaining_weights = {}
+
+        # Use existing conversion mapping from adapter if available
+        if hasattr(adapter, 'weight_mapping'):
+            for tl_key, hf_source in adapter.weight_mapping.items():
+                if tl_key not in already_processed:
+                    if isinstance(hf_source, str) and hf_source in hf_state_dict:
+                        remaining_weights[tl_key] = hf_state_dict[hf_source]
+                    elif isinstance(hf_source, tuple) and hf_source[0] in hf_state_dict:
+                        # Handle conversion rules
+                        weight = hf_state_dict[hf_source[0]]
+                        if len(hf_source) > 1 and hasattr(hf_source[1], 'handle_conversion'):
+                            weight = hf_source[1].handle_conversion(weight)
+                        remaining_weights[tl_key] = weight
+
+        return remaining_weights

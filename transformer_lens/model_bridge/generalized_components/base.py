@@ -170,6 +170,28 @@ class GeneralizedComponent(nn.Module):
         # Base implementation does nothing - components override this
         pass
 
+    def custom_weight_processing(
+        self,
+        hf_state_dict: Dict[str, torch.Tensor],
+        component_prefix: str,
+        **processing_kwargs
+    ) -> Dict[str, torch.Tensor]:
+        """Custom weight processing for component-specific transformations.
+
+        This method allows components to perform heavy lifting weight processing
+        directly on raw HF weights before general folding operations.
+
+        Args:
+            hf_state_dict: Raw HuggingFace state dict
+            component_prefix: Prefix for this component's weights (e.g., "transformer.h.0.attn")
+            **processing_kwargs: Additional processing arguments
+
+        Returns:
+            Dictionary of processed weights ready for general folding operations
+        """
+        # Base implementation returns empty dict - components can override
+        return {}
+
     def get_processed_state_dict(self) -> Dict[str, torch.Tensor]:
         """Get the state dict after weight processing.
 
