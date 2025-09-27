@@ -148,10 +148,16 @@ class TestTransformerBridgeCompatibility:
         ht = models["ht"]
         bridge = models["bridge"]
 
-        # Check layer norm folding - both should have LayerNormPre after folding
+        # Check layer norm folding - HT should have LayerNormPre, Bridge should have NormalizationBridge
         from transformer_lens.components.layer_norm_pre import LayerNormPre
+        from transformer_lens.model_bridge.generalized_components.normalization import NormalizationBridge
         assert isinstance(ht.ln_final, LayerNormPre), "HT should have LayerNormPre (folded)"
-        assert isinstance(bridge.ln_final, LayerNormPre), "Bridge should have LayerNormPre (folded)"
+        assert isinstance(bridge.ln_final, NormalizationBridge), "Bridge should have NormalizationBridge (integrated folding)"
+
+        # Verify that the NormalizationBridge has LayerNormPre functionality
+        assert hasattr(bridge.ln_final, '_layernorm_pre_forward'), "Bridge ln_final should have LayerNormPre functionality"
+        assert hasattr(bridge.ln_final.config, 'layer_norm_folding'), "Bridge ln_final should have layer_norm_folding config"
+        assert bridge.ln_final.config.layer_norm_folding, "Bridge ln_final should be in folding mode"
 
         # Check weight centering - writing weights should be approximately centered
         ht_w_out = ht.blocks[0].mlp.W_out

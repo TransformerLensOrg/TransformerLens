@@ -163,3 +163,44 @@ class TestDefaultFoldingBehavior:
         # But impact should be small (less than 1%)
         percentage_change = folding_impact / unfolded_loss.item() * 100
         assert percentage_change < 1.0, f"Folding impact should be small (<1%, actual: {percentage_change:.6f}%)"
+
+    def test_normalization_bridge_integration(self, model_name, device):
+        """Test that TransformerBridge uses NormalizationBridge instead of LayerNormPre."""
+        # Create folded bridge
+        bridge_folded = TransformerBridge.boot_transformers(model_name, device=device)
+        bridge_folded.enable_compatibility_mode()
+
+        # Import required classes
+        from transformer_lens.model_bridge.generalized_components.normalization import NormalizationBridge
+
+        # Check that ln_final is NormalizationBridge, not LayerNormPre
+        assert hasattr(bridge_folded, 'ln_final'), "Bridge should have ln_final component"
+        assert isinstance(bridge_folded.ln_final, NormalizationBridge), (
+            f"ln_final should be NormalizationBridge, got {type(bridge_folded.ln_final).__name__}"
+        )
+
+        # Verify that the NormalizationBridge has LayerNormPre functionality integrated
+        ln_final = bridge_folded.ln_final
+        assert hasattr(ln_final, '_layernorm_pre_forward'), "NormalizationBridge should have LayerNormPre functionality"
+        assert hasattr(ln_final.config, 'layer_norm_folding'), "NormalizationBridge should have layer_norm_folding config"
+        assert ln_final.config.layer_norm_folding, "NormalizationBridge should be in folding mode"
+
+        # Test that the component has hook points like LayerNormPre
+        assert hasattr(ln_final, 'hook_scale'), "NormalizationBridge should have hook_scale"
+        assert hasattr(ln_final, 'hook_normalized'), "NormalizationBridge should have hook_normalized"
+
+        # Verify computational behavior matches LayerNormPre
+        test_input = torch.randn(1, 5, bridge_folded.cfg.d_model)
+        with torch.no_grad():
+            output = ln_final(test_input)
+
+        # Output should be normalized (mean ~0, std ~1)
+        output_mean = output.mean(dim=-1)
+        output_std = output.std(dim=-1)
+
+        assert torch.allclose(output_mean, torch.zeros_like(output_mean), atol=1e-6), (
+            f"Output should be centered, got mean: {output_mean.abs().max().item():.8f}"
+        )
+        assert torch.allclose(output_std, torch.ones_like(output_std), atol=1e-6), (
+            f"Output should be normalized, got std deviation from 1: {(output_std - 1).abs().max().item():.8f}"
+        )
