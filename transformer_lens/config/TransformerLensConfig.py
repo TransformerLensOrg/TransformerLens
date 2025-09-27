@@ -126,7 +126,7 @@ class TransformerLensConfig:
             self.d_mlp = self.d_model * 4
 
     @classmethod
-    def unwrap(cls, config: Union[Dict, "TransformerLensConfig"]) -> TransformerLensConfig:
+    def unwrap(cls, config: Union[Dict, "TransformerLensConfig"]) -> "TransformerLensConfig":
         """
         Convenience function to avoid duplicate code from a common way config is passed to various components.
         """

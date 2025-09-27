@@ -13,6 +13,9 @@ from transformer_lens.conversion_utils.conversion_steps import HookConversionSet
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
+from transformer_lens.model_bridge.generalized_components.joint_qkv_attention import (
+    JointQKVAttentionBridge,
+)
 from transformer_lens.model_bridge.types import (
     ComponentMapping,
     RemoteComponent,
@@ -831,22 +834,29 @@ class ArchitectureAdapter:
                                 name=subcomponent.name, config=self.cfg
                             )
                         elif subcomp_name == "attn":
-                            # Attention component needs config and split function
-                            if hasattr(self, "split_qkv_matrix"):
-                                fresh_component = component_class(
-                                    name=subcomponent.name,
-                                    config=self.cfg,
-                                    split_qkv_matrix=self.split_qkv_matrix,
-                                )
-                            else:
-                                # Fallback for non-GPT2 architectures
-                                def dummy_split_qkv_matrix(attn_layer):
-                                    return None, None, None
+                            # Attention component needs config and split function (if it's a JointQKVAttentionBridge)
+                            if issubclass(component_class, JointQKVAttentionBridge):
+                                if hasattr(self, "split_qkv_matrix"):
+                                    fresh_component = component_class(
+                                        name=subcomponent.name,
+                                        config=self.cfg,
+                                        split_qkv_matrix=self.split_qkv_matrix,
+                                    )
+                                else:
+                                    # Fallback for non-GPT2 architectures
+                                    def dummy_split_qkv_matrix(attn_layer):
+                                        return None, None, None
 
+                                    fresh_component = component_class(
+                                        name=subcomponent.name,
+                                        config=self.cfg,
+                                        split_qkv_matrix=dummy_split_qkv_matrix,
+                                    )
+                            else:
+                                # Regular attention bridge - no split_qkv_matrix parameter
                                 fresh_component = component_class(
                                     name=subcomponent.name,
                                     config=self.cfg,
-                                    split_qkv_matrix=dummy_split_qkv_matrix,
                                 )
                         elif subcomp_name == "mlp":
                             # MLP component - process its subcomponents

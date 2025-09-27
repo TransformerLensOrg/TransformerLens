@@ -167,7 +167,7 @@ class AttentionConverter(BaseComponentConverter):
         self, hf_weights: Dict[str, torch.Tensor], config: HookedTransformerConfig, **kwargs
     ) -> Dict[str, torch.Tensor]:
         """Convert HF attention weights to TLens format."""
-        tlens_weights = {}
+        tlens_weights: Dict[str, torch.Tensor] = {}
         layer_idx = kwargs.get("layer_idx", 0)
         model_type = kwargs.get("model_type", "gpt2")
 
@@ -411,7 +411,7 @@ class MLPConverter(BaseComponentConverter):
         self, hf_weights: Dict[str, torch.Tensor], config: HookedTransformerConfig, **kwargs
     ) -> Dict[str, torch.Tensor]:
         """Convert HF MLP weights to TLens format."""
-        tlens_weights = {}
+        tlens_weights: Dict[str, torch.Tensor] = {}
         layer_idx = kwargs.get("layer_idx", 0)
         model_type = kwargs.get("model_type", "gpt2")
 
@@ -590,7 +590,7 @@ class NormalizationConverter(BaseComponentConverter):
         self, hf_weights: Dict[str, torch.Tensor], config: HookedTransformerConfig, **kwargs
     ) -> Dict[str, torch.Tensor]:
         """Convert HF normalization weights to TLens format."""
-        tlens_weights = {}
+        tlens_weights: Dict[str, torch.Tensor] = {}
         layer_idx = kwargs.get("layer_idx", None)
         norm_type = kwargs.get("norm_type", "ln1")  # ln1, ln2, or final
         model_type = kwargs.get("model_type", "gpt2")
@@ -1130,12 +1130,18 @@ class ReversibleWeightConverter:
         Returns:
             Dictionary with detailed mismatch analysis
         """
-        debug_info = {
-            "missing_keys": [],
-            "extra_keys": [],
-            "shape_mismatches": [],
-            "dtype_mismatches": [],
-            "value_mismatches": [],
+        missing_keys: List[str] = []
+        extra_keys: List[str] = []
+        shape_mismatches: List[Dict[str, Any]] = []
+        dtype_mismatches: List[Dict[str, Any]] = []
+        value_mismatches: List[Dict[str, Any]] = []
+
+        debug_info: Dict[str, Any] = {
+            "missing_keys": missing_keys,
+            "extra_keys": extra_keys,
+            "shape_mismatches": shape_mismatches,
+            "dtype_mismatches": dtype_mismatches,
+            "value_mismatches": value_mismatches,
             "summary": {},
         }
 

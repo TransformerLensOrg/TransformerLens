@@ -4,7 +4,7 @@ This module provides validation for HF ↔ TLens weight conversions after proces
 ensuring that weight folding and other transformations preserve model behavior.
 """
 
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 import torch
 
@@ -43,7 +43,7 @@ class RoundTripValidator:
         Returns:
             Dictionary containing validation results
         """
-        results = {
+        results: Dict[str, Any] = {
             "success": False,
             "conversions": {},
             "shape_validation": {},
@@ -139,7 +139,7 @@ class RoundTripValidator:
             Dictionary with sample validation results
         """
         sample_keys = list(processed_tlens_weights.keys())[:sample_size]
-        results = {"sample_validation": []}
+        results: Dict[str, List[Any]] = {"sample_validation": []}
 
         for key in sample_keys:
             if key in tlens_weights_roundtrip:

@@ -6,6 +6,7 @@ This module provides functionality to load and convert models from HuggingFace t
 import copy
 import logging
 import os
+from typing import Union, cast
 
 import torch
 from transformers import (
@@ -237,7 +238,8 @@ def boot(
     )
 
     # Move model to device
-    hf_model = hf_model.to(device)
+    if device is not None:
+        hf_model = hf_model.to(device)  # type: ignore
 
     # Load the tokenizer
     tokenizer = tokenizer

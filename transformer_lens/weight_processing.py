@@ -7,7 +7,7 @@ organized into a single ProcessWeights class with static methods. These function
 to modify transformer model weights for better interpretability and analysis.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 
 import einops
 import torch
@@ -187,7 +187,7 @@ class ProcessWeights:
         hf_key_sample = ProcessWeights._get_param_key(tl_key_sample, adapter) if adapter else None
 
         uses_tl_format = tl_key_sample in state_dict
-        uses_hf_format = adapter and hf_key_sample and hf_key_sample in state_dict
+        uses_hf_format = bool(adapter and hf_key_sample and hf_key_sample in state_dict)
 
         return uses_tl_format, uses_hf_format
 
@@ -197,7 +197,7 @@ class ProcessWeights:
         cfg,
         layer: int,
         adapter,
-    ) -> Dict[str, torch.Tensor]:
+    ) -> Dict[str, Union[torch.Tensor, None, Dict[str, str]]]:
         """Extract attention tensors in TransformerLens format for layer norm folding.
 
         Args:
@@ -324,8 +324,21 @@ class ProcessWeights:
         ln1_w = tensors["ln1_w"]
         keys = tensors["keys"]
 
+        # Type assertions for mypy
+        assert isinstance(wq_tensor, torch.Tensor)
+        assert isinstance(wk_tensor, torch.Tensor)
+        assert isinstance(wv_tensor, torch.Tensor)
+        assert isinstance(bq_tensor, torch.Tensor)
+        assert isinstance(bk_tensor, torch.Tensor)
+        assert isinstance(bv_tensor, torch.Tensor)
+        assert isinstance(keys, dict)
+
         # Apply layer norm folding if parameters exist
         if ln1_b is not None and ln1_w is not None:
+            # Type assertion for mypy within the if block
+            assert isinstance(ln1_b, torch.Tensor)
+            assert isinstance(ln1_w, torch.Tensor)
+
             # Apply the individual math functions
             if fold_biases:
                 # TODO this is causing slight divergence - FIXED
@@ -1420,7 +1433,7 @@ class ProcessWeights:
         target_keys = ProcessWeights._extract_tl_keys_from_conversion_rules(architecture_adapter)
 
         # Apply conversion rules from architecture adapter for only the target keys
-        tl_state_dict = {}
+        tl_state_dict: Dict[str, torch.Tensor] = {}
         conversion_rules = architecture_adapter.conversion_rules.fields
 
         print(
@@ -1546,7 +1559,7 @@ class ProcessWeights:
 
             if len(template_parts) > 0:
                 # Reconstruct template key
-                rebuilt_parts = []
+                rebuilt_parts: list[str] = []
                 for i, part in enumerate(parts):
                     if template_parts[i] == "{i}":
                         if i > 0:

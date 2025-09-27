@@ -196,7 +196,7 @@ class HookedTransformerConfig(TransformerLensConfig):
     """
 
     model_name: str = "custom"
-    act_fn: Optional[str] = None
+    act_fn: str = "relu"
     eps: float = 1e-5
     use_attn_scale: bool = True
     attn_scale: float = -1.0
@@ -214,7 +214,7 @@ class HookedTransformerConfig(TransformerLensConfig):
     window_size: Optional[int] = None
     attn_types: Optional[List] = None
     init_mode: str = "gpt2"
-    normalization_type: Optional[str] = "LN"
+    normalization_type: str = "LN"
     n_devices: int = 1
     attention_dir: str = "causal"
     attn_only: bool = False

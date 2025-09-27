@@ -3,9 +3,10 @@
 This module contains the bridge component for attention layers that use a fused qkv matrix.
 """
 
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, cast
 
 import torch
+import torch.nn as nn
 
 from transformer_lens.conversion_utils.conversion_steps.base_hook_conversion import (
     BaseHookConversion,
@@ -333,8 +334,9 @@ class JointQKVAttentionBridge(AttentionBridge):
 
         # Extract weights from original attention component
         if hasattr(original_component, "c_attn"):
-            qkv_weight = original_component.c_attn.weight  # Shape: [d_model, 3*d_model]
-            qkv_bias = original_component.c_attn.bias  # Shape: [3*d_model]
+            c_attn = cast(nn.Module, original_component.c_attn)
+            qkv_weight = c_attn.weight  # Shape: [d_model, 3*d_model]
+            qkv_bias = c_attn.bias  # Shape: [3*d_model]
         else:
             raise AttributeError(
                 "Original component doesn't have c_attn attribute for QKV projection"
@@ -345,7 +347,7 @@ class JointQKVAttentionBridge(AttentionBridge):
         # Apply QKV projection using torch.nn.functional.linear
         # Note: torch.nn.functional.linear expects weight to be [output_features, input_features]
         # but HuggingFace stores it as [input_features, output_features], so we transpose
-        qkv = torch.nn.functional.linear(hidden_states, qkv_weight.T, qkv_bias)
+        qkv = torch.nn.functional.linear(hidden_states, cast(torch.Tensor, qkv_weight.T), cast(torch.Tensor, qkv_bias))
 
         # Split into Q, K, V - reshape to separate the 3 components
         qkv = qkv.view(batch_size, seq_len, 3, d_model)
@@ -372,8 +374,9 @@ class JointQKVAttentionBridge(AttentionBridge):
 
         # Extract output projection weights from original attention component
         if hasattr(original_component, "c_proj"):
-            proj_weight = original_component.c_proj.weight  # Shape: [d_model, d_model]
-            proj_bias = original_component.c_proj.bias  # Shape: [d_model]
+            c_proj = cast(nn.Module, original_component.c_proj)
+            proj_weight = c_proj.weight  # Shape: [d_model, d_model]
+            proj_bias = c_proj.bias  # Shape: [d_model]
         else:
             # If no output projection, return the input unchanged
             return attn_output
@@ -381,7 +384,7 @@ class JointQKVAttentionBridge(AttentionBridge):
         # Apply output projection using torch.nn.functional.linear
         # Note: torch.nn.functional.linear expects weight to be [output_features, input_features]
         # but HuggingFace stores it as [input_features, output_features], so we transpose
-        output = torch.nn.functional.linear(attn_output, proj_weight.T, proj_bias)
+        output = torch.nn.functional.linear(attn_output, cast(torch.Tensor, proj_weight.T), cast(torch.Tensor, proj_bias))
 
         return output
 
@@ -406,8 +409,9 @@ class JointQKVAttentionBridge(AttentionBridge):
 
         # Get the combined QKV weight and bias from the original component
         if hasattr(original_component, "c_attn"):
-            qkv_weight = original_component.c_attn.weight  # Shape: [d_model, 3*d_model]
-            qkv_bias = original_component.c_attn.bias  # Shape: [3*n_heads*d_head]
+            c_attn = cast(nn.Module, original_component.c_attn)
+            qkv_weight = c_attn.weight  # Shape: [d_model, 3*d_model]
+            qkv_bias = c_attn.bias  # Shape: [3*n_heads*d_head]
         else:
             # Try to get from submodules mapping
             qkv_submodule = None
@@ -419,34 +423,37 @@ class JointQKVAttentionBridge(AttentionBridge):
             if qkv_submodule is None:
                 return
 
-            qkv_weight = qkv_submodule.weight
-            qkv_bias = qkv_submodule.bias
+            qkv_weight = cast(torch.Tensor, qkv_submodule.weight)
+            qkv_bias = cast(torch.Tensor, qkv_submodule.bias)
 
         # Split QKV weights: [d_model, 3*d_model] -> 3 x [d_model, d_model]
-        W_Q, W_K, W_V = torch.tensor_split(qkv_weight, 3, dim=1)
+        W_Q, W_K, W_V = torch.tensor_split(cast(torch.Tensor, qkv_weight), 3, dim=1)
 
         # Rearrange Q, K, V weights following GPT2 pretrained logic
         # "m (i h)->i m h" where m=d_model, i=n_heads, h=d_head
+        assert self.config is not None
         W_Q = einops.rearrange(W_Q, "m (i h)->i m h", i=self.config.n_heads)
         W_K = einops.rearrange(W_K, "m (i h)->i m h", i=self.config.n_heads)
         W_V = einops.rearrange(W_V, "m (i h)->i m h", i=self.config.n_heads)
 
         # Process QKV bias following GPT2 pretrained logic
+        qkv_bias_tensor = cast(torch.Tensor, qkv_bias)
         qkv_bias = einops.rearrange(
-            qkv_bias,
+            qkv_bias_tensor,
             "(qkv index head)->qkv index head",
             qkv=3,
             index=self.config.n_heads,
             head=self.config.d_head,
         )
-        b_Q, b_K, b_V = qkv_bias[0], qkv_bias[1], qkv_bias[2]
+        b_Q, b_K, b_V = cast(torch.Tensor, qkv_bias[0]), cast(torch.Tensor, qkv_bias[1]), cast(torch.Tensor, qkv_bias[2])
 
         # Process output projection weight if it exists
         W_O = None
         b_O = None
         if hasattr(original_component, "c_proj"):
-            W_O = original_component.c_proj.weight
-            b_O = original_component.c_proj.bias
+            c_proj = cast(nn.Module, original_component.c_proj)
+            W_O = cast(torch.Tensor, c_proj.weight)
+            b_O = cast(torch.Tensor, c_proj.bias)
             # Rearrange W_O following GPT2 pretrained logic: "(i h) m->i h m"
             W_O = einops.rearrange(W_O, "(i h) m->i h m", i=self.config.n_heads)
         else:
@@ -536,6 +543,7 @@ class JointQKVAttentionBridge(AttentionBridge):
             # Rearrange for attention heads
             import einops
 
+            assert self.config is not None
             n_heads = self.config.n_heads
             d_head = self.config.d_head
 
@@ -569,6 +577,7 @@ class JointQKVAttentionBridge(AttentionBridge):
             # Rearrange bias for attention heads
             import einops
 
+            assert self.config is not None
             n_heads = self.config.n_heads
             d_head = self.config.d_head
 

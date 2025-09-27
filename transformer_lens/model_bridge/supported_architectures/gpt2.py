@@ -1,6 +1,6 @@
 """GPT2 architecture adapter."""
 
-from typing import Any
+from typing import Any, cast
 
 import torch
 
@@ -435,7 +435,7 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
 
         # Create minimal structure that matches what fill_missing_keys expects
         temp_structure = nn.Module()
-        temp_structure.cfg = component_cfg
+        setattr(temp_structure, 'cfg', component_cfg)
 
         # Create components without processing - just for fill_missing_keys
         temp_structure.embed = Embed(component_cfg)
@@ -587,7 +587,8 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
 
         if pos_embed_component is not None:
             components_dict["pos_embed"] = pos_embed_component
-            components_dict["hook_pos_embed"] = hook_pos_embed
+            if hook_pos_embed is not None:
+                components_dict["hook_pos_embed"] = hook_pos_embed
 
         if ln_final is not None:
             components_dict["ln_final"] = ln_final
@@ -861,8 +862,9 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
             ReversibleWeightConverter,
         )
 
+        from transformer_lens.config import HookedTransformerConfig
         converter = ReversibleWeightConverter()
-        hf_weights = converter.tlens_to_hf(processed_weights, self.cfg, model_name)
+        hf_weights = converter.tlens_to_hf(processed_weights, cast(HookedTransformerConfig, self.cfg), model_name)
 
         return hf_weights
 
@@ -882,7 +884,8 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
             ReversibleWeightConverter,
         )
 
+        from transformer_lens.config import HookedTransformerConfig
         converter = ReversibleWeightConverter()
-        tlens_weights = converter.hf_to_tlens(hf_weights, self.cfg, model_name)
+        tlens_weights = converter.hf_to_tlens(hf_weights, cast(HookedTransformerConfig, self.cfg), model_name)
 
         return tlens_weights

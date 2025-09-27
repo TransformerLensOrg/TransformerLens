@@ -132,6 +132,16 @@ class TransformerBridge(nn.Module):
         # Intiialize dictionary containing hooks that will be cached
         self._initialize_hooks_to_cache()
 
+    @property
+    def original_model(self) -> nn.Module:
+        """Get the original model."""
+        return self.__dict__["original_model"]
+
+    @original_model.setter
+    def original_model(self, value: nn.Module) -> None:
+        """Set the original model."""
+        self.__dict__["original_model"] = value
+
     def __setattr__(self, name: str, value: Any) -> None:
         """Override setattr to track HookPoint objects dynamically."""
         # Call parent setattr first
@@ -1069,9 +1079,11 @@ class TransformerBridge(nn.Module):
         processed_state = self._processed_tl_state_dict
 
         # Use the bridge's own adapter to convert from TL format to bridge format
-        bridge_state_dict = {}
+        bridge_state_dict: Dict[str, Any] = {}
 
         # Get the conversion rules for backward mapping (TL -> HF format)
+        if self.adapter.conversion_rules is None:
+            return bridge_state_dict
         conversion_rules = self.adapter.conversion_rules.fields
 
         # Create reverse mapping from TL keys to HF keys
@@ -1544,8 +1556,13 @@ class TransformerBridge(nn.Module):
         else:
             return logits
 
+    def _extract_tl_format_weights_DEAD_CODE(self):
+        """TODO: This is dead code that was after a return statement - needs to be fixed."""
+        bridge_state = self.state_dict()  # Define bridge_state properly
         # Use the adapter's conversion rules to extract TL format weights
-        tl_weights = {}
+        tl_weights: Dict[str, Any] = {}
+        if self.adapter.conversion_rules is None:
+            return tl_weights
         conversion_rules = self.adapter.conversion_rules.fields
 
         # Define the TL keys that ProcessWeights expects
@@ -1654,6 +1671,8 @@ class TransformerBridge(nn.Module):
 
         # Get the bridge's current state dict
         bridge_state = self.state_dict()
+        if self.adapter.conversion_rules is None:
+            return
         conversion_rules = self.adapter.conversion_rules.fields
         updated_bridge_state = bridge_state.copy()
 
@@ -2314,7 +2333,7 @@ class TransformerBridge(nn.Module):
                 # Use a more direct approach to replace the module
                 # Split the name into parts
                 parts = name.split(".")
-                parent = self
+                parent: Any = self
 
                 # Navigate to the parent
                 for part in parts[:-1]:
@@ -3391,7 +3410,7 @@ class TransformerBridge(nn.Module):
         added_hooks: List[Tuple[HookPoint, str]] = []
 
         def add_hook_to_point(
-            hook_point: HookPoint, hook_fn: Callable, name: str, dir: str = "fwd"
+            hook_point: HookPoint, hook_fn: Callable, name: str, dir: Literal["fwd", "bwd"] = "fwd"
         ):
             hook_point.add_hook(hook_fn, dir=dir)
             added_hooks.append((hook_point, name))
@@ -4116,7 +4135,10 @@ class TransformerBridge(nn.Module):
             Dict containing the state dict with clean parameter names
         """
         # Get the raw state dict from the original model
-        raw_state_dict = self.original_model.state_dict(destination, prefix, keep_vars)
+        if destination is not None:
+            raw_state_dict = self.original_model.state_dict(destination=destination, prefix=prefix, keep_vars=keep_vars)
+        else:
+            raw_state_dict = self.original_model.state_dict(prefix=prefix, keep_vars=keep_vars)
 
         # Filter out _original_component references
         clean_state_dict = {}
@@ -4245,7 +4267,9 @@ class TransformerBridge(nn.Module):
                 hasattr(self.adapter, "conversion_rules")
                 and self.adapter.conversion_rules is not None
             ):
-                converter.adapter = self.adapter
+                # TODO: ReversibleWeightConverter doesn't have an adapter attribute
+                # converter.adapter = self.adapter
+                pass
             else:
                 print(f"Warning: Adapter {type(self.adapter)} does not have conversion_rules set")
 
@@ -4253,7 +4277,8 @@ class TransformerBridge(nn.Module):
         model_type = self._infer_model_type()
 
         # Convert HF → TLens
-        tlens_state_dict = converter.hf_to_tlens(hf_state_dict, self.cfg, model_type)
+        from transformer_lens.config import HookedTransformerConfig
+        tlens_state_dict = converter.hf_to_tlens(hf_state_dict, cast(HookedTransformerConfig, self.cfg), model_type)
 
         # Load into bridge
         self.load_state_dict(tlens_state_dict, strict=strict)
@@ -4278,7 +4303,7 @@ class TransformerBridge(nn.Module):
             ReversibleWeightConverter,
         )
 
-        result = {
+        result: Dict[str, Any] = {
             "success": False,
             "weight_validation": {},
             "output_validation": {},
@@ -4300,9 +4325,10 @@ class TransformerBridge(nn.Module):
 
             # Step 2: Convert to TLens format using reversible converter
             print("  Converting HF weights to TLens format...")
+            from transformer_lens.config import HookedTransformerConfig
             converter = ReversibleWeightConverter()
             model_type = self._infer_model_type()
-            recovered_tlens_state = converter.hf_to_tlens(hf_state_dict, self.cfg, model_type)
+            recovered_tlens_state = converter.hf_to_tlens(hf_state_dict, cast(HookedTransformerConfig, self.cfg), model_type)
             print("  HF -> TLens conversion completed")
             print(f"  Recovered TLens keys (first 10): {list(recovered_tlens_state.keys())[:10]}")
             print(f"  Looking for embed.W_E: {'embed.W_E' in recovered_tlens_state}")
@@ -4340,8 +4366,8 @@ class TransformerBridge(nn.Module):
             print(
                 f"  Comparing weights: {len(original_tlens_state)} original vs {len(processed_recovered_state)} recovered"
             )
-            weight_mismatches = []
-            missing_keys = []
+            weight_mismatches: List[Dict[str, Any]] = []
+            missing_keys: List[str] = []
 
             for key, original_tensor in original_tlens_state.items():
                 if key not in processed_recovered_state:
@@ -4408,7 +4434,7 @@ class TransformerBridge(nn.Module):
         self, recovered_state_dict: Dict[str, torch.Tensor], tolerance: float
     ) -> Dict[str, Any]:
         """Validate that model outputs are unchanged after round-trip conversion."""
-        validation = {"success": False, "test_results": []}
+        validation: Dict[str, Any] = {"success": False, "test_results": []}
 
         try:
             # Test inputs
@@ -4476,7 +4502,9 @@ class TransformerBridge(nn.Module):
         elif hasattr(self.original_model, "config") and hasattr(
             self.original_model.config, "name_or_path"
         ):
-            model_name = self.original_model.config.name_or_path.lower()
+            name_or_path = self.original_model.config.name_or_path
+            if isinstance(name_or_path, str):
+                model_name = name_or_path.lower()
         elif hasattr(self.cfg, "model_name"):
             model_name = self.cfg.model_name.lower()
 
@@ -4537,9 +4565,11 @@ class TransformerBridge(nn.Module):
             model_name = getattr(self.cfg, "model_name", "gpt2")
 
             # Use adapter's round-trip testing method
-            results = self.adapter.test_round_trip_conversion(
-                processed_weights, model_name, tolerance
-            )
+            # TODO: test_round_trip_conversion method doesn't exist on ArchitectureAdapter
+            # results = self.adapter.test_round_trip_conversion(
+            #     processed_weights, model_name, tolerance
+            # )
+            results = {"success": False, "message": "test_round_trip_conversion not implemented"}
 
             if results.get("success", False):
                 print("  Complete round-trip test result: ✅ SUCCESS")
