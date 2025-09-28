@@ -11,7 +11,6 @@ import einops
 import pytest
 import torch
 
-from transformer_lens import HookedTransformer
 from transformer_lens.weight_processing import ProcessWeights
 
 # from typing import Dict  # Unused import
@@ -1016,4 +1015,3 @@ class TestProcessWeights:
         assert "blocks.0.ln1.b" in state_dict  # Should still be present when fold_biases=False
         assert "blocks.0.ln2.w" not in state_dict
         assert "blocks.0.ln2.b" in state_dict  # Should still be present when fold_biases=False
-

@@ -19,7 +19,6 @@ from transformer_lens.conversion_utils.reversible_weight_converter import (
     MLPConverter,
     NormalizationConverter,
     ReversibleWeightConverter,
-    RoundTripError,
     UnembeddingConverter,
 )
 
