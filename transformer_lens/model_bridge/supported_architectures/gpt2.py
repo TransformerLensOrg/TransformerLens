@@ -548,15 +548,14 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
         component_cfg.layer_norm_folding = fold_ln
 
         if component_cfg.normalization_type in ["LN", "LNPre"]:
+            # Create a dummy LayerNorm component to hold the weights
+            dummy_ln = LayerNorm(component_cfg)
             # Use NormalizationBridge that automatically switches between LayerNorm and LayerNormPre behavior
             ln_final = NormalizationBridge.create_normalization_bridge(
                 name="ln_final",
                 config=component_cfg,
-                original_component=None,  # We'll create a dummy LayerNorm component for weights
+                original_component=dummy_ln,
             )
-            # Create a dummy LayerNorm component to hold the weights
-            dummy_ln = LayerNorm(component_cfg)
-            ln_final.set_original_component(dummy_ln)
         elif component_cfg.normalization_type == "RMS":
             ln_final = RMSNorm(component_cfg)
         elif component_cfg.normalization_type == "RMSPre":

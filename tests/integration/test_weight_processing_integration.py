@@ -10,7 +10,6 @@ import pytest
 import torch
 
 from transformer_lens.HookedTransformer import HookedTransformer
-from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.weight_processing import ProcessWeights
 
 
@@ -25,7 +24,11 @@ class TestWeightProcessingIntegration:
     @pytest.fixture
     def gpt2_small_adapter(self):
         """Create adapter for GPT-2 Small model."""
-        return ArchitectureAdapter.from_pretrained("gpt2-small")
+        from transformer_lens.model_bridge import TransformerBridge
+
+        # Use the proper way to get an adapter by creating a bridge and accessing its adapter
+        bridge = TransformerBridge.boot_transformers("gpt2", device="cpu")
+        return bridge.adapter
 
     @pytest.fixture
     def sample_tensors(self):
@@ -145,21 +148,15 @@ class TestWeightProcessingIntegration:
         cfg = model.cfg
         layer = 0
 
-        # Get parameter keys (no adapter needed for HookedTransformer)
-        W_Q_key = f"blocks.{layer}.attn.W_Q"
-        W_K_key = f"blocks.{layer}.attn.W_K"
-        W_V_key = f"blocks.{layer}.attn.W_V"
-        b_Q_key = f"blocks.{layer}.attn.b_Q"
-        b_K_key = f"blocks.{layer}.attn.b_K"
-        b_V_key = f"blocks.{layer}.attn.b_V"
-
         # Extract tensors
-        tensors, combined_qkv_info = ProcessWeights._extract_attention_tensors(
-            state_dict, cfg, layer, None, W_Q_key, W_K_key, W_V_key, b_Q_key, b_K_key, b_V_key
-        )
+        tensors = ProcessWeights.extract_attention_tensors_for_folding(state_dict, cfg, layer, None)
 
-        wq_tensor, wk_tensor, wv_tensor = tensors["weights"]
-        bq_tensor, bk_tensor, bv_tensor = tensors["biases"]
+        wq_tensor = tensors["wq"]
+        wk_tensor = tensors["wk"]
+        wv_tensor = tensors["wv"]
+        bq_tensor = tensors["bq"]
+        bk_tensor = tensors["bk"]
+        bv_tensor = tensors["bv"]
 
         # Verify shapes
         expected_shape = (cfg.n_heads, cfg.d_model, cfg.d_head)
@@ -172,8 +169,10 @@ class TestWeightProcessingIntegration:
         assert bk_tensor.shape == expected_bias_shape
         assert bv_tensor.shape == expected_bias_shape
 
-        # Verify no combined QKV info (HookedTransformer uses separate format)
-        assert combined_qkv_info is None
+        # Verify tensors are properly extracted
+        assert wq_tensor is not None
+        assert wk_tensor is not None
+        assert wv_tensor is not None
 
     def test_extract_attention_tensors_with_adapter(self, gpt2_small_adapter):
         """Test tensor extraction with HuggingFace adapter."""
@@ -193,31 +192,32 @@ class TestWeightProcessingIntegration:
             "transformer.h.0.attn.c_attn.bias": combined_qkv_bias,
         }
 
-        # Mock config
-        class MockConfig:
-            n_heads = n_heads
-            d_head = d_head
-            d_model = d_model
+        # Mock config - define as function to avoid variable scope issue
+        def create_mock_config():
+            class MockConfig:
+                pass
 
-        cfg = MockConfig()
+            config = MockConfig()
+            config.n_heads = n_heads
+            config.d_head = d_head
+            config.d_model = d_model
+            return config
+
+        cfg = create_mock_config()
         layer = 0
         adapter = gpt2_small_adapter
 
-        # Get parameter keys
-        W_Q_key = adapter.translate_transformer_lens_path(f"blocks.{layer}.attn.W_Q")
-        W_K_key = adapter.translate_transformer_lens_path(f"blocks.{layer}.attn.W_K")
-        W_V_key = adapter.translate_transformer_lens_path(f"blocks.{layer}.attn.W_V")
-        b_Q_key = adapter.translate_transformer_lens_path(f"blocks.{layer}.attn.b_Q")
-        b_K_key = adapter.translate_transformer_lens_path(f"blocks.{layer}.attn.b_K")
-        b_V_key = adapter.translate_transformer_lens_path(f"blocks.{layer}.attn.b_V")
-
         # Extract tensors
-        tensors, combined_qkv_info = ProcessWeights._extract_attention_tensors(
-            state_dict, cfg, layer, adapter, W_Q_key, W_K_key, W_V_key, b_Q_key, b_K_key, b_V_key
+        tensors = ProcessWeights.extract_attention_tensors_for_folding(
+            state_dict, cfg, layer, adapter
         )
 
-        wq_tensor, wk_tensor, wv_tensor = tensors["weights"]
-        bq_tensor, bk_tensor, bv_tensor = tensors["biases"]
+        wq_tensor = tensors["wq"]
+        wk_tensor = tensors["wk"]
+        wv_tensor = tensors["wv"]
+        bq_tensor = tensors["bq"]
+        bk_tensor = tensors["bk"]
+        bv_tensor = tensors["bv"]
 
         # Verify shapes (should be in TransformerLens format)
         expected_shape = (n_heads, d_model, d_head)
@@ -230,11 +230,10 @@ class TestWeightProcessingIntegration:
         assert bk_tensor.shape == expected_bias_shape
         assert bv_tensor.shape == expected_bias_shape
 
-        # Verify combined QKV info exists
-        assert combined_qkv_info is not None
-        assert combined_qkv_info["n_heads"] == n_heads
-        assert combined_qkv_info["d_head"] == d_head
-        assert combined_qkv_info["d_model"] == d_model
+        # Verify tensors are properly extracted
+        assert wq_tensor is not None
+        assert wk_tensor is not None
+        assert wv_tensor is not None
 
     def test_full_pipeline_with_hooked_transformer(self, gpt2_small_model):
         """Test the full pipeline with HookedTransformer model."""
@@ -252,12 +251,14 @@ class TestWeightProcessingIntegration:
         b_V_key = f"blocks.{layer}.attn.b_V"
 
         # Extract tensors
-        tensors, combined_qkv_info = ProcessWeights._extract_attention_tensors(
-            state_dict, cfg, layer, None, W_Q_key, W_K_key, W_V_key, b_Q_key, b_K_key, b_V_key
-        )
+        tensors = ProcessWeights.extract_attention_tensors_for_folding(state_dict, cfg, layer, None)
 
-        wq_tensor, wk_tensor, wv_tensor = tensors["weights"]
-        bq_tensor, bk_tensor, bv_tensor = tensors["biases"]
+        wq_tensor = tensors["wq"]
+        wk_tensor = tensors["wk"]
+        wv_tensor = tensors["wv"]
+        bq_tensor = tensors["bq"]
+        bk_tensor = tensors["bk"]
+        bv_tensor = tensors["bv"]
 
         # Test LayerNorm folding if parameters exist
         ln1_b_key = f"blocks.{layer}.ln1.b"
@@ -310,11 +311,15 @@ class TestWeightProcessingIntegration:
         b_K_key = f"blocks.{layer}.attn.b_K"
         b_V_key = f"blocks.{layer}.attn.b_V"
 
-        tensors_tl, _ = ProcessWeights._extract_attention_tensors(
-            state_dict_tl, cfg, layer, None, W_Q_key, W_K_key, W_V_key, b_Q_key, b_K_key, b_V_key
+        tensors_tl = ProcessWeights.extract_attention_tensors_for_folding(
+            state_dict_tl, cfg, layer, None
         )
-        wq_tl, wk_tl, wv_tl = tensors_tl["weights"]
-        bq_tl, bk_tl, bv_tl = tensors_tl["biases"]
+        wq_tl = tensors_tl["wq"]
+        wk_tl = tensors_tl["wk"]
+        wv_tl = tensors_tl["wv"]
+        bq_tl = tensors_tl["bq"]
+        bk_tl = tensors_tl["bk"]
+        bv_tl = tensors_tl["bv"]
 
         # Convert to HuggingFace format and back
         adapter = gpt2_small_adapter
@@ -339,24 +344,31 @@ class TestWeightProcessingIntegration:
             bv_tl, f"blocks.{layer}.attn.b_V", adapter, cfg, layer
         )
 
-        # Convert back to TL format
+        # Convert back to TL format using proper HF state dict keys
+        wq_hf_key = adapter.translate_transformer_lens_path(f"blocks.{layer}.attn.W_Q")
+        wk_hf_key = adapter.translate_transformer_lens_path(f"blocks.{layer}.attn.W_K")
+        wv_hf_key = adapter.translate_transformer_lens_path(f"blocks.{layer}.attn.W_V")
+        bq_hf_key = adapter.translate_transformer_lens_path(f"blocks.{layer}.attn.b_Q")
+        bk_hf_key = adapter.translate_transformer_lens_path(f"blocks.{layer}.attn.b_K")
+        bv_hf_key = adapter.translate_transformer_lens_path(f"blocks.{layer}.attn.b_V")
+
         wq_tl_converted = ProcessWeights.convert_tensor_to_tl_format(
-            f"blocks.{layer}.attn.W_Q", adapter, {"dummy": wq_hf}, cfg, layer
+            f"blocks.{layer}.attn.W_Q", adapter, {wq_hf_key: wq_hf}, cfg, layer
         )
         wk_tl_converted = ProcessWeights.convert_tensor_to_tl_format(
-            f"blocks.{layer}.attn.W_K", adapter, {"dummy": wk_hf}, cfg, layer
+            f"blocks.{layer}.attn.W_K", adapter, {wk_hf_key: wk_hf}, cfg, layer
         )
         wv_tl_converted = ProcessWeights.convert_tensor_to_tl_format(
-            f"blocks.{layer}.attn.W_V", adapter, {"dummy": wv_hf}, cfg, layer
+            f"blocks.{layer}.attn.W_V", adapter, {wv_hf_key: wv_hf}, cfg, layer
         )
         bq_tl_converted = ProcessWeights.convert_tensor_to_tl_format(
-            f"blocks.{layer}.attn.b_Q", adapter, {"dummy": bq_hf}, cfg, layer
+            f"blocks.{layer}.attn.b_Q", adapter, {bq_hf_key: bq_hf}, cfg, layer
         )
         bk_tl_converted = ProcessWeights.convert_tensor_to_tl_format(
-            f"blocks.{layer}.attn.b_K", adapter, {"dummy": bk_hf}, cfg, layer
+            f"blocks.{layer}.attn.b_K", adapter, {bk_hf_key: bk_hf}, cfg, layer
         )
         bv_tl_converted = ProcessWeights.convert_tensor_to_tl_format(
-            f"blocks.{layer}.attn.b_V", adapter, {"dummy": bv_hf}, cfg, layer
+            f"blocks.{layer}.attn.b_V", adapter, {bv_hf_key: bv_hf}, cfg, layer
         )
 
         # Test that the math functions produce the same results
