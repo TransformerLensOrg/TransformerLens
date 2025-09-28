@@ -274,14 +274,14 @@ class ProcessWeights:
             "ln1_w": ln1_w,
             # Store the actual keys used based on format detection
             "keys": {
-                "W_Q": f"blocks.{layer}.attn.W_Q",
-                "W_K": f"blocks.{layer}.attn.W_K",
-                "W_V": f"blocks.{layer}.attn.W_V",
-                "b_Q": f"blocks.{layer}.attn.b_Q",
-                "b_K": f"blocks.{layer}.attn.b_K",
-                "b_V": f"blocks.{layer}.attn.b_V",
-                "ln1_b": f"blocks.{layer}.ln1.b",
-                "ln1_w": f"blocks.{layer}.ln1.w",
+                "W_Q": W_Q_key if adapter else f"blocks.{layer}.attn.W_Q",
+                "W_K": W_K_key if adapter else f"blocks.{layer}.attn.W_K",
+                "W_V": W_V_key if adapter else f"blocks.{layer}.attn.W_V",
+                "b_Q": b_Q_key if adapter else f"blocks.{layer}.attn.b_Q",
+                "b_K": b_K_key if adapter else f"blocks.{layer}.attn.b_K",
+                "b_V": b_V_key if adapter else f"blocks.{layer}.attn.b_V",
+                "ln1_b": ln1_b_key if adapter else f"blocks.{layer}.ln1.b",
+                "ln1_w": ln1_w_key if adapter else f"blocks.{layer}.ln1.w",
             },
         }
 
