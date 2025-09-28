@@ -353,129 +353,7 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
 
         return W_Q_transformation, W_K_transformation, W_V_transformation
 
-    def process_weights_and_create_components(
-        self,
-        state_dict,
-        tl_cfg,
-        fold_ln=True,
-        center_writing_weights=True,
-        center_unembed=True,
-        fold_value_biases=True,
-        refactor_factored_attn_matrices=False,
-        use_hf_format=False,
-    ):
-        """Process weights and create components directly with integrated layer norm folding.
 
-        This method handles the complete weight processing pipeline for GPT-2 models.
-        """
-        print("GPT-2 adapter: Processing weights with integrated folding...")
-
-        # Process weights first using our proven method
-        from transformer_lens.loading_from_pretrained import fill_missing_keys
-        from transformer_lens.weight_processing import ProcessWeights
-
-        # Fill missing keys using a temporary minimal structure for compatibility
-        temp_structure = self._create_minimal_structure_for_filling_keys(tl_cfg)
-        complete_state_dict = fill_missing_keys(temp_structure, state_dict)
-
-        # Process weights with exact same parameters
-        processed_weights = ProcessWeights.process_weights(
-            complete_state_dict,
-            tl_cfg,
-            fold_ln=fold_ln,
-            center_writing_weights=center_writing_weights,
-            center_unembed=center_unembed,
-            fold_value_biases=fold_value_biases,
-            refactor_factored_attn_matrices=refactor_factored_attn_matrices,
-        )
-
-        # Create components directly based on the processing that was applied
-        components_dict = self._create_folded_components_directly(
-            tl_cfg, processed_weights, fold_ln, use_hf_format
-        )
-
-        print(
-            f"GPT-2 adapter: Created {len(components_dict['blocks'])} transformer blocks with integrated folding"
-        )
-        return components_dict
-
-    def _create_minimal_structure_for_filling_keys(self, tl_cfg):
-        """Create minimal structure needed for fill_missing_keys compatibility."""
-        import torch.nn as nn
-
-        from transformer_lens.components import (
-            Embed,
-            LayerNorm,
-            PosEmbed,
-            RMSNorm,
-            RMSNormPre,
-            TransformerBlock,
-            Unembed,
-        )
-        from transformer_lens.config.HookedTransformerConfig import (
-            HookedTransformerConfig,
-        )
-
-        # Create a compatible config by copying only the fields that HookedTransformerConfig supports
-        # This is safer than trying to remove all bridge-specific fields
-        component_cfg = HookedTransformerConfig(
-            d_model=tl_cfg.d_model,
-            n_heads=tl_cfg.n_heads,
-            n_layers=tl_cfg.n_layers,
-            d_vocab=tl_cfg.d_vocab,
-            n_ctx=tl_cfg.n_ctx,
-            d_mlp=tl_cfg.d_mlp,
-            d_head=tl_cfg.d_head,
-            act_fn=tl_cfg.act_fn,
-            normalization_type=tl_cfg.normalization_type,
-            positional_embedding_type=tl_cfg.positional_embedding_type,
-            device=tl_cfg.device,
-            final_rms=getattr(tl_cfg, "final_rms", False),
-        )
-
-        # Create minimal structure that matches what fill_missing_keys expects
-        temp_structure = nn.Module()
-        setattr(temp_structure, "cfg", component_cfg)
-
-        # Create components without processing - just for fill_missing_keys
-        temp_structure.embed = Embed(component_cfg)
-
-        if component_cfg.positional_embedding_type != "rotary":
-            temp_structure.pos_embed = PosEmbed(component_cfg)
-
-        temp_structure.blocks = nn.ModuleList(
-            [
-                TransformerBlock(component_cfg, block_index)
-                for block_index in range(component_cfg.n_layers)
-            ]
-        )
-
-        # Create ln_final based on original config (before folding)
-        if component_cfg.normalization_type in ["RMS", "RMSPre"]:
-            temp_structure.ln_final = (
-                RMSNorm(component_cfg)
-                if component_cfg.normalization_type == "RMS"
-                else RMSNormPre(component_cfg)
-            )
-        elif component_cfg.normalization_type in ["LN", "LNPre"]:
-            if component_cfg.final_rms:
-                temp_structure.ln_final = RMSNorm(component_cfg)
-            else:
-                # Use NormalizationBridge for unified LayerNorm/LayerNormPre behavior
-                from transformer_lens.model_bridge.generalized_components.normalization import (
-                    NormalizationBridge,
-                )
-
-                temp_structure.ln_final = NormalizationBridge.create_normalization_bridge(
-                    name="ln_final",
-                    config=component_cfg,
-                    original_component=LayerNorm(
-                        component_cfg
-                    ),  # Create LayerNorm component for weights
-                )
-
-        temp_structure.unembed = Unembed(component_cfg)
-        return temp_structure
 
     def _create_folded_components_directly(
         self, tl_cfg, processed_weights, fold_ln, use_hf_format=False
@@ -516,8 +394,8 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
             final_rms=getattr(tl_cfg, "final_rms", False),
         )
 
-        # Create embed component
-        embed_component = Embed(component_cfg)
+        # Use the bridge embed component from component mapping instead of creating custom
+        embed_component = self.component_mapping["embed"]
         hook_embed = HookPoint()
 
         # Create pos_embed if needed
