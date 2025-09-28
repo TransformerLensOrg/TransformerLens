@@ -502,6 +502,10 @@ class TransformerBridge(nn.Module):
         if name in self.__dict__:
             return self.__dict__[name]
 
+        # Check if this is a registered PyTorch module (added via add_module)
+        if hasattr(self, "_modules") and name in self._modules:
+            return self._modules[name]
+
         # Check if this is a hook alias when compatibility mode is enabled
         if self.compatibility_mode:
             resolved_hook = resolve_alias(self, name, self.hook_aliases)

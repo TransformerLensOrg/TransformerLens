@@ -1045,16 +1045,20 @@ class ArchitectureAdapter:
                 elif "mlp.out" in hf_key:
                     return f"transformer.h.{layer}._original_component.mlp.out._original_component.{parts[-1]}"
 
-                # Pattern: transformer.h.X.ln1.weight -> transformer.h.X._original_component.ln1._original_component.weight
-                elif "ln1" in hf_key:
-                    return f"transformer.h.{layer}._original_component.ln1._original_component.{parts[-1]}"
-
-                # Pattern: transformer.h.X.ln2.weight -> transformer.h.X._original_component.ln2._original_component.weight
-                elif "ln2" in hf_key:
-                    return f"transformer.h.{layer}._original_component.ln2._original_component.{parts[-1]}"
+                # Pattern: transformer.h.X.ln_1.weight -> transformer.h.X._original_component.ln_1._original_component.weight
+                elif "ln_1" in hf_key:
+                    return f"transformer.h.{layer}._original_component.ln_1._original_component.{parts[-1]}"
 
                 # Pattern: transformer.h.X.ln_2.weight -> transformer.h.X._original_component.ln_2._original_component.weight
                 elif "ln_2" in hf_key:
+                    return f"transformer.h.{layer}._original_component.ln_2._original_component.{parts[-1]}"
+
+                # Pattern: transformer.h.X.ln1.weight -> transformer.h.X._original_component.ln_1._original_component.weight (map ln1 to ln_1)
+                elif "ln1" in hf_key:
+                    return f"transformer.h.{layer}._original_component.ln_1._original_component.{parts[-1]}"
+
+                # Pattern: transformer.h.X.ln2.weight -> transformer.h.X._original_component.ln_2._original_component.weight (map ln2 to ln_2)
+                elif "ln2" in hf_key:
                     return f"transformer.h.{layer}._original_component.ln_2._original_component.{parts[-1]}"
 
         # Pattern: transformer.wte.weight -> transformer.wte._original_component.weight

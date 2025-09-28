@@ -107,6 +107,10 @@ class TestEmbeddingConverter(unittest.TestCase):
             )
         )
 
+
+class TestAttentionConverter(unittest.TestCase):
+    """Test cases for AttentionConverter."""
+
     def setUp(self):
         """Set up test fixtures."""
         self.converter = AttentionConverter()
@@ -168,6 +172,10 @@ class TestEmbeddingConverter(unittest.TestCase):
                 torch.allclose(hf_weights[key], recovered_hf[key], atol=1e-6),
                 f"Mismatch for key {key}",
             )
+
+
+class TestMLPConverter(unittest.TestCase):
+    """Test cases for MLPConverter."""
 
     def setUp(self):
         """Set up test fixtures."""
