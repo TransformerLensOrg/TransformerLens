@@ -370,16 +370,15 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
             TransformerBlock,
             Unembed,
         )
-        from transformer_lens.config.HookedTransformerConfig import (
-            HookedTransformerConfig,
+        from transformer_lens.config.TransformerBridgeConfig import (
+            TransformerBridgeConfig,
         )
         from transformer_lens.hook_points import HookPoint
 
         print("GPT-2 adapter: Creating components with folded configuration...")
 
-        # Create a compatible config by copying only the fields that HookedTransformerConfig supports
-        # This is safer than trying to remove all bridge-specific fields
-        component_cfg = HookedTransformerConfig(
+        # Use the TransformerBridgeConfig directly since it now has all HookedTransformerConfig fields
+        component_cfg = TransformerBridgeConfig(
             d_model=tl_cfg.d_model,
             n_heads=tl_cfg.n_heads,
             n_layers=tl_cfg.n_layers,
@@ -734,14 +733,14 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
         Returns:
             Dictionary of weights in HuggingFace format
         """
-        from transformer_lens.config import HookedTransformerConfig
+        from transformer_lens.config import TransformerBridgeConfig
         from transformer_lens.conversion_utils.reversible_weight_converter import (
             ReversibleWeightConverter,
         )
 
         converter = ReversibleWeightConverter()
         hf_weights = converter.tlens_to_hf(
-            processed_weights, cast(HookedTransformerConfig, self.cfg), model_name
+            processed_weights, cast(TransformerBridgeConfig, self.cfg), model_name
         )
 
         return hf_weights
@@ -758,14 +757,14 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
         Returns:
             Dictionary of weights in TransformerLens format
         """
-        from transformer_lens.config import HookedTransformerConfig
+        from transformer_lens.config import TransformerBridgeConfig
         from transformer_lens.conversion_utils.reversible_weight_converter import (
             ReversibleWeightConverter,
         )
 
         converter = ReversibleWeightConverter()
         tlens_weights = converter.hf_to_tlens(
-            hf_weights, cast(HookedTransformerConfig, self.cfg), model_name
+            hf_weights, cast(TransformerBridgeConfig, self.cfg), model_name
         )
 
         return tlens_weights

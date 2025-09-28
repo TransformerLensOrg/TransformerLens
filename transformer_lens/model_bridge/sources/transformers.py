@@ -219,6 +219,7 @@ def boot(
     # Convert to TransformerBridgeConfig with unified architecture
     bridge_config = TransformerBridgeConfig.from_dict(tl_config.__dict__)
     bridge_config.architecture = architecture
+    bridge_config.model_name = model_name  # Set the actual model name instead of default "custom"
 
     adapter = ArchitectureAdapterFactory.select_architecture_adapter(bridge_config)
 

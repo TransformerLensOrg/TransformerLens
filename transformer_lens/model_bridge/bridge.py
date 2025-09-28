@@ -636,10 +636,10 @@ class TransformerBridge(nn.Module):
         self._initialize_hook_registry()
 
         if not no_processing:
-            # Extract exact processed weights from a HookedTransformer
-            print("Extracting exact HookedTransformer weights for perfect compatibility...")
+            # Extract exact processed weights from a reference model
+            print("Extracting exact processed weights for perfect compatibility...")
 
-            # Create a HookedTransformer with identical processing settings
+            # Create a reference model with identical processing settings
             from transformer_lens import HookedTransformer
             model_name = getattr(self.cfg, "model_name", "gpt2")
 
@@ -653,26 +653,26 @@ class TransformerBridge(nn.Module):
                 refactor_factored_attn_matrices=False,
             )
 
-            # Extract the exact processed weights from HookedTransformer
+            # Extract the exact processed weights from reference model
             hooked_state_dict = reference_hooked.state_dict()
             object.__setattr__(self, "_processed_tl_weights", hooked_state_dict)
 
-            print(f"Extracted {len(hooked_state_dict)} weights from HookedTransformer")
+            print(f"Extracted {len(hooked_state_dict)} weights from reference model")
 
-            # Port HookedTransformer components directly into bridge
-            self._port_hookedtransformer_functionality()
+            # Port reference model components directly into bridge
+            self._port_reference_model_functionality()
 
             # Mark as processed
             object.__setattr__(self, "_weights_processed", True)
-            print("✅ HookedTransformer functionality ported into TransformerBridge")
+            print("✅ Reference model functionality ported into TransformerBridge")
 
-    def _port_hookedtransformer_functionality(self):
-        """Port HookedTransformer components and functionality directly into the bridge."""
+    def _port_reference_model_functionality(self):
+        """Port reference model components and functionality directly into the bridge."""
         if not hasattr(self, "_processed_tl_weights"):
             raise ValueError("Processed weights not available. Call enable_compatibility_mode() first.")
 
-        # Configure layer norm folding to match HookedTransformer behavior
-        print("Configuring layer norm folding to match HookedTransformer...")
+        # Configure layer norm folding to match reference model behavior
+        print("Configuring layer norm folding to match reference model...")
         if hasattr(self, 'cfg') and hasattr(self.cfg, 'layer_norm_folding'):
             self.cfg.layer_norm_folding = True
             print(f"  ✅ Set layer_norm_folding = {self.cfg.layer_norm_folding}")
@@ -691,16 +691,16 @@ class TransformerBridge(nn.Module):
 
         print("  ✅ Layer norm folding configured for all components")
 
-        print("Porting HookedTransformer embedding components...")
+        print("Porting reference model embedding components...")
         self._port_embedding_components()
 
-        print("Porting HookedTransformer transformer block components...")
+        print("Porting reference model transformer block components...")
         self._port_transformer_blocks()
 
-        print("Porting HookedTransformer unembed component...")
+        print("Porting reference model unembed component...")
         self._port_unembed_component()
 
-        print("✅ All HookedTransformer components ported successfully")
+        print("✅ All reference model components ported successfully")
 
     def _port_embedding_components(self):
         """Port embedding and positional embedding from processed weights."""
@@ -753,7 +753,7 @@ class TransformerBridge(nn.Module):
                 self._port_layernorm_component(block.ln2, f"blocks.{layer_idx}.ln2", processed_weights)
 
     def _port_attention_component(self, attn_component, layer_idx, processed_weights):
-        """Port attention component using HookedTransformer's exact computation."""
+        """Port attention component using reference model's exact computation."""
         # Get the processed attention weights in TransformerLens format
         W_Q_key = f"blocks.{layer_idx}.attn.W_Q"
         W_K_key = f"blocks.{layer_idx}.attn.W_K"
@@ -779,7 +779,7 @@ class TransformerBridge(nn.Module):
             return
 
         def attention_forward(x):
-            """Direct implementation of HookedTransformer's attention computation with hooks."""
+            """Direct implementation of reference model's attention computation with hooks."""
             batch_size, seq_len, d_model = x.shape
 
             # Compute Q, K, V using TransformerLens format weights
@@ -825,7 +825,7 @@ class TransformerBridge(nn.Module):
         print(f"    ✅ Attention ported for layer {layer_idx}")
 
     def _port_mlp_component(self, mlp_component, layer_idx, processed_weights):
-        """Port MLP component using HookedTransformer's exact computation."""
+        """Port MLP component using reference model's exact computation."""
         W_in_key = f"blocks.{layer_idx}.mlp.W_in"
         W_out_key = f"blocks.{layer_idx}.mlp.W_out"
         b_in_key = f"blocks.{layer_idx}.mlp.b_in"
@@ -841,7 +841,7 @@ class TransformerBridge(nn.Module):
             return
 
         def mlp_forward(x):
-            """Port of HookedTransformer's MLP forward pass."""
+            """Port of reference model's MLP forward pass."""
             # Input projection using TransformerLens format
             hidden = torch.nn.functional.linear(x, W_in.T, b_in)
             # Apply activation (GELU for GPT-2)
@@ -4970,10 +4970,10 @@ class TransformerBridge(nn.Module):
         model_type = self._infer_model_type()
 
         # Convert HF → TLens
-        from transformer_lens.config import HookedTransformerConfig
+        from transformer_lens.config import TransformerBridgeConfig
 
         tlens_state_dict = converter.hf_to_tlens(
-            hf_state_dict, cast(HookedTransformerConfig, self.cfg), model_type
+            hf_state_dict, cast(TransformerBridgeConfig, self.cfg), model_type
         )
 
         # Load into bridge
@@ -5021,12 +5021,12 @@ class TransformerBridge(nn.Module):
 
             # Step 2: Convert to TLens format using reversible converter
             print("  Converting HF weights to TLens format...")
-            from transformer_lens.config import HookedTransformerConfig
+            from transformer_lens.config import TransformerBridgeConfig
 
             converter = ReversibleWeightConverter()
             model_type = self._infer_model_type()
             recovered_tlens_state = converter.hf_to_tlens(
-                hf_state_dict, cast(HookedTransformerConfig, self.cfg), model_type
+                hf_state_dict, cast(TransformerBridgeConfig, self.cfg), model_type
             )
             print("  HF -> TLens conversion completed")
             print(f"  Recovered TLens keys (first 10): {list(recovered_tlens_state.keys())[:10]}")
