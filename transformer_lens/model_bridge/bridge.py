@@ -743,15 +743,6 @@ class TransformerBridge(nn.Module):
             if hasattr(block, "mlp"):
                 self._port_mlp_component(block.mlp, layer_idx, processed_weights)
 
-            # Port layer norms (should be identity if folded)
-            if hasattr(block, "ln1"):
-                self._port_layernorm_component(
-                    block.ln1, f"blocks.{layer_idx}.ln1", processed_weights
-                )
-            if hasattr(block, "ln2"):
-                self._port_layernorm_component(
-                    block.ln2, f"blocks.{layer_idx}.ln2", processed_weights
-                )
 
     def _port_attention_component(self, attn_component, layer_idx, processed_weights):
         """Port attention component using reference model's exact computation."""
@@ -861,17 +852,6 @@ class TransformerBridge(nn.Module):
             mlp_component.forward = mlp_forward
             print(f"    ✅ MLP ported (fallback) for layer {layer_idx}")
 
-    def _port_layernorm_component(self, ln_component, ln_name, processed_weights):
-        """Port layer norm component (usually identity when folded)."""
-
-        # For folded layer norms, these should be identity operations
-        def layernorm_forward(x):
-            # When layer norm is folded, just return input unchanged
-            return x
-
-        ln_component.forward = layernorm_forward
-        print(f"    ✅ LayerNorm {ln_name} ported (identity)")
-
     def _port_unembed_component(self):
         """Port unembedding component from processed weights."""
         processed_weights = self._processed_tl_weights
@@ -882,6 +862,13 @@ class TransformerBridge(nn.Module):
             b_U = processed_weights.get("unembed.b_U")
             self.unembed.set_processed_weight(W_U, b_U)
 
+        # Also port final layer norm if it exists
+        if hasattr(self, "ln_final"):
+            def ln_final_forward(x):
+                # When layer norm is folded, just return input unchanged
+                return x
+            self.ln_final.forward = ln_final_forward
+            print(f"  ✅ Final LayerNorm ported (identity)")
 
     def _ported_forward_pass(
         self,
