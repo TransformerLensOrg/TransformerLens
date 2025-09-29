@@ -11,6 +11,7 @@ from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
     BlockBridge,
     EmbeddingBridge,
+    PosEmbedBridge,
     MLPBridge,
     NormalizationBridge,
     UnembeddingBridge,
@@ -64,7 +65,7 @@ class OptArchitectureAdapter(ArchitectureAdapter):
 
         self.component_mapping = {
             "embed": EmbeddingBridge(name="model.decoder.embed_tokens"),
-            "pos_embed": EmbeddingBridge(name="model.decoder.embed_positions"),
+            "pos_embed": PosEmbedBridge(name="model.decoder.embed_positions"),
             "blocks": BlockBridge(
                 name="model.decoder.layers",
                 submodules={

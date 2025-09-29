@@ -13,6 +13,7 @@ from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapt
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
+    PosEmbedBridge,
     JointQKVAttentionBridge,
     LinearBridge,
     MLPBridge,
@@ -273,7 +274,7 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
 
         self.component_mapping = {
             "embed": EmbeddingBridge(name="transformer.wte"),
-            "pos_embed": EmbeddingBridge(name="transformer.wpe"),
+            "pos_embed": PosEmbedBridge(name="transformer.wpe"),
             "blocks": BlockBridge(
                 name="transformer.h",
                 config=self.cfg,

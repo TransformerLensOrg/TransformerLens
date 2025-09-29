@@ -8,6 +8,7 @@ from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
     BlockBridge,
     EmbeddingBridge,
+    PosEmbedBridge,
     MLPBridge,
     NormalizationBridge,
     UnembeddingBridge,
@@ -43,7 +44,7 @@ class T5ArchitectureAdapter(ArchitectureAdapter):
         )
         self.component_mapping = {
             "embed": EmbeddingBridge(name="shared"),
-            "pos_embed": EmbeddingBridge(
+            "pos_embed": PosEmbedBridge(
                 name="encoder.block.0.layer.0.SelfAttention.relative_attention_bias"
             ),
             "blocks": BlockBridge(

@@ -726,16 +726,20 @@ class TransformerBridge(nn.Module):
         if hasattr(self, "pos_embed") and "pos_embed.W_pos" in processed_weights:
             pos_embed_weight = processed_weights["pos_embed.W_pos"]
 
-            # For positional embedding, we still need to override forward since it needs special logic
-            # to generate position indices
-            def pos_embed_forward(tokens):
-                batch_size, seq_len = tokens.shape[:2]
-                pos_indices = torch.arange(seq_len, device=tokens.device, dtype=torch.long)
-                pos_indices = pos_indices.unsqueeze(0).expand(batch_size, -1)
-                return torch.nn.functional.embedding(pos_indices, pos_embed_weight)
+            # Use the new PosEmbedBridge.set_processed_weight method if available
+            if hasattr(self.pos_embed, 'set_processed_weight'):
+                self.pos_embed.set_processed_weight(pos_embed_weight)
+                print(f"  ✅ Positional embedding set in PosEmbedBridge: {pos_embed_weight.shape}")
+            else:
+                # Fallback to manual forward override for older implementations
+                def pos_embed_forward(tokens):
+                    batch_size, seq_len = tokens.shape[:2]
+                    pos_indices = torch.arange(seq_len, device=tokens.device, dtype=torch.long)
+                    pos_indices = pos_indices.unsqueeze(0).expand(batch_size, -1)
+                    return torch.nn.functional.embedding(pos_indices, pos_embed_weight)
 
-            self.pos_embed.forward = pos_embed_forward
-            print(f"  ✅ Positional embedding ported: {pos_embed_weight.shape}")
+                self.pos_embed.forward = pos_embed_forward
+                print(f"  ✅ Positional embedding ported (fallback): {pos_embed_weight.shape}")
 
     def _port_transformer_blocks(self):
         """Port transformer block functionality from processed weights."""

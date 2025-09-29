@@ -11,6 +11,7 @@ from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
     BlockBridge,
     EmbeddingBridge,
+    PosEmbedBridge,
     MLPBridge,
     NormalizationBridge,
     UnembeddingBridge,
@@ -69,7 +70,7 @@ class NeelSoluOldArchitectureAdapter(ArchitectureAdapter):
         )
         self.component_mapping = {
             "embed": EmbeddingBridge(name="wte"),
-            "pos_embed": EmbeddingBridge(name="wpe"),
+            "pos_embed": PosEmbedBridge(name="wpe"),
             "blocks": BlockBridge(
                 name="blocks",
                 submodules={
