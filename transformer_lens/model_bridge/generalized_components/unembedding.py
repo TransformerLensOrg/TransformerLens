@@ -6,6 +6,7 @@ This module contains the bridge component for unembedding layers.
 from typing import Any, Dict, Optional
 
 import torch
+import torch.nn.functional as F
 
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,

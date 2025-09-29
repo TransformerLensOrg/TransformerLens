@@ -7,6 +7,7 @@ import inspect
 from typing import Any, Dict, Optional
 
 import torch
+import torch.nn.functional as F
 
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
@@ -94,7 +95,6 @@ class EmbeddingBridge(GeneralizedComponent):
 
         # Apply output hook
         output = self.hook_out(output)
-
         return output
 
     def process_weights(

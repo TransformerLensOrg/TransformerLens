@@ -7,6 +7,7 @@ from typing import Any, Callable, Dict, Optional, cast
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from transformer_lens.conversion_utils.conversion_steps.base_hook_conversion import (
     BaseHookConversion,
@@ -127,7 +128,90 @@ class JointQKVAttentionBridge(AttentionBridge):
         Returns:
             Output tensor after qkv linear transformation
         """
+        return self._forward_standard(*args, **kwargs)
 
+    def _forward_folded(self, *args: Any, **kwargs: Any) -> Any:
+        """Forward pass using folded weights (split QKV with standard c_attn).
+
+        This implements the HookedTransformer-style attention computation using
+        the standard HF c_attn component but with split QKV logic.
+        """
+        # Extract hidden_states from args or kwargs
+        if len(args) > 0 and isinstance(args[0], torch.Tensor):
+            hidden_states = args[0]
+        elif "hidden_states" in kwargs:
+            hidden_states = kwargs["hidden_states"]
+        else:
+            raise ValueError("No hidden_states found in input")
+
+        # Apply input hook
+        hidden_states = self.hook_in(hidden_states)
+
+        batch_size, seq_len, d_model = hidden_states.shape
+        cfg = self.config
+
+        # Get the original HF attention component
+        original_attn = self.original_component
+
+        # Apply QKV projection (GPT-2 uses single c_attn layer for all QKV)
+        qkv = original_attn.c_attn(hidden_states)  # [batch, seq_len, 3*d_model]
+
+        # Split into Q, K, V
+        q, k, v = qkv.split(cfg.d_model, dim=2)
+
+        # Reshape to multi-head format: [batch, n_heads, seq_len, d_head]
+        q = q.view(batch_size, seq_len, cfg.n_heads, cfg.d_head).transpose(1, 2)
+        k = k.view(batch_size, seq_len, cfg.n_heads, cfg.d_head).transpose(1, 2)
+        v = v.view(batch_size, seq_len, cfg.n_heads, cfg.d_head).transpose(1, 2)
+
+        # Apply V hook if it exists (important for interpretability)
+        # Note: We need to apply hooks directly to the correct format without conversion
+        # since we're bypassing the normal QKV projection pathway in folded mode
+        if hasattr(self, 'v') and hasattr(self.v, 'hook_out') and self.v.hook_out.has_hooks():
+            # Convert to [batch, seq, heads, d_head] format for hook
+            v_for_hook = v.transpose(1, 2)  # [batch, seq, heads, d_head]
+
+            # Apply hook directly without conversion (bypass the conversion rule)
+            # Store the original conversion rule temporarily
+            original_conversion = getattr(self.v.hook_out, 'hook_conversion', None)
+            self.v.hook_out.hook_conversion = None
+
+            try:
+                v_hooked = self.v.hook_out(v_for_hook)  # [batch, seq, heads, d_head]
+            finally:
+                # Restore the original conversion rule
+                self.v.hook_out.hook_conversion = original_conversion
+
+            # Convert back to attention format: [batch, heads, seq, d_head]
+            v = v_hooked.transpose(1, 2)  # [batch, heads, seq, d_head]
+
+        # Attention scores: [batch, n_heads, seq_len, seq_len]
+        attn_scores = torch.matmul(q, k.transpose(-2, -1)) / (cfg.d_head ** 0.5)
+
+        # Apply causal mask for GPT-2 (always causal for GPT-2)
+        causal_mask = torch.tril(torch.ones(seq_len, seq_len, device=hidden_states.device))
+        attn_scores = attn_scores.masked_fill(causal_mask == 0, float('-inf'))
+
+        # Softmax attention weights
+        attn_weights = F.softmax(attn_scores, dim=-1)
+
+        # Apply attention to values: [batch, n_heads, seq_len, d_head]
+        attn_out = torch.matmul(attn_weights, v)
+
+        # Reshape back to [batch, seq_len, d_model]
+        attn_out = attn_out.transpose(1, 2).contiguous().view(batch_size, seq_len, d_model)
+
+        # Apply output projection (GPT-2 uses c_proj)
+        result = original_attn.c_proj(attn_out)
+
+        # Apply output hook
+        result = self.hook_out(result)
+
+        # Return in HuggingFace format (output, weights) - GPT-2 always expects both
+        return (result, attn_weights)
+
+    def _forward_standard(self, *args: Any, **kwargs: Any) -> Any:
+        """Forward pass using standard HF attention component and hook processing."""
         has_hooks = (
             self.q.hook_in.has_hooks()
             or self.k.hook_in.has_hooks()
