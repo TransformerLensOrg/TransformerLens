@@ -69,6 +69,24 @@ class EmbeddingBridge(GeneralizedComponent):
             Embedded output
         """
 
+        # Check if we're using processed weights from a reference model (layer norm folding case)
+        # This happens when _port_embedding_components has been called
+        if hasattr(self, '_use_processed_weights') and self._use_processed_weights:
+            # Apply input hook
+            input_ids = self.hook_in(input_ids)
+
+            # Use the processed weight directly with F.embedding
+            if hasattr(self, '_processed_weight'):
+                output = torch.nn.functional.embedding(input_ids, self._processed_weight)
+            else:
+                # Fallback to original component's weight
+                output = torch.nn.functional.embedding(input_ids, self.W_E)
+
+            # Apply output hook
+            output = self.hook_out(output)
+
+            return output
+
         if self.original_component is None:
             raise RuntimeError(
                 f"Original component not set for {self.name}. Call set_original_component() first."
@@ -91,3 +109,12 @@ class EmbeddingBridge(GeneralizedComponent):
         output = self.hook_out(output)
 
         return output
+
+    def set_processed_weight(self, weight: torch.Tensor) -> None:
+        """Set the processed weight to use when layer norm is folded.
+
+        Args:
+            weight: The processed embedding weight tensor
+        """
+        self._processed_weight = weight
+        self._use_processed_weights = True

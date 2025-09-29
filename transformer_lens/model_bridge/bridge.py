@@ -709,22 +709,27 @@ class TransformerBridge(nn.Module):
         """Port embedding and positional embedding from processed weights."""
         processed_weights = self._processed_tl_weights
 
-        # Port token embedding (embed.W_E)
+        # Port token embedding (embed.W_E) - now handled by EmbeddingBridge.set_processed_weight()
         if hasattr(self, "embed") and "embed.W_E" in processed_weights:
             embed_weight = processed_weights["embed.W_E"]
 
-            # Replace the bridge embed component with direct tensor operations
-            def embed_forward(tokens):
-                return torch.nn.functional.embedding(tokens, embed_weight)
-
-            self.embed.forward = embed_forward
-            print(f"  ✅ Token embedding ported: {embed_weight.shape}")
+            # Use the new set_processed_weight method if available (integrated into EmbeddingBridge)
+            if hasattr(self.embed, 'set_processed_weight'):
+                self.embed.set_processed_weight(embed_weight)
+                print(f"  ✅ Token embedding set in EmbeddingBridge: {embed_weight.shape}")
+            else:
+                # Fallback: Replace the bridge embed component with direct tensor operations
+                def embed_forward(tokens):
+                    return torch.nn.functional.embedding(tokens, embed_weight)
+                self.embed.forward = embed_forward
+                print(f"  ✅ Token embedding ported (fallback): {embed_weight.shape}")
 
         # Port positional embedding (pos_embed.W_pos)
         if hasattr(self, "pos_embed") and "pos_embed.W_pos" in processed_weights:
             pos_embed_weight = processed_weights["pos_embed.W_pos"]
 
-            # Replace the bridge pos_embed component with direct tensor operations
+            # For positional embedding, we still need to override forward since it needs special logic
+            # to generate position indices
             def pos_embed_forward(tokens):
                 batch_size, seq_len = tokens.shape[:2]
                 pos_indices = torch.arange(seq_len, device=tokens.device, dtype=torch.long)
