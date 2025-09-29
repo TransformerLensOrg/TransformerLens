@@ -637,15 +637,15 @@ class TransformerBridge(nn.Module):
 
         if not no_processing:
             # Extract exact processed weights from a reference model
-            print("Extracting exact processed weights for perfect compatibility...")
+            print("Creating reference HookedTransformer to get processed weights...")
 
-            # Create a reference model with identical processing settings
+            # Import here to avoid circular imports
             from transformer_lens import HookedTransformer
 
-            model_name = getattr(self.cfg, "model_name", "gpt2")
-
+            # Create reference model with same processing settings
+            # This loads the same model but with TransformerLens processing
             reference_hooked = HookedTransformer.from_pretrained(
-                model_name,
+                self.cfg.model_name,
                 device=self.cfg.device,
                 fold_ln=True,
                 center_writing_weights=True,
@@ -654,8 +654,8 @@ class TransformerBridge(nn.Module):
                 refactor_factored_attn_matrices=False,
             )
 
-            # Extract the exact processed weights from reference model
             hooked_state_dict = reference_hooked.state_dict()
+
             object.__setattr__(self, "_processed_tl_weights", hooked_state_dict)
 
             print(f"Extracted {len(hooked_state_dict)} weights from reference model")
