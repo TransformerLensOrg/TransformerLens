@@ -716,30 +716,13 @@ class TransformerBridge(nn.Module):
         # Port token embedding (embed.W_E) - now handled by EmbeddingBridge.set_processed_weight()
         if hasattr(self, "embed") and "embed.W_E" in processed_weights:
             embed_weight = processed_weights["embed.W_E"]
-
-            # Use the new set_processed_weight method if available (integrated into EmbeddingBridge)
-            if hasattr(self.embed, 'set_processed_weight'):
-                self.embed.set_processed_weight(embed_weight)
-                print(f"  ✅ Token embedding set in EmbeddingBridge: {embed_weight.shape}")
+            self.embed.set_processed_weight(embed_weight)
 
         # Port positional embedding (pos_embed.W_pos)
         if hasattr(self, "pos_embed") and "pos_embed.W_pos" in processed_weights:
             pos_embed_weight = processed_weights["pos_embed.W_pos"]
+            self.pos_embed.set_processed_weight(pos_embed_weight)
 
-            # Use the new PosEmbedBridge.set_processed_weight method if available
-            if hasattr(self.pos_embed, 'set_processed_weight'):
-                self.pos_embed.set_processed_weight(pos_embed_weight)
-                print(f"  ✅ Positional embedding set in PosEmbedBridge: {pos_embed_weight.shape}")
-            else:
-                # Fallback to manual forward override for older implementations
-                def pos_embed_forward(tokens):
-                    batch_size, seq_len = tokens.shape[:2]
-                    pos_indices = torch.arange(seq_len, device=tokens.device, dtype=torch.long)
-                    pos_indices = pos_indices.unsqueeze(0).expand(batch_size, -1)
-                    return torch.nn.functional.embedding(pos_indices, pos_embed_weight)
-
-                self.pos_embed.forward = pos_embed_forward
-                print(f"  ✅ Positional embedding ported (fallback): {pos_embed_weight.shape}")
 
     def _port_transformer_blocks(self):
         """Port transformer block functionality from processed weights."""
@@ -897,17 +880,7 @@ class TransformerBridge(nn.Module):
         if hasattr(self, "unembed") and "unembed.W_U" in processed_weights:
             W_U = processed_weights["unembed.W_U"]
             b_U = processed_weights.get("unembed.b_U")
-
-            # Use the new set_processed_weight method if available (integrated into UnembeddingBridge)
-            if hasattr(self.unembed, 'set_processed_weight'):
-                self.unembed.set_processed_weight(W_U, b_U)
-                print(f"  ✅ Unembed set in UnembeddingBridge: {W_U.shape}")
-            else:
-                # Fallback: Replace the bridge unembed component with direct tensor operations
-                def unembed_forward(x):
-                    return torch.nn.functional.linear(x, W_U.T, b_U)
-                self.unembed.forward = unembed_forward
-                print(f"  ✅ Unembed ported (fallback): {W_U.shape}")
+            self.unembed.set_processed_weight(W_U, b_U)
 
         # Also port final layer norm if it exists
         if hasattr(self, "ln_final"):
