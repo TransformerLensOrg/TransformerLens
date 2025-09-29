@@ -831,26 +831,8 @@ class TransformerBridge(nn.Module):
         if W_in is None or W_out is None:
             print(f"    ⚠️  Missing MLP weights for layer {layer_idx}, skipping port")
             return
-
-        # Use the new set_processed_weights method if available (integrated into MLPBridge)
-        if hasattr(mlp_component, 'set_processed_weights'):
-            mlp_component.set_processed_weights(W_in, W_out, b_in, b_out)
-            print(f"    ✅ MLP set in MLPBridge for layer {layer_idx}")
-        else:
-            # Fallback: Replace the bridge MLP component with direct tensor operations
-            def mlp_forward(x):
-                """Port of reference model's MLP forward pass."""
-                # Input projection using TransformerLens format
-                hidden = torch.nn.functional.linear(x, W_in.T, b_in)
-                # Apply activation (GELU for GPT-2)
-                hidden = torch.nn.functional.gelu(hidden)
-                # Output projection using TransformerLens format
-                result = torch.nn.functional.linear(hidden, W_out.T, b_out)
-                return result
-
-            # Replace the MLP component's forward method
-            mlp_component.forward = mlp_forward
-            print(f"    ✅ MLP ported (fallback) for layer {layer_idx}")
+        mlp_component.set_processed_weights(W_in, W_out, b_in, b_out)
+        print(f"    ✅ MLP set in MLPBridge for layer {layer_idx}")
 
     def _port_unembed_component(self):
         """Port unembedding component from processed weights."""
@@ -861,14 +843,6 @@ class TransformerBridge(nn.Module):
             W_U = processed_weights["unembed.W_U"]
             b_U = processed_weights.get("unembed.b_U")
             self.unembed.set_processed_weight(W_U, b_U)
-
-        # Also port final layer norm if it exists
-        if hasattr(self, "ln_final"):
-            def ln_final_forward(x):
-                # When layer norm is folded, just return input unchanged
-                return x
-            self.ln_final.forward = ln_final_forward
-            print(f"  ✅ Final LayerNorm ported (identity)")
 
     def _ported_forward_pass(
         self,
