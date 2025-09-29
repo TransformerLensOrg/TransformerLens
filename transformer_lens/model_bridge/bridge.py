@@ -856,19 +856,25 @@ class TransformerBridge(nn.Module):
             print(f"    ⚠️  Missing MLP weights for layer {layer_idx}, skipping port")
             return
 
-        def mlp_forward(x):
-            """Port of reference model's MLP forward pass."""
-            # Input projection using TransformerLens format
-            hidden = torch.nn.functional.linear(x, W_in.T, b_in)
-            # Apply activation (GELU for GPT-2)
-            hidden = torch.nn.functional.gelu(hidden)
-            # Output projection using TransformerLens format
-            result = torch.nn.functional.linear(hidden, W_out.T, b_out)
-            return result
+        # Use the new set_processed_weights method if available (integrated into MLPBridge)
+        if hasattr(mlp_component, 'set_processed_weights'):
+            mlp_component.set_processed_weights(W_in, W_out, b_in, b_out)
+            print(f"    ✅ MLP set in MLPBridge for layer {layer_idx}")
+        else:
+            # Fallback: Replace the bridge MLP component with direct tensor operations
+            def mlp_forward(x):
+                """Port of reference model's MLP forward pass."""
+                # Input projection using TransformerLens format
+                hidden = torch.nn.functional.linear(x, W_in.T, b_in)
+                # Apply activation (GELU for GPT-2)
+                hidden = torch.nn.functional.gelu(hidden)
+                # Output projection using TransformerLens format
+                result = torch.nn.functional.linear(hidden, W_out.T, b_out)
+                return result
 
-        # Replace the MLP component's forward method
-        mlp_component.forward = mlp_forward
-        print(f"    ✅ MLP ported for layer {layer_idx}")
+            # Replace the MLP component's forward method
+            mlp_component.forward = mlp_forward
+            print(f"    ✅ MLP ported (fallback) for layer {layer_idx}")
 
     def _port_layernorm_component(self, ln_component, ln_name, processed_weights):
         """Port layer norm component (usually identity when folded)."""
@@ -885,15 +891,21 @@ class TransformerBridge(nn.Module):
         """Port unembedding component from processed weights."""
         processed_weights = self._processed_tl_weights
 
+        # Port unembedding (unembed.W_U) - now handled by UnembeddingBridge.set_processed_weight()
         if hasattr(self, "unembed") and "unembed.W_U" in processed_weights:
             W_U = processed_weights["unembed.W_U"]
             b_U = processed_weights.get("unembed.b_U")
 
-            def unembed_forward(x):
-                return torch.nn.functional.linear(x, W_U.T, b_U)
-
-            self.unembed.forward = unembed_forward
-            print(f"  ✅ Unembed ported: {W_U.shape}")
+            # Use the new set_processed_weight method if available (integrated into UnembeddingBridge)
+            if hasattr(self.unembed, 'set_processed_weight'):
+                self.unembed.set_processed_weight(W_U, b_U)
+                print(f"  ✅ Unembed set in UnembeddingBridge: {W_U.shape}")
+            else:
+                # Fallback: Replace the bridge unembed component with direct tensor operations
+                def unembed_forward(x):
+                    return torch.nn.functional.linear(x, W_U.T, b_U)
+                self.unembed.forward = unembed_forward
+                print(f"  ✅ Unembed ported (fallback): {W_U.shape}")
 
         # Also port final layer norm if it exists
         if hasattr(self, "ln_final"):
