@@ -75,6 +75,10 @@ class UnembeddingBridge(GeneralizedComponent):
                 f"Original component not set for {self.name}. Call set_original_component() first."
             )
 
+        # TESTING: Use original HF forward only (keep attention using bridge logic)
+        if self.original_component is None:
+            raise RuntimeError(f"Original component not set for {self.name}")
+
         hidden_states = self.hook_in(hidden_states)
         output = self.original_component(hidden_states, **kwargs)
         output = self.hook_out(output)

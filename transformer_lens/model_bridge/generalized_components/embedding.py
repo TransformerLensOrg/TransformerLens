@@ -80,20 +80,12 @@ class EmbeddingBridge(GeneralizedComponent):
                 f"Original component not set for {self.name}. Call set_original_component() first."
             )
 
-        # Apply input hook
+        # TESTING: Use original HF forward only (keep attention using bridge logic)
+        if self.original_component is None:
+            raise RuntimeError(f"Original component not set for {self.name}")
+
         input_ids = self.hook_in(input_ids)
-
-        # Check if the original component supports position_ids using inspect.signature
-        sig = inspect.signature(self.original_component.forward)
-        supports_position_ids = "position_ids" in sig.parameters
-
-        if not hasattr(self.original_component, "forward") or not supports_position_ids:
-            kwargs.pop("position_ids", None)
-            output = self.original_component(input_ids, **kwargs)
-        else:
-            output = self.original_component(input_ids, position_ids=position_ids, **kwargs)
-
-        # Apply output hook
+        output = self.original_component(input_ids, **kwargs)
         output = self.hook_out(output)
         return output
 
