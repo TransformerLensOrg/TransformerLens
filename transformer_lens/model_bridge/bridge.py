@@ -674,6 +674,16 @@ class TransformerBridge(nn.Module):
                 "Processed weights not available. Call enable_compatibility_mode() first."
             )
 
+        # Phase 1: Configuration
+        self._configure_components_for_processing()
+
+        # Phase 2: Weight Loading
+        self._load_all_processed_weights()
+
+        print("✅ Reference model functionality ported into TransformerBridge")
+
+    def _configure_components_for_processing(self):
+        """Configure all components for processed weight loading (Phase 1)."""
         # Configure layer norm folding to match reference model behavior
         print("Configuring layer norm folding to match reference model...")
         if hasattr(self, "cfg") and hasattr(self.cfg, "layer_norm_folding"):
@@ -694,6 +704,8 @@ class TransformerBridge(nn.Module):
 
         print("  ✅ Layer norm folding configured for all components")
 
+    def _load_all_processed_weights(self):
+        """Load processed weights into all components (Phase 2)."""
         print("Porting reference model embedding components...")
         self._port_embedding_components()
 
