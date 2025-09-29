@@ -61,8 +61,9 @@ class TestAttentionHookCompatibility:
         # Verify shapes match
         assert len(ref_activations) == 1, "Reference model should have one activation"
         assert len(bridge_activations) == 1, "Bridge should have one activation"
-        assert ref_activations[0].shape == bridge_activations[0].shape, \
-            f"Activation shapes should match: {ref_activations[0].shape} vs {bridge_activations[0].shape}"
+        assert (
+            ref_activations[0].shape == bridge_activations[0].shape
+        ), f"Activation shapes should match: {ref_activations[0].shape} vs {bridge_activations[0].shape}"
 
     def test_ablation_hook_works(self, models, test_input):
         """Test that ablation hooks work correctly on both models."""
@@ -86,8 +87,12 @@ class TestAttentionHookCompatibility:
         bridge.reset_hooks()
 
         # Both ablations should produce reasonable (higher) losses
-        assert ref_ablated_loss > 3.0, f"Reference ablated loss should be reasonable: {ref_ablated_loss}"
-        assert bridge_ablated_loss > 3.0, f"Bridge ablated loss should be reasonable: {bridge_ablated_loss}"
+        assert (
+            ref_ablated_loss > 3.0
+        ), f"Reference ablated loss should be reasonable: {ref_ablated_loss}"
+        assert (
+            bridge_ablated_loss > 3.0
+        ), f"Bridge ablated loss should be reasonable: {bridge_ablated_loss}"
 
         # Ablated losses should be close to each other
         diff = abs(ref_ablated_loss - bridge_ablated_loss)
@@ -97,11 +102,7 @@ class TestAttentionHookCompatibility:
         """Test that expected hook names are available in both models."""
         reference_model, bridge = models
 
-        expected_hooks = [
-            "blocks.0.attn.hook_v",
-            "blocks.0.attn.hook_q",
-            "blocks.0.attn.hook_k"
-        ]
+        expected_hooks = ["blocks.0.attn.hook_v", "blocks.0.attn.hook_q", "blocks.0.attn.hook_k"]
 
         # Check reference model hooks
         ref_hook_names = set(reference_model.hook_dict.keys())

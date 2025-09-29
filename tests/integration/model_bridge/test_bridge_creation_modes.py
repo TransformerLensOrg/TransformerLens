@@ -29,7 +29,9 @@ class TestBridgeCreationModes:
         bridge_loss = bridge(test_text, return_type="loss")
 
         # With no processing, losses should be close but not identical
-        assert abs(ref_loss - bridge_loss) < 1.0, f"Losses should be reasonably close: {ref_loss} vs {bridge_loss}"
+        assert (
+            abs(ref_loss - bridge_loss) < 1.0
+        ), f"Losses should be reasonably close: {ref_loss} vs {bridge_loss}"
         assert 3.0 < bridge_loss < 6.0, f"Bridge loss should be reasonable: {bridge_loss}"
 
     def test_bridge_full_compatibility(self, reference_model, test_text):
@@ -50,21 +52,21 @@ class TestBridgeCreationModes:
         bridge = TransformerBridge.boot_transformers("gpt2", device="cpu")
 
         # Check that we can access the original model components
-        assert hasattr(bridge.original_model, 'transformer'), "Should have transformer"
-        assert hasattr(bridge.original_model.transformer, 'h'), "Should have layers"
+        assert hasattr(bridge.original_model, "transformer"), "Should have transformer"
+        assert hasattr(bridge.original_model.transformer, "h"), "Should have layers"
         assert len(bridge.original_model.transformer.h) > 0, "Should have at least one layer"
 
         # Check layer 0 components
         block_0 = bridge.original_model.transformer.h[0]
-        assert hasattr(block_0, 'ln_1'), "Should have ln_1"
-        assert hasattr(block_0, 'attn'), "Should have attention"
-        assert hasattr(block_0, 'ln_2'), "Should have ln_2"
-        assert hasattr(block_0, 'mlp'), "Should have MLP"
+        assert hasattr(block_0, "ln_1"), "Should have ln_1"
+        assert hasattr(block_0, "attn"), "Should have attention"
+        assert hasattr(block_0, "ln_2"), "Should have ln_2"
+        assert hasattr(block_0, "mlp"), "Should have MLP"
 
         # Check embedding and final components
-        assert hasattr(bridge.original_model.transformer, 'wte'), "Should have token embedding"
-        assert hasattr(bridge.original_model.transformer, 'wpe'), "Should have position embedding"
-        assert hasattr(bridge.original_model, 'lm_head'), "Should have language model head"
+        assert hasattr(bridge.original_model.transformer, "wte"), "Should have token embedding"
+        assert hasattr(bridge.original_model.transformer, "wpe"), "Should have position embedding"
+        assert hasattr(bridge.original_model, "lm_head"), "Should have language model head"
 
     def test_bridge_tokenizer_compatibility(self, reference_model):
         """Test that bridge tokenizer works like reference."""
@@ -83,21 +85,22 @@ class TestBridgeCreationModes:
         bridge = TransformerBridge.boot_transformers("gpt2", device="cpu")
 
         # Test configuration before compatibility mode
-        assert hasattr(bridge, 'cfg'), "Bridge should have configuration"
+        assert hasattr(bridge, "cfg"), "Bridge should have configuration"
 
         # Enable compatibility mode and check it persists
         bridge.enable_compatibility_mode()
 
         # Configuration should still be accessible
-        assert hasattr(bridge, 'cfg'), "Configuration should persist after compatibility mode"
+        assert hasattr(bridge, "cfg"), "Configuration should persist after compatibility mode"
         assert bridge.cfg is not None, "Configuration should not be None"
 
     def test_bridge_device_handling(self):
         """Test that bridge handles device specification correctly."""
         # Test CPU device
         bridge_cpu = TransformerBridge.boot_transformers("gpt2", device="cpu")
-        assert next(bridge_cpu.original_model.parameters()).device.type == "cpu", \
-            "Model should be on CPU device"
+        assert (
+            next(bridge_cpu.original_model.parameters()).device.type == "cpu"
+        ), "Model should be on CPU device"
 
         # Test that bridge can process text on correct device
         test_text = "Device test"

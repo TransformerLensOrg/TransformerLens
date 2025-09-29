@@ -6,7 +6,6 @@ This module contains the bridge component for attention layers.
 from typing import Any, Dict, Optional, Tuple
 
 import torch
-import torch.nn.functional as F
 
 from transformer_lens.conversion_utils.conversion_steps.attention_auto_conversion import (
     AttentionAutoConversion,

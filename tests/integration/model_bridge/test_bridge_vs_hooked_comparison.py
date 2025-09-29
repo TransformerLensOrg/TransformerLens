@@ -38,7 +38,7 @@ class TestBridgeVsHookedComparison:
             "The cat sat on the mat",
             "Natural language processing is fascinating",
             "Short",
-            "This is a longer sentence with more tokens to test the models thoroughly."
+            "This is a longer sentence with more tokens to test the models thoroughly.",
         ]
 
     def test_loss_comparison_multiple_texts(self, models_with_processing, test_texts):
@@ -51,10 +51,14 @@ class TestBridgeVsHookedComparison:
                 bridge_loss = bridge(text, return_type="loss")
 
             diff = abs(hooked_loss - bridge_loss)
-            assert diff < 0.01, f"Loss difference too large for '{text}': {diff} (hooked: {hooked_loss}, bridge: {bridge_loss})"
+            assert (
+                diff < 0.01
+            ), f"Loss difference too large for '{text}': {diff} (hooked: {hooked_loss}, bridge: {bridge_loss})"
 
             # Both should have reasonable losses
-            assert 2.0 < hooked_loss < 8.0, f"HookedTransformer loss unreasonable for '{text}': {hooked_loss}"
+            assert (
+                2.0 < hooked_loss < 8.0
+            ), f"HookedTransformer loss unreasonable for '{text}': {hooked_loss}"
             assert 2.0 < bridge_loss < 8.0, f"Bridge loss unreasonable for '{text}': {bridge_loss}"
 
     def test_logits_comparison(self, models_with_processing):
@@ -67,8 +71,9 @@ class TestBridgeVsHookedComparison:
             bridge_logits = bridge(test_text, return_type="logits")
 
         # Check shapes match
-        assert hooked_logits.shape == bridge_logits.shape, \
-            f"Logits shapes should match: {hooked_logits.shape} vs {bridge_logits.shape}"
+        assert (
+            hooked_logits.shape == bridge_logits.shape
+        ), f"Logits shapes should match: {hooked_logits.shape} vs {bridge_logits.shape}"
 
         # Check values are close
         max_diff = (hooked_logits - bridge_logits).abs().max()
@@ -77,7 +82,9 @@ class TestBridgeVsHookedComparison:
         # Check that both have reasonable distributions
         hooked_std = hooked_logits.std()
         bridge_std = bridge_logits.std()
-        assert 1.0 < hooked_std < 10.0, f"HookedTransformer logits std should be reasonable: {hooked_std}"
+        assert (
+            1.0 < hooked_std < 10.0
+        ), f"HookedTransformer logits std should be reasonable: {hooked_std}"
         assert 1.0 < bridge_std < 10.0, f"Bridge logits std should be reasonable: {bridge_std}"
 
     def test_attention_output_comparison(self, models_with_processing):
@@ -152,7 +159,9 @@ class TestBridgeVsHookedComparison:
         hooked_v = hooked_v_values[0]
         bridge_v = bridge_v_values[0]
 
-        assert hooked_v.shape == bridge_v.shape, f"V shapes should match: {hooked_v.shape} vs {bridge_v.shape}"
+        assert (
+            hooked_v.shape == bridge_v.shape
+        ), f"V shapes should match: {hooked_v.shape} vs {bridge_v.shape}"
 
         v_diff = (hooked_v - bridge_v).abs().max()
         # V values might not match exactly due to different computation paths
@@ -165,8 +174,12 @@ class TestBridgeVsHookedComparison:
 
         # Generate from both models
         with torch.no_grad():
-            hooked_tokens = hooked.generate(prompt, max_new_tokens=5, temperature=0.0, do_sample=False)
-            bridge_tokens = bridge.generate(prompt, max_new_tokens=5, temperature=0.0, do_sample=False)
+            hooked_tokens = hooked.generate(
+                prompt, max_new_tokens=5, temperature=0.0, do_sample=False
+            )
+            bridge_tokens = bridge.generate(
+                prompt, max_new_tokens=5, temperature=0.0, do_sample=False
+            )
 
         # Convert to text for comparison
         hooked_text = hooked.to_string(hooked_tokens[0])
@@ -190,7 +203,9 @@ class TestBridgeVsHookedComparison:
         padded_tokens = []
         for tokens in tokens_list:
             if len(tokens) < max_len:
-                padding = torch.full((max_len - len(tokens),), hooked.tokenizer.pad_token_id or 0, dtype=tokens.dtype)
+                padding = torch.full(
+                    (max_len - len(tokens),), hooked.tokenizer.pad_token_id or 0, dtype=tokens.dtype
+                )
                 tokens = torch.cat([tokens, padding])
             padded_tokens.append(tokens)
 
@@ -201,8 +216,9 @@ class TestBridgeVsHookedComparison:
             bridge_batch_logits = bridge(batch_tokens, return_type="logits")
 
         # Check batch dimensions
-        assert hooked_batch_logits.shape == bridge_batch_logits.shape, \
-            f"Batch logits shapes should match: {hooked_batch_logits.shape} vs {bridge_batch_logits.shape}"
+        assert (
+            hooked_batch_logits.shape == bridge_batch_logits.shape
+        ), f"Batch logits shapes should match: {hooked_batch_logits.shape} vs {bridge_batch_logits.shape}"
 
         assert hooked_batch_logits.shape[0] == len(texts), "Batch size should match input"
 

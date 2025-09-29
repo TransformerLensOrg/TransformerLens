@@ -167,13 +167,13 @@ class JointQKVAttentionBridge(AttentionBridge):
         # Apply V hook if it exists (important for interpretability)
         # Note: We need to apply hooks directly to the correct format without conversion
         # since we're bypassing the normal QKV projection pathway in folded mode
-        if hasattr(self, 'v') and hasattr(self.v, 'hook_out') and self.v.hook_out.has_hooks():
+        if hasattr(self, "v") and hasattr(self.v, "hook_out") and self.v.hook_out.has_hooks():
             # Convert to [batch, seq, heads, d_head] format for hook
             v_for_hook = v.transpose(1, 2)  # [batch, seq, heads, d_head]
 
             # Apply hook directly without conversion (bypass the conversion rule)
             # Store the original conversion rule temporarily
-            original_conversion = getattr(self.v.hook_out, 'hook_conversion', None)
+            original_conversion = getattr(self.v.hook_out, "hook_conversion", None)
             self.v.hook_out.hook_conversion = None
 
             try:
@@ -186,11 +186,11 @@ class JointQKVAttentionBridge(AttentionBridge):
             v = v_hooked.transpose(1, 2)  # [batch, heads, seq, d_head]
 
         # Attention scores: [batch, n_heads, seq_len, seq_len]
-        attn_scores = torch.matmul(q, k.transpose(-2, -1)) / (cfg.d_head ** 0.5)
+        attn_scores = torch.matmul(q, k.transpose(-2, -1)) / (cfg.d_head**0.5)
 
         # Apply causal mask for GPT-2 (always causal for GPT-2)
         causal_mask = torch.tril(torch.ones(seq_len, seq_len, device=hidden_states.device))
-        attn_scores = attn_scores.masked_fill(causal_mask == 0, float('-inf'))
+        attn_scores = attn_scores.masked_fill(causal_mask == 0, float("-inf"))
 
         # Softmax attention weights
         attn_weights = F.softmax(attn_scores, dim=-1)
@@ -223,7 +223,7 @@ class JointQKVAttentionBridge(AttentionBridge):
 
         # In compatibility mode with hooks, we need to use a different approach
         # to ensure identical behavior to HookedTransformer
-        if getattr(self, 'compatibility_mode', False) and has_hooks:
+        if getattr(self, "compatibility_mode", False) and has_hooks:
             return self._compatibility_mode_forward_with_hooks(*args, **kwargs)
 
         if has_hooks:
@@ -275,11 +275,11 @@ class JointQKVAttentionBridge(AttentionBridge):
 
         # Get the weights from the LinearBridge components - these should contain
         # the processed HookedTransformer weights in the correct format
-        if not hasattr(self, '_hooked_weights_extracted') or not self._hooked_weights_extracted:
+        if not hasattr(self, "_hooked_weights_extracted") or not self._hooked_weights_extracted:
             self._extract_hooked_transformer_weights()
 
         # Check if we successfully extracted weights
-        if not self._hooked_weights_extracted or not hasattr(self, '_W_V'):
+        if not self._hooked_weights_extracted or not hasattr(self, "_W_V"):
             print(f"⚠️  Weights not extracted for {self.name}, falling back to original forward")
             return super().forward(*args, **kwargs)
 
@@ -293,16 +293,22 @@ class JointQKVAttentionBridge(AttentionBridge):
         # We need to bypass the conversion entirely and apply hooks to the raw [batch, seq, heads, d_head] tensors
 
         # Temporarily disable hook conversion to match HookedTransformer exactly
-        q_conversion = self.q.hook_out.hook_conversion if hasattr(self.q.hook_out, 'hook_conversion') else None
-        k_conversion = self.k.hook_out.hook_conversion if hasattr(self.k.hook_out, 'hook_conversion') else None
-        v_conversion = self.v.hook_out.hook_conversion if hasattr(self.v.hook_out, 'hook_conversion') else None
+        q_conversion = (
+            self.q.hook_out.hook_conversion if hasattr(self.q.hook_out, "hook_conversion") else None
+        )
+        k_conversion = (
+            self.k.hook_out.hook_conversion if hasattr(self.k.hook_out, "hook_conversion") else None
+        )
+        v_conversion = (
+            self.v.hook_out.hook_conversion if hasattr(self.v.hook_out, "hook_conversion") else None
+        )
 
         # Disable conversions temporarily
-        if hasattr(self.q.hook_out, 'hook_conversion'):
+        if hasattr(self.q.hook_out, "hook_conversion"):
             self.q.hook_out.hook_conversion = None
-        if hasattr(self.k.hook_out, 'hook_conversion'):
+        if hasattr(self.k.hook_out, "hook_conversion"):
             self.k.hook_out.hook_conversion = None
-        if hasattr(self.v.hook_out, 'hook_conversion'):
+        if hasattr(self.v.hook_out, "hook_conversion"):
             self.v.hook_out.hook_conversion = None
 
         try:
@@ -331,7 +337,7 @@ class JointQKVAttentionBridge(AttentionBridge):
         head_dim = q.shape[-1]
 
         # Compute attention scores
-        attn_scores = torch.matmul(q, k.transpose(-2, -1)) / (head_dim ** 0.5)
+        attn_scores = torch.matmul(q, k.transpose(-2, -1)) / (head_dim**0.5)
 
         # Apply causal mask (GPT-2 style)
         seq_len = attn_scores.shape[-1]
@@ -346,7 +352,7 @@ class JointQKVAttentionBridge(AttentionBridge):
         attn_weights = F.softmax(attn_scores, dim=-1)
 
         # Apply dropout if the original component has it
-        if hasattr(original_component, 'attn_dropout'):
+        if hasattr(original_component, "attn_dropout"):
             attn_weights = original_component.attn_dropout(attn_weights)
 
         # Compute attention output
@@ -359,19 +365,19 @@ class JointQKVAttentionBridge(AttentionBridge):
         attn_output = attn_output.view(attn_output.shape[0], attn_output.shape[1], -1)
 
         # Apply output projection using the W_O weight
-        if hasattr(self, '_W_O'):
+        if hasattr(self, "_W_O"):
             # Use the extracted W_O matrix - reshape attn_output to [batch, seq, heads, d_head]
             batch_size, seq_len = attn_output.shape[:2]
             n_heads = self._W_O.shape[0]
             d_head = self._W_O.shape[1]
             attn_reshaped = attn_output.view(batch_size, seq_len, n_heads, d_head)
             # Apply W_O: [batch, seq, heads, d_head] @ [heads, d_head, d_model] -> [batch, seq, heads, d_model]
-            attn_output = torch.einsum('bsnh,nhd->bsnd', attn_reshaped, self._W_O)
+            attn_output = torch.einsum("bsnh,nhd->bsnd", attn_reshaped, self._W_O)
             # Sum across heads: [batch, seq, heads, d_model] -> [batch, seq, d_model]
             attn_output = attn_output.sum(dim=2)
-            if hasattr(self, '_b_O'):
+            if hasattr(self, "_b_O"):
                 attn_output = attn_output + self._b_O
-        elif hasattr(original_component, 'c_proj'):
+        elif hasattr(original_component, "c_proj"):
             attn_output = original_component.c_proj(attn_output)
 
         # Apply output hook
@@ -856,8 +862,8 @@ class JointQKVAttentionBridge(AttentionBridge):
             from transformer_lens import HookedTransformer
 
             # Get the model name from config
-            model_name = getattr(self.config, 'model_name', 'gpt2')
-            device = next(self.parameters()).device if list(self.parameters()) else 'cpu'
+            model_name = getattr(self.config, "model_name", "gpt2")
+            device = next(self.parameters()).device if list(self.parameters()) else "cpu"
 
             print(f"Creating reference HookedTransformer to extract exact weights...")
 
@@ -875,12 +881,12 @@ class JointQKVAttentionBridge(AttentionBridge):
             # Find the layer number - look for it in the component hierarchy
             layer_num = 0
             current = self
-            while hasattr(current, 'parent') and current.parent is not None:
+            while hasattr(current, "parent") and current.parent is not None:
                 parent = current.parent
-                if hasattr(parent, 'blocks'):
+                if hasattr(parent, "blocks"):
                     # Found the blocks list, find our index
                     for i, block in enumerate(parent.blocks):
-                        if hasattr(block, 'attn') and block.attn is self:
+                        if hasattr(block, "attn") and block.attn is self:
                             layer_num = i
                             break
                     break
@@ -896,9 +902,9 @@ class JointQKVAttentionBridge(AttentionBridge):
             self._b_K = reference_attn.b_K.clone()  # [n_heads, d_head]
             self._b_V = reference_attn.b_V.clone()  # [n_heads, d_head]
 
-            if hasattr(reference_attn, 'W_O'):
+            if hasattr(reference_attn, "W_O"):
                 self._W_O = reference_attn.W_O.clone()  # [n_heads, d_head, d_model]
-            if hasattr(reference_attn, 'b_O'):
+            if hasattr(reference_attn, "b_O"):
                 self._b_O = reference_attn.b_O.clone()  # [d_model]
 
             print(f"✅ Extracted exact HookedTransformer weights for layer {layer_num}")
@@ -918,9 +924,13 @@ class JointQKVAttentionBridge(AttentionBridge):
         # Strategy 2: Fallback to processing weights manually
         if self._processed_weights is None:
             try:
-                self.process_weights(fold_ln=True, center_writing_weights=True,
-                                   center_unembed=True, fold_value_biases=True,
-                                   refactor_factored_attn_matrices=False)
+                self.process_weights(
+                    fold_ln=True,
+                    center_writing_weights=True,
+                    center_unembed=True,
+                    fold_value_biases=True,
+                    refactor_factored_attn_matrices=False,
+                )
             except Exception as e:
                 print(f"⚠️  Failed to process weights manually: {e}")
 
@@ -962,9 +972,9 @@ class JointQKVAttentionBridge(AttentionBridge):
         self._b_K = reference_attn.b_K.clone()
         self._b_V = reference_attn.b_V.clone()
 
-        if hasattr(reference_attn, 'W_O'):
+        if hasattr(reference_attn, "W_O"):
             self._W_O = reference_attn.W_O.clone()
-        if hasattr(reference_attn, 'b_O'):
+        if hasattr(reference_attn, "b_O"):
             self._b_O = reference_attn.b_O.clone()
 
         # Mark as extracted

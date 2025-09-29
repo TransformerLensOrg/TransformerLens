@@ -58,7 +58,7 @@ class TransformerBridgeConfig(TransformerLensConfig):
         n_params: Optional[int] = None,
         use_hook_tokens: bool = False,
         gated_mlp: bool = False,
-        dtype: 'torch.dtype' = None,  # Will be set to torch.float32 in __post_init__
+        dtype: "torch.dtype" = None,  # Will be set to torch.float32 in __post_init__
         post_embedding_ln: bool = False,
         rotary_base: int = 10000,
         trust_remote_code: bool = False,
@@ -154,6 +154,7 @@ class TransformerBridgeConfig(TransformerLensConfig):
         # Set default dtype if None
         if self.dtype is None:
             import torch
+
             self.dtype = torch.float32
 
         # Validate architecture if provided before calling super()
