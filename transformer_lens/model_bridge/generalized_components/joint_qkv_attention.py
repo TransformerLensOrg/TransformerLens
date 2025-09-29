@@ -153,11 +153,60 @@ class JointQKVAttentionBridge(AttentionBridge):
         # Get the original HF attention component
         original_attn = self.original_component
 
-        # Apply QKV projection (GPT-2 uses single c_attn layer for all QKV)
-        qkv = original_attn.c_attn(hidden_states)  # [batch, seq_len, 3*d_model]
+        # Apply QKV projection using processed weights if available
+        # Check if we have processed weights extracted
+        hooked_weights_available = hasattr(self, "_hooked_weights_extracted") and self._hooked_weights_extracted
+        if hooked_weights_available:
+            print(f"🔧 Using processed weights for layer attention forward pass")
+        else:
+            print(f"⚠️  Falling back to original weights (hooked_weights_extracted: {getattr(self, '_hooked_weights_extracted', 'missing')})")
 
-        # Split into Q, K, V
-        q, k, v = qkv.split(cfg.d_model, dim=2)
+        if hooked_weights_available:
+            # Use the processed weights directly (like HookedTransformer would)
+            if hasattr(self, "_W_Q") and hasattr(self, "_W_K") and hasattr(self, "_W_V"):
+                # Apply the QKV projection manually using processed weights
+                W_Q = self._W_Q  # [n_heads, d_model, d_head]
+                W_K = self._W_K  # [n_heads, d_model, d_head]
+                W_V = self._W_V  # [n_heads, d_model, d_head]
+                b_Q = self._b_Q if hasattr(self, "_b_Q") else None  # [n_heads, d_head]
+                b_K = self._b_K if hasattr(self, "_b_K") else None  # [n_heads, d_head]
+                b_V = self._b_V if hasattr(self, "_b_V") else None  # [n_heads, d_head]
+
+                # Convert to format needed for matrix multiplication
+                # Reshape weights: [n_heads, d_model, d_head] -> [d_model, n_heads * d_head]
+                W_Q_flat = W_Q.transpose(0, 1).contiguous().view(cfg.d_model, -1)  # [d_model, n_heads*d_head]
+                W_K_flat = W_K.transpose(0, 1).contiguous().view(cfg.d_model, -1)  # [d_model, n_heads*d_head]
+                W_V_flat = W_V.transpose(0, 1).contiguous().view(cfg.d_model, -1)  # [d_model, n_heads*d_head]
+
+                # Apply projections
+                q_flat = torch.matmul(hidden_states, W_Q_flat)  # [batch, seq_len, n_heads*d_head]
+                k_flat = torch.matmul(hidden_states, W_K_flat)  # [batch, seq_len, n_heads*d_head]
+                v_flat = torch.matmul(hidden_states, W_V_flat)  # [batch, seq_len, n_heads*d_head]
+
+                # Add biases if they exist
+                if b_Q is not None:
+                    b_Q_flat = b_Q.view(-1)  # [n_heads*d_head]
+                    q_flat = q_flat + b_Q_flat
+                if b_K is not None:
+                    b_K_flat = b_K.view(-1)  # [n_heads*d_head]
+                    k_flat = k_flat + b_K_flat
+                if b_V is not None:
+                    b_V_flat = b_V.view(-1)  # [n_heads*d_head]
+                    v_flat = v_flat + b_V_flat
+
+                # Split into separate Q, K, V tensors
+                q = q_flat
+                k = k_flat
+                v = v_flat
+            else:
+                # Fallback to original weights if processed weights not available
+                qkv = original_attn.c_attn(hidden_states)  # [batch, seq_len, 3*d_model]
+                q, k, v = qkv.split(cfg.d_model, dim=2)
+        else:
+            # Use original weights (unprocessed)
+            qkv = original_attn.c_attn(hidden_states)  # [batch, seq_len, 3*d_model]
+            # Split into Q, K, V
+            q, k, v = qkv.split(cfg.d_model, dim=2)
 
         # Reshape to multi-head format: [batch, n_heads, seq_len, d_head]
         q = q.view(batch_size, seq_len, cfg.n_heads, cfg.d_head).transpose(1, 2)
@@ -282,6 +331,11 @@ class JointQKVAttentionBridge(AttentionBridge):
         if not self._hooked_weights_extracted or not hasattr(self, "_W_V"):
             print(f"⚠️  Weights not extracted for {self.name}, falling back to original forward")
             return super().forward(*args, **kwargs)
+        else:
+            print(f"🔧 Using compatibility mode with processed weights for {self.name}")
+
+        # Import the exact function HookedTransformer uses
+        from transformer_lens.utilities.attention import simple_attn_linear
 
         # Compute Q, K, V using exactly the same method as HookedTransformer
         q = simple_attn_linear(input_tensor, self._W_Q, self._b_Q)
