@@ -766,55 +766,7 @@ class TransformerBridge(nn.Module):
         b_V = processed_weights.get(b_V_key)
         b_O = processed_weights.get(b_O_key)
 
-        if W_Q is None or W_K is None or W_V is None or W_O is None:
-            print(f"    ⚠️  Missing attention weights for layer {layer_idx}, skipping port")
-            return
-
-        def attention_forward(x):
-            """Direct implementation of reference model's attention computation with hooks."""
-            batch_size, seq_len, d_model = x.shape
-
-            # Compute Q, K, V using TransformerLens format weights
-            # W_Q shape: [n_heads, d_model, d_head], b_Q shape: [n_heads, d_head]
-            # x shape: [batch, seq, d_model]
-            q = torch.einsum("bsd,hdc->bshc", x, W_Q) + b_Q.unsqueeze(0).unsqueeze(0)
-            k = torch.einsum("bsd,hdc->bshc", x, W_K) + b_K.unsqueeze(0).unsqueeze(0)
-            v = torch.einsum("bsd,hdc->bshc", x, W_V) + b_V.unsqueeze(0).unsqueeze(0)
-
-            # Apply hook for V if it exists (this is what gets ablated in the comparison script)
-            if hasattr(attn_component, "hook_v"):
-                v = attn_component.hook_v(v)
-
-            # Transpose to [batch, n_heads, seq, d_head] for attention computation
-            q = q.transpose(1, 2)  # [batch, n_heads, seq, d_head]
-            k = k.transpose(1, 2)
-            v = v.transpose(1, 2)
-
-            # Compute attention scores
-            attn_scores = torch.matmul(q, k.transpose(-2, -1)) / (self.cfg.d_head**0.5)
-
-            # Apply causal mask
-            causal_mask = torch.tril(torch.ones(seq_len, seq_len, device=x.device))
-            attn_scores = attn_scores.masked_fill(causal_mask == 0, float("-inf"))
-
-            # Apply softmax
-            attn_weights = torch.nn.functional.softmax(attn_scores, dim=-1)
-
-            # Apply attention to values
-            attn_out = torch.matmul(attn_weights, v)  # [batch, n_heads, seq, d_head]
-
-            # Transpose back to [batch, seq, n_heads, d_head] for output projection
-            attn_out = attn_out.transpose(1, 2)
-
-            # Apply output projection using TransformerLens format
-            # attn_out: [batch, seq, n_heads, d_head], W_O: [n_heads, d_head, d_model]
-            result = torch.einsum("bshc,hcd->bsd", attn_out, W_O) + b_O.unsqueeze(0).unsqueeze(0)
-
-            return result
-
-        # Replace the attention component's forward method
-        attn_component.forward = attention_forward
-        print(f"    ✅ Attention ported for layer {layer_idx}")
+        attn_component.set_processed_weights(W_Q, W_K, W_V, W_O, b_Q, b_K, b_V, b_O)
 
     def _port_mlp_component(self, mlp_component, layer_idx, processed_weights):
         """Port MLP component using reference model's exact computation."""

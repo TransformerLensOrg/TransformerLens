@@ -383,7 +383,7 @@ class AttentionBridge(GeneralizedComponent):
         """Forward pass through the attention layer.
 
         This method forwards all arguments to the original component and applies hooks
-        to the output.
+        to the output, or uses processed weights if available.
 
         Args:
             *args: Input arguments to pass to the original component
@@ -392,6 +392,10 @@ class AttentionBridge(GeneralizedComponent):
         Returns:
             The output from the original component, with hooks applied
         """
+        # Check if we're using processed weights from a reference model (layer norm folding case)
+        if hasattr(self, '_use_processed_weights') and self._use_processed_weights:
+            return self._forward_with_processed_weights(*args, **kwargs)
+
         if self.original_component is None:
             raise RuntimeError(
                 f"Original component not set for {self.name}. Call set_original_component() first."
@@ -412,6 +416,88 @@ class AttentionBridge(GeneralizedComponent):
         output = self._process_output(output)
 
         return output
+
+    def set_processed_weights(self, W_Q: torch.Tensor, W_K: torch.Tensor, W_V: torch.Tensor, W_O: torch.Tensor,
+                            b_Q: Optional[torch.Tensor] = None, b_K: Optional[torch.Tensor] = None,
+                            b_V: Optional[torch.Tensor] = None, b_O: Optional[torch.Tensor] = None) -> None:
+        """Set the processed weights to use when layer norm is folded.
+
+        Args:
+            W_Q: Query weight tensor [n_heads, d_model, d_head]
+            W_K: Key weight tensor [n_heads, d_model, d_head]
+            W_V: Value weight tensor [n_heads, d_model, d_head]
+            W_O: Output projection weight tensor [n_heads, d_head, d_model]
+            b_Q: Query bias tensor [n_heads, d_head] (optional)
+            b_K: Key bias tensor [n_heads, d_head] (optional)
+            b_V: Value bias tensor [n_heads, d_head] (optional)
+            b_O: Output bias tensor [d_model] (optional)
+        """
+        self._processed_W_Q = W_Q
+        self._processed_W_K = W_K
+        self._processed_W_V = W_V
+        self._processed_W_O = W_O
+        self._processed_b_Q = b_Q
+        self._processed_b_K = b_K
+        self._processed_b_V = b_V
+        self._processed_b_O = b_O
+        self._use_processed_weights = True
+
+    def _forward_with_processed_weights(self, *args: Any, **kwargs: Any) -> torch.Tensor:
+        """Direct implementation of reference model's attention computation with hooks."""
+        # Extract input from args/kwargs
+        if len(args) > 0 and isinstance(args[0], torch.Tensor):
+            x = args[0]
+        elif "hidden_states" in kwargs:
+            x = kwargs["hidden_states"]
+        else:
+            raise ValueError("No valid input tensor found in args or kwargs")
+
+        # Apply input hook
+        x = self.hook_in(x)
+
+        batch_size, seq_len, d_model = x.shape
+
+        # Compute Q, K, V using TransformerLens format weights
+        # W_Q shape: [n_heads, d_model, d_head], b_Q shape: [n_heads, d_head]
+        # x shape: [batch, seq, d_model]
+        q = torch.einsum("bsd,hdc->bshc", x, self._processed_W_Q) + self._processed_b_Q.unsqueeze(0).unsqueeze(0)
+        k = torch.einsum("bsd,hdc->bshc", x, self._processed_W_K) + self._processed_b_K.unsqueeze(0).unsqueeze(0)
+        v = torch.einsum("bsd,hdc->bshc", x, self._processed_W_V) + self._processed_b_V.unsqueeze(0).unsqueeze(0)
+
+        # Apply hook for V if it exists (this is what gets ablated in the comparison script)
+        if hasattr(self, "hook_v"):
+            v = self.hook_v(v)
+
+        # Transpose to [batch, n_heads, seq, d_head] for attention computation
+        q = q.transpose(1, 2)  # [batch, n_heads, seq, d_head]
+        k = k.transpose(1, 2)
+        v = v.transpose(1, 2)
+
+        # Compute attention scores
+        d_head = self._processed_W_Q.shape[-1]  # Get d_head from weight shape
+        attn_scores = torch.matmul(q, k.transpose(-2, -1)) / (d_head**0.5)
+
+        # Apply causal mask
+        causal_mask = torch.tril(torch.ones(seq_len, seq_len, device=x.device))
+        attn_scores = attn_scores.masked_fill(causal_mask == 0, float("-inf"))
+
+        # Apply softmax
+        attn_weights = torch.nn.functional.softmax(attn_scores, dim=-1)
+
+        # Apply attention to values
+        attn_out = torch.matmul(attn_weights, v)  # [batch, n_heads, seq, d_head]
+
+        # Transpose back to [batch, seq, n_heads, d_head] for output projection
+        attn_out = attn_out.transpose(1, 2)
+
+        # Apply output projection using TransformerLens format
+        # attn_out: [batch, seq, n_heads, d_head], W_O: [n_heads, d_head, d_model]
+        result = torch.einsum("bshc,hcd->bsd", attn_out, self._processed_W_O) + self._processed_b_O.unsqueeze(0).unsqueeze(0)
+
+        # Apply output hook
+        result = self.hook_out(result)
+
+        return result
 
     def get_attention_weights(self) -> Optional[torch.Tensor]:
         """Get cached attention weights if available.
