@@ -361,15 +361,18 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
         """Create components directly with processed weights, respecting folding."""
         import torch.nn as nn
 
-        from transformer_lens.components import (
-            Embed,
-            LayerNorm,
-            PosEmbed,
-            RMSNorm,
-            RMSNormPre,
-            TransformerBlock,
-            Unembed,
-        )
+        # from transformer_lens.components import (
+        #     Embed,
+        #     LayerNorm,
+        #     PosEmbed,
+        #     RMSNorm,
+        #     RMSNormPre,
+        #     TransformerBlock,
+        #     Unembed,
+        # )
+
+        # NOTE: This function requires TL components - skip if simplified approach is used
+        raise NotImplementedError("This function requires TransformerLens components and is not used in simplified startup")
         from transformer_lens.config.TransformerBridgeConfig import (
             TransformerBridgeConfig,
         )
