@@ -636,43 +636,33 @@ class TransformerBridge(nn.Module):
         self._initialize_hook_registry()
 
         if not no_processing:
-            # Extract exact processed weights from a reference model
-            print("Creating reference HookedTransformer to get processed weights...")
+            self.process_compatibility_weights()
 
-            # Import here to avoid circular imports
-            from transformer_lens import HookedTransformer
+    def process_compatibility_weights(self) -> None:
+        """Process and load weights from a reference HookedTransformer model."""
+        # Extract exact processed weights from a reference model
+        print("Creating reference HookedTransformer to get processed weights...")
 
-            # Create reference model with same processing settings
-            # This loads the same model but with TransformerLens processing
-            reference_hooked = HookedTransformer.from_pretrained(
-                self.cfg.model_name,
-                device=self.cfg.device,
-                fold_ln=True,
-                center_writing_weights=True,
-                center_unembed=True,
-                fold_value_biases=True,
-                refactor_factored_attn_matrices=False,
-            )
+        # Import here to avoid circular imports
+        from transformer_lens import HookedTransformer
 
-            hooked_state_dict = reference_hooked.state_dict()
+        # Create reference model with same processing settings
+        # This loads the same model but with TransformerLens processing
+        reference_hooked = HookedTransformer.from_pretrained(
+            self.cfg.model_name,
+            device=self.cfg.device,
+            fold_ln=True,
+            center_writing_weights=True,
+            center_unembed=True,
+            fold_value_biases=True,
+            refactor_factored_attn_matrices=False,
+        )
 
-            object.__setattr__(self, "_processed_tl_weights", hooked_state_dict)
+        hooked_state_dict = reference_hooked.state_dict()
 
-            print(f"Extracted {len(hooked_state_dict)} weights from reference model")
+        object.__setattr__(self, "_processed_tl_weights", hooked_state_dict)
 
-            # Port reference model components directly into bridge
-            self._port_reference_model_functionality()
-
-            # Mark as processed
-            object.__setattr__(self, "_weights_processed", True)
-            print("✅ Reference model functionality ported into TransformerBridge")
-
-    def _port_reference_model_functionality(self):
-        """Port reference model components and functionality directly into the bridge."""
-        if not hasattr(self, "_processed_tl_weights"):
-            raise ValueError(
-                "Processed weights not available. Call enable_compatibility_mode() first."
-            )
+        print(f"Extracted {len(hooked_state_dict)} weights from reference model")
 
         # Phase 1: Configuration
         self._configure_components_for_processing()
@@ -680,6 +670,8 @@ class TransformerBridge(nn.Module):
         # Phase 2: Weight Loading
         self._load_all_processed_weights()
 
+        # Mark as processed
+        object.__setattr__(self, "_weights_processed", True)
         print("✅ Reference model functionality ported into TransformerBridge")
 
     def _configure_components_for_processing(self):
