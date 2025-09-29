@@ -882,15 +882,6 @@ class TransformerBridge(nn.Module):
             b_U = processed_weights.get("unembed.b_U")
             self.unembed.set_processed_weight(W_U, b_U)
 
-        # Also port final layer norm if it exists
-        if hasattr(self, "ln_final"):
-
-            def ln_final_forward(x):
-                # When layer norm is folded, just return input unchanged
-                return x
-
-            self.ln_final.forward = ln_final_forward
-            print(f"  ✅ Final LayerNorm ported (identity)")
 
     def _ported_forward_pass(
         self,
