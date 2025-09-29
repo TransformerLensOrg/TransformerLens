@@ -721,12 +721,6 @@ class TransformerBridge(nn.Module):
             if hasattr(self.embed, 'set_processed_weight'):
                 self.embed.set_processed_weight(embed_weight)
                 print(f"  ✅ Token embedding set in EmbeddingBridge: {embed_weight.shape}")
-            else:
-                # Fallback: Replace the bridge embed component with direct tensor operations
-                def embed_forward(tokens):
-                    return torch.nn.functional.embedding(tokens, embed_weight)
-                self.embed.forward = embed_forward
-                print(f"  ✅ Token embedding ported (fallback): {embed_weight.shape}")
 
         # Port positional embedding (pos_embed.W_pos)
         if hasattr(self, "pos_embed") and "pos_embed.W_pos" in processed_weights:
