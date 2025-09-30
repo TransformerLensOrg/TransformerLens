@@ -698,34 +698,36 @@ class TransformerBridge(nn.Module):
 
     def _load_all_processed_weights(self):
         """Load processed weights into all components (Phase 2)."""
-        print("Porting reference model embedding components...")
-        self._port_embedding_components()
+        print("Loading embedding weights...")
+        self._load_embedding_weights()
 
-        print("Porting reference model transformer block components...")
-        self._port_transformer_blocks()
+        print("Loading transformer block weights...")
+        self._load_transformer_block_weights()
 
-        print("Porting reference model unembed component...")
-        self._port_unembed_component()
+        print("Loading unembedding weights...")
+        self._load_unembed_weights()
 
-        print("✅ All reference model components ported successfully")
+        print("✅ All weights loaded successfully")
 
-    def _port_embedding_components(self):
-        """Port embedding and positional embedding from processed weights."""
+    def _load_embedding_weights(self):
+        """Load embedding and positional embedding weights into components."""
         processed_weights = self._processed_tl_weights
 
-        # Port token embedding (embed.W_E) - now handled by EmbeddingBridge.set_processed_weight()
+        # Load token embedding (embed.W_E) into EmbeddingBridge
         if hasattr(self, "embed") and "embed.W_E" in processed_weights:
             embed_weight = processed_weights["embed.W_E"]
             self.embed.set_processed_weight(embed_weight)
+            print(f"  ✅ Token embedding loaded: {embed_weight.shape}")
 
-        # Port positional embedding (pos_embed.W_pos)
+        # Load positional embedding (pos_embed.W_pos) into PosEmbedBridge
         if hasattr(self, "pos_embed") and "pos_embed.W_pos" in processed_weights:
             pos_embed_weight = processed_weights["pos_embed.W_pos"]
             self.pos_embed.set_processed_weight(pos_embed_weight)
+            print(f"  ✅ Positional embedding loaded: {pos_embed_weight.shape}")
 
 
-    def _port_transformer_blocks(self):
-        """Port transformer block functionality from processed weights."""
+    def _load_transformer_block_weights(self):
+        """Load transformer block weights into attention and MLP components."""
         processed_weights = self._processed_tl_weights
 
         for layer_idx in range(self.cfg.n_layers):
@@ -733,19 +735,19 @@ class TransformerBridge(nn.Module):
                 continue
 
             block = self.blocks[layer_idx]
-            print(f"  Porting layer {layer_idx}...")
+            print(f"  Loading layer {layer_idx} weights...")
 
-            # Port attention component
+            # Load attention weights
             if hasattr(block, "attn"):
-                self._port_attention_component(block.attn, layer_idx, processed_weights)
+                self._load_attention_weights(block.attn, layer_idx, processed_weights)
 
-            # Port MLP component
+            # Load MLP weights
             if hasattr(block, "mlp"):
-                self._port_mlp_component(block.mlp, layer_idx, processed_weights)
+                self._load_mlp_weights(block.mlp, layer_idx, processed_weights)
 
 
-    def _port_attention_component(self, attn_component, layer_idx, processed_weights):
-        """Port attention component using reference model's exact computation."""
+    def _load_attention_weights(self, attn_component, layer_idx, processed_weights):
+        """Load attention weights into the AttentionBridge component."""
         # Get the processed attention weights in TransformerLens format
         W_Q_key = f"blocks.{layer_idx}.attn.W_Q"
         W_K_key = f"blocks.{layer_idx}.attn.W_K"
@@ -768,8 +770,8 @@ class TransformerBridge(nn.Module):
 
         attn_component.set_processed_weights(W_Q, W_K, W_V, W_O, b_Q, b_K, b_V, b_O)
 
-    def _port_mlp_component(self, mlp_component, layer_idx, processed_weights):
-        """Port MLP component using reference model's exact computation."""
+    def _load_mlp_weights(self, mlp_component, layer_idx, processed_weights):
+        """Load MLP weights into the MLPBridge component."""
         W_in_key = f"blocks.{layer_idx}.mlp.W_in"
         W_out_key = f"blocks.{layer_idx}.mlp.W_out"
         b_in_key = f"blocks.{layer_idx}.mlp.b_in"
@@ -786,15 +788,16 @@ class TransformerBridge(nn.Module):
         mlp_component.set_processed_weights(W_in, W_out, b_in, b_out)
         print(f"    ✅ MLP set in MLPBridge for layer {layer_idx}")
 
-    def _port_unembed_component(self):
-        """Port unembedding component from processed weights."""
+    def _load_unembed_weights(self):
+        """Load unembedding weights into the UnembeddingBridge component."""
         processed_weights = self._processed_tl_weights
 
-        # Port unembedding (unembed.W_U) - now handled by UnembeddingBridge.set_processed_weight()
+        # Load unembedding (unembed.W_U) into UnembeddingBridge
         if hasattr(self, "unembed") and "unembed.W_U" in processed_weights:
             W_U = processed_weights["unembed.W_U"]
             b_U = processed_weights.get("unembed.b_U")
             self.unembed.set_processed_weight(W_U, b_U)
+            print(f"  ✅ Unembedding weights loaded: {W_U.shape}")
 
     def _ported_forward_pass(
         self,
@@ -2853,16 +2856,16 @@ class TransformerBridge(nn.Module):
                 block = self.blocks[layer_idx]
 
                 # Load attention weights
-                self._load_attention_weights(block.attn, layer_idx, tl_state_dict)
+                self._load_attention_weights_from_tl_dict(block.attn, layer_idx, tl_state_dict)
 
                 # Load MLP weights
-                self._load_mlp_weights(block.mlp, layer_idx, tl_state_dict)
+                self._load_mlp_weights_from_tl_dict(block.mlp, layer_idx, tl_state_dict)
 
                 # Layer norms should already be handled by LayerNormPre behavior
 
         print("Finished loading TL weights into bridge components")
 
-    def _load_attention_weights(self, attn_component, layer_idx, tl_state_dict):
+    def _load_attention_weights_from_tl_dict(self, attn_component, layer_idx, tl_state_dict):
         """Load attention weights from TL format into bridge attention component."""
         prefix = f"blocks.{layer_idx}.attn"
 
@@ -2930,7 +2933,7 @@ class TransformerBridge(nn.Module):
                         bias_data = bias_data.flatten()
                     component.bias.data = bias_data
 
-    def _load_mlp_weights(self, mlp_component, layer_idx, tl_state_dict):
+    def _load_mlp_weights_from_tl_dict(self, mlp_component, layer_idx, tl_state_dict):
         """Load MLP weights from TL format into bridge MLP component."""
         prefix = f"blocks.{layer_idx}.mlp"
 
