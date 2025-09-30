@@ -129,7 +129,7 @@ class TransformerBridgeConfig(TransformerLensConfig):
         self.n_params = n_params
         self.use_hook_tokens = use_hook_tokens
         self.gated_mlp = gated_mlp
-        self.dtype = dtype
+        self.dtype = dtype if dtype is not None else torch.float32
         self.post_embedding_ln = post_embedding_ln
         self.rotary_base = rotary_base
         self.trust_remote_code = trust_remote_code
@@ -153,11 +153,7 @@ class TransformerBridgeConfig(TransformerLensConfig):
 
     def __post_init__(self):
         """Post-initialization processing."""
-        # Set default dtype if None
-        if self.dtype is None:
-            import torch
-
-            self.dtype = torch.float32
+        # dtype is guaranteed to be set at this point
 
         # Validate architecture if provided before calling super()
         if (
