@@ -14,9 +14,9 @@ from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
     BlockBridge,
     EmbeddingBridge,
-    PosEmbedBridge,
     MLPBridge,
     NormalizationBridge,
+    PosEmbedBridge,
     UnembeddingBridge,
 )
 

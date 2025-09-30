@@ -1,6 +1,6 @@
 """GPT2 architecture adapter."""
 
-from typing import Any, cast
+from typing import Any
 
 import torch
 
@@ -13,11 +13,11 @@ from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapt
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
-    PosEmbedBridge,
     JointQKVAttentionBridge,
     LinearBridge,
     MLPBridge,
     NormalizationBridge,
+    PosEmbedBridge,
     UnembeddingBridge,
 )
 
@@ -689,5 +689,3 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
         # For now, we'll return the components and let the bridge handle hook extraction
 
         print("GPT-2 adapter: Ready for hook extraction from components")
-
-

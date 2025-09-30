@@ -104,6 +104,13 @@ class TransformerBridge(nn.Module):
         self.cfg = adapter.cfg
 
         self.tokenizer = tokenizer
+
+        # Infer vocab size from tokenizer (similar to HookedTransformer)
+        if self.cfg.d_vocab == -1:
+            self.cfg.d_vocab = max(self.tokenizer.vocab.values()) + 1
+        if self.cfg.d_vocab_out == -1:
+            self.cfg.d_vocab_out = self.cfg.d_vocab
+
         self.compatibility_mode = False
         self._hook_cache = None  # Cache for hook discovery results
         self._hook_registry: Dict[
@@ -135,6 +142,8 @@ class TransformerBridge(nn.Module):
     @property
     def original_model(self) -> nn.Module:
         """Get the original model."""
+        if "original_model" not in self.__dict__:
+            raise AttributeError("original_model has not been set")
         return self.__dict__["original_model"]
 
     @original_model.setter
@@ -725,7 +734,6 @@ class TransformerBridge(nn.Module):
             self.pos_embed.set_processed_weight(pos_embed_weight)
             print(f"  ✅ Positional embedding loaded: {pos_embed_weight.shape}")
 
-
     def _load_transformer_block_weights(self):
         """Load transformer block weights into attention and MLP components."""
         processed_weights = self._processed_tl_weights
@@ -744,7 +752,6 @@ class TransformerBridge(nn.Module):
             # Load MLP weights
             if hasattr(block, "mlp"):
                 self._load_mlp_weights(block.mlp, layer_idx, processed_weights)
-
 
     def _load_attention_weights(self, attn_component, layer_idx, processed_weights):
         """Load attention weights into the AttentionBridge component."""
@@ -1025,43 +1032,6 @@ class TransformerBridge(nn.Module):
         # def _create_components_with_integrated_folding - DELETED
         # def _create_minimal_structure_for_filling_keys - DELETED
         # def _create_folded_components_directly - DELETED
-
-        # Create minimal structure that matches what fill_missing_keys expects
-        temp_structure = nn.Module()
-        temp_structure.cfg = tl_cfg
-
-        # Create components without processing - just for fill_missing_keys
-        temp_structure.embed = Embed(tl_cfg)
-
-        if tl_cfg.positional_embedding_type != "rotary":
-            temp_structure.pos_embed = PosEmbed(tl_cfg)
-
-        temp_structure.blocks = nn.ModuleList(
-            [TransformerBlock(tl_cfg, block_index) for block_index in range(tl_cfg.n_layers)]
-        )
-
-        # Create ln_final based on original config (before folding)
-        if tl_cfg.normalization_type in ["RMS", "RMSPre"]:
-            temp_structure.ln_final = (
-                RMSNorm(tl_cfg) if tl_cfg.normalization_type == "RMS" else RMSNormPre(tl_cfg)
-            )
-        elif tl_cfg.normalization_type in ["LN", "LNPre"]:
-            if tl_cfg.final_rms:
-                temp_structure.ln_final = RMSNorm(tl_cfg)
-            else:
-                # Use NormalizationBridge for unified LayerNorm/LayerNormPre behavior
-                from transformer_lens.model_bridge.generalized_components.normalization import (
-                    NormalizationBridge,
-                )
-
-                temp_structure.ln_final = NormalizationBridge.create_normalization_bridge(
-                    name="ln_final",
-                    config=tl_cfg,
-                    original_component=LayerNorm(tl_cfg),  # Create LayerNorm component for weights
-                )
-
-        temp_structure.unembed = Unembed(tl_cfg)
-        return temp_structure
 
     def _create_folded_components_directly(self, tl_cfg, processed_weights, fold_ln):
         """Create components directly with processed weights, respecting folding."""
@@ -4769,8 +4739,6 @@ class TransformerBridge(nn.Module):
         except Exception as e:
             raise ValueError(f"Could not load fresh model for weight export: {e}")
 
-
-
     def get_params(self):
         """Access to model parameters in the format expected by SVDInterpreter.
 
@@ -4785,8 +4753,7 @@ class TransformerBridge(nn.Module):
         """
         return get_bridge_params(self)
 
-
-    def _load_processed_weights_into_bridge(self, tl_state_dict):
+    def _load_processed_weights_into_bridge_from_dict(self, tl_state_dict):
         """Load processed TransformerLens weights into bridge components."""
         print("Loading processed TL weights into bridge components...")
 
@@ -4958,7 +4925,7 @@ class TransformerBridge(nn.Module):
         print(f"Extracted {len(tl_state_dict)} processed weights from reference model")
 
         # Load the processed weights into bridge components
-        self._load_processed_weights_into_bridge(tl_state_dict)
+        self._load_processed_weights_into_bridge_from_dict(tl_state_dict)
 
         # Update config to reflect processing
         if fold_ln and self.cfg.normalization_type == "LN":

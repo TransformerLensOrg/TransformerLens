@@ -155,11 +155,15 @@ class JointQKVAttentionBridge(AttentionBridge):
 
         # Apply QKV projection using processed weights if available
         # Check if we have processed weights extracted
-        hooked_weights_available = hasattr(self, "_hooked_weights_extracted") and self._hooked_weights_extracted
+        hooked_weights_available = (
+            hasattr(self, "_hooked_weights_extracted") and self._hooked_weights_extracted
+        )
         if hooked_weights_available:
             print(f"🔧 Using processed weights for layer attention forward pass")
         else:
-            print(f"⚠️  Falling back to original weights (hooked_weights_extracted: {getattr(self, '_hooked_weights_extracted', 'missing')})")
+            print(
+                f"⚠️  Falling back to original weights (hooked_weights_extracted: {getattr(self, '_hooked_weights_extracted', 'missing')})"
+            )
 
         if hooked_weights_available:
             # Use the processed weights directly (like HookedTransformer would)
@@ -174,9 +178,15 @@ class JointQKVAttentionBridge(AttentionBridge):
 
                 # Convert to format needed for matrix multiplication
                 # Reshape weights: [n_heads, d_model, d_head] -> [d_model, n_heads * d_head]
-                W_Q_flat = W_Q.transpose(0, 1).contiguous().view(cfg.d_model, -1)  # [d_model, n_heads*d_head]
-                W_K_flat = W_K.transpose(0, 1).contiguous().view(cfg.d_model, -1)  # [d_model, n_heads*d_head]
-                W_V_flat = W_V.transpose(0, 1).contiguous().view(cfg.d_model, -1)  # [d_model, n_heads*d_head]
+                W_Q_flat = (
+                    W_Q.transpose(0, 1).contiguous().view(cfg.d_model, -1)
+                )  # [d_model, n_heads*d_head]
+                W_K_flat = (
+                    W_K.transpose(0, 1).contiguous().view(cfg.d_model, -1)
+                )  # [d_model, n_heads*d_head]
+                W_V_flat = (
+                    W_V.transpose(0, 1).contiguous().view(cfg.d_model, -1)
+                )  # [d_model, n_heads*d_head]
 
                 # Apply projections
                 q_flat = torch.matmul(hidden_states, W_Q_flat)  # [batch, seq_len, n_heads*d_head]

@@ -67,13 +67,15 @@ class UnembeddingBridge(GeneralizedComponent):
 
         # Check if we're using processed weights from a reference model (layer norm folding case)
         # This happens when set_processed_weight has been called
-        if hasattr(self, '_use_processed_weights') and self._use_processed_weights:
+        if hasattr(self, "_use_processed_weights") and self._use_processed_weights:
             # Apply input hook
             hidden_states = self.hook_in(hidden_states)
 
             # Use the processed weights directly with F.linear
-            if hasattr(self, '_processed_W_U'):
-                output = torch.nn.functional.linear(hidden_states, self._processed_W_U.T, self._processed_b_U)
+            if hasattr(self, "_processed_W_U"):
+                output = torch.nn.functional.linear(
+                    hidden_states, self._processed_W_U.T, self._processed_b_U
+                )
             else:
                 # Fallback to original component's weights
                 output = torch.nn.functional.linear(hidden_states, self.W_U.T, self.b_U)

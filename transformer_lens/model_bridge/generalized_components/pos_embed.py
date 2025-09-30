@@ -68,7 +68,7 @@ class PosEmbedBridge(GeneralizedComponent):
             Positional embeddings
         """
         # Check if we're using processed weights from a reference model (layer norm folding case)
-        if hasattr(self, '_use_processed_weights') and self._use_processed_weights:
+        if hasattr(self, "_use_processed_weights") and self._use_processed_weights:
             # Apply input hook to input_ids (for consistency, though pos embed doesn't really use input_ids)
             input_ids = self.hook_in(input_ids)
 
@@ -79,7 +79,7 @@ class PosEmbedBridge(GeneralizedComponent):
                 position_ids = position_ids.unsqueeze(0).expand(batch_size, -1)
 
             # Use the processed weight directly with F.embedding
-            if hasattr(self, '_processed_weight'):
+            if hasattr(self, "_processed_weight"):
                 output = torch.nn.functional.embedding(position_ids, self._processed_weight)
             else:
                 # Fallback to original component's weight

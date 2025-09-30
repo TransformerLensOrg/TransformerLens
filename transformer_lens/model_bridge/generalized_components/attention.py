@@ -393,7 +393,7 @@ class AttentionBridge(GeneralizedComponent):
             The output from the original component, with hooks applied
         """
         # Check if we're using processed weights from a reference model (layer norm folding case)
-        if hasattr(self, '_use_processed_weights') and self._use_processed_weights:
+        if hasattr(self, "_use_processed_weights") and self._use_processed_weights:
             return self._forward_with_processed_weights(*args, **kwargs)
 
         if self.original_component is None:
@@ -417,9 +417,17 @@ class AttentionBridge(GeneralizedComponent):
 
         return output
 
-    def set_processed_weights(self, W_Q: torch.Tensor, W_K: torch.Tensor, W_V: torch.Tensor, W_O: torch.Tensor,
-                            b_Q: Optional[torch.Tensor] = None, b_K: Optional[torch.Tensor] = None,
-                            b_V: Optional[torch.Tensor] = None, b_O: Optional[torch.Tensor] = None) -> None:
+    def set_processed_weights(
+        self,
+        W_Q: torch.Tensor,
+        W_K: torch.Tensor,
+        W_V: torch.Tensor,
+        W_O: torch.Tensor,
+        b_Q: Optional[torch.Tensor] = None,
+        b_K: Optional[torch.Tensor] = None,
+        b_V: Optional[torch.Tensor] = None,
+        b_O: Optional[torch.Tensor] = None,
+    ) -> None:
         """Set the processed weights to use when layer norm is folded.
 
         Args:
@@ -460,9 +468,15 @@ class AttentionBridge(GeneralizedComponent):
         # Compute Q, K, V using TransformerLens format weights
         # W_Q shape: [n_heads, d_model, d_head], b_Q shape: [n_heads, d_head]
         # x shape: [batch, seq, d_model]
-        q = torch.einsum("bsd,hdc->bshc", x, self._processed_W_Q) + self._processed_b_Q.unsqueeze(0).unsqueeze(0)
-        k = torch.einsum("bsd,hdc->bshc", x, self._processed_W_K) + self._processed_b_K.unsqueeze(0).unsqueeze(0)
-        v = torch.einsum("bsd,hdc->bshc", x, self._processed_W_V) + self._processed_b_V.unsqueeze(0).unsqueeze(0)
+        q = torch.einsum("bsd,hdc->bshc", x, self._processed_W_Q) + self._processed_b_Q.unsqueeze(
+            0
+        ).unsqueeze(0)
+        k = torch.einsum("bsd,hdc->bshc", x, self._processed_W_K) + self._processed_b_K.unsqueeze(
+            0
+        ).unsqueeze(0)
+        v = torch.einsum("bsd,hdc->bshc", x, self._processed_W_V) + self._processed_b_V.unsqueeze(
+            0
+        ).unsqueeze(0)
 
         # Apply hook for V if it exists (this is what gets ablated in the comparison script)
         if hasattr(self, "hook_v"):
@@ -492,7 +506,9 @@ class AttentionBridge(GeneralizedComponent):
 
         # Apply output projection using TransformerLens format
         # attn_out: [batch, seq, n_heads, d_head], W_O: [n_heads, d_head, d_model]
-        result = torch.einsum("bshc,hcd->bsd", attn_out, self._processed_W_O) + self._processed_b_O.unsqueeze(0).unsqueeze(0)
+        result = torch.einsum(
+            "bshc,hcd->bsd", attn_out, self._processed_W_O
+        ) + self._processed_b_O.unsqueeze(0).unsqueeze(0)
 
         # Apply output hook
         result = self.hook_out(result)

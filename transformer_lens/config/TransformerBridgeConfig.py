@@ -2,6 +2,8 @@
 
 from typing import Optional
 
+import torch
+
 from .TransformerLensConfig import TransformerLensConfig
 
 
@@ -58,7 +60,7 @@ class TransformerBridgeConfig(TransformerLensConfig):
         n_params: Optional[int] = None,
         use_hook_tokens: bool = False,
         gated_mlp: bool = False,
-        dtype: "torch.dtype" = None,  # Will be set to torch.float32 in __post_init__
+        dtype: Optional[torch.dtype] = torch.float32,
         post_embedding_ln: bool = False,
         rotary_base: int = 10000,
         trust_remote_code: bool = False,

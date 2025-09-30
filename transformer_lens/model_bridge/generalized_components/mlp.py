@@ -64,19 +64,23 @@ class MLPBridge(GeneralizedComponent):
 
         # Check if we're using processed weights from a reference model (layer norm folding case)
         # This happens when set_processed_weights has been called
-        if hasattr(self, '_use_processed_weights') and self._use_processed_weights:
+        if hasattr(self, "_use_processed_weights") and self._use_processed_weights:
             hidden_states = args[0]
             # Apply input hook
             hidden_states = self.hook_in(hidden_states)
 
             # Use the processed weights directly with the same computation as reference model
-            if hasattr(self, '_processed_W_in') and hasattr(self, '_processed_W_out'):
+            if hasattr(self, "_processed_W_in") and hasattr(self, "_processed_W_out"):
                 # Input projection using TransformerLens format
-                hidden = torch.nn.functional.linear(hidden_states, self._processed_W_in.T, self._processed_b_in)
+                hidden = torch.nn.functional.linear(
+                    hidden_states, self._processed_W_in.T, self._processed_b_in
+                )
                 # Apply activation (GELU for GPT-2)
                 hidden = torch.nn.functional.gelu(hidden)
                 # Output projection using TransformerLens format
-                output = torch.nn.functional.linear(hidden, self._processed_W_out.T, self._processed_b_out)
+                output = torch.nn.functional.linear(
+                    hidden, self._processed_W_out.T, self._processed_b_out
+                )
             else:
                 # Fallback to original component
                 new_args = (hidden_states,) + args[1:]
@@ -100,8 +104,13 @@ class MLPBridge(GeneralizedComponent):
 
         return output
 
-    def set_processed_weights(self, W_in: torch.Tensor, W_out: torch.Tensor,
-                            b_in: torch.Tensor | None = None, b_out: torch.Tensor | None = None) -> None:
+    def set_processed_weights(
+        self,
+        W_in: torch.Tensor,
+        W_out: torch.Tensor,
+        b_in: torch.Tensor | None = None,
+        b_out: torch.Tensor | None = None,
+    ) -> None:
         """Set the processed weights to use when layer norm is folded.
 
         Args:
