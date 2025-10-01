@@ -358,7 +358,6 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
         self, tl_cfg, processed_weights, fold_ln, use_hf_format=False
     ):
         """Create components directly with processed weights, respecting folding."""
-        import torch.nn as nn
 
         # from transformer_lens.components import (
         #     Embed,
