@@ -2285,11 +2285,10 @@ class ProcessWeights:
 
             processed_weights = all_tl_weights
         else:
-            # Fall back to direct copy for HookedTransformer case
-            remaining_weights = {
-                k: v for k, v in raw_hf_state_dict.items() if k not in processed_weights
-            }
-            processed_weights.update(remaining_weights)
+            # When no adapter is provided, assume we're working with raw HF weights
+            # that should be returned as-is (HookedTransformer will handle conversion)
+            # Don't try to apply TL-specific processing like fold_ln
+            return raw_hf_state_dict
 
         # Step 3: Apply standard processing pipeline (with bypass support)
         if not bypass_default_processing.get("fold_ln", False) and fold_ln:

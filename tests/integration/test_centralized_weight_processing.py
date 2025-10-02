@@ -69,8 +69,8 @@ class TestCentralizedWeightProcessing:
         ]
         assert len(custom_keys) > 0, "Should have custom processed keys with adapter"
 
-        # Check that original HF keys are preserved/converted
-        expected_keys = ["W_E", "W_pos", "W_U"]
+        # Check that original HF keys are preserved/converted with component prefixes
+        expected_keys = ["embed.W_E", "pos_embed.W_pos", "unembed.W_U"]
         for key in expected_keys:
             assert key in processed_with_adapter, f"Should have {key} in processed weights"
 
@@ -176,8 +176,8 @@ class TestCentralizedWeightProcessing:
             with_adapter_keys != without_adapter_keys
         ), "With and without adapter should produce different key sets"
 
-        # With adapter should have TransformerLens-style keys
-        tl_keys = [k for k in with_adapter_keys if k in ["W_E", "W_pos", "W_U"]]
+        # With adapter should have TransformerLens-style keys (with component prefixes)
+        tl_keys = [k for k in with_adapter_keys if any(x in k for x in ["W_E", "W_pos", "W_U"])]
         assert len(tl_keys) > 0, "With adapter should have TransformerLens-style keys"
 
     def test_custom_component_processing_integration(
@@ -198,9 +198,9 @@ class TestCentralizedWeightProcessing:
             fold_value_biases=False,
         )
 
-        # Check for custom component processing results
-        custom_embed_found = "W_E" in processed_weights
-        custom_pos_found = "W_pos" in processed_weights
+        # Check for custom component processing results (with component prefixes)
+        custom_embed_found = any("W_E" in k for k in processed_weights.keys())
+        custom_pos_found = any("W_pos" in k for k in processed_weights.keys())
         custom_qkv_found = any("W_Q" in k for k in processed_weights.keys())
 
         assert custom_embed_found, "Should have custom embed processing"
