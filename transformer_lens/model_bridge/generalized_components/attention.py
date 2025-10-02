@@ -514,9 +514,9 @@ class AttentionBridge(GeneralizedComponent):
         # attn_out: [batch, seq, n_heads, d_head], W_O: [n_heads, d_head, d_model]
         result = torch.einsum(
             "bshc,hcd->bsd", attn_out, self._processed_W_O
-        ) + self._processed_b_O.unsqueeze(
+        ) + self._processed_b_O.unsqueeze(  # type: ignore[union-attr]
             0
-        ).unsqueeze(  # type: ignore[union-attr]
+        ).unsqueeze(
             0
         )
 
