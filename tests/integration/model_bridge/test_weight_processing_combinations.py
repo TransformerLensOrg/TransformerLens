@@ -64,17 +64,21 @@ def test_weight_processing_flag_combinations(
     )
     ref_ablation_effect = ref_ablated_loss - ref_loss
 
-    # Create TransformerBridge with same processing settings
+    # Create TransformerBridge and apply weight processing
     bridge = TransformerBridge.boot_transformers(
         model_name,
         device=device,
-        apply_weight_processing=True,
+    )
+
+    # Apply weight processing with specified settings
+    bridge.process_weights(
         fold_ln=fold_ln,
         center_writing_weights=center_writing_weights,
         center_unembed=center_unembed,
         fold_value_biases=fold_value_biases,
         refactor_factored_attn_matrices=False,
     )
+
     bridge.enable_compatibility_mode()
 
     # Test baseline inference
