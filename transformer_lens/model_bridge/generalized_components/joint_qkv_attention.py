@@ -179,13 +179,13 @@ class JointQKVAttentionBridge(AttentionBridge):
                 # Convert to format needed for matrix multiplication
                 # Reshape weights: [n_heads, d_model, d_head] -> [d_model, n_heads * d_head]
                 W_Q_flat = (
-                    W_Q.transpose(0, 1).contiguous().view(cfg.d_model, -1)
+                    W_Q.transpose(0, 1).contiguous().view(cfg.d_model, -1)  # type: ignore[union-attr]
                 )  # [d_model, n_heads*d_head]
                 W_K_flat = (
-                    W_K.transpose(0, 1).contiguous().view(cfg.d_model, -1)
+                    W_K.transpose(0, 1).contiguous().view(cfg.d_model, -1)  # type: ignore[union-attr]
                 )  # [d_model, n_heads*d_head]
                 W_V_flat = (
-                    W_V.transpose(0, 1).contiguous().view(cfg.d_model, -1)
+                    W_V.transpose(0, 1).contiguous().view(cfg.d_model, -1)  # type: ignore[union-attr]
                 )  # [d_model, n_heads*d_head]
 
                 # Apply projections
@@ -210,18 +210,18 @@ class JointQKVAttentionBridge(AttentionBridge):
                 v = v_flat
             else:
                 # Fallback to original weights if processed weights not available
-                qkv = original_attn.c_attn(hidden_states)  # [batch, seq_len, 3*d_model]
-                q, k, v = qkv.split(cfg.d_model, dim=2)
+                qkv = original_attn.c_attn(hidden_states)  # type: ignore[operator, union-attr]  # [batch, seq_len, 3*d_model]
+                q, k, v = qkv.split(cfg.d_model, dim=2)  # type: ignore[union-attr]
         else:
             # Use original weights (unprocessed)
-            qkv = original_attn.c_attn(hidden_states)  # [batch, seq_len, 3*d_model]
+            qkv = original_attn.c_attn(hidden_states)  # type: ignore[operator, union-attr]  # [batch, seq_len, 3*d_model]
             # Split into Q, K, V
-            q, k, v = qkv.split(cfg.d_model, dim=2)
+            q, k, v = qkv.split(cfg.d_model, dim=2)  # type: ignore[union-attr]
 
         # Reshape to multi-head format: [batch, n_heads, seq_len, d_head]
-        q = q.view(batch_size, seq_len, cfg.n_heads, cfg.d_head).transpose(1, 2)
-        k = k.view(batch_size, seq_len, cfg.n_heads, cfg.d_head).transpose(1, 2)
-        v = v.view(batch_size, seq_len, cfg.n_heads, cfg.d_head).transpose(1, 2)
+        q = q.view(batch_size, seq_len, cfg.n_heads, cfg.d_head).transpose(1, 2)  # type: ignore[union-attr]
+        k = k.view(batch_size, seq_len, cfg.n_heads, cfg.d_head).transpose(1, 2)  # type: ignore[union-attr]
+        v = v.view(batch_size, seq_len, cfg.n_heads, cfg.d_head).transpose(1, 2)  # type: ignore[union-attr]
 
         # Apply V hook if it exists (important for interpretability)
         # Note: We need to apply hooks directly to the correct format without conversion
@@ -245,7 +245,7 @@ class JointQKVAttentionBridge(AttentionBridge):
             v = v_hooked.transpose(1, 2)  # [batch, heads, seq, d_head]
 
         # Attention scores: [batch, n_heads, seq_len, seq_len]
-        attn_scores = torch.matmul(q, k.transpose(-2, -1)) / (cfg.d_head**0.5)
+        attn_scores = torch.matmul(q, k.transpose(-2, -1)) / (cfg.d_head**0.5)  # type: ignore[union-attr]
 
         # Apply causal mask for GPT-2 (always causal for GPT-2)
         causal_mask = torch.tril(torch.ones(seq_len, seq_len, device=hidden_states.device))
@@ -261,7 +261,7 @@ class JointQKVAttentionBridge(AttentionBridge):
         attn_out = attn_out.transpose(1, 2).contiguous().view(batch_size, seq_len, d_model)
 
         # Apply output projection (GPT-2 uses c_proj)
-        result = original_attn.c_proj(attn_out)
+        result = original_attn.c_proj(attn_out)  # type: ignore[operator, union-attr]
 
         # Apply output hook
         result = self.hook_out(result)
@@ -417,7 +417,7 @@ class JointQKVAttentionBridge(AttentionBridge):
 
         # Apply dropout if the original component has it
         if hasattr(original_component, "attn_dropout"):
-            attn_weights = original_component.attn_dropout(attn_weights)
+            attn_weights = original_component.attn_dropout(attn_weights)  # type: ignore[operator]
 
         # Compute attention output
         attn_output = torch.matmul(attn_weights, v)
@@ -442,7 +442,7 @@ class JointQKVAttentionBridge(AttentionBridge):
             if hasattr(self, "_b_O"):
                 attn_output = attn_output + self._b_O
         elif hasattr(original_component, "c_proj"):
-            attn_output = original_component.c_proj(attn_output)
+            attn_output = original_component.c_proj(attn_output)  # type: ignore[operator]
 
         # Apply output hook
         attn_output = self.hook_out(attn_output)
@@ -590,7 +590,7 @@ class JointQKVAttentionBridge(AttentionBridge):
         attn_weights = torch.nn.functional.softmax(attn_scores, dim=-1)
 
         if hasattr(original_component, "attn_dropout"):
-            attn_weights = original_component.attn_dropout(attn_weights)  # type: ignore[operator]
+            attn_weights = original_component.attn_dropout(attn_weights)  # type: ignore[operator]  # type: ignore[operator]
 
         # Apply attention to values
         attn_output = torch.matmul(attn_weights, v)
@@ -959,17 +959,17 @@ class JointQKVAttentionBridge(AttentionBridge):
             # Extract the exact weights from the reference HookedTransformer
             reference_attn = reference_model.blocks[layer_num].attn
 
-            self._W_Q = reference_attn.W_Q.clone()  # [n_heads, d_model, d_head]
-            self._W_K = reference_attn.W_K.clone()  # [n_heads, d_model, d_head]
-            self._W_V = reference_attn.W_V.clone()  # [n_heads, d_model, d_head]
-            self._b_Q = reference_attn.b_Q.clone()  # [n_heads, d_head]
-            self._b_K = reference_attn.b_K.clone()  # [n_heads, d_head]
-            self._b_V = reference_attn.b_V.clone()  # [n_heads, d_head]
+            self._W_Q = reference_attn.W_Q.clone()  # type: ignore[union-attr, operator]  # [n_heads, d_model, d_head]
+            self._W_K = reference_attn.W_K.clone()  # type: ignore[union-attr, operator]  # [n_heads, d_model, d_head]
+            self._W_V = reference_attn.W_V.clone()  # type: ignore[union-attr, operator]  # [n_heads, d_model, d_head]
+            self._b_Q = reference_attn.b_Q.clone()  # type: ignore[union-attr, operator]  # [n_heads, d_head]
+            self._b_K = reference_attn.b_K.clone()  # type: ignore[union-attr, operator]  # [n_heads, d_head]
+            self._b_V = reference_attn.b_V.clone()  # type: ignore[union-attr, operator]  # [n_heads, d_head]
 
             if hasattr(reference_attn, "W_O"):
-                self._W_O = reference_attn.W_O.clone()  # [n_heads, d_head, d_model]
+                self._W_O = reference_attn.W_O.clone()  # type: ignore[operator]  # [n_heads, d_head, d_model]
             if hasattr(reference_attn, "b_O"):
-                self._b_O = reference_attn.b_O.clone()  # [d_model]
+                self._b_O = reference_attn.b_O.clone()  # type: ignore[operator]  # [d_model]
 
             print(f"✅ Extracted exact HookedTransformer weights for layer {layer_num}")
             print(f"  W_V shape: {self._W_V.shape}")

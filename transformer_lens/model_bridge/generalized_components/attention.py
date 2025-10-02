@@ -468,15 +468,21 @@ class AttentionBridge(GeneralizedComponent):
         # Compute Q, K, V using TransformerLens format weights
         # W_Q shape: [n_heads, d_model, d_head], b_Q shape: [n_heads, d_head]
         # x shape: [batch, seq, d_model]
-        q = torch.einsum("bsd,hdc->bshc", x, self._processed_W_Q) + self._processed_b_Q.unsqueeze(
+        q = torch.einsum("bsd,hdc->bshc", x, self._processed_W_Q) + self._processed_b_Q.unsqueeze(  # type: ignore[union-attr]
             0
-        ).unsqueeze(0)
-        k = torch.einsum("bsd,hdc->bshc", x, self._processed_W_K) + self._processed_b_K.unsqueeze(
+        ).unsqueeze(
             0
-        ).unsqueeze(0)
-        v = torch.einsum("bsd,hdc->bshc", x, self._processed_W_V) + self._processed_b_V.unsqueeze(
+        )
+        k = torch.einsum("bsd,hdc->bshc", x, self._processed_W_K) + self._processed_b_K.unsqueeze(  # type: ignore[union-attr]
             0
-        ).unsqueeze(0)
+        ).unsqueeze(
+            0
+        )
+        v = torch.einsum("bsd,hdc->bshc", x, self._processed_W_V) + self._processed_b_V.unsqueeze(  # type: ignore[union-attr]
+            0
+        ).unsqueeze(
+            0
+        )
 
         # Apply hook for V if it exists (this is what gets ablated in the comparison script)
         if hasattr(self, "hook_v"):
@@ -508,7 +514,9 @@ class AttentionBridge(GeneralizedComponent):
         # attn_out: [batch, seq, n_heads, d_head], W_O: [n_heads, d_head, d_model]
         result = torch.einsum(
             "bshc,hcd->bsd", attn_out, self._processed_W_O
-        ) + self._processed_b_O.unsqueeze(0).unsqueeze(0)
+        ) + self._processed_b_O.unsqueeze(0).unsqueeze(
+            0
+        )  # type: ignore[union-attr]
 
         # Apply output hook
         result = self.hook_out(result)

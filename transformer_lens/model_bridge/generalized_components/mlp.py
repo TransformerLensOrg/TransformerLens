@@ -84,7 +84,7 @@ class MLPBridge(GeneralizedComponent):
             else:
                 # Fallback to original component
                 new_args = (hidden_states,) + args[1:]
-                output = self.original_component(*new_args, **kwargs)
+                output = self.original_component(*new_args, **kwargs)  # type: ignore[misc]
 
             # Apply output hook
             output = self.hook_out(output)

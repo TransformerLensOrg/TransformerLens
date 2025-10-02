@@ -927,7 +927,7 @@ class TransformerBridge(nn.Module):
         def add_hook_to_point(
             hook_point: HookPoint, hook_fn: Callable, name: str, dir: str = "fwd"
         ):
-            hook_point.add_hook(hook_fn, dir=dir)
+            hook_point.add_hook(hook_fn, dir=dir)  # type: ignore[arg-type]
             added_hooks.append((hook_point, name))
 
         try:
@@ -947,7 +947,7 @@ class TransformerBridge(nn.Module):
 
             # Run forward pass with ported components
             return self._ported_forward_pass(
-                tokens, return_type=return_type, stop_at_layer=stop_at_layer, **kwargs
+                tokens, return_type=return_type or "logits", stop_at_layer=stop_at_layer, **kwargs
             )
 
         finally:
@@ -2684,8 +2684,8 @@ class TransformerBridge(nn.Module):
         """
         # Update config for all layer norm components to enable LayerNormPre behavior
         for layer_idx in range(self.cfg.n_layers):
-            ln_1 = self.original_model.transformer.h[layer_idx].ln_1
-            ln_2 = self.original_model.transformer.h[layer_idx].ln_2
+            ln_1 = self.original_model.transformer.h[layer_idx].ln_1  # type: ignore[union-attr, index]
+            ln_2 = self.original_model.transformer.h[layer_idx].ln_2  # type: ignore[union-attr, index]
 
             # Update the config object for each normalization component
             if hasattr(ln_1, "config"):
@@ -2694,9 +2694,9 @@ class TransformerBridge(nn.Module):
                 ln_2.config.layer_norm_folding = True
 
         # Update final layer norm
-        ln_f = self.original_model.transformer.ln_f
+        ln_f = self.original_model.transformer.ln_f  # type: ignore[union-attr]
         if hasattr(ln_f, "config"):
-            ln_f.config.layer_norm_folding = True
+            ln_f.config.layer_norm_folding = True  # type: ignore[union-attr]
 
     def _load_tl_weights_into_bridge_components(self, tl_state_dict):
         """Load TransformerLens format weights into bridge components.
@@ -4317,7 +4317,7 @@ class TransformerBridge(nn.Module):
 
         # Generate using the original HuggingFace model
         with torch.no_grad():
-            outputs = self.original_model.generate(input_ids, **generation_kwargs)
+            outputs = self.original_model.generate(input_ids, **generation_kwargs)  # type: ignore[operator]
 
         # Return based on return_type and input format
         if return_type == "input" or return_type is None:
