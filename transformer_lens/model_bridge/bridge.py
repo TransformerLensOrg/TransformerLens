@@ -105,6 +105,9 @@ class TransformerBridge(nn.Module):
         # Initialize hook registry after components are set up
         self._initialize_hook_registry()
 
+        # Intiialize dictionary containing hooks that will be cached
+        self._initialize_hooks_to_cache()
+
     def __setattr__(self, name: str, value: Any) -> None:
         """Override setattr to track HookPoint objects dynamically."""
         # Call parent setattr first
@@ -141,7 +144,36 @@ class TransformerBridge(nn.Module):
         # Scan existing components for hooks
         self._scan_existing_hooks(self, "")
 
+        # Add bridge aliases if compatibility mode is enabled
+        if self.compatibility_mode:
+            self._add_aliases_to_hooks(self._hook_registry)
+
         self._hook_registry_initialized = True
+
+    def _add_aliases_to_hooks(self, hooks: Dict[str, HookPoint]) -> None:
+        """Add aliases to hooks in place."""
+
+        # If no aliases, do nothing
+        if not self.hook_aliases:
+            return
+
+        for alias_name, target in self.hook_aliases.items():
+            # Use the existing alias system to resolve the target hook
+            # Convert to Dict[str, str] for resolve_alias if target_name is a list
+            if isinstance(target, list):
+                # For list targets, try each one until one works
+                for single_target in target:
+                    try:
+                        target_hook = resolve_alias(self, alias_name, {alias_name: single_target})
+                        if target_hook is not None:
+                            hooks[alias_name] = target_hook
+                            break
+                    except AttributeError:
+                        continue
+            else:
+                target_hook = resolve_alias(self, alias_name, {alias_name: target})
+                if target_hook is not None:
+                    hooks[alias_name] = target_hook
 
     def _scan_existing_hooks(self, module: nn.Module, prefix: str = "") -> None:
         """Scan existing modules for hooks and add them to registry."""
@@ -210,8 +242,13 @@ class TransformerBridge(nn.Module):
     @property
     def hook_dict(self) -> dict[str, HookPoint]:
         """Get all HookPoint objects in the model for compatibility with HookedTransformer."""
-        # Start with the current registry
-        return self._hook_registry.copy()
+        hooks = self._hook_registry.copy()
+
+        # Add aliases if compatibility mode is enabled
+        if self.compatibility_mode:
+            self._add_aliases_to_hooks(hooks)
+
+        return hooks
 
     def _discover_hooks(self) -> dict[str, HookPoint]:
         """Get all HookPoint objects from the registry (deprecated, use hook_dict)."""
@@ -225,6 +262,108 @@ class TransformerBridge(nn.Module):
         """Clear the hook registry and force re-initialization."""
         self._hook_registry.clear()
         self._hook_registry_initialized = False
+
+    def _initialize_hooks_to_cache(self) -> None:
+        """Initialize the hooks to cache when running the model with cache."""
+        self.hooks_to_cache = {}
+
+        default_cached_hooks_names = [
+            "embed.hook_in",
+            "embed.hook_out",
+            "pos_embed.hook_in",
+            "pos_embed.hook_out",
+            "rotary_embed.hook_in",
+            "rotary_embed.hook_out",
+            "ln_final.hook_in",
+            "ln_final.hook_scale",
+            "ln_final.hook_normalized",
+            "ln_final.hook_out",
+            "unembed.hook_in",
+            "unembed.hook_out",
+        ]
+
+        for block_idx in range(self.cfg.n_layers):
+            default_cached_hooks_names.append(f"blocks.{block_idx}.hook_in")
+            default_cached_hooks_names.append(f"blocks.{block_idx}.ln1.hook_in")
+            default_cached_hooks_names.append(f"blocks.{block_idx}.ln1.hook_scale")
+            default_cached_hooks_names.append(f"blocks.{block_idx}.ln1.hook_normalized")
+            default_cached_hooks_names.append(f"blocks.{block_idx}.ln1.hook_out")
+            default_cached_hooks_names.append(f"blocks.{block_idx}.ln1_post.hook_in")
+            default_cached_hooks_names.append(f"blocks.{block_idx}.ln1_post.hook_scale")
+            default_cached_hooks_names.append(f"blocks.{block_idx}.ln1_post.hook_normalized")
+            default_cached_hooks_names.append(f"blocks.{block_idx}.ln1_post.hook_out")
+            default_cached_hooks_names.append(f"blocks.{block_idx}.attn.hook_in")
+            default_cached_hooks_names.append(f"blocks.{block_idx}.attn.q.hook_in")
+            default_cached_hooks_names.append(f"blocks.{block_idx}.attn.q.hook_out")
+            default_cached_hooks_names.append(f"blocks.{block_idx}.attn.q_norm.hook_in")
+            default_cached_hooks_names.append(f"blocks.{block_idx}.attn.q_norm.hook_out")
+            default_cached_hooks_names.append(f"blocks.{block_idx}.attn.k.hook_in")
+            default_cached_hooks_names.append(f"blocks.{block_idx}.attn.k.hook_out")
+            default_cached_hooks_names.append(f"blocks.{block_idx}.attn.k_norm.hook_in")
+            default_cached_hooks_names.append(f"blocks.{block_idx}.attn.k_norm.hook_out")
+            default_cached_hooks_names.append(f"blocks.{block_idx}.attn.v.hook_in")
+            default_cached_hooks_names.append(f"blocks.{block_idx}.attn.v.hook_out")
+            default_cached_hooks_names.append(f"blocks.{block_idx}.attn.o.hook_in")
+            default_cached_hooks_names.append(f"blocks.{block_idx}.attn.o.hook_out")
+            default_cached_hooks_names.append(f"blocks.{block_idx}.attn.hook_attn_scores")
+            default_cached_hooks_names.append(f"blocks.{block_idx}.attn.hook_pattern")
+            default_cached_hooks_names.append(f"blocks.{block_idx}.attn.hook_hidden_states")
+            default_cached_hooks_names.append(f"blocks.{block_idx}.attn.hook_out")
+            default_cached_hooks_names.append(f"blocks.{block_idx}.ln2.hook_in")
+            default_cached_hooks_names.append(f"blocks.{block_idx}.ln2.hook_scale")
+            default_cached_hooks_names.append(f"blocks.{block_idx}.ln2.hook_normalized")
+            default_cached_hooks_names.append(f"blocks.{block_idx}.ln2.hook_out")
+            default_cached_hooks_names.append(f"blocks.{block_idx}.ln2_post.hook_in")
+            default_cached_hooks_names.append(f"blocks.{block_idx}.ln2_post.hook_scale")
+            default_cached_hooks_names.append(f"blocks.{block_idx}.ln2_post.hook_normalized")
+            default_cached_hooks_names.append(f"blocks.{block_idx}.ln2_post.hook_out")
+            default_cached_hooks_names.append(f"blocks.{block_idx}.mlp.hook_in")
+            default_cached_hooks_names.append(f"blocks.{block_idx}.mlp.in.hook_in")
+            default_cached_hooks_names.append(f"blocks.{block_idx}.mlp.in.hook_out")
+            default_cached_hooks_names.append(f"blocks.{block_idx}.mlp.out.hook_in")
+            default_cached_hooks_names.append(f"blocks.{block_idx}.mlp.out.hook_out")
+            default_cached_hooks_names.append(f"blocks.{block_idx}.mlp.gate.hook_in")
+            default_cached_hooks_names.append(f"blocks.{block_idx}.mlp.gate.hook_out")
+            default_cached_hooks_names.append(f"blocks.{block_idx}.mlp.hook_out")
+            default_cached_hooks_names.append(f"blocks.{block_idx}.hook_out")
+
+        for hook_name in default_cached_hooks_names:
+            if hook_name in self._hook_registry:
+                self.hooks_to_cache[hook_name] = self._hook_registry[hook_name]
+
+    def set_hooks_to_cache(
+        self, hook_names: Optional[List[str]] = None, include_all: bool = False
+    ) -> None:
+        """Set the hooks to cache when running the model with cache.
+
+        You can specify hook names that were only available in the old HookedTransformer,
+        but in this case you need to make sure to enable compatibility mode.
+
+        Args:
+            hook_names (Optional[List[str]]): List of hook names to cache
+            include_all (bool): Whether to cache all hooks
+        """
+        hooks_to_cache = {}
+
+        if self.compatibility_mode:
+            aliases = collect_aliases_recursive(self)
+
+        if include_all:
+            self.hooks_to_cache = self.hook_dict
+            return
+
+        if hook_names is not None:
+            for hook_name in hook_names:
+                if hook_name in self._hook_registry:
+                    hooks_to_cache[hook_name] = self._hook_registry[hook_name]
+                else:
+                    raise ValueError(
+                        f"Hook {hook_name} does not exist. If you are using a hook name used with the old HookedTransformer, make sure to enable compatibility mode."
+                    )
+        else:
+            raise ValueError("hook_names must be provided if include_all is False")
+
+        self.hooks_to_cache = hooks_to_cache
 
     def __getattr__(self, name: str) -> Any:
         """Provide a clear error message for missing attributes."""
@@ -531,14 +670,20 @@ class TransformerBridge(nn.Module):
             # Fold ln2 into MLP
             if not self.cfg.attn_only:
                 if fold_biases:
-                    self.blocks[l].mlp.input.bias.data = self.blocks[l].mlp.input.bias.data + (
-                        self.blocks[l].mlp.input.weight.data * self.blocks[l].ln2.bias.data[:, None]
-                    ).sum(-2)
+                    getattr(self.blocks[l].mlp, "in").bias.data = getattr(
+                        self.blocks[l].mlp, "in"
+                    ).bias.data + (
+                        getattr(self.blocks[l].mlp, "in").weight.data
+                        * self.blocks[l].ln2.bias.data[:, None]
+                    ).sum(
+                        -2
+                    )
 
                     self.blocks[l].ln2.bias.data = torch.zeros_like(self.blocks[l].ln2.bias)
 
-                self.blocks[l].mlp.input.weight.data = (
-                    self.blocks[l].mlp.input.weight.data * self.blocks[l].ln2.weight.data[:, None]
+                getattr(self.blocks[l].mlp, "in").weight.data = (
+                    getattr(self.blocks[l].mlp, "in").weight.data
+                    * self.blocks[l].ln2.weight.data[:, None]
                 )
 
                 if self.cfg.gated_mlp:
@@ -550,10 +695,10 @@ class TransformerBridge(nn.Module):
                 self.blocks[l].ln2.weight.data = torch.zeros_like(self.blocks[l].ln2.weight)
 
                 if center_weights:
-                    self.blocks[l].mlp.input.weight.data = self.blocks[
-                        l
-                    ].mlp.input.weight.data - einops.reduce(
-                        self.blocks[l].mlp.input.weight.data,
+                    getattr(self.blocks[l].mlp, "in").weight.data = getattr(
+                        self.blocks[l].mlp, "in"
+                    ).weight.data - einops.reduce(
+                        getattr(self.blocks[l].mlp, "in").weight.data,
                         "d_model d_mlp -> 1 d_mlp",
                         "mean",
                     )
@@ -1537,7 +1682,7 @@ class TransformerBridge(nn.Module):
             return cache_hook
 
         # Use cached hooks instead of re-discovering them
-        hook_dict = self.hook_dict
+        hook_dict = self.hooks_to_cache
 
         # Filter hooks based on names_filter
         for hook_name, hook in hook_dict.items():
@@ -1701,8 +1846,10 @@ class TransformerBridge(nn.Module):
         # Store hooks that we add so we can remove them later
         added_hooks: List[Tuple[HookPoint, str]] = []
 
-        def add_hook_to_point(hook_point: HookPoint, hook_fn: Callable, name: str):
-            hook_point.add_hook(hook_fn)
+        def add_hook_to_point(
+            hook_point: HookPoint, hook_fn: Callable, name: str, dir: Literal["fwd", "bwd"] = "fwd"
+        ):
+            hook_point.add_hook(hook_fn, dir=dir)
             added_hooks.append((hook_point, name))
 
         # Add stop_at_layer hook if specified
@@ -1723,10 +1870,11 @@ class TransformerBridge(nn.Module):
                 block_hook_name = f"blocks.{last_layer_to_process}.hook_out"
                 hook_dict = self.hook_dict
                 if block_hook_name in hook_dict:
-                    add_hook_to_point(hook_dict[block_hook_name], stop_hook, block_hook_name)
+                    add_hook_to_point(hook_dict[block_hook_name], stop_hook, block_hook_name, "fwd")
 
         # Helper function to apply hooks based on name or filter function
         def apply_hooks(hooks: List[Tuple[Union[str, Callable], Callable]], is_fwd: bool):
+            direction: Literal["fwd", "bwd"] = "fwd" if is_fwd else "bwd"
             # Collect aliases for resolving legacy hook names
             aliases = collect_aliases_recursive(self)
 
@@ -1759,13 +1907,15 @@ class TransformerBridge(nn.Module):
                         actual_hook_name = aliases[hook_name_or_filter]
 
                     if actual_hook_name in hook_dict:
-                        add_hook_to_point(hook_dict[actual_hook_name], hook_fn, actual_hook_name)
+                        add_hook_to_point(
+                            hook_dict[actual_hook_name], hook_fn, actual_hook_name, direction
+                        )
                 else:
                     # Filter function
                     hook_dict = self.hook_dict
                     for name, hook_point in hook_dict.items():
                         if hook_name_or_filter(name):
-                            add_hook_to_point(hook_point, hook_fn, name)
+                            add_hook_to_point(hook_point, hook_fn, name, direction)
 
         try:
             # Apply forward hooks
@@ -2185,10 +2335,18 @@ class TransformerBridge(nn.Module):
                 # Add forward hooks
                 for hook_name, hook_fn in fwd_hooks:
                     try:
-                        self.add_hook(hook_name, hook_fn)
+                        self.add_hook(hook_name, hook_fn, dir="fwd")
                         added_hooks.append((hook_name, hook_fn))
                     except Exception as e:
-                        print(f"Warning: Failed to add hook {hook_name}: {e}")
+                        print(f"Warning: Failed to add forward hook {hook_name}: {e}")
+
+                # Add backward hooks
+                for hook_name, hook_fn in bwd_hooks:
+                    try:
+                        self.add_hook(hook_name, hook_fn, dir="bwd")
+                        added_hooks.append((hook_name, hook_fn))
+                    except Exception as e:
+                        print(f"Warning: Failed to add backward hook {hook_name}: {e}")
 
                 yield
 

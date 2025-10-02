@@ -230,6 +230,7 @@ def boot(
     # Load the tokenizer
     tokenizer = tokenizer
     default_padding_side = getattr(adapter.cfg, "default_padding_side", None)
+    use_fast = getattr(adapter.cfg, "use_fast", True)
 
     if tokenizer is not None:
         tokenizer = setup_tokenizer(tokenizer, default_padding_side=default_padding_side)
@@ -239,6 +240,7 @@ def boot(
             AutoTokenizer.from_pretrained(
                 model_name,
                 add_bos_token=True,
+                use_fast=use_fast,
                 token=huggingface_token if len(huggingface_token) > 0 else None,
             ),
             default_padding_side=default_padding_side,

@@ -23,7 +23,7 @@ class BlockBridge(GeneralizedComponent):
 
     hook_aliases = {
         "hook_resid_pre": "hook_in",
-        "hook_resid_mid": "attn.hook_out",
+        "hook_resid_mid": "ln2.hook_in",
         "hook_resid_post": "hook_out",
         "hook_attn_in": "attn.hook_in",
         "hook_attn_out": "attn.hook_out",
