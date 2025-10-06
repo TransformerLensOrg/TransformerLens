@@ -357,7 +357,9 @@ class ProcessWeights:
             # Apply the individual math functions
             if fold_biases:
                 # Only fold biases if all tensors exist
-                if all(t is not None for t in [wk_tensor, wv_tensor, bq_tensor, bk_tensor, bv_tensor]):
+                if all(
+                    t is not None for t in [wk_tensor, wv_tensor, bq_tensor, bk_tensor, bv_tensor]
+                ):
                     bq_tensor, bk_tensor, bv_tensor = ProcessWeights.fold_layer_norm_biases(
                         wq_tensor, wk_tensor, wv_tensor, bq_tensor, bk_tensor, bv_tensor, ln1_b
                     )
@@ -552,7 +554,13 @@ class ProcessWeights:
             if hf_w_q_key == hf_w_k_key == hf_w_v_key:
                 # Combined QKV format - combine back into single tensor
                 # Only proceed if we have all required tensors
-                if wk_tensor is None or wv_tensor is None or bq_tensor is None or bk_tensor is None or bv_tensor is None:
+                if (
+                    wk_tensor is None
+                    or wv_tensor is None
+                    or bq_tensor is None
+                    or bk_tensor is None
+                    or bv_tensor is None
+                ):
                     return
 
                 n_heads = cfg.n_heads
