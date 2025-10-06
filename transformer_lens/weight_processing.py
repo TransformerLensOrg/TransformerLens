@@ -249,12 +249,12 @@ class ProcessWeights:
         else:
             # State dict is already in TransformerLens format - use directly
             # Handle case where some keys might not exist (e.g., grouped query attention)
-            wq_tensor = state_dict.get(f"blocks.{layer}.attn.W_Q", None)
-            wk_tensor = state_dict.get(f"blocks.{layer}.attn.W_K", None)
-            wv_tensor = state_dict.get(f"blocks.{layer}.attn.W_V", None)
-            bq_tensor = state_dict.get(f"blocks.{layer}.attn.b_Q", None)
-            bk_tensor = state_dict.get(f"blocks.{layer}.attn.b_K", None)
-            bv_tensor = state_dict.get(f"blocks.{layer}.attn.b_V", None)
+            wq_tensor = state_dict.get(f"blocks.{layer}.attn.W_Q", None)  # type: ignore[assignment]
+            wk_tensor = state_dict.get(f"blocks.{layer}.attn.W_K", None)  # type: ignore[assignment]
+            wv_tensor = state_dict.get(f"blocks.{layer}.attn.W_V", None)  # type: ignore[assignment]
+            bq_tensor = state_dict.get(f"blocks.{layer}.attn.b_Q", None)  # type: ignore[assignment]
+            bk_tensor = state_dict.get(f"blocks.{layer}.attn.b_K", None)  # type: ignore[assignment]
+            bv_tensor = state_dict.get(f"blocks.{layer}.attn.b_V", None)  # type: ignore[assignment]
 
         # Extract LayerNorm parameters using same format detection
         if uses_tl_format:
@@ -360,8 +360,8 @@ class ProcessWeights:
                 if all(
                     t is not None for t in [wk_tensor, wv_tensor, bq_tensor, bk_tensor, bv_tensor]
                 ):
-                    bq_tensor, bk_tensor, bv_tensor = ProcessWeights.fold_layer_norm_biases(
-                        wq_tensor, wk_tensor, wv_tensor, bq_tensor, bk_tensor, bv_tensor, ln1_b
+                    bq_tensor, bk_tensor, bv_tensor = ProcessWeights.fold_layer_norm_biases(  # type: ignore[arg-type]
+                        wq_tensor, wk_tensor, wv_tensor, bq_tensor, bk_tensor, bv_tensor, ln1_b  # type: ignore[arg-type]
                     )
                 if keys["ln1_b"] in state_dict:
                     del state_dict[keys["ln1_b"]]
@@ -598,31 +598,31 @@ class ProcessWeights:
                 hf_b_v_key = adapter.translate_transformer_lens_path(f"blocks.{layer}.attn.b_V")
 
                 state_dict[hf_w_q_key] = ProcessWeights.convert_tensor_to_hf_format(
-                    wq_tensor, f"blocks.{layer}.attn.W_Q", adapter, cfg, layer
+                    wq_tensor, f"blocks.{layer}.attn.W_Q", adapter, cfg, layer  # type: ignore[arg-type]
                 )
                 state_dict[hf_w_k_key] = ProcessWeights.convert_tensor_to_hf_format(
-                    wk_tensor, f"blocks.{layer}.attn.W_K", adapter, cfg, layer
+                    wk_tensor, f"blocks.{layer}.attn.W_K", adapter, cfg, layer  # type: ignore[arg-type]
                 )
                 state_dict[hf_w_v_key] = ProcessWeights.convert_tensor_to_hf_format(
-                    wv_tensor, f"blocks.{layer}.attn.W_V", adapter, cfg, layer
+                    wv_tensor, f"blocks.{layer}.attn.W_V", adapter, cfg, layer  # type: ignore[arg-type]
                 )
                 state_dict[hf_b_q_key] = ProcessWeights.convert_tensor_to_hf_format(
-                    bq_tensor, f"blocks.{layer}.attn.b_Q", adapter, cfg, layer
+                    bq_tensor, f"blocks.{layer}.attn.b_Q", adapter, cfg, layer  # type: ignore[arg-type]
                 )
                 state_dict[hf_b_k_key] = ProcessWeights.convert_tensor_to_hf_format(
-                    bk_tensor, f"blocks.{layer}.attn.b_K", adapter, cfg, layer
+                    bk_tensor, f"blocks.{layer}.attn.b_K", adapter, cfg, layer  # type: ignore[arg-type]
                 )
                 state_dict[hf_b_v_key] = ProcessWeights.convert_tensor_to_hf_format(
-                    bv_tensor, f"blocks.{layer}.attn.b_V", adapter, cfg, layer
+                    bv_tensor, f"blocks.{layer}.attn.b_V", adapter, cfg, layer  # type: ignore[arg-type]
                 )
         else:
             # Store directly (TransformerLens format)
-            state_dict[keys["W_Q"]] = wq_tensor
-            state_dict[keys["W_K"]] = wk_tensor
-            state_dict[keys["W_V"]] = wv_tensor
-            state_dict[keys["b_Q"]] = bq_tensor
-            state_dict[keys["b_K"]] = bk_tensor
-            state_dict[keys["b_V"]] = bv_tensor
+            state_dict[keys["W_Q"]] = wq_tensor  # type: ignore[assignment]
+            state_dict[keys["W_K"]] = wk_tensor  # type: ignore[assignment]
+            state_dict[keys["W_V"]] = wv_tensor  # type: ignore[assignment]
+            state_dict[keys["b_Q"]] = bq_tensor  # type: ignore[assignment]
+            state_dict[keys["b_K"]] = bk_tensor  # type: ignore[assignment]
+            state_dict[keys["b_V"]] = bv_tensor  # type: ignore[assignment]
 
     @staticmethod
     def _detect_unembed_format(state_dict: Dict[str, torch.Tensor], adapter) -> tuple[bool, bool]:
