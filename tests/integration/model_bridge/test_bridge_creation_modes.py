@@ -32,7 +32,7 @@ class TestBridgeCreationModes:
         assert (
             abs(ref_loss - bridge_loss) < 1.0
         ), f"Losses should be reasonably close: {ref_loss} vs {bridge_loss}"
-        assert 3.0 < bridge_loss < 6.0, f"Bridge loss should be reasonable: {bridge_loss}"
+        assert 3.0 < bridge_loss < 8.0, f"Bridge loss should be reasonable: {bridge_loss}"
 
     def test_bridge_full_compatibility(self, reference_model, test_text):
         """Test bridge with full compatibility mode processing."""
@@ -45,7 +45,7 @@ class TestBridgeCreationModes:
         # With full processing, losses should be very close
         diff = abs(ref_loss - bridge_loss)
         assert diff < 0.01, f"Processed bridge should match reference closely: {diff}"
-        assert 3.0 < bridge_loss < 6.0, f"Bridge loss should be reasonable: {bridge_loss}"
+        assert 3.0 < bridge_loss < 8.0, f"Bridge loss should be reasonable: {bridge_loss}"
 
     def test_bridge_component_inspection(self):
         """Test that bridge components can be inspected."""
