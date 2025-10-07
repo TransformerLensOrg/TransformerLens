@@ -31,7 +31,7 @@ def test_models():
 
 
 @pytest.mark.skip(
-    reason="Tensor extraction consistency tests failing due to architectural differences"
+    reason="Tensor extraction consistency tests failing due to architectural differences between HookedTransformer and TransformerBridge"
 )
 class TestTensorExtractionConsistency:
     """Test that tensor extraction returns consistent results between models."""
