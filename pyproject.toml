@@ -75,8 +75,8 @@
             "--jaxtyping-packages=transformer_lens,beartype.beartype",
             "--nbval",
             "-W ignore::beartype.roar.BeartypeDecorHintPep585DeprecationWarning",
-            "-v",  # Verbose output to show individual test names
         ]
+        testpaths = ["tests", "transformer_lens"]  # Only test these directories
         doctest_optionflags="NORMALIZE_WHITESPACE ELLIPSIS FLOAT_CMP"
         filterwarnings=[
             "ignore:pkg_resources is deprecated as an API:DeprecationWarning",
