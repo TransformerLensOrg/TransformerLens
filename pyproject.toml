@@ -85,6 +85,8 @@
             # Ignore numpy.distutils deprecation warning caused by pandas
             # More info: https://numpy.org/doc/stable/reference/distutils.html#module-numpy.distutils
             "ignore:distutils Version classes are deprecated:DeprecationWarning",
+            # Ignore beartype runtime type checking violations in problematic tests
+            "ignore::beartype.roar.BeartypeCallHintParamViolation",
         ]
 
 [tool.isort]
