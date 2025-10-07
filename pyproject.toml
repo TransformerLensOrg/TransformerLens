@@ -75,8 +75,7 @@
             "--jaxtyping-packages=transformer_lens,beartype.beartype",
             "--nbval",
             "-W ignore::beartype.roar.BeartypeDecorHintPep585DeprecationWarning",
-            "-n", "auto",  # Enable parallel execution with auto-detected number of workers
-            "--tb=short",  # Shorter traceback format for faster output
+            "-v",  # Verbose output to show individual test names
         ]
         doctest_optionflags="NORMALIZE_WHITESPACE ELLIPSIS FLOAT_CMP"
         filterwarnings=[
