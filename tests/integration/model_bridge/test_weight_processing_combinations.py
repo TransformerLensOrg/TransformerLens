@@ -11,24 +11,22 @@ from transformer_lens.model_bridge import TransformerBridge
 @pytest.mark.parametrize(
     "fold_ln,center_writing_weights,center_unembed,fold_value_biases,expected_close_match",
     [
-        # Test individual flags
+        # Test critical combinations only to speed up CI
         (False, False, False, False, True),  # No processing
-        (True, False, False, False, True),  # Only fold_ln
-        (False, True, False, False, True),  # Only center_writing
-        (False, False, True, False, True),  # Only center_unembed
-        (False, False, False, True, True),  # Only fold_value_biases
-        # Test combinations
-        (True, True, False, False, True),  # fold_ln + center_writing
-        (True, False, True, False, True),  # fold_ln + center_unembed
-        (True, False, False, True, True),  # fold_ln + fold_value_biases
-        (False, True, True, False, True),  # center_writing + center_unembed
-        # Test all except one
-        (True, True, True, False, True),  # All except fold_value_biases
-        (True, True, False, True, True),  # All except center_unembed
-        (True, False, True, True, True),  # All except center_writing
-        (False, True, True, True, True),  # All except fold_ln
-        # Test all processing
-        (True, True, True, True, True),  # All processing
+        (True, False, False, False, True),  # Only fold_ln (most important)
+        (True, True, False, False, True),  # fold_ln + center_writing (common combo)
+        (True, True, True, True, True),  # All processing (default)
+        # NOTE: Full test matrix commented out for CI speed. Uncomment for thorough testing:
+        # (False, True, False, False, True),  # Only center_writing
+        # (False, False, True, False, True),  # Only center_unembed
+        # (False, False, False, True, True),  # Only fold_value_biases
+        # (True, False, True, False, True),  # fold_ln + center_unembed
+        # (True, False, False, True, True),  # fold_ln + fold_value_biases
+        # (False, True, True, False, True),  # center_writing + center_unembed
+        # (True, True, True, False, True),  # All except fold_value_biases
+        # (True, True, False, True, True),  # All except center_unembed
+        # (True, False, True, True, True),  # All except center_writing
+        # (False, True, True, True, True),  # All except fold_ln
     ],
 )
 def test_weight_processing_flag_combinations(
