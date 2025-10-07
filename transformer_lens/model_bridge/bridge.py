@@ -3497,8 +3497,9 @@ class TransformerBridge(nn.Module):
             Model output based on return_type
         """
 
-        # Use processed computation if weights have been processed
-        if hasattr(self, "_weights_processed") and self._weights_processed:
+        # Use processed computation if weights have been processed AND no KV cache is provided
+        # (KV cache support requires using the original HuggingFace forward path)
+        if hasattr(self, "_weights_processed") and self._weights_processed and past_kv_cache is None:
             # Check if we're using true HF format processing
             if hasattr(self, "_true_hf_format_processing") and self._true_hf_format_processing:
                 # Use custom HF format forward pass that works with processed weights
