@@ -45,9 +45,19 @@ class EmbeddingBridge(GeneralizedComponent):
         """Return the embedding weight matrix."""
         if self.original_component is None:
             raise RuntimeError(f"Original component not set for {self.name}")
+
+        # Handle rotary embeddings (have inv_freq instead of weight)
+        if hasattr(self.original_component, "inv_freq") and not hasattr(
+            self.original_component, "weight"
+        ):
+            inv_freq = self.original_component.inv_freq
+            assert isinstance(inv_freq, torch.Tensor), f"inv_freq is not a tensor for {self.name}"
+            return inv_freq
+
+        # Handle regular embeddings (have weight)
         assert hasattr(
             self.original_component, "weight"
-        ), f"Component {self.name} has no weight attribute"
+        ), f"Component {self.name} has neither weight nor inv_freq attribute"
         weight = self.original_component.weight
         assert isinstance(weight, torch.Tensor), f"Weight is not a tensor for {self.name}"
         return weight

@@ -13,7 +13,7 @@ class TestBridgeCreationModes:
     @pytest.fixture
     def reference_model(self):
         """Create reference HookedTransformer."""
-        return HookedTransformer.from_pretrained("gpt2", device="cpu")
+        return HookedTransformer.from_pretrained("distilgpt2", device="cpu")
 
     @pytest.fixture
     def test_text(self):
@@ -22,7 +22,7 @@ class TestBridgeCreationModes:
 
     def test_bridge_no_processing(self, reference_model, test_text):
         """Test bridge with no weight processing."""
-        bridge = TransformerBridge.boot_transformers("gpt2", device="cpu")
+        bridge = TransformerBridge.boot_transformers("distilgpt2", device="cpu")
         bridge.enable_compatibility_mode(no_processing=True)
 
         ref_loss = reference_model(test_text, return_type="loss")
@@ -36,7 +36,7 @@ class TestBridgeCreationModes:
 
     def test_bridge_full_compatibility(self, reference_model, test_text):
         """Test bridge with full compatibility mode processing."""
-        bridge = TransformerBridge.boot_transformers("gpt2", device="cpu")
+        bridge = TransformerBridge.boot_transformers("distilgpt2", device="cpu")
         bridge.enable_compatibility_mode()
 
         ref_loss = reference_model(test_text, return_type="loss")
@@ -49,7 +49,7 @@ class TestBridgeCreationModes:
 
     def test_bridge_component_inspection(self):
         """Test that bridge components can be inspected."""
-        bridge = TransformerBridge.boot_transformers("gpt2", device="cpu")
+        bridge = TransformerBridge.boot_transformers("distilgpt2", device="cpu")
 
         # Check that we can access the original model components
         assert hasattr(bridge.original_model, "transformer"), "Should have transformer"
@@ -70,7 +70,7 @@ class TestBridgeCreationModes:
 
     def test_bridge_tokenizer_compatibility(self, reference_model):
         """Test that bridge tokenizer works like reference."""
-        bridge = TransformerBridge.boot_transformers("gpt2", device="cpu")
+        bridge = TransformerBridge.boot_transformers("distilgpt2", device="cpu")
         test_text = "Hello world test"
 
         # Tokenize with both
@@ -82,7 +82,7 @@ class TestBridgeCreationModes:
 
     def test_bridge_configuration_persistence(self):
         """Test that bridge configuration persists correctly."""
-        bridge = TransformerBridge.boot_transformers("gpt2", device="cpu")
+        bridge = TransformerBridge.boot_transformers("distilgpt2", device="cpu")
 
         # Test configuration before compatibility mode
         assert hasattr(bridge, "cfg"), "Bridge should have configuration"
@@ -117,7 +117,7 @@ class TestBridgeCreationModes:
         gc.collect()
 
         # Create and destroy bridge
-        bridge = TransformerBridge.boot_transformers("gpt2", device="cpu")
+        bridge = TransformerBridge.boot_transformers("distilgpt2", device="cpu")
         bridge.enable_compatibility_mode()
 
         # Process some text to ensure everything is initialized

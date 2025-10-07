@@ -24,7 +24,7 @@ class TestCentralizedWeightProcessing:
 
     @pytest.fixture(scope="class")
     def model_name(self):
-        return "gpt2"
+        return "distilgpt2"
 
     @pytest.fixture(scope="class")
     def device(self):
