@@ -49,7 +49,6 @@
             pytest=">=7.2.0"
             pytest-cov=">=4.0.0"
             pytest-doctestplus="^1.0.0"
-            pytest-xdist="^3.8.0"  # For parallel test execution
 
         [tool.poetry.group.jupyter.dependencies]
             ipywidgets="^8.1.1"
