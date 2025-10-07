@@ -12,7 +12,7 @@ from transformer_lens.weight_processing import ProcessWeights
 def test_models():
     """Set up test models for consistency testing."""
     device = "cpu"
-    model_name = "gpt2"
+    model_name = "distilgpt2"
 
     # Load HookedTransformer (no processing)
     hooked_model = HookedTransformer.from_pretrained(
