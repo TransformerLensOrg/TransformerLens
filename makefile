@@ -9,19 +9,19 @@ check-format:
 	poetry run black --check .
 
 unit-test:
-	poetry run pytest tests/unit
+	poetry run pytest tests/unit -n auto --tb=no -q
 
 integration-test:
-	poetry run pytest tests/integration
+	poetry run pytest tests/integration -n auto --tb=no -q
 
 acceptance-test:
-	poetry run pytest tests/acceptance
+	poetry run pytest tests/acceptance -n auto --tb=no -q
 
 coverage-report-test:
-	poetry run pytest --cov=transformer_lens/ --cov-report=html --cov-branch tests/unit tests/integration tests/acceptance
+	poetry run pytest --cov=transformer_lens/ --cov-report=html --cov-branch tests/unit tests/integration tests/acceptance -n auto
 
 docstring-test:
-	poetry run pytest transformer_lens/
+	poetry run pytest transformer_lens/ -n auto --tb=no
 
 notebook-test:
 	poetry run pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/BERT.ipynb

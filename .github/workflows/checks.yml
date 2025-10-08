@@ -46,18 +46,20 @@ jobs:
   compatibility-checks:
     name: Compatibility Checks
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     strategy:
+      fail-fast: false  # Don't cancel other jobs if one fails
       matrix:
         python-version:
           - "3.10"
           - "3.11"
           - "3.12"
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Install Poetry
         uses: snok/install-poetry@v1
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
           cache: "poetry"
@@ -66,9 +68,12 @@ jobs:
         with:
           path: |
             ~/.cache/huggingface/hub/models--gpt2
+            ~/.cache/huggingface/hub/models--distilgpt2
             ~/.cache/huggingface/hub/models--NeelNanda--Attn_Only*
             ~/.cache/huggingface/hub/models--roneneldan--TinyStories-1M*
-          key: ${{ runner.os }}-huggingface-models
+            ~/.cache/huggingface/hub/models--google--gemma*
+            ~/.cache/transformers
+          key: ${{ runner.os }}-huggingface-models-v2-${{ hashFiles('**/pyproject.toml') }}
       - name: Install dependencies
         run: |
           poetry check --lock
@@ -92,12 +97,13 @@ jobs:
   code-checks:
     name: Code Checks
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Install Poetry
         uses: snok/install-poetry@v1
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: "poetry"
@@ -106,9 +112,12 @@ jobs:
         with:
           path: |
             ~/.cache/huggingface/hub/models--gpt2
+            ~/.cache/huggingface/hub/models--distilgpt2
             ~/.cache/huggingface/hub/models--NeelNanda--Attn_Only*
             ~/.cache/huggingface/hub/models--roneneldan--TinyStories-1M*
-          key: ${{ runner.os }}-huggingface-models
+            ~/.cache/huggingface/hub/models--google--gemma*
+            ~/.cache/transformers
+          key: ${{ runner.os }}-huggingface-models-v2-${{ hashFiles('**/pyproject.toml') }}
       - name: Install dependencies
         run: |
           poetry check --lock
@@ -126,8 +135,16 @@ jobs:
           huggingface-cli login --token "$HF_TOKEN"
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
-      - name: Test Suite with Coverage Report
-        run: make coverage-report-test
+      - name: Test Suite with Coverage Report (Unit Tests)
+        run: poetry run pytest --cov=transformer_lens/ --cov-report=html --cov-branch tests/unit -n auto --tb=no
+        env:
+          HF_TOKEN:  ${{ secrets.HF_TOKEN }}
+      - name: Test Suite with Coverage Report (Integration Tests)
+        run: poetry run pytest --cov=transformer_lens/ --cov-report=html --cov-branch --cov-append tests/integration -n auto --tb=no
+        env:
+          HF_TOKEN:  ${{ secrets.HF_TOKEN }}
+      - name: Test Suite with Coverage Report (Acceptance Tests)
+        run: poetry run pytest --cov=transformer_lens/ --cov-report=html --cov-branch --cov-append tests/acceptance -n auto --tb=no
         env:
           HF_TOKEN:  ${{ secrets.HF_TOKEN }}
       - name: Build check
@@ -141,7 +158,10 @@ jobs:
   notebook-checks:
     name: Notebook Checks
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
+      fail-fast: false  # Don't cancel other jobs if one fails
+      max-parallel: 3   # Limit parallel jobs to avoid resource contention
       matrix:
         notebook:
           # - "Activation_Patching_in_TL_Demo"
@@ -161,11 +181,11 @@ jobs:
           - "Patchscopes_Generation_Demo"
           # - "T5"
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Install Poetry
         uses: snok/install-poetry@v1
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           cache: "poetry"
@@ -200,7 +220,7 @@ jobs:
       - name: Install Poetry
         uses: snok/install-poetry@v1
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           cache: "poetry"
