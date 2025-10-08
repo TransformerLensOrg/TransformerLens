@@ -93,7 +93,7 @@ class TransformerLensConfig:
     act_fn: str = "relu"
 
     # Normalization type
-    normalization_type: str = "LN"
+    normalization_type: Optional[str] = "LN"
 
     # Number of experts
     num_experts: Optional[int] = None
