@@ -135,16 +135,8 @@ jobs:
           huggingface-cli login --token "$HF_TOKEN"
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
-      - name: Test Suite with Coverage Report (Unit Tests)
-        run: poetry run pytest --cov=transformer_lens/ --cov-report=html --cov-branch tests/unit -n auto --tb=no
-        env:
-          HF_TOKEN:  ${{ secrets.HF_TOKEN }}
-      - name: Test Suite with Coverage Report (Integration Tests)
-        run: poetry run pytest --cov=transformer_lens/ --cov-report=html --cov-branch --cov-append tests/integration -n auto --tb=no
-        env:
-          HF_TOKEN:  ${{ secrets.HF_TOKEN }}
-      - name: Test Suite with Coverage Report (Acceptance Tests)
-        run: poetry run pytest --cov=transformer_lens/ --cov-report=html --cov-branch --cov-append tests/acceptance -n auto --tb=no
+      - name: Test Suite with Coverage Report
+        run: make coverage-report-test
         env:
           HF_TOKEN:  ${{ secrets.HF_TOKEN }}
       - name: Build check
