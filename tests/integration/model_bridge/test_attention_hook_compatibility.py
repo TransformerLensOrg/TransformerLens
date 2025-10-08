@@ -10,7 +10,7 @@ from transformer_lens.model_bridge.bridge import TransformerBridge
 class TestAttentionHookCompatibility:
     """Test attention hook behavior compatibility."""
 
-    @pytest.fixture
+    @pytest.fixture(scope="class")
     def models(self):
         """Create HookedTransformer and TransformerBridge for testing."""
         # Create reference model
