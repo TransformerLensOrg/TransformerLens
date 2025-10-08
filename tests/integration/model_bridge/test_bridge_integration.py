@@ -6,6 +6,7 @@ including model initialization, text generation, hooks, and caching.
 
 import gc
 import logging
+import os
 
 import pytest
 import torch
@@ -338,24 +339,32 @@ def test_attention_pattern_hook_shape(gpt2_bridge_with_eager_attn):
         gpt2_bridge_with_eager_attn.blocks[0].attn.hook_pattern.remove_hooks()
 
 
-@pytest.mark.parametrize(
-    "model_name",
-    [
+def _get_test_models():
+    """Get list of models to test. Excludes large models in CI to avoid timeouts."""
+    models = [
         "gpt2",  # GPT-2 architecture
         "distilgpt2",  # DistilGPT-2 architecture (smaller GPT-2)
         "EleutherAI/pythia-70m",  # Pythia architecture (smallest, ~70M params)
         "EleutherAI/gpt-neo-125M",  # GPT-Neo architecture
-        "google/gemma-2-2b-it",  # Gemma architecture (Grouped Query Attention)
-    ],
-)
+    ]
+
+    # Only test large models locally, not in CI (to avoid timeouts)
+    if not os.getenv("CI"):
+        models.append(
+            "google/gemma-2-2b-it"
+        )  # Gemma architecture (Grouped Query Attention, 2B params)
+
+    return models
+
+
+@pytest.mark.parametrize("model_name", _get_test_models())
 def test_get_params(model_name):
     """Test that get_params works correctly with different model architectures.
 
     This test verifies that the get_params function can successfully extract
-    parameters from various model types (GPT-2, DistilGPT-2, Pythia, GPT-Neo, Gemma)
-    without encountering attribute errors or missing component issues. This includes
-    models with different attention architectures like Grouped Query Attention (GQA).
-    Covers a range of model sizes from 70M to 2B parameters.
+    parameters from various model types (GPT-2, DistilGPT-2, Pythia, GPT-Neo, and Gemma when not in CI)
+    without encountering attribute errors or missing component issues.
+    Covers a range of model sizes from 70M to 2B parameters (local only).
 
     Args:
         model_name: The model name to test (parameterized)
