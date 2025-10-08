@@ -34,7 +34,7 @@ def test_weight_processing_flag_combinations(
 ):
     """Test that different combinations of weight processing flags work correctly."""
     device = "cpu"
-    model_name = "gpt2"
+    model_name = "distilgpt2"  # Use distilgpt2 for faster tests
     test_text = "Natural language processing"
 
     # Get reference values from HookedTransformer with same settings
@@ -105,7 +105,7 @@ def test_weight_processing_flag_combinations(
 def test_no_processing_matches_unprocessed_hooked_transformer():
     """Test that no processing flag matches HookedTransformer loaded without processing."""
     device = "cpu"
-    model_name = "gpt2"
+    model_name = "distilgpt2"  # Use distilgpt2 for faster tests
     test_text = "Natural language processing"
 
     # Load HookedTransformer without processing
@@ -134,7 +134,7 @@ def test_no_processing_matches_unprocessed_hooked_transformer():
 def test_all_processing_matches_default_hooked_transformer():
     """Test that all processing flags match default HookedTransformer behavior."""
     device = "cpu"
-    model_name = "gpt2"
+    model_name = "distilgpt2"  # Use distilgpt2 for faster tests
     test_text = "Natural language processing"
 
     # Load default HookedTransformer (with all processing)
