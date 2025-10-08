@@ -214,7 +214,7 @@ class HookedTransformerConfig(TransformerLensConfig):
     window_size: Optional[int] = None
     attn_types: Optional[List] = None
     init_mode: str = "gpt2"
-    normalization_type: str = "LN"
+    normalization_type: Optional[str] = "LN"
     n_devices: int = 1
     attention_dir: str = "causal"
     attn_only: bool = False
