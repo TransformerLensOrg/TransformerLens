@@ -2,7 +2,7 @@ import pytest
 
 from transformer_lens.model_bridge import TransformerBridge
 
-MODEL = "gpt2"
+MODEL = "distilgpt2"  # Using distilgpt2 for faster tests
 prompt = "Hello World!"
 
 

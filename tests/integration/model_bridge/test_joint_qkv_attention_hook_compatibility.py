@@ -10,8 +10,8 @@ class TestJointQKVAttentionHookCompatibility:
 
     def test_v_hook_out_equals_blocks_attn_hook_v(self):
         """Test that v_hook_out in Joint QKV Attention bridge equals blocks.0.attn.hook_v on the overall model."""
-        # Load GPT-2 in TransformerBridge
-        bridge = TransformerBridge.boot_transformers("gpt2", device="cpu")
+        # Load DistilGPT-2 in TransformerBridge (faster for testing)
+        bridge = TransformerBridge.boot_transformers("distilgpt2", device="cpu")
 
         # Turn on compatibility mode
         bridge.enable_compatibility_mode(disable_warnings=True)
@@ -49,8 +49,8 @@ class TestJointQKVAttentionHookCompatibility:
 
     def test_q_hook_out_equals_blocks_attn_hook_q(self):
         """Test that q.hook_out in Joint QKV Attention bridge equals blocks.0.attn.hook_q on the overall model."""
-        # Load GPT-2 in TransformerBridge
-        bridge = TransformerBridge.boot_transformers("gpt2", device="cpu")
+        # Load DistilGPT-2 in TransformerBridge (faster for testing)
+        bridge = TransformerBridge.boot_transformers("distilgpt2", device="cpu")
 
         # Turn on compatibility mode
         bridge.enable_compatibility_mode(disable_warnings=True)
@@ -73,8 +73,8 @@ class TestJointQKVAttentionHookCompatibility:
 
     def test_k_hook_out_equals_blocks_attn_hook_k(self):
         """Test that k.hook_out in Joint QKV Attention bridge equals blocks.0.attn.hook_k on the overall model."""
-        # Load GPT-2 in TransformerBridge
-        bridge = TransformerBridge.boot_transformers("gpt2", device="cpu")
+        # Load DistilGPT-2 in TransformerBridge (faster for testing)
+        bridge = TransformerBridge.boot_transformers("distilgpt2", device="cpu")
 
         # Turn on compatibility mode
         bridge.enable_compatibility_mode(disable_warnings=True)
@@ -97,8 +97,8 @@ class TestJointQKVAttentionHookCompatibility:
 
     def test_hook_aliases_work_correctly(self):
         """Test that hook aliases work correctly in compatibility mode."""
-        # Load GPT-2 in TransformerBridge
-        bridge = TransformerBridge.boot_transformers("gpt2", device="cpu")
+        # Load DistilGPT-2 in TransformerBridge (faster for testing)
+        bridge = TransformerBridge.boot_transformers("distilgpt2", device="cpu")
 
         # Turn on compatibility mode
         bridge.enable_compatibility_mode(disable_warnings=True)

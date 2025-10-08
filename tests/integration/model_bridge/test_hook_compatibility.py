@@ -17,7 +17,7 @@ class TestHookCompatibility:
     @pytest.fixture(scope="class")
     def model_name(self):
         """Model name to use for testing."""
-        return "gpt2"
+        return "distilgpt2"
 
     @pytest.fixture(scope="class")
     def transformer_bridge(self, model_name):

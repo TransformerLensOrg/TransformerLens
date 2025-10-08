@@ -25,10 +25,11 @@ from transformer_lens.model_bridge.generalized_components.joint_qkv_attention im
 
 
 # Shared fixtures at module level to avoid repeated model loading
+# Using distilgpt2 for faster tests (6 layers vs 12, but same heads/hidden size)
 @pytest.fixture(scope="module")
 def gpt2_bridge():
-    """Load GPT-2 bridge once per module."""
-    bridge = TransformerBridge.boot_transformers("gpt2", device="cpu")
+    """Load DistilGPT-2 bridge once per module (faster than full GPT-2)."""
+    bridge = TransformerBridge.boot_transformers("distilgpt2", device="cpu")
     if bridge.tokenizer.pad_token is None:
         bridge.tokenizer.pad_token = bridge.tokenizer.eos_token
     return bridge
@@ -36,9 +37,9 @@ def gpt2_bridge():
 
 @pytest.fixture(scope="module")
 def gpt2_bridge_with_eager_attn():
-    """Load GPT-2 bridge with eager attention once per module."""
+    """Load DistilGPT-2 bridge with eager attention once per module."""
     bridge = TransformerBridge.boot_transformers(
-        "gpt2",
+        "distilgpt2",
         device="cpu",
         hf_config_overrides={"attn_implementation": "eager"},
     )
@@ -49,8 +50,8 @@ def gpt2_bridge_with_eager_attn():
 
 @pytest.fixture(scope="module")
 def gpt2_bridge_with_compat():
-    """Load GPT-2 bridge with compatibility mode once per module."""
-    bridge = TransformerBridge.boot_transformers("gpt2", device="cpu")
+    """Load DistilGPT-2 bridge with compatibility mode once per module."""
+    bridge = TransformerBridge.boot_transformers("distilgpt2", device="cpu")
     bridge.enable_compatibility_mode(disable_warnings=True)
     if bridge.tokenizer.pad_token is None:
         bridge.tokenizer.pad_token = bridge.tokenizer.eos_token

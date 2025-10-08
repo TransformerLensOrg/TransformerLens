@@ -10,12 +10,12 @@ from transformer_lens.model_bridge.bridge import TransformerBridge
 class TestBridgeVsHookedComparison:
     """Comprehensive tests comparing Bridge and HookedTransformer behavior."""
 
-    @pytest.fixture
+    @pytest.fixture(scope="class")
     def models_with_processing(self):
         """Create both models with weight processing."""
-        # HookedTransformer with processing
+        # HookedTransformer with processing (using distilgpt2 for faster tests)
         hooked = HookedTransformer.from_pretrained(
-            "gpt2",
+            "distilgpt2",
             device="cpu",
             fold_ln=True,
             center_writing_weights=True,
@@ -25,7 +25,7 @@ class TestBridgeVsHookedComparison:
         )
 
         # Bridge with equivalent processing
-        bridge = TransformerBridge.boot_transformers("gpt2", device="cpu")
+        bridge = TransformerBridge.boot_transformers("distilgpt2", device="cpu")
         bridge.enable_compatibility_mode()
 
         return hooked, bridge

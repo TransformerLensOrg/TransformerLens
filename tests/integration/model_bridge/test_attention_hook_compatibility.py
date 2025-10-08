@@ -13,11 +13,11 @@ class TestAttentionHookCompatibility:
     @pytest.fixture(scope="class")
     def models(self):
         """Create HookedTransformer and TransformerBridge for testing."""
-        # Create reference model
-        reference_model = HookedTransformer.from_pretrained("gpt2", device="cpu")
+        # Create reference model (using distilgpt2 for faster tests)
+        reference_model = HookedTransformer.from_pretrained("distilgpt2", device="cpu")
 
         # Create bridge model
-        bridge = TransformerBridge.boot_transformers("gpt2", device="cpu")
+        bridge = TransformerBridge.boot_transformers("distilgpt2", device="cpu")
         bridge.enable_compatibility_mode()
 
         return reference_model, bridge
