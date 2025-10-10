@@ -89,6 +89,24 @@ class TransformerLensConfig:
     # Layer norm folding activated
     layer_norm_folding: bool = False
 
+    # Activation function
+    act_fn: str = "relu"
+
+    # Normalization type
+    normalization_type: Optional[str] = "LN"
+
+    # Number of experts
+    num_experts: Optional[int] = None
+
+    # Number of experts per token
+    experts_per_token: Optional[int] = None
+
+    # Final RMS norm
+    final_rms: bool = False
+
+    # Model dtype for LayerNormPre compatibility
+    dtype: torch.dtype = torch.float32
+
     def __post_init__(self):
         """Post-initialization processing and validation."""
         # Set n_heads if not specified
@@ -108,7 +126,7 @@ class TransformerLensConfig:
             self.d_mlp = self.d_model * 4
 
     @classmethod
-    def unwrap(cls, config: Union[Dict, "TransformerLensConfig"]) -> TransformerLensConfig:
+    def unwrap(cls, config: Union[Dict, "TransformerLensConfig"]) -> "TransformerLensConfig":
         """
         Convenience function to avoid duplicate code from a common way config is passed to various components.
         """

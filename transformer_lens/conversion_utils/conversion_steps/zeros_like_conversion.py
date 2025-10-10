@@ -8,4 +8,4 @@ class ZerosLikeConversion(BaseHookConversion):
         return torch.zeros_like(input_value)
 
     def __repr__(self):
-        return f"Is a zeros_like operation"
+        return "Is a zeros_like operation"

@@ -3,7 +3,7 @@ import torch
 
 from transformer_lens.model_bridge import TransformerBridge
 
-MODEL = "gpt2"  # Use a model supported by TransformerBridge
+MODEL = "distilgpt2"  # Use distilgpt2 for faster tests
 
 prompt = "Hello World!"
 embed = lambda name: name == "hook_embed"

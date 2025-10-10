@@ -89,22 +89,22 @@ class MixtralArchitectureAdapter(ArchitectureAdapter):
                         name="self_attn",
                         config=self.cfg,
                         submodules={
-                            "W_Q": LinearBridge(name="q_proj"),
-                            "W_K": LinearBridge(name="k_proj"),
-                            "W_V": LinearBridge(name="v_proj"),
-                            "W_O": LinearBridge(name="o_proj"),
+                            "q": LinearBridge(name="q_proj"),
+                            "k": LinearBridge(name="k_proj"),
+                            "v": LinearBridge(name="v_proj"),
+                            "o": LinearBridge(name="o_proj"),
                         },
                     ),
                     "mlp": MoEBridge(
                         name="block_sparse_moe",
                         submodules={
-                            "W_gate": LinearBridge(name="gate"),
+                            "gate": LinearBridge(name="gate"),
                             "experts": BlockBridge(
                                 name="experts",
                                 submodules={
-                                    "W_gate": LinearBridge(name="w1"),
-                                    "W_in": LinearBridge(name="w3"),
-                                    "W_out": LinearBridge(name="w2"),
+                                    "gate": LinearBridge(name="w1"),
+                                    "in": LinearBridge(name="w3"),
+                                    "out": LinearBridge(name="w2"),
                                 },
                             ),
                         },

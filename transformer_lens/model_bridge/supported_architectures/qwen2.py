@@ -11,6 +11,7 @@ from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
     BlockBridge,
     EmbeddingBridge,
+    LinearBridge,
     MLPBridge,
     NormalizationBridge,
     UnembeddingBridge,
@@ -23,6 +24,10 @@ class Qwen2ArchitectureAdapter(ArchitectureAdapter):
     def __init__(self, cfg: Any) -> None:
         """Initialize the Qwen2 architecture adapter."""
         super().__init__(cfg)
+
+        self.cfg.default_prepend_bos = False
+        self.cfg.gated_mlp = True
+        self.cfg.uses_rms_norm = True
 
         self.conversion_rules = HookConversionSet(
             {
@@ -65,8 +70,24 @@ class Qwen2ArchitectureAdapter(ArchitectureAdapter):
                 submodules={
                     "ln1": NormalizationBridge(name="input_layernorm", config=self.cfg),
                     "ln2": NormalizationBridge(name="post_attention_layernorm", config=self.cfg),
-                    "attn": AttentionBridge(name="self_attn", config=self.cfg),
-                    "mlp": MLPBridge(name="mlp"),
+                    "attn": AttentionBridge(
+                        name="self_attn",
+                        config=self.cfg,
+                        submodules={
+                            "q": LinearBridge(name="q_proj"),
+                            "k": LinearBridge(name="k_proj"),
+                            "v": LinearBridge(name="v_proj"),
+                            "o": LinearBridge(name="o_proj"),
+                        },
+                    ),
+                    "mlp": MLPBridge(
+                        name="mlp",
+                        submodules={
+                            "gate": LinearBridge(name="gate_proj"),
+                            "in": LinearBridge(name="up_proj"),
+                            "out": LinearBridge(name="down_proj"),
+                        },
+                    ),
                 },
             ),
             "ln_final": NormalizationBridge(name="model.norm", config=self.cfg),
