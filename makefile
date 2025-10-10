@@ -9,16 +9,16 @@ check-format:
 	poetry run black --check .
 
 unit-test:
-	poetry run pytest tests/unit
+	poetry run pytest tests/unit -n auto --dist=worksteal
 
 integration-test:
-	poetry run pytest tests/integration
+	poetry run pytest tests/integration -n auto --dist=worksteal
 
 acceptance-test:
-	poetry run pytest tests/acceptance
+	poetry run pytest tests/acceptance -n auto --dist=worksteal
 
 coverage-report-test:
-	poetry run pytest --cov=transformer_lens/ --cov-report=html --cov-branch tests/unit tests/integration tests/acceptance
+	poetry run pytest --cov=transformer_lens/ --cov-report=html --cov-branch -n auto --dist=worksteal tests/unit tests/integration tests/acceptance
 
 docstring-test:
 	poetry run pytest transformer_lens/

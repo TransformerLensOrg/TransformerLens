@@ -70,7 +70,6 @@ AxisNames = Literal["layer", "pos", "head_index", "head", "src_pos", "dest_pos"]
 
 
 # %%
-from typing import Sequence
 
 
 def make_df_from_ranges(

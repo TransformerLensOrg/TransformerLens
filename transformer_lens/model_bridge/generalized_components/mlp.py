@@ -61,6 +61,36 @@ class MLPBridge(GeneralizedComponent):
         Returns:
             Output hidden states
         """
+
+        # Check if we're using processed weights from a reference model (layer norm folding case)
+        # This happens when set_processed_weights has been called
+        if hasattr(self, "_use_processed_weights") and self._use_processed_weights:
+            hidden_states = args[0]
+            # Apply input hook
+            hidden_states = self.hook_in(hidden_states)
+
+            # Use the processed weights directly with the same computation as reference model
+            if hasattr(self, "_processed_W_in") and hasattr(self, "_processed_W_out"):
+                # Input projection using TransformerLens format
+                hidden = torch.nn.functional.linear(
+                    hidden_states, self._processed_W_in.T, self._processed_b_in
+                )
+                # Apply activation (GELU for GPT-2)
+                hidden = torch.nn.functional.gelu(hidden)
+                # Output projection using TransformerLens format
+                output = torch.nn.functional.linear(
+                    hidden, self._processed_W_out.T, self._processed_b_out
+                )
+            else:
+                # Fallback to original component
+                new_args = (hidden_states,) + args[1:]
+                output = self.original_component(*new_args, **kwargs)  # type: ignore[misc]
+
+            # Apply output hook
+            output = self.hook_out(output)
+
+            return output
+
         if self.original_component is None:
             raise RuntimeError(
                 f"Original component not set for {self.name}. Call set_original_component() first."
@@ -73,3 +103,24 @@ class MLPBridge(GeneralizedComponent):
         output = self.hook_out(output)
 
         return output
+
+    def set_processed_weights(
+        self,
+        W_in: torch.Tensor,
+        W_out: torch.Tensor,
+        b_in: torch.Tensor | None = None,
+        b_out: torch.Tensor | None = None,
+    ) -> None:
+        """Set the processed weights to use when layer norm is folded.
+
+        Args:
+            W_in: The processed MLP input weight tensor
+            W_out: The processed MLP output weight tensor
+            b_in: The processed MLP input bias tensor (optional)
+            b_out: The processed MLP output bias tensor (optional)
+        """
+        self._processed_W_in = W_in
+        self._processed_W_out = W_out
+        self._processed_b_in = b_in
+        self._processed_b_out = b_out
+        self._use_processed_weights = True
