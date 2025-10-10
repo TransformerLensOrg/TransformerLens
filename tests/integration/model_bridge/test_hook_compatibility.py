@@ -14,12 +14,12 @@ from transformer_lens.model_bridge import TransformerBridge
 class TestHookCompatibility:
     """Test suite to verify hook compatibility for TransformerBridge."""
 
-    @pytest.fixture
+    @pytest.fixture(scope="class")
     def model_name(self):
         """Model name to use for testing."""
-        return "gpt2"
+        return "distilgpt2"
 
-    @pytest.fixture
+    @pytest.fixture(scope="class")
     def transformer_bridge(self, model_name):
         """Create a TransformerBridge for testing."""
         return TransformerBridge.boot_transformers(model_name, device="cpu")

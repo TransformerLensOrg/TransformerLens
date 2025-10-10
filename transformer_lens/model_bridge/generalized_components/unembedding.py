@@ -64,6 +64,27 @@ class UnembeddingBridge(GeneralizedComponent):
         Returns:
             Unembedded output (logits)
         """
+
+        # Check if we're using processed weights from a reference model (layer norm folding case)
+        # This happens when set_processed_weight has been called
+        if hasattr(self, "_use_processed_weights") and self._use_processed_weights:
+            # Apply input hook
+            hidden_states = self.hook_in(hidden_states)
+
+            # Use the processed weights directly with F.linear
+            if hasattr(self, "_processed_W_U"):
+                output = torch.nn.functional.linear(
+                    hidden_states, self._processed_W_U.T, self._processed_b_U
+                )
+            else:
+                # Fallback to original component's weights
+                output = torch.nn.functional.linear(hidden_states, self.W_U.T, self.b_U)
+
+            # Apply output hook
+            output = self.hook_out(output)
+
+            return output
+
         if self.original_component is None:
             raise RuntimeError(
                 f"Original component not set for {self.name}. Call set_original_component() first."
@@ -97,3 +118,14 @@ class UnembeddingBridge(GeneralizedComponent):
             dtype = weight.dtype
             vocab_size: int = int(weight.shape[0])  # lm_head weight is [d_vocab, d_model]
             return torch.zeros(vocab_size, device=device, dtype=dtype)
+
+    def set_processed_weight(self, W_U: torch.Tensor, b_U: torch.Tensor | None = None) -> None:
+        """Set the processed weights to use when layer norm is folded.
+
+        Args:
+            W_U: The processed unembedding weight tensor
+            b_U: The processed unembedding bias tensor (optional)
+        """
+        self._processed_W_U = W_U
+        self._processed_b_U = b_U
+        self._use_processed_weights = True

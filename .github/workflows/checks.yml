@@ -36,7 +36,7 @@ on:
         required: false
     secrets:
       HF_TOKEN:
-        required: false 
+        required: false
 
 permissions:
   actions: write
@@ -66,9 +66,23 @@ jobs:
         with:
           path: |
             ~/.cache/huggingface/hub/models--gpt2
+            ~/.cache/huggingface/hub/models--distilgpt2
+            ~/.cache/huggingface/hub/models--EleutherAI--pythia-70m
+            ~/.cache/huggingface/hub/models--EleutherAI--gpt-neo-125M
+            ~/.cache/huggingface/hub/models--google--gemma-2-2b-it
+            ~/.cache/huggingface/hub/models--bigscience--bloom-560m
+            ~/.cache/huggingface/hub/models--Qwen--Qwen2-0.5B
+            ~/.cache/huggingface/hub/models--bert-base-cased
             ~/.cache/huggingface/hub/models--NeelNanda--Attn_Only*
             ~/.cache/huggingface/hub/models--roneneldan--TinyStories-1M*
-          key: ${{ runner.os }}-huggingface-models
+            ~/.cache/huggingface/hub/models--NeelNanda--SoLU*
+            ~/.cache/huggingface/hub/models--ArthurConmy--redwood_attn_2l
+            ~/.cache/huggingface/hub/models--stas--tiny-random-llama-2
+            ~/.cache/huggingface/hub/models--microsoft--DialoGPT-medium
+          key: ${{ runner.os }}-huggingface-models-v2
+          restore-keys: |
+            ${{ runner.os }}-huggingface-models-v1
+            ${{ runner.os }}-huggingface-models
       - name: Install dependencies
         run: |
           poetry check --lock
@@ -92,6 +106,7 @@ jobs:
   code-checks:
     name: Code Checks
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v3
       - name: Install Poetry
@@ -106,9 +121,23 @@ jobs:
         with:
           path: |
             ~/.cache/huggingface/hub/models--gpt2
+            ~/.cache/huggingface/hub/models--distilgpt2
+            ~/.cache/huggingface/hub/models--EleutherAI--pythia-70m
+            ~/.cache/huggingface/hub/models--EleutherAI--gpt-neo-125M
+            ~/.cache/huggingface/hub/models--google--gemma-2-2b-it
+            ~/.cache/huggingface/hub/models--bigscience--bloom-560m
+            ~/.cache/huggingface/hub/models--Qwen--Qwen2-0.5B
+            ~/.cache/huggingface/hub/models--bert-base-cased
             ~/.cache/huggingface/hub/models--NeelNanda--Attn_Only*
             ~/.cache/huggingface/hub/models--roneneldan--TinyStories-1M*
-          key: ${{ runner.os }}-huggingface-models
+            ~/.cache/huggingface/hub/models--NeelNanda--SoLU*
+            ~/.cache/huggingface/hub/models--ArthurConmy--redwood_attn_2l
+            ~/.cache/huggingface/hub/models--stas--tiny-random-llama-2
+            ~/.cache/huggingface/hub/models--microsoft--DialoGPT-medium
+          key: ${{ runner.os }}-huggingface-models-v2
+          restore-keys: |
+            ${{ runner.os }}-huggingface-models-v1
+            ${{ runner.os }}-huggingface-models
       - name: Install dependencies
         run: |
           poetry check --lock

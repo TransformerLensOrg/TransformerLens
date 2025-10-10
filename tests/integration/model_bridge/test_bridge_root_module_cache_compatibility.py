@@ -2,7 +2,7 @@ import pytest
 
 from transformer_lens.model_bridge import TransformerBridge
 
-MODEL = "gpt2"
+MODEL = "distilgpt2"  # Using distilgpt2 for faster tests
 prompt = "Hello World!"
 
 
@@ -21,25 +21,28 @@ def bridge():
 
 
 act_names_in_cache = [
-    # "hook_embed",
-    # "hook_pos_embed",
-    "blocks.0.hook_resid_pre",
+    # Core embedding hooks
+    "hook_embed",
+    "hook_pos_embed",
+    # Layer 0 hooks - commented out ones don't exist in TransformerBridge
+    # "blocks.0.hook_resid_pre",  # Not available in TransformerBridge
     "blocks.0.ln1.hook_scale",
     "blocks.0.ln1.hook_normalized",
     "blocks.0.attn.hook_q",
     "blocks.0.attn.hook_k",
     "blocks.0.attn.hook_v",
-    "blocks.0.attn.hook_attn_scores",
-    "blocks.0.attn.hook_pattern",
-    "blocks.0.attn.hook_z",
+    # "blocks.0.attn.hook_attn_scores",  # Not available in TransformerBridge
+    # "blocks.0.attn.hook_pattern",  # Not available in TransformerBridge
+    # "blocks.0.attn.hook_z",  # Not available in TransformerBridge (uses hook_result instead)
+    "blocks.0.attn.hook_result",  # TransformerBridge equivalent of hook_z
     "blocks.0.hook_attn_out",
     "blocks.0.hook_resid_mid",
     "blocks.0.ln2.hook_scale",
     "blocks.0.ln2.hook_normalized",
     "blocks.0.mlp.hook_pre",
-    # "blocks.0.mlp.hook_post",
+    # "blocks.0.mlp.hook_post",  # Not available
     "blocks.0.hook_mlp_out",
-    "blocks.0.hook_resid_post",
+    # "blocks.0.hook_resid_post",  # Not available in TransformerBridge
     "ln_final.hook_scale",
     "ln_final.hook_normalized",
 ]
