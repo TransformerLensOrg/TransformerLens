@@ -443,9 +443,7 @@ class ActivationCache:
         components_list = [pos_slice.apply(c, dim=-2) for c in components_list]
         components = torch.stack(components_list, dim=0)
         if apply_ln:
-            components = self.apply_ln_to_stack(
-                components, layer, pos_slice=pos_slice, mlp_input=mlp_input
-            )
+            components = self.model.ln_final(components)
         if return_labels:
             return components, labels
         else:
