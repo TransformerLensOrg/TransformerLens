@@ -35,4 +35,8 @@ __all__ = [
     "EasyTransformerConfig",
     "TransformerLensKeyValueCache",
     "TransformerLensKeyValueCacheEntry",
+    "components",
+    "conversion_utils",
+    "factories",
+    "utilities",
 ]

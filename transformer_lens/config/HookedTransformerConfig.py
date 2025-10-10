@@ -196,7 +196,7 @@ class HookedTransformerConfig(TransformerLensConfig):
     """
 
     model_name: str = "custom"
-    act_fn: Optional[str] = None
+    act_fn: str = "relu"
     eps: float = 1e-5
     use_attn_scale: bool = True
     attn_scale: float = -1.0

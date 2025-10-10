@@ -2,6 +2,8 @@
 
 from typing import Any
 
+import torch
+
 from transformer_lens.conversion_utils.conversion_steps import (
     HookConversionSet,
     RearrangeHookConversion,
@@ -12,9 +14,10 @@ from transformer_lens.conversion_utils.conversion_steps.chain_hook_conversion im
 )
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
-    AttentionBridge,
     BlockBridge,
     EmbeddingBridge,
+    JointQKVAttentionBridge,
+    LinearBridge,
     MLPBridge,
     NormalizationBridge,
     UnembeddingBridge,
@@ -132,15 +135,81 @@ class PythiaArchitectureAdapter(ArchitectureAdapter):
 
         self.component_mapping = {
             "embed": EmbeddingBridge(name="gpt_neox.embed_in"),
+            "rotary_emb": EmbeddingBridge(name="gpt_neox.rotary_emb"),
             "blocks": BlockBridge(
                 name="gpt_neox.layers",
                 submodules={
                     "ln1": NormalizationBridge(name="input_layernorm", config=self.cfg),
                     "ln2": NormalizationBridge(name="post_attention_layernorm", config=self.cfg),
-                    "attn": AttentionBridge(name="attention", config=self.cfg),
-                    "mlp": MLPBridge(name="mlp"),
+                    "attn": JointQKVAttentionBridge(
+                        name="attention",
+                        config=self.cfg,
+                        split_qkv_matrix=self.split_qkv_matrix,
+                        submodules={
+                            "qkv": LinearBridge(name="query_key_value"),
+                            "o": LinearBridge(name="dense"),
+                        },
+                    ),
+                    "mlp": MLPBridge(
+                        name="mlp",
+                        submodules={
+                            "in": LinearBridge(name="dense_h_to_4h"),
+                            "out": LinearBridge(name="dense_4h_to_h"),
+                        },
+                    ),
                 },
             ),
             "ln_final": NormalizationBridge(name="gpt_neox.final_layer_norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="embed_out"),
         }
+
+    def split_qkv_matrix(
+        self, original_attention_component: Any
+    ) -> tuple[torch.nn.Linear, torch.nn.Linear, torch.nn.Linear]:
+        """Split the QKV matrix into separate linear transformations.
+        Args:
+            attention_component: The original attention layer component
+        Returns:
+            Tuple of nn.Linear modules for Q, K, and V transformations
+        """
+
+        # Keep mypy happy
+        assert original_attention_component is not None
+        assert original_attention_component.query_key_value is not None
+
+        qkv_weights = original_attention_component.query_key_value.weight
+
+        # Keep mypy happy
+        assert isinstance(qkv_weights, torch.Tensor)
+
+        # Original qkv_weights shape: [3 * d_model, d_model] -> Transposed to [d_model, 3 * d_model]
+        # Split into three equal parts along dimension 1 to get Q, K, V weights
+        W_Q, W_K, W_V = torch.tensor_split(qkv_weights.T, 3, dim=1)
+
+        qkv_bias = original_attention_component.query_key_value.bias
+
+        # Keep mypy happy
+        assert isinstance(qkv_bias, torch.Tensor)
+
+        # Original qkv_bias shape: [n_heads * 3 * d_head]
+        # Reshape to [3, n_heads * d_head] to split by Q, K, V
+        qkv_bias = qkv_bias.reshape(3, self.cfg.n_heads * self.cfg.d_head)
+        b_Q, b_K, b_V = qkv_bias[0, :], qkv_bias[1, :], qkv_bias[2, :]
+
+        # Create nn.Linear modules
+        # After tensor_split, W_Q, W_K, W_V shapes are [d_model, d_model] ([in_features, out_features])
+        # nn.Linear expects weight shape [out_features, in_features]
+        # So we need to transpose the weights
+        W_Q_transformation = torch.nn.Linear(W_Q.shape[0], W_Q.shape[1], bias=True)
+        W_Q_transformation.weight = torch.nn.Parameter(W_Q.T)
+        W_Q_transformation.bias = torch.nn.Parameter(b_Q)
+
+        W_K_transformation = torch.nn.Linear(W_K.shape[0], W_K.shape[1], bias=True)
+        W_K_transformation.weight = torch.nn.Parameter(W_K.T)
+        W_K_transformation.bias = torch.nn.Parameter(b_K)
+
+        W_V_transformation = torch.nn.Linear(W_V.shape[0], W_V.shape[1], bias=True)
+        W_V_transformation.weight = torch.nn.Parameter(W_V.T)
+        W_V_transformation.bias = torch.nn.Parameter(b_V)
+
+        return W_Q_transformation, W_K_transformation, W_V_transformation

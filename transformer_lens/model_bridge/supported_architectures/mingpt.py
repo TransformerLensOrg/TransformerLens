@@ -13,6 +13,7 @@ from transformer_lens.model_bridge.generalized_components import (
     EmbeddingBridge,
     MLPBridge,
     NormalizationBridge,
+    PosEmbedBridge,
     UnembeddingBridge,
 )
 
@@ -79,7 +80,7 @@ class MingptArchitectureAdapter(ArchitectureAdapter):
         # Set up component mapping
         self.component_mapping = {
             "embed": EmbeddingBridge(name="transformer.wte"),  # Word token embeddings
-            "pos_embed": EmbeddingBridge(name="transformer.wpe"),  # Positional embeddings
+            "pos_embed": PosEmbedBridge(name="transformer.wpe"),  # Positional embeddings
             "blocks": BlockBridge(
                 name="transformer.h",  # Base path for blocks
                 submodules={
