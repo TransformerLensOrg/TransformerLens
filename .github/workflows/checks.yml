@@ -158,7 +158,7 @@ jobs:
         run: make docstring-test
 
   coverage-test:
-    name: Coverage Test
+    name: Full Code Coverage Test
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
