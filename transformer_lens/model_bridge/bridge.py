@@ -671,14 +671,14 @@ class TransformerBridge(nn.Module):
         hooked_state_dict = reference_hooked.state_dict()
 
         object.__setattr__(self, "_processed_tl_weights", hooked_state_dict)
+        object.__setattr__(self, "_reference_hooked_model", reference_hooked)
 
-        # Phase 1: Configuration
         self._configure_components_for_processing(verbose=verbose)
+        self._load_all_processed_weights(verbose=verbose, reference_model=reference_hooked)
 
-        # Phase 2: Weight Loading
-        self._load_all_processed_weights(verbose=verbose)
+        object.__setattr__(self, "_reference_hooked_model", None)
+        del reference_hooked
 
-        # Mark as processed
         object.__setattr__(self, "_weights_processed", True)
 
     def _configure_components_for_processing(self, verbose: bool = False):
@@ -703,14 +703,17 @@ class TransformerBridge(nn.Module):
         if hasattr(self, "ln_final") and hasattr(self.ln_final, "config"):
             self.ln_final.config.layer_norm_folding = True
 
-    def _load_all_processed_weights(self, verbose: bool = False):
+    def _load_all_processed_weights(
+        self, verbose: bool = False, reference_model: Optional[Any] = None
+    ) -> None:
         """Load processed weights into all components (Phase 2).
 
         Args:
             verbose: If True, print detailed progress messages. Default: False
+            reference_model: Optional reference HookedTransformer model to pass to components
         """
         self._load_embedding_weights(verbose=verbose)
-        self._load_transformer_block_weights(verbose=verbose)
+        self._load_transformer_block_weights(verbose=verbose, reference_model=reference_model)
         self._load_unembed_weights(verbose=verbose)
 
     def _load_embedding_weights(self, verbose: bool = False):
@@ -731,11 +734,14 @@ class TransformerBridge(nn.Module):
             pos_embed_weight = processed_weights["pos_embed.W_pos"]
             self.pos_embed.set_processed_weight(pos_embed_weight)
 
-    def _load_transformer_block_weights(self, verbose: bool = False):
+    def _load_transformer_block_weights(
+        self, verbose: bool = False, reference_model: Optional[Any] = None
+    ) -> None:
         """Load transformer block weights into attention and MLP components.
 
         Args:
             verbose: If True, print detailed progress messages. Default: False
+            reference_model: Optional reference HookedTransformer model to pass to components
         """
         processed_weights = self._processed_tl_weights
 
@@ -748,7 +754,7 @@ class TransformerBridge(nn.Module):
             # Load attention weights
             if hasattr(block, "attn"):
                 self._load_attention_weights(
-                    block.attn, layer_idx, processed_weights, verbose=verbose
+                    block.attn, layer_idx, processed_weights, verbose=verbose, reference_model=reference_model
                 )
 
             # Load MLP weights
@@ -756,12 +762,21 @@ class TransformerBridge(nn.Module):
                 self._load_mlp_weights(block.mlp, layer_idx, processed_weights, verbose=verbose)
 
     def _load_attention_weights(
-        self, attn_component, layer_idx, processed_weights, verbose: bool = False
-    ):
+        self,
+        attn_component: Any,
+        layer_idx: int,
+        processed_weights: Dict[str, torch.Tensor],
+        verbose: bool = False,
+        reference_model: Optional[Any] = None,
+    ) -> None:
         """Load attention weights into the AttentionBridge component.
 
         Args:
-            verbose: If True, print detailed progress messages. Default: False
+            attn_component: The attention component to load weights into
+            layer_idx: The layer index
+            processed_weights: Dictionary of processed weights
+            verbose: If True, print detailed progress messages
+            reference_model: Optional reference HookedTransformer model
         """
         # Get the processed attention weights in TransformerLens format
         W_Q_key = f"blocks.{layer_idx}.attn.W_Q"
@@ -782,6 +797,10 @@ class TransformerBridge(nn.Module):
         b_K = processed_weights.get(b_K_key)
         b_V = processed_weights.get(b_V_key)
         b_O = processed_weights.get(b_O_key)
+
+        if reference_model is not None:
+            attn_component._reference_model = reference_model  # type: ignore[attr-defined]
+            attn_component._layer_idx = layer_idx  # type: ignore[attr-defined]
 
         attn_component.set_processed_weights(W_Q, W_K, W_V, W_O, b_Q, b_K, b_V, b_O)
 
