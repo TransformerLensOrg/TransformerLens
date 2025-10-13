@@ -60,14 +60,27 @@ def clear_huggingface_cache():
 
     This function deletes the Hugging Face cache directory, which is used to store downloaded models and their associated files. Deleting the cache directory will remove all the downloaded models and their files, so you will need to download them again if you want to use them in your code.
 
+    This function is safe to call in parallel test execution - it will ignore errors
+    if the directory is already being deleted by another process or doesn't exist.
+
     Parameters:
     None
 
     Returns:
     None
     """
+    import os
+
     print("Deleting Hugging Face cache directory and all its contents.")
-    shutil.rmtree(CACHE_DIR)
+    try:
+        # Use ignore_errors=True to handle race conditions in parallel test execution
+        # where multiple workers might try to delete the same directory
+        shutil.rmtree(CACHE_DIR, ignore_errors=True)
+    except (OSError, FileNotFoundError) as e:
+        # Ignore errors - the directory might already be deleted by another worker
+        # or files might be in use
+        print(f"Warning: Could not fully clear cache: {e}")
+        pass
 
 
 def keep_single_column(dataset: Dataset, col_name: str):
