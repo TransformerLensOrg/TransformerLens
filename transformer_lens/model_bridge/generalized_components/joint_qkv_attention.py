@@ -251,8 +251,14 @@ class JointQKVAttentionBridge(AttentionBridge):
         causal_mask = torch.tril(torch.ones(seq_len, seq_len, device=hidden_states.device))
         attn_scores = attn_scores.masked_fill(causal_mask == 0, float("-inf"))
 
+        # Apply attention scores hook (for compatibility with HookedTransformer)
+        attn_scores = self.hook_attn_scores(attn_scores)
+
         # Softmax attention weights
         attn_weights = F.softmax(attn_scores, dim=-1)
+
+        # Apply pattern hook (for compatibility with HookedTransformer)
+        attn_weights = self.hook_pattern(attn_weights)
 
         # Apply attention to values: [batch, n_heads, seq_len, d_head]
         attn_out = torch.matmul(attn_weights, v)
@@ -339,10 +345,7 @@ class JointQKVAttentionBridge(AttentionBridge):
 
         # Check if we successfully extracted weights
         if not self._hooked_weights_extracted or not hasattr(self, "_W_V"):
-            print(f"⚠️  Weights not extracted for {self.name}, falling back to original forward")
             return super().forward(*args, **kwargs)
-        else:
-            print(f"🔧 Using compatibility mode with processed weights for {self.name}")
 
         # Import the exact function HookedTransformer uses
         from transformer_lens.utilities.attention import simple_attn_linear
@@ -412,8 +415,14 @@ class JointQKVAttentionBridge(AttentionBridge):
         if "attention_mask" in kwargs and kwargs["attention_mask"] is not None:
             attn_scores = attn_scores + kwargs["attention_mask"]
 
+        # Apply attention scores hook
+        attn_scores = self.hook_attn_scores(attn_scores)
+
         # Apply softmax
         attn_weights = F.softmax(attn_scores, dim=-1)
+
+        # Apply pattern hook
+        attn_weights = self.hook_pattern(attn_weights)
 
         # Apply dropout if the original component has it
         if hasattr(original_component, "attn_dropout"):
@@ -929,8 +938,6 @@ class JointQKVAttentionBridge(AttentionBridge):
             model_name = getattr(self.config, "model_name", "gpt2")
             device = next(self.parameters()).device if list(self.parameters()) else "cpu"
 
-            print(f"Creating reference HookedTransformer to extract exact weights...")
-
             # Create a HookedTransformer with the same processing parameters as the bridge
             reference_model = HookedTransformer.from_pretrained(
                 model_name,
@@ -971,19 +978,14 @@ class JointQKVAttentionBridge(AttentionBridge):
             if hasattr(reference_attn, "b_O"):
                 self._b_O = reference_attn.b_O.clone()  # type: ignore[operator]  # [d_model]
 
-            print(f"✅ Extracted exact HookedTransformer weights for layer {layer_num}")
-            print(f"  W_V shape: {self._W_V.shape}")
-            print(f"  W_Q shape: {self._W_Q.shape}")
-            print(f"  W_K shape: {self._W_K.shape}")
-
             # Clean up reference model
             del reference_model
 
             self._hooked_weights_extracted = True
             return
 
-        except Exception as e:
-            print(f"⚠️  Failed to extract weights from reference HookedTransformer: {e}")
+        except Exception:
+            pass
 
         # Strategy 2: Fallback to processing weights manually
         if self._processed_weights is None:
