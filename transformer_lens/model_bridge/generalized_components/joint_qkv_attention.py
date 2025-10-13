@@ -84,6 +84,20 @@ class JointQKVAttentionBridge(AttentionBridge):
         self._processed_weights: Optional[Dict[str, torch.Tensor]] = None
         self._hooked_weights_extracted = False
 
+        # HookedTransformer-style weights (populated lazily)
+        self._W_Q: Optional[torch.Tensor] = None
+        self._W_K: Optional[torch.Tensor] = None
+        self._W_V: Optional[torch.Tensor] = None
+        self._W_O: Optional[torch.Tensor] = None
+        self._b_Q: Optional[torch.Tensor] = None
+        self._b_K: Optional[torch.Tensor] = None
+        self._b_V: Optional[torch.Tensor] = None
+        self._b_O: Optional[torch.Tensor] = None
+
+        # Cache attributes (populated by bridge during weight loading)
+        self._reference_model: Optional[Any] = None
+        self._layer_idx: Optional[int] = None
+
     def _create_qkv_conversion_rule(self) -> RearrangeHookConversion:
         """Create the appropriate conversion rule for the individual q, k, and v matrices.
 
@@ -344,16 +358,26 @@ class JointQKVAttentionBridge(AttentionBridge):
             self._extract_hooked_transformer_weights()
 
         # Check if we successfully extracted weights
-        if not self._hooked_weights_extracted or not hasattr(self, "_W_V"):
+        if (
+            not self._hooked_weights_extracted
+            or self._W_Q is None
+            or self._W_K is None
+            or self._W_V is None
+        ):
             return super().forward(*args, **kwargs)
 
         # Import the exact function HookedTransformer uses
         from transformer_lens.utilities.attention import simple_attn_linear
 
         # Compute Q, K, V using exactly the same method as HookedTransformer
-        q = simple_attn_linear(input_tensor, self._W_Q, self._b_Q)
-        k = simple_attn_linear(input_tensor, self._W_K, self._b_K)
-        v = simple_attn_linear(input_tensor, self._W_V, self._b_V)
+        # Use zero bias if bias is None
+        b_Q = self._b_Q if self._b_Q is not None else torch.zeros_like(self._W_Q[:, 0, :])
+        b_K = self._b_K if self._b_K is not None else torch.zeros_like(self._W_K[:, 0, :])
+        b_V = self._b_V if self._b_V is not None else torch.zeros_like(self._W_V[:, 0, :])
+
+        q = simple_attn_linear(input_tensor, self._W_Q, b_Q)
+        k = simple_attn_linear(input_tensor, self._W_K, b_K)
+        v = simple_attn_linear(input_tensor, self._W_V, b_V)
 
         # Apply hooks directly without any conversion - exactly like HookedTransformer
         # HookedTransformer doesn't use any hook conversion for V values in simple_attn_linear output
@@ -438,7 +462,7 @@ class JointQKVAttentionBridge(AttentionBridge):
         attn_output = attn_output.view(attn_output.shape[0], attn_output.shape[1], -1)
 
         # Apply output projection using the W_O weight
-        if hasattr(self, "_W_O"):
+        if self._W_O is not None:
             # Use the extracted W_O matrix - reshape attn_output to [batch, seq, heads, d_head]
             batch_size, seq_len = attn_output.shape[:2]
             n_heads = self._W_O.shape[0]
@@ -448,7 +472,7 @@ class JointQKVAttentionBridge(AttentionBridge):
             attn_output = torch.einsum("bsnh,nhd->bsnd", attn_reshaped, self._W_O)
             # Sum across heads: [batch, seq, heads, d_model] -> [batch, seq, d_model]
             attn_output = attn_output.sum(dim=2)
-            if hasattr(self, "_b_O"):
+            if self._b_O is not None:
                 attn_output = attn_output + self._b_O
         elif hasattr(original_component, "c_proj"):
             attn_output = original_component.c_proj(attn_output)  # type: ignore[operator]

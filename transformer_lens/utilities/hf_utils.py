@@ -69,7 +69,6 @@ def clear_huggingface_cache():
     Returns:
     None
     """
-    import os
 
     print("Deleting Hugging Face cache directory and all its contents.")
     try:
@@ -80,7 +79,6 @@ def clear_huggingface_cache():
         # Ignore errors - the directory might already be deleted by another worker
         # or files might be in use
         print(f"Warning: Could not fully clear cache: {e}")
-        pass
 
 
 def keep_single_column(dataset: Dataset, col_name: str):

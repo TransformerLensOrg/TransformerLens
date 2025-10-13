@@ -754,7 +754,11 @@ class TransformerBridge(nn.Module):
             # Load attention weights
             if hasattr(block, "attn"):
                 self._load_attention_weights(
-                    block.attn, layer_idx, processed_weights, verbose=verbose, reference_model=reference_model
+                    block.attn,
+                    layer_idx,
+                    processed_weights,
+                    verbose=verbose,
+                    reference_model=reference_model,
                 )
 
             # Load MLP weights
