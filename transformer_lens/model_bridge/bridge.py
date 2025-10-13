@@ -4126,8 +4126,6 @@ class TransformerBridge(nn.Module):
                     if target_name in cache and alias_name not in cache:
                         cache[alias_name] = cache[target_name]
 
-        print(f"[run_with_cache] Completed entire run_with_cache in {time.time() - _start:.2f}s")
-
         if return_cache_object:
             from transformer_lens.ActivationCache import ActivationCache
 
