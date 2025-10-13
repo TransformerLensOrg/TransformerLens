@@ -4004,89 +4004,88 @@ class TransformerBridge(nn.Module):
         for hp, name in hooks:
             hp.add_hook(make_cache_hook(name))
 
-            processed_args = [input]
-            # Handle string input whether passed positionally or as a kwarg
-            if processed_args and isinstance(processed_args[0], str):
-                assert self.tokenizer is not None, "Tokenizer must be set to pass string input."
-                input_ids = self.to_tokens(processed_args[0])
-                input_ids = input_ids.to(next(self.original_model.parameters()).device)
-                kwargs["input_ids"] = input_ids
-                processed_args = processed_args[1:]
-            elif "input" in kwargs and isinstance(kwargs["input"], str):
-                assert self.tokenizer is not None, "Tokenizer must be set to pass string input."
-                input_ids = self.to_tokens(kwargs["input"])
-                input_ids = input_ids.to(next(self.original_model.parameters()).device)
-                kwargs["input_ids"] = input_ids
-                del kwargs["input"]
+        # Process input arguments
+        processed_args = [input]
+        # Handle string input whether passed positionally or as a kwarg
+        if processed_args and isinstance(processed_args[0], str):
+            assert self.tokenizer is not None, "Tokenizer must be set to pass string input."
+            input_ids = self.to_tokens(processed_args[0])
+            input_ids = input_ids.to(next(self.original_model.parameters()).device)
+            kwargs["input_ids"] = input_ids
+            processed_args = processed_args[1:]
+        elif "input" in kwargs and isinstance(kwargs["input"], str):
+            assert self.tokenizer is not None, "Tokenizer must be set to pass string input."
+            input_ids = self.to_tokens(kwargs["input"])
+            input_ids = input_ids.to(next(self.original_model.parameters()).device)
+            kwargs["input_ids"] = input_ids
+            del kwargs["input"]
 
-            # Add stop_at_layer hook if specified
-            if stop_at_layer is not None:
-                # stop_at_layer is exclusive, so stop_at_layer=1 means run layer 0 and stop before layer 1
-                # We need to hook the output of the last layer to be processed (stop_at_layer - 1)
-                last_layer_to_process = stop_at_layer - 1
-                if (
-                    hasattr(self, "blocks")
-                    and last_layer_to_process >= 0
-                    and last_layer_to_process < len(self.blocks)
-                ):
+        # Add stop_at_layer hook if specified
+        if stop_at_layer is not None:
+            # stop_at_layer is exclusive, so stop_at_layer=1 means run layer 0 and stop before layer 1
+            # We need to hook the output of the last layer to be processed (stop_at_layer - 1)
+            last_layer_to_process = stop_at_layer - 1
+            if (
+                hasattr(self, "blocks")
+                and last_layer_to_process >= 0
+                and last_layer_to_process < len(self.blocks)
+            ):
 
-                    def stop_hook(tensor: torch.Tensor, *, hook: Any) -> torch.Tensor:
-                        raise StopAtLayerException(tensor, stop_at_layer)
+                def stop_hook(tensor: torch.Tensor, *, hook: Any) -> torch.Tensor:
+                    raise StopAtLayerException(tensor, stop_at_layer)
 
-                    # Add hook to the output of the last layer to be processed
-                    block_hook_name = f"blocks.{last_layer_to_process}.hook_out"
-                    hook_dict = self.hook_dict
-                    if block_hook_name in hook_dict:
-                        hook_dict[block_hook_name].add_hook(stop_hook)
-                        hooks.append((hook_dict[block_hook_name], block_hook_name))
+                # Add hook to the output of the last layer to be processed
+                block_hook_name = f"blocks.{last_layer_to_process}.hook_out"
+                hook_dict = self.hook_dict
+                if block_hook_name in hook_dict:
+                    hook_dict[block_hook_name].add_hook(stop_hook)
+                    hooks.append((hook_dict[block_hook_name], block_hook_name))
 
-            # Run the underlying model's forward method
-            # Handle device parameter properly - move model to device if specified
-            filtered_kwargs = kwargs.copy()
-            target_device = filtered_kwargs.pop("device", None)  # Remove device from kwargs
+        # Run the underlying model's forward method
+        # Handle device parameter properly - move model to device if specified
+        filtered_kwargs = kwargs.copy()
+        target_device = filtered_kwargs.pop("device", None)  # Remove device from kwargs
 
-            if target_device is not None:
-                # Ensure model is on the target device
-                self.original_model = self.original_model.to(target_device)
-                # Also move processed_args to the same device if needed
-                if processed_args and isinstance(processed_args[0], torch.Tensor):
-                    processed_args = [processed_args[0].to(target_device)] + list(
-                        processed_args[1:]
-                    )
-                # Move any tensor kwargs to the target device
-                for key, value in filtered_kwargs.items():
-                    if isinstance(value, torch.Tensor):
-                        filtered_kwargs[key] = value.to(target_device)
+        if target_device is not None:
+            # Ensure model is on the target device
+            self.original_model = self.original_model.to(target_device)
+            # Also move processed_args to the same device if needed
+            if processed_args and isinstance(processed_args[0], torch.Tensor):
+                processed_args = [processed_args[0].to(target_device)] + list(processed_args[1:])
+            # Move any tensor kwargs to the target device
+            for key, value in filtered_kwargs.items():
+                if isinstance(value, torch.Tensor):
+                    filtered_kwargs[key] = value.to(target_device)
 
-            try:
-                # For caching, we want attention weights to be available for hooks
-                # Add output_attentions=True if not already specified
-                if "output_attentions" not in filtered_kwargs:
-                    filtered_kwargs["output_attentions"] = True
+        try:
+            # For caching, we want attention weights to be available for hooks
+            # Add output_attentions=True if not already specified
+            if "output_attentions" not in filtered_kwargs:
+                filtered_kwargs["output_attentions"] = True
 
-                # Call forward with the input as the first argument
-                if processed_args:
-                    output = self.forward(processed_args[0], **filtered_kwargs)
-                elif "input_ids" in filtered_kwargs:
-                    # If we have input_ids but no processed_args, use the input_ids as input
-                    output = self.forward(
-                        filtered_kwargs["input_ids"],
-                        **{k: v for k, v in filtered_kwargs.items() if k != "input_ids"},
-                    )
-                else:
-                    output = self.forward(**filtered_kwargs)
-                # Extract logits if output is a HuggingFace model output object
-                if hasattr(output, "logits"):
-                    output = output.logits
-            except StopAtLayerException as e:
-                # Return the intermediate output from the specified layer
-                output = e.layer_output
-            except Exception as e:
-                # Re-raise any other exceptions
-                raise e
-            finally:
-                for hp, _ in hooks:
-                    hp.remove_hooks()
+            # Call forward with the input as the first argument
+            if processed_args:
+                output = self.forward(processed_args[0], **filtered_kwargs)
+            elif "input_ids" in filtered_kwargs:
+                # If we have input_ids but no processed_args, use the input_ids as input
+                output = self.forward(
+                    filtered_kwargs["input_ids"],
+                    **{k: v for k, v in filtered_kwargs.items() if k != "input_ids"},
+                )
+            else:
+                output = self.forward(**filtered_kwargs)
+            # Extract logits if output is a HuggingFace model output object
+            if hasattr(output, "logits"):
+                output = output.logits
+        except StopAtLayerException as e:
+            # Return the intermediate output from the specified layer
+            output = e.layer_output
+        except Exception as e:
+            # Re-raise any other exceptions
+            raise e
+        finally:
+            for hp, _ in hooks:
+                hp.remove_hooks()
 
         if self.compatibility_mode == True:
             # If compatibility mode is enabled, we need to handle aliases
@@ -4127,12 +4126,24 @@ class TransformerBridge(nn.Module):
                     if target_name in cache and alias_name not in cache:
                         cache[alias_name] = cache[target_name]
 
+        print(f"[run_with_cache] Completed entire run_with_cache in {time.time() - _start:.2f}s")
+
         if return_cache_object:
             from transformer_lens.ActivationCache import ActivationCache
 
-            activation_cache = ActivationCache(cache, self)
+            # Create cache with batch dimension initially
+            activation_cache = ActivationCache(cache, self, has_batch_dim=True)
+            # Then remove it if requested
+            if remove_batch_dim:
+                activation_cache.remove_batch_dim()
             return output, activation_cache
         else:
+            # If not returning cache object but remove_batch_dim is True, remove it from dict
+            if remove_batch_dim:
+                for key in cache:
+                    if cache[key] is not None and isinstance(cache[key], torch.Tensor):
+                        if cache[key].size(0) == 1:
+                            cache[key] = cache[key][0]
             return output, cache
 
     def run_with_hooks(
