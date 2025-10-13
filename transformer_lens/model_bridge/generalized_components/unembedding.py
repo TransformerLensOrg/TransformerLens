@@ -99,6 +99,10 @@ class UnembeddingBridge(GeneralizedComponent):
     @property
     def b_U(self) -> torch.Tensor:
         """Access the unembedding bias vector."""
+        # Prioritize processed bias when available (e.g., from layer norm folding)
+        if hasattr(self, "_processed_b_U") and self._processed_b_U is not None:
+            return self._processed_b_U
+
         if self.original_component is None:
             raise RuntimeError(f"Original component not set for {self.name}")
 
