@@ -31,8 +31,8 @@ act_names_in_cache = [
     "blocks.0.attn.hook_q",
     "blocks.0.attn.hook_k",
     "blocks.0.attn.hook_v",
-    # "blocks.0.attn.hook_attn_scores",  # Not available in TransformerBridge
-    # "blocks.0.attn.hook_pattern",  # Not available in TransformerBridge
+    "blocks.0.attn.hook_attn_scores",
+    "blocks.0.attn.hook_pattern",
     # "blocks.0.attn.hook_z",  # Not available in TransformerBridge (uses hook_result instead)
     "blocks.0.attn.hook_result",  # TransformerBridge equivalent of hook_z
     "blocks.0.hook_attn_out",

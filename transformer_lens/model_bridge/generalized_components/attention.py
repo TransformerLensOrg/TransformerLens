@@ -501,8 +501,14 @@ class AttentionBridge(GeneralizedComponent):
         causal_mask = torch.tril(torch.ones(seq_len, seq_len, device=x.device))
         attn_scores = attn_scores.masked_fill(causal_mask == 0, float("-inf"))
 
+        # Apply attention scores hook (for compatibility with HookedTransformer)
+        attn_scores = self.hook_attn_scores(attn_scores)
+
         # Apply softmax
         attn_weights = torch.nn.functional.softmax(attn_scores, dim=-1)
+
+        # Apply pattern hook (for compatibility with HookedTransformer)
+        attn_weights = self.hook_pattern(attn_weights)
 
         # Apply attention to values
         attn_out = torch.matmul(attn_weights, v)  # [batch, n_heads, seq, d_head]
