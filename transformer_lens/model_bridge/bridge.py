@@ -647,11 +647,12 @@ class TransformerBridge(nn.Module):
         if not no_processing:
             self.process_compatibility_weights()
 
-    def process_compatibility_weights(self) -> None:
-        """Process and load weights from a reference HookedTransformer model."""
-        # Extract exact processed weights from a reference model
-        print("Creating reference HookedTransformer to get processed weights...")
+    def process_compatibility_weights(self, verbose: bool = False) -> None:
+        """Process and load weights from a reference HookedTransformer model.
 
+        Args:
+            verbose: If True, print detailed progress messages. Default: False
+        """
         # Import here to avoid circular imports
         from transformer_lens import HookedTransformer
 
@@ -671,25 +672,24 @@ class TransformerBridge(nn.Module):
 
         object.__setattr__(self, "_processed_tl_weights", hooked_state_dict)
 
-        print(f"Extracted {len(hooked_state_dict)} weights from reference model")
-
         # Phase 1: Configuration
-        self._configure_components_for_processing()
+        self._configure_components_for_processing(verbose=verbose)
 
         # Phase 2: Weight Loading
-        self._load_all_processed_weights()
+        self._load_all_processed_weights(verbose=verbose)
 
         # Mark as processed
         object.__setattr__(self, "_weights_processed", True)
-        print("✅ Reference model functionality ported into TransformerBridge")
 
-    def _configure_components_for_processing(self):
-        """Configure all components for processed weight loading (Phase 1)."""
+    def _configure_components_for_processing(self, verbose: bool = False):
+        """Configure all components for processed weight loading (Phase 1).
+
+        Args:
+            verbose: If True, print detailed progress messages. Default: False
+        """
         # Configure layer norm folding to match reference model behavior
-        print("Configuring layer norm folding to match reference model...")
         if hasattr(self, "cfg") and hasattr(self.cfg, "layer_norm_folding"):
             self.cfg.layer_norm_folding = True
-            print(f"  ✅ Set layer_norm_folding = {self.cfg.layer_norm_folding}")
 
         # Also update all layer norm components' configs if they exist
         for layer_idx in range(self.cfg.n_layers):
@@ -703,39 +703,40 @@ class TransformerBridge(nn.Module):
         if hasattr(self, "ln_final") and hasattr(self.ln_final, "config"):
             self.ln_final.config.layer_norm_folding = True
 
-        print("  ✅ Layer norm folding configured for all components")
+    def _load_all_processed_weights(self, verbose: bool = False):
+        """Load processed weights into all components (Phase 2).
 
-    def _load_all_processed_weights(self):
-        """Load processed weights into all components (Phase 2)."""
-        print("Loading embedding weights...")
-        self._load_embedding_weights()
+        Args:
+            verbose: If True, print detailed progress messages. Default: False
+        """
+        self._load_embedding_weights(verbose=verbose)
+        self._load_transformer_block_weights(verbose=verbose)
+        self._load_unembed_weights(verbose=verbose)
 
-        print("Loading transformer block weights...")
-        self._load_transformer_block_weights()
+    def _load_embedding_weights(self, verbose: bool = False):
+        """Load embedding and positional embedding weights into components.
 
-        print("Loading unembedding weights...")
-        self._load_unembed_weights()
-
-        print("✅ All weights loaded successfully")
-
-    def _load_embedding_weights(self):
-        """Load embedding and positional embedding weights into components."""
+        Args:
+            verbose: If True, print detailed progress messages. Default: False
+        """
         processed_weights = self._processed_tl_weights
 
         # Load token embedding (embed.W_E) into EmbeddingBridge
         if hasattr(self, "embed") and "embed.W_E" in processed_weights:
             embed_weight = processed_weights["embed.W_E"]
             self.embed.set_processed_weight(embed_weight)
-            print(f"  ✅ Token embedding loaded: {embed_weight.shape}")
 
         # Load positional embedding (pos_embed.W_pos) into PosEmbedBridge
         if hasattr(self, "pos_embed") and "pos_embed.W_pos" in processed_weights:
             pos_embed_weight = processed_weights["pos_embed.W_pos"]
             self.pos_embed.set_processed_weight(pos_embed_weight)
-            print(f"  ✅ Positional embedding loaded: {pos_embed_weight.shape}")
 
-    def _load_transformer_block_weights(self):
-        """Load transformer block weights into attention and MLP components."""
+    def _load_transformer_block_weights(self, verbose: bool = False):
+        """Load transformer block weights into attention and MLP components.
+
+        Args:
+            verbose: If True, print detailed progress messages. Default: False
+        """
         processed_weights = self._processed_tl_weights
 
         for layer_idx in range(self.cfg.n_layers):
@@ -743,18 +744,25 @@ class TransformerBridge(nn.Module):
                 continue
 
             block = self.blocks[layer_idx]
-            print(f"  Loading layer {layer_idx} weights...")
 
             # Load attention weights
             if hasattr(block, "attn"):
-                self._load_attention_weights(block.attn, layer_idx, processed_weights)
+                self._load_attention_weights(
+                    block.attn, layer_idx, processed_weights, verbose=verbose
+                )
 
             # Load MLP weights
             if hasattr(block, "mlp"):
-                self._load_mlp_weights(block.mlp, layer_idx, processed_weights)
+                self._load_mlp_weights(block.mlp, layer_idx, processed_weights, verbose=verbose)
 
-    def _load_attention_weights(self, attn_component, layer_idx, processed_weights):
-        """Load attention weights into the AttentionBridge component."""
+    def _load_attention_weights(
+        self, attn_component, layer_idx, processed_weights, verbose: bool = False
+    ):
+        """Load attention weights into the AttentionBridge component.
+
+        Args:
+            verbose: If True, print detailed progress messages. Default: False
+        """
         # Get the processed attention weights in TransformerLens format
         W_Q_key = f"blocks.{layer_idx}.attn.W_Q"
         W_K_key = f"blocks.{layer_idx}.attn.W_K"
@@ -777,8 +785,12 @@ class TransformerBridge(nn.Module):
 
         attn_component.set_processed_weights(W_Q, W_K, W_V, W_O, b_Q, b_K, b_V, b_O)
 
-    def _load_mlp_weights(self, mlp_component, layer_idx, processed_weights):
-        """Load MLP weights into the MLPBridge component."""
+    def _load_mlp_weights(self, mlp_component, layer_idx, processed_weights, verbose: bool = False):
+        """Load MLP weights into the MLPBridge component.
+
+        Args:
+            verbose: If True, print detailed progress messages. Default: False
+        """
         W_in_key = f"blocks.{layer_idx}.mlp.W_in"
         W_out_key = f"blocks.{layer_idx}.mlp.W_out"
         b_in_key = f"blocks.{layer_idx}.mlp.b_in"
@@ -790,13 +802,15 @@ class TransformerBridge(nn.Module):
         b_out = processed_weights.get(b_out_key)
 
         if W_in is None or W_out is None:
-            print(f"    ⚠️  Missing MLP weights for layer {layer_idx}, skipping port")
             return
         mlp_component.set_processed_weights(W_in, W_out, b_in, b_out)
-        print(f"    ✅ MLP set in MLPBridge for layer {layer_idx}")
 
-    def _load_unembed_weights(self):
-        """Load unembedding weights into the UnembeddingBridge component."""
+    def _load_unembed_weights(self, verbose: bool = False):
+        """Load unembedding weights into the UnembeddingBridge component.
+
+        Args:
+            verbose: If True, print detailed progress messages. Default: False
+        """
         processed_weights = self._processed_tl_weights
 
         # Load unembedding (unembed.W_U) into UnembeddingBridge
@@ -804,7 +818,6 @@ class TransformerBridge(nn.Module):
             W_U = processed_weights["unembed.W_U"]
             b_U = processed_weights.get("unembed.b_U")
             self.unembed.set_processed_weight(W_U, b_U)
-            print(f"  ✅ Unembedding weights loaded: {W_U.shape}")
 
     def _ported_forward_pass(
         self,

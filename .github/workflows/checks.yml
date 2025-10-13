@@ -103,8 +103,62 @@ jobs:
       - name: Build check
         run: poetry build
 
-  code-checks:
-    name: Code Checks
+  format-check:
+    name: Format Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.12"
+          cache: "poetry"
+      - name: Install dependencies
+        run: poetry install --with dev
+      - name: Check format
+        run: make check-format
+
+  type-check:
+    name: Type Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.12"
+          cache: "poetry"
+      - name: Install dependencies
+        run: poetry install --with dev
+      - name: Type check
+        run: poetry run mypy .
+
+  docstring-test:
+    name: Docstring Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.12"
+          cache: "poetry"
+      - name: Install dependencies
+        run: poetry install --with dev
+      - name: Docstring test
+        run: make docstring-test
+
+  coverage-test:
+    name: Full Code Coverage Test
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -142,12 +196,6 @@ jobs:
         run: |
           poetry check --lock
           poetry install --with dev
-      - name: Check format
-        run: make check-format
-      - name: Docstring test
-        run: make docstring-test
-      - name: Type check
-        run: poetry run mypy .
       - name: Authenticate HuggingFace CLI
         if: env.HF_TOKEN != ''
         run: |
@@ -223,7 +271,7 @@ jobs:
     name: 'Build Docs'
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev') || contains(github.head_ref, 'docs')
-    needs: code-checks
+    needs: coverage-test
     steps:
       - uses: actions/checkout@v4
       - name: Install Poetry
