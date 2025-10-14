@@ -485,8 +485,9 @@ class AttentionBridge(GeneralizedComponent):
         )
 
         # Apply hook for V if it exists (this is what gets ablated in the comparison script)
-        if hasattr(self, "hook_v"):
-            v = self.hook_v(v)
+        # In new architecture, use v.hook_out instead of legacy hook_v
+        if hasattr(self, "v") and hasattr(self.v, "hook_out"):
+            v = self.v.hook_out(v)
 
         # Transpose to [batch, n_heads, seq, d_head] for attention computation
         q = q.transpose(1, 2)  # [batch, n_heads, seq, d_head]
