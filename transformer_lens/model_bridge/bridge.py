@@ -349,8 +349,10 @@ class TransformerBridge(nn.Module):
 
                 try:
                     attr = getattr(mod, attr_name)
-                except AttributeError:
+                except (AttributeError, NameError, RuntimeError, TypeError):
                     # Skip attributes that can't be accessed during initialization
+                    # NameError: Can happen with jaxtyping when accessing decorated functions
+                    # RuntimeError/TypeError: Can happen with various property implementations
                     continue
 
                 name = f"{path}.{attr_name}" if path else attr_name
