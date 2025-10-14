@@ -82,11 +82,19 @@ class GeneralizedComponent(nn.Module):
 
         # Add aliases if compatibility mode is enabled
         if self.compatibility_mode and self.hook_aliases:
-            for alias_name, target_name in self.hook_aliases.items():
-                # Use the existing alias system to resolve the target hook
-                target_hook = resolve_alias(self, alias_name, self.hook_aliases)
-                if target_hook is not None:
-                    hooks[alias_name] = target_hook
+            # Temporarily suppress warnings during internal hook collection
+            original_disable_warnings = getattr(self, "disable_warnings", False)
+            self.disable_warnings = True
+
+            try:
+                for alias_name, target_name in self.hook_aliases.items():
+                    # Use the existing alias system to resolve the target hook
+                    target_hook = resolve_alias(self, alias_name, self.hook_aliases)
+                    if target_hook is not None:
+                        hooks[alias_name] = target_hook
+            finally:
+                # Restore original warning state
+                self.disable_warnings = original_disable_warnings
 
         return hooks
 

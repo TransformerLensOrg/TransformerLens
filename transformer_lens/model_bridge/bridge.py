@@ -847,7 +847,7 @@ class TransformerBridge(nn.Module):
     def _ported_forward_pass(
         self,
         input: Union[str, List[str], torch.Tensor],
-        return_type: str = "logits",
+        return_type: Optional[str] = "logits",
         prepend_bos: Optional[bool] = None,
         loss_per_token: bool = False,
         start_at_layer: Optional[int] = None,
@@ -970,22 +970,35 @@ class TransformerBridge(nn.Module):
 
         try:
             # Add forward hooks
-            for hook_name, hook_fn in fwd_hooks:
-                if isinstance(hook_name, str):
-                    hook_point = self.get_hook_point(hook_name)
+            for hook_name_or_filter, hook_fn in fwd_hooks:
+                if isinstance(hook_name_or_filter, str):
+                    hook_point = self.get_hook_point(hook_name_or_filter)
                     if hook_point is not None:
-                        add_hook_to_point(hook_point, hook_fn, hook_name, "fwd")
+                        add_hook_to_point(hook_point, hook_fn, hook_name_or_filter, "fwd")
+                elif callable(hook_name_or_filter):
+                    # Filter function - apply to all matching hooks
+                    hook_dict = self.hook_dict
+                    for name, hook_point in hook_dict.items():
+                        if hook_name_or_filter(name):
+                            add_hook_to_point(hook_point, hook_fn, name, "fwd")
 
             # Add backward hooks
-            for hook_name, hook_fn in bwd_hooks:
-                if isinstance(hook_name, str):
-                    hook_point = self.get_hook_point(hook_name)
+            for hook_name_or_filter, hook_fn in bwd_hooks:
+                if isinstance(hook_name_or_filter, str):
+                    hook_point = self.get_hook_point(hook_name_or_filter)
                     if hook_point is not None:
-                        add_hook_to_point(hook_point, hook_fn, hook_name, "bwd")
+                        add_hook_to_point(hook_point, hook_fn, hook_name_or_filter, "bwd")
+                elif callable(hook_name_or_filter):
+                    # Filter function - apply to all matching hooks
+                    hook_dict = self.hook_dict
+                    for name, hook_point in hook_dict.items():
+                        if hook_name_or_filter(name):
+                            add_hook_to_point(hook_point, hook_fn, name, "bwd")
 
             # Run forward pass with ported components
+            # Handle return_type=None explicitly (don't default to "logits")
             return self._ported_forward_pass(
-                tokens, return_type=return_type or "logits", stop_at_layer=stop_at_layer, **kwargs
+                tokens, return_type=return_type, stop_at_layer=stop_at_layer, **kwargs
             )
 
         finally:
@@ -3509,7 +3522,7 @@ class TransformerBridge(nn.Module):
     def forward(
         self,
         input: Union[str, List[str], torch.Tensor],
-        return_type: str = "logits",
+        return_type: Optional[str] = "logits",
         loss_per_token: bool = False,
         prepend_bos: Optional[bool] = None,
         padding_side: Optional[str] = None,
@@ -4295,7 +4308,8 @@ class TransformerBridge(nn.Module):
 
             # Run the model
             try:
-                output = self.forward(input, return_type=return_type or "logits", **kwargs)
+                # Handle return_type=None explicitly (don't default to "logits")
+                output = self.forward(input, return_type=return_type, **kwargs)
             except StopAtLayerException as e:
                 # Return the intermediate output from the specified layer
                 output = e.layer_output
