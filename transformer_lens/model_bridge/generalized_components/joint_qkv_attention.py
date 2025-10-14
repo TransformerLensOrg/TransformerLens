@@ -84,6 +84,20 @@ class JointQKVAttentionBridge(AttentionBridge):
         self._processed_weights: Optional[Dict[str, torch.Tensor]] = None
         self._hooked_weights_extracted = False
 
+        # HookedTransformer-style weights (populated lazily)
+        self._W_Q: Optional[torch.Tensor] = None
+        self._W_K: Optional[torch.Tensor] = None
+        self._W_V: Optional[torch.Tensor] = None
+        self._W_O: Optional[torch.Tensor] = None
+        self._b_Q: Optional[torch.Tensor] = None
+        self._b_K: Optional[torch.Tensor] = None
+        self._b_V: Optional[torch.Tensor] = None
+        self._b_O: Optional[torch.Tensor] = None
+
+        # Cache attributes (populated by bridge during weight loading)
+        self._reference_model: Optional[Any] = None
+        self._layer_idx: Optional[int] = None
+
     def _create_qkv_conversion_rule(self) -> RearrangeHookConversion:
         """Create the appropriate conversion rule for the individual q, k, and v matrices.
 
@@ -344,13 +358,41 @@ class JointQKVAttentionBridge(AttentionBridge):
             self._extract_hooked_transformer_weights()
 
         # Check if we successfully extracted weights
-        if not self._hooked_weights_extracted or not hasattr(self, "_W_V"):
+        if (
+            not self._hooked_weights_extracted
+            or self._W_Q is None
+            or self._W_K is None
+            or self._W_V is None
+        ):
             return super().forward(*args, **kwargs)
 
         # Import the exact function HookedTransformer uses
         from transformer_lens.utilities.attention import simple_attn_linear
 
         # Compute Q, K, V using exactly the same method as HookedTransformer
+        # Cache zero bias tensors if bias is None to avoid recreating on every forward pass
+        if self._b_Q is None:
+            self._b_Q = torch.zeros(
+                self._W_Q.shape[0],
+                self._W_Q.shape[2],
+                dtype=self._W_Q.dtype,
+                device=self._W_Q.device,
+            )
+        if self._b_K is None:
+            self._b_K = torch.zeros(
+                self._W_K.shape[0],
+                self._W_K.shape[2],
+                dtype=self._W_K.dtype,
+                device=self._W_K.device,
+            )
+        if self._b_V is None:
+            self._b_V = torch.zeros(
+                self._W_V.shape[0],
+                self._W_V.shape[2],
+                dtype=self._W_V.dtype,
+                device=self._W_V.device,
+            )
+
         q = simple_attn_linear(input_tensor, self._W_Q, self._b_Q)
         k = simple_attn_linear(input_tensor, self._W_K, self._b_K)
         v = simple_attn_linear(input_tensor, self._W_V, self._b_V)
@@ -438,7 +480,7 @@ class JointQKVAttentionBridge(AttentionBridge):
         attn_output = attn_output.view(attn_output.shape[0], attn_output.shape[1], -1)
 
         # Apply output projection using the W_O weight
-        if hasattr(self, "_W_O"):
+        if self._W_O is not None:
             # Use the extracted W_O matrix - reshape attn_output to [batch, seq, heads, d_head]
             batch_size, seq_len = attn_output.shape[:2]
             n_heads = self._W_O.shape[0]
@@ -448,7 +490,7 @@ class JointQKVAttentionBridge(AttentionBridge):
             attn_output = torch.einsum("bsnh,nhd->bsnd", attn_reshaped, self._W_O)
             # Sum across heads: [batch, seq, heads, d_model] -> [batch, seq, d_model]
             attn_output = attn_output.sum(dim=2)
-            if hasattr(self, "_b_O"):
+            if self._b_O is not None:
                 attn_output = attn_output + self._b_O
         elif hasattr(original_component, "c_proj"):
             attn_output = original_component.c_proj(attn_output)  # type: ignore[operator]
@@ -924,21 +966,39 @@ class JointQKVAttentionBridge(AttentionBridge):
         return processed_weights
 
     def _extract_hooked_transformer_weights(self) -> None:
-        """Extract weights in HookedTransformer format for exact compatibility.
+        """Extract weights in HookedTransformer format for exact compatibility."""
+        # Use cached reference model if available
+        try:
+            if hasattr(self, "_reference_model") and self._reference_model is not None:
+                reference_model = self._reference_model
+                layer_num = getattr(self, "_layer_idx", 0)
+                reference_attn = reference_model.blocks[layer_num].attn
 
-        This method gets the processed weights that match the exact format used by
-        HookedTransformer's simple_attn_linear function.
-        """
-        # Strategy: Create a reference HookedTransformer with the same configuration
-        # and extract the processed weights from it
+                self._W_Q = reference_attn.W_Q.clone()  # type: ignore[union-attr, operator]
+                self._W_K = reference_attn.W_K.clone()  # type: ignore[union-attr, operator]
+                self._W_V = reference_attn.W_V.clone()  # type: ignore[union-attr, operator]
+                self._b_Q = reference_attn.b_Q.clone()  # type: ignore[union-attr, operator]
+                self._b_K = reference_attn.b_K.clone()  # type: ignore[union-attr, operator]
+                self._b_V = reference_attn.b_V.clone()  # type: ignore[union-attr, operator]
+
+                if hasattr(reference_attn, "W_O"):
+                    self._W_O = reference_attn.W_O.clone()  # type: ignore[operator]
+                if hasattr(reference_attn, "b_O"):
+                    self._b_O = reference_attn.b_O.clone()  # type: ignore[operator]
+
+                self._hooked_weights_extracted = True
+                self._reference_model = None
+                return
+        except Exception:
+            pass
+
+        # Fallback: Load a new reference model
         try:
             from transformer_lens import HookedTransformer
 
-            # Get the model name from config
             model_name = getattr(self.config, "model_name", "gpt2")
             device = next(self.parameters()).device if list(self.parameters()) else "cpu"
 
-            # Create a HookedTransformer with the same processing parameters as the bridge
             reference_model = HookedTransformer.from_pretrained(
                 model_name,
                 device=device,
@@ -949,13 +1009,11 @@ class JointQKVAttentionBridge(AttentionBridge):
                 refactor_factored_attn_matrices=False,
             )
 
-            # Find the layer number - look for it in the component hierarchy
             layer_num = 0
             current = self
             while hasattr(current, "parent") and current.parent is not None:
                 parent = current.parent
                 if hasattr(parent, "blocks"):
-                    # Found the blocks list, find our index
                     for i, block in enumerate(parent.blocks):
                         if hasattr(block, "attn") and block.attn is self:
                             layer_num = i
@@ -963,31 +1021,27 @@ class JointQKVAttentionBridge(AttentionBridge):
                     break
                 current = parent
 
-            # Extract the exact weights from the reference HookedTransformer
             reference_attn = reference_model.blocks[layer_num].attn
 
-            self._W_Q = reference_attn.W_Q.clone()  # type: ignore[union-attr, operator]  # [n_heads, d_model, d_head]
-            self._W_K = reference_attn.W_K.clone()  # type: ignore[union-attr, operator]  # [n_heads, d_model, d_head]
-            self._W_V = reference_attn.W_V.clone()  # type: ignore[union-attr, operator]  # [n_heads, d_model, d_head]
-            self._b_Q = reference_attn.b_Q.clone()  # type: ignore[union-attr, operator]  # [n_heads, d_head]
-            self._b_K = reference_attn.b_K.clone()  # type: ignore[union-attr, operator]  # [n_heads, d_head]
-            self._b_V = reference_attn.b_V.clone()  # type: ignore[union-attr, operator]  # [n_heads, d_head]
+            self._W_Q = reference_attn.W_Q.clone()  # type: ignore[union-attr, operator]
+            self._W_K = reference_attn.W_K.clone()  # type: ignore[union-attr, operator]
+            self._W_V = reference_attn.W_V.clone()  # type: ignore[union-attr, operator]
+            self._b_Q = reference_attn.b_Q.clone()  # type: ignore[union-attr, operator]
+            self._b_K = reference_attn.b_K.clone()  # type: ignore[union-attr, operator]
+            self._b_V = reference_attn.b_V.clone()  # type: ignore[union-attr, operator]
 
             if hasattr(reference_attn, "W_O"):
-                self._W_O = reference_attn.W_O.clone()  # type: ignore[operator]  # [n_heads, d_head, d_model]
+                self._W_O = reference_attn.W_O.clone()  # type: ignore[operator]
             if hasattr(reference_attn, "b_O"):
-                self._b_O = reference_attn.b_O.clone()  # type: ignore[operator]  # [d_model]
+                self._b_O = reference_attn.b_O.clone()  # type: ignore[operator]
 
-            # Clean up reference model
             del reference_model
-
             self._hooked_weights_extracted = True
             return
-
         except Exception:
             pass
 
-        # Strategy 2: Fallback to processing weights manually
+        # Final fallback: Process weights manually
         if self._processed_weights is None:
             try:
                 self.process_weights(
