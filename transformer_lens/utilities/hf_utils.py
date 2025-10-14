@@ -94,9 +94,13 @@ def clear_huggingface_cache():
             if isinstance(excvalue, OSError) and excvalue.errno == errno.ENOENT:
                 return
             # For readonly files on Windows, try to make writable and retry
-            if not os.access(path, os.W_OK):
-                os.chmod(path, stat.S_IWUSR)
-                func(path)
+            if os.path.exists(path) and not os.access(path, os.W_OK):
+                try:
+                    os.chmod(path, stat.S_IWUSR)
+                    func(path)
+                except (OSError, FileNotFoundError):
+                    # File disappeared or became inaccessible - race condition, ignore
+                    return
             else:
                 raise
 
