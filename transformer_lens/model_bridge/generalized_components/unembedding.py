@@ -72,10 +72,11 @@ class UnembeddingBridge(GeneralizedComponent):
             hidden_states = self.hook_in(hidden_states)
 
             # Use the processed weights directly with F.linear
-            if hasattr(self, "_processed_W_U"):
-                output = torch.nn.functional.linear(
-                    hidden_states, self._processed_W_U.T, self._processed_b_U
-                )
+            # Check _parameters dict since we register these as parameters
+            if "_processed_W_U" in self._parameters:
+                # Access parameters directly from _parameters dict to avoid __getattr__ issues
+                processed_W_U = self._parameters["_processed_W_U"]
+                output = torch.nn.functional.linear(hidden_states, processed_W_U.T, self.b_U)
             else:
                 # Fallback to original component's weights
                 output = torch.nn.functional.linear(hidden_states, self.W_U.T, self.b_U)
