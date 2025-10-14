@@ -271,4 +271,11 @@ def get_bridge_params(bridge) -> Dict[str, torch.Tensor]:
             bridge.cfg.d_model, bridge.cfg.d_vocab, device=device, dtype=dtype
         )
 
+    # Add unembedding bias
+    try:
+        params_dict["unembed.b_U"] = bridge.unembed.b_U
+    except AttributeError:
+        device, dtype = _get_device_dtype()
+        params_dict["unembed.b_U"] = torch.zeros(bridge.cfg.d_vocab, device=device, dtype=dtype)
+
     return params_dict

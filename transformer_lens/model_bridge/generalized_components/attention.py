@@ -485,8 +485,18 @@ class AttentionBridge(GeneralizedComponent):
         )
 
         # Apply hook for V if it exists (this is what gets ablated in the comparison script)
-        if hasattr(self, "hook_v"):
-            v = self.hook_v(v)
+        # Check for hook_v (compatibility mode) or v.hook_out (new architecture)
+        if hasattr(self, "v") and hasattr(self.v, "hook_out"):
+            v = self.v.hook_out(v)
+        elif "hook_v" in self.hook_aliases:
+            # In compatibility mode, use the aliased hook_v
+            # Temporarily disable warnings for this internal access
+            original_disable_warnings = getattr(self, "disable_warnings", False)
+            self.disable_warnings = True
+            try:
+                v = self.hook_v(v)
+            finally:
+                self.disable_warnings = original_disable_warnings
 
         # Transpose to [batch, n_heads, seq, d_head] for attention computation
         q = q.transpose(1, 2)  # [batch, n_heads, seq, d_head]
