@@ -847,7 +847,7 @@ class TransformerBridge(nn.Module):
     def _ported_forward_pass(
         self,
         input: Union[str, List[str], torch.Tensor],
-        return_type: str = "logits",
+        return_type: Optional[str] = "logits",
         prepend_bos: Optional[bool] = None,
         loss_per_token: bool = False,
         start_at_layer: Optional[int] = None,
@@ -997,14 +997,9 @@ class TransformerBridge(nn.Module):
 
             # Run forward pass with ported components
             # Handle return_type=None explicitly (don't default to "logits")
-            if return_type is None:
-                return self._ported_forward_pass(
-                    tokens, return_type=None, stop_at_layer=stop_at_layer, **kwargs
-                )
-            else:
-                return self._ported_forward_pass(
-                    tokens, return_type=return_type, stop_at_layer=stop_at_layer, **kwargs
-                )
+            return self._ported_forward_pass(
+                tokens, return_type=return_type, stop_at_layer=stop_at_layer, **kwargs
+            )
 
         finally:
             # Remove hooks if requested
@@ -3527,7 +3522,7 @@ class TransformerBridge(nn.Module):
     def forward(
         self,
         input: Union[str, List[str], torch.Tensor],
-        return_type: str = "logits",
+        return_type: Optional[str] = "logits",
         loss_per_token: bool = False,
         prepend_bos: Optional[bool] = None,
         padding_side: Optional[str] = None,
@@ -4314,10 +4309,7 @@ class TransformerBridge(nn.Module):
             # Run the model
             try:
                 # Handle return_type=None explicitly (don't default to "logits")
-                if return_type is None:
-                    output = self.forward(input, return_type=None, **kwargs)
-                else:
-                    output = self.forward(input, return_type=return_type, **kwargs)
+                output = self.forward(input, return_type=return_type, **kwargs)
             except StopAtLayerException as e:
                 # Return the intermediate output from the specified layer
                 output = e.layer_output
