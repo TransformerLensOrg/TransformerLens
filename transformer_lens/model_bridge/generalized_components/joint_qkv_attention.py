@@ -370,14 +370,32 @@ class JointQKVAttentionBridge(AttentionBridge):
         from transformer_lens.utilities.attention import simple_attn_linear
 
         # Compute Q, K, V using exactly the same method as HookedTransformer
-        # Use zero bias if bias is None
-        b_Q = self._b_Q if self._b_Q is not None else torch.zeros_like(self._W_Q[:, 0, :])
-        b_K = self._b_K if self._b_K is not None else torch.zeros_like(self._W_K[:, 0, :])
-        b_V = self._b_V if self._b_V is not None else torch.zeros_like(self._W_V[:, 0, :])
+        # Cache zero bias tensors if bias is None to avoid recreating on every forward pass
+        if self._b_Q is None:
+            self._b_Q = torch.zeros(
+                self._W_Q.shape[0],
+                self._W_Q.shape[2],
+                dtype=self._W_Q.dtype,
+                device=self._W_Q.device,
+            )
+        if self._b_K is None:
+            self._b_K = torch.zeros(
+                self._W_K.shape[0],
+                self._W_K.shape[2],
+                dtype=self._W_K.dtype,
+                device=self._W_K.device,
+            )
+        if self._b_V is None:
+            self._b_V = torch.zeros(
+                self._W_V.shape[0],
+                self._W_V.shape[2],
+                dtype=self._W_V.dtype,
+                device=self._W_V.device,
+            )
 
-        q = simple_attn_linear(input_tensor, self._W_Q, b_Q)
-        k = simple_attn_linear(input_tensor, self._W_K, b_K)
-        v = simple_attn_linear(input_tensor, self._W_V, b_V)
+        q = simple_attn_linear(input_tensor, self._W_Q, self._b_Q)
+        k = simple_attn_linear(input_tensor, self._W_K, self._b_K)
+        v = simple_attn_linear(input_tensor, self._W_V, self._b_V)
 
         # Apply hooks directly without any conversion - exactly like HookedTransformer
         # HookedTransformer doesn't use any hook conversion for V values in simple_attn_linear output
