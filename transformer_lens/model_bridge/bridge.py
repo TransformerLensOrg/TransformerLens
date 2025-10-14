@@ -970,23 +970,41 @@ class TransformerBridge(nn.Module):
 
         try:
             # Add forward hooks
-            for hook_name, hook_fn in fwd_hooks:
-                if isinstance(hook_name, str):
-                    hook_point = self.get_hook_point(hook_name)
+            for hook_name_or_filter, hook_fn in fwd_hooks:
+                if isinstance(hook_name_or_filter, str):
+                    hook_point = self.get_hook_point(hook_name_or_filter)
                     if hook_point is not None:
-                        add_hook_to_point(hook_point, hook_fn, hook_name, "fwd")
+                        add_hook_to_point(hook_point, hook_fn, hook_name_or_filter, "fwd")
+                elif callable(hook_name_or_filter):
+                    # Filter function - apply to all matching hooks
+                    hook_dict = self.hook_dict
+                    for name, hook_point in hook_dict.items():
+                        if hook_name_or_filter(name):
+                            add_hook_to_point(hook_point, hook_fn, name, "fwd")
 
             # Add backward hooks
-            for hook_name, hook_fn in bwd_hooks:
-                if isinstance(hook_name, str):
-                    hook_point = self.get_hook_point(hook_name)
+            for hook_name_or_filter, hook_fn in bwd_hooks:
+                if isinstance(hook_name_or_filter, str):
+                    hook_point = self.get_hook_point(hook_name_or_filter)
                     if hook_point is not None:
-                        add_hook_to_point(hook_point, hook_fn, hook_name, "bwd")
+                        add_hook_to_point(hook_point, hook_fn, hook_name_or_filter, "bwd")
+                elif callable(hook_name_or_filter):
+                    # Filter function - apply to all matching hooks
+                    hook_dict = self.hook_dict
+                    for name, hook_point in hook_dict.items():
+                        if hook_name_or_filter(name):
+                            add_hook_to_point(hook_point, hook_fn, name, "bwd")
 
             # Run forward pass with ported components
-            return self._ported_forward_pass(
-                tokens, return_type=return_type or "logits", stop_at_layer=stop_at_layer, **kwargs
-            )
+            # Handle return_type=None explicitly (don't default to "logits")
+            if return_type is None:
+                return self._ported_forward_pass(
+                    tokens, return_type=None, stop_at_layer=stop_at_layer, **kwargs
+                )
+            else:
+                return self._ported_forward_pass(
+                    tokens, return_type=return_type, stop_at_layer=stop_at_layer, **kwargs
+                )
 
         finally:
             # Remove hooks if requested
@@ -4295,7 +4313,11 @@ class TransformerBridge(nn.Module):
 
             # Run the model
             try:
-                output = self.forward(input, return_type=return_type or "logits", **kwargs)
+                # Handle return_type=None explicitly (don't default to "logits")
+                if return_type is None:
+                    output = self.forward(input, return_type=None, **kwargs)
+                else:
+                    output = self.forward(input, return_type=return_type, **kwargs)
             except StopAtLayerException as e:
                 # Return the intermediate output from the specified layer
                 output = e.layer_output

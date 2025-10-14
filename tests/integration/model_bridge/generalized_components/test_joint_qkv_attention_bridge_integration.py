@@ -75,7 +75,7 @@ class TestJointQKVAttentionBridgeIntegration:
             "JointQKVAttentionBridge" in neox_source
         ), "NeoX architecture should reference JointQKVAttentionBridge"
 
-    @pytest.mark.skip(reason="Requires model loading - too slow for CI")
+    @pytest.mark.slow
     def test_distilgpt2_integration(self):
         """Full integration test with DistilGPT-2 (skipped in CI)."""
         # This test would load DistilGPT-2 and test full functionality
