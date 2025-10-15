@@ -67,6 +67,54 @@ DeviceType = Optional[torch.device]
 _grad_t = Union[tuple[Tensor, ...], Tensor]
 
 
+class _AliasedHookPoint:
+    """
+    A lightweight wrapper that represents a HookPoint with an aliased name.
+
+    This is used when a hook is registered with multiple names (e.g., in compatibility mode
+    where both canonical and legacy names should trigger the hook). Instead of modifying
+    the original HookPoint's name, we create this wrapper that delegates to the original
+    HookPoint but presents a different name to the user's hook function.
+    """
+
+    def __init__(self, alias_name: str, target: "HookPoint"):
+        """
+        Create an aliased view of a HookPoint.
+
+        Args:
+            alias_name: The name to present to the hook function
+            target: The original HookPoint to delegate to
+        """
+        self._alias_name = alias_name
+        self._target = target
+
+    @property
+    def name(self) -> Optional[str]:
+        """Return the alias name."""
+        return self._alias_name
+
+    @property
+    def ctx(self) -> dict:
+        """Delegate to the target's context."""
+        return self._target.ctx
+
+    @property
+    def hook_conversion(self):
+        """Delegate to the target's hook conversion."""
+        return self._target.hook_conversion
+
+    def layer(self) -> int:
+        """
+        Extract layer index from the alias name.
+
+        Returns the layer index for hook names like 'blocks.0.attn.hook_pattern' -> 0
+        """
+        if self._alias_name is None:
+            raise ValueError("Name cannot be None")
+        split_name = self._alias_name.split(".")
+        return int(split_name[1])
+
+
 class HookPoint(nn.Module):
     """
     A helper class to access intermediate activations in a PyTorch model (inspired by Garcon).
@@ -127,18 +175,13 @@ class HookPoint(nn.Module):
             # Apply the hook for each name (or just once with canonical name)
             if alias_names is not None:
                 # Call the hook once for each alias name
-                # Define _NamedHook class to match HookPoint protocol
-                class _NamedHook:
-                    def __init__(self, name: str, target: "HookPoint"):
-                        self.name = name
-                        self.ctx = target.ctx
-                        self.hook_conversion = target.hook_conversion
-
+                # Create a simple wrapper that acts like a HookPoint but with a different name
                 hook_result = None
-                for name in alias_names:
-                    hook_param = _NamedHook(name, self)
+                for alias_name in alias_names:
+                    # Create a view of this HookPoint with the alias name
+                    hook_with_alias = _AliasedHookPoint(alias_name, self)
                     # Apply the hook
-                    hook_result = hook(module_output, hook=hook_param)  # type: ignore[arg-type]
+                    hook_result = hook(module_output, hook=hook_with_alias)  # type: ignore[arg-type]
 
                     # If the hook modified the output, use that for subsequent calls
                     if hook_result is not None:
