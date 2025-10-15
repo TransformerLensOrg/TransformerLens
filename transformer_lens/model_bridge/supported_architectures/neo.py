@@ -14,6 +14,7 @@ from transformer_lens.model_bridge.generalized_components import (
     LinearBridge,
     MLPBridge,
     NormalizationBridge,
+    PosEmbedBridge,
     UnembeddingBridge,
 )
 
@@ -62,7 +63,7 @@ class NeoArchitectureAdapter(ArchitectureAdapter):
 
         self.component_mapping = {
             "embed": EmbeddingBridge(name="transformer.wte"),
-            "pos_embed": EmbeddingBridge(name="transformer.wpe"),
+            "pos_embed": PosEmbedBridge(name="transformer.wpe"),
             "blocks": BlockBridge(
                 name="transformer.h",
                 submodules={

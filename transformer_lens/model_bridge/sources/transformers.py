@@ -83,6 +83,18 @@ def map_default_transformer_lens_config(hf_config):
     if hasattr(tl_config, "d_model") and hasattr(tl_config, "n_heads"):
         tl_config.d_head = tl_config.d_model // tl_config.n_heads
 
+    # Set activation function
+    if hasattr(hf_config, "activation_function"):
+        tl_config.act_fn = hf_config.activation_function
+
+    # Set number of experts
+    if hasattr(hf_config, "num_local_experts"):
+        tl_config.num_experts = hf_config.num_local_experts
+
+    # Set number of experts per token
+    if hasattr(hf_config, "num_experts_per_tok"):
+        tl_config.experts_per_token = hf_config.num_experts_per_tok
+
     # Set common defaults for transformer models
     tl_config.default_prepend_bos = True
 
@@ -207,6 +219,7 @@ def boot(
     # Convert to TransformerBridgeConfig with unified architecture
     bridge_config = TransformerBridgeConfig.from_dict(tl_config.__dict__)
     bridge_config.architecture = architecture
+    bridge_config.model_name = model_name  # Set the actual model name instead of default "custom"
 
     adapter = ArchitectureAdapterFactory.select_architecture_adapter(bridge_config)
 
@@ -225,7 +238,8 @@ def boot(
     )
 
     # Move model to device
-    hf_model = hf_model.to(device)
+    if device is not None:
+        hf_model = hf_model.to(device)  # type: ignore
 
     # Load the tokenizer
     tokenizer = tokenizer
@@ -250,11 +264,17 @@ def boot(
     if tokenizer is not None:
         adapter.cfg.tokenizer_prepends_bos = len(tokenizer.encode("")) > 0
 
-    return TransformerBridge(
+    # Create the bridge
+    bridge = TransformerBridge(
         hf_model,
         adapter,
         tokenizer,
     )
+
+    # Note: enable_compatibility_mode() is available to apply folding if needed
+    # This should be called manually when folding is desired
+
+    return bridge
 
 
 def setup_tokenizer(

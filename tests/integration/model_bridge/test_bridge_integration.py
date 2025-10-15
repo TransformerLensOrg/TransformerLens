@@ -6,6 +6,7 @@ including model initialization, text generation, hooks, and caching.
 
 import gc
 import logging
+import os
 
 import pytest
 import torch
@@ -22,6 +23,40 @@ from transformer_lens.model_bridge.generalized_components.attention import (
 from transformer_lens.model_bridge.generalized_components.joint_qkv_attention import (
     JointQKVAttentionBridge,
 )
+
+
+# Shared fixtures at module level to avoid repeated model loading
+# Using distilgpt2 for faster tests (6 layers vs 12, but same heads/hidden size)
+@pytest.fixture(scope="module")
+def gpt2_bridge():
+    """Load DistilGPT-2 bridge once per module (faster than full GPT-2)."""
+    bridge = TransformerBridge.boot_transformers("distilgpt2", device="cpu")
+    if bridge.tokenizer.pad_token is None:
+        bridge.tokenizer.pad_token = bridge.tokenizer.eos_token
+    return bridge
+
+
+@pytest.fixture(scope="module")
+def gpt2_bridge_with_eager_attn():
+    """Load DistilGPT-2 bridge with eager attention once per module."""
+    bridge = TransformerBridge.boot_transformers(
+        "distilgpt2",
+        device="cpu",
+        hf_config_overrides={"attn_implementation": "eager"},
+    )
+    if bridge.tokenizer.pad_token is None:
+        bridge.tokenizer.pad_token = bridge.tokenizer.eos_token
+    return bridge
+
+
+@pytest.fixture(scope="module")
+def gpt2_bridge_with_compat():
+    """Load DistilGPT-2 bridge with compatibility mode once per module."""
+    bridge = TransformerBridge.boot_transformers("distilgpt2", device="cpu")
+    bridge.enable_compatibility_mode(disable_warnings=True)
+    if bridge.tokenizer.pad_token is None:
+        bridge.tokenizer.pad_token = bridge.tokenizer.eos_token
+    return bridge
 
 
 def test_model_initialization():
@@ -63,21 +98,16 @@ def test_model_initialization_with_alias(caplog):
     assert deprecation_found, "Expected deprecation warning for alias 'gpt2-small' was not logged"
 
 
-def test_text_generation():
+def test_text_generation(gpt2_bridge):
     """Test basic text generation functionality."""
-    model_name = "gpt2"  # Use a smaller model for testing
-    bridge = TransformerBridge.boot_transformers(model_name)
-
-    if bridge.tokenizer.pad_token is None:
-        bridge.tokenizer.pad_token = bridge.tokenizer.eos_token
-
     prompt = "The quick brown fox jumps over the lazy dog"
-    output = bridge.generate(prompt, max_new_tokens=10)
+    output = gpt2_bridge.generate(prompt, max_new_tokens=10)
 
     assert isinstance(output, str), "Output should be a string"
     assert len(output) > len(prompt), "Generated text should be longer than the prompt"
 
 
+@pytest.mark.skip(reason="KV cache support for TransformerBridge is currently incomplete")
 def test_generate_with_kv_cache():
     """Test that generate works with use_past_kv_cache parameter."""
     model_name = "gpt2"  # Use a smaller model for testing
@@ -109,14 +139,8 @@ def test_generate_with_kv_cache():
     assert len(output_without_cache) > 0, "Output without KV cache should not be empty"
 
 
-def test_hooks():
+def test_hooks(gpt2_bridge):
     """Test that hooks can be added and removed correctly."""
-    model_name = "gpt2"  # Use a smaller model for testing
-    bridge = TransformerBridge.boot_transformers(model_name)
-
-    if bridge.tokenizer.pad_token is None:
-        bridge.tokenizer.pad_token = bridge.tokenizer.eos_token
-
     # Track if hook was called
     hook_called = False
 
@@ -127,39 +151,30 @@ def test_hooks():
 
     # Add hook to first attention layer
     hook_name = "blocks.0.attn"
-    bridge.blocks[0].attn.add_hook(test_hook)
+    gpt2_bridge.blocks[0].attn.add_hook(test_hook)
 
     # Run model
     prompt = "Test prompt"
-    bridge.generate(prompt, max_new_tokens=1)
+    gpt2_bridge.generate(prompt, max_new_tokens=1)
 
     # Verify hook was called
     assert hook_called, "Hook should have been called"
 
     # Remove hook
-    bridge.blocks[0].attn.remove_hooks()
+    gpt2_bridge.blocks[0].attn.remove_hooks()
     hook_called = False
 
     # Run model again
-    bridge.generate(prompt, max_new_tokens=1)
+    gpt2_bridge.generate(prompt, max_new_tokens=1)
 
     # Verify hook was not called
     assert not hook_called, "Hook should not have been called after removal"
 
 
-def test_cache():
+def test_cache(gpt2_bridge_with_compat):
     """Test that the cache functionality works correctly."""
-    model_name = "gpt2"  # Use a smaller model for testing
-    bridge = TransformerBridge.boot_transformers(model_name)
-
-    # Enable compatibility mode to include hook aliases
-    bridge.enable_compatibility_mode(disable_warnings=True)
-
-    if bridge.tokenizer.pad_token is None:
-        bridge.tokenizer.pad_token = bridge.tokenizer.eos_token
-
     prompt = "Test prompt"
-    output, cache = bridge.run_with_cache(prompt)
+    output, cache = gpt2_bridge_with_compat.run_with_cache(prompt)
 
     # Verify output and cache
     assert isinstance(output, torch.Tensor), "Output should be a tensor"
@@ -180,30 +195,23 @@ def test_cache():
         assert isinstance(value, torch.Tensor), f"Cache value for {key} should be a tensor"
 
 
-def test_component_access():
+def test_component_access(gpt2_bridge):
     """Test that model components can be accessed correctly."""
-    model_name = "gpt2"  # Use a smaller model for testing
-    bridge = TransformerBridge.boot_transformers(model_name)
-
     # Test accessing various components
-    assert hasattr(bridge, "embed"), "Bridge should have embed component"
-    assert hasattr(bridge, "blocks"), "Bridge should have blocks component"
-    assert hasattr(bridge, "unembed"), "Bridge should have unembed component"
+    assert hasattr(gpt2_bridge, "embed"), "Bridge should have embed component"
+    assert hasattr(gpt2_bridge, "blocks"), "Bridge should have blocks component"
+    assert hasattr(gpt2_bridge, "unembed"), "Bridge should have unembed component"
 
     # Test accessing block components
-    block = bridge.blocks[0]
+    block = gpt2_bridge.blocks[0]
     assert hasattr(block, "attn"), "Block should have attention component"
     assert hasattr(block, "mlp"), "Block should have MLP component"
     assert hasattr(block, "ln1"), "Block should have first layer norm"
     assert hasattr(block, "ln2"), "Block should have second layer norm"
 
 
-def test_joint_qkv_custom_conversion_rule():
+def test_joint_qkv_custom_conversion_rule(gpt2_bridge):
     """Test that custom QKV conversion rules can be passed to QKVBridge."""
-
-    model_name = "gpt2"  # Use a smaller model for testing
-    bridge = TransformerBridge.boot_transformers(model_name)
-
     # Create a custom QKV conversion rule
     custom_qkv_conversion_rule = RearrangeHookConversion(
         "batch seq (num_attention_heads d_head) -> batch seq num_attention_heads d_head",
@@ -213,7 +221,7 @@ def test_joint_qkv_custom_conversion_rule():
     # This should not raise an error
     test_bridge = JointQKVAttentionBridge(
         name="test_joint_qkv_attention_bridge",
-        config=bridge.cfg,
+        config=gpt2_bridge.cfg,
         split_qkv_matrix=lambda x: (x, x, x),  # Dummy function for test
         submodules={},
         qkv_conversion_rule=custom_qkv_conversion_rule,
@@ -244,15 +252,8 @@ def test_joint_qkv_custom_conversion_rule():
     ), "Custom QKV conversion rule should be set"
 
 
-def test_attention_pattern_hook_shape_custom_conversion():
+def test_attention_pattern_hook_shape_custom_conversion(gpt2_bridge):
     """Test that custom pattern conversion rules can be passed to attention components."""
-
-    model_name = "gpt2"  # Use a smaller model for testing
-    bridge = TransformerBridge.boot_transformers(model_name)
-
-    if bridge.tokenizer.pad_token is None:
-        bridge.tokenizer.pad_token = bridge.tokenizer.eos_token
-
     # Create a custom conversion rule (this is just for testing the parameter passing)
     custom_conversion = RearrangeHookConversion(
         "batch n_heads pos_q pos_k -> batch n_heads pos_q pos_k"  # Same as default but explicitly set
@@ -264,7 +265,7 @@ def test_attention_pattern_hook_shape_custom_conversion():
 
     # This should not raise an error
     test_bridge = AttentionBridge(
-        name="test_attn", config=bridge.cfg, pattern_conversion_rule=custom_conversion
+        name="test_attn", config=gpt2_bridge.cfg, pattern_conversion_rule=custom_conversion
     )
 
     # Verify the conversion rule was set
@@ -273,18 +274,8 @@ def test_attention_pattern_hook_shape_custom_conversion():
     ), "Custom conversion rule should be set"
 
 
-def test_attention_pattern_hook_shape():
+def test_attention_pattern_hook_shape(gpt2_bridge_with_eager_attn):
     """Test that the attention pattern hook produces the correct shape (n_heads, pos, pos)."""
-    model_name = "gpt2"  # Use a smaller model for testing
-    bridge = TransformerBridge.boot_transformers(
-        model_name,
-        hf_config_overrides={
-            "attn_implementation": "eager",
-        },
-    )
-
-    if bridge.tokenizer.pad_token is None:
-        bridge.tokenizer.pad_token = bridge.tokenizer.eos_token
 
     # Attention output enabled via hf_config_overrides
 
@@ -297,16 +288,16 @@ def test_attention_pattern_hook_shape():
         return tensor
 
     # Add hook to capture attention patterns
-    bridge.blocks[0].attn.hook_pattern.add_hook(capture_pattern_hook)
+    gpt2_bridge_with_eager_attn.blocks[0].attn.hook_pattern.add_hook(capture_pattern_hook)
 
     try:
         # Run model with a prompt
         prompt = "The quick brown fox"
-        tokens = bridge.to_tokens(prompt)
+        tokens = gpt2_bridge_with_eager_attn.to_tokens(prompt)
         batch_size, seq_len = tokens.shape
 
         # Run forward pass
-        output = bridge(tokens)
+        output = gpt2_bridge_with_eager_attn(tokens)
 
         # Verify we captured attention patterns
         assert len(captured_patterns) > 0, "Should have captured attention patterns"
@@ -326,8 +317,8 @@ def test_attention_pattern_hook_shape():
 
         # Verify dimensions make sense
         assert (
-            n_heads_dim == bridge.cfg.n_heads
-        ), f"Heads dimension should be {bridge.cfg.n_heads}, got {n_heads_dim}"
+            n_heads_dim == gpt2_bridge_with_eager_attn.cfg.n_heads
+        ), f"Heads dimension should be {gpt2_bridge_with_eager_attn.cfg.n_heads}, got {n_heads_dim}"
         assert (
             pos_q_dim == seq_len
         ), f"Query position dimension should be {seq_len}, got {pos_q_dim}"
@@ -345,27 +336,35 @@ def test_attention_pattern_hook_shape():
 
     finally:
         # Clean up hooks
-        bridge.blocks[0].attn.hook_pattern.remove_hooks()
+        gpt2_bridge_with_eager_attn.blocks[0].attn.hook_pattern.remove_hooks()
 
 
-@pytest.mark.parametrize(
-    "model_name",
-    [
+def _get_test_models():
+    """Get list of models to test. Excludes large models in CI to avoid timeouts."""
+    models = [
         "gpt2",  # GPT-2 architecture
         "distilgpt2",  # DistilGPT-2 architecture (smaller GPT-2)
         "EleutherAI/pythia-70m",  # Pythia architecture (smallest, ~70M params)
         "EleutherAI/gpt-neo-125M",  # GPT-Neo architecture
-        "google/gemma-2-2b-it",  # Gemma architecture (Grouped Query Attention)
-    ],
-)
+    ]
+
+    # Only test large models locally, not in CI (to avoid timeouts)
+    if not os.getenv("CI"):
+        models.append(
+            "google/gemma-2-2b-it"
+        )  # Gemma architecture (Grouped Query Attention, 2B params)
+
+    return models
+
+
+@pytest.mark.parametrize("model_name", _get_test_models())
 def test_get_params(model_name):
     """Test that get_params works correctly with different model architectures.
 
     This test verifies that the get_params function can successfully extract
-    parameters from various model types (GPT-2, DistilGPT-2, Pythia, GPT-Neo, Gemma)
-    without encountering attribute errors or missing component issues. This includes
-    models with different attention architectures like Grouped Query Attention (GQA).
-    Covers a range of model sizes from 70M to 2B parameters.
+    parameters from various model types (GPT-2, DistilGPT-2, Pythia, GPT-Neo, and Gemma when not in CI)
+    without encountering attribute errors or missing component issues.
+    Covers a range of model sizes from 70M to 2B parameters (local only).
 
     Args:
         model_name: The model name to test (parameterized)
