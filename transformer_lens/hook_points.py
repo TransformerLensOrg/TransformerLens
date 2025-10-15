@@ -98,12 +98,16 @@ class HookPoint(nn.Module):
         is_permanent: bool = False,
         level: Optional[int] = None,
         prepend: bool = False,
+        alias_names: Optional[list[str]] = None,
     ) -> None:
         """
         Hook format is fn(activation, hook_name)
         Change it into PyTorch hook format (this includes input and output,
         which are the same for a HookPoint)
         If prepend is True, add this hook before all other hooks
+        If alias_names is provided, the hook will be called once for each alias name,
+        receiving a temporary HookPoint-like object with that name instead of self
+        (useful for compatibility mode aliases)
         """
 
         def full_hook(
@@ -120,8 +124,35 @@ class HookPoint(nn.Module):
             if self.hook_conversion is not None:
                 module_output = self.hook_conversion.convert(module_output)
 
-            # Apply the hook
-            hook_result = hook(module_output, hook=self)
+            # Determine what names to use for hook calls
+            if alias_names is not None:
+                # Call the hook once for each alias name
+                names_to_use = alias_names
+            else:
+                # Call the hook once with the canonical name
+                names_to_use = [None]
+
+            # Apply the hook for each name
+            hook_result = None
+            for name in names_to_use:
+                if name is not None:
+                    # Create a lightweight object with the alias name
+                    class _NamedHook:
+                        def __init__(self, name: str, target: "HookPoint"):
+                            self.name = name
+                            self.ctx = target.ctx
+                            self.hook_conversion = target.hook_conversion
+
+                    hook_param = _NamedHook(name, self)
+                else:
+                    hook_param = self
+
+                # Apply the hook
+                hook_result = hook(module_output, hook=hook_param)
+
+                # If the hook modified the output, use that for subsequent calls
+                if hook_result is not None:
+                    module_output = hook_result
 
             # Apply output reversion if hook_conversion exists and hook returned a value
             if hook_result is not None and self.hook_conversion is not None:
