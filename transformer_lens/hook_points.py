@@ -124,35 +124,28 @@ class HookPoint(nn.Module):
             if self.hook_conversion is not None:
                 module_output = self.hook_conversion.convert(module_output)
 
-            # Determine what names to use for hook calls
+            # Apply the hook for each name (or just once with canonical name)
             if alias_names is not None:
                 # Call the hook once for each alias name
-                names_to_use = alias_names
-            else:
-                # Call the hook once with the canonical name
-                names_to_use = [None]
+                # Define _NamedHook class to match HookPoint protocol
+                class _NamedHook:
+                    def __init__(self, name: str, target: "HookPoint"):
+                        self.name = name
+                        self.ctx = target.ctx
+                        self.hook_conversion = target.hook_conversion
 
-            # Apply the hook for each name
-            hook_result = None
-            for name in names_to_use:
-                if name is not None:
-                    # Create a lightweight object with the alias name
-                    class _NamedHook:
-                        def __init__(self, name: str, target: "HookPoint"):
-                            self.name = name
-                            self.ctx = target.ctx
-                            self.hook_conversion = target.hook_conversion
-
+                hook_result = None
+                for name in alias_names:
                     hook_param = _NamedHook(name, self)
-                else:
-                    hook_param = self
+                    # Apply the hook
+                    hook_result = hook(module_output, hook=hook_param)  # type: ignore[arg-type]
 
-                # Apply the hook
-                hook_result = hook(module_output, hook=hook_param)
-
-                # If the hook modified the output, use that for subsequent calls
-                if hook_result is not None:
-                    module_output = hook_result
+                    # If the hook modified the output, use that for subsequent calls
+                    if hook_result is not None:
+                        module_output = hook_result
+            else:
+                # Call the hook once with the canonical name (self)
+                hook_result = hook(module_output, hook=self)
 
             # Apply output reversion if hook_conversion exists and hook returned a value
             if hook_result is not None and self.hook_conversion is not None:

@@ -971,10 +971,11 @@ class TransformerBridge(nn.Module):
             # In compatibility mode, collect all names for this hook point
             # (canonical name + any aliases that map to it)
             if self.compatibility_mode:
-                alias_names_list = []
+                alias_names_list: list[str] = []
 
                 # Add the canonical name first
-                alias_names_list.append(hook_point.name)
+                if hook_point.name is not None:
+                    alias_names_list.append(hook_point.name)
 
                 # Add any alias names that differ from the canonical name
                 if name != hook_point.name:
@@ -4261,10 +4262,11 @@ class TransformerBridge(nn.Module):
             # In compatibility mode, collect all names for this hook point
             # (canonical name + any aliases that map to it)
             if self.compatibility_mode:
-                alias_names_list = []
+                alias_names_list: list[str] = []
 
                 # Add the canonical name first
-                alias_names_list.append(hook_point.name)
+                if hook_point.name is not None:
+                    alias_names_list.append(hook_point.name)
 
                 # Add any alias names that differ from the canonical name
                 if name != hook_point.name:
