@@ -9,6 +9,9 @@ from transformer_lens.model_bridge.generalized_components.block import (
 from transformer_lens.model_bridge.generalized_components.embedding import (
     EmbeddingBridge,
 )
+from transformer_lens.model_bridge.generalized_components.pos_embed import (
+    PosEmbedBridge,
+)
 from transformer_lens.model_bridge.generalized_components.normalization import (
     NormalizationBridge,
 )
@@ -32,6 +35,7 @@ __all__ = [
     "AttentionBridge",
     "BlockBridge",
     "EmbeddingBridge",
+    "PosEmbedBridge",
     "NormalizationBridge",
     "JointQKVAttentionBridge",
     "JointGateUpMLPBridge",

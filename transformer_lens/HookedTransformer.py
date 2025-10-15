@@ -72,6 +72,7 @@ from transformer_lens.utils import (
     init_xavier_normal_,
     init_xavier_uniform_,
 )
+from transformer_lens.weight_processing import ProcessWeights
 
 SingleLoss = Float[torch.Tensor, ""]  # Type alias for a single element tensor
 LossPerToken = Float[torch.Tensor, "batch pos-1"]
@@ -1412,7 +1413,6 @@ class HookedTransformer(HookedRootModule):
             model.move_model_modules_to_device()
 
         print(f"Loaded pretrained model {model_name} into HookedTransformer")
-
         return model
 
     @classmethod
@@ -1624,40 +1624,17 @@ class HookedTransformer(HookedRootModule):
             )
 
         state_dict = self.fill_missing_keys(state_dict)
-        if fold_ln:
-            if self.cfg.num_experts and self.cfg.num_experts > 1:
-                logging.warning(
-                    "You are using MoE, so the layer norm weights can't be folded! Skipping"
-                )
-            elif self.cfg.normalization_type in ["LN", "LNPre"]:
-                state_dict = self.fold_layer_norm(state_dict)
-            elif self.cfg.normalization_type in ["RMS", "RMSPre"]:
-                state_dict = self.fold_layer_norm(
-                    state_dict, fold_biases=False, center_weights=False
-                )
-            else:
-                logging.warning(
-                    "You are not using LayerNorm or RMSNorm, so the layer norm weights can't be folded! Skipping"
-                )
 
-        if center_writing_weights:
-            if self.cfg.normalization_type not in ["LN", "LNPre"]:
-                logging.warning(
-                    "You are not using LayerNorm, so the writing weights can't be centered! Skipping"
-                )
-            elif self.cfg.final_rms:
-                logging.warning(
-                    "This model is using final RMS normalization, so the writing weights can't be centered! Skipping"
-                )
-            else:
-                state_dict = self.center_writing_weights(state_dict)
-
-        if center_unembed:
-            state_dict = self.center_unembed(state_dict)
-        if fold_value_biases:
-            state_dict = self.fold_value_biases(state_dict)
-        if refactor_factored_attn_matrices:
-            state_dict = self.refactor_factored_attn_matrices(state_dict)
+        # Use the centralized ProcessWeights class for all weight processing
+        state_dict = ProcessWeights.process_weights(
+            state_dict,
+            self.cfg,
+            fold_ln=fold_ln,
+            center_writing_weights=center_writing_weights,
+            center_unembed=center_unembed,
+            fold_value_biases=fold_value_biases,
+            refactor_factored_attn_matrices=refactor_factored_attn_matrices,
+        )
 
         if self.cfg.load_in_4bit:
             # with quantization, parameters should be assigned
@@ -1686,153 +1663,7 @@ class HookedTransformer(HookedRootModule):
             fold_biases (bool): Enables folding of LN biases. Should be disabled when RMS Norm is used.
             center_weights (bool): Enables the centering of weights after folding in LN. Should be disabled when RMS Norm is used.
         """
-
-        # Models that use Grouped Query Attention (Only Mistral at the time of writing) prefix their K/V weights and
-        # biases with an underscore in order to distinguish them, but folding the LN into them still works the same,
-        # so we just add the underscore if GQA is used (i.e. if `cfg.n_key_value_heads is specified`).
-        gqa = "" if self.cfg.n_key_value_heads is None else "_"
-
-        for l in range(self.cfg.n_layers):
-            # Fold ln1 into attention - it's important to fold biases first, since biases depend on
-            # weights but not vice versa The various indexing is just to broadcast ln.b and ln.w
-            # along every axis other than d_model. Each weight matrix right multiplies. To fold in
-            # the bias, we use the W_ matrix to map it to the hidden space of the layer, so we need
-            # to sum along axis -2, which is the residual stream space axis.
-            if fold_biases:
-                state_dict[f"blocks.{l}.attn.b_Q"] = state_dict[f"blocks.{l}.attn.b_Q"] + (
-                    state_dict[f"blocks.{l}.attn.W_Q"]
-                    * state_dict[f"blocks.{l}.ln1.b"][None, :, None]
-                ).sum(-2)
-                state_dict[f"blocks.{l}.attn.{gqa}b_K"] = state_dict[
-                    f"blocks.{l}.attn.{gqa}b_K"
-                ] + (
-                    state_dict[f"blocks.{l}.attn.{gqa}W_K"]
-                    * state_dict[f"blocks.{l}.ln1.b"][None, :, None]
-                ).sum(
-                    -2
-                )
-                state_dict[f"blocks.{l}.attn.{gqa}b_V"] = state_dict[
-                    f"blocks.{l}.attn.{gqa}b_V"
-                ] + (
-                    state_dict[f"blocks.{l}.attn.{gqa}W_V"]
-                    * state_dict[f"blocks.{l}.ln1.b"][None, :, None]
-                ).sum(
-                    -2
-                )
-                del state_dict[f"blocks.{l}.ln1.b"]
-
-            state_dict[f"blocks.{l}.attn.W_Q"] = (
-                state_dict[f"blocks.{l}.attn.W_Q"] * state_dict[f"blocks.{l}.ln1.w"][None, :, None]
-            )
-            state_dict[f"blocks.{l}.attn.{gqa}W_K"] = (
-                state_dict[f"blocks.{l}.attn.{gqa}W_K"]
-                * state_dict[f"blocks.{l}.ln1.w"][None, :, None]
-            )
-            state_dict[f"blocks.{l}.attn.{gqa}W_V"] = (
-                state_dict[f"blocks.{l}.attn.{gqa}W_V"]
-                * state_dict[f"blocks.{l}.ln1.w"][None, :, None]
-            )
-            del state_dict[f"blocks.{l}.ln1.w"]
-
-            # Finally, we center the weights reading from the residual stream. The output of the
-            # first part of the LayerNorm is mean 0 and standard deviation 1, so the mean of any
-            # input vector of the matrix doesn't matter and can be set to zero. Equivalently, the
-            # output of LayerNormPre is orthogonal to the vector of all 1s (because dotting with
-            # that gets the sum), so we can remove the component of the matrix parallel to this.
-            if center_weights:
-                state_dict[f"blocks.{l}.attn.W_Q"] -= einops.reduce(
-                    state_dict[f"blocks.{l}.attn.W_Q"],
-                    "head_index d_model d_head -> head_index 1 d_head",
-                    "mean",
-                )
-                state_dict[f"blocks.{l}.attn.{gqa}W_K"] -= einops.reduce(
-                    state_dict[f"blocks.{l}.attn.{gqa}W_K"],
-                    "head_index d_model d_head -> head_index 1 d_head",
-                    "mean",
-                )
-                state_dict[f"blocks.{l}.attn.{gqa}W_V"] -= einops.reduce(
-                    state_dict[f"blocks.{l}.attn.{gqa}W_V"],
-                    "head_index d_model d_head -> head_index 1 d_head",
-                    "mean",
-                )
-
-            # Fold ln2 into MLP
-            if not self.cfg.attn_only:
-                if fold_biases:
-                    state_dict[f"blocks.{l}.mlp.b_in"] = state_dict[f"blocks.{l}.mlp.b_in"] + (
-                        state_dict[f"blocks.{l}.mlp.W_in"]
-                        * state_dict[f"blocks.{l}.ln2.b"][:, None]
-                    ).sum(-2)
-                    del state_dict[f"blocks.{l}.ln2.b"]
-
-                state_dict[f"blocks.{l}.mlp.W_in"] = (
-                    state_dict[f"blocks.{l}.mlp.W_in"] * state_dict[f"blocks.{l}.ln2.w"][:, None]
-                )
-
-                if self.cfg.gated_mlp:
-                    state_dict[f"blocks.{l}.mlp.W_gate"] = (
-                        state_dict[f"blocks.{l}.mlp.W_gate"]
-                        * state_dict[f"blocks.{l}.ln2.w"][:, None]
-                    )
-
-                del state_dict[f"blocks.{l}.ln2.w"]
-
-                if center_weights:
-                    # Center the weights that read in from the LayerNormPre
-                    state_dict[f"blocks.{l}.mlp.W_in"] -= einops.reduce(
-                        state_dict[f"blocks.{l}.mlp.W_in"],
-                        "d_model d_mlp -> 1 d_mlp",
-                        "mean",
-                    )
-
-                if self.cfg.act_fn is not None and self.cfg.act_fn.startswith("solu"):
-                    # Fold ln3 into activation
-                    if fold_biases:
-                        state_dict[f"blocks.{l}.mlp.b_out"] = state_dict[
-                            f"blocks.{l}.mlp.b_out"
-                        ] + (
-                            state_dict[f"blocks.{l}.mlp.W_out"]
-                            * state_dict[f"blocks.{l}.mlp.ln.b"][:, None]
-                        ).sum(
-                            -2
-                        )
-
-                        del state_dict[f"blocks.{l}.mlp.ln.b"]
-
-                    state_dict[f"blocks.{l}.mlp.W_out"] = (
-                        state_dict[f"blocks.{l}.mlp.W_out"]
-                        * state_dict[f"blocks.{l}.mlp.ln.w"][:, None]
-                    )
-
-                    if center_weights:
-                        # Center the weights that read in from the LayerNormPre
-                        state_dict[f"blocks.{l}.mlp.W_out"] -= einops.reduce(
-                            state_dict[f"blocks.{l}.mlp.W_out"],
-                            "d_mlp d_model -> 1 d_model",
-                            "mean",
-                        )
-
-                    del state_dict[f"blocks.{l}.mlp.ln.w"]
-
-        # Fold ln_final into Unembed
-        if not self.cfg.final_rms and fold_biases:
-            # Dumb bug from my old SoLU training code, some models have RMSNorm instead of LayerNorm
-            # pre unembed.
-            state_dict[f"unembed.b_U"] = state_dict[f"unembed.b_U"] + (
-                state_dict[f"unembed.W_U"] * state_dict[f"ln_final.b"][:, None]
-            ).sum(dim=-2)
-            del state_dict[f"ln_final.b"]
-
-        state_dict[f"unembed.W_U"] = state_dict[f"unembed.W_U"] * state_dict[f"ln_final.w"][:, None]
-        del state_dict[f"ln_final.w"]
-
-        if center_weights:
-            # Center the weights that read in from the LayerNormPre
-            state_dict[f"unembed.W_U"] -= einops.reduce(
-                state_dict[f"unembed.W_U"], "d_model d_vocab -> 1 d_vocab", "mean"
-            )
-
-        return state_dict
+        return ProcessWeights.fold_layer_norm(state_dict, self.cfg, fold_biases, center_weights)
 
     def center_writing_weights(self, state_dict: Dict[str, torch.Tensor]):
         """Center Writing Weights.
@@ -1841,30 +1672,7 @@ class HookedTransformer(HookedRootModule):
         W_out. This is done by subtracting the mean of the weights from the weights themselves. This
         is done in-place. See fold_layer_norm for more details.
         """
-        state_dict["embed.W_E"] = state_dict["embed.W_E"] - state_dict["embed.W_E"].mean(
-            -1, keepdim=True
-        )
-        if self.cfg.positional_embedding_type != "rotary":
-            state_dict["pos_embed.W_pos"] = state_dict["pos_embed.W_pos"] - state_dict[
-                "pos_embed.W_pos"
-            ].mean(-1, keepdim=True)
-        for l in range(self.cfg.n_layers):
-            state_dict[f"blocks.{l}.attn.W_O"] = state_dict[f"blocks.{l}.attn.W_O"] - state_dict[
-                f"blocks.{l}.attn.W_O"
-            ].mean(
-                -1, keepdim=True
-            )  # W_O is [head_index, d_model, d_head]
-            state_dict[f"blocks.{l}.attn.b_O"] = (
-                state_dict[f"blocks.{l}.attn.b_O"] - state_dict[f"blocks.{l}.attn.b_O"].mean()
-            )  # b_O is [d_model]
-            if not self.cfg.attn_only:
-                state_dict[f"blocks.{l}.mlp.W_out"] = state_dict[
-                    f"blocks.{l}.mlp.W_out"
-                ] - state_dict[f"blocks.{l}.mlp.W_out"].mean(-1, keepdim=True)
-                state_dict[f"blocks.{l}.mlp.b_out"] = (
-                    state_dict[f"blocks.{l}.mlp.b_out"] - state_dict[f"blocks.{l}.mlp.b_out"].mean()
-                )
-        return state_dict
+        return ProcessWeights.center_writing_weights(state_dict, self.cfg)
 
     def center_unembed(self, state_dict: Dict[str, torch.Tensor]):
         """Center the unembedding weights W_U.
@@ -1875,11 +1683,7 @@ class HookedTransformer(HookedRootModule):
         how components contribute to the logits, we'll be less misled by components that just add
         something to every logit.
         """
-        state_dict["unembed.W_U"] = state_dict["unembed.W_U"] - state_dict["unembed.W_U"].mean(
-            -1, keepdim=True
-        )
-        state_dict["unembed.b_U"] = state_dict["unembed.b_U"] - state_dict["unembed.b_U"].mean()
-        return state_dict
+        return ProcessWeights.center_unembed(state_dict)
 
     def fold_value_biases(self, state_dict: Dict[str, torch.Tensor]):
         """Fold the value biases into the output bias.
@@ -1892,29 +1696,7 @@ class HookedTransformer(HookedRootModule):
         easier to interpret the head's output. Formally, we take b_O_new = b_O_original +
         sum_head(b_V_head @ W_O_head).
         """
-        for layer in range(self.cfg.n_layers):
-            # shape [head_index, d_head]
-            if self.cfg.n_key_value_heads is None:
-                b_V = state_dict[f"blocks.{layer}.attn.b_V"]
-            else:
-                b_V = state_dict[f"blocks.{layer}.attn._b_V"]
-                b_V = torch.repeat_interleave(
-                    b_V, dim=0, repeats=self.cfg.n_heads // self.cfg.n_key_value_heads
-                )
-            # [head_index, d_head, d_model]
-            W_O = state_dict[f"blocks.{layer}.attn.W_O"]
-            # [d_model]
-            b_O_original = state_dict[f"blocks.{layer}.attn.b_O"]
-            folded_b_O = b_O_original + (b_V[:, :, None] * W_O).sum([0, 1])
-
-            state_dict[f"blocks.{layer}.attn.b_O"] = folded_b_O
-            if self.cfg.n_key_value_heads is None:
-                state_dict[f"blocks.{layer}.attn.b_V"] = torch.zeros_like(b_V)
-            else:
-                state_dict[f"blocks.{layer}.attn._b_V"] = torch.zeros_like(
-                    state_dict[f"blocks.{layer}.attn._b_V"]
-                )
-        return state_dict
+        return ProcessWeights.fold_value_biases(state_dict, self.cfg)
 
     def refactor_factored_attn_matrices(self, state_dict: Dict[str, torch.Tensor]):
         """Experimental method for managing queries, keys and values.
@@ -1953,67 +1735,7 @@ class HookedTransformer(HookedRootModule):
         simulate a d_model+1 dimensional input (whose final coordinate is always 1), do the SVD
         factorization on this effective matrix, then separate out into final weights and biases.
         """
-
-        assert (
-            self.cfg.positional_embedding_type != "rotary"
-        ), "You can't refactor the QK circuit when using rotary embeddings (as the QK matrix depends on the position of the query and key)"
-
-        for l in range(self.cfg.n_layers):
-            # W_QK = W_Q @ W_K.T
-            # Concatenate biases to make a d_model+1 input dimension
-            W_Q_eff = torch.cat(
-                [
-                    state_dict[f"blocks.{l}.attn.W_Q"],
-                    state_dict[f"blocks.{l}.attn.b_Q"][:, None, :],
-                ],
-                dim=1,
-            )
-            W_K_eff = torch.cat(
-                [
-                    state_dict[f"blocks.{l}.attn.W_K"],
-                    state_dict[f"blocks.{l}.attn.b_K"][:, None, :],
-                ],
-                dim=1,
-            )
-
-            W_Q_eff_even, W_K_eff_even_T = (
-                FactoredMatrix(W_Q_eff, W_K_eff.transpose(-1, -2)).make_even().pair
-            )
-            W_K_eff_even = W_K_eff_even_T.transpose(-1, -2)
-
-            state_dict[f"blocks.{l}.attn.W_Q"] = W_Q_eff_even[:, :-1, :]
-            state_dict[f"blocks.{l}.attn.b_Q"] = W_Q_eff_even[:, -1, :]
-            state_dict[f"blocks.{l}.attn.W_K"] = W_K_eff_even[:, :-1, :]
-            state_dict[f"blocks.{l}.attn.b_K"] = W_K_eff_even[:, -1, :]
-
-            # W_OV = W_V @ W_O
-            W_V = state_dict[f"blocks.{l}.attn.W_V"]
-            W_O = state_dict[f"blocks.{l}.attn.W_O"]
-
-            # Factors the bias to be consistent.
-            b_V = state_dict[f"blocks.{l}.attn.b_V"]
-            b_O = state_dict[f"blocks.{l}.attn.b_O"]
-
-            # Add singleton dimension for broadcasting
-            b_V_expanded = einops.rearrange(b_V, "head_index d_head -> head_index d_head 1")
-
-            # Element-wise multiplication of b_V and W_O
-            b_V_times_W_O = b_V_expanded * W_O
-
-            # Sum over d_head and head_index dimensions
-            b_V_contribution = b_V_times_W_O.sum(1).sum(0)
-
-            effective_bias = b_O + b_V_contribution
-            state_dict[f"blocks.{l}.attn.b_V"] = torch.zeros_like(b_V)
-            state_dict[f"blocks.{l}.attn.b_O"] = effective_bias
-
-            # Helper class to efficiently deal with low rank factored matrices.
-            W_OV = FactoredMatrix(W_V, W_O)
-            U, S, Vh = W_OV.svd()
-            state_dict[f"blocks.{l}.attn.W_V"] = U @ S.diag_embed()
-            state_dict[f"blocks.{l}.attn.W_O"] = utils.transpose(Vh)
-
-        return state_dict
+        return ProcessWeights.refactor_factored_attn_matrices(state_dict, self.cfg)
 
     def set_use_attn_result(self, use_attn_result: bool):
         """Toggle whether to explicitly calculate and expose the result for each attention head.

@@ -67,6 +67,54 @@ DeviceType = Optional[torch.device]
 _grad_t = Union[tuple[Tensor, ...], Tensor]
 
 
+class _AliasedHookPoint:
+    """
+    A lightweight wrapper that represents a HookPoint with an aliased name.
+
+    This is used when a hook is registered with multiple names (e.g., in compatibility mode
+    where both canonical and legacy names should trigger the hook). Instead of modifying
+    the original HookPoint's name, we create this wrapper that delegates to the original
+    HookPoint but presents a different name to the user's hook function.
+    """
+
+    def __init__(self, alias_name: str, target: "HookPoint"):
+        """
+        Create an aliased view of a HookPoint.
+
+        Args:
+            alias_name: The name to present to the hook function
+            target: The original HookPoint to delegate to
+        """
+        self._alias_name = alias_name
+        self._target = target
+
+    @property
+    def name(self) -> Optional[str]:
+        """Return the alias name."""
+        return self._alias_name
+
+    @property
+    def ctx(self) -> dict:
+        """Delegate to the target's context."""
+        return self._target.ctx
+
+    @property
+    def hook_conversion(self):
+        """Delegate to the target's hook conversion."""
+        return self._target.hook_conversion
+
+    def layer(self) -> int:
+        """
+        Extract layer index from the alias name.
+
+        Returns the layer index for hook names like 'blocks.0.attn.hook_pattern' -> 0
+        """
+        if self._alias_name is None:
+            raise ValueError("Name cannot be None")
+        split_name = self._alias_name.split(".")
+        return int(split_name[1])
+
+
 class HookPoint(nn.Module):
     """
     A helper class to access intermediate activations in a PyTorch model (inspired by Garcon).
@@ -98,12 +146,16 @@ class HookPoint(nn.Module):
         is_permanent: bool = False,
         level: Optional[int] = None,
         prepend: bool = False,
+        alias_names: Optional[list[str]] = None,
     ) -> None:
         """
         Hook format is fn(activation, hook_name)
         Change it into PyTorch hook format (this includes input and output,
         which are the same for a HookPoint)
         If prepend is True, add this hook before all other hooks
+        If alias_names is provided, the hook will be called once for each alias name,
+        receiving a temporary HookPoint-like object with that name instead of self
+        (useful for compatibility mode aliases)
         """
 
         def full_hook(
@@ -120,8 +172,23 @@ class HookPoint(nn.Module):
             if self.hook_conversion is not None:
                 module_output = self.hook_conversion.convert(module_output)
 
-            # Apply the hook
-            hook_result = hook(module_output, hook=self)
+            # Apply the hook for each name (or just once with canonical name)
+            if alias_names is not None:
+                # Call the hook once for each alias name
+                # Create a simple wrapper that acts like a HookPoint but with a different name
+                hook_result = None
+                for alias_name in alias_names:
+                    # Create a view of this HookPoint with the alias name
+                    hook_with_alias = _AliasedHookPoint(alias_name, self)
+                    # Apply the hook
+                    hook_result = hook(module_output, hook=hook_with_alias)  # type: ignore[arg-type]
+
+                    # If the hook modified the output, use that for subsequent calls
+                    if hook_result is not None:
+                        module_output = hook_result
+            else:
+                # Call the hook once with the canonical name (self)
+                hook_result = hook(module_output, hook=self)
 
             # Apply output reversion if hook_conversion exists and hook returned a value
             if hook_result is not None and self.hook_conversion is not None:

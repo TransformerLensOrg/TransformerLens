@@ -75,3 +75,59 @@ class LinearBridge(GeneralizedComponent):
                 return f"LinearBridge(name={self.name}, original_component={type(self.original_component).__name__})"
         else:
             return f"LinearBridge(name={self.name}, original_component=None)"
+
+    def process_weights(
+        self,
+        fold_ln: bool = False,
+        center_writing_weights: bool = False,
+        center_unembed: bool = False,
+        fold_value_biases: bool = False,
+        refactor_factored_attn_matrices: bool = False,
+    ) -> None:
+        """Process linear weights according to GPT2 pretrained logic.
+
+        For linear layers, this is typically a direct mapping without transformation.
+        """
+        if self.original_component is None:
+            return
+
+        # Determine weight keys based on component name and context
+        if "c_fc" in self.name or "input" in self.name:
+            weight_key = "W_in"
+            bias_key = "b_in"
+        elif "c_proj" in self.name and "mlp" in str(type(self)).lower():
+            weight_key = "W_out"
+            bias_key = "b_out"
+        elif "c_proj" in self.name and "attn" in str(type(self)).lower():
+            weight_key = "W_O"
+            bias_key = "b_O"
+        else:
+            # Default keys
+            weight_key = "weight"
+            bias_key = "bias"
+
+        # Store processed weights in TransformerLens format (direct mapping)
+        weight_tensor = getattr(self.original_component, "weight", None)
+        bias_tensor = getattr(self.original_component, "bias", None)
+
+        processed_weights = {}
+        if weight_tensor is not None:
+            processed_weights[weight_key] = weight_tensor.clone()
+
+        # Add bias if it exists
+        if bias_tensor is not None:
+            processed_weights[bias_key] = bias_tensor.clone()
+
+        self._processed_weights = processed_weights
+
+    def get_processed_state_dict(self) -> Dict[str, torch.Tensor]:
+        """Get the processed weights in TransformerLens format.
+
+        Returns:
+            Dictionary mapping TransformerLens parameter names to processed tensors
+        """
+        if not hasattr(self, "_processed_weights") or self._processed_weights is None:
+            # If weights haven't been processed, process them now
+            self.process_weights()
+
+        return self._processed_weights.copy()

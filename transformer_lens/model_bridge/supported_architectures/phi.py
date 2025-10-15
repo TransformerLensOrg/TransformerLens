@@ -11,6 +11,7 @@ from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
     BlockBridge,
     EmbeddingBridge,
+    LinearBridge,
     MLPBridge,
     NormalizationBridge,
     UnembeddingBridge,
@@ -20,6 +21,8 @@ from transformer_lens.model_bridge.generalized_components import (
 class PhiArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for Phi models."""
 
+    default_cfg = {"use_fast": False}
+
     def __init__(self, cfg: Any) -> None:
         """Initialize the Phi architecture adapter.
 
@@ -27,6 +30,8 @@ class PhiArchitectureAdapter(ArchitectureAdapter):
             cfg: The configuration object.
         """
         super().__init__(cfg)
+
+        self.cfg.default_prepend_bos = False
 
         self.conversion_rules = HookConversionSet(
             {
@@ -78,13 +83,28 @@ class PhiArchitectureAdapter(ArchitectureAdapter):
         # Set up component mapping
         self.component_mapping = {
             "embed": EmbeddingBridge(name="model.embed_tokens"),
+            "rotary_emb": EmbeddingBridge(name="model.rotary_emb"),
             "blocks": BlockBridge(
                 name="model.layers",
                 submodules={
                     "ln1": NormalizationBridge(name="input_layernorm", config=self.cfg),
-                    "ln2": NormalizationBridge(name="input_layernorm", config=self.cfg),
-                    "attn": AttentionBridge(name="self_attn", config=self.cfg),
-                    "mlp": MLPBridge(name="mlp"),
+                    "attn": AttentionBridge(
+                        name="self_attn",
+                        config=self.cfg,
+                        submodules={
+                            "q": LinearBridge(name="q_proj"),
+                            "k": LinearBridge(name="k_proj"),
+                            "v": LinearBridge(name="v_proj"),
+                            "o": LinearBridge(name="dense"),
+                        },
+                    ),
+                    "mlp": MLPBridge(
+                        name="mlp",
+                        submodules={
+                            "in": LinearBridge(name="fc1"),
+                            "out": LinearBridge(name="fc2"),
+                        },
+                    ),
                 },
             ),
             "ln_final": NormalizationBridge(name="model.final_layernorm", config=self.cfg),

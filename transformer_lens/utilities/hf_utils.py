@@ -60,14 +60,60 @@ def clear_huggingface_cache():
 
     This function deletes the Hugging Face cache directory, which is used to store downloaded models and their associated files. Deleting the cache directory will remove all the downloaded models and their files, so you will need to download them again if you want to use them in your code.
 
+    This function is safe to call in parallel test execution - it will handle race
+    conditions where multiple workers might try to delete the same directory.
+
     Parameters:
     None
 
     Returns:
     None
     """
+    import os
+
     print("Deleting Hugging Face cache directory and all its contents.")
-    shutil.rmtree(CACHE_DIR)
+
+    # Check if cache directory exists
+    if not os.path.exists(CACHE_DIR):
+        return
+
+    try:
+        # Use a custom error handler that only ignores specific race condition errors
+        def handle_remove_readonly(func, path, exc_info):
+            """Error handler for Windows readonly files and race conditions."""
+            import errno
+            import stat
+
+            excvalue = exc_info[1]
+            # Ignore "directory not empty" errors (race condition - another process deleted contents)
+            if isinstance(excvalue, OSError) and excvalue.errno == errno.ENOTEMPTY:
+                return
+            # Ignore "no such file or directory" errors (race condition - already deleted)
+            if isinstance(excvalue, FileNotFoundError):
+                return
+            if isinstance(excvalue, OSError) and excvalue.errno == errno.ENOENT:
+                return
+            # For readonly files on Windows, try to make writable and retry
+            if os.path.exists(path) and not os.access(path, os.W_OK):
+                try:
+                    os.chmod(path, stat.S_IWUSR)
+                    func(path)
+                except (OSError, FileNotFoundError):
+                    # File disappeared or became inaccessible - race condition, ignore
+                    return
+            else:
+                raise
+
+        shutil.rmtree(CACHE_DIR, onerror=handle_remove_readonly)
+    except FileNotFoundError:
+        # Directory was deleted by another process - that's fine
+        pass
+    except OSError as e:
+        import errno
+
+        # Only ignore "directory not empty" and "no such file" errors (race conditions)
+        if e.errno not in (errno.ENOTEMPTY, errno.ENOENT):
+            print(f"Warning: Could not fully clear cache: {e}")
 
 
 def keep_single_column(dataset: Dataset, col_name: str):

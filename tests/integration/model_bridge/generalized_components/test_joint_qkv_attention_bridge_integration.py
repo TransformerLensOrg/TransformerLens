@@ -75,21 +75,20 @@ class TestJointQKVAttentionBridgeIntegration:
             "JointQKVAttentionBridge" in neox_source
         ), "NeoX architecture should reference JointQKVAttentionBridge"
 
-    @pytest.mark.skip(reason="Requires model loading - too slow for CI")
+    @pytest.mark.slow
     def test_distilgpt2_integration(self):
         """Full integration test with DistilGPT-2 (skipped in CI)."""
         # This test would load DistilGPT-2 and test full functionality
         # but is skipped by default to keep CI fast
         from transformer_lens.model_bridge import TransformerBridge
 
-        torch.set_grad_enabled(False)
         model = TransformerBridge.boot_transformers("distilgpt2", device="cpu")
 
         # Verify JointQKVAttentionBridge usage
         joint_qkv_attention_bridge_modules = [
             name
             for name, module in model.named_modules()
-            if "JointQKVAttentionBridge" in getattr(module, "__class__", {}).get("__name__", "")
+            if "JointQKVAttentionBridge" in module.__class__.__name__
         ]
         assert (
             len(joint_qkv_attention_bridge_modules) == 6
@@ -101,13 +100,18 @@ class TestJointQKVAttentionBridgeIntegration:
             loss = model(tokens, return_type="loss")
             assert torch.isfinite(loss) and loss > 0
 
-        # Test hook integration
+        # Test hook integration (forward hooks work without gradients)
         def v_ablation_hook(value, hook):
+            value = value.clone()  # Clone to avoid in-place modification issues
             value[:, :, 0, :] = 0.0  # Ablate first head
             return value
 
-        original_loss = model(tokens, return_type="loss")
-        hooked_loss = model.run_with_hooks(
-            tokens, return_type="loss", fwd_hooks=[(utils.get_act_name("v", 0), v_ablation_hook)]
-        )
-        assert not torch.isclose(original_loss, hooked_loss, atol=1e-6)
+        with torch.no_grad():
+            original_loss = model(tokens, return_type="loss")
+            # Use the correct hook name for Bridge architecture (v.hook_out instead of hook_v)
+            hooked_loss = model.run_with_hooks(
+                tokens,
+                return_type="loss",
+                fwd_hooks=[("blocks.0.attn.v.hook_out", v_ablation_hook)],
+            )
+            assert not torch.isclose(original_loss, hooked_loss, atol=1e-6)
