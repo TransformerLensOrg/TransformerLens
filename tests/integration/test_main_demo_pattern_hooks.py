@@ -97,9 +97,7 @@ class TestMainDemoPatternHooks:
         pattern_filter = lambda name: name.endswith("pattern")
 
         # Run with hooks
-        model.run_with_hooks(
-            tokens, return_type=None, fwd_hooks=[(pattern_filter, tracking_hook)]
-        )
+        model.run_with_hooks(tokens, return_type=None, fwd_hooks=[(pattern_filter, tracking_hook)])
 
         # Verify each pattern hook was called exactly once
         for name, count in hook_calls.items():
