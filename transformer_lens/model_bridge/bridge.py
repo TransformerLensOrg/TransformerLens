@@ -968,7 +968,22 @@ class TransformerBridge(nn.Module):
         def add_hook_to_point(
             hook_point: HookPoint, hook_fn: Callable, name: str, dir: str = "fwd"
         ):
-            hook_point.add_hook(hook_fn, dir=dir)  # type: ignore[arg-type]
+            # In compatibility mode, collect all names for this hook point
+            # (canonical name + any aliases that map to it)
+            if self.compatibility_mode:
+                alias_names_list: list[str] = []
+
+                # Add the canonical name first
+                if hook_point.name is not None:
+                    alias_names_list.append(hook_point.name)
+
+                # Add any alias names that differ from the canonical name
+                if name != hook_point.name:
+                    alias_names_list.append(name)
+
+                hook_point.add_hook(hook_fn, dir=dir, alias_names=alias_names_list)  # type: ignore[arg-type]
+            else:
+                hook_point.add_hook(hook_fn, dir=dir)  # type: ignore[arg-type]
             added_hooks.append((hook_point, name))
 
         try:
@@ -4244,7 +4259,22 @@ class TransformerBridge(nn.Module):
         def add_hook_to_point(
             hook_point: HookPoint, hook_fn: Callable, name: str, dir: Literal["fwd", "bwd"] = "fwd"
         ):
-            hook_point.add_hook(hook_fn, dir=dir)
+            # In compatibility mode, collect all names for this hook point
+            # (canonical name + any aliases that map to it)
+            if self.compatibility_mode:
+                alias_names_list: list[str] = []
+
+                # Add the canonical name first
+                if hook_point.name is not None:
+                    alias_names_list.append(hook_point.name)
+
+                # Add any alias names that differ from the canonical name
+                if name != hook_point.name:
+                    alias_names_list.append(name)
+
+                hook_point.add_hook(hook_fn, dir=dir, alias_names=alias_names_list)
+            else:
+                hook_point.add_hook(hook_fn, dir=dir)
             added_hooks.append((hook_point, name))
 
         # Add stop_at_layer hook if specified
