@@ -918,8 +918,11 @@ class TransformerBridge(nn.Module):
             logits = self.unembed(residual)
             loss = self._calculate_loss(logits, tokens, loss_per_token)
             return logits, loss
+        elif return_type is None:
+            # Return None when explicitly requested
+            return None
         else:
-            # Return final residual
+            # Return final residual for any other return_type
             return residual
 
     def _calculate_loss(self, logits, tokens, loss_per_token=False):
@@ -1678,6 +1681,9 @@ class TransformerBridge(nn.Module):
             shift_logits = logits[:, :-1, :].contiguous()
             loss = F.cross_entropy(shift_logits.view(-1, shift_logits.size(-1)), labels.view(-1))
             return loss, logits
+        elif return_type is None:
+            # Return None when explicitly requested
+            return None
         else:
             return logits
 
@@ -2237,6 +2243,9 @@ class TransformerBridge(nn.Module):
                     shift_logits.view(-1, shift_logits.size(-1)), targets.view(-1), reduction="mean"
                 )
             return (loss, logits)
+        elif return_type is None:
+            # Return None when explicitly requested
+            return None
         else:
             return logits
 
@@ -2421,6 +2430,9 @@ class TransformerBridge(nn.Module):
                     shift_logits.view(-1, shift_logits.size(-1)), targets.view(-1), reduction="mean"
                 )
             return (loss, logits)
+        elif return_type is None:
+            # Return None when explicitly requested
+            return None
         else:
             return logits
 
@@ -3719,7 +3731,8 @@ class TransformerBridge(nn.Module):
                 loss = self.loss_fn(logits, input_ids, per_token=loss_per_token)
             return logits, loss
         elif return_type is None:
-            return output
+            # Return None when explicitly requested (don't return output/logits)
+            return None
         else:
             raise ValueError(f"Invalid return_type: {return_type}")
 
