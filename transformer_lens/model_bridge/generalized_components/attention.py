@@ -526,6 +526,11 @@ class AttentionBridge(GeneralizedComponent):
         # Transpose back to [batch, seq, n_heads, d_head] for output projection
         attn_out = attn_out.transpose(1, 2)
 
+        # Apply hook_z (o.hook_in) - this is the z tensor before output projection
+        # In compatibility mode, this hook is aliased as "blocks.L.attn.hook_z"
+        if hasattr(self, "o") and hasattr(self.o, "hook_in"):
+            attn_out = self.o.hook_in(attn_out)
+
         # Apply output projection using TransformerLens format
         # attn_out: [batch, seq, n_heads, d_head], W_O: [n_heads, d_head, d_model]
         result = torch.einsum(

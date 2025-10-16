@@ -39,7 +39,11 @@ def resolve_alias(
                 current_attr = target_object
                 for i in range(len(target_name_split) - 1):
                     if not hasattr(current_attr, target_name_split[i]):
-                        continue
+                        # If an intermediate attribute doesn't exist, raise AttributeError
+                        # so that list-based aliases can try the next option
+                        raise AttributeError(
+                            f"'{type(current_attr).__name__}' object has no attribute '{target_name_split[i]}'"
+                        )
                     current_attr = getattr(current_attr, target_name_split[i])
 
                 # Check if the final attribute exists
