@@ -59,17 +59,17 @@ def _expected_shape_for_name(
 ) -> Tuple[int, ...] | None:
     # Canonical TransformerBridge hook names only (no legacy aliases)
 
+    # Unembedding (check before embedding to avoid matching "embed" in "unembed")
+    if name.endswith("unembed.hook_in"):
+        return (batch, pos, d_model)
+    if name.endswith("unembed.hook_out") and d_vocab is not None:
+        return (batch, pos, d_vocab)
+
     # Embedding components
     if name.endswith("embed.hook_in") or name.endswith("pos_embed.hook_in"):
         return (batch, pos)
     if name.endswith("embed.hook_out") or name.endswith("pos_embed.hook_out"):
         return (batch, pos, d_model)
-
-    # Unembedding
-    if name.endswith("unembed.hook_in"):
-        return (batch, pos, d_model)
-    if name.endswith("unembed.hook_out") and d_vocab is not None:
-        return (batch, pos, d_vocab)
 
     # Block IO
     if ".hook_in" in name and ".attn." not in name and ".mlp." not in name and ".ln" not in name:
@@ -86,17 +86,19 @@ def _expected_shape_for_name(
         return (batch, pos, d_model)
     if name.endswith("attn.hook_attention_weights") and n_heads is not None:
         return (batch, n_heads, pos, pos)
+    if name.endswith("attn.hook_attn_scores") and n_heads is not None:
+        return (batch, n_heads, pos, pos)
+    if name.endswith("attn.hook_pattern") and n_heads is not None:
+        return (batch, n_heads, pos, pos)
 
     # Attention subprojections: q/k/v/o
-    if any(
-        name.endswith(suf)
-        for suf in ("attn.q.hook_in", "attn.k.hook_in", "attn.v.hook_in", "attn.o.hook_in")
-    ):
+    # Note: q/k/v hooks can be either:
+    # - (batch, pos, n_heads, d_head) for models with split heads (GPT-2, Pythia, etc.)
+    # - (batch, pos, d_model) for models without split heads (GPT-Neo, etc.)
+    # Both are valid depending on the architecture
+    if name.endswith("attn.o.hook_in"):
         return (batch, pos, d_model)
-    if any(
-        name.endswith(suf)
-        for suf in ("attn.q.hook_out", "attn.k.hook_out", "attn.v.hook_out", "attn.o.hook_out")
-    ):
+    if name.endswith("attn.o.hook_out"):
         return (batch, pos, d_model)
 
     # LayerNorms within blocks
@@ -107,13 +109,18 @@ def _expected_shape_for_name(
     if name.endswith("hook_normalized"):
         return (batch, pos, d_model)
     if name.endswith("hook_scale"):
-        # TB exposes full channel scale per position
-        return (batch, pos, d_model)
+        # LayerNorm scale is (batch, pos, 1) for broadcasting
+        return (batch, pos, 1)
 
     # MLP module
     if name.endswith("mlp.hook_in") or name.endswith("mlp.hook_out"):
         return (batch, pos, d_model)
     if name.endswith("mlp.hook_pre") and d_mlp is not None:
+        return (batch, pos, d_mlp)
+    # MLP submodules: input and out projections
+    if name.endswith("mlp.input.hook_in") or name.endswith("mlp.out.hook_out"):
+        return (batch, pos, d_model)
+    if (name.endswith("mlp.input.hook_out") or name.endswith("mlp.out.hook_in")) and d_mlp is not None:
         return (batch, pos, d_mlp)
 
     return None
@@ -152,6 +159,29 @@ def test_transformer_bridge_hook_shapes(model_name: str):
     mismatches: list[tuple[str, Tuple[int, ...], Tuple[int, ...]]] = []
     checked = 0
     for name in keys:
+        # Special handling for q/k/v hooks which can have two valid shapes
+        is_qkv_hook = any(
+            name.endswith(suf)
+            for suf in ("attn.q.hook_in", "attn.k.hook_in", "attn.v.hook_in",
+                       "attn.q.hook_out", "attn.k.hook_out", "attn.v.hook_out")
+        )
+
+        if is_qkv_hook:
+            tensor = cache[name]
+            assert isinstance(tensor, torch.Tensor), f"Non-tensor cached for {name}"
+            got = tuple(tensor.shape)
+            # Valid shapes: (batch, pos, n_heads, d_head) or (batch, pos, d_model)
+            valid_shapes = []
+            if n_heads is not None and d_head is not None:
+                valid_shapes.append((batch, pos, n_heads, d_head))
+            valid_shapes.append((batch, pos, d_model))
+
+            if got not in valid_shapes:
+                exp_str = " or ".join(str(s) for s in valid_shapes)
+                mismatches.append((name, exp_str, got))  # type: ignore
+            checked += 1
+            continue
+
         exp = _expected_shape_for_name(
             name,
             batch=batch,
