@@ -4619,6 +4619,77 @@ class TransformerBridge(nn.Module):
 
         remove_hooks_recursive(self)
 
+    def _get_alias_hooks_for_cache(self, fwd_hooks, names_filter, cache):
+        """Get additional hooks for aliases when in compatibility mode.
+
+        This creates hook entries for legacy hook names (like blocks.0.hook_q_input)
+        that point to the same cache entry as the actual hook (blocks.0.attn.q.hook_in).
+
+        Args:
+            fwd_hooks: List of (hook_name, hook_fn) tuples already collected
+            names_filter: Filter function for hook names
+            cache: Cache dictionary
+
+        Returns:
+            List of (alias_name, hook_fn) tuples for aliases
+        """
+        from transformer_lens.utilities.bridge_components import collect_all_components
+
+        alias_hooks = []
+
+        # Get all components in the model
+        components: Dict[str, Any] = {}
+        components = collect_all_components(self, components)
+
+        # For each component with aliases
+        for component_path, component in components.items():
+            if not hasattr(component, "hook_aliases") or not component.hook_aliases:
+                continue
+
+            # For each alias defined in the component
+            for alias_name, target_path in component.hook_aliases.items():
+                if isinstance(target_path, list):
+                    # Handle multiple fallback targets - use the first one
+                    target_path = target_path[0]
+
+                # Construct the full alias name (e.g., "blocks.0.hook_q_input")
+                if component_path:
+                    full_alias_name = f"{component_path}.{alias_name}"
+                else:
+                    full_alias_name = alias_name
+
+                # Check if this alias passes the filter
+                if not names_filter(full_alias_name):
+                    continue
+
+                # Construct the full target name (e.g., "blocks.0.attn.q.hook_in")
+                if component_path:
+                    full_target_name = f"{component_path}.{target_path}"
+                else:
+                    full_target_name = target_path
+
+                # Check if the target hook is in the collected hooks
+                target_exists = any(hook_name == full_target_name for hook_name, _ in fwd_hooks)
+
+                if target_exists:
+                    # Create a hook function that caches under the alias name
+                    # but references the same underlying hook
+                    def make_alias_cache_hook(alias_name, target_name):
+                        def alias_cache_hook(tensor, hook):
+                            # Cache under the alias name, pointing to the target's cached value
+                            # We cache the same tensor under both names
+                            cache[alias_name] = cache[target_name]
+                            return tensor
+
+                        return alias_cache_hook
+
+                    # Add the alias hook - it will run after the target hook
+                    alias_hooks.append(
+                        (full_target_name, make_alias_cache_hook(full_alias_name, full_target_name))
+                    )
+
+        return alias_hooks
+
     def get_caching_hooks(
         self,
         names_filter=None,
@@ -4665,6 +4736,11 @@ class TransformerBridge(nn.Module):
                 collect_hooks(child, full_name)
 
         collect_hooks(self)
+
+        # If in compatibility mode, add hooks for aliases that point to the same cache entry
+        if self.compatibility_mode:
+            alias_hooks = self._get_alias_hooks_for_cache(fwd_hooks, names_filter, cache)
+            fwd_hooks.extend(alias_hooks)
 
         return cache, fwd_hooks, bwd_hooks
 

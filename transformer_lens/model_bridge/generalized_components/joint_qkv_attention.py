@@ -69,6 +69,7 @@ class JointQKVAttentionBridge(AttentionBridge):
             self.qkv_conversion_rule = self._create_qkv_conversion_rule()
 
         # Create LinearBridge components for q, k, and v activations
+        # PyTorch automatically registers them as submodules when assigned as attributes
         self.q = LinearBridge(name="q")
         self.k = LinearBridge(name="k")
         self.v = LinearBridge(name="v")
@@ -403,6 +404,37 @@ class JointQKVAttentionBridge(AttentionBridge):
         q = simple_attn_linear(input_tensor, self._W_Q, self._b_Q)
         k = simple_attn_linear(input_tensor, self._W_K, self._b_K)
         v = simple_attn_linear(input_tensor, self._W_V, self._b_V)
+
+        # Apply input hooks (these correspond to hook_q_input, hook_k_input, hook_v_input in HookedTransformer)
+        # Temporarily disable hook conversion for input hooks as well
+        q_in_conversion = (
+            self.q.hook_in.hook_conversion if hasattr(self.q.hook_in, "hook_conversion") else None
+        )
+        k_in_conversion = (
+            self.k.hook_in.hook_conversion if hasattr(self.k.hook_in, "hook_conversion") else None
+        )
+        v_in_conversion = (
+            self.v.hook_in.hook_conversion if hasattr(self.v.hook_in, "hook_conversion") else None
+        )
+
+        if hasattr(self.q.hook_in, "hook_conversion"):
+            self.q.hook_in.hook_conversion = None
+        if hasattr(self.k.hook_in, "hook_conversion"):
+            self.k.hook_in.hook_conversion = None
+        if hasattr(self.v.hook_in, "hook_conversion"):
+            self.v.hook_in.hook_conversion = None
+
+        try:
+            q = self.q.hook_in(q)
+            k = self.k.hook_in(k)
+            v = self.v.hook_in(v)
+        finally:
+            if q_in_conversion is not None:
+                self.q.hook_in.hook_conversion = q_in_conversion
+            if k_in_conversion is not None:
+                self.k.hook_in.hook_conversion = k_in_conversion
+            if v_in_conversion is not None:
+                self.v.hook_in.hook_conversion = v_in_conversion
 
         # Apply hooks directly without any conversion - exactly like HookedTransformer
         # HookedTransformer doesn't use any hook conversion for V values in simple_attn_linear output
