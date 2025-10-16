@@ -16,7 +16,7 @@
         "torch>=2.6",
         "tqdm>=4.64.1",
         "transformers-stream-generator>=0.0.5,<0.1",
-        "transformers>=4.51",
+        "transformers>=4.56",
         "typeguard>=4.2,<5",
         "typing-extensions",
         "wandb>=0.13.5",
@@ -52,7 +52,16 @@
             "jupyterlab>=3.5.0",
         ]
         docs = [
+            "furo>=2023.3.27,<2024.0.0",
             "muutils>=0.6.13",
+            "myst-parser>=2.0.0,<3.0.0",
+            "nbconvert>=7.9.2",
+            "nbsphinx>=0.9.3",
+            "pandoc>=2.3",
+            "snowballstemmer",
+            "sphinx>=7.0.0,<8.0.0",
+            "sphinx-autobuild>=2021.3.14,<2022.12.7",
+            "sphinxcontrib-napoleon>=0.7",
             "tabulate>=0.9.0",
         ]
 
