@@ -131,6 +131,17 @@ def run_apidoc(_app: Optional[Any] = None):
     output_path.mkdir(parents=True, exist_ok=True)
 
     # Arguments for sphinx-apidoc
+    # Exclude modules that have their own dedicated pages to avoid duplicate documentation
+    excluded_modules = [
+        "ActivationCache.py",
+        "FactoredMatrix.py",
+        "HookedEncoder.py",
+        "HookedEncoderDecoder.py",
+        "HookedTransformer.py",
+        "SVDInterpreter.py",
+        "BertNextSentencePrediction.py",
+        "config/HookedTransformerConfig.py",
+    ]
     args = [
         "--force",  # Overwrite existing files
         "--separate",  # Put documentation for each module on its own page.
@@ -138,10 +149,28 @@ def run_apidoc(_app: Optional[Any] = None):
         "-o",
         str(output_path),
         str(package_path),
-    ]
+    ] + [str(package_path / module) for module in excluded_modules]
 
     # Call sphinx-apidoc
     apidoc.main(args)
+
+    # Post-process .rst files to add exclude-members for modules that have separate documentation
+    package_excludes = {
+        "transformer_lens.rst": "ActivationCache, FactoredMatrix, HookedEncoder, HookedEncoderDecoder, HookedTransformer, SVDInterpreter, BertNextSentencePrediction, HookedTransformerConfig, EasyTransformerConfig",
+        "transformer_lens.config.rst": "HookedTransformerConfig, TransformerBridgeConfig, TransformerLensConfig",
+        "transformer_lens.conversion_utils.rst": "HookConversionSet",
+    }
+
+    for filename, excluded_members in package_excludes.items():
+        rst_file = output_path / filename
+        if rst_file.exists():
+            content = rst_file.read_text()
+            # Add exclude-members to the package-level automodule directive
+            package_name = filename.replace(".rst", "")
+            old_directive = f".. automodule:: {package_name}\n   :members:\n   :undoc-members:\n   :show-inheritance:"
+            new_directive = f"{old_directive}\n   :exclude-members: {excluded_members}"
+            content = content.replace(old_directive, new_directive)
+            rst_file.write_text(content)
 
 
 # -- Sphinx Notebook Demo Config ---------------------------------------------
