@@ -120,7 +120,9 @@ def _expected_shape_for_name(
     # MLP submodules: input and out projections
     if name.endswith("mlp.input.hook_in") or name.endswith("mlp.out.hook_out"):
         return (batch, pos, d_model)
-    if (name.endswith("mlp.input.hook_out") or name.endswith("mlp.out.hook_in")) and d_mlp is not None:
+    if (
+        name.endswith("mlp.input.hook_out") or name.endswith("mlp.out.hook_in")
+    ) and d_mlp is not None:
         return (batch, pos, d_mlp)
 
     return None
@@ -162,8 +164,14 @@ def test_transformer_bridge_hook_shapes(model_name: str):
         # Special handling for q/k/v hooks which can have two valid shapes
         is_qkv_hook = any(
             name.endswith(suf)
-            for suf in ("attn.q.hook_in", "attn.k.hook_in", "attn.v.hook_in",
-                       "attn.q.hook_out", "attn.k.hook_out", "attn.v.hook_out")
+            for suf in (
+                "attn.q.hook_in",
+                "attn.k.hook_in",
+                "attn.v.hook_in",
+                "attn.q.hook_out",
+                "attn.k.hook_out",
+                "attn.v.hook_out",
+            )
         )
 
         if is_qkv_hook:
