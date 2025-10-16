@@ -89,8 +89,8 @@ jobs:
       - name: Authenticate HuggingFace CLI
         if: env.HF_TOKEN != ''
         run: |
-          pip install huggingface_hub
-          huggingface-cli login --token "$HF_TOKEN"
+          uv pip install huggingface_hub
+          uv run huggingface-cli login --token "$HF_TOKEN"
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
       - name: Unit Test
@@ -165,13 +165,12 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v3
-      - name: Install Poetry
-        uses: snok/install-poetry@v1
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
         with:
           python-version: "3.12"
-          cache: "poetry"
+          activate-environment: true
+          enable-cache: true
       - name: Cache Models used with Tests
         uses: actions/cache@v3
         with:
@@ -201,8 +200,8 @@ jobs:
       - name: Authenticate HuggingFace CLI
         if: env.HF_TOKEN != ''
         run: |
-          pip install huggingface_hub
-          huggingface-cli login --token "$HF_TOKEN"
+          uv pip install huggingface_hub
+          uv run huggingface-cli login --token "$HF_TOKEN"
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
       - name: Test Suite with Coverage Report
@@ -298,12 +297,12 @@ jobs:
       - name: Authenticate HuggingFace CLI
         if: env.HF_TOKEN != ''
         run: |
-          pip install huggingface_hub
-          huggingface-cli login --token "$HF_TOKEN"
+          uv pip install huggingface_hub
+          uv run huggingface-cli login --token "$HF_TOKEN"
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
       - name: Build Docs
-        run: build-docs
+        run: make build-docs
         env:
           HF_TOKEN:  ${{ secrets.HF_TOKEN }}
       - name: Upload Docs Artifact
