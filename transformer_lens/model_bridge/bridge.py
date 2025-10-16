@@ -4633,12 +4633,13 @@ class TransformerBridge(nn.Module):
         Returns:
             List of (alias_name, hook_fn) tuples for aliases
         """
-        from transformer_lens.utilities.bridge_components import get_all_components
+        from transformer_lens.utilities.bridge_components import collect_all_components
 
         alias_hooks = []
 
         # Get all components in the model
-        components = get_all_components(self)
+        components: Dict[str, Any] = {}
+        components = collect_all_components(self, components)
 
         # For each component with aliases
         for component_path, component in components.items():
