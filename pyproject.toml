@@ -1,16 +1,69 @@
-[tool.poetry]
-    authors=["Neel Nanda <77788841+TransformerLensOrg@users.noreply.github.com>"]
+[project]
+    authors=[{name="Neel Nanda", email="77788841+TransformerLensOrg@users.noreply.github.com"}]
+    dependencies=[
+        "accelerate>=0.23.0",                                                    # Needed for Llama Models
+        "beartype>=0.14.1,<0.15",
+        "better-abc>=0.0.3",
+        "datasets>=2.7.1",
+        "einops>=0.6.0",
+        "fancy-einsum>=0.0.3",
+        "jaxtyping>=0.2.11,<0.2.20",
+        "numpy>=1.24,<2; python_version >= '3.10' and python_version < '3.12'",
+        "numpy>=1.26,<2; python_version >= '3.12' and python_version < '3.13'",
+        "pandas>=1.1.5",
+        "rich>=12.6.0",
+        "sentencepiece",
+        "torch>=2.6",
+        "tqdm>=4.64.1",
+        "transformers-stream-generator>=0.0.5,<0.1",
+        "transformers>=4.56",
+        "typeguard>=4.2,<5",
+        "typing-extensions",
+        "wandb>=0.13.5",
+    ]
     description="An implementation of transformers tailored for mechanistic interpretability."
-    license="MIT"
+    license={text="MIT"}
     name="transformer-lens"
-    packages=[{include="transformer_lens"}]
     readme="README.md"
-    # Version is automatically set by the pipeline on release
+    requires-python=">=3.10,<4.0"
     version="0.0.0"
 
-    [tool.poetry.scripts]
+    [project.scripts]
         build-docs="docs.make_docs:build_docs"
         docs-hot-reload="docs.make_docs:docs_hot_reload"
+
+    [dependency-groups]
+        dev = [
+            "black>=23.3.0",
+            "circuitsvis>=1.38.1",
+            "isort==5.8.0",
+            "jupyter>=1.0.0",
+            "mypy>=1.10.0",
+            "nbval>=0.10.0",
+            "plotly>=5.12.0",
+            "pycln>=2.1.3",
+            "pytest>=7.2.0",
+            "pytest-cov>=4.0.0",
+            "pytest-doctestplus>=1.0.0",
+            "pytest-xdist>=3.8.0",
+        ]
+        jupyter = [
+            "ipywidgets>=8.1.1",
+            "jupyterlab>=3.5.0",
+        ]
+        docs = [
+            "furo>=2023.3.27,<2024.0.0",
+            "muutils>=0.6.13",
+            "myst-parser>=2.0.0,<3.0.0",
+            "nbconvert>=7.9.2",
+            "nbsphinx>=0.9.3",
+            "pandoc>=2.3",
+            "snowballstemmer",
+            "sphinx>=7.0.0,<8.0.0",
+            "sphinx-autobuild>=2021.3.14,<2022.12.7",
+            "sphinxcontrib-napoleon>=0.7",
+            "tabulate>=0.9.0",
+        ]
 
     [tool.poetry.dependencies]
         accelerate=">=0.23.0" # Needed for Llama Models
@@ -55,17 +108,8 @@
             ipywidgets="^8.1.1"
             jupyterlab=">=3.5.0"
 
-        [tool.poetry.group.docs.dependencies]
-            furo={version=">=2023.3.27,<2024.0.0"}
-            myst-parser={version=">=2.0.0,<3.0.0"}
-            nbconvert="^7.9.2"
-            nbsphinx="^0.9.3"
-            pandoc="^2.3"
-            snowballstemmer="*"
-            sphinx={version=">=7.0.0,<8.0.0"}
-            sphinx-autobuild={version=">=2021.3.14,<2022.12.7"}
-            sphinxcontrib-napoleon={version=">=0.7"}
-            tabulate={version=">=0.9.0"}
+[tool.uv]
+    default-groups=["dev", "jupyter", "docs"]
 
 [tool.pytest]
     [tool.pytest.ini_options]
@@ -84,6 +128,7 @@
             # More info: https://numpy.org/doc/stable/reference/distutils.html#module-numpy.distutils
             "ignore:distutils Version classes are deprecated:DeprecationWarning",
         ]
+        pythonpath=["."]
 
 [tool.isort]
     extend_skip=[".venv/", "__init__.py"]
@@ -122,8 +167,8 @@
         ]
 
 [build-system]
-    build-backend="poetry.core.masonry.api"
-    requires=["poetry-core"]
+    build-backend="hatchling.build"
+    requires=["hatchling"]
 
 [tool.pyright]
     # All rules apart from base are shown explicitly below

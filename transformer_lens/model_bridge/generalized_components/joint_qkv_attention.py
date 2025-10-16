@@ -441,11 +441,28 @@ class JointQKVAttentionBridge(AttentionBridge):
             if v_conversion is not None:
                 self.v.hook_out.hook_conversion = v_conversion
 
+        # Handle KV caching if past_key_value is provided
+        past_key_value_arg = kwargs.get("past_key_value", None)
+        if past_key_value_arg is None:
+            past_key_value_arg = kwargs.get("layer_past", None)
+        use_cache = kwargs.get("use_cache", False)
+
         # Now continue with attention computation using the hooked Q, K, V values
         # Transpose for attention computation: [batch, seq, heads, d_head] -> [batch, heads, seq, d_head]
         q = q.transpose(1, 2)
-        k = k.transpose(1, 2)
-        v = v.transpose(1, 2)
+        k_new = k.transpose(1, 2)
+        v_new = v.transpose(1, 2)
+
+        # Handle KV cache using DynamicCache API
+        if past_key_value_arg is not None and hasattr(past_key_value_arg, "update"):
+            # Get layer index
+            layer_idx = getattr(self, "layer_idx", 0)
+
+            # Use cache.update() to concatenate with past K/V and return full K/V
+            k, v = past_key_value_arg.update(k_new, v_new, layer_idx)
+        else:
+            k = k_new
+            v = v_new
 
         # Rest of attention computation (same as HookedTransformer)
         import torch.nn.functional as F
@@ -456,8 +473,14 @@ class JointQKVAttentionBridge(AttentionBridge):
         attn_scores = torch.matmul(q, k.transpose(-2, -1)) / (head_dim**0.5)
 
         # Apply causal mask (GPT-2 style)
-        seq_len = attn_scores.shape[-1]
-        causal_mask = torch.tril(torch.ones(seq_len, seq_len, device=q.device))
+        # When using KV cache, q_len might be 1 (new token) but k_len is past + new
+        q_len = q.shape[2]
+        k_len = k.shape[2]
+
+        # Create causal mask: [q_len, k_len]
+        # For position i in query, can attend to positions 0...(kv_offset + i) in key
+        kv_offset = k_len - q_len
+        causal_mask = torch.tril(torch.ones(q_len, k_len, device=q.device), diagonal=kv_offset)
         attn_scores = attn_scores.masked_fill(causal_mask == 0, float("-inf"))
 
         # Apply attention mask if provided
@@ -511,7 +534,13 @@ class JointQKVAttentionBridge(AttentionBridge):
         # Apply output hook
         attn_output = self.hook_out(attn_output)
 
-        return (attn_output, attn_weights)
+        # Return format depends on whether we're using KV cache
+        # HuggingFace format with cache: (attn_output, past_key_value)
+        # Without cache: (attn_output, attn_weights)
+        if use_cache and past_key_value_arg is not None:
+            return (attn_output, past_key_value_arg)
+        else:
+            return (attn_output, attn_weights)
 
     def _apply_attention_input_hook(self, *args: Any, **kwargs: Any) -> torch.Tensor:
         """Apply attention input hook to the input tensor.
