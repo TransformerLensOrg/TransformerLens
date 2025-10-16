@@ -1055,24 +1055,16 @@ class TransformerBridge(nn.Module):
                     hook_dict = self.hook_dict
 
                     # Collect all matching names for each HookPoint
-                    hook_point_to_names: dict[int, list[str]] = {}
+                    bwd_hook_point_to_names: dict[int, list[str]] = {}
                     for name, hook_point in hook_dict.items():
                         if hook_name_or_filter(name):
                             hp_id = id(hook_point)
-                            if hp_id not in hook_point_to_names:
-                                hook_point_to_names[hp_id] = []
-                            hook_point_to_names[hp_id].append(name)
-                            # DEBUG: Log if this is hook_z
-                            if "hook_z" in name:
-                                import sys
-
-                                print(
-                                    f"DEBUG COLLECT: '{name}' matched filter, HookPoint ID {hp_id}",
-                                    file=sys.stderr,
-                                )
+                            if hp_id not in bwd_hook_point_to_names:
+                                bwd_hook_point_to_names[hp_id] = []
+                            bwd_hook_point_to_names[hp_id].append(name)
 
                     # Register each hook once, preferring alias names
-                    for hp_id, matching_names in hook_point_to_names.items():
+                    for hp_id, matching_names in bwd_hook_point_to_names.items():
                         hook_point = hook_dict[matching_names[0]]
                         # Prefer alias name (name != hook_point.name) over canonical name
                         name_to_use = matching_names[0]
