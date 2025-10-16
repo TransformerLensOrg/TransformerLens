@@ -1,3 +1,4 @@
+import gc
 import os
 from typing import Iterable, Tuple
 
@@ -10,6 +11,7 @@ def _to_list(keys: Iterable[str]) -> list[str]:
 
 
 # Mirror acceptance test choices but use full HF ids only (exclude TL-only configs)
+# Using smaller models to reduce CI memory usage
 PUBLIC_HF_MODELS = [
     "sshleifer/tiny-gpt2",
     "gpt2",
@@ -19,19 +21,19 @@ PUBLIC_HF_MODELS = [
     "roneneldan/TinyStories-33M",
 ]
 
+# Full list with larger models - only used when HF_TOKEN is set
+# Excludes very large models (gemma-7b, bloom-560m) to reduce CI memory footprint
 FULL_HF_MODELS = [
     "sshleifer/tiny-gpt2",
     "gpt2",
     "facebook/opt-125m",
     "EleutherAI/gpt-neo-125M",
     "EleutherAI/pythia-70m",
-    "bigscience/bloom-560m",
     "bigcode/santacoder",
     "microsoft/phi-1",
     "microsoft/phi-1_5",
     "microsoft/phi-2",
     "google/gemma-2b",
-    "google/gemma-7b",
     "roneneldan/TinyStories-33M",
 ]
 
@@ -212,3 +214,8 @@ def test_transformer_bridge_hook_shapes(model_name: str):
     assert checked > 0, "No hooks were checked; update expected mapping or model filter"
     msg = "\n".join(f"{n}: expected {e}, got {g}" for n, e, g in mismatches[:20])
     assert not mismatches, f"Found {len(mismatches)} shape mismatches. Examples:\n{msg}"
+
+    # Clean up to reduce memory usage during parameterized test runs
+    del bridge, cache, tokens
+    torch.cuda.empty_cache() if torch.cuda.is_available() else None
+    gc.collect()
