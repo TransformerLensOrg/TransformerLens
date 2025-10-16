@@ -230,4 +230,4 @@ def get_attention_mask(
             pad_bos_positions = is_leading_pad.sum(-1) - 1
             attention_mask[torch.arange(attention_mask.shape[0]), pad_bos_positions] = 1
 
-    return attention_mask.bool()
+    return attention_mask
