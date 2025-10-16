@@ -875,6 +875,10 @@ class TransformerBridge(nn.Module):
 
             block = self.blocks[layer_idx]
 
+            # Apply block input hook (hook_resid_pre)
+            if hasattr(block, "hook_in"):
+                residual = block.hook_in(residual)
+
             # Pre-attention layer norm (identity if folded)
             if hasattr(block, "ln1"):
                 normed_residual = block.ln1(residual)
@@ -902,6 +906,10 @@ class TransformerBridge(nn.Module):
                 if isinstance(mlp_out, tuple):
                     mlp_out = mlp_out[0]
                 residual = residual + mlp_out
+
+            # Apply block output hook (hook_resid_post)
+            if hasattr(block, "hook_out"):
+                residual = block.hook_out(residual)
 
         # Final layer norm (identity if folded)
         if hasattr(self, "ln_final"):
@@ -966,24 +974,33 @@ class TransformerBridge(nn.Module):
         added_hooks: List[Tuple[HookPoint, str]] = []
 
         def add_hook_to_point(
-            hook_point: HookPoint, hook_fn: Callable, name: str, dir: str = "fwd"
+            hook_point: HookPoint,
+            hook_fn: Callable,
+            name: str,
+            dir: str = "fwd",
+            use_alias_only: bool = False,
         ):
-            # In compatibility mode, collect all names for this hook point
-            # (canonical name + any aliases that map to it)
-            if self.compatibility_mode:
+            # In compatibility mode, if registering with an alias name (different from canonical),
+            # call the hook with both the canonical name and the alias name.
+            # However, if use_alias_only=True (from filter functions), only use the selected name.
+            if self.compatibility_mode and name != hook_point.name and not use_alias_only:
                 alias_names_list: list[str] = []
 
                 # Add the canonical name first
                 if hook_point.name is not None:
                     alias_names_list.append(hook_point.name)
 
-                # Add any alias names that differ from the canonical name
-                if name != hook_point.name:
-                    alias_names_list.append(name)
+                # Add the alias name
+                alias_names_list.append(name)
 
                 hook_point.add_hook(hook_fn, dir=dir, alias_names=alias_names_list)  # type: ignore[arg-type]
             else:
-                hook_point.add_hook(hook_fn, dir=dir)  # type: ignore[arg-type]
+                # Not in compatibility mode, using canonical name, or use_alias_only=True
+                # Just call hook once with the specified name (if it's an alias)
+                if use_alias_only and name != hook_point.name:
+                    hook_point.add_hook(hook_fn, dir=dir, alias_names=[name])  # type: ignore[arg-type]
+                else:
+                    hook_point.add_hook(hook_fn, dir=dir)  # type: ignore[arg-type]
             added_hooks.append((hook_point, name))
 
         try:
@@ -995,10 +1012,34 @@ class TransformerBridge(nn.Module):
                         add_hook_to_point(hook_point, hook_fn, hook_name_or_filter, "fwd")
                 elif callable(hook_name_or_filter):
                     # Filter function - apply to all matching hooks
+                    # In compatibility mode, hook_dict contains multiple names for the same HookPoint
+                    # (canonical + aliases). We only want to register once per HookPoint.
+                    # When both canonical and alias names match, prefer alias names for compatibility.
                     hook_dict = self.hook_dict
+
+                    # Collect all matching names for each HookPoint
+                    hook_point_to_names: dict[int, list[str]] = {}
                     for name, hook_point in hook_dict.items():
                         if hook_name_or_filter(name):
-                            add_hook_to_point(hook_point, hook_fn, name, "fwd")
+                            hp_id = id(hook_point)
+                            if hp_id not in hook_point_to_names:
+                                hook_point_to_names[hp_id] = []
+                            hook_point_to_names[hp_id].append(name)
+
+                    # Register each hook once, preferring alias names
+                    for hp_id, matching_names in hook_point_to_names.items():
+                        hook_point = hook_dict[matching_names[0]]
+                        # Prefer alias name (name != hook_point.name) over canonical name
+                        name_to_use = matching_names[0]
+                        for name in matching_names:
+                            if name != hook_point.name:
+                                # Found an alias name, use it
+                                name_to_use = name
+                                break
+                        # Use use_alias_only=True to avoid calling the hook twice
+                        add_hook_to_point(
+                            hook_point, hook_fn, name_to_use, "fwd", use_alias_only=True
+                        )
 
             # Add backward hooks
             for hook_name_or_filter, hook_fn in bwd_hooks:
@@ -1008,10 +1049,34 @@ class TransformerBridge(nn.Module):
                         add_hook_to_point(hook_point, hook_fn, hook_name_or_filter, "bwd")
                 elif callable(hook_name_or_filter):
                     # Filter function - apply to all matching hooks
+                    # In compatibility mode, hook_dict contains multiple names for the same HookPoint
+                    # (canonical + aliases). We only want to register once per HookPoint.
+                    # When both canonical and alias names match, prefer alias names for compatibility.
                     hook_dict = self.hook_dict
+
+                    # Collect all matching names for each HookPoint
+                    bwd_hook_point_to_names: dict[int, list[str]] = {}
                     for name, hook_point in hook_dict.items():
                         if hook_name_or_filter(name):
-                            add_hook_to_point(hook_point, hook_fn, name, "bwd")
+                            hp_id = id(hook_point)
+                            if hp_id not in bwd_hook_point_to_names:
+                                bwd_hook_point_to_names[hp_id] = []
+                            bwd_hook_point_to_names[hp_id].append(name)
+
+                    # Register each hook once, preferring alias names
+                    for hp_id, matching_names in bwd_hook_point_to_names.items():
+                        hook_point = hook_dict[matching_names[0]]
+                        # Prefer alias name (name != hook_point.name) over canonical name
+                        name_to_use = matching_names[0]
+                        for name in matching_names:
+                            if name != hook_point.name:
+                                # Found an alias name, use it
+                                name_to_use = name
+                                break
+                        # Use use_alias_only=True to avoid calling the hook twice
+                        add_hook_to_point(
+                            hook_point, hook_fn, name_to_use, "bwd", use_alias_only=True
+                        )
 
             # Run forward pass with ported components
             # Handle return_type=None explicitly (don't default to "logits")
@@ -4259,21 +4324,21 @@ class TransformerBridge(nn.Module):
         def add_hook_to_point(
             hook_point: HookPoint, hook_fn: Callable, name: str, dir: Literal["fwd", "bwd"] = "fwd"
         ):
-            # In compatibility mode, collect all names for this hook point
-            # (canonical name + any aliases that map to it)
-            if self.compatibility_mode:
+            # In compatibility mode, if registering with an alias name (different from canonical),
+            # call the hook with both the canonical name and the alias name
+            if self.compatibility_mode and name != hook_point.name:
                 alias_names_list: list[str] = []
 
                 # Add the canonical name first
                 if hook_point.name is not None:
                     alias_names_list.append(hook_point.name)
 
-                # Add any alias names that differ from the canonical name
-                if name != hook_point.name:
-                    alias_names_list.append(name)
+                # Add the alias name
+                alias_names_list.append(name)
 
                 hook_point.add_hook(hook_fn, dir=dir, alias_names=alias_names_list)
             else:
+                # Not in compatibility mode, or using canonical name - just call hook once
                 hook_point.add_hook(hook_fn, dir=dir)
             added_hooks.append((hook_point, name))
 
