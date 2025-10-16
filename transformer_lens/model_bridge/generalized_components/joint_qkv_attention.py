@@ -142,6 +142,13 @@ class JointQKVAttentionBridge(AttentionBridge):
         Returns:
             Output tensor after qkv linear transformation
         """
+        # Check if we're using processed weights from a reference model (layer norm folding case)
+        # JointQKVAttentionBridge needs to use compatibility mode forward which handles
+        # the processed weights correctly and calls the Q/K/V hooks with the right shapes
+        if hasattr(self, "_use_processed_weights") and self._use_processed_weights:
+            # Use compatibility mode forward with hooks, which properly handles processed weights
+            return self._compatibility_mode_forward_with_hooks(*args, **kwargs)
+
         return self._forward_standard(*args, **kwargs)
 
     def _forward_folded(self, *args: Any, **kwargs: Any) -> Any:
@@ -486,6 +493,12 @@ class JointQKVAttentionBridge(AttentionBridge):
             n_heads = self._W_O.shape[0]
             d_head = self._W_O.shape[1]
             attn_reshaped = attn_output.view(batch_size, seq_len, n_heads, d_head)
+
+            # Apply hook_z (o.hook_in) - this is the z tensor before output projection
+            # In compatibility mode, this hook is aliased as "blocks.L.attn.hook_z"
+            if hasattr(self, "o") and hasattr(self.o, "hook_in"):
+                attn_reshaped = self.o.hook_in(attn_reshaped)
+
             # Apply W_O: [batch, seq, heads, d_head] @ [heads, d_head, d_model] -> [batch, seq, heads, d_model]
             attn_output = torch.einsum("bsnh,nhd->bsnd", attn_reshaped, self._W_O)
             # Sum across heads: [batch, seq, heads, d_model] -> [batch, seq, d_model]
