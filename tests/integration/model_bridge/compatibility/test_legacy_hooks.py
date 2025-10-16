@@ -158,7 +158,10 @@ class TestLegacyHookCompatibility:
             )
 
             # Allow for some numerical differences due to different implementations
-            mean_abs_diff = torch.mean(torch.abs(hooked_transformer_activation - bridge_activation))
+            # Use nanmean to handle -inf values in attention scores (which produce nan when subtracted)
+            mean_abs_diff = torch.nanmean(
+                torch.abs(hooked_transformer_activation - bridge_activation)
+            )
             assert mean_abs_diff < 0.5, (
                 f"Hook {hook} does not match between HookedTransformer and TransformerBridge. "
                 f"Mean absolute difference: {mean_abs_diff}"
