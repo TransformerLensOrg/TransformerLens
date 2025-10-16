@@ -209,7 +209,7 @@ def get_attention_mask(
     """
 
     # Initialize the attention mask with ones (indicating all tokens should be attended to)
-    attention_mask = torch.ones_like(tokens)
+    attention_mask = torch.ones_like(tokens, dtype=torch.bool)
     if tokenizer is None:
         return attention_mask
     is_not_pad_token = tokens.ne(tokenizer.pad_token_id)
@@ -217,17 +217,17 @@ def get_attention_mask(
     if tokenizer.padding_side == "right":
         # Zero-out the rightmost trailing pad tokens
         is_trailing_pad = get_cumsum_along_dim(is_not_pad_token, -1, reverse=True) == 0
-        attention_mask[is_trailing_pad] = 0
+        attention_mask[is_trailing_pad] = False
     else:
         # Zero-out the leftmost leading pad tokens
         is_leading_pad = get_cumsum_along_dim(is_not_pad_token, -1, reverse=False) == 0
-        attention_mask[is_leading_pad] = 0
+        attention_mask[is_leading_pad] = False
 
         # If the bos token is the same as the pad token,
         # the last token of the leftmost leading pad tokens is the bos token.
         # We need to set the attention mask for the bos token to 1.
         if prepend_bos and tokenizer.bos_token_id == tokenizer.pad_token_id:
             pad_bos_positions = is_leading_pad.sum(-1) - 1
-            attention_mask[torch.arange(attention_mask.shape[0]), pad_bos_positions] = 1
+            attention_mask[torch.arange(attention_mask.shape[0]), pad_bos_positions] = True
 
     return attention_mask
