@@ -214,11 +214,16 @@ def get_bridge_params(bridge) -> Dict[str, torch.Tensor]:
 
         try:
             # MLP weights - access the actual weight tensors
-            params_dict[f"blocks.{layer_idx}.mlp.W_in"] = getattr(block.mlp, "in").weight
+            # Try "in" first (standard name), then "input" (GPT-2 naming)
+            mlp_in = getattr(block.mlp, "in", None) or getattr(block.mlp, "input", None)
+            if mlp_in is None:
+                raise AttributeError("MLP has no 'in' or 'input' attribute")
+
+            params_dict[f"blocks.{layer_idx}.mlp.W_in"] = mlp_in.weight
             params_dict[f"blocks.{layer_idx}.mlp.W_out"] = block.mlp.out.weight
 
             # MLP biases - handle None biases
-            mlp_in_bias = getattr(block.mlp, "in").bias
+            mlp_in_bias = mlp_in.bias
             if mlp_in_bias is not None:
                 params_dict[f"blocks.{layer_idx}.mlp.b_in"] = mlp_in_bias
             else:

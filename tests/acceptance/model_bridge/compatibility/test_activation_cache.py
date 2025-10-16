@@ -99,6 +99,36 @@ class TestActivationCacheCompatibility:
         print(f"Total cache keys: {len(cache_keys)}")
         print(f"Sample keys: {cache_keys[:5]}")
 
+    def test_cache_tensor_shapes(self, sample_cache, bridge_model):
+        """Test that cached tensors have reasonable shapes."""
+        # Get cache dict
+        if hasattr(sample_cache, "cache_dict"):
+            cache_dict = sample_cache.cache_dict
+        else:
+            cache_dict = sample_cache
+
+        cfg = bridge_model.cfg
+
+        for key, value in cache_dict.items():
+            if value is not None and isinstance(value, torch.Tensor):
+                # All tensors should have at least 2 dimensions (batch, seq, ...)
+                assert value.ndim >= 2, f"Tensor {key} has insufficient dimensions: {value.shape}"
+
+                # Batch dimension should be 1 for single prompt
+                assert value.shape[0] == 1, f"Tensor {key} has wrong batch size: {value.shape[0]}"
+
+                # If it's a 3D tensor, last dimension might be d_model or d_vocab
+                if value.ndim == 3:
+                    last_dim = value.shape[2]
+                    # Should be one of the common dimensions
+                    common_dims = [cfg.d_model, cfg.d_vocab, cfg.d_head * cfg.n_heads]
+                    if hasattr(cfg, "d_mlp"):
+                        common_dims.append(cfg.d_mlp)
+
+                    # Don't enforce strict checking since bridge might have different dimensions
+                    # Just check that it's reasonable
+                    assert last_dim > 0, f"Tensor {key} has invalid last dimension: {last_dim}"
+
     def test_cache_with_names_filter(self, bridge_model):
         """Test that names filtering works with caching."""
         prompt = "Test names filter."

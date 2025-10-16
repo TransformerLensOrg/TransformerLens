@@ -17,7 +17,6 @@ class TestUtilsWithTransformerBridge:
         return TransformerBridge.boot_transformers(model_name, device="cpu")
 
     # tests
-
     def test_tokenizer_compatibility(self, model):
         """Test that TransformerBridge tokenizer works with utility functions."""
         prompt = "Hello, world!"
