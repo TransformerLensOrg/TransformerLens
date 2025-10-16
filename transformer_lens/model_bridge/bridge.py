@@ -1037,7 +1037,9 @@ class TransformerBridge(nn.Module):
                                 name_to_use = name
                                 break
                         # Use use_alias_only=True to avoid calling the hook twice
-                        add_hook_to_point(hook_point, hook_fn, name_to_use, "fwd", use_alias_only=True)
+                        add_hook_to_point(
+                            hook_point, hook_fn, name_to_use, "fwd", use_alias_only=True
+                        )
 
             # Add backward hooks
             for hook_name_or_filter, hook_fn in bwd_hooks:
@@ -1063,7 +1065,11 @@ class TransformerBridge(nn.Module):
                             # DEBUG: Log if this is hook_z
                             if "hook_z" in name:
                                 import sys
-                                print(f"DEBUG COLLECT: '{name}' matched filter, HookPoint ID {hp_id}", file=sys.stderr)
+
+                                print(
+                                    f"DEBUG COLLECT: '{name}' matched filter, HookPoint ID {hp_id}",
+                                    file=sys.stderr,
+                                )
 
                     # Register each hook once, preferring alias names
                     for hp_id, matching_names in hook_point_to_names.items():
@@ -1076,7 +1082,9 @@ class TransformerBridge(nn.Module):
                                 name_to_use = name
                                 break
                         # Use use_alias_only=True to avoid calling the hook twice
-                        add_hook_to_point(hook_point, hook_fn, name_to_use, "bwd", use_alias_only=True)
+                        add_hook_to_point(
+                            hook_point, hook_fn, name_to_use, "bwd", use_alias_only=True
+                        )
 
             # Run forward pass with ported components
             # Handle return_type=None explicitly (don't default to "logits")
