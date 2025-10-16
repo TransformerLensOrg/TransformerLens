@@ -7,6 +7,7 @@ import multiprocessing
 import os
 import shutil
 import subprocess
+import sys
 import warnings
 from copy import deepcopy
 from functools import lru_cache, partial
@@ -638,9 +639,12 @@ def build_docs():
     copy_demos()
 
     # Generating docs
+    # Use sys.executable with -m sphinx to ensure we use the venv's sphinx
     subprocess.run(
         [
-            "sphinx-build",
+            sys.executable,
+            "-m",
+            "sphinx",
             SOURCE_PATH,
             BUILD_PATH,
             # "-n",  # Nitpicky mode (warn about all missing references)
