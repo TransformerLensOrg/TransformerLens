@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import Callable
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import torch
 import torch.nn as nn
@@ -33,7 +33,8 @@ class GeneralizedComponent(nn.Module):
 
     # Dictionary mapping deprecated hook names to their new equivalents
     # Subclasses can override this to define their own aliases
-    hook_aliases: Dict[str, str] = {}
+    # Values can be either a string (single target) or a list of strings (multiple fallback targets)
+    hook_aliases: Dict[str, Union[str, List[str]]] = {}
     property_aliases: Dict[str, str] = {}
 
     def __init__(
