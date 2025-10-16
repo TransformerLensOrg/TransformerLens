@@ -291,6 +291,15 @@ class GeneralizedComponent(nn.Module):
         if hasattr(self, "_modules") and name in self._modules:
             return self._modules[name]
 
+        # For private attributes that should exist but don't, check __dict__ directly
+        # This handles the case where attributes may not have been fully initialized yet
+        if name.startswith("_") and hasattr(self, "__dict__"):
+            if name in self.__dict__:
+                return self.__dict__[name]
+            # If it's a private attribute that doesn't exist, it genuinely doesn't exist
+            # Don't try to delegate to original_component
+            raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+
         # Only try to resolve aliases if compatibility mode is enabled
         if self.compatibility_mode == True:
             # Check if this is a deprecated hook alias

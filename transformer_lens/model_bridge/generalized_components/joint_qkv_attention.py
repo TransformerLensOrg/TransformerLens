@@ -366,12 +366,16 @@ class JointQKVAttentionBridge(AttentionBridge):
             self._extract_hooked_transformer_weights()
 
         # Check if we successfully extracted weights
+        # If extraction failed, fall back to using the original component
+        # This is safer than loading a new model during forward pass
         if (
             not self._hooked_weights_extracted
             or self._W_Q is None
             or self._W_K is None
             or self._W_V is None
         ):
+            # Fall back to normal forward pass through original component
+            # Don't try to use the compatibility path without proper weights
             return super().forward(*args, **kwargs)
 
         # Import the exact function HookedTransformer uses
@@ -558,8 +562,13 @@ class JointQKVAttentionBridge(AttentionBridge):
             attn_output = torch.einsum("bsnh,nhd->bsnd", attn_reshaped, self._W_O)
             # Sum across heads: [batch, seq, heads, d_model] -> [batch, seq, d_model]
             attn_output = attn_output.sum(dim=2)
-            if self._b_O is not None:
-                attn_output = attn_output + self._b_O
+            # Check if bias exists and add it if it does
+            try:
+                if hasattr(self, "_b_O") and self._b_O is not None:
+                    attn_output = attn_output + self._b_O
+            except AttributeError:
+                # _b_O not initialized yet, skip bias
+                pass
         elif hasattr(original_component, "c_proj"):
             attn_output = original_component.c_proj(attn_output)  # type: ignore[operator]
 
@@ -1067,12 +1076,22 @@ class JointQKVAttentionBridge(AttentionBridge):
             pass
 
         # Fallback: Load a new reference model
+        # NOTE: This fallback should rarely be used as it's expensive and may not match
+        # the original model's weight processing settings. Only use if absolutely necessary.
+        # IMPORTANT: DO NOT load a model if _processed_weights is None - it means weights
+        # weren't processed intentionally (e.g., no_processing=True was used)
+        if self._processed_weights is None:
+            # No processed weights available, can't extract - will fall back to original component
+            return
+
         try:
             from transformer_lens import HookedTransformer
 
             model_name = getattr(self.config, "model_name", "gpt2")
             device = next(self.parameters()).device if list(self.parameters()) else "cpu"
 
+            # Load with standard processing settings (fold_ln, center_writing_weights, etc.)
+            # This fallback is only used when _processed_weights exists but extraction failed
             reference_model = HookedTransformer.from_pretrained(
                 model_name,
                 device=device,
@@ -1178,3 +1197,44 @@ class JointQKVAttentionBridge(AttentionBridge):
         print(f"  W_V: {self._W_V.shape}")
         print(f"  W_Q: {self._W_Q.shape}")
         print(f"  W_K: {self._W_K.shape}")
+
+    # Properties for accessing weights (required by TransformerBridge.b_O property)
+    @property
+    def W_Q(self) -> Optional[torch.Tensor]:
+        """Query weight matrix."""
+        return self._W_Q
+
+    @property
+    def W_K(self) -> Optional[torch.Tensor]:
+        """Key weight matrix."""
+        return self._W_K
+
+    @property
+    def W_V(self) -> Optional[torch.Tensor]:
+        """Value weight matrix."""
+        return self._W_V
+
+    @property
+    def W_O(self) -> Optional[torch.Tensor]:
+        """Output weight matrix."""
+        return self._W_O
+
+    @property
+    def b_Q(self) -> Optional[torch.Tensor]:
+        """Query bias vector."""
+        return self._b_Q
+
+    @property
+    def b_K(self) -> Optional[torch.Tensor]:
+        """Key bias vector."""
+        return self._b_K
+
+    @property
+    def b_V(self) -> Optional[torch.Tensor]:
+        """Value bias vector."""
+        return self._b_V
+
+    @property
+    def b_O(self) -> Optional[torch.Tensor]:
+        """Output bias vector."""
+        return self._b_O
