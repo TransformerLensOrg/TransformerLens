@@ -463,18 +463,13 @@ class JointQKVAttentionBridge(AttentionBridge):
         k_new = k.transpose(1, 2)
         v_new = v.transpose(1, 2)
 
-        # Handle KV cache using DynamicCache API
         if past_key_value_arg is not None and hasattr(past_key_value_arg, "update"):
-            # Get layer index
             layer_idx = getattr(self, "layer_idx", 0)
-
-            # Use cache.update() to concatenate with past K/V and return full K/V
             k, v = past_key_value_arg.update(k_new, v_new, layer_idx)
         else:
             k = k_new
             v = v_new
 
-        # Rest of attention computation (same as HookedTransformer)
         import torch.nn.functional as F
 
         head_dim = q.shape[-1]
@@ -521,37 +516,31 @@ class JointQKVAttentionBridge(AttentionBridge):
 
         # Apply output projection using the W_O weight
         if self._W_O is not None:
-            # Use the extracted W_O matrix - reshape attn_output to [batch, seq, heads, d_head]
+            # Reshape and apply output projection
             batch_size, seq_len = attn_output.shape[:2]
             n_heads = self._W_O.shape[0]
             d_head = self._W_O.shape[1]
             attn_reshaped = attn_output.view(batch_size, seq_len, n_heads, d_head)
 
-            # Apply hook_z (o.hook_in) - this is the z tensor before output projection
-            # In compatibility mode, this hook is aliased as "blocks.L.attn.hook_z"
+            # Apply hook_z (aliased as "blocks.L.attn.hook_z" in compatibility mode)
             if hasattr(self, "o") and hasattr(self.o, "hook_in"):
                 attn_reshaped = self.o.hook_in(attn_reshaped)
 
-            # Apply W_O: [batch, seq, heads, d_head] @ [heads, d_head, d_model] -> [batch, seq, heads, d_model]
+            # Apply W_O and sum across heads
             attn_output = torch.einsum("bsnh,nhd->bsnd", attn_reshaped, self._W_O)
-            # Sum across heads: [batch, seq, heads, d_model] -> [batch, seq, d_model]
             attn_output = attn_output.sum(dim=2)
-            # Check if bias exists and add it if it does
+
             try:
                 if hasattr(self, "_b_O") and self._b_O is not None:
                     attn_output = attn_output + self._b_O
             except AttributeError:
-                # _b_O not initialized yet, skip bias
                 pass
         elif hasattr(original_component, "c_proj"):
             attn_output = original_component.c_proj(attn_output)  # type: ignore[operator]
 
-        # Apply output hook
         attn_output = self.hook_out(attn_output)
 
-        # Return format depends on whether we're using KV cache
-        # HuggingFace format with cache: (attn_output, past_key_value)
-        # Without cache: (attn_output, attn_weights)
+        # Return format: (attn_output, cache/weights)
         if use_cache and past_key_value_arg is not None:
             return (attn_output, past_key_value_arg)
         else:
@@ -1049,13 +1038,9 @@ class JointQKVAttentionBridge(AttentionBridge):
         except Exception:
             pass
 
-        # Fallback: Load a new reference model
-        # NOTE: This fallback should rarely be used as it's expensive and may not match
-        # the original model's weight processing settings. Only use if absolutely necessary.
-        # IMPORTANT: DO NOT load a model if _processed_weights is None - it means weights
-        # weren't processed intentionally (e.g., no_processing=True was used)
+        # Fallback: Load a new reference model (expensive, rarely used)
+        # Skip if _processed_weights is None (indicates no_processing=True was used)
         if self._processed_weights is None:
-            # No processed weights available, can't extract - will fall back to original component
             return
 
         try:
@@ -1064,8 +1049,6 @@ class JointQKVAttentionBridge(AttentionBridge):
             model_name = getattr(self.config, "model_name", "gpt2")
             device = next(self.parameters()).device if list(self.parameters()) else "cpu"
 
-            # Load with standard processing settings (fold_ln, center_writing_weights, etc.)
-            # This fallback is only used when _processed_weights exists but extraction failed
             reference_model = HookedTransformer.from_pretrained(
                 model_name,
                 device=device,
@@ -1108,7 +1091,6 @@ class JointQKVAttentionBridge(AttentionBridge):
         except Exception:
             pass
 
-        # Final fallback: Process weights manually
         if self._processed_weights is None:
             try:
                 self.process_weights(
@@ -1121,24 +1103,22 @@ class JointQKVAttentionBridge(AttentionBridge):
             except Exception as e:
                 print(f"⚠️  Failed to process weights manually: {e}")
 
-        # Extract the weights in the exact format HookedTransformer uses
         if self._processed_weights is not None:
-            self._W_Q = self._processed_weights["W_Q"]  # [n_heads, d_model, d_head]
-            self._W_K = self._processed_weights["W_K"]  # [n_heads, d_model, d_head]
-            self._W_V = self._processed_weights["W_V"]  # [n_heads, d_model, d_head]
-            self._b_Q = self._processed_weights["b_Q"]  # [n_heads, d_head]
-            self._b_K = self._processed_weights["b_K"]  # [n_heads, d_head]
-            self._b_V = self._processed_weights["b_V"]  # [n_heads, d_head]
+            self._W_Q = self._processed_weights["W_Q"]
+            self._W_K = self._processed_weights["W_K"]
+            self._W_V = self._processed_weights["W_V"]
+            self._b_Q = self._processed_weights["b_Q"]
+            self._b_K = self._processed_weights["b_K"]
+            self._b_V = self._processed_weights["b_V"]
 
             if "W_O" in self._processed_weights:
-                self._W_O = self._processed_weights["W_O"]  # [n_heads, d_head, d_model]
+                self._W_O = self._processed_weights["W_O"]
             if "b_O" in self._processed_weights:
-                self._b_O = self._processed_weights["b_O"]  # [d_model]
+                self._b_O = self._processed_weights["b_O"]
 
             print(f"✅ Extracted HookedTransformer weights from processed weights")
             self._hooked_weights_extracted = True
         else:
-            # Last resort: print error and continue without weights
             print(f"⚠️  Unable to extract HookedTransformer weights for {self.name}")
             print("Will attempt to use original component computation")
             self._hooked_weights_extracted = False
