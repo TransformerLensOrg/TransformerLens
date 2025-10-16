@@ -8,21 +8,21 @@ The documentation uses Sphinx. However, the documentation is written in regular 
 
 ## Build the Documentation
 
-First install the docs packages:
+First install the packages:
 
 ```bash
-poetry install --with docs
+uv sync --group docs
 ```
 
 Then for hot-reloading, run this (note the model properties table won't hot reload, but everything
 else will):
 
 ```bash
-poetry run docs-hot-reload
+uv run docs-hot-reload
 ```
 
 Alternatively to build once, run:
 
 ```bash
-poetry run build-docs
+uv run build-docs
 ```
