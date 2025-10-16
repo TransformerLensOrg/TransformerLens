@@ -21,7 +21,8 @@ class MLPBridge(GeneralizedComponent):
     """
 
     hook_aliases = {
-        "hook_pre": "in.hook_out",
+        # hook_pre can be either "in.hook_out" (most models) or "input.hook_out" (GPT-2)
+        "hook_pre": ["in.hook_out", "input.hook_out"],
         "hook_post": "out.hook_in",
     }
 
@@ -75,8 +76,22 @@ class MLPBridge(GeneralizedComponent):
                 hidden = torch.nn.functional.linear(
                     hidden_states, self._processed_W_in.T, self._processed_b_in
                 )
+
+                # Apply hook_pre (in.hook_out or input.hook_out) - pre-activation hidden state
+                # In compatibility mode, this hook is aliased as "blocks.L.mlp.hook_pre"
+                # Try "in" first (standard name), then "input" (GPT-2 naming)
+                in_module = getattr(self, "in", None) or getattr(self, "input", None)
+                if in_module and hasattr(in_module, "hook_out"):
+                    hidden = in_module.hook_out(hidden)
+
                 # Apply activation (GELU for GPT-2)
                 hidden = torch.nn.functional.gelu(hidden)
+
+                # Apply hook_post (out.hook_in) - post-activation hidden state before output projection
+                # In compatibility mode, this hook is aliased as "blocks.L.mlp.hook_post"
+                if hasattr(self, "out") and hasattr(self.out, "hook_in"):
+                    hidden = self.out.hook_in(hidden)
+
                 # Output projection using TransformerLens format
                 output = torch.nn.functional.linear(
                     hidden, self._processed_W_out.T, self._processed_b_out
