@@ -74,7 +74,7 @@ class OptArchitectureAdapter(ArchitectureAdapter):
                     "attn": AttentionBridge(name="self_attn", config=self.cfg),
                     "ln2": NormalizationBridge(name="final_layer_norm", config=self.cfg),
                     "mlp": MLPBridge(
-                        name=None,  # OPT doesn't have an mlp container
+                        name=None,  # No MLP container; fc1/fc2 are on block
                         submodules={
                             "in": LinearBridge(name="fc1"),
                             "out": LinearBridge(name="fc2"),

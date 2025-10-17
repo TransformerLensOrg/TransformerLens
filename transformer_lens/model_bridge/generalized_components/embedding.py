@@ -115,9 +115,8 @@ class EmbeddingBridge(GeneralizedComponent):
         else:
             output = self.original_component(input_ids, position_ids=position_ids, **kwargs)
 
-        # Handle tuple outputs (some models return tuples instead of single tensors)
+        # Some models return tuples; extract embeddings
         if isinstance(output, tuple):
-            # Extract the first element (embeddings) and discard the rest
             output = output[0]
 
         # Apply output hook

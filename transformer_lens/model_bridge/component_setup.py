@@ -82,9 +82,7 @@ def setup_submodules(
             replace_remote_component(bridged_list, submodule.name, original_model)
         # Only add if not already registered as a PyTorch module
         if module_name not in component._modules:
-            # Get the original component for this submodule
-            # If name is None, the component doesn't have a container in the remote model
-            # and we use the parent component directly (e.g., OPT's fc1/fc2 are on the block)
+            # Get original component (use parent if no container, e.g. OPT's MLP)
             if submodule.name is None:
                 original_subcomponent = original_model
             else:
@@ -93,18 +91,11 @@ def setup_submodules(
                     original_model, remote_path
                 )
 
-            # Set the original component
             submodule.set_original_component(original_subcomponent)
-
-            # Recursively set up submodules of this submodule
             setup_submodules(submodule, architecture_adapter, original_subcomponent)
-
-            # Add the submodule to the parent component
             component.add_module(module_name, submodule)
 
-            # Replace the original submodule with the bridged submodule in the parent
-            # Use the actual component's remote name in the parent component
-            # Skip replacement if name is None (no container to replace)
+            # Replace original with bridge (skip if no container)
             if submodule.name is not None:
                 replace_remote_component(submodule, submodule.name, original_model)
 

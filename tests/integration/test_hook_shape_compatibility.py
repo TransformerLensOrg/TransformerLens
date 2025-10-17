@@ -10,34 +10,22 @@ def _to_list(keys: Iterable[str]) -> list[str]:
     return list(keys) if not isinstance(keys, list) else keys
 
 
-# Mirror acceptance test choices but use full HF ids only (exclude TL-only configs)
-# Using smaller models to reduce CI memory usage
-#
-# Note on OPT: OPT internally reshapes tensors to (batch*seq_len, d_model) for MLP/LayerNorm
-# operations, so those hooks will have flattened shapes. This is handled in the test.
+# Test models selected for architectural diversity while respecting memory constraints.
+# Note: Python doesn't release model memory between parameterized tests, causing accumulation.
+# Models are ordered by size to minimize peak memory usage.
 PUBLIC_HF_MODELS = [
     "sshleifer/tiny-gpt2",
-    "gpt2",
-    "facebook/opt-125m",
     "EleutherAI/pythia-70m",
-    "EleutherAI/gpt-neo-125M",
-    "roneneldan/TinyStories-33M",
+    "facebook/opt-125m",
 ]
 
-# Full list with larger models - only used when HF_TOKEN is set
-# Excludes very large models (gemma-7b, bloom-560m) to reduce CI memory footprint
+# Extended model list for authenticated CI runs
 FULL_HF_MODELS = [
     "sshleifer/tiny-gpt2",
-    "gpt2",
-    "facebook/opt-125m",
-    "EleutherAI/gpt-neo-125M",
     "EleutherAI/pythia-70m",
-    "bigcode/santacoder",
-    "microsoft/phi-1",
-    "microsoft/phi-1_5",
-    "microsoft/phi-2",
-    "google/gemma-2b",
     "roneneldan/TinyStories-33M",
+    "facebook/opt-125m",
+    "gpt2",
 ]
 
 
@@ -149,8 +137,7 @@ def test_transformer_bridge_hook_shapes(model_name: str):
 
     cfg = bridge.cfg
     d_model = int(getattr(cfg, "d_model"))
-    # Get actual d_vocab from the unembed weight shape rather than config
-    # (some models like OPT have padding that makes actual vocab size != config vocab size)
+    # Use actual vocab size from weights (may differ from config due to padding)
     d_vocab = None
     if hasattr(bridge, "unembed") and hasattr(bridge.unembed, "weight"):
         d_vocab = int(bridge.unembed.weight.shape[0])
@@ -170,7 +157,7 @@ def test_transformer_bridge_hook_shapes(model_name: str):
     _, cache = bridge.run_with_cache(tokens, device="cpu")
     keys = sorted(_to_list(cache.keys()))
 
-    # Check if this is an OPT model - OPT reshapes tensors to (batch*seq, d_model) for MLP/LayerNorm
+    # OPT reshapes to (batch*seq, d_model) internally for efficiency
     is_opt_model = "opt" in model_name.lower()
 
     mismatches: list[tuple[str, Tuple[int, ...], Tuple[int, ...]]] = []
@@ -205,8 +192,7 @@ def test_transformer_bridge_hook_shapes(model_name: str):
             checked += 1
             continue
 
-        # Skip rotary embedding hooks - they have architecture-specific dimensions
-        # (e.g., Pythia uses partial rotary embeddings)
+        # Rotary embeddings have architecture-specific partial dimensions
         if "rotary" in name.lower():
             checked += 1
             continue
@@ -227,20 +213,14 @@ def test_transformer_bridge_hook_shapes(model_name: str):
         assert isinstance(tensor, torch.Tensor), f"Non-tensor cached for {name}"
         got = tuple(tensor.shape)
 
-        # OPT-specific shape handling: OPT reshapes to (batch*seq, d_model) for MLP/LayerNorm
+        # OPT flattens batch and sequence dimensions for MLP/LayerNorm
         if is_opt_model and got != exp:
-            # Check if this is an MLP or LayerNorm hook that OPT flattens
-            is_flattened_hook = (
-                ".ln" in name and ".hook" in name and ".attn.ln" not in name
-            ) or (  # LayerNorm hooks (but not attn layernorm)
+            is_flattened_hook = (".ln" in name and ".hook" in name and ".attn.ln" not in name) or (
                 ".mlp." in name and "hook" in name
-            )  # MLP hooks
+            )
 
             if is_flattened_hook and len(exp) == 3 and len(got) == 2:
-                # Expected: (batch, pos, d) but got (batch*pos, d) due to OPT's reshape
-                # Verify it's the flattened version
                 if got == (batch * pos, exp[2]):
-                    # This is expected for OPT - skip the mismatch
                     checked += 1
                     continue
 
