@@ -810,184 +810,24 @@ class TransformerBridge(nn.Module):
         # Fix backward hook gradients by overriding transformer forward
         self._fix_backward_hook_gradients()
 
-        # Setup hook_z reshape for no_processing mode to match HookedTransformer shape
+        # Setup attention hooks for no_processing mode to match HookedTransformer
         if no_processing:
-            self._setup_hook_z_reshape_for_no_processing()
-            self._setup_attn_scores_hooks_for_no_processing()
+            self._setup_no_processing_hooks()
 
         if not no_processing:
             self.process_compatibility_weights()
 
-    def _setup_hook_z_reshape_for_no_processing(self) -> None:
-        """Setup hook_z reshaping using HookConversion for no_processing mode.
+    def _setup_no_processing_hooks(self) -> None:
+        """Setup hooks for no_processing mode in all attention layers.
 
-        In no_processing mode, HuggingFace's forward path concatenates attention heads
-        before c_proj, resulting in shape [batch, seq, d_model]. But hook_z should see
-        [batch, seq, n_heads, d_head] to match HookedTransformer.
-
-        This method applies a HookConversion to reshape tensors before/after hooks.
+        This delegates to each AttentionBridge's setup_no_processing_hooks() method,
+        which handles:
+        1. hook_z reshaping for proper head dimensions
+        2. Wrapping HF attention forward to capture scores before softmax
         """
-        from transformer_lens.conversion_utils.conversion_steps.base_hook_conversion import (
-            BaseHookConversion,
-        )
-
-        class ReshapeForAttentionHeads(BaseHookConversion):
-            """Reshape tensors to split attention heads for hook_z compatibility."""
-
-            def __init__(self, n_heads: int, d_head: int):
-                super().__init__()
-                self.n_heads = n_heads
-                self.d_head = d_head
-
-            def handle_conversion(self, input_value, *full_context):
-                """Convert from [batch, seq, d_model] to [batch, seq, n_heads, d_head]."""
-                if len(input_value.shape) == 3:
-                    b, s, d = input_value.shape
-                    if d == self.n_heads * self.d_head:
-                        return input_value.view(b, s, self.n_heads, self.d_head)
-                return input_value
-
-            def revert(self, input_value, *full_context):
-                """Revert from [batch, seq, n_heads, d_head] to [batch, seq, d_model]."""
-                if len(input_value.shape) == 4:
-                    b, s, n_h, d_h = input_value.shape
-                    if n_h == self.n_heads and d_h == self.d_head:
-                        return input_value.view(b, s, n_h * d_h)
-                return input_value
-
-        # Apply hook conversion to all attention layers' hook_z (o.hook_in)
         for block in self.blocks:
-            if hasattr(block, "attn") and hasattr(block.attn, "o"):
-                attn = block.attn
-                o_linear = attn.o  # This is the LinearBridge
-
-                # Get config for reshaping
-                n_heads = attn.config.n_heads
-                d_model = attn.config.d_model
-                d_head = d_model // n_heads
-
-                # Create and apply the conversion
-                reshape_conv = ReshapeForAttentionHeads(n_heads, d_head)
-                o_linear.hook_in.hook_conversion = reshape_conv
-
-    def _setup_attn_scores_hooks_for_no_processing(self) -> None:
-        """Setup hook_attn_scores and hook_pattern by wrapping HF attention forward.
-
-        In no_processing mode, HuggingFace GPT2Attention only returns attention weights
-        (probabilities after softmax), not the raw attention scores. To match
-        HookedTransformer behavior where hook_attn_scores sees scores BEFORE softmax
-        and hook_pattern sees probabilities AFTER softmax, we need to wrap the
-        HF attention forward to manually compute and hook both.
-        """
-        import torch
-        import torch.nn.functional as F
-
-        def split_heads(tensor, num_heads, attn_head_size):
-            """Split hidden states into attention heads."""
-            new_shape = tensor.size()[:-1] + (num_heads, attn_head_size)
-            tensor = tensor.view(new_shape)
-            return tensor.permute(0, 2, 1, 3)  # (batch, head, seq_length, head_features)
-
-        # Wrap each attention layer
-        for block in self.blocks:
-            if hasattr(block, "attn"):
-                attn_bridge = block.attn
-                hf_attn = attn_bridge.original_component
-
-                # Save original forward
-                original_forward = hf_attn.forward
-
-                def make_wrapped_forward(attn_br, hf_att, orig_fwd):
-                    """Create a wrapped forward function with proper closures."""
-
-                    def wrapped_forward(
-                        hidden_states,
-                        past_key_values=None,
-                        cache_position=None,
-                        attention_mask=None,
-                        head_mask=None,
-                        encoder_hidden_states=None,
-                        encoder_attention_mask=None,
-                        output_attentions=False,
-                        **kwargs
-                    ):
-                        """Wrapped forward that manually computes attention scores."""
-                        # Compute Q, K, V
-                        query, key, value = hf_att.c_attn(hidden_states).split(
-                            hf_att.split_size, dim=2
-                        )
-
-                        # Split into heads
-                        query = split_heads(query, hf_att.num_heads, hf_att.head_dim)
-                        key = split_heads(key, hf_att.num_heads, hf_att.head_dim)
-                        value = split_heads(value, hf_att.num_heads, hf_att.head_dim)
-
-                        # Compute attention scores
-                        attn_scores = torch.matmul(query, key.transpose(-1, -2))
-
-                        # Scale
-                        if hf_att.scale_attn_weights:
-                            attn_scores = attn_scores / torch.full(
-                                [],
-                                value.size(-1) ** 0.5,
-                                dtype=attn_scores.dtype,
-                                device=attn_scores.device,
-                            )
-
-                        # Apply causal mask
-                        query_length, key_length = query.size(-2), key.size(-2)
-                        causal_mask = hf_att.bias[
-                            :, :, key_length - query_length : key_length, :key_length
-                        ]
-                        # Use -inf for masked positions to match HookedTransformer exactly
-                        mask_value = float('-inf')
-                        attn_scores = torch.where(
-                            causal_mask, attn_scores.to(attn_scores.dtype), mask_value
-                        )
-
-                        # Apply attention mask if provided
-                        if attention_mask is not None:
-                            attn_scores = attn_scores + attention_mask
-
-                        # Apply hook_attn_scores to raw scores BEFORE softmax
-                        attn_scores = attn_br.hook_attn_scores(attn_scores)
-
-                        # Softmax
-                        attn_weights = F.softmax(attn_scores, dim=-1)
-                        attn_weights = attn_weights.to(value.dtype)
-
-                        # Dropout
-                        attn_weights = hf_att.attn_dropout(attn_weights)
-
-                        # Apply head mask if provided
-                        if head_mask is not None:
-                            attn_weights = attn_weights * head_mask
-
-                        # Apply hook_pattern to probabilities AFTER softmax
-                        attn_weights = attn_br.hook_pattern(attn_weights)
-
-                        # Compute output
-                        attn_output = torch.matmul(attn_weights, value)
-
-                        # Merge heads
-                        attn_output = attn_output.transpose(1, 2).contiguous()
-                        new_shape = attn_output.size()[:-2] + (hf_att.embed_dim,)
-                        attn_output = attn_output.view(new_shape)
-
-                        # Output projection
-                        attn_output = hf_att.c_proj(attn_output)
-                        attn_output = hf_att.resid_dropout(attn_output)
-
-                        # Return in HF format
-                        if output_attentions:
-                            return (attn_output, None, attn_weights)
-                        else:
-                            return (attn_output, None)
-
-                    return wrapped_forward
-
-                # Replace the forward method
-                hf_attn.forward = make_wrapped_forward(attn_bridge, hf_attn, original_forward)
+            if hasattr(block, "attn") and hasattr(block.attn, "setup_no_processing_hooks"):
+                block.attn.setup_no_processing_hooks()
 
     def process_compatibility_weights(self, verbose: bool = False) -> None:
         """Process and load weights from a reference HookedTransformer model.
