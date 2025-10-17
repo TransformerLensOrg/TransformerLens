@@ -12,6 +12,9 @@ def _to_list(keys: Iterable[str]) -> list[str]:
 
 # Mirror acceptance test choices but use full HF ids only (exclude TL-only configs)
 # Using smaller models to reduce CI memory usage
+#
+# Note on OPT: OPT internally reshapes tensors to (batch*seq_len, d_model) for MLP/LayerNorm
+# operations, so those hooks will have flattened shapes. This is handled in the test.
 PUBLIC_HF_MODELS = [
     "sshleifer/tiny-gpt2",
     "gpt2",
@@ -146,7 +149,14 @@ def test_transformer_bridge_hook_shapes(model_name: str):
 
     cfg = bridge.cfg
     d_model = int(getattr(cfg, "d_model"))
-    d_vocab = int(getattr(cfg, "d_vocab", 0)) if hasattr(cfg, "d_vocab") else None
+    # Get actual d_vocab from the unembed weight shape rather than config
+    # (some models like OPT have padding that makes actual vocab size != config vocab size)
+    d_vocab = None
+    if hasattr(bridge, "unembed") and hasattr(bridge.unembed, "weight"):
+        d_vocab = int(bridge.unembed.weight.shape[0])
+    elif hasattr(cfg, "d_vocab"):
+        d_vocab = int(getattr(cfg, "d_vocab", 0))
+
     n_heads = int(getattr(cfg, "n_heads", 0)) if hasattr(cfg, "n_heads") else None
     d_head = int(getattr(cfg, "d_head", 0)) if hasattr(cfg, "d_head") else None
     d_mlp = int(getattr(cfg, "d_mlp", 0)) if hasattr(cfg, "d_mlp") else None
@@ -159,6 +169,9 @@ def test_transformer_bridge_hook_shapes(model_name: str):
 
     _, cache = bridge.run_with_cache(tokens, device="cpu")
     keys = sorted(_to_list(cache.keys()))
+
+    # Check if this is an OPT model - OPT reshapes tensors to (batch*seq, d_model) for MLP/LayerNorm
+    is_opt_model = "opt" in model_name.lower()
 
     mismatches: list[tuple[str, Tuple[int, ...], Tuple[int, ...]]] = []
     checked = 0
@@ -192,6 +205,12 @@ def test_transformer_bridge_hook_shapes(model_name: str):
             checked += 1
             continue
 
+        # Skip rotary embedding hooks - they have architecture-specific dimensions
+        # (e.g., Pythia uses partial rotary embeddings)
+        if "rotary" in name.lower():
+            checked += 1
+            continue
+
         exp = _expected_shape_for_name(
             name,
             batch=batch,
@@ -207,6 +226,24 @@ def test_transformer_bridge_hook_shapes(model_name: str):
         tensor = cache[name]
         assert isinstance(tensor, torch.Tensor), f"Non-tensor cached for {name}"
         got = tuple(tensor.shape)
+
+        # OPT-specific shape handling: OPT reshapes to (batch*seq, d_model) for MLP/LayerNorm
+        if is_opt_model and got != exp:
+            # Check if this is an MLP or LayerNorm hook that OPT flattens
+            is_flattened_hook = (
+                ".ln" in name and ".hook" in name and ".attn.ln" not in name
+            ) or (  # LayerNorm hooks (but not attn layernorm)
+                ".mlp." in name and "hook" in name
+            )  # MLP hooks
+
+            if is_flattened_hook and len(exp) == 3 and len(got) == 2:
+                # Expected: (batch, pos, d) but got (batch*pos, d) due to OPT's reshape
+                # Verify it's the flattened version
+                if got == (batch * pos, exp[2]):
+                    # This is expected for OPT - skip the mismatch
+                    checked += 1
+                    continue
+
         if got != exp:
             mismatches.append((name, exp, got))
         checked += 1

@@ -3,7 +3,6 @@
 This module contains the bridge component for positional embedding layers.
 """
 
-import inspect
 from typing import Any, Dict, Optional
 
 import torch
@@ -53,22 +52,29 @@ class PosEmbedBridge(GeneralizedComponent):
 
     def forward(
         self,
-        input_ids: torch.Tensor,
-        position_ids: torch.Tensor | None = None,
+        *args: Any,
         **kwargs: Any,
     ) -> torch.Tensor:
         """Forward pass through the positional embedding bridge.
 
+        This method accepts variable arguments to support different architectures:
+        - Standard models (GPT-2, GPT-Neo): (input_ids, position_ids=None)
+        - OPT models: (attention_mask, past_key_values_length=0, position_ids=None)
+        - Others may have different signatures
+
         Args:
-            input_ids: Input token IDs (used to determine sequence length and batch size)
-            position_ids: Optional position IDs, if None will generate them automatically
-            **kwargs: Additional arguments
+            *args: Positional arguments forwarded to the original component
+            **kwargs: Keyword arguments forwarded to the original component
 
         Returns:
             Positional embeddings
         """
         # Check if we're using processed weights from a reference model (layer norm folding case)
         if hasattr(self, "_use_processed_weights") and self._use_processed_weights:
+            # For processed weights, we expect the standard (input_ids, position_ids) signature
+            input_ids = args[0] if args else kwargs.get("input_ids")
+            position_ids = args[1] if len(args) > 1 else kwargs.get("position_ids")
+
             # Apply input hook to input_ids (for consistency, though pos embed doesn't really use input_ids)
             input_ids = self.hook_in(input_ids)
 
@@ -95,24 +101,13 @@ class PosEmbedBridge(GeneralizedComponent):
                 f"Original component not set for {self.name}. Call set_original_component() first."
             )
 
-        # Apply input hook to input_ids
-        input_ids = self.hook_in(input_ids)
+        # Apply input hook to the first argument (whatever it is - input_ids or attention_mask)
+        if args:
+            first_arg = self.hook_in(args[0])
+            args = (first_arg,) + args[1:]
 
-        # For standard positional embeddings, we need to generate position indices
-        if position_ids is None:
-            batch_size, seq_len = input_ids.shape[:2]
-            position_ids = torch.arange(seq_len, device=input_ids.device, dtype=torch.long)
-            position_ids = position_ids.unsqueeze(0).expand(batch_size, -1)
-
-        # Check if the original component supports position_ids using inspect.signature
-        sig = inspect.signature(self.original_component.forward)
-        supports_position_ids = "position_ids" in sig.parameters
-
-        if not hasattr(self.original_component, "forward") or not supports_position_ids:
-            # For simple embedding layers, call directly with position_ids
-            output = self.original_component(position_ids, **kwargs)
-        else:
-            output = self.original_component(position_ids=position_ids, **kwargs)
+        # Forward all arguments to the original component
+        output = self.original_component(*args, **kwargs)
 
         # Apply output hook
         output = self.hook_out(output)

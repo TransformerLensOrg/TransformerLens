@@ -83,11 +83,15 @@ def setup_submodules(
         # Only add if not already registered as a PyTorch module
         if module_name not in component._modules:
             # Get the original component for this submodule
-            remote_path = submodule.name
-
-            original_subcomponent = architecture_adapter.get_remote_component(
-                original_model, remote_path
-            )
+            # If name is None, the component doesn't have a container in the remote model
+            # and we use the parent component directly (e.g., OPT's fc1/fc2 are on the block)
+            if submodule.name is None:
+                original_subcomponent = original_model
+            else:
+                remote_path = submodule.name
+                original_subcomponent = architecture_adapter.get_remote_component(
+                    original_model, remote_path
+                )
 
             # Set the original component
             submodule.set_original_component(original_subcomponent)
@@ -100,7 +104,9 @@ def setup_submodules(
 
             # Replace the original submodule with the bridged submodule in the parent
             # Use the actual component's remote name in the parent component
-            replace_remote_component(submodule, submodule.name, original_model)
+            # Skip replacement if name is None (no container to replace)
+            if submodule.name is not None:
+                replace_remote_component(submodule, submodule.name, original_model)
 
 
 def setup_components(

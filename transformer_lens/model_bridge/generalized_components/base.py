@@ -39,7 +39,7 @@ class GeneralizedComponent(nn.Module):
 
     def __init__(
         self,
-        name: str,
+        name: Optional[str],
         config: Optional[Any] = None,
         submodules: Optional[Dict[str, "GeneralizedComponent"]] = None,
         conversion_rule: Optional[BaseHookConversion] = None,
@@ -47,7 +47,7 @@ class GeneralizedComponent(nn.Module):
         """Initialize the generalized component.
 
         Args:
-            name: The name of this component
+            name: The name of this component (None if component has no container in remote model)
             config: Optional configuration object for the component
             submodules: Dictionary of GeneralizedComponent submodules to register
             conversion_rule: Optional conversion rule for this component's hooks
