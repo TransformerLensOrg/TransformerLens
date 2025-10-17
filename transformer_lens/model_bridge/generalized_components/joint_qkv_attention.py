@@ -356,7 +356,11 @@ class JointQKVAttentionBridge(AttentionBridge):
         if not hasattr(self, "_hooked_weights_extracted") or not self._hooked_weights_extracted:
             self._extract_hooked_transformer_weights()
 
+<<<<<<< HEAD
         # Fall back to original component if weight extraction failed
+=======
+        # Check if we successfully extracted weights
+>>>>>>> dev-3.x-folding
         if (
             not self._hooked_weights_extracted
             or self._W_Q is None
@@ -529,12 +533,17 @@ class JointQKVAttentionBridge(AttentionBridge):
             # Apply W_O and sum across heads
             attn_output = torch.einsum("bsnh,nhd->bsnd", attn_reshaped, self._W_O)
             attn_output = attn_output.sum(dim=2)
+<<<<<<< HEAD
 
             try:
                 if hasattr(self, "_b_O") and self._b_O is not None:
                     attn_output = attn_output + self._b_O
             except AttributeError:
                 pass
+=======
+            if self._b_O is not None:
+                attn_output = attn_output + self._b_O
+>>>>>>> dev-3.x-folding
         elif hasattr(original_component, "c_proj"):
             attn_output = original_component.c_proj(attn_output)  # type: ignore[operator]
 
@@ -1038,11 +1047,15 @@ class JointQKVAttentionBridge(AttentionBridge):
         except Exception:
             pass
 
+<<<<<<< HEAD
         # Fallback: Load a new reference model (expensive, rarely used)
         # Skip if _processed_weights is None (indicates no_processing=True was used)
         if self._processed_weights is None:
             return
 
+=======
+        # Fallback: Load a new reference model
+>>>>>>> dev-3.x-folding
         try:
             from transformer_lens import HookedTransformer
 
@@ -1151,44 +1164,3 @@ class JointQKVAttentionBridge(AttentionBridge):
         print(f"  W_V: {self._W_V.shape}")
         print(f"  W_Q: {self._W_Q.shape}")
         print(f"  W_K: {self._W_K.shape}")
-
-    # Properties for accessing weights (required by TransformerBridge.b_O property)
-    @property
-    def W_Q(self) -> Optional[torch.Tensor]:
-        """Query weight matrix."""
-        return self._W_Q
-
-    @property
-    def W_K(self) -> Optional[torch.Tensor]:
-        """Key weight matrix."""
-        return self._W_K
-
-    @property
-    def W_V(self) -> Optional[torch.Tensor]:
-        """Value weight matrix."""
-        return self._W_V
-
-    @property
-    def W_O(self) -> Optional[torch.Tensor]:
-        """Output weight matrix."""
-        return self._W_O
-
-    @property
-    def b_Q(self) -> Optional[torch.Tensor]:
-        """Query bias vector."""
-        return self._b_Q
-
-    @property
-    def b_K(self) -> Optional[torch.Tensor]:
-        """Key bias vector."""
-        return self._b_K
-
-    @property
-    def b_V(self) -> Optional[torch.Tensor]:
-        """Value bias vector."""
-        return self._b_V
-
-    @property
-    def b_O(self) -> Optional[torch.Tensor]:
-        """Output bias vector."""
-        return self._b_O
