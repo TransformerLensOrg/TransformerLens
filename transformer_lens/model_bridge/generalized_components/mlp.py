@@ -37,14 +37,14 @@ class MLPBridge(GeneralizedComponent):
 
     def __init__(
         self,
-        name: str,
+        name: Optional[str],
         config: Optional[Any] = None,
         submodules: Optional[Dict[str, GeneralizedComponent]] = {},
     ):
         """Initialize the MLP bridge.
 
         Args:
-            name: The name of the component in the model
+            name: The name of the component in the model (None if no container exists)
             config: Optional configuration (unused for MLPBridge)
             submodules: Dictionary of submodules to register (e.g., gate_proj, up_proj, down_proj)
         """
