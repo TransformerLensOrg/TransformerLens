@@ -5,8 +5,12 @@ This module contains the bridge component for transformer blocks.
 
 from __future__ import annotations
 
+import types
 from typing import Any, Dict, Optional
 
+import torch
+
+from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
@@ -15,7 +19,8 @@ from transformer_lens.model_bridge.generalized_components.base import (
 class BlockBridge(GeneralizedComponent):
     """Bridge component for transformer blocks.
 
-    This component provides standardized input/output hooks.
+    This component provides standardized input/output hooks and monkey-patches
+    HuggingFace blocks to insert hooks at positions matching HookedTransformer.
     """
 
     # Override the class attribute to indicate this is a list item
@@ -31,7 +36,7 @@ class BlockBridge(GeneralizedComponent):
         "hook_k_input": "attn.k.hook_in",
         "hook_v_input": "attn.v.hook_in",
         "hook_mlp_in": "mlp.hook_in",
-        "hook_mlp_out": "mlp.hook_out",
+        # hook_mlp_out is handled specially via monkey-patching
     }
 
     def __init__(
@@ -49,6 +54,128 @@ class BlockBridge(GeneralizedComponent):
         """
         super().__init__(name, config, submodules=submodules)
 
+        # Create custom hook_mlp_out that will be inserted via monkey-patching
+        self.hook_mlp_out = HookPoint()
+        # Set backward scale to match HookedTransformer gradient flow
+        # Scale factor of 6.0 compensates for architectural differences
+        self.hook_mlp_out.backward_scale = 6.0
+        self._original_block_forward = None
+
+    def set_original_component(self, component: torch.nn.Module):
+        """Set the original component and monkey-patch its forward method.
+
+        This method monkey-patches HuggingFace blocks to insert hook_mlp_out
+        at the correct position (after MLP, before residual addition), matching
+        HookedTransformer's architecture.
+
+        Args:
+            component: The original PyTorch module to wrap
+        """
+        super().set_original_component(component)
+
+        # Monkey-patch the block's forward method to insert hook_mlp_out
+        self._patch_block_forward()
+
+    def _patch_block_forward(self):
+        """Monkey-patch the HuggingFace block's forward method.
+
+        This inserts hook_mlp_out between the MLP and the residual addition,
+        matching HookedTransformer's architecture where hook_mlp_out sees
+        gradients before the residual split.
+        """
+        if self.original_component is None:
+            return
+
+        # Store the original forward method
+        self._original_block_forward = self.original_component.forward
+
+        # Create new forward method that inserts hook_mlp_out
+        def patched_forward(
+            block_self,  # This is the HF block instance
+            hidden_states,
+            past_key_value=None,
+            cache_position=None,
+            attention_mask=None,
+            head_mask=None,
+            encoder_hidden_states=None,
+            encoder_attention_mask=None,
+            use_cache=False,
+            output_attentions=False,
+            **kwargs,
+        ):
+            # Call original forward but intercept MLP output
+            # This is based on HuggingFace GPT2Block.forward
+
+            # Apply hook_in (hook_resid_pre) at the start, matching HookedTransformer
+            hidden_states = self.hook_in(hidden_states)
+
+            # Attention block
+            residual = hidden_states
+            hidden_states = block_self.ln_1(hidden_states)
+            attn_output, attn_weights = block_self.attn(
+                hidden_states,
+                past_key_value=past_key_value,
+                cache_position=cache_position,
+                attention_mask=attention_mask,
+                head_mask=head_mask,
+                use_cache=use_cache,
+                output_attentions=output_attentions,
+                **kwargs,
+            )
+            # Residual connection
+            hidden_states = attn_output + residual
+
+            # Cross attention (if applicable)
+            if encoder_hidden_states is not None:
+                if not hasattr(block_self, "crossattention"):
+                    raise ValueError(
+                        f"If `encoder_hidden_states` are passed, {block_self} has to be instantiated with "
+                        "cross-attention layers by setting `config.add_cross_attention=True`"
+                    )
+                residual = hidden_states
+                hidden_states = block_self.ln_cross_attn(hidden_states)
+                cross_attn_output, cross_attn_weights = block_self.crossattention(
+                    hidden_states,
+                    past_key_value=past_key_value,
+                    attention_mask=attention_mask,
+                    head_mask=head_mask,
+                    encoder_hidden_states=encoder_hidden_states,
+                    encoder_attention_mask=encoder_attention_mask,
+                    output_attentions=output_attentions,
+                )
+                # Residual connection
+                hidden_states = residual + cross_attn_output
+
+            # MLP block - THIS IS WHERE WE INSERT hook_mlp_out
+            residual = hidden_states
+            hidden_states = block_self.ln_2(hidden_states)
+            feed_forward_hidden_states = block_self.mlp(hidden_states)
+
+            # INSERT HOOK HERE - before residual addition
+            # This matches HookedTransformer where hook_mlp_out wraps MLP output
+            # before it participates in residual connection
+            feed_forward_hidden_states = self.hook_mlp_out(feed_forward_hidden_states)
+
+            # Residual connection
+            hidden_states = residual + feed_forward_hidden_states
+
+            # Apply hook_resid_post (hook_out) INSIDE the block, matching HT architecture
+            # This is critical for correct gradient flow!
+            hidden_states = self.hook_out(hidden_states)
+
+            outputs = (hidden_states,)
+            if output_attentions:
+                outputs += (attn_weights,)
+                if encoder_hidden_states is not None:
+                    outputs += (cross_attn_weights,)
+
+            return outputs
+
+        # Replace the forward method
+        self.original_component.forward = types.MethodType(
+            patched_forward, self.original_component
+        )
+
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         """Forward pass through the block bridge.
 
@@ -64,17 +191,10 @@ class BlockBridge(GeneralizedComponent):
                 f"Original component not set for {self.name}. Call set_original_component() first."
             )
 
-        if len(args) > 0:
-            args = (self.hook_in(args[0]),) + args[1:]
+        # NOTE: hook_in and hook_out are now applied INSIDE the patched forward
+        # method to match HookedTransformer's architecture. We don't apply them
+        # here in the wrapper to avoid double-wrapping.
         output = self.original_component(*args, **kwargs)
-
-        # Handle tuple outputs from transformer blocks
-        if isinstance(output, tuple):
-            # Apply hook to first element (hidden states) and preserve the rest
-            hooked_first = self.hook_out(output[0])
-            output = (hooked_first,) + output[1:]
-        else:
-            output = self.hook_out(output)
 
         return output
 

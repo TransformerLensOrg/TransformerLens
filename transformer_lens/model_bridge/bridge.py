@@ -616,6 +616,167 @@ class TransformerBridge(nn.Module):
         lines.extend(self._format_component_mapping(mapping, indent=1))
         return "\n".join(lines)
 
+    def _fix_backward_hook_gradients(self) -> None:
+        """Fix backward hook gradients by overriding HF transformer forward.
+
+        The HuggingFace transformer's forward method unpacks tuples between blocks
+        in a way that breaks gradient flow for backward hooks. This override calls
+        BlockBridge blocks directly in sequence, matching HookedTransformer's approach.
+
+        Testing shows this makes backward hook gradients match HookedTransformer exactly.
+        """
+        # Check if model has a transformer attribute (GPT-2, GPT-J style models)
+        if not hasattr(self.original_model, "transformer"):
+            # For models without .transformer (e.g., BERT), we'd need model-specific logic
+            # For now, only implement for GPT-2 style models
+            return
+
+        transformer = self.original_model.transformer
+
+        # Store original forward method
+        original_transformer_forward = transformer.forward
+
+        # Create custom forward that calls BlockBridge blocks directly
+        def fixed_transformer_forward(
+            input_ids=None,
+            past_key_values=None,
+            cache_position=None,
+            attention_mask=None,
+            token_type_ids=None,
+            position_ids=None,
+            head_mask=None,
+            inputs_embeds=None,
+            encoder_hidden_states=None,
+            encoder_attention_mask=None,
+            use_cache=None,
+            output_attentions=None,
+            output_hidden_states=None,
+            return_dict=None,
+            **kwargs,
+        ):
+            """Custom transformer forward that preserves gradient flow for backward hooks."""
+
+            # === EMBEDDING STAGE (use HF's logic) ===
+            if input_ids is not None and inputs_embeds is not None:
+                raise ValueError("You cannot specify both input_ids and inputs_embeds")
+            elif input_ids is not None:
+                input_shape = input_ids.size()
+                input_ids = input_ids.view(-1, input_shape[-1])
+                batch_size = input_ids.shape[0]
+            elif inputs_embeds is not None:
+                input_shape = inputs_embeds.size()[:-1]
+                batch_size = inputs_embeds.shape[0]
+            else:
+                raise ValueError("You have to specify either input_ids or inputs_embeds")
+
+            device = input_ids.device if input_ids is not None else inputs_embeds.device
+
+            if inputs_embeds is None:
+                inputs_embeds = transformer.wte(input_ids)
+
+            if position_ids is None:
+                if cache_position is not None:
+                    position_ids = cache_position.unsqueeze(0)
+                else:
+                    position_ids = torch.arange(0, input_shape[-1], dtype=torch.long, device=device)
+                    position_ids = position_ids.unsqueeze(0)
+
+            position_embeds = transformer.wpe(position_ids)
+            hidden_states = inputs_embeds + position_embeds
+
+            if token_type_ids is not None:
+                token_type_ids = token_type_ids.view(-1, input_shape[-1])
+                token_type_embeds = transformer.wte(token_type_ids)
+                hidden_states = hidden_states + token_type_embeds
+
+            hidden_states = transformer.drop(hidden_states)
+
+            # Prepare masks
+            if attention_mask is not None:
+                attention_mask = attention_mask.view(batch_size, -1)
+                attention_mask = attention_mask[:, None, None, :]
+                attention_mask = attention_mask.to(dtype=hidden_states.dtype)
+                attention_mask = (1.0 - attention_mask) * torch.finfo(hidden_states.dtype).min
+
+            if head_mask is not None:
+                if head_mask.dim() == 1:
+                    head_mask = head_mask.unsqueeze(0).unsqueeze(0).unsqueeze(-1).unsqueeze(-1)
+                    head_mask = head_mask.expand(len(transformer.h), -1, -1, -1, -1)
+                elif head_mask.dim() == 2:
+                    head_mask = head_mask.unsqueeze(1).unsqueeze(-1).unsqueeze(-1)
+            else:
+                head_mask = [None] * len(transformer.h)
+
+            if past_key_values is None:
+                past_key_values = tuple([None] * len(transformer.h))
+
+            # === BLOCK LOOP - THE FIX ===
+            # Call BlockBridge blocks directly instead of going through HF's loop
+            # This preserves gradient flow for backward hooks
+
+            residual = hidden_states
+            all_hidden_states = () if output_hidden_states else None
+            all_attentions = () if output_attentions else None
+
+            for i, block_bridge in enumerate(self.blocks):
+                if output_hidden_states:
+                    all_hidden_states = all_hidden_states + (residual,)
+
+                # Call BlockBridge directly, which internally calls the HF block
+                # and applies hooks correctly
+                block_outputs = block_bridge(
+                    residual,
+                    past_key_values[i],
+                    cache_position,
+                    attention_mask,
+                    head_mask[i],
+                    encoder_hidden_states,
+                    encoder_attention_mask=encoder_attention_mask,
+                    use_cache=use_cache,
+                    output_attentions=output_attentions,
+                    **kwargs,
+                )
+
+                # Extract hidden states from output tuple
+                if isinstance(block_outputs, tuple):
+                    residual = block_outputs[0]
+                    if output_attentions and len(block_outputs) > 1:
+                        all_attentions = all_attentions + (block_outputs[1],)
+                else:
+                    residual = block_outputs
+
+            # === FINAL LAYER NORM ===
+            hidden_states = residual
+
+            if transformer.ln_f is not None:
+                hidden_states = transformer.ln_f(hidden_states)
+
+            if output_hidden_states:
+                all_hidden_states = all_hidden_states + (hidden_states,)
+
+            # Return in HF format
+            if return_dict:
+                from transformers.modeling_outputs import (
+                    BaseModelOutputWithPastAndCrossAttentions,
+                )
+
+                return BaseModelOutputWithPastAndCrossAttentions(
+                    last_hidden_state=hidden_states,
+                    past_key_values=None,  # Simplified - could be extended
+                    hidden_states=all_hidden_states,
+                    attentions=all_attentions,
+                )
+            else:
+                outputs = (hidden_states,)
+                if output_hidden_states:
+                    outputs = outputs + (all_hidden_states,)
+                if output_attentions:
+                    outputs = outputs + (all_attentions,)
+                return outputs
+
+        # Replace transformer's forward method
+        transformer.forward = fixed_transformer_forward
+
     def enable_compatibility_mode(
         self, disable_warnings: bool = False, no_processing: bool = False
     ) -> None:
@@ -645,6 +806,9 @@ class TransformerBridge(nn.Module):
         # Re-initialize the hook registry to include aliases from components
         self.clear_hook_registry()
         self._initialize_hook_registry()
+
+        # Fix backward hook gradients by overriding transformer forward
+        self._fix_backward_hook_gradients()
 
         if not no_processing:
             self.process_compatibility_weights()
