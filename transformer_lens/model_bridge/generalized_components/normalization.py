@@ -64,9 +64,13 @@ class NormalizationBridge(GeneralizedComponent):
 
         hidden_states = self.hook_in(hidden_states)
 
-        # Handle different normalization modes based on runtime config
+        # Check if we should use HuggingFace's autograd directly (for exact gradient matching)
+        # This is enabled when use_hf_autograd is set on the config
+        if hasattr(self.config, "use_hf_autograd") and self.config.use_hf_autograd:
+            # Use HuggingFace LayerNorm's forward directly to preserve exact computational graph
+            result = self._hf_autograd_forward(hidden_states)
         # Check if we should use LayerNormPre behavior (when layer norm folding is enabled)
-        if hasattr(self.config, "layer_norm_folding") and self.config.layer_norm_folding:
+        elif hasattr(self.config, "layer_norm_folding") and self.config.layer_norm_folding:
             # LayerNormPre mode: center and normalize without learnable parameters
             # This matches LayerNormPre behavior exactly
             result = self._layernorm_pre_forward(hidden_states)
@@ -95,6 +99,40 @@ class NormalizationBridge(GeneralizedComponent):
 
         output = self.hook_out(result)
         return output
+
+    def _hf_autograd_forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass matching F.layer_norm's computation exactly.
+
+        This replicates torch.nn.functional.layer_norm's computation while
+        exposing intermediate values (scale, normalized) through hooks.
+        The computation is identical to F.layer_norm, ensuring the same
+        gradients flow backward.
+
+        Args:
+            x: Input tensor
+
+        Returns:
+            Normalized output tensor
+        """
+        # Get parameters from the original component
+        eps = self.original_component.eps
+        weight = self.original_component.weight
+        bias = self.original_component.bias
+
+        # Replicate F.layer_norm's computation exactly, with hooks
+        # This ensures gradients flow through the same computational graph
+        x_centered = x - x.mean(-1, keepdim=True)
+        variance = x_centered.pow(2).mean(-1, keepdim=True)
+        scale = self.hook_scale((variance + eps).sqrt())
+        normalized = self.hook_normalized(x_centered / scale)
+
+        # Apply weight and bias (same as F.layer_norm does)
+        if bias is not None:
+            result = normalized * weight + bias
+        else:
+            result = normalized * weight
+
+        return result
 
     def _layernorm_pre_forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass matching LayerNormPre behavior exactly.

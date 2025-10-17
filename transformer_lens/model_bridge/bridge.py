@@ -812,6 +812,16 @@ class TransformerBridge(nn.Module):
 
         # Setup attention hooks for no_processing mode to match HookedTransformer
         if no_processing:
+            # Enable HF autograd mode for exact gradient matching
+            self.config.use_hf_autograd = True
+
+            # Propagate the flag to all component configs
+            def set_hf_autograd_mode(component):
+                """Set use_hf_autograd flag on component config."""
+                if hasattr(component, "config") and component.config is not None:
+                    component.config.use_hf_autograd = True
+
+            apply_fn_to_all_components(self, set_hf_autograd_mode)
             self._setup_no_processing_hooks()
 
         if not no_processing:

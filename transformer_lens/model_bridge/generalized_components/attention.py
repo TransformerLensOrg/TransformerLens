@@ -103,11 +103,11 @@ class AttentionBridge(GeneralizedComponent):
             return  # Already set up
 
         # Setup hook_z reshaping if we have an 'o' submodule
-        if hasattr(self, 'o') and self.o is not None and hasattr(self.config, 'n_heads'):
+        if hasattr(self, "o") and self.o is not None and hasattr(self.config, "n_heads"):
             self._setup_hook_z_reshape()
 
         # Wrap HF attention forward to capture scores before softmax
-        if hasattr(self, 'original_component') and self.original_component is not None:
+        if hasattr(self, "original_component") and self.original_component is not None:
             self._wrap_hf_attention_forward()
 
         self._hf_forward_wrapped = True
@@ -143,8 +143,8 @@ class AttentionBridge(GeneralizedComponent):
                 return input_value
 
         # Get dimensions
-        n_heads = self.config.n_heads if hasattr(self.config, 'n_heads') else self.config.n_head
-        d_model = self.config.d_model if hasattr(self.config, 'd_model') else self.config.n_embd
+        n_heads = self.config.n_heads if hasattr(self.config, "n_heads") else self.config.n_head
+        d_model = self.config.d_model if hasattr(self.config, "d_model") else self.config.n_embd
         d_head = d_model // n_heads
 
         # Apply conversion to o.hook_in (which is aliased as hook_z)
@@ -179,7 +179,7 @@ class AttentionBridge(GeneralizedComponent):
             encoder_hidden_states=None,
             encoder_attention_mask=None,
             output_attentions=False,
-            **kwargs
+            **kwargs,
         ):
             """Wrapped forward that manually computes attention scores."""
             # Compute Q, K, V
@@ -206,7 +206,7 @@ class AttentionBridge(GeneralizedComponent):
             query_length, key_length = query.size(-2), key.size(-2)
             causal_mask = hf_attn.bias[:, :, key_length - query_length : key_length, :key_length]
             # Use -inf for masked positions to match HookedTransformer exactly
-            mask_value = float('-inf')
+            mask_value = float("-inf")
             attn_scores = torch.where(causal_mask, attn_scores.to(attn_scores.dtype), mask_value)
 
             # Apply attention mask if provided

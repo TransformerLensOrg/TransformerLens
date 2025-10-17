@@ -167,7 +167,9 @@ class TestBackwardHookParity:
                         continue
 
                     # Compare finite values using both absolute and relative tolerance
-                    if not torch.allclose(ht_finite, tb_finite, atol=abs_tolerance, rtol=rel_tolerance):
+                    if not torch.allclose(
+                        ht_finite, tb_finite, atol=abs_tolerance, rtol=rel_tolerance
+                    ):
                         max_diff = torch.max(torch.abs(ht_finite - tb_finite)).item()
                         mean_diff = torch.mean(torch.abs(ht_finite - tb_finite)).item()
                         # Calculate relative error
@@ -229,15 +231,11 @@ class TestBackwardHookParity:
                     "hook_pos_embed",  # Positional embedding gradient differences
                 ]
                 acceptable_mismatches = [
-                    m
-                    for m in mismatches
-                    if any(pattern in m for pattern in acceptable_patterns)
+                    m for m in mismatches if any(pattern in m for pattern in acceptable_patterns)
                 ]
 
                 if len(acceptable_mismatches) == len(mismatches):
-                    print(
-                        f"\n✓ All mismatches are due to known architectural differences"
-                    )
+                    print(f"\n✓ All mismatches are due to known architectural differences")
                     print(f"  (LayerNorm bridging, attention computation, residual streams)")
                 else:
                     significant_mismatches = [
@@ -264,9 +262,7 @@ class TestBackwardHookParity:
                 if handle is not None:
                     handle.remove()
 
-    def test_critical_backward_hooks_match(
-        self, hooked_transformer, transformer_bridge, prompt
-    ):
+    def test_critical_backward_hooks_match(self, hooked_transformer, transformer_bridge, prompt):
         """Test that critical backward hooks (commonly used in interpretability research) match.
 
         This is a lighter-weight version of the full test that focuses on the most
@@ -364,7 +360,9 @@ class TestBackwardHookParity:
                 tb_finite = tb_grad[torch.isfinite(tb_grad)]
 
                 if ht_finite.numel() > 0 and tb_finite.numel() > 0:
-                    if not torch.allclose(ht_finite, tb_finite, atol=abs_tolerance, rtol=rel_tolerance):
+                    if not torch.allclose(
+                        ht_finite, tb_finite, atol=abs_tolerance, rtol=rel_tolerance
+                    ):
                         max_diff = torch.max(torch.abs(ht_finite - tb_finite)).item()
                         mismatches.append(f"{hook_name}: max_diff={max_diff:.6f}")
                     else:
@@ -400,9 +398,7 @@ class TestBackwardHookParity:
                         f"Found {len(significant_mismatches)} significant mismatches in critical backward hooks"
                     )
                 else:
-                    print(
-                        f"\n✓ All mismatches are due to known architectural differences"
-                    )
+                    print(f"\n✓ All mismatches are due to known architectural differences")
                     print(f"  (LayerNorm bridging, attention computation)")
             else:
                 print(f"\n✓ All critical backward hooks match")
