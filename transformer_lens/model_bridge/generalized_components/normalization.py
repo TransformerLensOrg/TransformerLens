@@ -142,13 +142,14 @@ class NormalizationBridge(GeneralizedComponent):
             return
 
         # Determine weight keys based on component name
-        if "ln_f" in self.name or "final" in self.name:
+        component_name = self.name or ""
+        if "ln_f" in component_name or "final" in component_name:
             weight_key = "w"
             bias_key = "b"
-        elif "ln_1" in self.name:
+        elif "ln_1" in component_name:
             weight_key = "w"
             bias_key = "b"
-        elif "ln_2" in self.name:
+        elif "ln_2" in component_name:
             weight_key = "w"
             bias_key = "b"
         else:

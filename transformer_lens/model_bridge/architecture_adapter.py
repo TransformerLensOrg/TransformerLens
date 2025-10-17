@@ -156,7 +156,10 @@ class ArchitectureAdapter:
                 if len(parts) > 3:
                     # Navigate through the deeper subcomponents
                     current_bridge = subcomponent_bridge
-                    current = getattr(item, subcomponent_bridge.name)
+                    if subcomponent_bridge.name is None:
+                        current = item
+                    else:
+                        current = getattr(item, subcomponent_bridge.name)
 
                     for i in range(3, len(parts)):
                         deeper_component_name = parts[i]
@@ -171,7 +174,11 @@ class ArchitectureAdapter:
                         # Check submodules for deeper components
                         if deeper_component_name in current_bridge.submodules:
                             current_bridge = current_bridge.submodules[deeper_component_name]
-                            current = getattr(current, current_bridge.name)
+                            if current_bridge.name is None:
+                                # No container, stay at current level
+                                pass
+                            else:
+                                current = getattr(current, current_bridge.name)
                         else:
                             raise ValueError(
                                 f"Component {deeper_component_name} not found in {'.'.join(parts[:i])} components"
@@ -180,7 +187,10 @@ class ArchitectureAdapter:
                     return current
                 else:
                     # Just the 3-level path
-                    return getattr(item, subcomponent_bridge.name)
+                    if subcomponent_bridge.name is None:
+                        return item
+                    else:
+                        return getattr(item, subcomponent_bridge.name)
             else:
                 raise ValueError(
                     f"Component {subcomponent_name} not found in {parts[0]} components"
@@ -338,16 +348,22 @@ class ArchitectureAdapter:
 
         if len(parts) == 1:
             # Simple case: just return the component at the bridge's remote path
+            if bridge_component.name is None:
+                return model
             return self.get_remote_component(model, bridge_component.name)
 
         # For nested paths like "blocks.0.attn", we need to handle the indexing
         if bridge_component.is_list_item and len(parts) >= 2:
             # Get the remote ModuleList for the indexed item
+            if bridge_component.name is None:
+                raise ValueError(f"List component {parts[0]} must have a name")
             list_module = self.get_remote_component(model, bridge_component.name)
             return self.get_component_from_list_module(list_module, bridge_component, parts)
 
         # For other nested paths, navigate through the remote model
         remote_path = bridge_component.name
+        if remote_path is None:
+            raise ValueError(f"Component {parts[0]} must have a name for nested paths")
         if len(parts) > 1:
             remote_path = f"{remote_path}.{'.'.join(parts[1:])}"
 
@@ -389,6 +405,8 @@ class ArchitectureAdapter:
         if len(parts) == 1:
             # Simple case: just return the bridge's remote path
             remote_path = bridge_component.name
+            if remote_path is None:
+                raise ValueError(f"Component {parts[0]} must have a name for path translation")
             # Add parameter suffix from preprocessing
             if param_suffix:
                 remote_path = remote_path + param_suffix
@@ -405,6 +423,8 @@ class ArchitectureAdapter:
 
             # Get the base items path
             items_path = bridge_component.name
+            if items_path is None:
+                raise ValueError(f"List component {parts[0]} must have a name for path translation")
 
             if len(parts) == 2:
                 # Just return the indexed item path
@@ -427,7 +447,12 @@ class ArchitectureAdapter:
                     if len(parts) > 3:
                         # Navigate through the deeper subcomponents
                         current_bridge = subcomponent_bridge
-                        remote_path_parts = [items_path, item_index, subcomponent_bridge.name]
+                        subcomponent_name_str = subcomponent_bridge.name
+                        if subcomponent_name_str is None:
+                            raise ValueError(
+                                f"Subcomponent {subcomponent_name} must have a name for path translation"
+                            )
+                        remote_path_parts = [items_path, item_index, subcomponent_name_str]
 
                         for i in range(3, len(parts)):
                             deeper_component_name = parts[i]
@@ -435,7 +460,12 @@ class ArchitectureAdapter:
                             # Check submodules for deeper components
                             if deeper_component_name in current_bridge.submodules:
                                 current_bridge = current_bridge.submodules[deeper_component_name]
-                                remote_path_parts.append(current_bridge.name)
+                                deeper_name = current_bridge.name
+                                if deeper_name is None:
+                                    raise ValueError(
+                                        f"Component {deeper_component_name} must have a name for path translation"
+                                    )
+                                remote_path_parts.append(deeper_name)
                             else:
                                 raise ValueError(
                                     f"Component {deeper_component_name} not found in {'.'.join(parts[:i])} components"
@@ -450,7 +480,12 @@ class ArchitectureAdapter:
                         return remote_path
                     else:
                         # Just the 3-level path
-                        remote_path = f"{items_path}.{item_index}.{subcomponent_bridge.name}"
+                        subcomponent_name_str = subcomponent_bridge.name
+                        if subcomponent_name_str is None:
+                            raise ValueError(
+                                f"Subcomponent {subcomponent_name} must have a name for path translation"
+                            )
+                        remote_path = f"{items_path}.{item_index}.{subcomponent_name_str}"
                         # Add parameter suffix from preprocessing
                         if param_suffix:
                             remote_path = remote_path + param_suffix
@@ -464,6 +499,8 @@ class ArchitectureAdapter:
 
         # For other nested paths, navigate through the bridge components
         remote_path = bridge_component.name
+        if remote_path is None:
+            raise ValueError(f"Component {parts[0]} must have a name for path translation")
         if len(parts) > 1:
             remote_path = f"{remote_path}.{'.'.join(parts[1:])}"
 
@@ -836,9 +873,12 @@ class ArchitectureAdapter:
                         elif subcomp_name == "attn":
                             # Attention component needs config and split function (if it's a JointQKVAttentionBridge)
                             if issubclass(component_class, JointQKVAttentionBridge):
+                                attn_name = subcomponent.name
+                                if attn_name is None:
+                                    raise ValueError("Attention component must have a name")
                                 if hasattr(self, "split_qkv_matrix"):
                                     fresh_component = component_class(
-                                        name=subcomponent.name,
+                                        name=attn_name,
                                         config=self.cfg,
                                         split_qkv_matrix=self.split_qkv_matrix,
                                     )
@@ -848,7 +888,7 @@ class ArchitectureAdapter:
                                         return None, None, None
 
                                     fresh_component = component_class(
-                                        name=subcomponent.name,
+                                        name=attn_name,
                                         config=self.cfg,
                                         split_qkv_matrix=dummy_split_qkv_matrix,
                                     )
@@ -915,8 +955,13 @@ class ArchitectureAdapter:
                                                         ] = bias_tensor.clone()
                                                     self._processed_weights = processed_weights
 
+                                            mlp_input_name = mlp_subcomponent.name
+                                            if mlp_input_name is None:
+                                                raise ValueError(
+                                                    "MLP input component must have a name"
+                                                )
                                             mlp_fresh_component = MLPInputLinearBridge(
-                                                name=mlp_subcomponent.name
+                                                name=mlp_input_name
                                             )
                                         elif mlp_subcomp_name == "out":
 
@@ -949,12 +994,22 @@ class ArchitectureAdapter:
                                                         ] = bias_tensor.clone()
                                                     self._processed_weights = processed_weights
 
+                                            mlp_output_name = mlp_subcomponent.name
+                                            if mlp_output_name is None:
+                                                raise ValueError(
+                                                    "MLP output component must have a name"
+                                                )
                                             mlp_fresh_component = MLPOutputLinearBridge(
-                                                name=mlp_subcomponent.name
+                                                name=mlp_output_name
                                             )
                                         else:
+                                            mlp_generic_name = mlp_subcomponent.name
+                                            if mlp_generic_name is None:
+                                                raise ValueError(
+                                                    f"MLP component {mlp_subcomp_name} must have a name"
+                                                )
                                             mlp_fresh_component = LinearBridge(
-                                                name=mlp_subcomponent.name
+                                                name=mlp_generic_name
                                             )
 
                                         mlp_fresh_component.set_original_component(

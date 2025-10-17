@@ -76,6 +76,8 @@ def setup_submodules(
     for module_name, submodule in component.submodules.items():
         if submodule.is_list_item:
             # Submodule is a BlockBridge - create a ModuleList of bridge components
+            if submodule.name is None:
+                raise ValueError(f"List item component {module_name} must have a name")
             bridged_list = setup_blocks_bridge(submodule, architecture_adapter, original_model)
             # Set the list on the bridge module as a proper module
             component.add_module(module_name, bridged_list)
