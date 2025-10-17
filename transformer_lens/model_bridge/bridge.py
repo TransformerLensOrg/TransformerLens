@@ -810,8 +810,64 @@ class TransformerBridge(nn.Module):
         # Fix backward hook gradients by overriding transformer forward
         self._fix_backward_hook_gradients()
 
+        # Setup hook_z reshape for no_processing mode to match HookedTransformer shape
+        if no_processing:
+            self._setup_hook_z_reshape_for_no_processing()
+
         if not no_processing:
             self.process_compatibility_weights()
+
+    def _setup_hook_z_reshape_for_no_processing(self) -> None:
+        """Setup hook_z reshaping using HookConversion for no_processing mode.
+
+        In no_processing mode, HuggingFace's forward path concatenates attention heads
+        before c_proj, resulting in shape [batch, seq, d_model]. But hook_z should see
+        [batch, seq, n_heads, d_head] to match HookedTransformer.
+
+        This method applies a HookConversion to reshape tensors before/after hooks.
+        """
+        from transformer_lens.conversion_utils.conversion_steps.base_hook_conversion import (
+            BaseHookConversion,
+        )
+
+        class ReshapeForAttentionHeads(BaseHookConversion):
+            """Reshape tensors to split attention heads for hook_z compatibility."""
+
+            def __init__(self, n_heads: int, d_head: int):
+                super().__init__()
+                self.n_heads = n_heads
+                self.d_head = d_head
+
+            def handle_conversion(self, input_value, *full_context):
+                """Convert from [batch, seq, d_model] to [batch, seq, n_heads, d_head]."""
+                if len(input_value.shape) == 3:
+                    b, s, d = input_value.shape
+                    if d == self.n_heads * self.d_head:
+                        return input_value.view(b, s, self.n_heads, self.d_head)
+                return input_value
+
+            def revert(self, input_value, *full_context):
+                """Revert from [batch, seq, n_heads, d_head] to [batch, seq, d_model]."""
+                if len(input_value.shape) == 4:
+                    b, s, n_h, d_h = input_value.shape
+                    if n_h == self.n_heads and d_h == self.d_head:
+                        return input_value.view(b, s, n_h * d_h)
+                return input_value
+
+        # Apply hook conversion to all attention layers' hook_z (o.hook_in)
+        for block in self.blocks:
+            if hasattr(block, "attn") and hasattr(block.attn, "o"):
+                attn = block.attn
+                o_linear = attn.o  # This is the LinearBridge
+
+                # Get config for reshaping
+                n_heads = attn.config.n_heads
+                d_model = attn.config.d_model
+                d_head = d_model // n_heads
+
+                # Create and apply the conversion
+                reshape_conv = ReshapeForAttentionHeads(n_heads, d_head)
+                o_linear.hook_in.hook_conversion = reshape_conv
 
     def process_compatibility_weights(self, verbose: bool = False) -> None:
         """Process and load weights from a reference HookedTransformer model.
