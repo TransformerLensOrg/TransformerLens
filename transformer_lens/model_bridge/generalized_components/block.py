@@ -59,6 +59,8 @@ class BlockBridge(GeneralizedComponent):
         # Set backward scale to match HookedTransformer gradient flow
         # Scale factor of 6.0 compensates for architectural differences
         self.hook_mlp_out.backward_scale = 6.0
+        # Register hook so it appears in cache
+        self._register_hook("hook_mlp_out", self.hook_mlp_out)
         self._original_block_forward = None
 
     def set_original_component(self, component: torch.nn.Module):

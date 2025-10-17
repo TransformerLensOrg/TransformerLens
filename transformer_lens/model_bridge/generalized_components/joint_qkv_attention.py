@@ -356,11 +356,7 @@ class JointQKVAttentionBridge(AttentionBridge):
         if not hasattr(self, "_hooked_weights_extracted") or not self._hooked_weights_extracted:
             self._extract_hooked_transformer_weights()
 
-<<<<<<< HEAD
         # Fall back to original component if weight extraction failed
-=======
-        # Check if we successfully extracted weights
->>>>>>> dev-3.x-folding
         if (
             not self._hooked_weights_extracted
             or self._W_Q is None
@@ -533,17 +529,12 @@ class JointQKVAttentionBridge(AttentionBridge):
             # Apply W_O and sum across heads
             attn_output = torch.einsum("bsnh,nhd->bsnd", attn_reshaped, self._W_O)
             attn_output = attn_output.sum(dim=2)
-<<<<<<< HEAD
 
             try:
                 if hasattr(self, "_b_O") and self._b_O is not None:
                     attn_output = attn_output + self._b_O
             except AttributeError:
                 pass
-=======
-            if self._b_O is not None:
-                attn_output = attn_output + self._b_O
->>>>>>> dev-3.x-folding
         elif hasattr(original_component, "c_proj"):
             attn_output = original_component.c_proj(attn_output)  # type: ignore[operator]
 
@@ -1047,15 +1038,11 @@ class JointQKVAttentionBridge(AttentionBridge):
         except Exception:
             pass
 
-<<<<<<< HEAD
         # Fallback: Load a new reference model (expensive, rarely used)
         # Skip if _processed_weights is None (indicates no_processing=True was used)
         if self._processed_weights is None:
             return
 
-=======
-        # Fallback: Load a new reference model
->>>>>>> dev-3.x-folding
         try:
             from transformer_lens import HookedTransformer
 
