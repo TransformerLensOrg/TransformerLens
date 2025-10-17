@@ -59,6 +59,7 @@ class _ScaledGradientTensor:
     This works around a PyTorch bug/behavior where multiplying gradient tensors
     element-wise in backward hooks gives incorrect sums.
     """
+
     def __init__(self, tensor: Tensor, scale: float):
         self._tensor = tensor
         self._scale = scale

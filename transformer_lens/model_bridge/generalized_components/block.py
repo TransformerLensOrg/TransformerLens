@@ -172,9 +172,7 @@ class BlockBridge(GeneralizedComponent):
             return outputs
 
         # Replace the forward method
-        self.original_component.forward = types.MethodType(
-            patched_forward, self.original_component
-        )
+        self.original_component.forward = types.MethodType(patched_forward, self.original_component)
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         """Forward pass through the block bridge.
