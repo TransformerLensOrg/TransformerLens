@@ -632,12 +632,15 @@ class TransformerBridge(nn.Module):
             return
 
         transformer = self.original_model.transformer
+        assert isinstance(
+            transformer, nn.Module
+        ), f"Expected transformer to be a Module, got {type(transformer)}"
 
         # Store original forward method
         original_transformer_forward = transformer.forward
 
         # Create custom forward that calls BlockBridge blocks directly
-        def fixed_transformer_forward(
+        def fixed_transformer_forward(  # type: ignore[misc]
             input_ids=None,
             past_key_values=None,
             cache_position=None,
@@ -672,7 +675,7 @@ class TransformerBridge(nn.Module):
             device = input_ids.device if input_ids is not None else inputs_embeds.device
 
             if inputs_embeds is None:
-                inputs_embeds = transformer.wte(input_ids)
+                inputs_embeds = transformer.wte(input_ids)  # type: ignore[union-attr,operator]
 
             if position_ids is None:
                 if cache_position is not None:
@@ -681,15 +684,15 @@ class TransformerBridge(nn.Module):
                     position_ids = torch.arange(0, input_shape[-1], dtype=torch.long, device=device)
                     position_ids = position_ids.unsqueeze(0)
 
-            position_embeds = transformer.wpe(position_ids)
+            position_embeds = transformer.wpe(position_ids)  # type: ignore[union-attr,operator]
             hidden_states = inputs_embeds + position_embeds
 
             if token_type_ids is not None:
                 token_type_ids = token_type_ids.view(-1, input_shape[-1])
-                token_type_embeds = transformer.wte(token_type_ids)
+                token_type_embeds = transformer.wte(token_type_ids)  # type: ignore[union-attr,operator]
                 hidden_states = hidden_states + token_type_embeds
 
-            hidden_states = transformer.drop(hidden_states)
+            hidden_states = transformer.drop(hidden_states)  # type: ignore[union-attr,operator]
 
             # Prepare masks
             if attention_mask is not None:
@@ -701,14 +704,14 @@ class TransformerBridge(nn.Module):
             if head_mask is not None:
                 if head_mask.dim() == 1:
                     head_mask = head_mask.unsqueeze(0).unsqueeze(0).unsqueeze(-1).unsqueeze(-1)
-                    head_mask = head_mask.expand(len(transformer.h), -1, -1, -1, -1)
+                    head_mask = head_mask.expand(len(transformer.h), -1, -1, -1, -1)  # type: ignore[arg-type,union-attr]
                 elif head_mask.dim() == 2:
                     head_mask = head_mask.unsqueeze(1).unsqueeze(-1).unsqueeze(-1)
             else:
-                head_mask = [None] * len(transformer.h)
+                head_mask = [None] * len(transformer.h)  # type: ignore[arg-type,union-attr]
 
             if past_key_values is None:
-                past_key_values = tuple([None] * len(transformer.h))
+                past_key_values = tuple([None] * len(transformer.h))  # type: ignore[arg-type,union-attr]
 
             # === BLOCK LOOP - THE FIX ===
             # Call BlockBridge blocks directly instead of going through HF's loop
@@ -720,7 +723,7 @@ class TransformerBridge(nn.Module):
 
             for i, block_bridge in enumerate(self.blocks):
                 if output_hidden_states:
-                    all_hidden_states = all_hidden_states + (residual,)
+                    all_hidden_states = all_hidden_states + (residual,)  # type: ignore[operator]
 
                 # Call BlockBridge directly, which internally calls the HF block
                 # and applies hooks correctly
@@ -741,7 +744,7 @@ class TransformerBridge(nn.Module):
                 if isinstance(block_outputs, tuple):
                     residual = block_outputs[0]
                     if output_attentions and len(block_outputs) > 1:
-                        all_attentions = all_attentions + (block_outputs[1],)
+                        all_attentions = all_attentions + (block_outputs[1],)  # type: ignore[operator,assignment]
                 else:
                     residual = block_outputs
 
@@ -749,10 +752,10 @@ class TransformerBridge(nn.Module):
             hidden_states = residual
 
             if transformer.ln_f is not None:
-                hidden_states = transformer.ln_f(hidden_states)
+                hidden_states = transformer.ln_f(hidden_states)  # type: ignore[union-attr,operator]
 
             if output_hidden_states:
-                all_hidden_states = all_hidden_states + (hidden_states,)
+                all_hidden_states = all_hidden_states + (hidden_states,)  # type: ignore[operator]
 
             # Return in HF format
             if return_dict:
@@ -767,11 +770,11 @@ class TransformerBridge(nn.Module):
                     attentions=all_attentions,
                 )
             else:
-                outputs = (hidden_states,)
+                outputs: tuple[Any, ...] = (hidden_states,)
                 if output_hidden_states:
-                    outputs = outputs + (all_hidden_states,)
+                    outputs = outputs + (all_hidden_states,)  # type: ignore[assignment]
                 if output_attentions:
-                    outputs = outputs + (all_attentions,)
+                    outputs = outputs + (all_attentions,)  # type: ignore[assignment]
                 return outputs
 
         # Replace transformer's forward method
@@ -916,7 +919,7 @@ class TransformerBridge(nn.Module):
 
         # Replace ln_final
         if hasattr(self, "ln_final"):
-            old_ln_final = self.ln_final
+            old_ln_final = self.ln_final  # type: ignore[has-type]
             new_ln_final = HTLayerNorm(ht_cfg)
 
             with torch.no_grad():
@@ -1031,7 +1034,7 @@ class TransformerBridge(nn.Module):
                     block.ln2.config.layer_norm_folding = True
 
         if hasattr(self, "ln_final") and hasattr(self.ln_final, "config"):
-            self.ln_final.config.layer_norm_folding = True
+            self.ln_final.config.layer_norm_folding = True  # type: ignore[union-attr]
 
     def _load_all_processed_weights(
         self, verbose: bool = False, reference_model: Optional[Any] = None
@@ -5378,10 +5381,11 @@ class TransformerBridge(nn.Module):
         # Load final layer norm and unembed
         if hasattr(self, "ln_final") and hasattr(self.ln_final, "original_component"):
             ln_final = self.ln_final.original_component
+            assert isinstance(ln_final, nn.Module), "ln_final.original_component must be a Module"
 
             w_key = "ln_final.w" if "ln_final.w" in tl_state_dict else "ln_final.weight"
             if w_key in tl_state_dict:
-                ln_final.weight.data = tl_state_dict[w_key]
+                ln_final.weight.data = tl_state_dict[w_key]  # type: ignore[union-attr]
 
             b_key = "ln_final.b" if "ln_final.b" in tl_state_dict else "ln_final.bias"
             if b_key in tl_state_dict and hasattr(ln_final, "bias") and ln_final.bias is not None:

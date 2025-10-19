@@ -143,6 +143,8 @@ class AttentionBridge(GeneralizedComponent):
                 return input_value
 
         # Get dimensions
+        if self.config is None:
+            raise RuntimeError(f"Config not set for {self.name}")
         n_heads = self.config.n_heads if hasattr(self.config, "n_heads") else self.config.n_head
         d_model = self.config.d_model if hasattr(self.config, "d_model") else self.config.n_embd
         d_head = d_model // n_heads
@@ -151,12 +153,15 @@ class AttentionBridge(GeneralizedComponent):
         reshape_conv = ReshapeForAttentionHeads(n_heads, d_head)
         self.o.hook_in.hook_conversion = reshape_conv
 
-    def _wrap_hf_attention_forward(self) -> None:
+    def _wrap_hf_attention_forward(self) -> None:  # type: ignore[misc]
         """Wrap HuggingFace attention forward to capture scores before softmax."""
         import torch
         import torch.nn.functional as F
 
-        hf_attn = self.original_component
+        if self.original_component is None:
+            raise RuntimeError(f"Original component not set for {self.name}")
+
+        hf_attn = self.original_component  # type: ignore[misc]
 
         # Save original forward
         original_forward = hf_attn.forward
@@ -183,12 +188,12 @@ class AttentionBridge(GeneralizedComponent):
         ):
             """Wrapped forward that manually computes attention scores."""
             # Compute Q, K, V
-            query, key, value = hf_attn.c_attn(hidden_states).split(hf_attn.split_size, dim=2)
+            query, key, value = hf_attn.c_attn(hidden_states).split(hf_attn.split_size, dim=2)  # type: ignore[union-attr,operator]
 
             # Split into heads
-            query = split_heads(query, hf_attn.num_heads, hf_attn.head_dim)
-            key = split_heads(key, hf_attn.num_heads, hf_attn.head_dim)
-            value = split_heads(value, hf_attn.num_heads, hf_attn.head_dim)
+            query = split_heads(query, hf_attn.num_heads, hf_attn.head_dim)  # type: ignore[union-attr]
+            key = split_heads(key, hf_attn.num_heads, hf_attn.head_dim)  # type: ignore[union-attr]
+            value = split_heads(value, hf_attn.num_heads, hf_attn.head_dim)  # type: ignore[union-attr]
 
             # Compute attention scores
             attn_scores = torch.matmul(query, key.transpose(-1, -2))
@@ -204,7 +209,7 @@ class AttentionBridge(GeneralizedComponent):
 
             # Apply causal mask
             query_length, key_length = query.size(-2), key.size(-2)
-            causal_mask = hf_attn.bias[:, :, key_length - query_length : key_length, :key_length]
+            causal_mask = hf_attn.bias[:, :, key_length - query_length : key_length, :key_length]  # type: ignore[union-attr,index]
             # Use -inf for masked positions to match HookedTransformer exactly
             mask_value = float("-inf")
             attn_scores = torch.where(causal_mask, attn_scores.to(attn_scores.dtype), mask_value)
@@ -221,7 +226,7 @@ class AttentionBridge(GeneralizedComponent):
             attn_weights = attn_weights.to(value.dtype)
 
             # Dropout
-            attn_weights = hf_attn.attn_dropout(attn_weights)
+            attn_weights = hf_attn.attn_dropout(attn_weights)  # type: ignore[union-attr,operator]
 
             # Apply head mask if provided
             if head_mask is not None:
@@ -235,12 +240,12 @@ class AttentionBridge(GeneralizedComponent):
 
             # Merge heads
             attn_output = attn_output.transpose(1, 2).contiguous()
-            new_shape = attn_output.size()[:-2] + (hf_attn.embed_dim,)
+            new_shape = attn_output.size()[:-2] + (hf_attn.embed_dim,)  # type: ignore[union-attr,operator]
             attn_output = attn_output.view(new_shape)
 
             # Output projection
-            attn_output = hf_attn.c_proj(attn_output)
-            attn_output = hf_attn.resid_dropout(attn_output)
+            attn_output = hf_attn.c_proj(attn_output)  # type: ignore[union-attr,operator]
+            attn_output = hf_attn.resid_dropout(attn_output)  # type: ignore[union-attr,operator]
 
             # Return in HF format
             if output_attentions:
@@ -614,7 +619,7 @@ class AttentionBridge(GeneralizedComponent):
         self._processed_b_O = b_O
         self._use_processed_weights = True
 
-    def _forward_with_processed_weights(self, *args: Any, **kwargs: Any) -> torch.Tensor:
+    def _forward_with_processed_weights(self, *args: Any, **kwargs: Any) -> tuple[Any, Any]:
         """Direct implementation of reference model's attention computation with hooks."""
         # Extract input from args/kwargs
         if len(args) > 0 and isinstance(args[0], torch.Tensor):

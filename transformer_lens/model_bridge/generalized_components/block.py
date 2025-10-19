@@ -6,7 +6,7 @@ This module contains the bridge component for transformer blocks.
 from __future__ import annotations
 
 import types
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 
 import torch
 
@@ -61,7 +61,7 @@ class BlockBridge(GeneralizedComponent):
         self.hook_mlp_out.backward_scale = 6.0
         # Register hook so it appears in cache
         self._register_hook("hook_mlp_out", self.hook_mlp_out)
-        self._original_block_forward = None
+        self._original_block_forward: Optional[Callable[..., Any]] = None
 
     def set_original_component(self, component: torch.nn.Module):
         """Set the original component and monkey-patch its forward method.
@@ -165,11 +165,11 @@ class BlockBridge(GeneralizedComponent):
             # This is critical for correct gradient flow!
             hidden_states = self.hook_out(hidden_states)
 
-            outputs = (hidden_states,)
+            outputs: tuple[Any, ...] = (hidden_states,)
             if output_attentions:
-                outputs += (attn_weights,)
+                outputs = outputs + (attn_weights,)
                 if encoder_hidden_states is not None:
-                    outputs += (cross_attn_weights,)
+                    outputs = outputs + (cross_attn_weights,)
 
             return outputs
 

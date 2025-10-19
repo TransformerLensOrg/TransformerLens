@@ -1163,8 +1163,20 @@ class ArchitectureAdapter:
 
         Detects the architecture by checking which weight attributes exist.
         """
-        n_heads = self.cfg.n_heads if hasattr(self.cfg, "n_heads") else self.cfg.n_head
-        d_model = self.cfg.d_model if hasattr(self.cfg, "d_model") else self.cfg.n_embd
+        # Get n_heads from config (different architectures use different names)
+        n_heads = getattr(
+            self.cfg,
+            "n_heads",
+            getattr(self.cfg, "n_head", getattr(self.cfg, "num_attention_heads", None)),
+        )
+        # Get d_model from config
+        d_model = getattr(
+            self.cfg, "d_model", getattr(self.cfg, "n_embd", getattr(self.cfg, "hidden_size", None))
+        )
+
+        if n_heads is None or d_model is None:
+            raise RuntimeError(f"Could not determine n_heads or d_model from config: {self.cfg}")
+
         d_head = d_model // n_heads
 
         # Detect architecture and extract weights

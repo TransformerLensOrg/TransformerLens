@@ -115,6 +115,9 @@ class NormalizationBridge(GeneralizedComponent):
             Normalized output tensor
         """
         # Get parameters from the original component
+        if self.original_component is None:
+            raise RuntimeError(f"Original component not set for {self.name}")
+
         eps = self.original_component.eps
         weight = self.original_component.weight
         bias = self.original_component.bias
@@ -123,12 +126,12 @@ class NormalizationBridge(GeneralizedComponent):
         # This ensures gradients flow through the same computational graph
         x_centered = x - x.mean(-1, keepdim=True)
         variance = x_centered.pow(2).mean(-1, keepdim=True)
-        scale = self.hook_scale((variance + eps).sqrt())
+        scale = self.hook_scale((variance + eps).sqrt().clamp(min=1e-12))  # type: ignore[operator]
         normalized = self.hook_normalized(x_centered / scale)
 
         # Apply weight and bias (same as F.layer_norm does)
         if bias is not None:
-            result = normalized * weight + bias
+            result = normalized * weight + bias  # type: ignore[operator]
         else:
             result = normalized * weight
 
