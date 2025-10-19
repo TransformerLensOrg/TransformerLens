@@ -708,7 +708,9 @@ class AttentionBridge(GeneralizedComponent):
         # Apply output hook
         result = self.hook_out(result)
 
-        return result
+        # Return both result and attention weights to match HF's expected return format
+        # The patched block forward expects (output, attn_weights)
+        return (result, attn_weights)
 
     def get_attention_weights(self) -> Optional[torch.Tensor]:
         """Get cached attention weights if available.

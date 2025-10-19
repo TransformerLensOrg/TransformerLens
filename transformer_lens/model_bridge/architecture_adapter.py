@@ -1137,3 +1137,180 @@ class ArchitectureAdapter:
 
         # If no pattern matches, return the original key
         return hf_key
+
+    def enable_ht_computation_for_bridge(self, bridge_model):
+        """Enable HT-style computation for bridge components.
+
+        This extracts weights from HF components and sets them on bridge components
+        using set_processed_weights(), which triggers HT-style einsum computation.
+
+        Args:
+            bridge_model: The TransformerBridge model
+        """
+        for layer_idx, block in enumerate(bridge_model.blocks):
+            hf_block = block.original_component
+
+            # Enable HT computation for attention
+            if hasattr(block, "attn") and hasattr(hf_block, "attn"):
+                self._enable_ht_attention(block.attn, hf_block.attn)
+
+            # Enable HT computation for MLP
+            if hasattr(block, "mlp") and hasattr(hf_block, "mlp"):
+                self._enable_ht_mlp(block.mlp, hf_block.mlp)
+
+    def _enable_ht_attention(self, attn_bridge, hf_attn):
+        """Enable HT computation for attention (architecture-agnostic).
+
+        Detects the architecture by checking which weight attributes exist.
+        """
+        n_heads = self.cfg.n_heads if hasattr(self.cfg, "n_heads") else self.cfg.n_head
+        d_model = self.cfg.d_model if hasattr(self.cfg, "d_model") else self.cfg.n_embd
+        d_head = d_model // n_heads
+
+        # Detect architecture and extract weights
+        if hasattr(hf_attn, "c_attn"):
+            # GPT-2 style: combined c_attn for Q, K, V
+            W_Q, W_K, W_V, b_Q, b_K, b_V = self._extract_qkv_gpt2_style(
+                hf_attn.c_attn, n_heads, d_model, d_head
+            )
+            W_O, b_O = self._extract_output_proj(hf_attn.c_proj, n_heads, d_head, d_model)
+
+        elif (
+            hasattr(hf_attn, "q_proj") and hasattr(hf_attn, "k_proj") and hasattr(hf_attn, "v_proj")
+        ):
+            # GPT-Neo/J, LLaMA style: separate q_proj, k_proj, v_proj
+            W_Q, b_Q = self._extract_linear_ht_format(hf_attn.q_proj, n_heads, d_head, d_model)
+            W_K, b_K = self._extract_linear_ht_format(hf_attn.k_proj, n_heads, d_head, d_model)
+            W_V, b_V = self._extract_linear_ht_format(hf_attn.v_proj, n_heads, d_head, d_model)
+
+            out_proj = hf_attn.out_proj if hasattr(hf_attn, "out_proj") else hf_attn.o_proj
+            W_O, b_O = self._extract_output_proj(out_proj, n_heads, d_head, d_model)
+
+        elif hasattr(hf_attn, "query_key_value"):
+            # Pythia/GPT-NeoX style: combined query_key_value
+            W_Q, W_K, W_V, b_Q, b_K, b_V = self._extract_qkv_neox_style(
+                hf_attn.query_key_value, n_heads, d_model, d_head
+            )
+            W_O, b_O = self._extract_output_proj(hf_attn.dense, n_heads, d_head, d_model)
+
+        else:
+            raise ValueError(
+                f"Unsupported attention architecture. Module has attributes: {dir(hf_attn)}"
+            )
+
+        # Use existing infrastructure
+        attn_bridge.set_processed_weights(W_Q, W_K, W_V, W_O, b_Q, b_K, b_V, b_O)
+
+        # Disable hook conversions since processed weights produce correct shapes
+        self._disable_hook_conversions(attn_bridge)
+
+    def _enable_ht_mlp(self, mlp_bridge, hf_mlp):
+        """Enable HT computation for MLP (architecture-agnostic)."""
+        # Detect architecture and extract weights
+        if hasattr(hf_mlp, "c_fc") and hasattr(hf_mlp, "c_proj"):
+            # GPT-2 style
+            W_in = hf_mlp.c_fc.weight.data
+            b_in = hf_mlp.c_fc.bias.data if hasattr(hf_mlp.c_fc, "bias") else None
+            W_out = hf_mlp.c_proj.weight.data
+            b_out = hf_mlp.c_proj.bias.data if hasattr(hf_mlp.c_proj, "bias") else None
+
+        elif hasattr(hf_mlp, "fc_in") and hasattr(hf_mlp, "fc_out"):
+            # GPT-Neo/J style
+            W_in = hf_mlp.fc_in.weight.data.T
+            b_in = hf_mlp.fc_in.bias.data if hasattr(hf_mlp.fc_in, "bias") else None
+            W_out = hf_mlp.fc_out.weight.data.T
+            b_out = hf_mlp.fc_out.bias.data if hasattr(hf_mlp.fc_out, "bias") else None
+
+        elif hasattr(hf_mlp, "dense_h_to_4h") and hasattr(hf_mlp, "dense_4h_to_h"):
+            # Pythia/GPT-NeoX style
+            W_in = hf_mlp.dense_h_to_4h.weight.data.T
+            b_in = hf_mlp.dense_h_to_4h.bias.data if hasattr(hf_mlp.dense_h_to_4h, "bias") else None
+            W_out = hf_mlp.dense_4h_to_h.weight.data.T
+            b_out = (
+                hf_mlp.dense_4h_to_h.bias.data if hasattr(hf_mlp.dense_4h_to_h, "bias") else None
+            )
+
+        elif (
+            hasattr(hf_mlp, "gate_proj")
+            and hasattr(hf_mlp, "up_proj")
+            and hasattr(hf_mlp, "down_proj")
+        ):
+            # LLaMA style
+            W_in = hf_mlp.up_proj.weight.data.T
+            b_in = hf_mlp.up_proj.bias.data if hasattr(hf_mlp.up_proj, "bias") else None
+            W_out = hf_mlp.down_proj.weight.data.T
+            b_out = hf_mlp.down_proj.bias.data if hasattr(hf_mlp.down_proj, "bias") else None
+
+        else:
+            raise ValueError(f"Unsupported MLP architecture. Module has attributes: {dir(hf_mlp)}")
+
+        mlp_bridge.set_processed_weights(W_in, W_out, b_in, b_out)
+
+    def _extract_qkv_gpt2_style(self, c_attn, n_heads, d_model, d_head):
+        """Extract Q, K, V weights from GPT-2 style combined c_attn."""
+        c_attn_weight = c_attn.weight.data
+        c_attn_bias = c_attn.bias.data
+
+        qkv_weight = c_attn_weight.T.view(3, d_model, d_model)
+        qkv_bias = c_attn_bias.view(3, d_model)
+
+        W_Q = qkv_weight[0].view(n_heads, d_head, d_model).transpose(1, 2).contiguous()
+        W_K = qkv_weight[1].view(n_heads, d_head, d_model).transpose(1, 2).contiguous()
+        W_V = qkv_weight[2].view(n_heads, d_head, d_model).transpose(1, 2).contiguous()
+
+        b_Q = qkv_bias[0].view(n_heads, d_head).contiguous()
+        b_K = qkv_bias[1].view(n_heads, d_head).contiguous()
+        b_V = qkv_bias[2].view(n_heads, d_head).contiguous()
+
+        return W_Q, W_K, W_V, b_Q, b_K, b_V
+
+    def _extract_qkv_neox_style(self, query_key_value, n_heads, d_model, d_head):
+        """Extract Q, K, V weights from GPT-NeoX style combined query_key_value."""
+        qkv_weight = query_key_value.weight.data
+        qkv_bias = query_key_value.bias.data if hasattr(query_key_value, "bias") else None
+
+        qkv_weight = qkv_weight.view(3, d_model, d_model)
+
+        W_Q = qkv_weight[0].T.view(n_heads, d_head, d_model).transpose(1, 2).contiguous()
+        W_K = qkv_weight[1].T.view(n_heads, d_head, d_model).transpose(1, 2).contiguous()
+        W_V = qkv_weight[2].T.view(n_heads, d_head, d_model).transpose(1, 2).contiguous()
+
+        if qkv_bias is not None:
+            qkv_bias = qkv_bias.view(3, d_model)
+            b_Q = qkv_bias[0].view(n_heads, d_head).contiguous()
+            b_K = qkv_bias[1].view(n_heads, d_head).contiguous()
+            b_V = qkv_bias[2].view(n_heads, d_head).contiguous()
+        else:
+            b_Q = b_K = b_V = None
+
+        return W_Q, W_K, W_V, b_Q, b_K, b_V
+
+    def _extract_linear_ht_format(self, linear_module, n_heads, d_head, d_model):
+        """Extract weights from a linear module and convert to HT format."""
+        weight = linear_module.weight.data
+        bias = linear_module.bias.data if hasattr(linear_module, "bias") else None
+
+        W = weight.T.view(n_heads, d_head, d_model).transpose(1, 2).contiguous()
+        b = bias.view(n_heads, d_head).contiguous() if bias is not None else None
+
+        return W, b
+
+    def _extract_output_proj(self, out_proj, n_heads, d_head, d_model):
+        """Extract output projection weights in HT format."""
+        weight = out_proj.weight.data
+        bias = out_proj.bias.data if hasattr(out_proj, "bias") else None
+
+        W_O = weight.view(n_heads, d_head, d_model).contiguous()
+        b_O = bias.contiguous() if bias is not None else None
+
+        return W_O, b_O
+
+    def _disable_hook_conversions(self, attn_bridge):
+        """Disable hook conversions for attention submodules."""
+        for submodule_name in ["q", "k", "v", "o"]:
+            if hasattr(attn_bridge, submodule_name):
+                submodule = getattr(attn_bridge, submodule_name)
+                if hasattr(submodule, "hook_in"):
+                    submodule.hook_in.hook_conversion = None
+                if hasattr(submodule, "hook_out"):
+                    submodule.hook_out.hook_conversion = None

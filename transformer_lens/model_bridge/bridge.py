@@ -812,17 +812,12 @@ class TransformerBridge(nn.Module):
 
         # Setup attention hooks for no_processing mode to match HookedTransformer
         if no_processing:
-            # Enable HF autograd mode for exact gradient matching
-            self.config.use_hf_autograd = True
-
-            # Propagate the flag to all component configs
-            def set_hf_autograd_mode(component):
-                """Set use_hf_autograd flag on component config."""
-                if hasattr(component, "config") and component.config is not None:
-                    component.config.use_hf_autograd = True
-
-            apply_fn_to_all_components(self, set_hf_autograd_mode)
             self._setup_no_processing_hooks()
+
+            # Enable HT-style computation by setting processed weights on components
+            # This uses the existing _forward_with_processed_weights() infrastructure
+            # in AttentionBridge and MLPBridge, which use einsum and split weights
+            self.architecture_adapter.enable_ht_computation_for_bridge(self)
 
         if not no_processing:
             self.process_compatibility_weights()
@@ -838,6 +833,149 @@ class TransformerBridge(nn.Module):
         for block in self.blocks:
             if hasattr(block, "attn") and hasattr(block.attn, "setup_no_processing_hooks"):
                 block.attn.setup_no_processing_hooks()
+
+    def _replace_with_ht_components(self) -> None:
+        """Replace bridge components with HT components for exact gradient matching.
+
+        This is a radical solution that replaces the wrapped HF components with
+        actual HookedTransformer components, converting weights as needed.
+        This ensures the computational graph matches HT exactly, giving perfect
+        gradient matching at the cost of losing the bridge architecture benefits.
+        """
+        from transformer_lens.components.layer_norm import LayerNorm as HTLayerNorm
+        from transformer_lens.config.HookedTransformerConfig import (
+            HookedTransformerConfig,
+        )
+
+        print("Replacing components with HT versions for exact gradient matching...")
+
+        # Create a HookedTransformerConfig from the current config
+        # This is needed because HT components expect HookedTransformerConfig
+        # Handle both HF config and TransformerBridgeConfig attribute names
+        n_layers = getattr(self.cfg, "n_layers", getattr(self.cfg, "n_layer", 12))
+        d_model = getattr(self.cfg, "d_model", getattr(self.cfg, "n_embd", 768))
+        n_heads = getattr(self.cfg, "n_heads", getattr(self.cfg, "n_head", 12))
+        n_ctx = getattr(self.cfg, "n_ctx", getattr(self.cfg, "max_position_embeddings", 1024))
+        act_fn = getattr(self.cfg, "act_fn", getattr(self.cfg, "activation_function", "gelu_new"))
+        d_vocab = getattr(self.cfg, "d_vocab", getattr(self.cfg, "vocab_size", 50257))
+        eps = getattr(self.cfg, "eps", getattr(self.cfg, "layer_norm_epsilon", 1e-5))
+        d_mlp = getattr(self.cfg, "d_mlp", getattr(self.cfg, "n_inner", d_model * 4))
+
+        ht_cfg = HookedTransformerConfig(
+            n_layers=n_layers,
+            d_model=d_model,
+            n_ctx=n_ctx,
+            n_heads=n_heads,
+            d_head=d_model // n_heads,
+            d_mlp=d_mlp,
+            act_fn=act_fn,
+            d_vocab=d_vocab,
+            eps=eps,
+            dtype=getattr(self.cfg, "dtype", torch.float32),
+        )
+
+        # Replace LayerNorms
+        for i, block in enumerate(self.blocks):
+            # Replace ln1
+            if hasattr(block, "ln1"):
+                old_ln1 = block.ln1
+                new_ln1 = HTLayerNorm(ht_cfg)
+
+                # Copy weights
+                with torch.no_grad():
+                    new_ln1.w.copy_(old_ln1.weight)
+                    new_ln1.b.copy_(old_ln1.bias)
+
+                # Replace the module
+                block.ln1 = new_ln1
+
+                # CRITICAL: Also replace HF's internal ln_1 reference
+                # The patched forward method calls block_self.ln_1, so we need to
+                # replace that too
+                if hasattr(block.original_component, "ln_1"):
+                    block.original_component.ln_1 = new_ln1
+                print(f"  Replaced blocks.{i}.ln1")
+
+            # Replace ln2
+            if hasattr(block, "ln2"):
+                old_ln2 = block.ln2
+                new_ln2 = HTLayerNorm(ht_cfg)
+
+                # Copy weights
+                with torch.no_grad():
+                    new_ln2.w.copy_(old_ln2.weight)
+                    new_ln2.b.copy_(old_ln2.bias)
+
+                # Replace the module
+                block.ln2 = new_ln2
+
+                # CRITICAL: Also replace HF's internal ln_2 reference
+                if hasattr(block.original_component, "ln_2"):
+                    block.original_component.ln_2 = new_ln2
+                print(f"  Replaced blocks.{i}.ln2")
+
+        # Replace ln_final
+        if hasattr(self, "ln_final"):
+            old_ln_final = self.ln_final
+            new_ln_final = HTLayerNorm(ht_cfg)
+
+            with torch.no_grad():
+                new_ln_final.w.copy_(old_ln_final.weight)
+                new_ln_final.b.copy_(old_ln_final.bias)
+
+            self.ln_final = new_ln_final
+            print("  Replaced ln_final")
+
+        # Replace Attention and MLP with HT-compatible versions
+        # These use HF weights but compute using HT's einsum operations,
+        # ensuring identical gradient flow
+        from transformer_lens.model_bridge.ht_compatible_ops import (
+            HTCompatibleAttention,
+            HTCompatibleMLP,
+        )
+
+        for i, block in enumerate(self.blocks):
+            # Replace Attention with HT-compatible version
+            if hasattr(block, "attn"):
+                old_attn = block.attn
+                # Get the original HF component
+                hf_attn = (
+                    old_attn.original_component
+                    if hasattr(old_attn, "original_component")
+                    else old_attn
+                )
+
+                # Create HT-compatible attention that uses HF weights but computes like HT
+                new_attn = HTCompatibleAttention(
+                    hf_attn, n_heads=ht_cfg.n_heads, d_model=ht_cfg.d_model, d_head=ht_cfg.d_head
+                )
+
+                # Replace the module
+                block.attn = new_attn
+                if hasattr(block.original_component, "attn"):
+                    block.original_component.attn = new_attn
+                print(f"  Replaced blocks.{i}.attn with HT-compatible version")
+
+            # Replace MLP with HT-compatible version
+            if hasattr(block, "mlp"):
+                old_mlp = block.mlp
+                hf_mlp = (
+                    old_mlp.original_component
+                    if hasattr(old_mlp, "original_component")
+                    else old_mlp
+                )
+
+                # Create HT-compatible MLP that uses HF weights but computes like HT
+                act_fn = getattr(ht_cfg, "act_fn", "gelu_new")
+                new_mlp = HTCompatibleMLP(
+                    hf_mlp, d_model=ht_cfg.d_model, d_mlp=ht_cfg.d_mlp, act_fn=act_fn
+                )
+
+                # Replace the module
+                block.mlp = new_mlp
+                if hasattr(block.original_component, "mlp"):
+                    block.original_component.mlp = new_mlp
+                print(f"  Replaced blocks.{i}.mlp with HT-compatible version")
 
     def process_compatibility_weights(self, verbose: bool = False) -> None:
         """Process and load weights from a reference HookedTransformer model.
@@ -1095,6 +1233,9 @@ class TransformerBridge(nn.Module):
                 # Handle tuple returns from bridge components
                 if isinstance(mlp_out, tuple):
                     mlp_out = mlp_out[0]
+                # Apply hook_mlp_out before residual addition (matches HookedTransformer)
+                if hasattr(block, "hook_mlp_out"):
+                    mlp_out = block.hook_mlp_out(mlp_out)
                 residual = residual + mlp_out
 
             # Apply block output hook (hook_resid_post)
