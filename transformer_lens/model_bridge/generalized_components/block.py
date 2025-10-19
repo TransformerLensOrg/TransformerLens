@@ -106,15 +106,31 @@ class BlockBridge(GeneralizedComponent):
             **kwargs,
         ):
             # Call original forward but intercept MLP output
-            # This is based on HuggingFace GPT2Block.forward
+            # Architecture-agnostic: supports GPT-2, GPT-NeoX, OPT, etc.
 
             # Apply hook_in (hook_resid_pre) at the start, matching HookedTransformer
             hidden_states = self.hook_in(hidden_states)
 
             # Attention block
             residual = hidden_states
-            hidden_states = block_self.ln_1(hidden_states)
-            attn_output, attn_weights = block_self.attn(
+            # Get architecture-specific layer norm name (ln_1, input_layernorm, self_attn_layer_norm, etc.)
+            ln1 = (
+                getattr(block_self, "ln_1", None)
+                or getattr(block_self, "input_layernorm", None)
+                or getattr(block_self, "self_attn_layer_norm", None)
+            )
+            if ln1 is not None:
+                hidden_states = ln1(hidden_states)
+
+            # Get architecture-specific attention name (attn, attention, self_attn, etc.)
+            attn = (
+                getattr(block_self, "attn", None)
+                or getattr(block_self, "attention", None)
+                or getattr(block_self, "self_attn", None)
+            )
+            if attn is None:
+                raise RuntimeError(f"Could not find attention module in block {block_self}")
+            attn_output, attn_weights = attn(  # type: ignore[misc]
                 hidden_states,
                 past_key_value=past_key_value,
                 cache_position=cache_position,
@@ -150,8 +166,31 @@ class BlockBridge(GeneralizedComponent):
 
             # MLP block - THIS IS WHERE WE INSERT hook_mlp_out
             residual = hidden_states
-            hidden_states = block_self.ln_2(hidden_states)
-            feed_forward_hidden_states = block_self.mlp(hidden_states)
+            # Get architecture-specific second layer norm name (ln_2, post_attention_layernorm, final_layer_norm, etc.)
+            ln2 = (
+                getattr(block_self, "ln_2", None)
+                or getattr(block_self, "post_attention_layernorm", None)
+                or getattr(block_self, "final_layer_norm", None)
+            )
+            if ln2 is not None:
+                hidden_states = ln2(hidden_states)
+
+            # Get architecture-specific MLP name (mlp, fc1+fc2, etc.)
+            mlp = getattr(block_self, "mlp", None)
+            if mlp is not None:
+                feed_forward_hidden_states = mlp(hidden_states)
+            else:
+                # OPT uses fc1 and fc2 instead of a combined mlp module
+                fc1 = getattr(block_self, "fc1", None)
+                fc2 = getattr(block_self, "fc2", None)
+                if fc1 is not None and fc2 is not None:
+                    import torch.nn.functional as F
+
+                    hidden_states = fc1(hidden_states)
+                    hidden_states = F.relu(hidden_states)  # OPT uses ReLU
+                    feed_forward_hidden_states = fc2(hidden_states)
+                else:
+                    raise RuntimeError(f"Could not find MLP module in block {block_self}")
 
             # INSERT HOOK HERE - before residual addition
             # This matches HookedTransformer where hook_mlp_out wraps MLP output
