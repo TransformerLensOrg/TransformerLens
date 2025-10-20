@@ -85,7 +85,9 @@ class NormalizationBridge(GeneralizedComponent):
                     hidden_states.pow(2).mean(-1, keepdim=True) + getattr(self.config, "eps", 1e-5)
                 ).sqrt()
             )
-            hidden_states = self.hook_normalized(hidden_states / scale)
+            # Match HookedTransformer's dtype casting after normalization
+            dtype = getattr(self.config, "dtype", hidden_states.dtype)
+            hidden_states = self.hook_normalized(hidden_states / scale).to(dtype)
 
             # Apply learnable parameters if not folding layer norms
             if getattr(self.config, "uses_rms_norm", False):

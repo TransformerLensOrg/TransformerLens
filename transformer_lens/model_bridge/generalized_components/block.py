@@ -28,7 +28,7 @@ class BlockBridge(GeneralizedComponent):
 
     hook_aliases = {
         "hook_resid_pre": "hook_in",
-        "hook_resid_mid": "ln2.hook_in",
+        # hook_resid_mid is handled specially via monkey-patching (after attn, before ln2)
         "hook_resid_post": "hook_out",
         "hook_attn_in": "attn.hook_in",
         "hook_attn_out": "attn.hook_out",
@@ -53,6 +53,12 @@ class BlockBridge(GeneralizedComponent):
             submodules: Dictionary of submodules to register
         """
         super().__init__(name, config, submodules=submodules)
+
+        # Create custom hook_resid_mid that will be inserted via monkey-patching
+        # This hook captures the residual stream after attention but before ln2
+        # Unlike the alias to ln2.hook_in, this ensures gradients don't pass through LayerNorm
+        self.hook_resid_mid = HookPoint()
+        self._register_hook("hook_resid_mid", self.hook_resid_mid)
 
         # Create custom hook_mlp_out that will be inserted via monkey-patching
         self.hook_mlp_out = HookPoint()
@@ -149,6 +155,10 @@ class BlockBridge(GeneralizedComponent):
                 attn_weights = None
             # Residual connection
             hidden_states = attn_output + residual
+
+            # Apply hook_resid_mid (after attention, before ln2)
+            # This matches HookedTransformer where hook_resid_mid is separate from ln2
+            hidden_states = self.hook_resid_mid(hidden_states)
 
             # Cross attention (if applicable)
             if encoder_hidden_states is not None:

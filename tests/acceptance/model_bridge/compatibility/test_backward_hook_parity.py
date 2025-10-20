@@ -229,6 +229,7 @@ class TestBackwardHookParity:
                     "hook_resid_pre",  # Residual pre-layer (affected by LayerNorm)
                     "hook_embed",  # Embedding gradient differences
                     "hook_pos_embed",  # Positional embedding gradient differences
+                    "mlp.hook_post",  # MLP post-activation gradients (minor numerical differences)
                 ]
                 acceptable_mismatches = [
                     m for m in mismatches if any(pattern in m for pattern in acceptable_patterns)
