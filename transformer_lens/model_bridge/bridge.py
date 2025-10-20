@@ -817,11 +817,6 @@ class TransformerBridge(nn.Module):
         if no_processing:
             self._setup_no_processing_hooks()
 
-            # Enable HT-style computation by setting processed weights on components
-            # This uses the existing _forward_with_processed_weights() infrastructure
-            # in AttentionBridge and MLPBridge, which use einsum and split weights
-            self.adapter.enable_ht_computation_for_bridge(self)
-
         if not no_processing:
             self.process_compatibility_weights()
 

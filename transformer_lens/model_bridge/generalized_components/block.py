@@ -130,7 +130,7 @@ class BlockBridge(GeneralizedComponent):
             )
             if attn is None:
                 raise RuntimeError(f"Could not find attention module in block {block_self}")
-            attn_output, attn_weights = attn(  # type: ignore[misc]
+            attn_result = attn(  # type: ignore[misc]
                 hidden_states,
                 past_key_value=past_key_value,
                 cache_position=cache_position,
@@ -140,6 +140,13 @@ class BlockBridge(GeneralizedComponent):
                 output_attentions=output_attentions,
                 **kwargs,
             )
+            # Handle different return formats: (output, weights) or (output, weights, past)
+            if len(attn_result) >= 2:
+                attn_output = attn_result[0]
+                attn_weights = attn_result[1]
+            else:
+                attn_output = attn_result
+                attn_weights = None
             # Residual connection
             hidden_states = attn_output + residual
 

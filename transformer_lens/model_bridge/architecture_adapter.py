@@ -1259,20 +1259,38 @@ class ArchitectureAdapter:
         mlp_bridge.set_processed_weights(W_in, W_out, b_in, b_out)
 
     def _extract_qkv_gpt2_style(self, c_attn, n_heads, d_model, d_head):
-        """Extract Q, K, V weights from GPT-2 style combined c_attn."""
-        c_attn_weight = c_attn.weight.data
-        c_attn_bias = c_attn.bias.data
+        """Extract Q, K, V weights from GPT-2 style combined c_attn.
 
-        qkv_weight = c_attn_weight.T.view(3, d_model, d_model)
-        qkv_bias = c_attn_bias.view(3, d_model)
+        GPT-2 uses Conv1D which stores weights as [in_features, out_features] = [d_model, 3*d_model].
+        We need to split and reshape to [n_heads, d_model, d_head] format for HookedTransformer.
+        """
+        import einops
 
-        W_Q = qkv_weight[0].view(n_heads, d_head, d_model).transpose(1, 2).contiguous()
-        W_K = qkv_weight[1].view(n_heads, d_head, d_model).transpose(1, 2).contiguous()
-        W_V = qkv_weight[2].view(n_heads, d_head, d_model).transpose(1, 2).contiguous()
+        # Conv1D weight is [d_model, 3*d_model]
+        W = c_attn.weight.data
 
-        b_Q = qkv_bias[0].view(n_heads, d_head).contiguous()
-        b_K = qkv_bias[1].view(n_heads, d_head).contiguous()
-        b_V = qkv_bias[2].view(n_heads, d_head).contiguous()
+        # Split into Q, K, V along the output dimension
+        W_Q, W_K, W_V = torch.tensor_split(W, 3, dim=1)  # Each is [d_model, d_model]
+
+        # Reshape to [n_heads, d_model, d_head] using einops
+        # Input shape: [d_model, d_model] = [m, i*h]
+        # Output shape: [n_heads, d_model, d_head] = [i, m, h]
+        W_Q = einops.rearrange(W_Q, "m (i h)->i m h", i=n_heads)
+        W_K = einops.rearrange(W_K, "m (i h)->i m h", i=n_heads)
+        W_V = einops.rearrange(W_V, "m (i h)->i m h", i=n_heads)
+
+        # Handle bias
+        qkv_bias = c_attn.bias.data
+        qkv_bias = einops.rearrange(
+            qkv_bias,
+            "(qkv index head)->qkv index head",
+            qkv=3,
+            index=n_heads,
+            head=d_head,
+        )
+        b_Q = qkv_bias[0]
+        b_K = qkv_bias[1]
+        b_V = qkv_bias[2]
 
         return W_Q, W_K, W_V, b_Q, b_K, b_V
 
