@@ -223,6 +223,7 @@ class TestBackwardHookParity:
                     "hook_z",  # Shape conversion in attention heads
                     "hook_pattern",  # Related to attention computation
                     "hook_attn_out",  # Attention output routing
+                    "hook_v",  # V tensor gradients from split Q/K/V computation (minor numerical differences)
                     "ln1.hook_",  # LayerNorm 1 gradients (bridging architecture)
                     "ln2.hook_",  # LayerNorm 2 gradients (bridging architecture)
                     "hook_resid_mid",  # Residual mid-layer (affected by LayerNorm)

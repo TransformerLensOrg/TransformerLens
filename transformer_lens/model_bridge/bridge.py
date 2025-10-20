@@ -816,6 +816,8 @@ class TransformerBridge(nn.Module):
         # Setup attention hooks for no_processing mode to match HookedTransformer
         if no_processing:
             self._setup_no_processing_hooks()
+            # Extract split Q/K/V weights for attention layers (uses architecture adapter)
+            self._enable_split_qkv_attention()
 
         if not no_processing:
             self.process_compatibility_weights()
@@ -831,6 +833,23 @@ class TransformerBridge(nn.Module):
         for block in self.blocks:
             if hasattr(block, "attn") and hasattr(block.attn, "setup_no_processing_hooks"):
                 block.attn.setup_no_processing_hooks()
+
+    def _enable_split_qkv_attention(self) -> None:
+        """Enable split Q/K/V computation for attention layers in no_processing mode.
+
+        This extracts Q/K/V weights from HuggingFace attention components using the
+        architecture adapter and sets them on JointQKVAttentionBridge instances.
+        This enables 3 backward paths through ln1 (matching HookedTransformer).
+
+        Unlike enable_ht_computation_for_bridge, this ONLY affects attention layers,
+        leaving MLPs to use their original HF weights.
+        """
+        for block in self.blocks:
+            if hasattr(block, "attn") and hasattr(block, "original_component"):
+                hf_block = block.original_component
+                if hasattr(hf_block, "attn"):
+                    # Use architecture adapter to extract and split Q/K/V weights
+                    self.adapter._enable_ht_attention(block.attn, hf_block.attn)
 
     def _replace_with_ht_components(self) -> None:
         """Replace bridge components with HT components for exact gradient matching.
