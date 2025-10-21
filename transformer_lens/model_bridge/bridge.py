@@ -815,6 +815,9 @@ class TransformerBridge(nn.Module):
 
         # Setup attention hooks for no_processing mode to match HookedTransformer
         if no_processing:
+            # Enable native PyTorch autograd in normalization for exact gradient matching
+            self.cfg.use_hf_autograd = True
+            self._enable_native_layernorm_autograd()
             self._setup_no_processing_hooks()
             # Extract split Q/K/V weights for attention layers (uses architecture adapter)
             self._enable_split_qkv_attention()
@@ -871,6 +874,54 @@ class TransformerBridge(nn.Module):
                         block.attn._ln1 = ln1
                         # Mark that attention should receive pre-ln1 input
                         block.attn._expects_pre_ln1_input = True
+
+    def _enable_native_layernorm_autograd(self) -> None:
+        """Enable native PyTorch LayerNorm autograd in all NormalizationBridge components.
+
+        This sets use_hf_autograd=True on each normalization component's config,
+        which makes them use the _hf_autograd_forward method that preserves
+        PyTorch's native LayerNorm backward graph for exact gradient matching.
+        """
+        from transformer_lens.model_bridge.generalized_components.normalization import (
+            NormalizationBridge,
+        )
+
+        # Enable for ln_f (final layer norm)
+        if hasattr(self, "ln_f") and isinstance(self.ln_f, NormalizationBridge):
+            if self.ln_f.config is not None:
+                self.ln_f.config.use_hf_autograd = True
+
+        # Enable for all block normalization layers
+        for block in self.blocks:
+            # ln1 (pre-attention norm)
+            if hasattr(block, "ln1") and isinstance(block.ln1, NormalizationBridge):
+                if block.ln1.config is not None:
+                    block.ln1.config.use_hf_autograd = True
+
+            if hasattr(block, "ln_1") and isinstance(block.ln_1, NormalizationBridge):
+                if block.ln_1.config is not None:
+                    block.ln_1.config.use_hf_autograd = True
+
+            if hasattr(block, "input_layernorm") and isinstance(
+                block.input_layernorm, NormalizationBridge
+            ):
+                if block.input_layernorm.config is not None:
+                    block.input_layernorm.config.use_hf_autograd = True
+
+            # ln2 (pre-MLP norm)
+            if hasattr(block, "ln2") and isinstance(block.ln2, NormalizationBridge):
+                if block.ln2.config is not None:
+                    block.ln2.config.use_hf_autograd = True
+
+            if hasattr(block, "ln_2") and isinstance(block.ln_2, NormalizationBridge):
+                if block.ln_2.config is not None:
+                    block.ln_2.config.use_hf_autograd = True
+
+            if hasattr(block, "post_attention_layernorm") and isinstance(
+                block.post_attention_layernorm, NormalizationBridge
+            ):
+                if block.post_attention_layernorm.config is not None:
+                    block.post_attention_layernorm.config.use_hf_autograd = True
 
     def _create_hook_mlp_out_aliases(self) -> None:
         """Create hook_mlp_out as an alias to mlp.hook_out to match HookedTransformer.

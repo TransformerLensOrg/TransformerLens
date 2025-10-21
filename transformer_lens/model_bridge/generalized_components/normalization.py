@@ -103,12 +103,10 @@ class NormalizationBridge(GeneralizedComponent):
         return output
 
     def _hf_autograd_forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Forward pass matching F.layer_norm's computation exactly.
+        """Forward pass matching HookedTransformer's LayerNorm computation exactly.
 
-        This replicates torch.nn.functional.layer_norm's computation while
-        exposing intermediate values (scale, normalized) through hooks.
-        The computation is identical to F.layer_norm, ensuring the same
-        gradients flow backward.
+        This replicates HookedTransformer's LayerNorm forward method to ensure
+        the same computational graph and gradients.
 
         Args:
             x: Input tensor
@@ -124,20 +122,17 @@ class NormalizationBridge(GeneralizedComponent):
         weight = self.original_component.weight
         bias = self.original_component.bias
 
-        # Replicate F.layer_norm's computation exactly, with hooks
-        # This ensures gradients flow through the same computational graph
-        x_centered = x - x.mean(-1, keepdim=True)
-        variance = x_centered.pow(2).mean(-1, keepdim=True)
-        scale = self.hook_scale((variance + eps).sqrt().clamp(min=1e-12))  # type: ignore[operator]
-        normalized = self.hook_normalized(x_centered / scale)
+        # Match HookedTransformer LayerNorm computation exactly
+        # dtype handling: convert to float32 if not float32/float64
+        if self.config.dtype not in [torch.float32, torch.float64]:
+            x = x.to(torch.float32)
 
-        # Apply weight and bias (same as F.layer_norm does)
-        if bias is not None:
-            result = normalized * weight + bias  # type: ignore[operator]
-        else:
-            result = normalized * weight
+        x = x - x.mean(-1, keepdim=True)
+        scale = self.hook_scale((x.pow(2).mean(-1, keepdim=True) + eps).sqrt())  # type: ignore[operator]
+        x = self.hook_normalized(x / scale).to(self.config.dtype)  # type: ignore[operator]
 
-        return result
+        # Apply weight and bias
+        return x * weight + bias  # type: ignore[operator]
 
     def _layernorm_pre_forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass matching LayerNormPre behavior exactly.
