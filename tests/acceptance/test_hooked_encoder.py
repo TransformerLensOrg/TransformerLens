@@ -173,7 +173,7 @@ def test_from_pretrained_revision():
 @pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
 def test_half_precision(dtype):
     """Check the 16 bits loading and inferences."""
-    model = HookedEncoder.from_pretrained(MODEL_NAME, torch_dtype=dtype)
+    model = HookedEncoder.from_pretrained(MODEL_NAME, dtype=dtype)
     assert model.W_K.dtype == dtype
 
     _ = model(model.tokenizer("Hello, world", return_tensors="pt")["input_ids"])

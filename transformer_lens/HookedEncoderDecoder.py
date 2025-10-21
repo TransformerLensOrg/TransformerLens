@@ -567,8 +567,8 @@ class HookedEncoderDecoder(HookedRootModule):
         ):
             raise ValueError("Quantization not supported")
 
-        if "torch_dtype" in from_pretrained_kwargs:
-            dtype = from_pretrained_kwargs["torch_dtype"]
+        if "dtype" in from_pretrained_kwargs:
+            dtype = from_pretrained_kwargs["dtype"]
 
         if dtype is None:
             dtype = torch.float32

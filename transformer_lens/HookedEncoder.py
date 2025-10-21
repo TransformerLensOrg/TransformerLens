@@ -393,8 +393,8 @@ class HookedEncoder(HookedRootModule):
             or from_pretrained_kwargs.get("load_in_4bit", False)
         ), "Quantization not supported"
 
-        if "torch_dtype" in from_pretrained_kwargs:
-            dtype = from_pretrained_kwargs["torch_dtype"]
+        if "dtype" in from_pretrained_kwargs:
+            dtype = from_pretrained_kwargs["dtype"]
 
         official_model_name = loading.get_official_model_name(model_name)
 

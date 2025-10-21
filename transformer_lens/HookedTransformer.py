@@ -1263,7 +1263,7 @@ class HookedTransformer(HookedRootModule):
                 results. Note that you can also locally override the default behavior by passing in
                 prepend_bos=True/False when you call a method that processes the input string.
             from_pretrained_kwargs: Any other optional argument passed to
-                HuggingFace's from_pretrained (e.g. "cache_dir" or "torch_dtype"). Also passed to
+                HuggingFace's from_pretrained (e.g. "cache_dir" or "dtype"). Also passed to
                 other HuggingFace functions when compatible. For some models or arguments it doesn't
                 work, especially for models that are not internally loaded with HuggingFace's
                 from_pretrained (e.g. SoLU models).
@@ -1308,13 +1308,13 @@ class HookedTransformer(HookedRootModule):
         if isinstance(dtype, str):
             # Convert from string to a torch dtype
             dtype = DTYPE_FROM_STRING[dtype]
-        if "torch_dtype" in from_pretrained_kwargs:
+        if "dtype" in from_pretrained_kwargs:
             # For backwards compatibility with the previous way to do low precision loading
-            # This should maybe check the user did not explicitly set dtype *and* torch_dtype
-            dtype = from_pretrained_kwargs["torch_dtype"]
+            # This should maybe check the user did not explicitly set dtype *and* dtype
+            dtype = from_pretrained_kwargs["dtype"]
 
         if (
-            (from_pretrained_kwargs.get("torch_dtype", None) == torch.float16)
+            (from_pretrained_kwargs.get("dtype", None) == torch.float16)
             or dtype == torch.float16
         ) and device in ["cpu", None]:
             logging.warning("float16 models may not work on CPU. Consider using a GPU or bfloat16.")

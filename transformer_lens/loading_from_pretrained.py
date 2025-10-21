@@ -1855,9 +1855,9 @@ def get_pretrained_state_dict(
     kwargs: Other optional arguments passed to HuggingFace's from_pretrained.
         Also given to other HuggingFace functions when compatible.
     """
-    if "torch_dtype" in kwargs:
-        dtype = kwargs["torch_dtype"]
-        del kwargs["torch_dtype"]
+    if "dtype" in kwargs:
+        dtype = kwargs["dtype"]
+        del kwargs["dtype"]
     if Path(official_model_name).exists():
         official_model_name = str(Path(official_model_name).resolve())
         logging.info(f"Loading model from local path {official_model_name}")
@@ -1903,7 +1903,7 @@ def get_pretrained_state_dict(
                 hf_model = AutoModelForCausalLM.from_pretrained(
                     official_model_name,
                     revision=f"checkpoint-{cfg.checkpoint_value}",
-                    torch_dtype=dtype,
+                    dtype=dtype,
                     token=huggingface_token if len(huggingface_token) > 0 else None,
                     **kwargs,
                 )
@@ -1911,7 +1911,7 @@ def get_pretrained_state_dict(
                 hf_model = AutoModelForCausalLM.from_pretrained(
                     official_model_name,
                     revision=f"step{cfg.checkpoint_value}",
-                    torch_dtype=dtype,
+                    dtype=dtype,
                     token=huggingface_token,
                     **kwargs,
                 )
@@ -1924,21 +1924,21 @@ def get_pretrained_state_dict(
             elif "bert" in official_model_name:
                 hf_model = BertForPreTraining.from_pretrained(
                     official_model_name,
-                    torch_dtype=dtype,
+                    dtype=dtype,
                     token=huggingface_token if len(huggingface_token) > 0 else None,
                     **kwargs,
                 )
             elif "t5" in official_model_name:
                 hf_model = T5ForConditionalGeneration.from_pretrained(
                     official_model_name,
-                    torch_dtype=dtype,
+                    dtype=dtype,
                     token=huggingface_token if len(huggingface_token) > 0 else None,
                     **kwargs,
                 )
             else:
                 hf_model = AutoModelForCausalLM.from_pretrained(
                     official_model_name,
-                    torch_dtype=dtype,
+                    dtype=dtype,
                     token=huggingface_token if len(huggingface_token) > 0 else None,
                     **kwargs,
                 )
