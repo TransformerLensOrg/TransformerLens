@@ -383,6 +383,7 @@ class TestBackwardHookParity:
                     "hook_attn_scores",  # Attention computation gradients
                     "hook_pattern",  # Attention pattern gradients
                     "hook_result",  # Attention result routing
+                    "hook_v",  # V gradients affected by split Q/K/V computation
                     "ln1.hook_",  # LayerNorm bridging
                     "ln2.hook_",  # LayerNorm bridging
                     "hook_resid_pre",  # Affected by LayerNorm

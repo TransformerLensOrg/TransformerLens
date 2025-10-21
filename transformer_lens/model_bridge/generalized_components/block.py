@@ -119,14 +119,6 @@ class BlockBridge(GeneralizedComponent):
 
             # Attention block
             residual = hidden_states
-            # Get architecture-specific layer norm name (ln_1, input_layernorm, self_attn_layer_norm, etc.)
-            ln1 = (
-                getattr(block_self, "ln_1", None)
-                or getattr(block_self, "input_layernorm", None)
-                or getattr(block_self, "self_attn_layer_norm", None)
-            )
-            if ln1 is not None:
-                hidden_states = ln1(hidden_states)
 
             # Get architecture-specific attention name (attn, attention, self_attn, etc.)
             attn = (
@@ -136,8 +128,27 @@ class BlockBridge(GeneralizedComponent):
             )
             if attn is None:
                 raise RuntimeError(f"Could not find attention module in block {block_self}")
+
+            # Check if attention expects pre-ln1 input (for split Q/K/V compatibility with HookedTransformer)
+            # When enabled, attention will call ln1 three separate times internally
+            expects_pre_ln1 = getattr(attn, "_expects_pre_ln1_input", False)
+
+            if expects_pre_ln1:
+                # Attention will handle ln1 internally (3 separate calls for Q, K, V)
+                attn_input = residual
+            else:
+                # Normal path: apply ln1 once here in the block
+                ln1 = (
+                    getattr(block_self, "ln_1", None)
+                    or getattr(block_self, "input_layernorm", None)
+                    or getattr(block_self, "self_attn_layer_norm", None)
+                )
+                if ln1 is not None:
+                    hidden_states = ln1(hidden_states)
+                attn_input = hidden_states
+
             attn_result = attn(  # type: ignore[misc]
-                hidden_states,
+                attn_input,
                 past_key_value=past_key_value,
                 cache_position=cache_position,
                 attention_mask=attention_mask,

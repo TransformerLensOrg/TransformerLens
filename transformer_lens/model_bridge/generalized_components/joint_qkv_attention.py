@@ -373,9 +373,9 @@ class JointQKVAttentionBridge(AttentionBridge):
         # Fall back to original component if weight extraction failed
         if (
             not self._hooked_weights_extracted
-            or self._W_Q is None
-            or self._W_K is None
-            or self._W_V is None
+            or not hasattr(self, "_W_Q")
+            or not hasattr(self, "_W_K")
+            or not hasattr(self, "_W_V")
         ):
             return super().forward(*args, **kwargs)
 
@@ -404,14 +404,28 @@ class JointQKVAttentionBridge(AttentionBridge):
                 device=self._W_V.device,
             )
 
-        q = simple_attn_linear(input_tensor, self._W_Q, self._b_Q)
-        k = simple_attn_linear(input_tensor, self._W_K, self._b_K)
-        v = simple_attn_linear(input_tensor, self._W_V, self._b_V)
+        # CRITICAL: To match HookedTransformer's behavior where ln1 backward hooks fire 3 times,
+        # we need to call ln1 THREE SEPARATE TIMES (once for Q, K, V inputs).
+        # HookedTransformer does: self.ln1(query_input), self.ln1(key_input), self.ln1(value_input)
+        # This creates 3 separate forward passes through ln1, which means 3 backward hook firings.
 
-        # Apply hooks (conversion rules are already disabled permanently above)
-        q = self.q.hook_in(q)
-        k = self.k.hook_in(k)
-        v = self.v.hook_in(v)
+        # Check if we have ln1 reference (set during compatibility mode setup)
+        if hasattr(self, "_ln1") and self._ln1 is not None:
+            # Input tensor is pre-ln1 residual, call ln1 three times
+            q_input = self.q.hook_in(self._ln1(input_tensor))
+            k_input = self.k.hook_in(self._ln1(input_tensor))
+            v_input = self.v.hook_in(self._ln1(input_tensor))
+        else:
+            # Fallback: input tensor is already post-ln1, use it directly
+            # This won't fire ln1 hooks 3 times, but keeps functionality working
+            q_input = self.q.hook_in(input_tensor)
+            k_input = self.k.hook_in(input_tensor)
+            v_input = self.v.hook_in(input_tensor)
+
+        # Compute Q, K, V using the separate input tensors
+        q = simple_attn_linear(q_input, self._W_Q, self._b_Q)
+        k = simple_attn_linear(k_input, self._W_K, self._b_K)
+        v = simple_attn_linear(v_input, self._W_V, self._b_V)
 
         # Apply output hooks
         q = self.q.hook_out(q)
@@ -984,6 +998,9 @@ class JointQKVAttentionBridge(AttentionBridge):
             and hasattr(self, "_processed_W_K")
             and hasattr(self, "_processed_W_V")
         ):
+            # Use the processed weights directly as tensors
+            # We don't need nn.Parameter because the real solution for backward hook parity
+            # is calling ln1 three times (which we do below), not creating separate Parameters
             self._W_Q = self._processed_W_Q
             self._W_K = self._processed_W_K
             self._W_V = self._processed_W_V

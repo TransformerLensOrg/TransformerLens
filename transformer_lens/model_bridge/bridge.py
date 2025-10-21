@@ -851,6 +851,22 @@ class TransformerBridge(nn.Module):
                     # Use architecture adapter to extract and split Q/K/V weights
                     self.adapter._enable_ht_attention(block.attn, hf_block.attn)
 
+                    # Store reference to ln1 in attention module
+                    # This allows attention to call ln1 three times (matching HookedTransformer)
+                    # which causes ln1 backward hooks to fire 3 times
+                    ln1 = None
+                    if hasattr(block, "ln1"):
+                        ln1 = block.ln1
+                    elif hasattr(block, "ln_1"):
+                        ln1 = block.ln_1
+                    elif hasattr(block, "input_layernorm"):
+                        ln1 = block.input_layernorm
+
+                    if ln1 is not None:
+                        block.attn._ln1 = ln1
+                        # Mark that attention should receive pre-ln1 input
+                        block.attn._expects_pre_ln1_input = True
+
     def _replace_with_ht_components(self) -> None:
         """Replace bridge components with HT components for exact gradient matching.
 
