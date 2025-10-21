@@ -125,9 +125,9 @@ class TestForwardHookParity:
 
             # Compare common hooks
             mismatches = []
-            # Use 2e-3 tolerance to account for numerical differences between HF and HT-style einsum implementations
-            # This is 10x stricter than previous 2e-2 tolerance (~0.2% relative error)
-            tolerance = 2e-3
+            # Use 5e-4 tolerance to account for numerical differences between HF and HT-style einsum implementations
+            # This is 40x stricter than original 2e-2 tolerance (~0.05% relative error)
+            tolerance = 5e-4
 
             for hook_name in sorted(common_hooks):
                 ht_tensor = ht_activations[hook_name]
@@ -270,8 +270,8 @@ class TestForwardHookParity:
             # Compare activations
             print(f"\nComparing {len(critical_hooks)} critical hooks")
             mismatches = []
-            # Use 2e-3 tolerance to account for numerical differences between HF and HT-style einsum implementations
-            tolerance = 2e-3
+            # Use 5e-4 tolerance to account for numerical differences between HF and HT-style einsum implementations
+            tolerance = 5e-4
 
             for hook_name in critical_hooks:
                 if hook_name not in ht_activations:
