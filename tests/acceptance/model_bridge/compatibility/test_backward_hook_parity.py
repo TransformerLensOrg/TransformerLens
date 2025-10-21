@@ -264,6 +264,139 @@ class TestBackwardHookParity:
                 if handle is not None:
                     handle.remove()
 
+    def test_large_gradient_hooks_match(self, hooked_transformer, transformer_bridge, prompt):
+        """Test hooks with large gradient magnitudes using relaxed absolute tolerance.
+
+        Some hooks have very large gradient magnitudes (100,000+) where tiny relative errors
+        (< 0.004%) translate to absolute differences > 1.0. This test verifies these hooks
+        match with appropriate tolerance for their scale.
+        """
+        # Hooks known to have large gradient magnitudes
+        large_gradient_hooks = [
+            "blocks.0.ln1.hook_scale",  # LayerNorm scale gradients can be very large
+            "blocks.0.attn.hook_pattern",  # Attention pattern gradients
+            "blocks.1.attn.hook_pattern",
+            "blocks.4.attn.hook_pattern",
+            "blocks.6.attn.hook_pattern",
+            "blocks.9.attn.hook_pattern",
+        ]
+
+        ht_gradients = {}
+        tb_gradients = {}
+
+        def make_ht_backward_hook(name):
+            def hook_fn(tensor, hook):
+                if isinstance(tensor, torch.Tensor):
+                    ht_gradients[name] = tensor.detach().clone()
+                elif isinstance(tensor, tuple) and len(tensor) > 0:
+                    if isinstance(tensor[0], torch.Tensor):
+                        ht_gradients[name] = tensor[0].detach().clone()
+                return None
+
+            return hook_fn
+
+        def make_tb_backward_hook(name):
+            def hook_fn(tensor, hook):
+                if isinstance(tensor, torch.Tensor):
+                    tb_gradients[name] = tensor.detach().clone()
+                elif isinstance(tensor, tuple) and len(tensor) > 0:
+                    if isinstance(tensor[0], torch.Tensor):
+                        tb_gradients[name] = tensor[0].detach().clone()
+                return None
+
+            return hook_fn
+
+        # Register hooks
+        ht_hook_handles = []
+        tb_hook_handles = []
+
+        for hook_name in large_gradient_hooks:
+            if hook_name in hooked_transformer.hook_dict:
+                hook_point = hooked_transformer.hook_dict[hook_name]
+                handle = hook_point.add_hook(make_ht_backward_hook(hook_name), dir="bwd")
+                ht_hook_handles.append(handle)
+
+            if hook_name in transformer_bridge.hook_dict:
+                hook_point = transformer_bridge.hook_dict[hook_name]
+                handle = hook_point.add_hook(make_tb_backward_hook(hook_name), dir="bwd")
+                tb_hook_handles.append(handle)
+
+        try:
+            # Forward and backward pass
+            ht_output = hooked_transformer(prompt)
+            ht_loss = ht_output[:, -1, :].sum()
+            ht_loss.backward()
+
+            tb_output = transformer_bridge(prompt)
+            tb_loss = tb_output[:, -1, :].sum()
+            tb_loss.backward()
+
+            print(f"\nComparing {len(large_gradient_hooks)} large-gradient hooks")
+
+            # Use relaxed absolute tolerance but strict relative tolerance
+            # These hooks have gradients ~100,000+ where 0.001% relative error = 1.0 absolute
+            abs_tolerance = 2.0  # Relaxed for large magnitudes
+            rel_tolerance = 1e-4  # Strict relative tolerance (0.01%)
+
+            mismatches = []
+
+            for hook_name in sorted(large_gradient_hooks):
+                if hook_name in ht_gradients and hook_name in tb_gradients:
+                    ht_grad = ht_gradients[hook_name]
+                    tb_grad = tb_gradients[hook_name]
+
+                    # Check shapes match
+                    if ht_grad.shape != tb_grad.shape:
+                        mismatches.append(
+                            f"{hook_name}: Shape mismatch - HT {ht_grad.shape} vs TB {tb_grad.shape}"
+                        )
+                        print(f"  ❌ {hook_name}: Shape mismatch")
+                        continue
+
+                    # Check values with relaxed absolute but strict relative tolerance
+                    if torch.allclose(ht_grad, tb_grad, atol=abs_tolerance, rtol=rel_tolerance):
+                        print(f"  ✓ {hook_name}")
+                    else:
+                        diff = torch.abs(ht_grad - tb_grad)
+                        max_diff = diff.max().item()
+                        mean_diff = diff.mean().item()
+
+                        # Calculate relative error
+                        ht_abs = torch.abs(ht_grad)
+                        rel_diff = diff / (ht_abs + 1e-10)
+                        mean_rel = rel_diff.mean().item()
+
+                        mismatches.append(
+                            f"{hook_name}: max_diff={max_diff:.6f}, mean_rel={mean_rel:.6f}"
+                        )
+                        print(f"  ❌ {hook_name}: max_diff={max_diff:.6f}, mean_rel={mean_rel:.6f}")
+                elif hook_name not in ht_gradients:
+                    print(f"  ⚠️  {hook_name}: Not found in HookedTransformer")
+                elif hook_name not in tb_gradients:
+                    print(f"  ⚠️  {hook_name}: Not found in TransformerBridge")
+
+            if mismatches:
+                print(
+                    f"\n❌ {len(mismatches)} hooks exceed relaxed tolerance (abs={abs_tolerance}, rel={rel_tolerance}):"
+                )
+                for mismatch in mismatches:
+                    print(f"  {mismatch}")
+                pytest.fail(
+                    f"Found {len(mismatches)} large-gradient hooks that don't match even with relaxed tolerance"
+                )
+            else:
+                print(
+                    f"\n✓ All large-gradient hooks match within relaxed tolerance (abs={abs_tolerance}, rel={rel_tolerance})"
+                )
+
+        finally:
+            for handle in ht_hook_handles:
+                if handle is not None:
+                    handle.remove()
+            for handle in tb_hook_handles:
+                if handle is not None:
+                    handle.remove()
+
     def test_critical_backward_hooks_match(self, hooked_transformer, transformer_bridge, prompt):
         """Test that critical backward hooks (commonly used in interpretability research) match.
 

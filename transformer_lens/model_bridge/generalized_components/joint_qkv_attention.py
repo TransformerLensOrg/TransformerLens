@@ -508,6 +508,7 @@ class JointQKVAttentionBridge(AttentionBridge):
                 attn_reshaped = self.o.hook_in(attn_reshaped)
 
             # Apply W_O and sum across heads
+            # Using einsum provides better numerical stability in forward pass
             attn_output = torch.einsum("bsnh,nhd->bsnd", attn_reshaped, self._W_O)
             attn_output = attn_output.sum(dim=2)
 
