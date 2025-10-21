@@ -376,6 +376,9 @@ class JointQKVAttentionBridge(AttentionBridge):
             or not hasattr(self, "_W_Q")
             or not hasattr(self, "_W_K")
             or not hasattr(self, "_W_V")
+            or self._W_Q is None
+            or self._W_K is None
+            or self._W_V is None
         ):
             return super().forward(*args, **kwargs)
 
