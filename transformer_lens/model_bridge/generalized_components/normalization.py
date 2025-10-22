@@ -120,10 +120,11 @@ class NormalizationBridge(GeneralizedComponent):
 
         eps = self.original_component.eps
         weight = self.original_component.weight
-        bias = self.original_component.bias
+        bias = getattr(self.original_component, "bias", None)  # RMSNorm doesn't have bias
 
         # Match HookedTransformer LayerNorm computation exactly
         # dtype handling: convert to float32 if not float32/float64
+        original_dtype = x.dtype
         if (
             self.config is not None
             and hasattr(self.config, "dtype")
@@ -135,12 +136,18 @@ class NormalizationBridge(GeneralizedComponent):
         scale = self.hook_scale((x.pow(2).mean(-1, keepdim=True) + eps).sqrt())  # type: ignore[operator]
         x = self.hook_normalized(x / scale)
 
-        # Convert back to config dtype if available
+        # Convert back to original dtype or config dtype
         if self.config is not None and hasattr(self.config, "dtype"):
             x = x.to(self.config.dtype)  # type: ignore[union-attr]
+        else:
+            # If no config dtype, use the weight's dtype to ensure consistency
+            x = x.to(weight.dtype)
 
-        # Apply weight and bias
-        return x * weight + bias  # type: ignore[operator]
+        # Apply weight and bias (bias may be None for RMSNorm)
+        if bias is not None:
+            return x * weight + bias  # type: ignore[operator]
+        else:
+            return x * weight  # type: ignore[operator]
 
     def _layernorm_pre_forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass matching LayerNormPre behavior exactly.
