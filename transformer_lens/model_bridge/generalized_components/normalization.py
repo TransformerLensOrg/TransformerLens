@@ -124,12 +124,20 @@ class NormalizationBridge(GeneralizedComponent):
 
         # Match HookedTransformer LayerNorm computation exactly
         # dtype handling: convert to float32 if not float32/float64
-        if self.config.dtype not in [torch.float32, torch.float64]:
+        if (
+            self.config is not None
+            and hasattr(self.config, "dtype")
+            and self.config.dtype not in [torch.float32, torch.float64]
+        ):
             x = x.to(torch.float32)
 
         x = x - x.mean(-1, keepdim=True)
         scale = self.hook_scale((x.pow(2).mean(-1, keepdim=True) + eps).sqrt())  # type: ignore[operator]
-        x = self.hook_normalized(x / scale).to(self.config.dtype)  # type: ignore[operator]
+        x = self.hook_normalized(x / scale)
+
+        # Convert back to config dtype if available
+        if self.config is not None and hasattr(self.config, "dtype"):
+            x = x.to(self.config.dtype)  # type: ignore[union-attr]
 
         # Apply weight and bias
         return x * weight + bias  # type: ignore[operator]
