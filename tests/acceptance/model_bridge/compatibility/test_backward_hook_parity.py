@@ -217,9 +217,7 @@ class TestBackwardHookParity:
             match_percentage = (matching_hooks / tested_hooks * 100) if tested_hooks else 0
 
             print(f"\n{'='*60}")
-            print(
-                f"RESULTS: {matching_hooks}/{tested_hooks} hooks match ({match_percentage:.1f}%)"
-            )
+            print(f"RESULTS: {matching_hooks}/{tested_hooks} hooks match ({match_percentage:.1f}%)")
             print(f"  ({len(excluded_hooks)} hooks excluded from comparison)")
             print(f"{'='*60}")
 
