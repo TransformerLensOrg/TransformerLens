@@ -713,6 +713,10 @@ class TransformerBridge(nn.Module):
             if past_key_values is None:
                 past_key_values = tuple([None] * len(transformer.h))  # type: ignore[arg-type,union-attr]
 
+            # Handle DynamicCache vs tuple
+            # DynamicCache is used during generation, tuple during normal forward
+            use_cache_object = hasattr(past_key_values, "update")
+
             # === BLOCK LOOP - THE FIX ===
             # Call BlockBridge blocks directly instead of going through HF's loop
             # This preserves gradient flow for backward hooks
@@ -725,11 +729,16 @@ class TransformerBridge(nn.Module):
                 if output_hidden_states:
                     all_hidden_states = all_hidden_states + (residual,)  # type: ignore[operator]
 
+                # Get the past key-value for this layer
+                # For DynamicCache, pass the whole cache object (it handles layer indexing internally)
+                # For tuple, pass the specific layer's cache
+                layer_past = past_key_values if use_cache_object else past_key_values[i]
+
                 # Call BlockBridge directly, which internally calls the HF block
                 # and applies hooks correctly
                 block_outputs = block_bridge(
                     residual,
-                    past_key_values[i],
+                    layer_past,
                     cache_position,
                     attention_mask,
                     head_mask[i],

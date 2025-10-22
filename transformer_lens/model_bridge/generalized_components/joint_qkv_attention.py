@@ -436,7 +436,10 @@ class JointQKVAttentionBridge(AttentionBridge):
         v = self.v.hook_out(v)
 
         # Handle KV caching
-        past_key_value_arg = kwargs.get("past_key_value") or kwargs.get("layer_past")
+        # Don't use "or" because DynamicCache might evaluate to False in boolean context
+        past_key_value_arg = kwargs.get("past_key_value")
+        if past_key_value_arg is None:
+            past_key_value_arg = kwargs.get("layer_past")
         use_cache = kwargs.get("use_cache", False)
 
         # Transpose for attention computation: [batch, seq, heads, d_head] -> [batch, heads, seq, d_head]
