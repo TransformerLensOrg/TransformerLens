@@ -201,7 +201,9 @@ class AttentionBridge(GeneralizedComponent):
 
         # Detect if this attention uses joint QKV (c_attn) or split QKV (q_proj, k_proj, v_proj)
         has_c_attn = hasattr(hf_attn, "c_attn")
-        has_split_qkv = hasattr(hf_attn, "q_proj") and hasattr(hf_attn, "k_proj") and hasattr(hf_attn, "v_proj")
+        has_split_qkv = (
+            hasattr(hf_attn, "q_proj") and hasattr(hf_attn, "k_proj") and hasattr(hf_attn, "v_proj")
+        )
 
         if has_c_attn:
             # Joint QKV wrapper (GPT-2 style)
@@ -242,7 +244,9 @@ class AttentionBridge(GeneralizedComponent):
                 causal_mask = hf_attn.bias[:, :, key_length - query_length : key_length, :key_length]  # type: ignore[union-attr,index]
                 # Use -inf for masked positions to match HookedTransformer exactly
                 mask_value = float("-inf")
-                attn_scores = torch.where(causal_mask, attn_scores.to(attn_scores.dtype), mask_value)
+                attn_scores = torch.where(
+                    causal_mask, attn_scores.to(attn_scores.dtype), mask_value
+                )
 
                 # Apply attention mask if provided
                 if attention_mask is not None:
@@ -346,7 +350,7 @@ class AttentionBridge(GeneralizedComponent):
                 attn_scores = torch.matmul(query, key.transpose(-1, -2))
 
                 # Scale
-                attn_scores = attn_scores / (head_dim ** 0.5)
+                attn_scores = attn_scores / (head_dim**0.5)
 
                 # Apply causal mask (using attention_mask if provided)
                 if attention_mask is not None:
@@ -365,7 +369,10 @@ class AttentionBridge(GeneralizedComponent):
 
                         # Slice from the end to get the relevant portion
                         mask_to_use = attention_mask[
-                            :, :, mask_query_len - query_len : mask_query_len, mask_key_len - key_len : mask_key_len
+                            :,
+                            :,
+                            mask_query_len - query_len : mask_query_len,
+                            mask_key_len - key_len : mask_key_len,
                         ]
                         attn_scores = attn_scores + mask_to_use
                     elif attention_mask.dim() == 2:
@@ -411,7 +418,9 @@ class AttentionBridge(GeneralizedComponent):
                     return (attn_output, None, past_key_values)
 
         else:
-            raise RuntimeError(f"Attention component has neither c_attn nor split q_proj/k_proj/v_proj")
+            raise RuntimeError(
+                f"Attention component has neither c_attn nor split q_proj/k_proj/v_proj"
+            )
 
         # Replace the forward method
         hf_attn.forward = wrapped_forward

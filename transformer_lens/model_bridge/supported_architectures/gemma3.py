@@ -114,8 +114,6 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
                             "gate": LinearBridge(name="gate_proj"),
                             "in": LinearBridge(name="up_proj"),
                             "out": LinearBridge(name="down_proj"),
-                            # Gemma3MLP does not have layernorm inside the MLP
-                            # Layernorms are at the block level (pre/post_feedforward_layernorm)
                         },
                     ),
                 },

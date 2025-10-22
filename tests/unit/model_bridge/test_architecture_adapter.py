@@ -434,8 +434,15 @@ def test_translate_weight_processing_paths_gqa(adapter: Gemma3ArchitectureAdapte
         )
 
 
+@pytest.mark.skip(
+    reason="Gemma3 does not have MLP layernorm (mlp.ln). This test is for SoLU-style architectures."
+)
 def test_translate_weight_processing_solu_paths(adapter: Gemma3ArchitectureAdapter) -> None:
-    """Test translation of SoLU-specific paths used in weight processing."""
+    """Test translation of SoLU-specific paths used in weight processing.
+
+    Note: This test is skipped for Gemma3 as it doesn't have mlp.ln.
+    When testing SoLU or other architectures with MLP layernorms, this test should be enabled.
+    """
     # Test SoLU MLP layer norm paths (used in some older models)
     for layer in [0, 1]:
         assert (
