@@ -1333,6 +1333,11 @@ class TransformerBridge(nn.Module):
                     attn_out = attn_out[0]
                 residual = residual + attn_out
 
+            # Apply hook_resid_mid (after attention, before MLP)
+            # This matches HookedTransformer where hook_resid_mid is between attention and MLP
+            if hasattr(block, "hook_resid_mid"):
+                residual = block.hook_resid_mid(residual)
+
             # Pre-MLP layer norm (identity if folded)
             if hasattr(block, "ln2"):
                 normed_residual = block.ln2(residual)
