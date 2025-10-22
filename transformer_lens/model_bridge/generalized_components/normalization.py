@@ -141,7 +141,7 @@ class NormalizationBridge(GeneralizedComponent):
             x = x.to(self.config.dtype)  # type: ignore[union-attr]
         else:
             # If no config dtype, use the weight's dtype to ensure consistency
-            x = x.to(weight.dtype)
+            x = x.to(weight.dtype)  # type: ignore[arg-type]
 
         # Apply weight and bias (bias may be None for RMSNorm)
         if bias is not None:

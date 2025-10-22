@@ -289,7 +289,7 @@ class AttentionBridge(GeneralizedComponent):
 
         elif has_split_qkv:
             # Split QKV wrapper (Gemma3 style)
-            def wrapped_forward(
+            def wrapped_forward(  # type: ignore[misc]
                 hidden_states,
                 position_embeddings=None,  # Gemma3 uses position_embeddings (cos, sin)
                 past_key_values=None,
@@ -304,9 +304,9 @@ class AttentionBridge(GeneralizedComponent):
             ):
                 """Wrapped forward for split QKV attention."""
                 # Compute Q, K, V separately
-                query = hf_attn.q_proj(hidden_states)  # type: ignore[union-attr]
-                key = hf_attn.k_proj(hidden_states)  # type: ignore[union-attr]
-                value = hf_attn.v_proj(hidden_states)  # type: ignore[union-attr]
+                query = hf_attn.q_proj(hidden_states)  # type: ignore[union-attr,operator]
+                key = hf_attn.k_proj(hidden_states)  # type: ignore[union-attr,operator]
+                value = hf_attn.v_proj(hidden_states)  # type: ignore[union-attr,operator]
 
                 # Get num_heads from config (may differ for K/V with GQA)
                 # Gemma3 stores these in config, not as attributes
@@ -332,25 +332,25 @@ class AttentionBridge(GeneralizedComponent):
                     query, key = apply_rotary_pos_emb(query, key, cos, sin)
                 # Other models may use position_ids
                 elif hasattr(hf_attn, "rotary_emb") and position_ids is not None:
-                    cos, sin = hf_attn.rotary_emb(value, position_ids)  # type: ignore[union-attr]
+                    cos, sin = hf_attn.rotary_emb(value, position_ids)  # type: ignore[union-attr,operator]
                     query, key = apply_rotary_pos_emb(query, key, cos, sin)
 
                 # Apply Q/K normalization if present (Gemma3 has this)
                 if hasattr(hf_attn, "q_norm") and hf_attn.q_norm is not None:  # type: ignore[union-attr]
-                    query = hf_attn.q_norm(query)  # type: ignore[union-attr]
+                    query = hf_attn.q_norm(query)  # type: ignore[union-attr,operator]
                 if hasattr(hf_attn, "k_norm") and hf_attn.k_norm is not None:  # type: ignore[union-attr]
-                    key = hf_attn.k_norm(key)  # type: ignore[union-attr]
+                    key = hf_attn.k_norm(key)  # type: ignore[union-attr,operator]
 
                 # Repeat K/V heads for GQA if needed
                 if num_key_value_heads != num_heads:
-                    key = repeat_kv(key, num_heads // num_key_value_heads)
-                    value = repeat_kv(value, num_heads // num_key_value_heads)
+                    key = repeat_kv(key, num_heads // num_key_value_heads)  # type: ignore[operator]
+                    value = repeat_kv(value, num_heads // num_key_value_heads)  # type: ignore[operator]
 
                 # Compute attention scores
                 attn_scores = torch.matmul(query, key.transpose(-1, -2))
 
                 # Scale
-                attn_scores = attn_scores / (head_dim**0.5)
+                attn_scores = attn_scores / (head_dim**0.5)  # type: ignore[operator]
 
                 # Apply causal mask (using attention_mask if provided)
                 if attention_mask is not None:
@@ -391,7 +391,7 @@ class AttentionBridge(GeneralizedComponent):
 
                 # Apply dropout if present
                 if hasattr(hf_attn, "attn_dropout"):
-                    attn_weights = hf_attn.attn_dropout(attn_weights)  # type: ignore[union-attr]
+                    attn_weights = hf_attn.attn_dropout(attn_weights)  # type: ignore[union-attr,operator]
 
                 # Apply head mask if provided
                 if head_mask is not None:
@@ -405,11 +405,11 @@ class AttentionBridge(GeneralizedComponent):
 
                 # Merge heads
                 attn_output = attn_output.transpose(1, 2).contiguous()
-                new_shape = attn_output.size()[:-2] + (num_heads * head_dim,)
+                new_shape = attn_output.size()[:-2] + (num_heads * head_dim,)  # type: ignore[operator]
                 attn_output = attn_output.view(new_shape)
 
                 # Output projection
-                attn_output = hf_attn.o_proj(attn_output)  # type: ignore[union-attr]
+                attn_output = hf_attn.o_proj(attn_output)  # type: ignore[union-attr,operator]
 
                 # Return in HF format
                 if output_attentions:
