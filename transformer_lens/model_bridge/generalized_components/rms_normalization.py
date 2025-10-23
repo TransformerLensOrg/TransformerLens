@@ -44,5 +44,5 @@ class RMSNormalizationBridge(NormalizationBridge):
         # Override config to indicate this is RMSNorm
         # This ensures the parent NormalizationBridge forward method
         # uses the correct normalization formula
-        if not hasattr(self.config, "uses_rms_norm"):
+        if self.config is not None and not hasattr(self.config, "uses_rms_norm"):
             self.config.uses_rms_norm = True

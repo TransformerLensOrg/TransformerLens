@@ -184,8 +184,8 @@ class T5BlockBridge(GeneralizedComponent):
             # Apply hook_out (hook_resid_post)
             hidden_states = self.hook_out(hidden_states)
 
-            # Build outputs
-            outputs = (hidden_states,)
+            # Build outputs - use tuple concatenation to handle variable-length tuples
+            outputs: tuple[Any, ...] = (hidden_states,)
 
             if use_cache:
                 outputs = outputs + (present_key_value_state,)

@@ -15,6 +15,7 @@ from transformer_lens.model_bridge.generalized_components import (
     LinearBridge,
     MLPBridge,
     NormalizationBridge,
+    RMSNormalizationBridge,
     UnembeddingBridge,
 )
 
