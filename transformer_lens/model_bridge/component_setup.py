@@ -76,31 +76,30 @@ def setup_submodules(
     for module_name, submodule in component.submodules.items():
         if submodule.is_list_item:
             # Submodule is a BlockBridge - create a ModuleList of bridge components
+            if submodule.name is None:
+                raise ValueError(f"List item component {module_name} must have a name")
             bridged_list = setup_blocks_bridge(submodule, architecture_adapter, original_model)
             # Set the list on the bridge module as a proper module
             component.add_module(module_name, bridged_list)
             replace_remote_component(bridged_list, submodule.name, original_model)
         # Only add if not already registered as a PyTorch module
         if module_name not in component._modules:
-            # Get the original component for this submodule
-            remote_path = submodule.name
+            # Get original component (use parent if no container, e.g. OPT's MLP)
+            if submodule.name is None:
+                original_subcomponent = original_model
+            else:
+                remote_path = submodule.name
+                original_subcomponent = architecture_adapter.get_remote_component(
+                    original_model, remote_path
+                )
 
-            original_subcomponent = architecture_adapter.get_remote_component(
-                original_model, remote_path
-            )
-
-            # Set the original component
             submodule.set_original_component(original_subcomponent)
-
-            # Recursively set up submodules of this submodule
             setup_submodules(submodule, architecture_adapter, original_subcomponent)
-
-            # Add the submodule to the parent component
             component.add_module(module_name, submodule)
 
-            # Replace the original submodule with the bridged submodule in the parent
-            # Use the actual component's remote name in the parent component
-            replace_remote_component(submodule, submodule.name, original_model)
+            # Replace original with bridge (skip if no container)
+            if submodule.name is not None:
+                replace_remote_component(submodule, submodule.name, original_model)
 
 
 def setup_components(

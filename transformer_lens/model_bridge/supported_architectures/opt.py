@@ -11,6 +11,7 @@ from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
     BlockBridge,
     EmbeddingBridge,
+    LinearBridge,
     MLPBridge,
     NormalizationBridge,
     PosEmbedBridge,
@@ -72,7 +73,13 @@ class OptArchitectureAdapter(ArchitectureAdapter):
                     "ln1": NormalizationBridge(name="self_attn_layer_norm", config=self.cfg),
                     "attn": AttentionBridge(name="self_attn", config=self.cfg),
                     "ln2": NormalizationBridge(name="final_layer_norm", config=self.cfg),
-                    "mlp": MLPBridge(name="mlp"),
+                    "mlp": MLPBridge(
+                        name=None,  # No MLP container; fc1/fc2 are on block
+                        submodules={
+                            "in": LinearBridge(name="fc1"),
+                            "out": LinearBridge(name="fc2"),
+                        },
+                    ),
                 },
             ),
             "ln_final": NormalizationBridge(name="model.decoder.final_layer_norm", config=self.cfg),

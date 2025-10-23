@@ -92,13 +92,14 @@ class LinearBridge(GeneralizedComponent):
             return
 
         # Determine weight keys based on component name and context
-        if "c_fc" in self.name or "input" in self.name:
+        component_name = self.name or ""
+        if "c_fc" in component_name or "input" in component_name:
             weight_key = "W_in"
             bias_key = "b_in"
-        elif "c_proj" in self.name and "mlp" in str(type(self)).lower():
+        elif "c_proj" in component_name and "mlp" in str(type(self)).lower():
             weight_key = "W_out"
             bias_key = "b_out"
-        elif "c_proj" in self.name and "attn" in str(type(self)).lower():
+        elif "c_proj" in component_name and "attn" in str(type(self)).lower():
             weight_key = "W_O"
             bias_key = "b_O"
         else:

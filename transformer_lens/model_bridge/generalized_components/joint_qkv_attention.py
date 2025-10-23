@@ -308,9 +308,12 @@ class JointQKVAttentionBridge(AttentionBridge):
             or self.v.hook_out.has_hooks()
         )
 
-        # In compatibility mode with hooks, we need to use a different approach
-        # to ensure identical behavior to HookedTransformer
-        if getattr(self, "compatibility_mode", False) and has_hooks:
+        # In compatibility mode, ALWAYS use the split Q/K/V path to ensure
+        # backward hooks fire 3 times through ln1 (matching HookedTransformer)
+        # This is critical for backward hook parity - even without user hooks on q/k/v,
+        # the split computation creates 3 separate backward paths that are needed
+        # for ln1 backward hooks to match HookedTransformer's behavior
+        if getattr(self, "compatibility_mode", False):
             return self._compatibility_mode_forward_with_hooks(*args, **kwargs)
 
         if has_hooks:
@@ -349,36 +352,39 @@ class JointQKVAttentionBridge(AttentionBridge):
         # Apply input hook
         input_tensor = self.hook_in(input_tensor)
 
-        # Get the original component
         original_component = self.original_component
         assert original_component is not None
 
-        # Get processed weights from the bridge components
-        # The bridge should have the HookedTransformer-style processed weights
-        # We need to extract them and compute V exactly like HookedTransformer
-
-        # Import the exact function HookedTransformer uses
-        from transformer_lens.utilities.attention import simple_attn_linear
-
-        # Get the weights from the LinearBridge components - these should contain
-        # the processed HookedTransformer weights in the correct format
+        # Extract HookedTransformer-compatible weights if not already done
         if not hasattr(self, "_hooked_weights_extracted") or not self._hooked_weights_extracted:
             self._extract_hooked_transformer_weights()
 
-        # Check if we successfully extracted weights
+            # In compatibility mode with split Q/K/V, we don't need conversion rules
+            # because simple_attn_linear already produces tensors in the correct shape [batch, seq, heads, d_head]
+            # Disable conversion rules permanently to avoid issues during backward pass
+            if self._hooked_weights_extracted:
+                self.q.hook_in.hook_conversion = None
+                self.k.hook_in.hook_conversion = None
+                self.v.hook_in.hook_conversion = None
+                self.q.hook_out.hook_conversion = None
+                self.k.hook_out.hook_conversion = None
+                self.v.hook_out.hook_conversion = None
+
+        # Fall back to original component if weight extraction failed
         if (
             not self._hooked_weights_extracted
+            or not hasattr(self, "_W_Q")
+            or not hasattr(self, "_W_K")
+            or not hasattr(self, "_W_V")
             or self._W_Q is None
             or self._W_K is None
             or self._W_V is None
         ):
             return super().forward(*args, **kwargs)
 
-        # Import the exact function HookedTransformer uses
         from transformer_lens.utilities.attention import simple_attn_linear
 
-        # Compute Q, K, V using exactly the same method as HookedTransformer
-        # Cache zero bias tensors if bias is None to avoid recreating on every forward pass
+        # Create zero bias tensors if needed (cached to avoid recreation on every forward)
         if self._b_Q is None:
             self._b_Q = torch.zeros(
                 self._W_Q.shape[0],
@@ -401,102 +407,53 @@ class JointQKVAttentionBridge(AttentionBridge):
                 device=self._W_V.device,
             )
 
-        q = simple_attn_linear(input_tensor, self._W_Q, self._b_Q)
-        k = simple_attn_linear(input_tensor, self._W_K, self._b_K)
-        v = simple_attn_linear(input_tensor, self._W_V, self._b_V)
+        # CRITICAL: To match HookedTransformer's behavior where ln1 backward hooks fire 3 times,
+        # we need to call ln1 THREE SEPARATE TIMES (once for Q, K, V inputs).
+        # HookedTransformer does: self.ln1(query_input), self.ln1(key_input), self.ln1(value_input)
+        # This creates 3 separate forward passes through ln1, which means 3 backward hook firings.
 
-        # Apply input hooks (these correspond to hook_q_input, hook_k_input, hook_v_input in HookedTransformer)
-        # Temporarily disable hook conversion for input hooks as well
-        q_in_conversion = (
-            self.q.hook_in.hook_conversion if hasattr(self.q.hook_in, "hook_conversion") else None
-        )
-        k_in_conversion = (
-            self.k.hook_in.hook_conversion if hasattr(self.k.hook_in, "hook_conversion") else None
-        )
-        v_in_conversion = (
-            self.v.hook_in.hook_conversion if hasattr(self.v.hook_in, "hook_conversion") else None
-        )
+        # Check if we have ln1 reference (set during compatibility mode setup)
+        if hasattr(self, "_ln1") and self._ln1 is not None:
+            # Input tensor is pre-ln1 residual, call ln1 three times
+            q_input = self.q.hook_in(self._ln1(input_tensor))
+            k_input = self.k.hook_in(self._ln1(input_tensor))
+            v_input = self.v.hook_in(self._ln1(input_tensor))
+        else:
+            # Fallback: input tensor is already post-ln1, use it directly
+            # This won't fire ln1 hooks 3 times, but keeps functionality working
+            q_input = self.q.hook_in(input_tensor)
+            k_input = self.k.hook_in(input_tensor)
+            v_input = self.v.hook_in(input_tensor)
 
-        if hasattr(self.q.hook_in, "hook_conversion"):
-            self.q.hook_in.hook_conversion = None
-        if hasattr(self.k.hook_in, "hook_conversion"):
-            self.k.hook_in.hook_conversion = None
-        if hasattr(self.v.hook_in, "hook_conversion"):
-            self.v.hook_in.hook_conversion = None
+        # Compute Q, K, V using the separate input tensors
+        q = simple_attn_linear(q_input, self._W_Q, self._b_Q)
+        k = simple_attn_linear(k_input, self._W_K, self._b_K)
+        v = simple_attn_linear(v_input, self._W_V, self._b_V)
 
-        try:
-            q = self.q.hook_in(q)
-            k = self.k.hook_in(k)
-            v = self.v.hook_in(v)
-        finally:
-            if q_in_conversion is not None:
-                self.q.hook_in.hook_conversion = q_in_conversion
-            if k_in_conversion is not None:
-                self.k.hook_in.hook_conversion = k_in_conversion
-            if v_in_conversion is not None:
-                self.v.hook_in.hook_conversion = v_in_conversion
+        # Apply output hooks
+        q = self.q.hook_out(q)
+        k = self.k.hook_out(k)
+        v = self.v.hook_out(v)
 
-        # Apply hooks directly without any conversion - exactly like HookedTransformer
-        # HookedTransformer doesn't use any hook conversion for V values in simple_attn_linear output
-        # We need to bypass the conversion entirely and apply hooks to the raw [batch, seq, heads, d_head] tensors
-
-        # Temporarily disable hook conversion to match HookedTransformer exactly
-        q_conversion = (
-            self.q.hook_out.hook_conversion if hasattr(self.q.hook_out, "hook_conversion") else None
-        )
-        k_conversion = (
-            self.k.hook_out.hook_conversion if hasattr(self.k.hook_out, "hook_conversion") else None
-        )
-        v_conversion = (
-            self.v.hook_out.hook_conversion if hasattr(self.v.hook_out, "hook_conversion") else None
-        )
-
-        # Disable conversions temporarily
-        if hasattr(self.q.hook_out, "hook_conversion"):
-            self.q.hook_out.hook_conversion = None
-        if hasattr(self.k.hook_out, "hook_conversion"):
-            self.k.hook_out.hook_conversion = None
-        if hasattr(self.v.hook_out, "hook_conversion"):
-            self.v.hook_out.hook_conversion = None
-
-        try:
-            # Apply hooks directly to the [batch, seq, heads, d_head] tensors
-            q = self.q.hook_out(q)
-            k = self.k.hook_out(k)
-            v = self.v.hook_out(v)
-        finally:
-            # Restore conversions
-            if q_conversion is not None:
-                self.q.hook_out.hook_conversion = q_conversion
-            if k_conversion is not None:
-                self.k.hook_out.hook_conversion = k_conversion
-            if v_conversion is not None:
-                self.v.hook_out.hook_conversion = v_conversion
-
-        # Handle KV caching if past_key_value is provided
-        past_key_value_arg = kwargs.get("past_key_value", None)
+        # Handle KV caching
+        # Don't use "or" because DynamicCache might evaluate to False in boolean context
+        past_key_value_arg = kwargs.get("past_key_value")
         if past_key_value_arg is None:
-            past_key_value_arg = kwargs.get("layer_past", None)
+            past_key_value_arg = kwargs.get("layer_past")
         use_cache = kwargs.get("use_cache", False)
 
-        # Now continue with attention computation using the hooked Q, K, V values
         # Transpose for attention computation: [batch, seq, heads, d_head] -> [batch, heads, seq, d_head]
         q = q.transpose(1, 2)
         k_new = k.transpose(1, 2)
         v_new = v.transpose(1, 2)
 
-        # Handle KV cache using DynamicCache API
         if past_key_value_arg is not None and hasattr(past_key_value_arg, "update"):
-            # Get layer index
             layer_idx = getattr(self, "layer_idx", 0)
-
-            # Use cache.update() to concatenate with past K/V and return full K/V
             k, v = past_key_value_arg.update(k_new, v_new, layer_idx)
         else:
             k = k_new
             v = v_new
 
-        # Rest of attention computation (same as HookedTransformer)
         import torch.nn.functional as F
 
         head_dim = q.shape[-1]
@@ -543,32 +500,32 @@ class JointQKVAttentionBridge(AttentionBridge):
 
         # Apply output projection using the W_O weight
         if self._W_O is not None:
-            # Use the extracted W_O matrix - reshape attn_output to [batch, seq, heads, d_head]
+            # Reshape and apply output projection
             batch_size, seq_len = attn_output.shape[:2]
             n_heads = self._W_O.shape[0]
             d_head = self._W_O.shape[1]
             attn_reshaped = attn_output.view(batch_size, seq_len, n_heads, d_head)
 
-            # Apply hook_z (o.hook_in) - this is the z tensor before output projection
-            # In compatibility mode, this hook is aliased as "blocks.L.attn.hook_z"
+            # Apply hook_z (aliased as "blocks.L.attn.hook_z" in compatibility mode)
             if hasattr(self, "o") and hasattr(self.o, "hook_in"):
                 attn_reshaped = self.o.hook_in(attn_reshaped)
 
-            # Apply W_O: [batch, seq, heads, d_head] @ [heads, d_head, d_model] -> [batch, seq, heads, d_model]
+            # Apply W_O and sum across heads
+            # Using einsum provides better numerical stability in forward pass
             attn_output = torch.einsum("bsnh,nhd->bsnd", attn_reshaped, self._W_O)
-            # Sum across heads: [batch, seq, heads, d_model] -> [batch, seq, d_model]
             attn_output = attn_output.sum(dim=2)
-            if self._b_O is not None:
-                attn_output = attn_output + self._b_O
+
+            try:
+                if hasattr(self, "_b_O") and self._b_O is not None:
+                    attn_output = attn_output + self._b_O
+            except AttributeError:
+                pass
         elif hasattr(original_component, "c_proj"):
             attn_output = original_component.c_proj(attn_output)  # type: ignore[operator]
 
-        # Apply output hook
         attn_output = self.hook_out(attn_output)
 
-        # Return format depends on whether we're using KV cache
-        # HuggingFace format with cache: (attn_output, past_key_value)
-        # Without cache: (attn_output, attn_weights)
+        # Return format: (attn_output, cache/weights)
         if use_cache and past_key_value_arg is not None:
             return (attn_output, past_key_value_arg)
         else:
@@ -1041,6 +998,31 @@ class JointQKVAttentionBridge(AttentionBridge):
 
     def _extract_hooked_transformer_weights(self) -> None:
         """Extract weights in HookedTransformer format for exact compatibility."""
+        # If weights were already set via set_processed_weights (e.g., from architecture adapter),
+        # use those weights directly
+        if (
+            hasattr(self, "_processed_W_Q")
+            and hasattr(self, "_processed_W_K")
+            and hasattr(self, "_processed_W_V")
+        ):
+            # Use the processed weights directly as tensors
+            # We don't need nn.Parameter because the real solution for backward hook parity
+            # is calling ln1 three times (which we do below), not creating separate Parameters
+            self._W_Q = self._processed_W_Q
+            self._W_K = self._processed_W_K
+            self._W_V = self._processed_W_V
+            self._b_Q = self._processed_b_Q
+            self._b_K = self._processed_b_K
+            self._b_V = self._processed_b_V
+
+            if hasattr(self, "_processed_W_O"):
+                self._W_O = self._processed_W_O
+            if hasattr(self, "_processed_b_O"):
+                self._b_O = self._processed_b_O
+
+            self._hooked_weights_extracted = True
+            return
+
         # Use cached reference model if available
         try:
             if hasattr(self, "_reference_model") and self._reference_model is not None:
@@ -1066,7 +1048,11 @@ class JointQKVAttentionBridge(AttentionBridge):
         except Exception:
             pass
 
-        # Fallback: Load a new reference model
+        # Fallback: Load a new reference model (expensive, rarely used)
+        # Skip if _processed_weights is None (indicates no_processing=True was used)
+        if self._processed_weights is None:
+            return
+
         try:
             from transformer_lens import HookedTransformer
 
@@ -1115,7 +1101,6 @@ class JointQKVAttentionBridge(AttentionBridge):
         except Exception:
             pass
 
-        # Final fallback: Process weights manually
         if self._processed_weights is None:
             try:
                 self.process_weights(
@@ -1128,24 +1113,22 @@ class JointQKVAttentionBridge(AttentionBridge):
             except Exception as e:
                 print(f"⚠️  Failed to process weights manually: {e}")
 
-        # Extract the weights in the exact format HookedTransformer uses
         if self._processed_weights is not None:
-            self._W_Q = self._processed_weights["W_Q"]  # [n_heads, d_model, d_head]
-            self._W_K = self._processed_weights["W_K"]  # [n_heads, d_model, d_head]
-            self._W_V = self._processed_weights["W_V"]  # [n_heads, d_model, d_head]
-            self._b_Q = self._processed_weights["b_Q"]  # [n_heads, d_head]
-            self._b_K = self._processed_weights["b_K"]  # [n_heads, d_head]
-            self._b_V = self._processed_weights["b_V"]  # [n_heads, d_head]
+            self._W_Q = self._processed_weights["W_Q"]
+            self._W_K = self._processed_weights["W_K"]
+            self._W_V = self._processed_weights["W_V"]
+            self._b_Q = self._processed_weights["b_Q"]
+            self._b_K = self._processed_weights["b_K"]
+            self._b_V = self._processed_weights["b_V"]
 
             if "W_O" in self._processed_weights:
-                self._W_O = self._processed_weights["W_O"]  # [n_heads, d_head, d_model]
+                self._W_O = self._processed_weights["W_O"]
             if "b_O" in self._processed_weights:
-                self._b_O = self._processed_weights["b_O"]  # [d_model]
+                self._b_O = self._processed_weights["b_O"]
 
             print(f"✅ Extracted HookedTransformer weights from processed weights")
             self._hooked_weights_extracted = True
         else:
-            # Last resort: print error and continue without weights
             print(f"⚠️  Unable to extract HookedTransformer weights for {self.name}")
             print("Will attempt to use original component computation")
             self._hooked_weights_extracted = False

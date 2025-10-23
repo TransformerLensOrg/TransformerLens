@@ -26,7 +26,9 @@ def collect_all_submodules_of_component(
         Dictionary mapping submodule names to their respective submodules
     """
     for component_submodule in component.submodules.values():
-        submodules[block_prefix + component_submodule.name] = component_submodule
+        # Skip components without names (e.g., OPT's MLP container)
+        if component_submodule.name is not None:
+            submodules[block_prefix + component_submodule.name] = component_submodule
 
         # If the component is a list item, we need to collect all submodules of the block bridge
         if component_submodule.is_list_item:
@@ -53,6 +55,8 @@ def collect_components_of_block_bridge(
     """
 
     # Retrieve the remote component list from the adapter (we need a ModuleList to iterate over)
+    if component.name is None:
+        raise ValueError("Block bridge component must have a name")
     remote_module_list = model.adapter.get_remote_component(model.original_model, component.name)
 
     # Make sure the remote component is a ModuleList

@@ -64,9 +64,13 @@ class NormalizationBridge(GeneralizedComponent):
 
         hidden_states = self.hook_in(hidden_states)
 
-        # Handle different normalization modes based on runtime config
+        # Check if we should use HuggingFace's autograd directly (for exact gradient matching)
+        # This is enabled when use_hf_autograd is set on the config
+        if hasattr(self.config, "use_hf_autograd") and self.config.use_hf_autograd:
+            # Use HuggingFace LayerNorm's forward directly to preserve exact computational graph
+            result = self._hf_autograd_forward(hidden_states)
         # Check if we should use LayerNormPre behavior (when layer norm folding is enabled)
-        if hasattr(self.config, "layer_norm_folding") and self.config.layer_norm_folding:
+        elif hasattr(self.config, "layer_norm_folding") and self.config.layer_norm_folding:
             # LayerNormPre mode: center and normalize without learnable parameters
             # This matches LayerNormPre behavior exactly
             result = self._layernorm_pre_forward(hidden_states)
@@ -81,7 +85,9 @@ class NormalizationBridge(GeneralizedComponent):
                     hidden_states.pow(2).mean(-1, keepdim=True) + getattr(self.config, "eps", 1e-5)
                 ).sqrt()
             )
-            hidden_states = self.hook_normalized(hidden_states / scale)
+            # Match HookedTransformer's dtype casting after normalization
+            dtype = getattr(self.config, "dtype", hidden_states.dtype)
+            hidden_states = self.hook_normalized(hidden_states / scale).to(dtype)
 
             # Apply learnable parameters if not folding layer norms
             if getattr(self.config, "uses_rms_norm", False):
@@ -95,6 +101,53 @@ class NormalizationBridge(GeneralizedComponent):
 
         output = self.hook_out(result)
         return output
+
+    def _hf_autograd_forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass matching HookedTransformer's LayerNorm computation exactly.
+
+        This replicates HookedTransformer's LayerNorm forward method to ensure
+        the same computational graph and gradients.
+
+        Args:
+            x: Input tensor
+
+        Returns:
+            Normalized output tensor
+        """
+        # Get parameters from the original component
+        if self.original_component is None:
+            raise RuntimeError(f"Original component not set for {self.name}")
+
+        eps = self.original_component.eps
+        weight = self.original_component.weight
+        bias = getattr(self.original_component, "bias", None)  # RMSNorm doesn't have bias
+
+        # Match HookedTransformer LayerNorm computation exactly
+        # dtype handling: convert to float32 if not float32/float64
+        original_dtype = x.dtype
+        if (
+            self.config is not None
+            and hasattr(self.config, "dtype")
+            and self.config.dtype not in [torch.float32, torch.float64]
+        ):
+            x = x.to(torch.float32)
+
+        x = x - x.mean(-1, keepdim=True)
+        scale = self.hook_scale((x.pow(2).mean(-1, keepdim=True) + eps).sqrt())  # type: ignore[operator]
+        x = self.hook_normalized(x / scale)
+
+        # Convert back to original dtype or config dtype
+        if self.config is not None and hasattr(self.config, "dtype"):
+            x = x.to(self.config.dtype)  # type: ignore[union-attr]
+        else:
+            # If no config dtype, use the weight's dtype to ensure consistency
+            x = x.to(weight.dtype)  # type: ignore[arg-type]
+
+        # Apply weight and bias (bias may be None for RMSNorm)
+        if bias is not None:
+            return x * weight + bias  # type: ignore[operator]
+        else:
+            return x * weight  # type: ignore[operator]
 
     def _layernorm_pre_forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass matching LayerNormPre behavior exactly.
@@ -142,13 +195,14 @@ class NormalizationBridge(GeneralizedComponent):
             return
 
         # Determine weight keys based on component name
-        if "ln_f" in self.name or "final" in self.name:
+        component_name = self.name or ""
+        if "ln_f" in component_name or "final" in component_name:
             weight_key = "w"
             bias_key = "b"
-        elif "ln_1" in self.name:
+        elif "ln_1" in component_name:
             weight_key = "w"
             bias_key = "b"
-        elif "ln_2" in self.name:
+        elif "ln_2" in component_name:
             weight_key = "w"
             bias_key = "b"
         else:

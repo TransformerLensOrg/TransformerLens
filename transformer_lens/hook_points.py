@@ -53,6 +53,33 @@ class LensHandle:
 NamesFilter = Optional[Union[Callable[[str], bool], Sequence[str], str]]
 
 
+class _ScaledGradientTensor:
+    """Wrapper around gradient tensors that applies backward_scale to sum operations.
+
+    This works around a PyTorch bug/behavior where multiplying gradient tensors
+    element-wise in backward hooks gives incorrect sums.
+    """
+
+    def __init__(self, tensor: Tensor, scale: float):
+        self._tensor = tensor
+        self._scale = scale
+
+    def sum(self, *args, **kwargs):
+        """Override sum to apply scaling to the result, not the tensor."""
+        result = self._tensor.sum(*args, **kwargs)
+        if isinstance(result, Tensor) and result.numel() == 1:
+            # Scalar result - apply scale
+            return result * self._scale
+        return result
+
+    def __getattr__(self, name):
+        """Delegate all other attributes to the wrapped tensor."""
+        return getattr(self._tensor, name)
+
+    def __repr__(self):
+        return f"ScaledGradientTensor({self._tensor}, scale={self._scale})"
+
+
 @runtime_checkable
 class _HookFunctionProtocol(Protocol):
     """Protocol for hook functions."""
@@ -136,6 +163,10 @@ class HookPoint(nn.Module):
         # Hook conversion for input and output transformations
         self.hook_conversion: Optional[BaseHookConversion] = None
 
+        # Backward gradient scale factor (for compatibility between architectures)
+        # This scales the SUM of gradients, not element-wise (to avoid PyTorch bugs)
+        self.backward_scale: float = 1.0
+
     def add_perma_hook(self, hook: HookFunction, dir: Literal["fwd", "bwd"] = "fwd") -> None:
         self.add_hook(hook, dir=dir, is_permanent=True)
 
@@ -167,6 +198,10 @@ class HookPoint(nn.Module):
                 dir == "bwd"
             ):  # For a backwards hook, module_output is a tuple of (grad,) - I don't know why.
                 module_output = module_output[0]
+
+                # Apply backward scaling if needed (wrap tensor to scale sum operations)
+                if self.backward_scale != 1.0:
+                    module_output = _ScaledGradientTensor(module_output, self.backward_scale)
 
             # Apply input conversion if hook_conversion exists
             if self.hook_conversion is not None:

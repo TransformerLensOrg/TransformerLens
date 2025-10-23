@@ -616,6 +616,179 @@ class TransformerBridge(nn.Module):
         lines.extend(self._format_component_mapping(mapping, indent=1))
         return "\n".join(lines)
 
+    def _fix_backward_hook_gradients(self) -> None:
+        """Fix backward hook gradients by overriding HF transformer forward.
+
+        The HuggingFace transformer's forward method unpacks tuples between blocks
+        in a way that breaks gradient flow for backward hooks. This override calls
+        BlockBridge blocks directly in sequence, matching HookedTransformer's approach.
+
+        Testing shows this makes backward hook gradients match HookedTransformer exactly.
+        """
+        # Check if model has a transformer attribute (GPT-2, GPT-J style models)
+        if not hasattr(self.original_model, "transformer"):
+            # For models without .transformer (e.g., BERT), we'd need model-specific logic
+            # For now, only implement for GPT-2 style models
+            return
+
+        transformer = self.original_model.transformer
+        assert isinstance(
+            transformer, nn.Module
+        ), f"Expected transformer to be a Module, got {type(transformer)}"
+
+        # Store original forward method
+        original_transformer_forward = transformer.forward
+
+        # Create custom forward that calls BlockBridge blocks directly
+        def fixed_transformer_forward(  # type: ignore[misc]
+            input_ids=None,
+            past_key_values=None,
+            cache_position=None,
+            attention_mask=None,
+            token_type_ids=None,
+            position_ids=None,
+            head_mask=None,
+            inputs_embeds=None,
+            encoder_hidden_states=None,
+            encoder_attention_mask=None,
+            use_cache=None,
+            output_attentions=None,
+            output_hidden_states=None,
+            return_dict=None,
+            **kwargs,
+        ):
+            """Custom transformer forward that preserves gradient flow for backward hooks."""
+
+            # === EMBEDDING STAGE (use HF's logic) ===
+            if input_ids is not None and inputs_embeds is not None:
+                raise ValueError("You cannot specify both input_ids and inputs_embeds")
+            elif input_ids is not None:
+                input_shape = input_ids.size()
+                input_ids = input_ids.view(-1, input_shape[-1])
+                batch_size = input_ids.shape[0]
+            elif inputs_embeds is not None:
+                input_shape = inputs_embeds.size()[:-1]
+                batch_size = inputs_embeds.shape[0]
+            else:
+                raise ValueError("You have to specify either input_ids or inputs_embeds")
+
+            device = input_ids.device if input_ids is not None else inputs_embeds.device
+
+            if inputs_embeds is None:
+                inputs_embeds = transformer.wte(input_ids)  # type: ignore[union-attr,operator]
+
+            if position_ids is None:
+                if cache_position is not None:
+                    position_ids = cache_position.unsqueeze(0)
+                else:
+                    position_ids = torch.arange(0, input_shape[-1], dtype=torch.long, device=device)
+                    position_ids = position_ids.unsqueeze(0)
+
+            position_embeds = transformer.wpe(position_ids)  # type: ignore[union-attr,operator]
+            hidden_states = inputs_embeds + position_embeds
+
+            if token_type_ids is not None:
+                token_type_ids = token_type_ids.view(-1, input_shape[-1])
+                token_type_embeds = transformer.wte(token_type_ids)  # type: ignore[union-attr,operator]
+                hidden_states = hidden_states + token_type_embeds
+
+            hidden_states = transformer.drop(hidden_states)  # type: ignore[union-attr,operator]
+
+            # Prepare masks
+            if attention_mask is not None:
+                attention_mask = attention_mask.view(batch_size, -1)
+                attention_mask = attention_mask[:, None, None, :]
+                attention_mask = attention_mask.to(dtype=hidden_states.dtype)
+                attention_mask = (1.0 - attention_mask) * torch.finfo(hidden_states.dtype).min
+
+            if head_mask is not None:
+                if head_mask.dim() == 1:
+                    head_mask = head_mask.unsqueeze(0).unsqueeze(0).unsqueeze(-1).unsqueeze(-1)
+                    head_mask = head_mask.expand(len(transformer.h), -1, -1, -1, -1)  # type: ignore[arg-type,union-attr]
+                elif head_mask.dim() == 2:
+                    head_mask = head_mask.unsqueeze(1).unsqueeze(-1).unsqueeze(-1)
+            else:
+                head_mask = [None] * len(transformer.h)  # type: ignore[arg-type,union-attr]
+
+            if past_key_values is None:
+                past_key_values = tuple([None] * len(transformer.h))  # type: ignore[arg-type,union-attr]
+
+            # Handle DynamicCache vs tuple
+            # DynamicCache is used during generation, tuple during normal forward
+            use_cache_object = hasattr(past_key_values, "update")
+
+            # === BLOCK LOOP - THE FIX ===
+            # Call BlockBridge blocks directly instead of going through HF's loop
+            # This preserves gradient flow for backward hooks
+
+            residual = hidden_states
+            all_hidden_states = () if output_hidden_states else None
+            all_attentions = () if output_attentions else None
+
+            for i, block_bridge in enumerate(self.blocks):
+                if output_hidden_states:
+                    all_hidden_states = all_hidden_states + (residual,)  # type: ignore[operator]
+
+                # Get the past key-value for this layer
+                # For DynamicCache, pass the whole cache object (it handles layer indexing internally)
+                # For tuple, pass the specific layer's cache
+                layer_past = past_key_values if use_cache_object else past_key_values[i]
+
+                # Call BlockBridge directly, which internally calls the HF block
+                # and applies hooks correctly
+                block_outputs = block_bridge(
+                    residual,
+                    layer_past,
+                    cache_position,
+                    attention_mask,
+                    head_mask[i],
+                    encoder_hidden_states,
+                    encoder_attention_mask=encoder_attention_mask,
+                    use_cache=use_cache,
+                    output_attentions=output_attentions,
+                    **kwargs,
+                )
+
+                # Extract hidden states from output tuple
+                if isinstance(block_outputs, tuple):
+                    residual = block_outputs[0]
+                    if output_attentions and len(block_outputs) > 1:
+                        all_attentions = all_attentions + (block_outputs[1],)  # type: ignore[operator,assignment]
+                else:
+                    residual = block_outputs
+
+            # === FINAL LAYER NORM ===
+            hidden_states = residual
+
+            if transformer.ln_f is not None:
+                hidden_states = transformer.ln_f(hidden_states)  # type: ignore[union-attr,operator]
+
+            if output_hidden_states:
+                all_hidden_states = all_hidden_states + (hidden_states,)  # type: ignore[operator]
+
+            # Return in HF format
+            if return_dict:
+                from transformers.modeling_outputs import (
+                    BaseModelOutputWithPastAndCrossAttentions,
+                )
+
+                return BaseModelOutputWithPastAndCrossAttentions(
+                    last_hidden_state=hidden_states,
+                    past_key_values=None,  # Simplified - could be extended
+                    hidden_states=all_hidden_states,
+                    attentions=all_attentions,
+                )
+            else:
+                outputs: tuple[Any, ...] = (hidden_states,)
+                if output_hidden_states:
+                    outputs = outputs + (all_hidden_states,)  # type: ignore[assignment]
+                if output_attentions:
+                    outputs = outputs + (all_attentions,)  # type: ignore[assignment]
+                return outputs
+
+        # Replace transformer's forward method
+        transformer.forward = fixed_transformer_forward
+
     def enable_compatibility_mode(
         self, disable_warnings: bool = False, no_processing: bool = False
     ) -> None:
@@ -646,8 +819,284 @@ class TransformerBridge(nn.Module):
         self.clear_hook_registry()
         self._initialize_hook_registry()
 
+        # Fix backward hook gradients by overriding transformer forward
+        self._fix_backward_hook_gradients()
+
+        # Setup attention hooks for no_processing mode to match HookedTransformer
+        if no_processing:
+            # Enable native PyTorch autograd in normalization for exact gradient matching
+            # Set dynamically on config object (not a typed attribute)
+            self.cfg.use_hf_autograd = True  # type: ignore[attr-defined]
+            self._enable_native_layernorm_autograd()
+            self._setup_no_processing_hooks()
+            # Extract split Q/K/V weights for attention layers (uses architecture adapter)
+            self._enable_split_qkv_attention()
+            # Create hook_mlp_out aliases to match HookedTransformer
+            self._create_hook_mlp_out_aliases()
+            # Re-initialize hook registry to pick up the aliases
+            self.clear_hook_registry()
+            self._initialize_hook_registry()
+
         if not no_processing:
             self.process_compatibility_weights()
+
+    def _setup_no_processing_hooks(self) -> None:
+        """Setup hooks for no_processing mode in all attention layers.
+
+        This delegates to each AttentionBridge's setup_no_processing_hooks() method,
+        which handles:
+        1. hook_z reshaping for proper head dimensions
+        2. Wrapping HF attention forward to capture scores before softmax
+        """
+        for block in self.blocks:
+            if hasattr(block, "attn") and hasattr(block.attn, "setup_no_processing_hooks"):
+                block.attn.setup_no_processing_hooks()
+
+    def _enable_split_qkv_attention(self) -> None:
+        """Enable split Q/K/V computation for attention layers in no_processing mode.
+
+        This extracts Q/K/V weights from HuggingFace attention components using the
+        architecture adapter and sets them on JointQKVAttentionBridge instances.
+        This enables 3 backward paths through ln1 (matching HookedTransformer).
+
+        Unlike enable_ht_computation_for_bridge, this ONLY affects attention layers,
+        leaving MLPs to use their original HF weights.
+        """
+        for block in self.blocks:
+            if hasattr(block, "attn") and hasattr(block, "original_component"):
+                hf_block = block.original_component
+                if hasattr(hf_block, "attn"):
+                    # Use architecture adapter to extract and split Q/K/V weights
+                    self.adapter._enable_ht_attention(block.attn, hf_block.attn)
+
+                    # Store reference to ln1 in attention module
+                    # This allows attention to call ln1 three times (matching HookedTransformer)
+                    # which causes ln1 backward hooks to fire 3 times
+                    ln1 = None
+                    if hasattr(block, "ln1"):
+                        ln1 = block.ln1
+                    elif hasattr(block, "ln_1"):
+                        ln1 = block.ln_1
+                    elif hasattr(block, "input_layernorm"):
+                        ln1 = block.input_layernorm
+
+                    if ln1 is not None:
+                        block.attn._ln1 = ln1
+                        # Mark that attention should receive pre-ln1 input
+                        block.attn._expects_pre_ln1_input = True
+
+    def _enable_native_layernorm_autograd(self) -> None:
+        """Enable native PyTorch LayerNorm autograd in all NormalizationBridge components.
+
+        This sets use_hf_autograd=True on each normalization component's config,
+        which makes them use the _hf_autograd_forward method that preserves
+        PyTorch's native LayerNorm backward graph for exact gradient matching.
+        """
+        from transformer_lens.model_bridge.generalized_components.normalization import (
+            NormalizationBridge,
+        )
+
+        # Enable for ln_f (final layer norm)
+        if hasattr(self, "ln_f") and isinstance(self.ln_f, NormalizationBridge):
+            if self.ln_f.config is not None:
+                self.ln_f.config.use_hf_autograd = True
+
+        # Enable for all block normalization layers
+        for block in self.blocks:
+            # ln1 (pre-attention norm)
+            if hasattr(block, "ln1") and isinstance(block.ln1, NormalizationBridge):
+                if block.ln1.config is not None:
+                    block.ln1.config.use_hf_autograd = True
+
+            if hasattr(block, "ln_1") and isinstance(block.ln_1, NormalizationBridge):
+                if block.ln_1.config is not None:
+                    block.ln_1.config.use_hf_autograd = True
+
+            if hasattr(block, "input_layernorm") and isinstance(
+                block.input_layernorm, NormalizationBridge
+            ):
+                if block.input_layernorm.config is not None:
+                    block.input_layernorm.config.use_hf_autograd = True
+
+            # ln2 (pre-MLP norm)
+            if hasattr(block, "ln2") and isinstance(block.ln2, NormalizationBridge):
+                if block.ln2.config is not None:
+                    block.ln2.config.use_hf_autograd = True
+
+            if hasattr(block, "ln_2") and isinstance(block.ln_2, NormalizationBridge):
+                if block.ln_2.config is not None:
+                    block.ln_2.config.use_hf_autograd = True
+
+            if hasattr(block, "post_attention_layernorm") and isinstance(
+                block.post_attention_layernorm, NormalizationBridge
+            ):
+                if block.post_attention_layernorm.config is not None:
+                    block.post_attention_layernorm.config.use_hf_autograd = True
+
+    def _create_hook_mlp_out_aliases(self) -> None:
+        """Create hook_mlp_out as an alias to mlp.hook_out to match HookedTransformer.
+
+        In HookedTransformer, hook_mlp_out is a separate HookPoint that wraps the MLP output.
+        In TransformerBridge, we have both block.hook_mlp_out and block.mlp.hook_out.
+        To ensure backward hooks fire correctly on both names, we need to make them
+        reference the same HookPoint object (an alias).
+
+        This is done by:
+        1. Replacing block.hook_mlp_out with a reference to block.mlp.hook_out
+        2. Updating the hook_dict registry to point both names to the same object
+        """
+        for block_idx, block in enumerate(self.blocks):
+            if hasattr(block, "mlp") and hasattr(block.mlp, "hook_out"):
+                # Get the MLP's hook_out (the canonical HookPoint)
+                mlp_hook_out = block.mlp.hook_out
+
+                # Replace the block's hook_mlp_out with a reference to mlp.hook_out
+                # We need to use __dict__ directly to bypass GeneralizedComponent's __setattr__
+                # which might interfere with aliasing
+                block.__dict__["hook_mlp_out"] = mlp_hook_out
+
+    def _replace_with_ht_components(self) -> None:
+        """Replace bridge components with HT components for exact gradient matching.
+
+        This is a radical solution that replaces the wrapped HF components with
+        actual HookedTransformer components, converting weights as needed.
+        This ensures the computational graph matches HT exactly, giving perfect
+        gradient matching at the cost of losing the bridge architecture benefits.
+        """
+        from transformer_lens.components.layer_norm import LayerNorm as HTLayerNorm
+        from transformer_lens.config.HookedTransformerConfig import (
+            HookedTransformerConfig,
+        )
+
+        print("Replacing components with HT versions for exact gradient matching...")
+
+        # Create a HookedTransformerConfig from the current config
+        # This is needed because HT components expect HookedTransformerConfig
+        # Handle both HF config and TransformerBridgeConfig attribute names
+        n_layers = getattr(self.cfg, "n_layers", getattr(self.cfg, "n_layer", 12))
+        d_model = getattr(self.cfg, "d_model", getattr(self.cfg, "n_embd", 768))
+        n_heads = getattr(self.cfg, "n_heads", getattr(self.cfg, "n_head", 12))
+        n_ctx = getattr(self.cfg, "n_ctx", getattr(self.cfg, "max_position_embeddings", 1024))
+        act_fn = getattr(self.cfg, "act_fn", getattr(self.cfg, "activation_function", "gelu_new"))
+        d_vocab = getattr(self.cfg, "d_vocab", getattr(self.cfg, "vocab_size", 50257))
+        eps = getattr(self.cfg, "eps", getattr(self.cfg, "layer_norm_epsilon", 1e-5))
+        d_mlp = getattr(self.cfg, "d_mlp", getattr(self.cfg, "n_inner", d_model * 4))
+
+        ht_cfg = HookedTransformerConfig(
+            n_layers=n_layers,
+            d_model=d_model,
+            n_ctx=n_ctx,
+            n_heads=n_heads,
+            d_head=d_model // n_heads,
+            d_mlp=d_mlp,
+            act_fn=act_fn,
+            d_vocab=d_vocab,
+            eps=eps,
+            dtype=getattr(self.cfg, "dtype", torch.float32),
+        )
+
+        # Replace LayerNorms
+        for i, block in enumerate(self.blocks):
+            # Replace ln1
+            if hasattr(block, "ln1"):
+                old_ln1 = block.ln1
+                new_ln1 = HTLayerNorm(ht_cfg)
+
+                # Copy weights
+                with torch.no_grad():
+                    new_ln1.w.copy_(old_ln1.weight)
+                    new_ln1.b.copy_(old_ln1.bias)
+
+                # Replace the module
+                block.ln1 = new_ln1
+
+                # CRITICAL: Also replace HF's internal ln_1 reference
+                # The patched forward method calls block_self.ln_1, so we need to
+                # replace that too
+                if hasattr(block.original_component, "ln_1"):
+                    block.original_component.ln_1 = new_ln1
+                print(f"  Replaced blocks.{i}.ln1")
+
+            # Replace ln2
+            if hasattr(block, "ln2"):
+                old_ln2 = block.ln2
+                new_ln2 = HTLayerNorm(ht_cfg)
+
+                # Copy weights
+                with torch.no_grad():
+                    new_ln2.w.copy_(old_ln2.weight)
+                    new_ln2.b.copy_(old_ln2.bias)
+
+                # Replace the module
+                block.ln2 = new_ln2
+
+                # CRITICAL: Also replace HF's internal ln_2 reference
+                if hasattr(block.original_component, "ln_2"):
+                    block.original_component.ln_2 = new_ln2
+                print(f"  Replaced blocks.{i}.ln2")
+
+        # Replace ln_final
+        if hasattr(self, "ln_final"):
+            old_ln_final = self.ln_final  # type: ignore[has-type]
+            new_ln_final = HTLayerNorm(ht_cfg)
+
+            with torch.no_grad():
+                new_ln_final.w.copy_(old_ln_final.weight)
+                new_ln_final.b.copy_(old_ln_final.bias)
+
+            self.ln_final = new_ln_final
+            print("  Replaced ln_final")
+
+        # Replace Attention and MLP with HT-compatible versions
+        # These use HF weights but compute using HT's einsum operations,
+        # ensuring identical gradient flow
+        from transformer_lens.model_bridge.ht_compatible_ops import (
+            HTCompatibleAttention,
+            HTCompatibleMLP,
+        )
+
+        for i, block in enumerate(self.blocks):
+            # Replace Attention with HT-compatible version
+            if hasattr(block, "attn"):
+                old_attn = block.attn
+                # Get the original HF component
+                hf_attn = (
+                    old_attn.original_component
+                    if hasattr(old_attn, "original_component")
+                    else old_attn
+                )
+
+                # Create HT-compatible attention that uses HF weights but computes like HT
+                new_attn = HTCompatibleAttention(
+                    hf_attn, n_heads=ht_cfg.n_heads, d_model=ht_cfg.d_model, d_head=ht_cfg.d_head
+                )
+
+                # Replace the module
+                block.attn = new_attn
+                if hasattr(block.original_component, "attn"):
+                    block.original_component.attn = new_attn
+                print(f"  Replaced blocks.{i}.attn with HT-compatible version")
+
+            # Replace MLP with HT-compatible version
+            if hasattr(block, "mlp"):
+                old_mlp = block.mlp
+                hf_mlp = (
+                    old_mlp.original_component
+                    if hasattr(old_mlp, "original_component")
+                    else old_mlp
+                )
+
+                # Create HT-compatible MLP that uses HF weights but computes like HT
+                act_fn = getattr(ht_cfg, "act_fn", "gelu_new")
+                new_mlp = HTCompatibleMLP(
+                    hf_mlp, d_model=ht_cfg.d_model, d_mlp=ht_cfg.d_mlp, act_fn=act_fn
+                )
+
+                # Replace the module
+                block.mlp = new_mlp
+                if hasattr(block.original_component, "mlp"):
+                    block.original_component.mlp = new_mlp
+                print(f"  Replaced blocks.{i}.mlp with HT-compatible version")
 
     def process_compatibility_weights(self, verbose: bool = False) -> None:
         """Process and load weights from a reference HookedTransformer model.
@@ -703,7 +1152,7 @@ class TransformerBridge(nn.Module):
                     block.ln2.config.layer_norm_folding = True
 
         if hasattr(self, "ln_final") and hasattr(self.ln_final, "config"):
-            self.ln_final.config.layer_norm_folding = True
+            self.ln_final.config.layer_norm_folding = True  # type: ignore[union-attr]
 
     def _load_all_processed_weights(
         self, verbose: bool = False, reference_model: Optional[Any] = None
@@ -893,6 +1342,11 @@ class TransformerBridge(nn.Module):
                     attn_out = attn_out[0]
                 residual = residual + attn_out
 
+            # Apply hook_resid_mid (after attention, before MLP)
+            # This matches HookedTransformer where hook_resid_mid is between attention and MLP
+            if hasattr(block, "hook_resid_mid"):
+                residual = block.hook_resid_mid(residual)
+
             # Pre-MLP layer norm (identity if folded)
             if hasattr(block, "ln2"):
                 normed_residual = block.ln2(residual)
@@ -905,6 +1359,9 @@ class TransformerBridge(nn.Module):
                 # Handle tuple returns from bridge components
                 if isinstance(mlp_out, tuple):
                     mlp_out = mlp_out[0]
+                # Apply hook_mlp_out before residual addition (matches HookedTransformer)
+                if hasattr(block, "hook_mlp_out"):
+                    mlp_out = block.hook_mlp_out(mlp_out)
                 residual = residual + mlp_out
 
             # Apply block output hook (hook_resid_post)
@@ -5047,10 +5504,11 @@ class TransformerBridge(nn.Module):
         # Load final layer norm and unembed
         if hasattr(self, "ln_final") and hasattr(self.ln_final, "original_component"):
             ln_final = self.ln_final.original_component
+            assert isinstance(ln_final, nn.Module), "ln_final.original_component must be a Module"
 
             w_key = "ln_final.w" if "ln_final.w" in tl_state_dict else "ln_final.weight"
             if w_key in tl_state_dict:
-                ln_final.weight.data = tl_state_dict[w_key]
+                ln_final.weight.data = tl_state_dict[w_key]  # type: ignore[union-attr]
 
             b_key = "ln_final.b" if "ln_final.b" in tl_state_dict else "ln_final.bias"
             if b_key in tl_state_dict and hasattr(ln_final, "bias") and ln_final.bias is not None:
