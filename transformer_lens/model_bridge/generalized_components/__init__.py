@@ -15,6 +15,9 @@ from transformer_lens.model_bridge.generalized_components.pos_embed import (
 from transformer_lens.model_bridge.generalized_components.normalization import (
     NormalizationBridge,
 )
+from transformer_lens.model_bridge.generalized_components.rms_normalization import (
+    RMSNormalizationBridge,
+)
 
 from transformer_lens.model_bridge.generalized_components.linear import (
     LinearBridge,
@@ -30,6 +33,9 @@ from transformer_lens.model_bridge.generalized_components.joint_gate_up_mlp impo
 from transformer_lens.model_bridge.generalized_components.unembedding import (
     UnembeddingBridge,
 )
+from transformer_lens.model_bridge.generalized_components.t5_block import (
+    T5BlockBridge,
+)
 
 __all__ = [
     "AttentionBridge",
@@ -37,10 +43,12 @@ __all__ = [
     "EmbeddingBridge",
     "PosEmbedBridge",
     "NormalizationBridge",
+    "RMSNormalizationBridge",
     "JointQKVAttentionBridge",
     "JointGateUpMLPBridge",
     "LinearBridge",
     "MLPBridge",
     "MoEBridge",
     "UnembeddingBridge",
+    "T5BlockBridge",
 ]

@@ -10,7 +10,9 @@ import os
 import torch
 from transformers import (
     AutoConfig,
+    AutoModel,
     AutoModelForCausalLM,
+    AutoModelForSeq2SeqLM,
     AutoTokenizer,
     PreTrainedTokenizerBase,
 )
@@ -171,6 +173,51 @@ def determine_architecture_from_hf_config(hf_config):
     )
 
 
+def get_hf_model_class_for_architecture(architecture: str):
+    """Determine the correct HuggingFace AutoModel class to use for loading.
+
+    Args:
+        architecture: The architecture name (e.g., "GPT2LMHeadModel", "T5ForConditionalGeneration")
+
+    Returns:
+        The appropriate HuggingFace AutoModel class to use
+
+    Raises:
+        ValueError: If architecture is not recognized
+    """
+    # Encoder-decoder models (seq2seq)
+    seq2seq_architectures = {
+        "T5ForConditionalGeneration",
+        "BartForConditionalGeneration",
+        "MBartForConditionalGeneration",
+        "MarianMTModel",
+        "PegasusForConditionalGeneration",
+        "BlenderbotForConditionalGeneration",
+        "BlenderbotSmallForConditionalGeneration",
+    }
+
+    # Masked language models (BERT-style)
+    masked_lm_architectures = {
+        "BertForMaskedLM",
+        "RobertaForMaskedLM",
+        "DistilBertForMaskedLM",
+        "AlbertForMaskedLM",
+        "ElectraForMaskedLM",
+    }
+
+    # Causal language models (GPT-style) - this is the default
+    # Includes: GPT2, LLaMA, Mistral, Mixtral, Gemma, etc.
+
+    if architecture in seq2seq_architectures:
+        return AutoModelForSeq2SeqLM
+    elif architecture in masked_lm_architectures:
+        # For now, use AutoModel for masked LM since they may need special handling
+        return AutoModel
+    else:
+        # Default to causal LM for GPT-style models
+        return AutoModelForCausalLM
+
+
 def boot(
     model_name: str,
     hf_config_overrides: dict | None = None,
@@ -231,8 +278,11 @@ def boot(
     # Add device information to the config
     adapter.cfg.device = str(device)
 
-    # Load the model from HuggingFace using the original config
-    hf_model = AutoModelForCausalLM.from_pretrained(
+    # Determine the correct HuggingFace model class based on architecture
+    model_class = get_hf_model_class_for_architecture(architecture)
+
+    # Load the model from HuggingFace using the appropriate model class
+    hf_model = model_class.from_pretrained(
         model_name,
         config=hf_config,
         torch_dtype=dtype,
