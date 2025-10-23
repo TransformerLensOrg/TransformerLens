@@ -7,6 +7,7 @@ from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapt
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
     EmbeddingBridge,
+    LinearBridge,
     MLPBridge,
     PosEmbedBridge,
     RMSNormalizationBridge,
@@ -83,9 +84,24 @@ class T5ArchitectureAdapter(ArchitectureAdapter):
                 is_decoder=False,
                 submodules={
                     "ln1": RMSNormalizationBridge(name="layer.0.layer_norm", config=self.cfg),
-                    "attn": AttentionBridge(name="layer.0.SelfAttention", config=self.cfg),
+                    "attn": AttentionBridge(
+                        name="layer.0.SelfAttention",
+                        config=self.cfg,
+                        submodules={
+                            "q": LinearBridge(name="q"),
+                            "k": LinearBridge(name="k"),
+                            "v": LinearBridge(name="v"),
+                            "o": LinearBridge(name="o"),
+                        },
+                    ),
                     "ln2": RMSNormalizationBridge(name="layer.1.layer_norm", config=self.cfg),
-                    "mlp": MLPBridge(name="layer.1.DenseReluDense"),
+                    "mlp": MLPBridge(
+                        name="layer.1.DenseReluDense",
+                        submodules={
+                            "in": LinearBridge(name="wi"),
+                            "out": LinearBridge(name="wo"),
+                        },
+                    ),
                 },
             ),
             # Encoder final layer norm
@@ -103,11 +119,35 @@ class T5ArchitectureAdapter(ArchitectureAdapter):
                 is_decoder=True,
                 submodules={
                     "ln1": RMSNormalizationBridge(name="layer.0.layer_norm", config=self.cfg),
-                    "self_attn": AttentionBridge(name="layer.0.SelfAttention", config=self.cfg),
+                    "self_attn": AttentionBridge(
+                        name="layer.0.SelfAttention",
+                        config=self.cfg,
+                        submodules={
+                            "q": LinearBridge(name="q"),
+                            "k": LinearBridge(name="k"),
+                            "v": LinearBridge(name="v"),
+                            "o": LinearBridge(name="o"),
+                        },
+                    ),
                     "ln2": RMSNormalizationBridge(name="layer.1.layer_norm", config=self.cfg),
-                    "cross_attn": AttentionBridge(name="layer.1.EncDecAttention", config=self.cfg),
+                    "cross_attn": AttentionBridge(
+                        name="layer.1.EncDecAttention",
+                        config=self.cfg,
+                        submodules={
+                            "q": LinearBridge(name="q"),
+                            "k": LinearBridge(name="k"),
+                            "v": LinearBridge(name="v"),
+                            "o": LinearBridge(name="o"),
+                        },
+                    ),
                     "ln3": RMSNormalizationBridge(name="layer.2.layer_norm", config=self.cfg),
-                    "mlp": MLPBridge(name="layer.2.DenseReluDense"),
+                    "mlp": MLPBridge(
+                        name="layer.2.DenseReluDense",
+                        submodules={
+                            "in": LinearBridge(name="wi"),
+                            "out": LinearBridge(name="wo"),
+                        },
+                    ),
                 },
             ),
             # Decoder final layer norm

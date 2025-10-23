@@ -848,9 +848,22 @@ class TransformerBridge(nn.Module):
         1. hook_z reshaping for proper head dimensions
         2. Wrapping HF attention forward to capture scores before softmax
         """
-        for block in self.blocks:
-            if hasattr(block, "attn") and hasattr(block.attn, "setup_no_processing_hooks"):
-                block.attn.setup_no_processing_hooks()
+        # Handle both decoder-only (blocks) and encoder-decoder (encoder_blocks, decoder_blocks)
+        blocks_to_process = []
+        if hasattr(self, "blocks"):
+            blocks_to_process.extend(self.blocks)
+        if hasattr(self, "encoder_blocks"):
+            blocks_to_process.extend(self.encoder_blocks)
+        if hasattr(self, "decoder_blocks"):
+            blocks_to_process.extend(self.decoder_blocks)
+
+        for block in blocks_to_process:
+            # Handle both regular attn and self_attn/cross_attn naming
+            for attn_name in ["attn", "self_attn", "cross_attn"]:
+                if hasattr(block, attn_name):
+                    attn = getattr(block, attn_name)
+                    if hasattr(attn, "setup_no_processing_hooks"):
+                        attn.setup_no_processing_hooks()
 
     def _enable_split_qkv_attention(self) -> None:
         """Enable split Q/K/V computation for attention layers in no_processing mode.
@@ -862,7 +875,16 @@ class TransformerBridge(nn.Module):
         Unlike enable_ht_computation_for_bridge, this ONLY affects attention layers,
         leaving MLPs to use their original HF weights.
         """
-        for block in self.blocks:
+        # Handle both decoder-only (blocks) and encoder-decoder (encoder_blocks, decoder_blocks)
+        blocks_to_process = []
+        if hasattr(self, "blocks"):
+            blocks_to_process.extend(self.blocks)
+        if hasattr(self, "encoder_blocks"):
+            blocks_to_process.extend(self.encoder_blocks)
+        if hasattr(self, "decoder_blocks"):
+            blocks_to_process.extend(self.decoder_blocks)
+
+        for block in blocks_to_process:
             if hasattr(block, "attn") and hasattr(block, "original_component"):
                 hf_block = block.original_component
                 if hasattr(hf_block, "attn"):
@@ -902,7 +924,16 @@ class TransformerBridge(nn.Module):
                 self.ln_f.config.use_hf_autograd = True
 
         # Enable for all block normalization layers
-        for block in self.blocks:
+        # Handle both decoder-only (blocks) and encoder-decoder (encoder_blocks, decoder_blocks)
+        blocks_to_process = []
+        if hasattr(self, "blocks"):
+            blocks_to_process.extend(self.blocks)
+        if hasattr(self, "encoder_blocks"):
+            blocks_to_process.extend(self.encoder_blocks)
+        if hasattr(self, "decoder_blocks"):
+            blocks_to_process.extend(self.decoder_blocks)
+
+        for block in blocks_to_process:
             # ln1 (pre-attention norm)
             if hasattr(block, "ln1") and isinstance(block.ln1, NormalizationBridge):
                 if block.ln1.config is not None:
