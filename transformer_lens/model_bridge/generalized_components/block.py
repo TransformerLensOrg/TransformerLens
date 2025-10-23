@@ -147,16 +147,21 @@ class BlockBridge(GeneralizedComponent):
                     hidden_states = ln1(hidden_states)
                 attn_input = hidden_states
 
-            attn_result = attn(  # type: ignore[misc]
-                attn_input,
-                past_key_value=past_key_value,
-                cache_position=cache_position,
-                attention_mask=attention_mask,
-                head_mask=head_mask,
-                use_cache=use_cache,
-                output_attentions=output_attentions,
+            # Some models use different parameter names for KV cache (e.g., GPTNeo uses 'layer_past')
+            # Don't pass past_key_value explicitly if it's already in kwargs with a different name
+            attn_kwargs = {
+                "cache_position": cache_position,
+                "attention_mask": attention_mask,
+                "head_mask": head_mask,
+                "use_cache": use_cache,
+                "output_attentions": output_attentions,
                 **kwargs,
-            )
+            }
+            # Only add past_key_value if it's not already in kwargs (e.g., as 'layer_past')
+            if past_key_value is not None and "layer_past" not in kwargs:
+                attn_kwargs["past_key_value"] = past_key_value
+
+            attn_result = attn(attn_input, **attn_kwargs)  # type: ignore[misc]
             # Handle different return formats: (output, weights) or (output, weights, past)
             if len(attn_result) >= 2:
                 attn_output = attn_result[0]
