@@ -148,9 +148,14 @@ class BlockBridge(GeneralizedComponent):
                 attn_input = hidden_states
 
             # Some models use different parameter names for KV cache (e.g., GPTNeo uses 'layer_past')
-            # Detect which parameter name the attention module expects
+            # Detect which parameter name the original HF attention expects
             import inspect
-            attn_sig = inspect.signature(attn.forward if hasattr(attn, 'forward') else attn.__call__)
+
+            # Check the original HF attention if the attention is wrapped
+            check_attn = getattr(attn, "original_component", attn)
+            attn_sig = inspect.signature(
+                check_attn.forward if hasattr(check_attn, "forward") else check_attn.__call__
+            )
             attn_params = set(attn_sig.parameters.keys())
 
             attn_kwargs = {
@@ -167,6 +172,10 @@ class BlockBridge(GeneralizedComponent):
                 if "layer_past" in attn_params:
                     attn_kwargs["layer_past"] = past_key_value
                 elif "past_key_value" in attn_params:
+                    attn_kwargs["past_key_value"] = past_key_value
+                else:
+                    # Fallback: if neither is found explicitly,
+                    # use past_key_value as the default (most common)
                     attn_kwargs["past_key_value"] = past_key_value
 
             attn_result = attn(attn_input, **attn_kwargs)  # type: ignore[misc]
