@@ -285,6 +285,11 @@ class BlockBridge(GeneralizedComponent):
         # here in the wrapper to avoid double-wrapping.
         output = self.original_component(*args, **kwargs)
 
+        # If output is a single-element tuple, unwrap it
+        # This prevents tuples from being passed between blocks
+        if isinstance(output, tuple) and len(output) == 1:
+            return output[0]
+
         return output
 
     def get_expected_parameter_names(self, prefix: str = "") -> list[str]:

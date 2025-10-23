@@ -14,6 +14,7 @@ from transformer_lens.model_bridge.generalized_components import (
     LinearBridge,
     MLPBridge,
     NormalizationBridge,
+    RotaryEmbeddingBridge,
     UnembeddingBridge,
 )
 
@@ -68,7 +69,6 @@ class LlamaArchitectureAdapter(ArchitectureAdapter):
         self.component_mapping = {
             "embed": EmbeddingBridge(name="model.embed_tokens"),
             # Note: rotary_emb is not included - it's accessed directly by attention layers
-            # and doesn't need wrapping in the component hierarchy
             "blocks": BlockBridge(
                 name="model.layers",
                 submodules={
