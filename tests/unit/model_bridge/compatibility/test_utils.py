@@ -48,7 +48,8 @@ class TestUtilsWithTransformerBridge:
 
         # Basic checks
         assert attention_mask.shape == tokens.shape
-        assert attention_mask.dtype == torch.bool
+        # Attention mask should be int64 with values 0/1 for compatibility
+        assert attention_mask.dtype == torch.int64
 
         # Check that non-padding tokens have attention_mask = True
         if hasattr(model.tokenizer, "pad_token_id") and model.tokenizer.pad_token_id is not None:
