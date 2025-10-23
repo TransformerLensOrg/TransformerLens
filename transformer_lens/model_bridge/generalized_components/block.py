@@ -148,7 +148,11 @@ class BlockBridge(GeneralizedComponent):
                 attn_input = hidden_states
 
             # Some models use different parameter names for KV cache (e.g., GPTNeo uses 'layer_past')
-            # Don't pass past_key_value explicitly if it's already in kwargs with a different name
+            # Detect which parameter name the attention module expects
+            import inspect
+            attn_sig = inspect.signature(attn.forward if hasattr(attn, 'forward') else attn.__call__)
+            attn_params = set(attn_sig.parameters.keys())
+
             attn_kwargs = {
                 "cache_position": cache_position,
                 "attention_mask": attention_mask,
@@ -157,9 +161,13 @@ class BlockBridge(GeneralizedComponent):
                 "output_attentions": output_attentions,
                 **kwargs,
             }
-            # Only add past_key_value if it's not already in kwargs (e.g., as 'layer_past')
-            if past_key_value is not None and "layer_past" not in kwargs:
-                attn_kwargs["past_key_value"] = past_key_value
+
+            # Add KV cache with the correct parameter name
+            if past_key_value is not None:
+                if "layer_past" in attn_params:
+                    attn_kwargs["layer_past"] = past_key_value
+                elif "past_key_value" in attn_params:
+                    attn_kwargs["past_key_value"] = past_key_value
 
             attn_result = attn(attn_input, **attn_kwargs)  # type: ignore[misc]
             # Handle different return formats: (output, weights) or (output, weights, past)
