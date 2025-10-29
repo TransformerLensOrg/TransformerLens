@@ -111,16 +111,15 @@ class TestTransformerBridgeCompatibility:
         ht_original = ht(test_text, return_type="loss")
         bridge_original = bridge(test_text, return_type="loss")
 
-        # Verify embedding weights are identical before modification
-        ht_W_E = ht.embed.W_E
-        bridge_W_E = bridge.embed.W_E
-        assert torch.allclose(ht_W_E, bridge_W_E), "Embedding weights should be identical"
+        # Verify weights are identical before modification
+        ht_W_V = ht.blocks[0].attn.W_V
+        bridge_W_V = bridge.blocks[0].attn.W_V
+        assert torch.allclose(ht_W_V, bridge_W_V), "Weights should be identical"
 
-        # Modify embedding weights in both models (zero out a common token like "the")
-        # Token 262 is "the" in GPT-2
+        # Modify weights in both models
         with torch.no_grad():
-            ht.embed.W_E[262, :] = 0
-            bridge.embed.W_E[262, :] = 0
+            ht.blocks[0].attn.W_V[0, :, :] = 0
+            bridge.blocks[0].attn.W_V[0, :, :] = 0
 
         # Test modified losses
         ht_modified = ht(test_text, return_type="loss")
