@@ -114,6 +114,9 @@ class TestTransformerBridgeCompatibility:
         # Verify weights are identical before modification
         ht_W_V = ht.blocks[0].attn.W_V
         bridge_W_V = bridge.blocks[0].attn.W_V
+        assert (
+            ht.blocks[0].attn.W_V.shape == bridge.blocks[0].attn.W_V.shape
+        ), "Attention weights should have same shape"
         assert torch.allclose(ht_W_V, bridge_W_V), "Weights should be identical"
 
         # Modify weights in both models
