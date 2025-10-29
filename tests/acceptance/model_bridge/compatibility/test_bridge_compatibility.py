@@ -152,7 +152,6 @@ class TestTransformerBridgeCompatibility:
         assert (
             ht.embed.W_E.shape == bridge.embed.W_E.shape
         ), "Embedding weights should have same shape"
-        # Note: Attention weight shapes may differ due to different processing approaches
 
     def test_weight_processing_verification(self, models):
         """Test that weight processing (folding, centering) was applied correctly."""
@@ -247,14 +246,10 @@ class TestTransformerBridgeWeightModification:
         # Get original loss
         original_loss = bridge_model(test_text, return_type="loss")
 
-        # Get tokens in the input to modify one that's actually present
-        tokens = bridge_model.to_tokens(test_text)
-        token_to_modify = tokens[0, 1].item()  # Get second token (skip BOS)
-
-        # Modify embedding weights
+        # Modify W_V weights
         with torch.no_grad():
-            original_w_e = bridge_model.embed.W_E.clone()
-            bridge_model.embed.W_E[token_to_modify, :] = 0  # Zero out the token
+            original_w_v = bridge_model.blocks[0].attn.W_V.clone()
+            bridge_model.blocks[0].attn.W_V[0, :, :] = 0  # Zero out first head
 
         # Get modified loss
         modified_loss = bridge_model(test_text, return_type="loss")
@@ -265,7 +260,7 @@ class TestTransformerBridgeWeightModification:
 
         # Restore weights
         with torch.no_grad():
-            bridge_model.embed.W_E.copy_(original_w_e)
+            bridge_model.blocks[0].attn.W_V.copy_(original_w_v)
 
 
 # Test cases that can be run individually for debugging
