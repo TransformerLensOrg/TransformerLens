@@ -60,15 +60,9 @@ class BlockBridge(GeneralizedComponent):
         self.hook_resid_mid = HookPoint()
         self._register_hook("hook_resid_mid", self.hook_resid_mid)
 
-        # Create custom hook_mlp_out that will be used in the patched forward
-        # Note: In compatibility mode, this will be replaced with an alias to mlp.hook_out
-        # via the hook_aliases system
-        self.hook_mlp_out = HookPoint()
-        # Set backward scale to match HookedTransformer gradient flow
-        # Scale factor of 6.0 compensates for architectural differences
-        self.hook_mlp_out.backward_scale = 6.0
-        # Register hook so it appears in cache
-        self._register_hook("hook_mlp_out", self.hook_mlp_out)
+        # Note: hook_mlp_out is not created as a separate HookPoint
+        # It's defined as an alias to mlp.hook_out in hook_aliases (line 39)
+        # The aliasing is handled by the hook resolution system
         self._original_block_forward: Optional[Callable[..., Any]] = None
 
     def set_original_component(self, component: torch.nn.Module):

@@ -831,10 +831,7 @@ class TransformerBridge(nn.Module):
             self._setup_no_processing_hooks()
             # Extract split Q/K/V weights for attention layers (uses architecture adapter)
             self._enable_split_qkv_attention()
-            # Create hook_mlp_out aliases to match HookedTransformer
-            # This makes block.hook_mlp_out point to the same object as block.mlp.hook_out
-            self._create_hook_mlp_out_aliases()
-            # Re-initialize hook registry to pick up the aliases
+            # Re-initialize hook registry to pick up any changes
             self.clear_hook_registry()
             self._initialize_hook_registry()
 
@@ -933,38 +930,6 @@ class TransformerBridge(nn.Module):
             ):
                 if block.post_attention_layernorm.config is not None:
                     block.post_attention_layernorm.config.use_hf_autograd = True
-
-    def _create_hook_mlp_out_aliases(self) -> None:
-        """Create hook_mlp_out as an alias to mlp.hook_out to match HookedTransformer.
-
-        In HookedTransformer, hook_mlp_out is accessible at the block level but wraps
-        the MLP output. In TransformerBridge, the MLP's hook_out already wraps the output
-        in the MLP's forward method. This method makes block.hook_mlp_out an alias to
-        block.mlp.hook_out so users can access the same HookPoint via either name.
-
-        This is done by:
-        1. Replacing block.hook_mlp_out with a reference to block.mlp.hook_out
-        2. Updating PyTorch's module registry to point to the same object
-
-        The MLP's forward method calls hook_out naturally, and users can access it
-        via either block.mlp.hook_out or block.hook_mlp_out.
-        """
-        for block_idx, block in enumerate(self.blocks):
-            if hasattr(block, "mlp") and hasattr(block.mlp, "hook_out"):
-                # Get the MLP's hook_out (the canonical HookPoint)
-                mlp_hook_out = block.mlp.hook_out
-
-                # Replace the block's hook_mlp_out with a reference to mlp.hook_out
-                # Use add_module to properly update PyTorch's module registry
-                # This ensures the same HookPoint appears in both places but is only called once
-                if hasattr(block, "_modules") and "hook_mlp_out" in block._modules:
-                    # Replace in PyTorch's module registry
-                    block._modules["hook_mlp_out"] = mlp_hook_out
-
-                # Also update the attribute for direct access
-                # We need to use __dict__ directly to bypass GeneralizedComponent's __setattr__
-                # which might interfere with aliasing
-                block.__dict__["hook_mlp_out"] = mlp_hook_out
 
     def _replace_with_ht_components(self) -> None:
         """Replace bridge components with HT components for exact gradient matching.
