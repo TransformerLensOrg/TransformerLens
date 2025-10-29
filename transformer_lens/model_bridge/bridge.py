@@ -990,16 +990,17 @@ class TransformerBridge(nn.Module):
     def _create_hook_mlp_out_aliases(self) -> None:
         """Create hook_mlp_out as an alias to mlp.hook_out to match HookedTransformer.
 
-        In HookedTransformer, hook_mlp_out is a separate HookPoint that wraps the MLP output.
-        In TransformerBridge, we have both block.hook_mlp_out and block.mlp.hook_out.
-        To ensure backward hooks fire correctly on both names, we need to make them
-        reference the same HookPoint object (an alias).
+        In HookedTransformer, hook_mlp_out is accessible at the block level but wraps
+        the MLP output. In TransformerBridge, the MLP's hook_out already wraps the output
+        in the MLP's forward method. This method makes block.hook_mlp_out an alias to
+        block.mlp.hook_out so users can access the same HookPoint via either name.
 
         This is done by:
         1. Replacing block.hook_mlp_out with a reference to block.mlp.hook_out
         2. Updating PyTorch's module registry to point to the same object
-        3. Setting a flag on the MLP to skip calling hook_out in its forward pass
-           (since the block's patched forward will call it via hook_mlp_out)
+
+        The MLP's forward method calls hook_out naturally, and users can access it
+        via either block.mlp.hook_out or block.hook_mlp_out.
         """
         for block_idx, block in enumerate(self.blocks):
             if hasattr(block, "mlp") and hasattr(block.mlp, "hook_out"):
@@ -1017,10 +1018,6 @@ class TransformerBridge(nn.Module):
                 # We need to use __dict__ directly to bypass GeneralizedComponent's __setattr__
                 # which might interfere with aliasing
                 block.__dict__["hook_mlp_out"] = mlp_hook_out
-
-                # Set flag on MLP to skip calling hook_out in its forward pass
-                # This prevents the hook from being called twice (once in MLP forward, once in block forward)
-                block.mlp._skip_hook_out_call = True
 
     def _replace_with_ht_components(self) -> None:
         """Replace bridge components with HT components for exact gradient matching.

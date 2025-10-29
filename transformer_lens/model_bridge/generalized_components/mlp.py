@@ -102,16 +102,7 @@ class MLPBridge(GeneralizedComponent):
                 output = self.original_component(*new_args, **kwargs)  # type: ignore[misc]
 
             # Apply output hook
-            # Note: In compatibility mode (no_processing=True), skip calling hook_out here
-            # because the block's patched forward will call hook_mlp_out (which is aliased to this hook_out)
-            # This prevents hooks from being called twice
-            # Check if hook_out is aliased (same object as parent block's hook_mlp_out)
-            skip_hook_out = False
-            if hasattr(self, "_skip_hook_out_call"):
-                skip_hook_out = self._skip_hook_out_call
-
-            if not skip_hook_out:
-                output = self.hook_out(output)
+            output = self.hook_out(output)
 
             return output
 
@@ -124,18 +115,7 @@ class MLPBridge(GeneralizedComponent):
         hidden_states = self.hook_in(hidden_states)
         new_args = (hidden_states,) + args[1:]
         output = self.original_component(*new_args, **kwargs)
-
-        # Note: In compatibility mode (no_processing=True), skip calling hook_out here
-        # because the block's patched forward will call hook_mlp_out (which is aliased to this hook_out)
-        # This prevents hooks from being called twice
-        # Check if hook_out is aliased (same object as parent block's hook_mlp_out)
-        skip_hook_out = False
-        if hasattr(self, "_skip_hook_out_call"):
-            skip_hook_out = self._skip_hook_out_call
-
-        if not skip_hook_out:
-            output = self.hook_out(output)
-
+        output = self.hook_out(output)
         return output
 
     def set_processed_weights(

@@ -244,11 +244,8 @@ class BlockBridge(GeneralizedComponent):
                 else:
                     raise RuntimeError(f"Could not find MLP module in block {block_self}")
 
-            # Apply hook_mlp_out - this wraps the MLP output before residual addition
-            # Note: In compatibility mode (no_processing=True), hook_mlp_out is aliased to mlp.hook_out
-            # and the MLP's forward skips calling hook_out to avoid double calls
-            if hasattr(self, "hook_mlp_out"):
-                feed_forward_hidden_states = self.hook_mlp_out(feed_forward_hidden_states)
+            # Note: hook_mlp_out is aliased to mlp.hook_out in compatibility mode
+            # The MLP's forward method already calls hook_out, so we don't call it here
 
             # Residual connection
             hidden_states = residual + feed_forward_hidden_states
