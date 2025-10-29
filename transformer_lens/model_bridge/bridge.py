@@ -330,15 +330,15 @@ class TransformerBridge(nn.Module):
 
         # Second pass: for each HookPoint, choose the preferred name
         for hp_id, names in hookpoint_to_names.items():
-            # Prefer alias names over canonical names
-            # Alias names are keys in all_aliases
-            alias_names = [n for n in names if n in all_aliases]
+            # Prefer canonical names over aliases
+            # Canonical names are NOT keys in all_aliases
+            canonical_names = [n for n in names if n not in all_aliases]
 
-            if alias_names:
-                # Use the first alias name (compatibility name)
-                preferred_name = alias_names[0]
+            if canonical_names:
+                # Use the first canonical name (e.g., blocks.0.mlp.hook_out)
+                preferred_name = canonical_names[0]
             else:
-                # No alias, use the canonical name (first name we found)
+                # All are aliases, use the first one
                 preferred_name = names[0]
 
             # Get the HookPoint from the original hooks dict
