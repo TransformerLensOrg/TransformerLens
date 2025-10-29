@@ -298,54 +298,6 @@ class TransformerBridge(nn.Module):
                     # Skip this alias if it can't be resolved (e.g., during initialization)
                     continue
 
-    def _deduplicate_hook_dict(self, hooks: Dict[str, HookPoint]) -> Dict[str, HookPoint]:
-        """Deduplicate hook_dict by keeping only one name per HookPoint object.
-
-        When compatibility mode adds aliases, the same HookPoint object can appear under
-        multiple names (e.g., "blocks.0.hook_mlp_out" and "blocks.0.mlp.hook_out").
-        This method ensures each HookPoint appears only once, preferring the compatibility
-        alias name (the one that matches HookedTransformer's naming convention).
-
-        Args:
-            hooks: Dictionary mapping hook names to HookPoint objects
-
-        Returns:
-            Deduplicated dictionary with one name per unique HookPoint
-        """
-        # Track which HookPoint objects we've seen and their preferred name
-        seen_hookpoints: Dict[int, str] = {}
-        deduplicated: Dict[str, HookPoint] = {}
-
-        # Collect component aliases to identify which names are aliases
-        component_aliases = self._collect_hook_aliases_from_registry()
-        all_aliases = {**self.hook_aliases, **component_aliases}
-
-        # First pass: identify all names for each HookPoint
-        hookpoint_to_names: Dict[int, list[str]] = {}
-        for name, hook_point in hooks.items():
-            hp_id = id(hook_point)
-            if hp_id not in hookpoint_to_names:
-                hookpoint_to_names[hp_id] = []
-            hookpoint_to_names[hp_id].append(name)
-
-        # Second pass: for each HookPoint, choose the preferred name
-        for hp_id, names in hookpoint_to_names.items():
-            # Prefer canonical names over aliases
-            # Canonical names are NOT keys in all_aliases
-            canonical_names = [n for n in names if n not in all_aliases]
-
-            if canonical_names:
-                # Use the first canonical name (e.g., blocks.0.mlp.hook_out)
-                preferred_name = canonical_names[0]
-            else:
-                # All are aliases, use the first one
-                preferred_name = names[0]
-
-            # Get the HookPoint from the original hooks dict
-            deduplicated[preferred_name] = hooks[preferred_name]
-
-        return deduplicated
-
     def _scan_existing_hooks(self, module: nn.Module, prefix: str = "") -> None:
         """Scan existing modules for hooks and add them to registry."""
         visited = set()
@@ -437,11 +389,6 @@ class TransformerBridge(nn.Module):
         # Add aliases if compatibility mode is enabled
         if self.compatibility_mode:
             self._add_aliases_to_hooks(hooks)
-
-            # Deduplicate HookPoints: when the same HookPoint appears under multiple names,
-            # keep only the compatibility alias name (e.g., "blocks.0.hook_mlp_out" instead of "blocks.0.mlp.hook_out")
-            # This ensures hooks are only called once per forward pass
-            hooks = self._deduplicate_hook_dict(hooks)
 
         return hooks
 
