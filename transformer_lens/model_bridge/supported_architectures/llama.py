@@ -69,8 +69,7 @@ class LlamaArchitectureAdapter(ArchitectureAdapter):
 
         self.component_mapping = {
             "embed": EmbeddingBridge(name="model.embed_tokens"),
-            # Note: rotary_emb is not included - it's accessed directly by attention layers
-            # and doesn't need wrapping in the component hierarchy
+            "rotary_emb": EmbeddingBridge(name="model.rotary_emb"),
             "blocks": BlockBridge(
                 name="model.layers",
                 submodules={
