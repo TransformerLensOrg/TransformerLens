@@ -7,6 +7,7 @@ from typing import Any, Dict, Optional, Tuple
 
 import torch
 
+from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
@@ -33,6 +34,10 @@ class RotaryEmbeddingBridge(GeneralizedComponent):
             submodules: Dictionary of GeneralizedComponent submodules to register
         """
         super().__init__(name, config, submodules=submodules or {})
+
+        # Add separate hooks for cos and sin components
+        self.hook_cos = HookPoint()
+        self.hook_sin = HookPoint()
 
     def forward(
         self,
@@ -77,8 +82,15 @@ class RotaryEmbeddingBridge(GeneralizedComponent):
                     f"Expected (cos, sin) tuple."
                 )
 
-        # Apply output hook to the tuple
-        # We hook the tuple itself, not the individual elements
-        output = self.hook_out(output)
-
-        return output
+        # Apply hooks to cos and sin separately
+        # The tuple contains (cos, sin) tensors
+        if len(output) == 2:
+            cos, sin = output
+            cos = self.hook_cos(cos)
+            sin = self.hook_sin(sin)
+            return (cos, sin)
+        else:
+            # Unexpected tuple length - shouldn't happen
+            raise RuntimeError(
+                f"Rotary embedding {self.name} returned tuple of length {len(output)}, expected 2"
+            )
