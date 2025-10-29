@@ -146,7 +146,6 @@ class TestTransformerBridgeCompatibility:
 
         # Test component structure matches
         assert len(bridge.blocks) == len(ht.blocks), "Should have same number of blocks"
-        # Note: Bridge uses NormalizationBridge while HT uses LayerNormPre - both are valid implementations
 
         # Test weight shapes match
         assert (
