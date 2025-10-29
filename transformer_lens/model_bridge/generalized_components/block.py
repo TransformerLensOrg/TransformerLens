@@ -60,9 +60,6 @@ class BlockBridge(GeneralizedComponent):
         self.hook_resid_mid = HookPoint()
         self._register_hook("hook_resid_mid", self.hook_resid_mid)
 
-        # Note: hook_mlp_out is not created as a separate HookPoint
-        # It's defined as an alias to mlp.hook_out in hook_aliases (line 39)
-        # The aliasing is handled by the hook resolution system
         self._original_block_forward: Optional[Callable[..., Any]] = None
 
     def set_original_component(self, component: torch.nn.Module):
@@ -237,9 +234,6 @@ class BlockBridge(GeneralizedComponent):
                     feed_forward_hidden_states = fc2(hidden_states)
                 else:
                     raise RuntimeError(f"Could not find MLP module in block {block_self}")
-
-            # Note: hook_mlp_out is aliased to mlp.hook_out in compatibility mode
-            # The MLP's forward method already calls hook_out, so we don't call it here
 
             # Residual connection
             hidden_states = residual + feed_forward_hidden_states

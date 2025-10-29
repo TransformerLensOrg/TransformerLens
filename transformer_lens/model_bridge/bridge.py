@@ -4496,10 +4496,7 @@ class TransformerBridge(nn.Module):
         """
         # Process names_filter to create a callable that handles legacy hook names
         # Collect all aliases from bridge components (both hook and cache aliases)
-        hooks_with_aliases = self._hook_registry.copy()
-        if self.compatibility_mode:
-            self._add_aliases_to_hooks(hooks_with_aliases)
-        aliases = collect_aliases_recursive(hooks_with_aliases)
+        aliases = collect_aliases_recursive(self.hook_dict)
 
         def create_names_filter_fn(filter_input):
             if filter_input is None:
@@ -4692,32 +4689,6 @@ class TransformerBridge(nn.Module):
                 else:
                     if target_name in cache and alias_name not in cache:
                         cache[alias_name] = cache[target_name]
-
-            # Add deprecated hook aliases to cache: for each HookPoint that appears under
-            # multiple names in hooks_with_aliases, add all those names to the cache
-            # Build a reverse mapping: HookPoint id -> list of names
-            hookpoint_to_names: Dict[int, List[str]] = {}
-            for name, hookpoint in hooks_with_aliases.items():
-                hp_id = id(hookpoint)
-                if hp_id not in hookpoint_to_names:
-                    hookpoint_to_names[hp_id] = []
-                hookpoint_to_names[hp_id].append(name)
-
-            # For each cached value, add all alias names that point to the same HookPoint
-            cache_additions = {}
-            for cache_name, cached_value in cache.items():
-                # Find the HookPoint that was cached under this name
-                if cache_name in hooks_with_aliases:
-                    hp = hooks_with_aliases[cache_name]
-                    hp_id = id(hp)
-                    # Get all names for this HookPoint
-                    all_names = hookpoint_to_names.get(hp_id, [])
-                    # Add cache entries for all other names
-                    for name in all_names:
-                        if name not in cache:
-                            cache_additions[name] = cached_value
-
-            cache.update(cache_additions)
 
         if return_cache_object:
             from transformer_lens.ActivationCache import ActivationCache

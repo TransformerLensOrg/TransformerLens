@@ -114,9 +114,6 @@ class TestTransformerBridgeCompatibility:
         # Verify weights are identical before modification
         ht_W_V = ht.blocks[0].attn.W_V
         bridge_W_V = bridge.blocks[0].attn.W_V
-        assert (
-            ht.blocks[0].attn.W_V.shape == bridge.blocks[0].attn.W_V.shape
-        ), "Attention weights should have same shape"
         assert torch.allclose(ht_W_V, bridge_W_V), "Weights should be identical"
 
         # Modify weights in both models
@@ -154,6 +151,9 @@ class TestTransformerBridgeCompatibility:
         assert (
             ht.embed.W_E.shape == bridge.embed.W_E.shape
         ), "Embedding weights should have same shape"
+        assert (
+            ht.blocks[0].attn.W_V.shape == bridge.blocks[0].attn.W_V.shape
+        ), "Attention weights should have same shape"
 
     def test_weight_processing_verification(self, models):
         """Test that weight processing (folding, centering) was applied correctly."""
