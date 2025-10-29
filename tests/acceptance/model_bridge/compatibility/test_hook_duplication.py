@@ -4,7 +4,6 @@ This test verifies that hooks are called exactly once per forward pass in compat
 not multiple times due to aliasing.
 """
 
-import pytest
 import torch
 
 from transformer_lens import HookedTransformer
@@ -54,9 +53,9 @@ def test_TransformerBridge_compatibility_mode_calls_hooks_once():
     bridge_model.reset_hooks()
 
     # Verify call counts
-    assert hooked_call_count == 1, (
-        f"HookedTransformer should call hook once, got {hooked_call_count}"
-    )
+    assert (
+        hooked_call_count == 1
+    ), f"HookedTransformer should call hook once, got {hooked_call_count}"
 
     # After the fix, TransformerBridge should also call the hook exactly once
     assert bridge_call_count == 1, (
@@ -76,8 +75,8 @@ def test_hook_mlp_out_aliasing():
     # Verify that hook_mlp_out and mlp.hook_out are the same object
     assert hasattr(block0, "hook_mlp_out"), "Block should have hook_mlp_out attribute"
     assert hasattr(block0.mlp, "hook_out"), "MLP should have hook_out attribute"
-    assert (
-        id(block0.hook_mlp_out) == id(block0.mlp.hook_out)
+    assert id(block0.hook_mlp_out) == id(
+        block0.mlp.hook_out
     ), "hook_mlp_out should be aliased to mlp.hook_out (same object)"
 
 
