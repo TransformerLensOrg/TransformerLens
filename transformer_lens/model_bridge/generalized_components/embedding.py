@@ -67,7 +67,7 @@ class EmbeddingBridge(GeneralizedComponent):
         input_ids: torch.Tensor,
         position_ids: torch.Tensor | None = None,
         **kwargs: Any,
-    ) -> torch.Tensor | tuple[torch.Tensor, ...]:
+    ) -> torch.Tensor:
         """Forward pass through the embedding bridge.
 
         Args:
@@ -76,7 +76,7 @@ class EmbeddingBridge(GeneralizedComponent):
             **kwargs: Additional arguments to pass to the original component
 
         Returns:
-            Embedded output (tensor or tuple with hooked tensor as first element)
+            Embedded output
         """
 
         # Check if we're using processed weights from a reference model (layer norm folding case)
@@ -115,17 +115,14 @@ class EmbeddingBridge(GeneralizedComponent):
         else:
             output = self.original_component(input_ids, position_ids=position_ids, **kwargs)
 
-        # Handle tuple outputs
-        # Some embedding layers return (embeddings, ...) tuples
-        # We need to apply hook to the first element and preserve the tuple structure
+        # Some models return tuples; extract embeddings
         if isinstance(output, tuple):
-            # Extract first element, apply hook, and put it back in the tuple
-            hooked_embedding = self.hook_out(output[0])
-            return (hooked_embedding,) + output[1:]
-        else:
-            # Apply output hook for non-tuple outputs
-            output = self.hook_out(output)
-            return output
+            output = output[0]
+
+        # Apply output hook
+        output = self.hook_out(output)
+
+        return output
 
     def set_processed_weight(self, weight: torch.Tensor) -> None:
         """Set the processed weight to use when layer norm is folded.
