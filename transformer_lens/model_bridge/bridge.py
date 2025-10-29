@@ -298,6 +298,54 @@ class TransformerBridge(nn.Module):
                     # Skip this alias if it can't be resolved (e.g., during initialization)
                     continue
 
+    def _deduplicate_hook_dict(self, hooks: Dict[str, HookPoint]) -> Dict[str, HookPoint]:
+        """Deduplicate hook_dict by keeping only one name per HookPoint object.
+
+        When compatibility mode adds aliases, the same HookPoint object can appear under
+        multiple names (e.g., "blocks.0.hook_mlp_out" and "blocks.0.mlp.hook_out").
+        This method ensures each HookPoint appears only once, preferring the compatibility
+        alias name (the one that matches HookedTransformer's naming convention).
+
+        Args:
+            hooks: Dictionary mapping hook names to HookPoint objects
+
+        Returns:
+            Deduplicated dictionary with one name per unique HookPoint
+        """
+        # Track which HookPoint objects we've seen and their preferred name
+        seen_hookpoints: Dict[int, str] = {}
+        deduplicated: Dict[str, HookPoint] = {}
+
+        # Collect component aliases to identify which names are aliases
+        component_aliases = self._collect_hook_aliases_from_registry()
+        all_aliases = {**self.hook_aliases, **component_aliases}
+
+        # First pass: identify all names for each HookPoint
+        hookpoint_to_names: Dict[int, list[str]] = {}
+        for name, hook_point in hooks.items():
+            hp_id = id(hook_point)
+            if hp_id not in hookpoint_to_names:
+                hookpoint_to_names[hp_id] = []
+            hookpoint_to_names[hp_id].append(name)
+
+        # Second pass: for each HookPoint, choose the preferred name
+        for hp_id, names in hookpoint_to_names.items():
+            # Prefer alias names over canonical names
+            # Alias names are keys in all_aliases
+            alias_names = [n for n in names if n in all_aliases]
+
+            if alias_names:
+                # Use the first alias name (compatibility name)
+                preferred_name = alias_names[0]
+            else:
+                # No alias, use the canonical name (first name we found)
+                preferred_name = names[0]
+
+            # Get the HookPoint from the original hooks dict
+            deduplicated[preferred_name] = hooks[preferred_name]
+
+        return deduplicated
+
     def _scan_existing_hooks(self, module: nn.Module, prefix: str = "") -> None:
         """Scan existing modules for hooks and add them to registry."""
         visited = set()
@@ -389,6 +437,11 @@ class TransformerBridge(nn.Module):
         # Add aliases if compatibility mode is enabled
         if self.compatibility_mode:
             self._add_aliases_to_hooks(hooks)
+
+            # Deduplicate HookPoints: when the same HookPoint appears under multiple names,
+            # keep only the compatibility alias name (e.g., "blocks.0.hook_mlp_out" instead of "blocks.0.mlp.hook_out")
+            # This ensures hooks are only called once per forward pass
+            hooks = self._deduplicate_hook_dict(hooks)
 
         return hooks
 
@@ -832,6 +885,7 @@ class TransformerBridge(nn.Module):
             # Extract split Q/K/V weights for attention layers (uses architecture adapter)
             self._enable_split_qkv_attention()
             # Create hook_mlp_out aliases to match HookedTransformer
+            # This makes block.hook_mlp_out point to the same object as block.mlp.hook_out
             self._create_hook_mlp_out_aliases()
             # Re-initialize hook registry to pick up the aliases
             self.clear_hook_registry()
@@ -943,7 +997,9 @@ class TransformerBridge(nn.Module):
 
         This is done by:
         1. Replacing block.hook_mlp_out with a reference to block.mlp.hook_out
-        2. Updating the hook_dict registry to point both names to the same object
+        2. Updating PyTorch's module registry to point to the same object
+        3. Setting a flag on the MLP to skip calling hook_out in its forward pass
+           (since the block's patched forward will call it via hook_mlp_out)
         """
         for block_idx, block in enumerate(self.blocks):
             if hasattr(block, "mlp") and hasattr(block.mlp, "hook_out"):
@@ -951,9 +1007,20 @@ class TransformerBridge(nn.Module):
                 mlp_hook_out = block.mlp.hook_out
 
                 # Replace the block's hook_mlp_out with a reference to mlp.hook_out
+                # Use add_module to properly update PyTorch's module registry
+                # This ensures the same HookPoint appears in both places but is only called once
+                if hasattr(block, "_modules") and "hook_mlp_out" in block._modules:
+                    # Replace in PyTorch's module registry
+                    block._modules["hook_mlp_out"] = mlp_hook_out
+
+                # Also update the attribute for direct access
                 # We need to use __dict__ directly to bypass GeneralizedComponent's __setattr__
                 # which might interfere with aliasing
                 block.__dict__["hook_mlp_out"] = mlp_hook_out
+
+                # Set flag on MLP to skip calling hook_out in its forward pass
+                # This prevents the hook from being called twice (once in MLP forward, once in block forward)
+                block.mlp._skip_hook_out_call = True
 
     def _replace_with_ht_components(self) -> None:
         """Replace bridge components with HT components for exact gradient matching.

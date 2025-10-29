@@ -36,7 +36,7 @@ class BlockBridge(GeneralizedComponent):
         "hook_k_input": "attn.k.hook_in",
         "hook_v_input": "attn.v.hook_in",
         "hook_mlp_in": "mlp.hook_in",
-        # hook_mlp_out is handled specially via monkey-patching
+        "hook_mlp_out": "mlp.hook_out",  # Alias hook_mlp_out to mlp.hook_out
     }
 
     def __init__(
@@ -60,7 +60,9 @@ class BlockBridge(GeneralizedComponent):
         self.hook_resid_mid = HookPoint()
         self._register_hook("hook_resid_mid", self.hook_resid_mid)
 
-        # Create custom hook_mlp_out that will be inserted via monkey-patching
+        # Create custom hook_mlp_out that will be used in the patched forward
+        # Note: In compatibility mode, this will be replaced with an alias to mlp.hook_out
+        # via the hook_aliases system
         self.hook_mlp_out = HookPoint()
         # Set backward scale to match HookedTransformer gradient flow
         # Scale factor of 6.0 compensates for architectural differences
@@ -242,10 +244,11 @@ class BlockBridge(GeneralizedComponent):
                 else:
                     raise RuntimeError(f"Could not find MLP module in block {block_self}")
 
-            # INSERT HOOK HERE - before residual addition
-            # This matches HookedTransformer where hook_mlp_out wraps MLP output
-            # before it participates in residual connection
-            feed_forward_hidden_states = self.hook_mlp_out(feed_forward_hidden_states)
+            # Apply hook_mlp_out - this wraps the MLP output before residual addition
+            # Note: In compatibility mode (no_processing=True), hook_mlp_out is aliased to mlp.hook_out
+            # and the MLP's forward skips calling hook_out to avoid double calls
+            if hasattr(self, "hook_mlp_out"):
+                feed_forward_hidden_states = self.hook_mlp_out(feed_forward_hidden_states)
 
             # Residual connection
             hidden_states = residual + feed_forward_hidden_states
