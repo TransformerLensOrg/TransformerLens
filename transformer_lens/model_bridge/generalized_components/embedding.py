@@ -67,7 +67,7 @@ class EmbeddingBridge(GeneralizedComponent):
         input_ids: torch.Tensor,
         position_ids: torch.Tensor | None = None,
         **kwargs: Any,
-    ) -> torch.Tensor:
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         """Forward pass through the embedding bridge.
 
         Args:
@@ -115,9 +115,19 @@ class EmbeddingBridge(GeneralizedComponent):
         else:
             output = self.original_component(input_ids, position_ids=position_ids, **kwargs)
 
-        # Some models return tuples; extract embeddings
+        # Handle tuple outputs
+        # Rotary embeddings return (cos, sin) tuple that should be preserved
+        # Regular embeddings may return (embeddings, ...) tuple where we extract the first element
         if isinstance(output, tuple):
-            output = output[0]
+            # Check if this is a rotary embedding by checking if we have inv_freq
+            is_rotary = hasattr(self.original_component, "inv_freq")
+            if is_rotary:
+                # Rotary embeddings: preserve the full tuple (cos, sin)
+                # Don't apply hooks to rotary embeddings as they're position encodings, not token embeddings
+                return output
+            else:
+                # Regular embeddings: extract the embeddings tensor
+                output = output[0]
 
         # Apply output hook
         output = self.hook_out(output)

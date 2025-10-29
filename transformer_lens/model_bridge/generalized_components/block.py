@@ -101,6 +101,7 @@ class BlockBridge(GeneralizedComponent):
         def patched_forward(
             block_self,  # This is the HF block instance
             hidden_states,
+            position_embeddings=None,  # Gemma2 and other models pass position_embeddings
             past_key_value=None,
             cache_position=None,
             attention_mask=None,
@@ -166,6 +167,11 @@ class BlockBridge(GeneralizedComponent):
                 "output_attentions": output_attentions,
                 **kwargs,
             }
+
+            # Handle position_embeddings for models like Gemma2
+            # Position embeddings need to be passed through to attention
+            if position_embeddings is not None:
+                attn_kwargs["position_embeddings"] = position_embeddings
 
             # Add KV cache with the correct parameter name
             if past_key_value is not None:
