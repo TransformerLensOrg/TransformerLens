@@ -748,8 +748,9 @@ def test_TransformerBridge_gemma2_forward():
     assert isinstance(hf_output.logits, torch.Tensor), "HF output should have logits"
 
     # Check shapes match
-    assert bridge_output.shape == hf_output.logits.shape, \
-        f"Output shapes should match: {bridge_output.shape} vs {hf_output.logits.shape}"
+    assert (
+        bridge_output.shape == hf_output.logits.shape
+    ), f"Output shapes should match: {bridge_output.shape} vs {hf_output.logits.shape}"
 
     # Check that outputs are close (they should be identical)
     max_diff = torch.max(torch.abs(bridge_output - hf_output.logits)).item()

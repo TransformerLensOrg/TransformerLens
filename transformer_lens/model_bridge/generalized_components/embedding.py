@@ -67,7 +67,7 @@ class EmbeddingBridge(GeneralizedComponent):
         input_ids: torch.Tensor,
         position_ids: torch.Tensor | None = None,
         **kwargs: Any,
-    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
+    ) -> torch.Tensor | tuple[torch.Tensor, ...]:
         """Forward pass through the embedding bridge.
 
         Args:
@@ -76,7 +76,7 @@ class EmbeddingBridge(GeneralizedComponent):
             **kwargs: Additional arguments to pass to the original component
 
         Returns:
-            Embedded output
+            Embedded output (tensor or tuple with hooked tensor as first element)
         """
 
         # Check if we're using processed weights from a reference model (layer norm folding case)
@@ -116,23 +116,16 @@ class EmbeddingBridge(GeneralizedComponent):
             output = self.original_component(input_ids, position_ids=position_ids, **kwargs)
 
         # Handle tuple outputs
-        # Rotary embeddings return (cos, sin) tuple that should be preserved
-        # Regular embeddings may return (embeddings, ...) tuple where we extract the first element
+        # Some embedding layers return (embeddings, ...) tuples
+        # We need to apply hook to the first element and preserve the tuple structure
         if isinstance(output, tuple):
-            # Check if this is a rotary embedding by checking if we have inv_freq
-            is_rotary = hasattr(self.original_component, "inv_freq")
-            if is_rotary:
-                # Rotary embeddings: preserve the full tuple (cos, sin)
-                # Don't apply hooks to rotary embeddings as they're position encodings, not token embeddings
-                return output
-            else:
-                # Regular embeddings: extract the embeddings tensor
-                output = output[0]
-
-        # Apply output hook
-        output = self.hook_out(output)
-
-        return output
+            # Extract first element, apply hook, and put it back in the tuple
+            hooked_embedding = self.hook_out(output[0])
+            return (hooked_embedding,) + output[1:]
+        else:
+            # Apply output hook for non-tuple outputs
+            output = self.hook_out(output)
+            return output
 
     def set_processed_weight(self, weight: torch.Tensor) -> None:
         """Set the processed weight to use when layer norm is folded.
