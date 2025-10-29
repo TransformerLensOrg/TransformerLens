@@ -35,6 +35,8 @@ class LlamaArchitectureAdapter(ArchitectureAdapter):
         self.cfg.gated_mlp = True
 
         self.cfg.uses_rms_norm = True
+        # Llama uses 'variance_epsilon' instead of 'eps' for RMSNorm
+        self.cfg.eps_attr = "variance_epsilon"
 
         self.conversion_rules = HookConversionSet(
             {

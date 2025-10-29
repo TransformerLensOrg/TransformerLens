@@ -118,7 +118,10 @@ class NormalizationBridge(GeneralizedComponent):
         if self.original_component is None:
             raise RuntimeError(f"Original component not set for {self.name}")
 
-        eps = self.original_component.eps
+        # Handle different eps attribute names based on config
+        # Most models use 'eps', but some (like Llama) use 'variance_epsilon'
+        eps_attr = getattr(self.config, "eps_attr", "eps")
+        eps = getattr(self.original_component, eps_attr, 1e-5)
         weight = self.original_component.weight
         bias = getattr(self.original_component, "bias", None)  # RMSNorm doesn't have bias
 
