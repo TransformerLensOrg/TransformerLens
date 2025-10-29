@@ -705,6 +705,10 @@ class AttentionBridge(GeneralizedComponent):
             processed_tuple = list(output)
             if isinstance(output[0], torch.Tensor):
                 processed_tuple[0] = self.hook_out(output[0])
+            # If tuple has only 1 element, return just the tensor (unwrap)
+            # This prevents tuple from being passed to normalization layers
+            if len(processed_tuple) == 1:
+                return processed_tuple[0]
             return tuple(processed_tuple)
         elif isinstance(output, dict):
             # Apply hook_out to the main hidden states in dictionary
