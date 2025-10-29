@@ -1316,7 +1316,11 @@ class TransformerBridge(nn.Module):
 
         # Transformer blocks
         start_layer = start_at_layer or 0
-        end_layer = stop_at_layer or self.cfg.n_layers
+        # Handle negative indexing for stop_at_layer
+        if stop_at_layer is not None and stop_at_layer < 0:
+            end_layer = self.cfg.n_layers + stop_at_layer
+        else:
+            end_layer = stop_at_layer or self.cfg.n_layers
 
         for layer_idx in range(start_layer, end_layer):
             if layer_idx >= len(self.blocks):
@@ -4609,19 +4613,27 @@ class TransformerBridge(nn.Module):
             del kwargs["input"]
 
         # Add stop_at_layer hook if specified
-        if stop_at_layer is not None:
+        if stop_at_layer is not None and hasattr(self, "blocks"):
             # stop_at_layer is exclusive, so stop_at_layer=1 means run layer 0 and stop before layer 1
+            # Handle negative indexing (e.g., stop_at_layer=-1 means stop before the last layer)
+            if stop_at_layer < 0:
+                stop_at_layer = len(self.blocks) + stop_at_layer
+
             # We need to hook the output of the last layer to be processed (stop_at_layer - 1)
             last_layer_to_process = stop_at_layer - 1
-            if (
-                hasattr(self, "blocks")
-                and last_layer_to_process >= 0
-                and last_layer_to_process < len(self.blocks)
-            ):
 
-                def stop_hook(tensor: torch.Tensor, *, hook: Any) -> torch.Tensor:
-                    raise StopAtLayerException(tensor, stop_at_layer)
+            def stop_hook(tensor: torch.Tensor, *, hook: Any) -> torch.Tensor:
+                raise StopAtLayerException(tensor, stop_at_layer)
 
+            # Special case: stop_at_layer=0 means stop before any blocks (just embeddings)
+            if stop_at_layer == 0:
+                # Hook blocks.0.hook_in which fires after embeddings are combined but before block 0 runs
+                hook_dict = self.hook_dict
+                block_0_hook_name = "blocks.0.hook_in"
+                if block_0_hook_name in hook_dict:
+                    hook_dict[block_0_hook_name].add_hook(stop_hook)
+                    hooks.append((hook_dict[block_0_hook_name], block_0_hook_name))
+            elif last_layer_to_process >= 0 and last_layer_to_process < len(self.blocks):
                 # Add hook to the output of the last layer to be processed
                 block_hook_name = f"blocks.{last_layer_to_process}.hook_out"
                 hook_dict = self.hook_dict
@@ -4800,19 +4812,28 @@ class TransformerBridge(nn.Module):
             added_hooks.append((hook_point, name))
 
         # Add stop_at_layer hook if specified
-        if stop_at_layer is not None:
+        if stop_at_layer is not None and hasattr(self, "blocks"):
             # stop_at_layer is exclusive, so stop_at_layer=1 means run layer 0 and stop before layer 1
+            # Handle negative indexing (e.g., stop_at_layer=-1 means stop before the last layer)
+            if stop_at_layer < 0:
+                stop_at_layer = len(self.blocks) + stop_at_layer
+
             # We need to hook the output of the last layer to be processed (stop_at_layer - 1)
             last_layer_to_process = stop_at_layer - 1
-            if (
-                hasattr(self, "blocks")
-                and last_layer_to_process >= 0
-                and last_layer_to_process < len(self.blocks)
-            ):
 
-                def stop_hook(tensor: torch.Tensor, *, hook: Any) -> torch.Tensor:
-                    raise StopAtLayerException(tensor, stop_at_layer)
+            def stop_hook(tensor: torch.Tensor, *, hook: Any) -> torch.Tensor:
+                raise StopAtLayerException(tensor, stop_at_layer)
 
+            # Special case: stop_at_layer=0 means stop before any blocks (just embeddings)
+            if stop_at_layer == 0:
+                # Hook blocks.0.hook_in which fires after embeddings are combined but before block 0 runs
+                hook_dict = self.hook_dict
+                block_0_hook_name = "blocks.0.hook_in"
+                if block_0_hook_name in hook_dict:
+                    add_hook_to_point(
+                        hook_dict[block_0_hook_name], stop_hook, block_0_hook_name, "fwd"
+                    )
+            elif last_layer_to_process >= 0 and last_layer_to_process < len(self.blocks):
                 # Add hook to the output of the last layer to be processed
                 block_hook_name = f"blocks.{last_layer_to_process}.hook_out"
                 hook_dict = self.hook_dict
@@ -4874,7 +4895,10 @@ class TransformerBridge(nn.Module):
             # Run the model
             try:
                 # Handle return_type=None explicitly (don't default to "logits")
-                output = self.forward(input, return_type=return_type, **kwargs)
+                # Pass stop_at_layer to forward so processed weight paths can use it
+                output = self.forward(
+                    input, return_type=return_type, stop_at_layer=stop_at_layer, **kwargs
+                )
             except StopAtLayerException as e:
                 # Return the intermediate output from the specified layer
                 output = e.layer_output
