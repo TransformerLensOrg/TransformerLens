@@ -94,7 +94,6 @@ class BlockBridge(GeneralizedComponent):
         def patched_forward(
             block_self,  # This is the HF block instance
             hidden_states,
-            position_embeddings=None,  # Gemma2 and other models pass position_embeddings
             past_key_value=None,
             cache_position=None,
             attention_mask=None,
@@ -103,6 +102,7 @@ class BlockBridge(GeneralizedComponent):
             encoder_attention_mask=None,
             use_cache=False,
             output_attentions=False,
+            position_embeddings=None,  # Gemma2 and other models pass position_embeddings
             **kwargs,
         ):
             # Call original forward but intercept MLP output
