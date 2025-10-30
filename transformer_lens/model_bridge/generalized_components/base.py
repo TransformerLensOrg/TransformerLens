@@ -298,6 +298,19 @@ class GeneralizedComponent(nn.Module):
             if resolved_hook is not None:
                 return resolved_hook
 
+            # Check if we're using processed weights and this is a weight property
+            # For example, W_in should return _processed_W_in if available
+            try:
+                use_processed = object.__getattribute__(self, "_use_processed_weights")
+                if use_processed:
+                    processed_name = f"_processed_{name}"
+                    try:
+                        return object.__getattribute__(self, processed_name)
+                    except AttributeError:
+                        pass  # processed weight not available, continue to resolve from original
+            except AttributeError:
+                pass  # _use_processed_weights not set
+
             # Check if this is a deprecated property alias
             resolved_property = resolve_alias(self, name, self.property_aliases)
             if resolved_property is not None:

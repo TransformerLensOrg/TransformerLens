@@ -36,7 +36,7 @@ class BlockBridge(GeneralizedComponent):
         "hook_k_input": "attn.k.hook_in",
         "hook_v_input": "attn.v.hook_in",
         "hook_mlp_in": "mlp.hook_in",
-        # hook_mlp_out is handled specially via monkey-patching
+        "hook_mlp_out": "mlp.hook_out",  # Alias hook_mlp_out to mlp.hook_out
     }
 
     def __init__(
@@ -60,13 +60,6 @@ class BlockBridge(GeneralizedComponent):
         self.hook_resid_mid = HookPoint()
         self._register_hook("hook_resid_mid", self.hook_resid_mid)
 
-        # Create custom hook_mlp_out that will be inserted via monkey-patching
-        self.hook_mlp_out = HookPoint()
-        # Set backward scale to match HookedTransformer gradient flow
-        # Scale factor of 6.0 compensates for architectural differences
-        self.hook_mlp_out.backward_scale = 6.0
-        # Register hook so it appears in cache
-        self._register_hook("hook_mlp_out", self.hook_mlp_out)
         self._original_block_forward: Optional[Callable[..., Any]] = None
 
     def set_original_component(self, component: torch.nn.Module):
@@ -247,11 +240,6 @@ class BlockBridge(GeneralizedComponent):
                     feed_forward_hidden_states = fc2(hidden_states)
                 else:
                     raise RuntimeError(f"Could not find MLP module in block {block_self}")
-
-            # INSERT HOOK HERE - before residual addition
-            # This matches HookedTransformer where hook_mlp_out wraps MLP output
-            # before it participates in residual connection
-            feed_forward_hidden_states = self.hook_mlp_out(feed_forward_hidden_states)
 
             # Residual connection
             hidden_states = residual + feed_forward_hidden_states

@@ -43,6 +43,11 @@ class EmbeddingBridge(GeneralizedComponent):
     @property
     def W_E(self) -> torch.Tensor:
         """Return the embedding weight matrix."""
+        # If using processed weights from compatibility mode, return those
+        if hasattr(self, "_use_processed_weights") and self._use_processed_weights:
+            if hasattr(self, "_processed_weight"):
+                return self._processed_weight
+
         if self.original_component is None:
             raise RuntimeError(f"Original component not set for {self.name}")
 

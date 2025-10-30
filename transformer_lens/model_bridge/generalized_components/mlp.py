@@ -116,7 +116,6 @@ class MLPBridge(GeneralizedComponent):
         new_args = (hidden_states,) + args[1:]
         output = self.original_component(*new_args, **kwargs)
         output = self.hook_out(output)
-
         return output
 
     def set_processed_weights(

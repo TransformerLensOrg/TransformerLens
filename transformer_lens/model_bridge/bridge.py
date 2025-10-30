@@ -831,9 +831,7 @@ class TransformerBridge(nn.Module):
             self._setup_no_processing_hooks()
             # Extract split Q/K/V weights for attention layers (uses architecture adapter)
             self._enable_split_qkv_attention()
-            # Create hook_mlp_out aliases to match HookedTransformer
-            self._create_hook_mlp_out_aliases()
-            # Re-initialize hook registry to pick up the aliases
+            # Re-initialize hook registry to pick up any changes
             self.clear_hook_registry()
             self._initialize_hook_registry()
 
@@ -932,28 +930,6 @@ class TransformerBridge(nn.Module):
             ):
                 if block.post_attention_layernorm.config is not None:
                     block.post_attention_layernorm.config.use_hf_autograd = True
-
-    def _create_hook_mlp_out_aliases(self) -> None:
-        """Create hook_mlp_out as an alias to mlp.hook_out to match HookedTransformer.
-
-        In HookedTransformer, hook_mlp_out is a separate HookPoint that wraps the MLP output.
-        In TransformerBridge, we have both block.hook_mlp_out and block.mlp.hook_out.
-        To ensure backward hooks fire correctly on both names, we need to make them
-        reference the same HookPoint object (an alias).
-
-        This is done by:
-        1. Replacing block.hook_mlp_out with a reference to block.mlp.hook_out
-        2. Updating the hook_dict registry to point both names to the same object
-        """
-        for block_idx, block in enumerate(self.blocks):
-            if hasattr(block, "mlp") and hasattr(block.mlp, "hook_out"):
-                # Get the MLP's hook_out (the canonical HookPoint)
-                mlp_hook_out = block.mlp.hook_out
-
-                # Replace the block's hook_mlp_out with a reference to mlp.hook_out
-                # We need to use __dict__ directly to bypass GeneralizedComponent's __setattr__
-                # which might interfere with aliasing
-                block.__dict__["hook_mlp_out"] = mlp_hook_out
 
     def _replace_with_ht_components(self) -> None:
         """Replace bridge components with HT components for exact gradient matching.
@@ -1316,7 +1292,11 @@ class TransformerBridge(nn.Module):
 
         # Transformer blocks
         start_layer = start_at_layer or 0
-        end_layer = stop_at_layer or self.cfg.n_layers
+        # Handle negative indexing for stop_at_layer
+        if stop_at_layer is not None and stop_at_layer < 0:
+            end_layer = self.cfg.n_layers + stop_at_layer
+        else:
+            end_layer = stop_at_layer or self.cfg.n_layers
 
         for layer_idx in range(start_layer, end_layer):
             if layer_idx >= len(self.blocks):
@@ -4609,19 +4589,27 @@ class TransformerBridge(nn.Module):
             del kwargs["input"]
 
         # Add stop_at_layer hook if specified
-        if stop_at_layer is not None:
+        if stop_at_layer is not None and hasattr(self, "blocks"):
             # stop_at_layer is exclusive, so stop_at_layer=1 means run layer 0 and stop before layer 1
+            # Handle negative indexing (e.g., stop_at_layer=-1 means stop before the last layer)
+            if stop_at_layer < 0:
+                stop_at_layer = len(self.blocks) + stop_at_layer
+
             # We need to hook the output of the last layer to be processed (stop_at_layer - 1)
             last_layer_to_process = stop_at_layer - 1
-            if (
-                hasattr(self, "blocks")
-                and last_layer_to_process >= 0
-                and last_layer_to_process < len(self.blocks)
-            ):
 
-                def stop_hook(tensor: torch.Tensor, *, hook: Any) -> torch.Tensor:
-                    raise StopAtLayerException(tensor, stop_at_layer)
+            def stop_hook(tensor: torch.Tensor, *, hook: Any) -> torch.Tensor:
+                raise StopAtLayerException(tensor, stop_at_layer)
 
+            # Special case: stop_at_layer=0 means stop before any blocks (just embeddings)
+            if stop_at_layer == 0:
+                # Hook blocks.0.hook_in which fires after embeddings are combined but before block 0 runs
+                hook_dict = self.hook_dict
+                block_0_hook_name = "blocks.0.hook_in"
+                if block_0_hook_name in hook_dict:
+                    hook_dict[block_0_hook_name].add_hook(stop_hook)
+                    hooks.append((hook_dict[block_0_hook_name], block_0_hook_name))
+            elif last_layer_to_process >= 0 and last_layer_to_process < len(self.blocks):
                 # Add hook to the output of the last layer to be processed
                 block_hook_name = f"blocks.{last_layer_to_process}.hook_out"
                 hook_dict = self.hook_dict
@@ -4800,19 +4788,28 @@ class TransformerBridge(nn.Module):
             added_hooks.append((hook_point, name))
 
         # Add stop_at_layer hook if specified
-        if stop_at_layer is not None:
+        if stop_at_layer is not None and hasattr(self, "blocks"):
             # stop_at_layer is exclusive, so stop_at_layer=1 means run layer 0 and stop before layer 1
+            # Handle negative indexing (e.g., stop_at_layer=-1 means stop before the last layer)
+            if stop_at_layer < 0:
+                stop_at_layer = len(self.blocks) + stop_at_layer
+
             # We need to hook the output of the last layer to be processed (stop_at_layer - 1)
             last_layer_to_process = stop_at_layer - 1
-            if (
-                hasattr(self, "blocks")
-                and last_layer_to_process >= 0
-                and last_layer_to_process < len(self.blocks)
-            ):
 
-                def stop_hook(tensor: torch.Tensor, *, hook: Any) -> torch.Tensor:
-                    raise StopAtLayerException(tensor, stop_at_layer)
+            def stop_hook(tensor: torch.Tensor, *, hook: Any) -> torch.Tensor:
+                raise StopAtLayerException(tensor, stop_at_layer)
 
+            # Special case: stop_at_layer=0 means stop before any blocks (just embeddings)
+            if stop_at_layer == 0:
+                # Hook blocks.0.hook_in which fires after embeddings are combined but before block 0 runs
+                hook_dict = self.hook_dict
+                block_0_hook_name = "blocks.0.hook_in"
+                if block_0_hook_name in hook_dict:
+                    add_hook_to_point(
+                        hook_dict[block_0_hook_name], stop_hook, block_0_hook_name, "fwd"
+                    )
+            elif last_layer_to_process >= 0 and last_layer_to_process < len(self.blocks):
                 # Add hook to the output of the last layer to be processed
                 block_hook_name = f"blocks.{last_layer_to_process}.hook_out"
                 hook_dict = self.hook_dict
@@ -4874,7 +4871,10 @@ class TransformerBridge(nn.Module):
             # Run the model
             try:
                 # Handle return_type=None explicitly (don't default to "logits")
-                output = self.forward(input, return_type=return_type, **kwargs)
+                # Pass stop_at_layer to forward so processed weight paths can use it
+                output = self.forward(
+                    input, return_type=return_type, stop_at_layer=stop_at_layer, **kwargs
+                )
             except StopAtLayerException as e:
                 # Return the intermediate output from the specified layer
                 output = e.layer_output
