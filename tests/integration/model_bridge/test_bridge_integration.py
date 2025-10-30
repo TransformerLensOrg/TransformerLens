@@ -726,7 +726,7 @@ def test_TransformerBridge_hooks_backward_hooks():
     assert hook_called["bridge"], "TransformerBridge backward hook should now be called correctly"
 
 
-@pytest.mark.skipif(os.getenv("CI"), reason="Skip Gemma2 test in CI to avoid timeout")
+@pytest.mark.skipif(bool(os.getenv("CI")), reason="Skip Gemma2 test in CI to avoid timeout")
 def test_TransformerBridge_gemma2_forward():
     """Test that TransformerBridge properly handles Gemma2's position_embeddings.
 
