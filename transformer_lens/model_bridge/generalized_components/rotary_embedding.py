@@ -90,7 +90,5 @@ class RotaryEmbeddingBridge(GeneralizedComponent):
             sin = self.hook_sin(sin)
             return (cos, sin)
         else:
-            # Unexpected tuple length - shouldn't happen
-            raise RuntimeError(
-                f"Rotary embedding {self.name} returned tuple of length {len(output)}, expected 2"
-            )
+            # Unexpected tuple length - just return as-is
+            return output
