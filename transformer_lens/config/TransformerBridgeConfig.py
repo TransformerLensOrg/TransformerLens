@@ -79,6 +79,7 @@ class TransformerBridgeConfig(TransformerLensConfig):
         NTK_by_parts_low_freq_factor: float = 1.0,
         NTK_by_parts_high_freq_factor: float = 4.0,
         NTK_by_parts_factor: float = 8.0,
+        eps_attr: str = "eps",
         **kwargs,
     ):
         """Initialize TransformerBridgeConfig."""
@@ -148,6 +149,7 @@ class TransformerBridgeConfig(TransformerLensConfig):
         self.NTK_by_parts_low_freq_factor = NTK_by_parts_low_freq_factor
         self.NTK_by_parts_high_freq_factor = NTK_by_parts_high_freq_factor
         self.NTK_by_parts_factor = NTK_by_parts_factor
+        self.eps_attr = eps_attr
 
         self.__post_init__()
 

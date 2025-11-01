@@ -1,6 +1,7 @@
 import pytest
 import torch
 
+from transformer_lens import utils
 from transformer_lens.model_bridge import TransformerBridge
 
 
@@ -17,6 +18,45 @@ class TestUtilsWithTransformerBridge:
         return TransformerBridge.boot_transformers(model_name, device="cpu")
 
     # tests
+    @pytest.mark.parametrize("padding_side", ["left", "right"])
+    @pytest.mark.parametrize("prepend_bos", [True, False])
+    @pytest.mark.parametrize("prompts_with_sep", [True, False])
+    def test_get_attention_mask(self, model, padding_side, prepend_bos, prompts_with_sep):
+        # setup
+        model.tokenizer.padding_side = padding_side
+        if hasattr(model.tokenizer, "sep_token_id"):
+            model.tokenizer.sep_token_id = model.tokenizer.pad_token_id
+        prepend_bos = prepend_bos
+
+        # For TransformerBridge, we need to adapt the prompts format
+        prompts = [
+            "The quick brown fox jumps over the lazy dog",
+            "Hello world, this is a test",
+            "Short",
+        ]
+
+        if prompts_with_sep:
+            # Add separator if model supports it
+            if hasattr(model.tokenizer, "sep_token") and model.tokenizer.sep_token:
+                prompts = [prompt + model.tokenizer.sep_token for prompt in prompts]
+
+        # Get tokens using TransformerBridge's tokenization method
+        tokens = model.to_tokens(prompts, prepend_bos=prepend_bos, padding_side=padding_side)
+
+        # Test attention mask utility
+        attention_mask = utils.get_attention_mask(model.tokenizer, tokens, prepend_bos)
+
+        # Basic checks
+        assert attention_mask.shape == tokens.shape
+        # Attention mask should be int64 with values 0/1 for compatibility
+        assert attention_mask.dtype == torch.int64
+
+        # Check that non-padding tokens have attention_mask = True
+        if hasattr(model.tokenizer, "pad_token_id") and model.tokenizer.pad_token_id is not None:
+            non_padding_mask = tokens != model.tokenizer.pad_token_id
+            # All non-padding positions should have attention
+            assert torch.all(attention_mask >= non_padding_mask)
+
     def test_tokenizer_compatibility(self, model):
         """Test that TransformerBridge tokenizer works with utility functions."""
         prompt = "Hello, world!"

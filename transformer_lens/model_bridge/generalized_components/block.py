@@ -36,7 +36,7 @@ class BlockBridge(GeneralizedComponent):
         "hook_k_input": "attn.k.hook_in",
         "hook_v_input": "attn.v.hook_in",
         "hook_mlp_in": "mlp.hook_in",
-        # hook_mlp_out is handled specially via monkey-patching
+        "hook_mlp_out": "mlp.hook_out",  # Alias hook_mlp_out to mlp.hook_out
     }
 
     def __init__(
@@ -60,13 +60,6 @@ class BlockBridge(GeneralizedComponent):
         self.hook_resid_mid = HookPoint()
         self._register_hook("hook_resid_mid", self.hook_resid_mid)
 
-        # Create custom hook_mlp_out that will be inserted via monkey-patching
-        self.hook_mlp_out = HookPoint()
-        # Set backward scale to match HookedTransformer gradient flow
-        # Scale factor of 6.0 compensates for architectural differences
-        self.hook_mlp_out.backward_scale = 6.0
-        # Register hook so it appears in cache
-        self._register_hook("hook_mlp_out", self.hook_mlp_out)
         self._original_block_forward: Optional[Callable[..., Any]] = None
 
     def set_original_component(self, component: torch.nn.Module):
@@ -109,6 +102,7 @@ class BlockBridge(GeneralizedComponent):
             encoder_attention_mask=None,
             use_cache=False,
             output_attentions=False,
+            position_embeddings=None,  # Gemma2 and other models pass position_embeddings
             **kwargs,
         ):
             # Call original forward but intercept MLP output
@@ -166,6 +160,11 @@ class BlockBridge(GeneralizedComponent):
                 "output_attentions": output_attentions,
                 **kwargs,
             }
+
+            # Handle position_embeddings for models like Gemma2
+            # Position embeddings need to be passed through to attention
+            if position_embeddings is not None:
+                attn_kwargs["position_embeddings"] = position_embeddings
 
             # Add KV cache with the correct parameter name
             if past_key_value is not None:
@@ -242,11 +241,6 @@ class BlockBridge(GeneralizedComponent):
                 else:
                     raise RuntimeError(f"Could not find MLP module in block {block_self}")
 
-            # INSERT HOOK HERE - before residual addition
-            # This matches HookedTransformer where hook_mlp_out wraps MLP output
-            # before it participates in residual connection
-            feed_forward_hidden_states = self.hook_mlp_out(feed_forward_hidden_states)
-
             # Residual connection
             hidden_states = residual + feed_forward_hidden_states
 
@@ -284,6 +278,11 @@ class BlockBridge(GeneralizedComponent):
         # method to match HookedTransformer's architecture. We don't apply them
         # here in the wrapper to avoid double-wrapping.
         output = self.original_component(*args, **kwargs)
+
+        # If output is a single-element tuple, unwrap it
+        # This prevents tuples from being passed between blocks
+        if isinstance(output, tuple) and len(output) == 1:
+            return output[0]
 
         return output
 

@@ -134,8 +134,8 @@ class TestBackwardHookParity:
             # Backward hooks need higher tolerance due to numerical precision in backprop
             # CI environment shows max_diff up to 17.0 for blocks.0.ln2.hook_scale, though relative error is only 0.008%
             # torch.allclose passes if |a - b| <= atol + rtol * |b|, so use rtol to handle large gradients
-            abs_tolerance = 0.5  # Absolute difference tolerance (for small gradients)
-            rel_tolerance = 4e-4  # Relative difference tolerance (0.04% - accommodates CI numerical differences)
+            abs_tolerance = 0.2  # Absolute difference tolerance (for small gradients)
+            rel_tolerance = 3e-4  # Relative difference tolerance (0.03% - accommodates CI numerical differences)
 
             # Hooks with known numerical differences due to architectural bridging
             # These are excluded from comparison (commented out for now)
@@ -363,8 +363,8 @@ class TestBackwardHookParity:
             # Use relaxed absolute tolerance but strict relative tolerance
             # These hooks have gradients ~100,000+ where 0.001% relative error = 1.0 absolute
             # CI shows max_diff up to 12.5 for blocks.6.attn.hook_pattern with mean_rel=0.000089 (0.009%)
-            abs_tolerance = 0.5  # For small gradients
-            rel_tolerance = 4e-4  # 0.04% relative error (accommodates CI numerical differences)
+            abs_tolerance = 0.2  # For small gradients
+            rel_tolerance = 3e-4  # 0.03% relative error (accommodates CI numerical differences)
 
             mismatches = []
 
@@ -516,8 +516,8 @@ class TestBackwardHookParity:
             print(f"\nComparing {len(critical_hooks)} critical backward hooks")
             mismatches = []
             # Backward hooks need higher tolerance due to numerical precision in backprop
-            abs_tolerance = 0.5  # For small gradients
-            rel_tolerance = 4e-4  # 0.04% relative error (accommodates CI numerical differences)
+            abs_tolerance = 0.2  # For small gradients
+            rel_tolerance = 3e-4  # 0.03% relative error (accommodates CI numerical differences)
 
             for hook_name in critical_hooks:
                 if hook_name not in ht_gradients:
