@@ -11,7 +11,6 @@ from transformer_lens.model_bridge.generalized_components import (
     EmbeddingBridge,
     JointGateUpMLPBridge,
     LinearBridge,
-    MLPBridge,
     NormalizationBridge,
     UnembeddingBridge,
 )
@@ -46,22 +45,10 @@ class GPTOSSArchitectureAdapter(ArchitectureAdapter):
                         },
                     ),
                     "ln2": NormalizationBridge(name="post_attention_layernorm", config=self.cfg),
-                    "mlp": MLPBridge(
-                        name="mlp",
-                        submodules={
-                            "router": LinearBridge(name="router"),
-                            "experts": BlockBridge(
-                                name="experts",
-                                submodules={
-                                    "gate_up": JointGateUpMLPBridge(
-                                        name="gate_up_proj",
-                                        gate_up_config={
-                                            "split_gate_up_matrix": self.split_gate_up_matrix
-                                        },
-                                    ),
-                                    "down": LinearBridge(name="down_proj"),
-                                },
-                            ),
+                    "mlp": JointGateUpMLPBridge(
+                        name="mlp.experts",
+                        gate_up_config={
+                            "split_gate_up_matrix": self.split_gate_up_matrix
                         },
                     ),
                 },
