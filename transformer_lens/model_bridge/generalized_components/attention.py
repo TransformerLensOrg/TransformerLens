@@ -80,6 +80,14 @@ class AttentionBridge(GeneralizedComponent):
         self.hook_pattern = HookPoint()
         self.hook_hidden_states = HookPoint()
 
+        # Add rotary embedding hooks if using rotary positional embeddings
+        if (
+            hasattr(config, "positional_embedding_type")
+            and config.positional_embedding_type == "rotary"
+        ):
+            self.hook_rot_k = HookPoint()
+            self.hook_rot_q = HookPoint()
+
         # Apply conversion rule to attention-specific hooks
         self.hook_hidden_states.hook_conversion = conversion_rule
 

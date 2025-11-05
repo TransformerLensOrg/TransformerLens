@@ -304,6 +304,14 @@ class GeneralizedComponent(nn.Module):
                 use_processed = object.__getattribute__(self, "_use_processed_weights")
                 if use_processed:
                     processed_name = f"_processed_{name}"
+                    # Try to get from _parameters dict first (for registered parameters)
+                    try:
+                        params = object.__getattribute__(self, "_parameters")
+                        if processed_name in params:
+                            return params[processed_name]
+                    except AttributeError:
+                        pass
+                    # Fall back to regular attribute access
                     try:
                         return object.__getattribute__(self, processed_name)
                     except AttributeError:

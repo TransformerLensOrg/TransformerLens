@@ -1321,8 +1321,21 @@ class TransformerBridge(nn.Module):
 
         # Embeddings
         token_embed = self.embed(tokens)
-        pos_embed = self.pos_embed(tokens)
-        residual = token_embed + pos_embed
+
+        # Handle positional embeddings based on positional_embedding_type
+        if (
+            hasattr(self.cfg, "positional_embedding_type")
+            and self.cfg.positional_embedding_type == "rotary"
+        ):
+            # Rotary embeddings don't add to residual stream - they're applied in attention
+            residual = token_embed
+        elif hasattr(self, "pos_embed"):
+            # Standard/shortformer/alibi positional embeddings
+            pos_embed = self.pos_embed(tokens)
+            residual = token_embed + pos_embed
+        else:
+            # No positional embeddings (shouldn't happen, but handle gracefully)
+            residual = token_embed
 
         # Transformer blocks
         start_layer = start_at_layer or 0

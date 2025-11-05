@@ -35,6 +35,8 @@ class PythiaArchitectureAdapter(ArchitectureAdapter):
         """
         super().__init__(cfg)
         self.cfg.positional_embedding_type = "rotary"
+        # Note: We DON'T set default_prepend_bos here to match HookedTransformer's behavior
+        # HookedTransformer defaults to True for better results even though Pythia wasn't trained with BOS
 
         self.conversion_rules = HookConversionSet(
             {

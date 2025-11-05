@@ -34,8 +34,9 @@ class NeoxArchitectureAdapter(ArchitectureAdapter):
             cfg: The configuration object.
         """
         super().__init__(cfg)
-
-        self.cfg.default_prepend_bos = False
+        # Note: We DON'T set default_prepend_bos to match HookedTransformer's default behavior
+        # NeoX/Pythia models use rotary position embeddings
+        self.cfg.positional_embedding_type = "rotary"
 
         self.conversion_rules = HookConversionSet(
             {
