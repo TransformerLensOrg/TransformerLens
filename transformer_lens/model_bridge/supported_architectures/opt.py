@@ -71,7 +71,16 @@ class OptArchitectureAdapter(ArchitectureAdapter):
                 name="model.decoder.layers",
                 submodules={
                     "ln1": NormalizationBridge(name="self_attn_layer_norm", config=self.cfg),
-                    "attn": AttentionBridge(name="self_attn", config=self.cfg),
+                    "attn": AttentionBridge(
+                        name="self_attn",
+                        config=self.cfg,
+                        submodules={
+                            "q": LinearBridge(name="q_proj"),
+                            "k": LinearBridge(name="k_proj"),
+                            "v": LinearBridge(name="v_proj"),
+                            "o": LinearBridge(name="out_proj"),
+                        },
+                    ),
                     "ln2": NormalizationBridge(name="final_layer_norm", config=self.cfg),
                     "mlp": MLPBridge(
                         name=None,  # No MLP container; fc1/fc2 are on block
