@@ -53,6 +53,28 @@ def map_default_transformer_lens_config(hf_config):
     elif hasattr(hf_config, "num_heads"):  # T5-style
         tl_config.n_heads = hf_config.num_heads
 
+    # Map number of key-value heads for GQA models
+    if hasattr(hf_config, "num_key_value_heads") and hf_config.num_key_value_heads is not None:
+        # Only set if different from n_heads (i.e., actually using GQA)
+        # Convert to Python int/float to avoid Tensor boolean comparison issues
+        try:
+            # Handle both Tensor and numeric types
+            num_kv_heads = hf_config.num_key_value_heads
+            if hasattr(num_kv_heads, "item"):  # Tensor
+                num_kv_heads = num_kv_heads.item()
+            num_kv_heads = int(num_kv_heads)
+
+            num_heads = tl_config.n_heads
+            if hasattr(num_heads, "item"):  # Tensor
+                num_heads = num_heads.item()
+            num_heads = int(num_heads)
+
+            if num_kv_heads != num_heads:
+                tl_config.n_key_value_heads = num_kv_heads
+        except (TypeError, ValueError, AttributeError):
+            # If conversion fails, skip GQA mapping
+            pass
+
     # Map number of layers
     if hasattr(hf_config, "n_layer"):  # GPT2-style
         tl_config.n_layers = hf_config.n_layer

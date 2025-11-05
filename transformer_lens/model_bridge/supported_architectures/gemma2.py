@@ -31,6 +31,9 @@ class Gemma2ArchitectureAdapter(ArchitectureAdapter):
 
         self.cfg.uses_rms_norm = True
 
+        # Note: n_key_value_heads is now automatically mapped from num_key_value_heads
+        # by map_default_transformer_lens_config() in sources/transformers.py
+
         self.conversion_rules = HookConversionSet(
             {
                 # Gemma2 scales embeddings by sqrt(d_model)
@@ -51,14 +54,14 @@ class Gemma2ArchitectureAdapter(ArchitectureAdapter):
                     "model.layers.{i}.self_attn.k_proj.weight",
                     RearrangeHookConversion(
                         "(n h) m -> n m h",
-                        n=getattr(self.cfg, "num_key_value_heads", self.cfg.n_heads),
+                        n=getattr(self.cfg, "n_key_value_heads", self.cfg.n_heads),
                     ),
                 ),
                 "blocks.{i}.attn.v": (
                     "model.layers.{i}.self_attn.v_proj.weight",
                     RearrangeHookConversion(
                         "(n h) m -> n m h",
-                        n=getattr(self.cfg, "num_key_value_heads", self.cfg.n_heads),
+                        n=getattr(self.cfg, "n_key_value_heads", self.cfg.n_heads),
                     ),
                 ),
                 "blocks.{i}.attn.o": (

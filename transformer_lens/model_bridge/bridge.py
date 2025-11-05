@@ -1255,12 +1255,22 @@ class TransformerBridge(nn.Module):
 
         # Extract TransformerLens format weights
         W_Q = processed_weights.get(W_Q_key)
+        # For GQA models, K and V weights may have underscore prefix (_W_K, _W_V)
         W_K = processed_weights.get(W_K_key)
+        if W_K is None:
+            W_K = processed_weights.get(f"blocks.{layer_idx}.attn._W_K")
         W_V = processed_weights.get(W_V_key)
+        if W_V is None:
+            W_V = processed_weights.get(f"blocks.{layer_idx}.attn._W_V")
         W_O = processed_weights.get(W_O_key)
         b_Q = processed_weights.get(b_Q_key)
+        # For GQA models, K and V biases may have underscore prefix (_b_K, _b_V)
         b_K = processed_weights.get(b_K_key)
+        if b_K is None:
+            b_K = processed_weights.get(f"blocks.{layer_idx}.attn._b_K")
         b_V = processed_weights.get(b_V_key)
+        if b_V is None:
+            b_V = processed_weights.get(f"blocks.{layer_idx}.attn._b_V")
         b_O = processed_weights.get(b_O_key)
 
         if reference_model is not None:

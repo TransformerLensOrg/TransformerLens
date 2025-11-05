@@ -68,6 +68,7 @@ class TransformerBridgeConfig(TransformerLensConfig):
         load_in_4bit: bool = False,
         num_experts: Optional[int] = None,
         experts_per_token: Optional[int] = None,
+        n_key_value_heads: Optional[int] = None,
         relative_attention_max_distance: Optional[int] = None,
         relative_attention_num_buckets: Optional[int] = None,
         decoder_start_token_id: Optional[int] = None,
@@ -138,6 +139,7 @@ class TransformerBridgeConfig(TransformerLensConfig):
         self.load_in_4bit = load_in_4bit
         self.num_experts = num_experts
         self.experts_per_token = experts_per_token
+        self.n_key_value_heads = n_key_value_heads
         self.relative_attention_max_distance = relative_attention_max_distance
         self.relative_attention_num_buckets = relative_attention_num_buckets
         self.decoder_start_token_id = decoder_start_token_id

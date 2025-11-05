@@ -888,8 +888,18 @@ class AttentionBridge(GeneralizedComponent):
 
         # Transpose to [batch, n_heads, seq, d_head] for attention computation
         q = q.transpose(1, 2)  # [batch, n_heads, seq, d_head]
-        k = k.transpose(1, 2)
-        v = v.transpose(1, 2)
+        k = k.transpose(1, 2)  # [batch, n_key_value_heads, seq, d_head]
+        v = v.transpose(1, 2)  # [batch, n_key_value_heads, seq, d_head]
+
+        # For GQA (Grouped Query Attention): expand K and V heads to match Q heads
+        # Each key/value head is shared across n_heads // n_key_value_heads query heads
+        n_heads_q = q.shape[1]
+        n_heads_kv = k.shape[1]
+        if n_heads_kv < n_heads_q:
+            # GQA: repeat each K/V head to match the number of Q heads
+            repeats = n_heads_q // n_heads_kv
+            k = k.repeat_interleave(repeats, dim=1)  # [batch, n_heads, seq, d_head]
+            v = v.repeat_interleave(repeats, dim=1)  # [batch, n_heads, seq, d_head]
 
         # Compute attention scores
         d_head = self._processed_W_Q.shape[-1]  # Get d_head from weight shape
