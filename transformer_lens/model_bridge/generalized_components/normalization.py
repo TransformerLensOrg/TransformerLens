@@ -26,6 +26,7 @@ class NormalizationBridge(GeneralizedComponent):
         name: str,
         config: Any,
         submodules: Optional[Dict[str, GeneralizedComponent]] = {},
+        use_native_layernorm_autograd: bool = False,
     ):
         """Initialize the normalization bridge.
 
@@ -33,11 +34,17 @@ class NormalizationBridge(GeneralizedComponent):
             name: The name of this component
             config: Optional configuration
             submodules: Dictionary of GeneralizedComponent submodules to register
+            use_native_layernorm_autograd: If True, use HuggingFace's native LayerNorm
+                                          autograd for exact gradient matching. If False,
+                                          use custom implementation. Defaults to False.
         """
         super().__init__(name, config, submodules=submodules)
 
         self.hook_normalized = HookPoint()
         self.hook_scale = HookPoint()
+
+        # Store whether to use native layernorm autograd
+        self.use_native_layernorm_autograd = use_native_layernorm_autograd
 
     def forward(
         self,
@@ -65,8 +72,7 @@ class NormalizationBridge(GeneralizedComponent):
         hidden_states = self.hook_in(hidden_states)
 
         # Check if we should use HuggingFace's autograd directly (for exact gradient matching)
-        # This is enabled when use_hf_autograd is set on the config
-        if hasattr(self.config, "use_hf_autograd") and self.config.use_hf_autograd:
+        if self.use_native_layernorm_autograd:
             # Use HuggingFace LayerNorm's forward directly to preserve exact computational graph
             result = self._hf_autograd_forward(hidden_states)
         # Check if we should use LayerNormPre behavior (when layer norm folding is enabled)

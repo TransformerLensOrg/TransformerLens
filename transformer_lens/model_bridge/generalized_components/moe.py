@@ -7,6 +7,9 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
+import torch
+
+from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
@@ -17,7 +20,16 @@ class MoEBridge(GeneralizedComponent):
 
     This component wraps a Mixture of Experts layer from a remote model and provides a consistent interface
     for accessing its weights and performing MoE operations.
+
+    MoE models often return tuples of (hidden_states, router_scores). This bridge handles that pattern
+    and provides a hook for capturing router scores.
     """
+
+    # Hook aliases for compatibility with HookedTransformer naming
+    hook_aliases = {
+        "hook_pre": "hook_in",  # Pre-MoE activation
+        "hook_post": "hook_out",  # Post-MoE activation (same as mlp.hook_out)
+    }
 
     def __init__(
         self,
@@ -34,7 +46,10 @@ class MoEBridge(GeneralizedComponent):
         """
         super().__init__(name, config, submodules=submodules)
 
-    def forward(self, *args: Any, **kwargs: Any) -> Any:
+        # Add hook for router scores (expert selection probabilities)
+        self.hook_router_scores = HookPoint()
+
+    def forward(self, *args: Any, **kwargs: Any) -> torch.Tensor:
         """Forward pass through the MoE bridge.
 
         Args:
@@ -42,16 +57,34 @@ class MoEBridge(GeneralizedComponent):
             **kwargs: Input keyword arguments
 
         Returns:
-            The output from the original component
+            Hidden states tensor (router scores are captured via hook but not returned)
         """
         if self.original_component is None:
             raise RuntimeError(
                 f"Original component not set for {self.name}. Call set_original_component() first."
             )
 
+        # Apply input hook
         if len(args) > 0:
             args = (self.hook_in(args[0]),) + args[1:]
-        output = self.original_component(*args, **kwargs)
-        output = self.hook_out(output)
 
-        return output
+        # Call the original MoE component
+        output = self.original_component(*args, **kwargs)
+
+        # Handle MoE models that return (hidden_states, router_scores) tuples
+        # Most MoE implementations return tuples for diagnostic purposes
+        if isinstance(output, tuple):
+            hidden_states = output[0]
+
+            # If router scores are present, capture them via hook
+            if len(output) > 1:
+                router_scores = output[1]
+                # Apply router scores hook to allow inspection of expert routing
+                self.hook_router_scores(router_scores)
+        else:
+            hidden_states = output
+
+        # Apply output hook to hidden states
+        hidden_states = self.hook_out(hidden_states)
+
+        return hidden_states

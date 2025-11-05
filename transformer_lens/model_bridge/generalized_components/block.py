@@ -227,7 +227,14 @@ class BlockBridge(GeneralizedComponent):
             # Get architecture-specific MLP name (mlp, fc1+fc2, etc.)
             mlp = getattr(block_self, "mlp", None)
             if mlp is not None:
-                feed_forward_hidden_states = mlp(hidden_states)
+                mlp_output = mlp(hidden_states)
+                # Handle MoE models that return (hidden_states, router_scores) tuples
+                # NOTE: If using MoEBridge, this tuple handling is done in the bridge itself
+                # This is a fallback for MoE models not using MoEBridge
+                if isinstance(mlp_output, tuple):
+                    feed_forward_hidden_states = mlp_output[0]
+                else:
+                    feed_forward_hidden_states = mlp_output
             else:
                 # OPT uses fc1 and fc2 instead of a combined mlp module
                 fc1 = getattr(block_self, "fc1", None)
@@ -279,10 +286,24 @@ class BlockBridge(GeneralizedComponent):
         # here in the wrapper to avoid double-wrapping.
         output = self.original_component(*args, **kwargs)
 
-        # If output is a single-element tuple, unwrap it
-        # This prevents tuples from being passed between blocks
-        if isinstance(output, tuple) and len(output) == 1:
-            return output[0]
+        # Handle tuple unwrapping based on model architecture
+        # For MoE models: Always unwrap to hidden_states (discard router scores)
+        # For non-MoE models: Only unwrap single-element tuples to preserve
+        # multi-element tuples like (hidden_states, attn_weights) for HF
+        if isinstance(output, tuple):
+            # Check if this is an MoE model by looking for MoEBridge in MLP
+            is_moe = hasattr(self, "submodules") and "mlp" in self.submodules
+            if is_moe:
+                from transformer_lens.model_bridge.generalized_components.moe import (
+                    MoEBridge,
+                )
+
+                is_moe = isinstance(self.submodules["mlp"], MoEBridge)
+
+            # MoE models: always unwrap tuples (router scores are handled in MoEBridge)
+            # Non-MoE models: only unwrap single-element tuples
+            if is_moe or len(output) == 1:
+                return output[0]
 
         return output
 

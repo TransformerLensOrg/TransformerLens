@@ -23,6 +23,12 @@ class JointGateUpMLPBridge(MLPBridge):
     from the joint projection and the seperate gate and up projections are hooked and accessible.
     """
 
+    # Override parent's hook_aliases to use gate.hook_out instead of in.hook_out/input.hook_out
+    # Note: hook_post is not defined for JointGateUpMLPBridge as submodule structure varies
+    hook_aliases = {
+        "hook_pre": "gate.hook_out",
+    }
+
     def __init__(
         self,
         name: str,

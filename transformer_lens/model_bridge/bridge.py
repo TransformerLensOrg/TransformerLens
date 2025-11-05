@@ -824,11 +824,10 @@ class TransformerBridge(nn.Module):
 
         # Setup attention hooks for no_processing mode to match HookedTransformer
         if no_processing:
-            # Enable native PyTorch autograd in normalization for exact gradient matching
-            # Set dynamically on config object (not a typed attribute)
-            self.cfg.use_hf_autograd = True  # type: ignore[attr-defined]
-            self._enable_native_layernorm_autograd()
+            # Setup attention hooks (architecture adapters configure behavior via parameters
+            # like maintain_native_attention, use_native_layernorm_autograd)
             self._setup_no_processing_hooks()
+
             # Extract split Q/K/V weights for attention layers (uses architecture adapter)
             self._enable_split_qkv_attention()
             # Re-initialize hook registry to pick up any changes
@@ -912,6 +911,10 @@ class TransformerBridge(nn.Module):
         which makes them use the _hf_autograd_forward method that preserves
         PyTorch's native LayerNorm backward graph for exact gradient matching.
         """
+        # Check if this feature is disabled by the architecture adapter
+        if not getattr(self.cfg, "use_native_layernorm_autograd", True):
+            return
+
         from transformer_lens.model_bridge.generalized_components.normalization import (
             NormalizationBridge,
         )

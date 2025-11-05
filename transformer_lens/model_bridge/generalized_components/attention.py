@@ -52,6 +52,7 @@ class AttentionBridge(GeneralizedComponent):
         submodules: Optional[Dict[str, GeneralizedComponent]] = None,
         conversion_rule: Optional[BaseHookConversion] = None,
         pattern_conversion_rule: Optional[BaseHookConversion] = None,
+        maintain_native_attention: bool = False,
     ):
         """Initialize the attention bridge.
 
@@ -62,6 +63,9 @@ class AttentionBridge(GeneralizedComponent):
             conversion_rule: Optional conversion rule. If None, AttentionAutoConversion will be used
             pattern_conversion_rule: Optional conversion rule for attention patterns. If None,
                                    uses AttentionPatternConversion to ensure [n_heads, pos, pos] shape
+            maintain_native_attention: If True, preserve the original HF attention implementation
+                                      without wrapping. Use for models with custom attention
+                                      (e.g., attention sinks, specialized RoPE). Defaults to False.
         """
         # Set up conversion rule - use AttentionAutoConversion if None
         if conversion_rule is None:
@@ -90,11 +94,14 @@ class AttentionBridge(GeneralizedComponent):
         # Flag to track if HF attention forward has been wrapped for no_processing mode
         self._hf_forward_wrapped = False
 
+        # Store whether to maintain native attention implementation
+        self.maintain_native_attention = maintain_native_attention
+
     def setup_no_processing_hooks(self) -> None:
         """Setup hooks for no_processing mode.
 
         In no_processing mode, we need to:
-        1. Wrap HF attention forward to capture raw scores before softmax
+        1. Wrap HF attention forward to capture raw scores before softmax (unless disabled by config)
         2. Setup hook_z (o.hook_in) reshaping for proper head dimensions
 
         This should be called after the attention component and its submodules are fully initialized.
@@ -106,8 +113,14 @@ class AttentionBridge(GeneralizedComponent):
         if hasattr(self, "o") and self.o is not None and hasattr(self.config, "n_heads"):
             self._setup_hook_z_reshape()
 
-        # Wrap HF attention forward to capture scores before softmax
-        if hasattr(self, "original_component") and self.original_component is not None:
+        # Wrap HF attention forward to capture scores before softmax (unless maintaining native)
+        # Models with custom attention (e.g., GPT-OSS with attention sinks) set
+        # maintain_native_attention=True to preserve their original behavior
+        if (
+            not self.maintain_native_attention
+            and hasattr(self, "original_component")
+            and self.original_component is not None
+        ):
             self._wrap_hf_attention_forward()
 
         self._hf_forward_wrapped = True
@@ -174,8 +187,20 @@ class AttentionBridge(GeneralizedComponent):
 
         def apply_rotary_pos_emb(q, k, cos, sin):
             """Apply rotary position embeddings to query and key tensors."""
-            # This is a simplified version - the actual implementation may vary
-            # based on the specific model
+            # Try to use the model-specific apply_rotary_pos_emb if available
+            # This handles model-specific cases like partial rotary embeddings
+            model_module = hf_attn.__class__.__module__
+            if model_module:
+                try:
+                    import importlib
+
+                    module = importlib.import_module(model_module)
+                    if hasattr(module, "apply_rotary_pos_emb"):
+                        return module.apply_rotary_pos_emb(q, k, cos, sin)
+                except (ImportError, AttributeError):
+                    pass
+
+            # Fallback to simplified version for models without specialized implementation
             q_embed = (q * cos) + (rotate_half(q) * sin)
             k_embed = (k * cos) + (rotate_half(k) * sin)
             return q_embed, k_embed
@@ -411,11 +436,24 @@ class AttentionBridge(GeneralizedComponent):
                 # Output projection
                 attn_output = hf_attn.o_proj(attn_output)  # type: ignore[union-attr,operator]
 
-                # Return in HF format
-                if output_attentions:
-                    return (attn_output, attn_weights, past_key_values)
+                # Return in HF format - check config for expected format
+                # Some models return (output, attn_weights), others return (output, attn_weights, past)
+                return_format = getattr(
+                    attention_bridge.config, "attention_output_format", "tuple_3"
+                )
+
+                if return_format == "tuple_2":
+                    # Models like GPT-OSS return (output, attn_weights)
+                    if output_attentions:
+                        return (attn_output, attn_weights)
+                    else:
+                        return (attn_output, None)
                 else:
-                    return (attn_output, None, past_key_values)
+                    # Default: return 3-tuple (output, attn_weights, past_key_values)
+                    if output_attentions:
+                        return (attn_output, attn_weights, past_key_values)
+                    else:
+                        return (attn_output, None, past_key_values)
 
         else:
             raise RuntimeError(
