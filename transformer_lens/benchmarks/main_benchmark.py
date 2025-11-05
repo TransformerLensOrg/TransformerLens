@@ -126,7 +126,7 @@ def run_benchmark_suite(
             print("Loading HuggingFace reference model...")
         try:
             hf_model = AutoModelForCausalLM.from_pretrained(model_name)  # type: ignore[arg-type]
-            hf_model.to(device)
+            hf_model.to(device)  # type: ignore[arg-type]
             hf_model.eval()
             reference_model = hf_model
             if verbose:
