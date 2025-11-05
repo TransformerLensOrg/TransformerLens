@@ -1153,19 +1153,26 @@ class ProcessWeights:
 
                 elif len(b_V.shape) == 2 and len(W_O.shape) == 3:
                     # TransformerLens format: separate V bias [n_heads, d_head], W_O [n_heads, d_head, d_model]
+                    # For GQA models, b_V has shape [n_key_value_heads, d_head] and needs to be expanded
+                    b_V_original_shape = b_V.shape  # Save original shape for zeroing state dict
                     if getattr(cfg, "n_key_value_heads", None) is not None:
                         b_V = torch.repeat_interleave(
                             b_V, dim=0, repeats=cfg.n_heads // cfg.n_key_value_heads
                         )
 
                     folded_b_O = b_O_original + (b_V[:, :, None] * W_O).sum([0, 1])
-                    state_dict[b_V_key] = torch.zeros_like(b_V)
+                    # Zero out with the ORIGINAL shape (before expansion), not the expanded shape
+                    state_dict[b_V_key] = torch.zeros(
+                        b_V_original_shape, dtype=b_V.dtype, device=b_V.device
+                    )
                 elif len(b_V.shape) == 2 and len(W_O.shape) == 2:
                     # Mixed format: b_V in TransformerLens format [n_heads, d_head], W_O in HuggingFace format [d_model, d_model]
                     n_heads = cfg.n_heads
                     d_head = cfg.d_head
                     d_model = cfg.d_model
 
+                    # For GQA models, b_V has shape [n_key_value_heads, d_head] and needs to be expanded
+                    b_V_original_shape = b_V.shape  # Save original shape for zeroing state dict
                     if getattr(cfg, "n_key_value_heads", None) is not None:
                         b_V = torch.repeat_interleave(
                             b_V, dim=0, repeats=cfg.n_heads // cfg.n_key_value_heads
@@ -1176,7 +1183,10 @@ class ProcessWeights:
 
                     # Compute the folded bias: sum over heads and d_head dimensions
                     folded_b_O = b_O_original + (b_V[:, :, None] * W_O_reshaped).sum([0, 1])
-                    state_dict[b_V_key] = torch.zeros_like(b_V)
+                    # Zero out with the ORIGINAL shape (before expansion), not the expanded shape
+                    state_dict[b_V_key] = torch.zeros(
+                        b_V_original_shape, dtype=b_V.dtype, device=b_V.device
+                    )
                 else:
                     raise ValueError(f"Unexpected tensor shapes: b_V {b_V.shape}, W_O {W_O.shape}")
 

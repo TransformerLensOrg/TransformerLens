@@ -33,6 +33,12 @@ class LlamaArchitectureAdapter(ArchitectureAdapter):
             "d_vocab": cfg.d_vocab,
         }
 
+        # Add GQA support for Llama 3.1, 3.2, and later models
+        # Must set directly on cfg, not just in default_config
+        if hasattr(cfg, "n_key_value_heads") and cfg.n_key_value_heads is not None:
+            self.default_config["n_key_value_heads"] = cfg.n_key_value_heads
+            self.cfg.n_key_value_heads = cfg.n_key_value_heads
+
         self.cfg.gated_mlp = True
 
         self.cfg.uses_rms_norm = True
@@ -50,11 +56,17 @@ class LlamaArchitectureAdapter(ArchitectureAdapter):
                 ),
                 "blocks.{i}.attn.k": (
                     "model.layers.{i}.self_attn.k_proj.weight",
-                    RearrangeHookConversion("(n h) m -> n m h", n=self.cfg.n_heads),
+                    RearrangeHookConversion(
+                        "(n h) m -> n m h",
+                        n=getattr(self.cfg, "n_key_value_heads", self.cfg.n_heads),
+                    ),
                 ),
                 "blocks.{i}.attn.v": (
                     "model.layers.{i}.self_attn.v_proj.weight",
-                    RearrangeHookConversion("(n h) m -> n m h", n=self.cfg.n_heads),
+                    RearrangeHookConversion(
+                        "(n h) m -> n m h",
+                        n=getattr(self.cfg, "n_key_value_heads", self.cfg.n_heads),
+                    ),
                 ),
                 "blocks.{i}.attn.o": (
                     "model.layers.{i}.self_attn.o_proj.weight",
