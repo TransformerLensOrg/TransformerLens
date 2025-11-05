@@ -6,9 +6,17 @@ with HookedTransformer while using direct weight processing instead of delegatio
 """
 
 import pytest
-import torch
 
 from transformer_lens import HookedTransformer
+from transformer_lens.benchmarks import (
+    benchmark_hook_functionality,
+    benchmark_hook_registry,
+    benchmark_logits_equivalence,
+    benchmark_loss_equivalence,
+    benchmark_weight_modification,
+    benchmark_weight_processing,
+    benchmark_weight_sharing,
+)
 from transformer_lens.model_bridge import TransformerBridge
 
 
@@ -48,13 +56,9 @@ class TestTransformerBridgeCompatibility:
         ht = models["ht"]
         bridge = models["bridge"]
 
-        ht_loss = ht(test_text, return_type="loss")
-        bridge_loss = bridge(test_text, return_type="loss")
-
-        # Results should be nearly identical (allow for floating point precision and minor numerical differences)
-        assert (
-            abs(ht_loss - bridge_loss) < 1e-3
-        ), f"Loss mismatch: HT={ht_loss:.6f}, Bridge={bridge_loss:.6f}"
+        # Use benchmark function
+        result = benchmark_loss_equivalence(bridge, test_text, reference_model=ht, atol=1e-3)
+        assert result.passed, result.message
 
     def test_logits_equivalence(self, models, test_text):
         """Test that logits outputs are nearly identical.
@@ -65,73 +69,29 @@ class TestTransformerBridgeCompatibility:
         ht = models["ht"]
         bridge = models["bridge"]
 
-        ht_logits = ht(test_text, return_type="logits")
-        bridge_logits = bridge(test_text, return_type="logits")
-
-        assert torch.allclose(
-            ht_logits, bridge_logits, rtol=3e-2, atol=3e-2
-        ), "Logits should be nearly identical"
+        # Use benchmark function
+        result = benchmark_logits_equivalence(
+            bridge, test_text, reference_model=ht, atol=3e-2, rtol=3e-2
+        )
+        assert result.passed, result.message
 
     def test_hook_functionality_equivalence(self, models, test_text):
         """Test that hook system produces identical ablation effects."""
         ht = models["ht"]
         bridge = models["bridge"]
 
-        def ablation_hook(activation, hook):
-            # Zero out attention head 8 in layer 0
-            activation[:, :, 8, :] = 0
-            return activation
-
-        # Test with HookedTransformer using standard hook names
-        ht_original = ht(test_text, return_type="loss")
-        ht_ablated = ht.run_with_hooks(
-            test_text, return_type="loss", fwd_hooks=[("blocks.0.attn.hook_v", ablation_hook)]
-        )
-
-        # Test with TransformerBridge using same hook names (should work due to extracted hooks)
-        bridge_original = bridge(test_text, return_type="loss")
-        bridge_ablated = bridge.run_with_hooks(
-            test_text, return_type="loss", fwd_hooks=[("blocks.0.attn.hook_v", ablation_hook)]
-        )
-
-        ht_effect = ht_ablated - ht_original
-        bridge_effect = bridge_ablated - bridge_original
-
-        # Both should have similar ablation effects
-        assert (
-            abs(ht_effect - bridge_effect) < 2e-3
-        ), f"Ablation effects should match: HT={ht_effect:.6f}, Bridge={bridge_effect:.6f}"
+        # Use benchmark function
+        result = benchmark_hook_functionality(bridge, test_text, reference_model=ht, atol=2e-3)
+        assert result.passed, result.message
 
     def test_weight_sharing_verification(self, models, test_text):
         """Test that modifying weights affects both models similarly."""
         ht = models["ht"]
         bridge = models["bridge"]
 
-        # Get baseline losses
-        ht_original = ht(test_text, return_type="loss")
-        bridge_original = bridge(test_text, return_type="loss")
-
-        # Verify weights are identical before modification
-        ht_W_V = ht.blocks[0].attn.W_V
-        bridge_W_V = bridge.blocks[0].attn.W_V
-        assert torch.allclose(ht_W_V, bridge_W_V), "Weights should be identical"
-
-        # Modify weights in both models
-        with torch.no_grad():
-            ht.blocks[0].attn.W_V[0, :, :] = 0
-            bridge.blocks[0].attn.W_V[0, :, :] = 0
-
-        # Test modified losses
-        ht_modified = ht(test_text, return_type="loss")
-        bridge_modified = bridge(test_text, return_type="loss")
-
-        ht_change = ht_modified - ht_original
-        bridge_change = bridge_modified - bridge_original
-
-        # Both models should respond similarly to weight changes
-        assert (
-            abs(ht_change - bridge_change) < 1e-3
-        ), "Models should respond similarly to weight changes"
+        # Use benchmark function
+        result = benchmark_weight_sharing(bridge, test_text, reference_model=ht, atol=1e-3)
+        assert result.passed, result.message
 
     def test_component_structure_equivalence(self, models):
         """Test that component structures are equivalent."""
@@ -160,58 +120,18 @@ class TestTransformerBridgeCompatibility:
         ht = models["ht"]
         bridge = models["bridge"]
 
-        # Check layer norm folding - HT should have LayerNormPre, Bridge should have NormalizationBridge
-        from transformer_lens.components.layer_norm_pre import LayerNormPre
-        from transformer_lens.model_bridge.generalized_components.normalization import (
-            NormalizationBridge,
-        )
-
-        assert isinstance(ht.ln_final, LayerNormPre), "HT should have LayerNormPre (folded)"
-        assert isinstance(
-            bridge.ln_final, NormalizationBridge
-        ), "Bridge should have NormalizationBridge (integrated folding)"
-
-        # Verify that the NormalizationBridge has LayerNormPre functionality
-        assert hasattr(
-            bridge.ln_final, "_layernorm_pre_forward"
-        ), "Bridge ln_final should have LayerNormPre functionality"
-        assert hasattr(
-            bridge.ln_final.config, "layer_norm_folding"
-        ), "Bridge ln_final should have layer_norm_folding config"
-        assert (
-            bridge.ln_final.config.layer_norm_folding
-        ), "Bridge ln_final should be in folding mode"
-
-        # Check weight centering - writing weights should be approximately centered
-        ht_w_out = ht.blocks[0].mlp.W_out
-        bridge_w_out = bridge.blocks[0].mlp.W_out
-
-        ht_mean = torch.mean(ht_w_out, dim=-1, keepdim=True)
-        bridge_mean = torch.mean(bridge_w_out, dim=-1, keepdim=True)
-
-        # Both should be approximately centered (mean ~0)
-        assert torch.mean(torch.abs(ht_mean)).item() < 1e-3, "HT weights should be centered"
-        assert torch.mean(torch.abs(bridge_mean)).item() < 1e-3, "Bridge weights should be centered"
+        # Use benchmark function
+        result = benchmark_weight_processing(bridge, test_text="", reference_model=ht)
+        assert result.passed, result.message
 
     def test_hook_registry_completeness(self, models):
         """Test that TransformerBridge has complete hook registry from HookedTransformer."""
         ht = models["ht"]
         bridge = models["bridge"]
 
-        # Key hooks that should be available
-        important_hooks = [
-            "hook_embed",
-            "blocks.0.attn.hook_q",
-            "blocks.0.attn.hook_k",
-            "blocks.0.attn.hook_v",
-            "blocks.0.attn.hook_z",
-            "blocks.0.mlp.hook_pre",
-            "blocks.0.mlp.hook_post",
-        ]
-
-        for hook_name in important_hooks:
-            assert hook_name in ht.hook_dict, f"HT should have {hook_name}"
-            assert hook_name in bridge._hook_registry, f"Bridge should have {hook_name} in registry"
+        # Use benchmark function
+        result = benchmark_hook_registry(bridge, reference_model=ht)
+        assert result.passed, result.message
 
     def test_no_persistent_hookedtransformer_reference(self, models):
         """Test that TransformerBridge has no persistent HookedTransformer references."""
@@ -245,24 +165,9 @@ class TestTransformerBridgeWeightModification:
         """Test that weight modifications affect forward pass."""
         test_text = "Natural language processing"
 
-        # Get original loss
-        original_loss = bridge_model(test_text, return_type="loss")
-
-        # Modify W_V weights
-        with torch.no_grad():
-            original_w_v = bridge_model.blocks[0].attn.W_V.clone()
-            bridge_model.blocks[0].attn.W_V[0, :, :] = 0  # Zero out first head
-
-        # Get modified loss
-        modified_loss = bridge_model(test_text, return_type="loss")
-
-        # Loss should change
-        change = abs(modified_loss - original_loss)
-        assert change > 1e-6, f"Weight modification should affect loss (change: {change:.6f})"
-
-        # Restore weights
-        with torch.no_grad():
-            bridge_model.blocks[0].attn.W_V.copy_(original_w_v)
+        # Use benchmark function
+        result = benchmark_weight_modification(bridge_model, test_text)
+        assert result.passed, result.message
 
 
 # Test cases that can be run individually for debugging

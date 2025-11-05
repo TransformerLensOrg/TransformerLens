@@ -5,7 +5,10 @@ These tests ensure that generation with key-value caching works correctly
 in TransformerBridge, matching the behavior of HookedTransformer.
 """
 
-
+from transformer_lens.benchmarks import (
+    benchmark_generation_with_kv_cache,
+    benchmark_multiple_generation_calls,
+)
 from transformer_lens.model_bridge import TransformerBridge
 
 
@@ -26,17 +29,11 @@ class TestGenerationWithKVCache:
         model = TransformerBridge.boot_transformers("gpt2", device="cpu")
         model.enable_compatibility_mode()
 
-        # Generate text with KV cache (max_new_tokens > 1 ensures cache is used)
-        output = model.generate(
-            "(CNN) President Barack Obama",
-            max_new_tokens=10,
-            temperature=0.7,
-            prepend_bos=True,
+        # Use benchmark function
+        result = benchmark_generation_with_kv_cache(
+            model, "(CNN) President Barack Obama", max_new_tokens=10
         )
-
-        # Verify generation succeeded and produced output
-        assert output is not None
-        assert len(output) > 0
+        assert result.passed, result.message
 
     def test_bridge_multiple_generation_calls(self):
         """Test that TransformerBridge can generate multiple times without errors.
@@ -53,16 +50,9 @@ class TestGenerationWithKVCache:
             "Machine learning is",
         ]
 
-        # Generate from each prompt
-        for prompt in prompts:
-            output = model.generate(
-                prompt,
-                max_new_tokens=5,
-                temperature=0.7,
-                prepend_bos=True,
-            )
-            # Verify each generation succeeded
-            assert output is not None and len(output) > 0
+        # Use benchmark function
+        result = benchmark_multiple_generation_calls(model, prompts, max_new_tokens=5)
+        assert result.passed, result.message
 
 
 if __name__ == "__main__":
