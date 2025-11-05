@@ -138,9 +138,9 @@ def benchmark_weight_sharing(
 
             # Verify weights are identical before modification
             bridge_W_V = bridge.blocks[0].attn.W_V
-            reference_W_V = reference_model.blocks[0].attn.W_V
+            reference_W_V = reference_model.blocks[0].attn.W_V  # type: ignore[union-attr]
 
-            if not torch.allclose(bridge_W_V, reference_W_V):
+            if not torch.allclose(bridge_W_V, reference_W_V):  # type: ignore[arg-type]
                 return BenchmarkResult(
                     name="weight_sharing",
                     severity=BenchmarkSeverity.WARNING,
@@ -149,8 +149,8 @@ def benchmark_weight_sharing(
 
             # Modify weights in both models
             with torch.no_grad():
-                bridge.blocks[0].attn.W_V[0, :, :] = 0
-                reference_model.blocks[0].attn.W_V[0, :, :] = 0
+                bridge.blocks[0].attn.W_V[0, :, :] = 0  # type: ignore[union-attr,operator]
+                reference_model.blocks[0].attn.W_V[0, :, :] = 0  # type: ignore[union-attr,operator]
 
             # Test modified losses
             bridge_modified = bridge(test_text, return_type="loss")
@@ -161,8 +161,8 @@ def benchmark_weight_sharing(
 
             # Restore weights
             with torch.no_grad():
-                bridge.blocks[0].attn.W_V.copy_(bridge_W_V)
-                reference_model.blocks[0].attn.W_V.copy_(reference_W_V)
+                bridge.blocks[0].attn.W_V.copy_(bridge_W_V)  # type: ignore[union-attr,operator,arg-type]
+                reference_model.blocks[0].attn.W_V.copy_(reference_W_V)  # type: ignore[union-attr,operator,arg-type]
 
             diff = abs(bridge_change - reference_change)
             if diff < atol:

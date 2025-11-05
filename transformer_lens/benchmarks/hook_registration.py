@@ -145,7 +145,7 @@ def benchmark_forward_hooks(
         for hook_name in hook_names:
             if hook_name in bridge.hook_dict:
                 hook_point = bridge.hook_dict[hook_name]
-                handle = hook_point.add_hook(make_bridge_hook(hook_name))
+                handle = hook_point.add_hook(make_bridge_hook(hook_name))  # type: ignore[func-returns-value]
                 bridge_handles.append(handle)
 
         # Run bridge forward pass
@@ -182,7 +182,7 @@ def benchmark_forward_hooks(
         for hook_name in hook_names:
             if hook_name in reference_model.hook_dict:
                 hook_point = reference_model.hook_dict[hook_name]
-                handle = hook_point.add_hook(make_reference_hook(hook_name))
+                handle = hook_point.add_hook(make_reference_hook(hook_name))  # type: ignore[func-returns-value]
                 reference_handles.append(handle)
 
         # Run reference forward pass
@@ -312,7 +312,7 @@ def benchmark_critical_forward_hooks(
         for hook_name in critical_hooks:
             if hook_name in bridge.hook_dict:
                 hook_point = bridge.hook_dict[hook_name]
-                handle = hook_point.add_hook(make_bridge_hook(hook_name))
+                handle = hook_point.add_hook(make_bridge_hook(hook_name))  # type: ignore[func-returns-value]
                 bridge_handles.append(handle)
 
         # Run bridge forward pass
@@ -349,7 +349,7 @@ def benchmark_critical_forward_hooks(
         for hook_name in critical_hooks:
             if hook_name in reference_model.hook_dict:
                 hook_point = reference_model.hook_dict[hook_name]
-                handle = hook_point.add_hook(make_reference_hook(hook_name))
+                handle = hook_point.add_hook(make_reference_hook(hook_name))  # type: ignore[func-returns-value]
                 reference_handles.append(handle)
 
         # Run reference forward pass

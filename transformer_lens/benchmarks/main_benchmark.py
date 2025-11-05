@@ -95,7 +95,7 @@ def run_benchmark_suite(
     if verbose:
         print("Loading TransformerBridge...")
     try:
-        bridge = TransformerBridge.boot_transformers(model_name, device=device)
+        bridge = TransformerBridge.boot_transformers(model_name, device=device)  # type: ignore[attr-defined]
         if enable_compatibility_mode:
             bridge.enable_compatibility_mode(disable_warnings=True)
         if verbose:
@@ -125,7 +125,7 @@ def run_benchmark_suite(
         if verbose:
             print("Loading HuggingFace reference model...")
         try:
-            hf_model = AutoModelForCausalLM.from_pretrained(model_name)
+            hf_model = AutoModelForCausalLM.from_pretrained(model_name)  # type: ignore[arg-type]
             hf_model.to(device)
             hf_model.eval()
             reference_model = hf_model

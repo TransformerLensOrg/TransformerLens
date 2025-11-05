@@ -54,7 +54,7 @@ def benchmark_backward_hooks(
         for hook_name in hook_names:
             if hook_name in bridge.hook_dict:
                 hook_point = bridge.hook_dict[hook_name]
-                handle = hook_point.add_hook(make_bridge_backward_hook(hook_name), dir="bwd")
+                handle = hook_point.add_hook(make_bridge_backward_hook(hook_name), dir="bwd")  # type: ignore[func-returns-value]
                 bridge_handles.append(handle)
 
         # Run bridge forward and backward
@@ -92,7 +92,7 @@ def benchmark_backward_hooks(
         for hook_name in hook_names:
             if hook_name in reference_model.hook_dict:
                 hook_point = reference_model.hook_dict[hook_name]
-                handle = hook_point.add_hook(make_reference_backward_hook(hook_name), dir="bwd")
+                handle = hook_point.add_hook(make_reference_backward_hook(hook_name), dir="bwd")  # type: ignore[func-returns-value]
                 reference_handles.append(handle)
 
         # Run reference forward and backward
@@ -283,7 +283,7 @@ def benchmark_critical_backward_hooks(
         for hook_name in critical_hooks:
             if hook_name in bridge.hook_dict:
                 hook_point = bridge.hook_dict[hook_name]
-                handle = hook_point.add_hook(make_bridge_backward_hook(hook_name), dir="bwd")
+                handle = hook_point.add_hook(make_bridge_backward_hook(hook_name), dir="bwd")  # type: ignore[func-returns-value]
                 bridge_handles.append(handle)
 
         # Run bridge forward and backward
@@ -321,7 +321,7 @@ def benchmark_critical_backward_hooks(
         for hook_name in critical_hooks:
             if hook_name in reference_model.hook_dict:
                 hook_point = reference_model.hook_dict[hook_name]
-                handle = hook_point.add_hook(make_reference_backward_hook(hook_name), dir="bwd")
+                handle = hook_point.add_hook(make_reference_backward_hook(hook_name), dir="bwd")  # type: ignore[func-returns-value]
                 reference_handles.append(handle)
 
         # Run reference forward and backward
