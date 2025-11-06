@@ -152,8 +152,14 @@ def get_bridge_params(bridge) -> Dict[str, torch.Tensor]:
                 )
 
             if block.attn.k.bias is not None:
+                # For GQA models, use n_key_value_heads instead of n_heads
+                n_kv_heads = bridge.cfg.n_heads
+                if hasattr(bridge.cfg, "n_key_value_heads") and isinstance(
+                    bridge.cfg.n_key_value_heads, int
+                ):
+                    n_kv_heads = bridge.cfg.n_key_value_heads
                 params_dict[f"blocks.{layer_idx}.attn.b_K"] = block.attn.k.bias.reshape(
-                    bridge.cfg.n_heads, -1
+                    n_kv_heads, -1
                 )
             else:
                 device, dtype = _get_device_dtype()
@@ -168,8 +174,14 @@ def get_bridge_params(bridge) -> Dict[str, torch.Tensor]:
                 )
 
             if block.attn.v.bias is not None:
+                # For GQA models, use n_key_value_heads instead of n_heads
+                n_kv_heads = bridge.cfg.n_heads
+                if hasattr(bridge.cfg, "n_key_value_heads") and isinstance(
+                    bridge.cfg.n_key_value_heads, int
+                ):
+                    n_kv_heads = bridge.cfg.n_key_value_heads
                 params_dict[f"blocks.{layer_idx}.attn.b_V"] = block.attn.v.bias.reshape(
-                    bridge.cfg.n_heads, -1
+                    n_kv_heads, -1
                 )
             else:
                 device, dtype = _get_device_dtype()
