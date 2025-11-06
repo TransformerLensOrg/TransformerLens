@@ -121,11 +121,16 @@ class EmbeddingBridge(GeneralizedComponent):
             output = self.original_component(input_ids, position_ids=position_ids, **kwargs)
 
         # Some models return tuples; extract embeddings
-        if isinstance(output, tuple):
+        # However, rotary embeddings return (cos, sin) tuple that must be preserved
+        is_rotary = hasattr(self.original_component, "inv_freq") and not hasattr(
+            self.original_component, "weight"
+        )
+        if isinstance(output, tuple) and not is_rotary:
             output = output[0]
 
-        # Apply output hook
-        output = self.hook_out(output)
+        # Apply output hook (skip for rotary embeddings which return tuples)
+        if not is_rotary:
+            output = self.hook_out(output)
 
         return output
 

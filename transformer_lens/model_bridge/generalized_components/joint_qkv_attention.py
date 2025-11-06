@@ -1161,3 +1161,118 @@ class JointQKVAttentionBridge(AttentionBridge):
         print(f"  W_V: {self._W_V.shape}")
         print(f"  W_Q: {self._W_Q.shape}")
         print(f"  W_K: {self._W_K.shape}")
+
+    # Public properties to expose HookedTransformer-style weights
+    # These allow users to read and modify weights for interpretability research
+
+    @property
+    def W_Q(self) -> torch.Tensor:
+        """Query weight matrix [n_heads, d_model, d_head]."""
+        if not self._hooked_weights_extracted or self._W_Q is None:
+            self._extract_hooked_transformer_weights()
+        if self._W_Q is None:
+            raise RuntimeError(f"W_Q not available for {self.name}")
+        return self._W_Q
+
+    @W_Q.setter
+    def W_Q(self, value: torch.Tensor) -> None:
+        """Set query weight matrix."""
+        self._W_Q = value
+        self._hooked_weights_extracted = True
+
+    @property
+    def W_K(self) -> torch.Tensor:
+        """Key weight matrix [n_heads, d_model, d_head]."""
+        if not self._hooked_weights_extracted or self._W_K is None:
+            self._extract_hooked_transformer_weights()
+        if self._W_K is None:
+            raise RuntimeError(f"W_K not available for {self.name}")
+        return self._W_K
+
+    @W_K.setter
+    def W_K(self, value: torch.Tensor) -> None:
+        """Set key weight matrix."""
+        self._W_K = value
+        self._hooked_weights_extracted = True
+
+    @property
+    def W_V(self) -> torch.Tensor:
+        """Value weight matrix [n_heads, d_model, d_head]."""
+        if not self._hooked_weights_extracted or self._W_V is None:
+            self._extract_hooked_transformer_weights()
+        if self._W_V is None:
+            raise RuntimeError(f"W_V not available for {self.name}")
+        return self._W_V
+
+    @W_V.setter
+    def W_V(self, value: torch.Tensor) -> None:
+        """Set value weight matrix."""
+        self._W_V = value
+        self._hooked_weights_extracted = True
+
+    @property
+    def W_O(self) -> torch.Tensor:
+        """Output weight matrix [n_heads, d_head, d_model]."""
+        if not self._hooked_weights_extracted or self._W_O is None:
+            self._extract_hooked_transformer_weights()
+        if self._W_O is None:
+            raise RuntimeError(f"W_O not available for {self.name}")
+        return self._W_O
+
+    @W_O.setter
+    def W_O(self, value: torch.Tensor) -> None:
+        """Set output weight matrix."""
+        self._W_O = value
+        self._hooked_weights_extracted = True
+
+    @property
+    def b_Q(self) -> Optional[torch.Tensor]:
+        """Query bias [n_heads, d_head]."""
+        if not self._hooked_weights_extracted or self._b_Q is None:
+            self._extract_hooked_transformer_weights()
+        return self._b_Q
+
+    @b_Q.setter
+    def b_Q(self, value: Optional[torch.Tensor]) -> None:
+        """Set query bias."""
+        self._b_Q = value
+        self._hooked_weights_extracted = True
+
+    @property
+    def b_K(self) -> Optional[torch.Tensor]:
+        """Key bias [n_heads, d_head]."""
+        if not self._hooked_weights_extracted or self._b_K is None:
+            self._extract_hooked_transformer_weights()
+        return self._b_K
+
+    @b_K.setter
+    def b_K(self, value: Optional[torch.Tensor]) -> None:
+        """Set key bias."""
+        self._b_K = value
+        self._hooked_weights_extracted = True
+
+    @property
+    def b_V(self) -> Optional[torch.Tensor]:
+        """Value bias [n_heads, d_head]."""
+        if not self._hooked_weights_extracted or self._b_V is None:
+            self._extract_hooked_transformer_weights()
+        return self._b_V
+
+    @b_V.setter
+    def b_V(self, value: Optional[torch.Tensor]) -> None:
+        """Set value bias."""
+        self._b_V = value
+        self._hooked_weights_extracted = True
+
+    @property
+    def b_O(self) -> Optional[torch.Tensor]:
+        """Output bias [d_model]."""
+        if not self._hooked_weights_extracted or self._b_O is None:
+            self._extract_hooked_transformer_weights()
+        return self._b_O
+
+    @b_O.setter
+    def b_O(self, value: Optional[torch.Tensor]) -> None:
+        """Set output bias."""
+        self._b_O = value
+        self._hooked_weights_extracted = True

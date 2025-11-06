@@ -108,8 +108,16 @@ def map_default_transformer_lens_config(hf_config):
         tl_config.d_head = tl_config.d_model // tl_config.n_heads
 
     # Set activation function
+    # Try multiple attribute names for compatibility with different HF configs:
+    # - activation_function: OPT, LLaMA, Mistral
+    # - hidden_activation: Gemma-2
+    # - hidden_act: BERT, GPT-2, GPT-Neo
     if hasattr(hf_config, "activation_function"):
         tl_config.act_fn = hf_config.activation_function
+    elif hasattr(hf_config, "hidden_activation"):
+        tl_config.act_fn = hf_config.hidden_activation
+    elif hasattr(hf_config, "hidden_act"):
+        tl_config.act_fn = hf_config.hidden_act
 
     # Set number of experts
     if hasattr(hf_config, "num_local_experts"):

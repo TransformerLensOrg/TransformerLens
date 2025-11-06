@@ -128,9 +128,12 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
         """Initialize the GPT2 architecture adapter."""
         super().__init__(cfg)
 
+        # GPT-2 doesn't use BOS tokens in HuggingFace, so set to False to match HF behavior
+        self.cfg.default_prepend_bos = False
+
         # Set default config for GPT2 models
         self.default_cfg = {
-            "default_prepend_bos": True,  # Default for GPT-2 style models
+            "default_prepend_bos": False,  # GPT-2 doesn't use BOS in HF
             "uses_split_attention": True,  # GPT-2 uses combined QKV attention that needs splitting
         }
 

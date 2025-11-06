@@ -126,8 +126,10 @@ def run_benchmark_suite(
 
     # Load reference models for different comparison purposes:
     # 1. HuggingFace: For comparing unprocessed Bridge implementation
-    # 2. HookedTransformer: For comparing processed Bridge compatibility mode
+    # 2. HookedTransformer (unprocessed): For comparing unprocessed Bridge
+    # 3. HookedTransformer (processed): For comparing processed Bridge compatibility mode
     hf_model: Optional[torch.nn.Module] = None
+    ht_model_unprocessed: Optional[HookedTransformer] = None
     ht_model: Optional[HookedTransformer] = None
 
     # Load HuggingFace model for raw forward pass comparison
@@ -144,10 +146,30 @@ def run_benchmark_suite(
             if verbose:
                 print(f"✗ Could not load HuggingFace model: {str(e)}\n")
 
-    # Load HookedTransformer for compatibility mode comparison
+    # Load HookedTransformer models for comparison
     if use_ht_reference:
+        # Load unprocessed HookedTransformer
         if verbose:
-            print("Loading HookedTransformer reference model...")
+            print("Loading unprocessed HookedTransformer reference model...")
+        try:
+            ht_model_unprocessed = HookedTransformer.from_pretrained(
+                model_name,
+                device=device,
+                fold_ln=False,
+                center_writing_weights=False,
+                center_unembed=False,
+                fold_value_biases=False,
+                refactor_factored_attn_matrices=False,
+            )
+            if verbose:
+                print("✓ Unprocessed HookedTransformer loaded (for unprocessed comparison)\n")
+        except Exception as e:
+            if verbose:
+                print(f"✗ Could not load unprocessed HookedTransformer: {str(e)}\n")
+
+        # Load processed HookedTransformer for compatibility mode comparison
+        if verbose:
+            print("Loading processed HookedTransformer reference model...")
         try:
             # Load with same processing as Bridge compatibility mode
             ht_model = HookedTransformer.from_pretrained(
@@ -160,10 +182,10 @@ def run_benchmark_suite(
                 refactor_factored_attn_matrices=False,
             )
             if verbose:
-                print("✓ HookedTransformer loaded (for compatibility mode comparison)\n")
+                print("✓ Processed HookedTransformer loaded (for compatibility mode comparison)\n")
         except Exception as e:
             if verbose:
-                print(f"✗ Could not load HookedTransformer: {str(e)}\n")
+                print(f"✗ Could not load processed HookedTransformer: {str(e)}\n")
 
     # Check if we have at least one reference model
     if hf_model is None and ht_model is None:
@@ -179,9 +201,32 @@ def run_benchmark_suite(
         print("1. Forward Pass Benchmarks (unprocessed Bridge vs HuggingFace)")
     results.append(benchmark_forward_pass(bridge_unprocessed, test_text, reference_model=hf_model))
 
+    # Unprocessed model comparison (compare unprocessed Bridge vs unprocessed HT)
+    if verbose:
+        print(
+            "2. Unprocessed Model Comparison (unprocessed Bridge vs unprocessed HookedTransformer)"
+        )
+    if ht_model_unprocessed:
+        results.append(
+            benchmark_loss_equivalence(
+                bridge_unprocessed, test_text, reference_model=ht_model_unprocessed
+            )
+        )
+        results.append(
+            benchmark_logits_equivalence(
+                bridge_unprocessed, test_text, reference_model=ht_model_unprocessed
+            )
+        )
+    else:
+        # No unprocessed HT reference - skip unprocessed comparisons
+        if verbose:
+            print(
+                "⚠ No unprocessed HookedTransformer available - skipping unprocessed comparisons\n"
+            )
+
     # Compatibility mode benchmarks (compare processed Bridge vs processed HT)
     if verbose:
-        print("2. Compatibility Mode Benchmarks (processed Bridge vs HookedTransformer)")
+        print("3. Compatibility Mode Benchmarks (processed Bridge vs processed HookedTransformer)")
     if bridge_processed and ht_model:
         results.append(
             benchmark_loss_equivalence(bridge_processed, test_text, reference_model=ht_model)
@@ -204,7 +249,7 @@ def run_benchmark_suite(
 
     # Hook benchmarks (use processed Bridge for compatibility with HT)
     if verbose:
-        print("3. Hook Registration Benchmarks")
+        print("4. Hook Registration Benchmarks")
     test_bridge = bridge_processed if bridge_processed and ht_model else bridge
     results.append(benchmark_hook_registry(test_bridge, reference_model=ht_model))
     results.append(benchmark_hook_functionality(test_bridge, test_text, reference_model=ht_model))
@@ -220,7 +265,7 @@ def run_benchmark_suite(
 
     # Gradient benchmarks (use processed Bridge for compatibility with HT)
     if verbose:
-        print("4. Backward Gradient Benchmarks")
+        print("5. Backward Gradient Benchmarks")
     results.append(benchmark_gradient_computation(test_bridge, test_text, reference_model=ht_model))
     results.append(
         benchmark_critical_backward_hooks(test_bridge, test_text, reference_model=ht_model)
@@ -234,7 +279,7 @@ def run_benchmark_suite(
 
     # Generation benchmarks (test both unprocessed and processed)
     if verbose:
-        print("5. Generation Benchmarks")
+        print("6. Generation Benchmarks")
     results.append(benchmark_generation(bridge_unprocessed, test_text, max_new_tokens=10))
     results.append(
         benchmark_generation_with_kv_cache(bridge_unprocessed, test_text, max_new_tokens=10)
@@ -253,7 +298,7 @@ def run_benchmark_suite(
 
     # Weight processing benchmarks (compare processed Bridge vs processed HT)
     if verbose:
-        print("6. Weight Processing Benchmarks")
+        print("7. Weight Processing Benchmarks")
     if bridge_processed and ht_model:
         results.append(
             benchmark_weight_processing(bridge_processed, test_text, reference_model=ht_model)
@@ -272,7 +317,7 @@ def run_benchmark_suite(
 
     # Activation cache benchmarks (compare processed Bridge vs processed HT)
     if verbose:
-        print("7. Activation Cache Benchmarks")
+        print("8. Activation Cache Benchmarks")
     if bridge_processed and ht_model:
         results.append(
             benchmark_run_with_cache(bridge_processed, test_text, reference_model=ht_model)

@@ -107,7 +107,18 @@ class TransformerBridge(nn.Module):
 
         # Infer vocab size from tokenizer (similar to HookedTransformer)
         if self.cfg.d_vocab == -1:
-            self.cfg.d_vocab = max(self.tokenizer.vocab.values()) + 1
+            # Try multiple methods to get vocab size, as different tokenizers have different APIs
+            if hasattr(self.tokenizer, "vocab_size") and self.tokenizer.vocab_size is not None:
+                self.cfg.d_vocab = self.tokenizer.vocab_size
+            elif hasattr(self.tokenizer, "vocab") and self.tokenizer.vocab is not None:
+                self.cfg.d_vocab = max(self.tokenizer.vocab.values()) + 1
+            elif hasattr(self.tokenizer, "get_vocab"):
+                vocab = self.tokenizer.get_vocab()
+                self.cfg.d_vocab = max(vocab.values()) + 1
+            else:
+                raise ValueError(
+                    f"Could not infer vocab size from tokenizer of type {type(self.tokenizer)}"
+                )
         if self.cfg.d_vocab_out == -1:
             self.cfg.d_vocab_out = self.cfg.d_vocab
 
@@ -1280,24 +1291,52 @@ class TransformerBridge(nn.Module):
         attn_component.set_processed_weights(W_Q, W_K, W_V, W_O, b_Q, b_K, b_V, b_O)
 
     def _load_mlp_weights(self, mlp_component, layer_idx, processed_weights, verbose: bool = False):
-        """Load MLP weights into the MLPBridge component.
+        """Load MLP weights into the MLPBridge or GatedMLPBridge component.
 
         Args:
             verbose: If True, print detailed progress messages. Default: False
         """
-        W_in_key = f"blocks.{layer_idx}.mlp.W_in"
-        W_out_key = f"blocks.{layer_idx}.mlp.W_out"
-        b_in_key = f"blocks.{layer_idx}.mlp.b_in"
-        b_out_key = f"blocks.{layer_idx}.mlp.b_out"
+        from transformer_lens.model_bridge.generalized_components.gated_mlp import (
+            GatedMLPBridge,
+        )
 
-        W_in = processed_weights.get(W_in_key)
-        W_out = processed_weights.get(W_out_key)
-        b_in = processed_weights.get(b_in_key)
-        b_out = processed_weights.get(b_out_key)
+        # Check if this is a gated MLP (requires W_gate in addition to W_in/W_out)
+        is_gated = isinstance(mlp_component, GatedMLPBridge)
 
-        if W_in is None or W_out is None:
-            return
-        mlp_component.set_processed_weights(W_in, W_out, b_in, b_out)
+        if is_gated:
+            # GatedMLPBridge requires W_gate, W_in, W_out (and their biases)
+            W_gate_key = f"blocks.{layer_idx}.mlp.W_gate"
+            W_in_key = f"blocks.{layer_idx}.mlp.W_in"
+            W_out_key = f"blocks.{layer_idx}.mlp.W_out"
+            b_gate_key = f"blocks.{layer_idx}.mlp.b_gate"
+            b_in_key = f"blocks.{layer_idx}.mlp.b_in"
+            b_out_key = f"blocks.{layer_idx}.mlp.b_out"
+
+            W_gate = processed_weights.get(W_gate_key)
+            W_in = processed_weights.get(W_in_key)
+            W_out = processed_weights.get(W_out_key)
+            b_gate = processed_weights.get(b_gate_key)
+            b_in = processed_weights.get(b_in_key)
+            b_out = processed_weights.get(b_out_key)
+
+            if W_gate is None or W_in is None or W_out is None:
+                return
+            mlp_component.set_processed_weights(W_gate, W_in, W_out, b_gate, b_in, b_out)
+        else:
+            # Standard MLPBridge only needs W_in and W_out
+            W_in_key = f"blocks.{layer_idx}.mlp.W_in"
+            W_out_key = f"blocks.{layer_idx}.mlp.W_out"
+            b_in_key = f"blocks.{layer_idx}.mlp.b_in"
+            b_out_key = f"blocks.{layer_idx}.mlp.b_out"
+
+            W_in = processed_weights.get(W_in_key)
+            W_out = processed_weights.get(W_out_key)
+            b_in = processed_weights.get(b_in_key)
+            b_out = processed_weights.get(b_out_key)
+
+            if W_in is None or W_out is None:
+                return
+            mlp_component.set_processed_weights(W_in, W_out, b_in, b_out)
 
     def _load_unembed_weights(self, verbose: bool = False):
         """Load unembedding weights into the UnembeddingBridge component.
@@ -5007,14 +5046,22 @@ class TransformerBridge(nn.Module):
         with torch.no_grad():
             outputs = self.original_model.generate(input_ids, **generation_kwargs)  # type: ignore[operator]
 
+        # Some models return GenerateDecoderOnlyOutput, others return plain tensors
+        # Extract sequences appropriately
+        if hasattr(outputs, "sequences"):
+            sequences = outputs.sequences
+        else:
+            # Plain tensor output
+            sequences = outputs
+
         # Return based on return_type and input format
         if return_type == "input" or return_type is None:
             if isinstance(input, str):
                 # Decode the full output back to string
-                return self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+                return self.tokenizer.decode(sequences[0], skip_special_tokens=True)
             elif isinstance(input, list):
                 # Decode each sequence in the batch
-                return [self.tokenizer.decode(seq, skip_special_tokens=True) for seq in outputs]
+                return [self.tokenizer.decode(seq, skip_special_tokens=True) for seq in sequences]
             else:
                 # Return the full token sequence including input
                 return outputs
@@ -5023,9 +5070,9 @@ class TransformerBridge(nn.Module):
         else:
             # For other return types, default to the decoded text
             if isinstance(input, str):
-                return self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+                return self.tokenizer.decode(sequences[0], skip_special_tokens=True)
             elif isinstance(input, list):
-                return [self.tokenizer.decode(seq, skip_special_tokens=True) for seq in outputs]
+                return [self.tokenizer.decode(seq, skip_special_tokens=True) for seq in sequences]
             else:
                 return outputs
 

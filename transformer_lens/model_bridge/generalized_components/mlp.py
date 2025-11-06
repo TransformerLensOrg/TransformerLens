@@ -21,16 +21,16 @@ class MLPBridge(GeneralizedComponent):
     """
 
     hook_aliases = {
-        # hook_pre can be either "in.hook_out" (most models) or "input.hook_out" (GPT-2)
+        # hook_pre: Output of input projection before activation
+        # Try "in.hook_out" first (most models), then "input.hook_out" (GPT-2)
         "hook_pre": ["in.hook_out", "input.hook_out"],
+        # hook_post: After activation, before output projection
         "hook_post": "out.hook_in",
     }
 
     property_aliases = {
-        "W_gate": "gate.weight",
-        "b_gate": "gate.bias",
-        "W_in": "in.weight",
-        "b_in": "in.bias",
+        "W_in": ["in.weight", "input.weight"],
+        "b_in": ["in.bias", "input.bias"],
         "W_out": "out.weight",
         "b_out": "out.bias",
     }
@@ -45,12 +45,63 @@ class MLPBridge(GeneralizedComponent):
 
         Args:
             name: The name of the component in the model (None if no container exists)
-            config: Optional configuration (unused for MLPBridge)
+            config: Optional configuration with activation_function attribute
             submodules: Dictionary of submodules to register (e.g., gate_proj, up_proj, down_proj)
         """
         super().__init__(name, config, submodules=submodules)
 
+        # Determine activation function from config
+        self._activation_fn = self._get_activation_function(config)
+
         # No extra hooks; use only hook_in and hook_out
+
+    def _get_activation_function(self, config: Optional[Any]) -> Any:
+        """Get the activation function from config.
+
+        Args:
+            config: Model configuration with activation_function or hidden_act attribute
+
+        Returns:
+            PyTorch activation function
+        """
+        import torch.nn.functional as F
+
+        # Get activation name from config
+        # Try multiple attribute names for compatibility with different configs:
+        # - activation_function: HuggingFace (e.g., OPT, LLaMA)
+        # - hidden_activation: HuggingFace (e.g., Gemma-2)
+        # - hidden_act: HuggingFace (e.g., BERT, GPT-2)
+        # - act_fn: TransformerLens/TransformerBridge
+        activation_name = None
+        if config is not None:
+            activation_name = getattr(config, "activation_function", None)
+            if activation_name is None:
+                activation_name = getattr(config, "hidden_activation", None)
+            if activation_name is None:
+                activation_name = getattr(config, "hidden_act", None)
+            if activation_name is None:
+                activation_name = getattr(config, "act_fn", None)
+
+        # Default to GELU for backwards compatibility
+        if activation_name is None:
+            activation_name = "gelu"
+
+        # Map activation names to functions
+        activation_map = {
+            "gelu": F.gelu,
+            "gelu_new": lambda x: F.gelu(x, approximate="tanh"),
+            "gelu_pytorch_tanh": lambda x: F.gelu(x, approximate="tanh"),
+            "relu": F.relu,
+            "silu": F.silu,
+            "swish": F.silu,  # swish is the same as silu
+            "tanh": torch.tanh,
+        }
+
+        if activation_name not in activation_map:
+            # Fallback to gelu if unknown
+            return F.gelu
+
+        return activation_map[activation_name]
 
     def forward(self, *args, **kwargs) -> torch.Tensor:
         """Forward pass through the MLP bridge.
@@ -84,8 +135,8 @@ class MLPBridge(GeneralizedComponent):
                 if in_module and hasattr(in_module, "hook_out"):
                     hidden = in_module.hook_out(hidden)
 
-                # Apply activation (GELU for GPT-2)
-                hidden = torch.nn.functional.gelu(hidden)
+                # Apply activation function from config (relu, gelu, silu, etc.)
+                hidden = self._activation_fn(hidden)
 
                 # Apply hook_post (out.hook_in) - post-activation hidden state before output projection
                 # In compatibility mode, this hook is aliased as "blocks.L.mlp.hook_post"

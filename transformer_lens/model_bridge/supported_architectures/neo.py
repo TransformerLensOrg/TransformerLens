@@ -26,6 +26,9 @@ class NeoArchitectureAdapter(ArchitectureAdapter):
         """Initialize the Neo architecture adapter."""
         super().__init__(cfg)
 
+        # GPT-Neo doesn't use BOS tokens in HuggingFace, so set to False to match HF behavior
+        self.cfg.default_prepend_bos = False
+
         self.conversion_rules = HookConversionSet(
             {
                 "embed.e": "transformer.wte.weight",

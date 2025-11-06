@@ -363,10 +363,20 @@ class AttentionBridge(GeneralizedComponent):
                 if position_embeddings is not None:
                     cos, sin = position_embeddings
                     query, key = apply_rotary_pos_emb(query, key, cos, sin)
+                    # Apply rotary hooks after rotary embeddings (for compatibility with HookedTransformer)
+                    if hasattr(attention_bridge, "hook_rot_q"):
+                        query = attention_bridge.hook_rot_q(query)
+                    if hasattr(attention_bridge, "hook_rot_k"):
+                        key = attention_bridge.hook_rot_k(key)
                 # Other models may use position_ids
                 elif hasattr(hf_attn, "rotary_emb") and position_ids is not None:
                     cos, sin = hf_attn.rotary_emb(value, position_ids)  # type: ignore[union-attr,operator]
                     query, key = apply_rotary_pos_emb(query, key, cos, sin)
+                    # Apply rotary hooks after rotary embeddings (for compatibility with HookedTransformer)
+                    if hasattr(attention_bridge, "hook_rot_q"):
+                        query = attention_bridge.hook_rot_q(query)
+                    if hasattr(attention_bridge, "hook_rot_k"):
+                        key = attention_bridge.hook_rot_k(key)
 
                 # Apply Q/K normalization if present (Gemma3 has this)
                 if hasattr(hf_attn, "q_norm") and hf_attn.q_norm is not None:  # type: ignore[union-attr]
