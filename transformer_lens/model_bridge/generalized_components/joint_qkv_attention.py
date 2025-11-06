@@ -450,6 +450,23 @@ class JointQKVAttentionBridge(AttentionBridge):
         if past_key_value_arg is not None and hasattr(past_key_value_arg, "update"):
             layer_idx = getattr(self, "layer_idx", 0)
             k, v = past_key_value_arg.update(k_new, v_new, layer_idx)
+
+            # Safety check: ensure k and v have the same sequence length
+            # Some cache implementations may return inconsistent lengths
+            if k.shape[2] != v.shape[2]:
+                # Try to get full cached tensors
+                if hasattr(past_key_value_arg, 'key_cache') and hasattr(past_key_value_arg, 'value_cache'):
+                    k = past_key_value_arg.key_cache[layer_idx]
+                    v = past_key_value_arg.value_cache[layer_idx]
+                elif hasattr(past_key_value_arg, '__getitem__'):
+                    try:
+                        cache_entry = past_key_value_arg[layer_idx]
+                        k = cache_entry[0]
+                        v = cache_entry[1]
+                    except (IndexError, TypeError):
+                        # Fall back to new tokens only
+                        k = k_new
+                        v = v_new
         else:
             k = k_new
             v = v_new
