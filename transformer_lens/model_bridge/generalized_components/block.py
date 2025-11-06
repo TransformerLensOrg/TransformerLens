@@ -170,6 +170,8 @@ class BlockBridge(GeneralizedComponent):
             if past_key_value is not None:
                 if "layer_past" in attn_params:
                     attn_kwargs["layer_past"] = past_key_value
+                elif "past_key_values" in attn_params:
+                    attn_kwargs["past_key_values"] = past_key_value
                 elif "past_key_value" in attn_params:
                     attn_kwargs["past_key_value"] = past_key_value
                 else:
@@ -221,10 +223,11 @@ class BlockBridge(GeneralizedComponent):
 
             # MLP block - THIS IS WHERE WE INSERT hook_mlp_out
             residual = hidden_states
-            # Get architecture-specific second layer norm name (ln_2, post_attention_layernorm, final_layer_norm, etc.)
+            # Get architecture-specific second layer norm name (ln_2, post_attention_layernorm, pre_feedforward_layernorm, final_layer_norm, etc.)
             ln2 = (
                 getattr(block_self, "ln_2", None)
                 or getattr(block_self, "post_attention_layernorm", None)
+                or getattr(block_self, "pre_feedforward_layernorm", None)  # Gemma2
                 or getattr(block_self, "final_layer_norm", None)
             )
             if ln2 is not None:

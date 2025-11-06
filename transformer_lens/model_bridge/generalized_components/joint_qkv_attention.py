@@ -437,7 +437,10 @@ class JointQKVAttentionBridge(AttentionBridge):
 
         # Handle KV caching
         # Don't use "or" because DynamicCache might evaluate to False in boolean context
-        past_key_value_arg = kwargs.get("past_key_value")
+        # Different models use different parameter names: past_key_values (GPT-2), past_key_value, or layer_past
+        past_key_value_arg = kwargs.get("past_key_values")  # GPT-2
+        if past_key_value_arg is None:
+            past_key_value_arg = kwargs.get("past_key_value")
         if past_key_value_arg is None:
             past_key_value_arg = kwargs.get("layer_past")
         use_cache = kwargs.get("use_cache", False)
@@ -448,7 +451,12 @@ class JointQKVAttentionBridge(AttentionBridge):
         v_new = v.transpose(1, 2)
 
         if past_key_value_arg is not None and hasattr(past_key_value_arg, "update"):
-            layer_idx = getattr(self, "layer_idx", 0)
+            # Try to get layer_idx from original component first, then from stored _layer_idx
+            layer_idx = getattr(self.original_component, "layer_idx", None)
+            if layer_idx is None:
+                layer_idx = getattr(self, "_layer_idx", 0)
+
+            # Update cache - this modifies the cache in-place and returns the FULL k/v
             k, v = past_key_value_arg.update(k_new, v_new, layer_idx)
 
             # Safety check: ensure k and v have the same sequence length

@@ -124,7 +124,7 @@ def benchmark_forward_hooks(
         else:
             hook_names = list(bridge._hook_registry.keys())
 
-        # Register hooks on bridge
+        # Register hooks on bridge and track missing hooks
         def make_bridge_hook(name: str):
             def hook_fn(tensor, hook):
                 if isinstance(tensor, torch.Tensor):
@@ -137,23 +137,42 @@ def benchmark_forward_hooks(
             return hook_fn
 
         bridge_handles = []
+        missing_from_bridge = []
         for hook_name in hook_names:
             if hook_name in bridge.hook_dict:
                 hook_point = bridge.hook_dict[hook_name]
                 handle = hook_point.add_hook(make_bridge_hook(hook_name))  # type: ignore[func-returns-value]
-                bridge_handles.append(handle)
+                bridge_handles.append((hook_name, handle))
+            else:
+                missing_from_bridge.append(hook_name)
 
         # Run bridge forward pass
         with torch.no_grad():
             _ = bridge(test_text)
 
         # Clean up bridge hooks
-        for handle in bridge_handles:
+        for hook_name, handle in bridge_handles:
             if handle is not None:
                 handle.remove()
 
+        # Check for hooks that didn't fire (registered but no activation captured)
+        registered_hooks = {name for name, _ in bridge_handles}
+        hooks_that_didnt_fire = registered_hooks - set(bridge_activations.keys())
+
         if reference_model is None:
             # No reference - just verify activations were captured
+            if hooks_that_didnt_fire:
+                return BenchmarkResult(
+                    name="forward_hooks",
+                    severity=BenchmarkSeverity.WARNING,
+                    message=f"{len(hooks_that_didnt_fire)}/{len(registered_hooks)} hooks didn't fire during forward pass",
+                    details={
+                        "captured": len(bridge_activations),
+                        "registered": len(registered_hooks),
+                        "didnt_fire": list(hooks_that_didnt_fire)[:10],
+                    },
+                )
+
             return BenchmarkResult(
                 name="forward_hooks",
                 severity=BenchmarkSeverity.INFO,
@@ -188,6 +207,34 @@ def benchmark_forward_hooks(
         for handle in reference_handles:
             if handle is not None:
                 handle.remove()
+
+        # CRITICAL CHECK: Bridge must have all hooks that reference has
+        if missing_from_bridge:
+            return BenchmarkResult(
+                name="forward_hooks",
+                severity=BenchmarkSeverity.DANGER,
+                message=f"Bridge is MISSING {len(missing_from_bridge)} hooks that exist in reference model",
+                details={
+                    "missing_count": len(missing_from_bridge),
+                    "missing_hooks": missing_from_bridge[:20],  # Show first 20
+                    "total_reference_hooks": len(hook_names),
+                },
+                passed=False,
+            )
+
+        # CRITICAL CHECK: All registered hooks must fire
+        if hooks_that_didnt_fire:
+            return BenchmarkResult(
+                name="forward_hooks",
+                severity=BenchmarkSeverity.DANGER,
+                message=f"{len(hooks_that_didnt_fire)} hooks exist but DIDN'T FIRE during forward pass",
+                details={
+                    "didnt_fire_count": len(hooks_that_didnt_fire),
+                    "didnt_fire_hooks": list(hooks_that_didnt_fire)[:20],
+                    "total_registered": len(registered_hooks),
+                },
+                passed=False,
+            )
 
         # Compare activations
         common_hooks = set(bridge_activations.keys()) & set(reference_activations.keys())
