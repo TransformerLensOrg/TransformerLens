@@ -196,6 +196,12 @@ class BlockBridge(GeneralizedComponent):
             # Residual connection
             hidden_states = attn_output + residual
 
+            # Gemma2-specific: Apply post_attention_layernorm (ln1_post) after attention
+            # This is the 2nd normalization in Gemma2's 4-normalization architecture
+            ln1_post = getattr(block_self, "post_attention_layernorm", None)
+            if ln1_post is not None:
+                hidden_states = ln1_post(hidden_states)
+
             # Apply hook_resid_mid (after attention, before ln2)
             # This matches HookedTransformer where hook_resid_mid is separate from ln2
             hidden_states = self.hook_resid_mid(hidden_states)
@@ -223,10 +229,10 @@ class BlockBridge(GeneralizedComponent):
 
             # MLP block - THIS IS WHERE WE INSERT hook_mlp_out
             residual = hidden_states
-            # Get architecture-specific second layer norm name (ln_2, post_attention_layernorm, pre_feedforward_layernorm, final_layer_norm, etc.)
+            # Get architecture-specific second layer norm name (ln_2, pre_feedforward_layernorm, final_layer_norm, etc.)
+            # NOTE: Do NOT check for post_attention_layernorm here - that's ln1_post for Gemma2, called after attention
             ln2 = (
                 getattr(block_self, "ln_2", None)
-                or getattr(block_self, "post_attention_layernorm", None)
                 or getattr(block_self, "pre_feedforward_layernorm", None)  # Gemma2
                 or getattr(block_self, "final_layer_norm", None)
             )
@@ -256,6 +262,11 @@ class BlockBridge(GeneralizedComponent):
                     feed_forward_hidden_states = fc2(hidden_states)
                 else:
                     raise RuntimeError(f"Could not find MLP module in block {block_self}")
+
+            # Gemma2 post-feedforward normalization (applied AFTER MLP, BEFORE residual)
+            ln2_post = getattr(block_self, "post_feedforward_layernorm", None)
+            if ln2_post is not None:
+                feed_forward_hidden_states = ln2_post(feed_forward_hidden_states)
 
             # Residual connection
             hidden_states = residual + feed_forward_hidden_states
