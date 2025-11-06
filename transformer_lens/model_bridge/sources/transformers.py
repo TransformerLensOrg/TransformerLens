@@ -127,9 +127,11 @@ def map_default_transformer_lens_config(hf_config):
     if hasattr(hf_config, "num_experts_per_tok"):
         tl_config.experts_per_token = hf_config.num_experts_per_tok
 
-    # Note: default_prepend_bos is set by individual architecture adapters
-    # (e.g., OPT uses True, GPT-2/Pythia use False)
-    # DO NOT set a universal default here as it would override architecture-specific settings
+    # Set common defaults for transformer models
+    # Most models were trained with BOS tokens, so default to True
+    # Individual architecture adapters can override this if needed
+    # (e.g., Pythia/NeoX, Gemma, Phi, Qwen don't use BOS tokens)
+    tl_config.default_prepend_bos = True
 
     return tl_config
 

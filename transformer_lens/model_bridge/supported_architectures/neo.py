@@ -26,8 +26,7 @@ class NeoArchitectureAdapter(ArchitectureAdapter):
         """Initialize the Neo architecture adapter."""
         super().__init__(cfg)
 
-        # GPT-Neo doesn't use BOS tokens in HuggingFace, so set to False to match HF behavior
-        self.cfg.default_prepend_bos = False
+        # GPT-Neo uses BOS tokens (inherits default_prepend_bos = True)
 
         self.conversion_rules = HookConversionSet(
             {
