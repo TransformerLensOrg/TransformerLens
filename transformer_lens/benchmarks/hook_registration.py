@@ -74,23 +74,18 @@ def benchmark_hook_registry(
                 passed=False,
             )
 
-        if extra_hooks:
-            return BenchmarkResult(
-                name="hook_registry",
-                severity=BenchmarkSeverity.WARNING,
-                message=f"Bridge has {len(extra_hooks)} extra hooks not in reference model",
-                details={
-                    "extra_hooks": len(extra_hooks),
-                    "common_hooks": len(common_hooks),
-                    "sample_extra": list(extra_hooks)[:5],
-                },
-            )
-
+        # Bridge having extra hooks is fine - it just means Bridge has more granular hooks
+        # What matters is that all HookedTransformer hooks are present in Bridge
         return BenchmarkResult(
             name="hook_registry",
             severity=BenchmarkSeverity.INFO,
-            message=f"All {len(common_hooks)} hooks match between Bridge and reference",
-            details={"hook_count": len(common_hooks)},
+            message=f"All {len(reference_hooks)} reference hooks present in Bridge"
+            + (f" (Bridge has {len(extra_hooks)} additional hooks)" if extra_hooks else ""),
+            details={
+                "reference_hooks": len(reference_hooks),
+                "bridge_hooks": len(bridge_hooks),
+                "extra_hooks": len(extra_hooks) if extra_hooks else 0,
+            },
         )
 
     except Exception as e:

@@ -10,10 +10,10 @@ import torch
 class BenchmarkSeverity(Enum):
     """Severity levels for benchmark results."""
 
-    INFO = "info"  # Perfect match or expected minor differences
-    WARNING = "warning"  # Acceptable differences but noteworthy
-    DANGER = "danger"  # Significant mismatches or failures
-    ERROR = "error"  # Test failed to run
+    INFO = "info"  # ✅ PASS - Model working perfectly, all checks passed
+    WARNING = "warning"  # ⚠️ PASS with notes - Acceptable differences worth noting
+    DANGER = "danger"  # ❌ FAIL - Significant mismatches or failures
+    ERROR = "error"  # ❌ ERROR - Test crashed or couldn't run
 
 
 @dataclass

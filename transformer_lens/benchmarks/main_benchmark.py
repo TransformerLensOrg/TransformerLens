@@ -91,15 +91,24 @@ def run_benchmark_suite(
         print(f"Device: {device}")
         print(f"{'='*80}\n")
 
-    # Load TransformerBridge
+    # Load TransformerBridge (without processing for raw HF comparison)
     if verbose:
         print("Loading TransformerBridge...")
     try:
-        bridge = TransformerBridge.boot_transformers(model_name, device=device)  # type: ignore[attr-defined]
-        if enable_compatibility_mode:
-            bridge.enable_compatibility_mode(disable_warnings=True)
+        bridge_unprocessed = TransformerBridge.boot_transformers(model_name, device=device)  # type: ignore[attr-defined]
         if verbose:
-            print("✓ TransformerBridge loaded\n")
+            print("✓ TransformerBridge loaded (unprocessed)\n")
+
+        # Also create a processed version for compatibility mode testing
+        bridge_processed = None
+        if enable_compatibility_mode:
+            bridge_processed = TransformerBridge.boot_transformers(model_name, device=device)  # type: ignore[attr-defined]
+            bridge_processed.enable_compatibility_mode(disable_warnings=True)
+            if verbose:
+                print("✓ TransformerBridge compatibility mode enabled (processed)\n")
+
+        # For backward compatibility, use processed version as default if enabled
+        bridge = bridge_processed if bridge_processed else bridge_unprocessed
     except Exception as e:
         from transformer_lens.benchmarks.utils import BenchmarkSeverity
 
@@ -115,12 +124,13 @@ def run_benchmark_suite(
             print(format_results(results))
         return results
 
-    # Determine reference model to use (tiered approach)
+    # Load reference models for different comparison purposes:
+    # 1. HuggingFace: For comparing unprocessed Bridge implementation
+    # 2. HookedTransformer: For comparing processed Bridge compatibility mode
     hf_model: Optional[torch.nn.Module] = None
     ht_model: Optional[HookedTransformer] = None
-    reference_model: Optional[Union[HookedTransformer, torch.nn.Module]] = None
 
-    # Priority 1: Try to load HuggingFace model
+    # Load HuggingFace model for raw forward pass comparison
     if use_hf_reference:
         if verbose:
             print("Loading HuggingFace reference model...")
@@ -128,26 +138,18 @@ def run_benchmark_suite(
             hf_model = AutoModelForCausalLM.from_pretrained(model_name)  # type: ignore[arg-type]
             hf_model.to(device)  # type: ignore[arg-type]
             hf_model.eval()
-            reference_model = hf_model
-            # If using HF as reference, disable processing in bridge to match raw weights
-            if enable_compatibility_mode and getattr(bridge, "_weights_processed", False):
-                if verbose:
-                    print("⚠ Disabling weight processing to match raw HuggingFace model\n")
-                # Reload bridge without processing for fair comparison
-                bridge = TransformerBridge.boot_transformers(model_name, device=device)  # type: ignore[attr-defined]
-                bridge.enable_compatibility_mode(disable_warnings=True, no_processing=True)
             if verbose:
-                print("✓ HuggingFace model loaded as primary reference\n")
+                print("✓ HuggingFace model loaded (for raw forward pass comparison)\n")
         except Exception as e:
             if verbose:
                 print(f"✗ Could not load HuggingFace model: {str(e)}\n")
 
-    # Priority 2: Try to load HookedTransformer model (if HF not available or requested)
-    if use_ht_reference and (hf_model is None or not use_hf_reference):
+    # Load HookedTransformer for compatibility mode comparison
+    if use_ht_reference:
         if verbose:
             print("Loading HookedTransformer reference model...")
         try:
-            # Try with processing first (compatibility mode)
+            # Load with same processing as Bridge compatibility mode
             ht_model = HookedTransformer.from_pretrained(
                 model_name,
                 device=device,
@@ -157,62 +159,75 @@ def run_benchmark_suite(
                 fold_value_biases=True,
                 refactor_factored_attn_matrices=False,
             )
-            reference_model = ht_model
             if verbose:
-                print("✓ HookedTransformer loaded as reference\n")
+                print("✓ HookedTransformer loaded (for compatibility mode comparison)\n")
         except Exception as e:
             if verbose:
                 print(f"✗ Could not load HookedTransformer: {str(e)}\n")
 
-    # Priority 3: No reference model - run TB-only validation
-    if reference_model is None:
+    # Check if we have at least one reference model
+    if hf_model is None and ht_model is None:
         if verbose:
-            print("⚠ No reference model available - running TB-only validation\n")
+            print("⚠ No reference models available - running Bridge-only validation\n")
 
     # Run benchmarks
     if verbose:
         print("Running benchmarks...\n")
 
-    # Forward pass benchmarks
+    # Forward pass benchmarks (compare unprocessed Bridge vs HF)
     if verbose:
-        print("1. Forward Pass Benchmarks")
+        print("1. Forward Pass Benchmarks (unprocessed Bridge vs HuggingFace)")
     results.append(
         benchmark_forward_pass(
-            bridge, test_text, reference_model=ht_model if ht_model else hf_model
+            bridge_unprocessed, test_text, reference_model=hf_model
         )
     )
-    results.append(benchmark_loss_equivalence(bridge, test_text, reference_model=ht_model))
-    results.append(benchmark_logits_equivalence(bridge, test_text, reference_model=ht_model))
 
-    # Hook benchmarks
+    # Compatibility mode benchmarks (compare processed Bridge vs processed HT)
     if verbose:
-        print("2. Hook Registration Benchmarks")
-    results.append(benchmark_hook_registry(bridge, reference_model=ht_model))
-    results.append(benchmark_hook_functionality(bridge, test_text, reference_model=ht_model))
-    results.append(benchmark_critical_forward_hooks(bridge, test_text, reference_model=ht_model))
+        print("2. Compatibility Mode Benchmarks (processed Bridge vs HookedTransformer)")
+    if bridge_processed and ht_model:
+        results.append(benchmark_loss_equivalence(bridge_processed, test_text, reference_model=ht_model))
+        results.append(benchmark_logits_equivalence(bridge_processed, test_text, reference_model=ht_model))
+    elif bridge_processed:
+        # No HT reference - just validate processed Bridge works
+        results.append(benchmark_loss_equivalence(bridge_processed, test_text, reference_model=None))
+        results.append(benchmark_logits_equivalence(bridge_processed, test_text, reference_model=None))
+    else:
+        # No processed bridge - skip compatibility tests
+        if verbose:
+            print("⚠ Compatibility mode disabled - skipping processed comparisons\n")
+
+    # Hook benchmarks (use processed Bridge for compatibility with HT)
+    if verbose:
+        print("3. Hook Registration Benchmarks")
+    test_bridge = bridge_processed if bridge_processed and ht_model else bridge
+    results.append(benchmark_hook_registry(test_bridge, reference_model=ht_model))
+    results.append(benchmark_hook_functionality(test_bridge, test_text, reference_model=ht_model))
+    results.append(benchmark_critical_forward_hooks(test_bridge, test_text, reference_model=ht_model))
 
     # Only run full forward hooks if HT reference is available (computationally expensive)
-    if ht_model is not None:
-        results.append(benchmark_forward_hooks(bridge, test_text, reference_model=ht_model))
+    if ht_model is not None and bridge_processed:
+        results.append(benchmark_forward_hooks(bridge_processed, test_text, reference_model=ht_model))
 
-    # Gradient benchmarks
+    # Gradient benchmarks (use processed Bridge for compatibility with HT)
     if verbose:
-        print("3. Backward Gradient Benchmarks")
-    results.append(benchmark_gradient_computation(bridge, test_text, reference_model=ht_model))
-    results.append(benchmark_critical_backward_hooks(bridge, test_text, reference_model=ht_model))
+        print("4. Backward Gradient Benchmarks")
+    results.append(benchmark_gradient_computation(test_bridge, test_text, reference_model=ht_model))
+    results.append(benchmark_critical_backward_hooks(test_bridge, test_text, reference_model=ht_model))
 
     # Only run full backward hooks if HT reference is available (computationally expensive)
-    if ht_model is not None:
-        results.append(benchmark_backward_hooks(bridge, test_text, reference_model=ht_model))
+    if ht_model is not None and bridge_processed:
+        results.append(benchmark_backward_hooks(bridge_processed, test_text, reference_model=ht_model))
 
-    # Generation benchmarks
+    # Generation benchmarks (test both unprocessed and processed)
     if verbose:
-        print("4. Generation Benchmarks")
-    results.append(benchmark_generation(bridge, test_text, max_new_tokens=10))
-    results.append(benchmark_generation_with_kv_cache(bridge, test_text, max_new_tokens=10))
+        print("5. Generation Benchmarks")
+    results.append(benchmark_generation(bridge_unprocessed, test_text, max_new_tokens=10))
+    results.append(benchmark_generation_with_kv_cache(bridge_unprocessed, test_text, max_new_tokens=10))
     results.append(
         benchmark_multiple_generation_calls(
-            bridge,
+            bridge_unprocessed,
             test_prompts=[
                 "The quick brown fox",
                 "Hello world",
@@ -222,18 +237,29 @@ def run_benchmark_suite(
         )
     )
 
-    # Weight processing benchmarks
+    # Weight processing benchmarks (compare processed Bridge vs processed HT)
     if verbose:
-        print("5. Weight Processing Benchmarks")
-    results.append(benchmark_weight_processing(bridge, test_text, reference_model=ht_model))
-    results.append(benchmark_weight_sharing(bridge, test_text, reference_model=ht_model))
-    results.append(benchmark_weight_modification(bridge, test_text))
+        print("6. Weight Processing Benchmarks")
+    if bridge_processed and ht_model:
+        results.append(benchmark_weight_processing(bridge_processed, test_text, reference_model=ht_model))
+        results.append(benchmark_weight_sharing(bridge_processed, test_text, reference_model=ht_model))
+        results.append(benchmark_weight_modification(bridge_processed, test_text))
+    elif bridge_processed:
+        # No HT reference - just test processed bridge works
+        results.append(benchmark_weight_processing(bridge_processed, test_text, reference_model=None))
+        results.append(benchmark_weight_sharing(bridge_processed, test_text, reference_model=None))
+        results.append(benchmark_weight_modification(bridge_processed, test_text))
 
-    # Activation cache benchmarks
+    # Activation cache benchmarks (compare processed Bridge vs processed HT)
     if verbose:
-        print("6. Activation Cache Benchmarks")
-    results.append(benchmark_run_with_cache(bridge, test_text, reference_model=ht_model))
-    results.append(benchmark_activation_cache(bridge, test_text, reference_model=ht_model))
+        print("7. Activation Cache Benchmarks")
+    if bridge_processed and ht_model:
+        results.append(benchmark_run_with_cache(bridge_processed, test_text, reference_model=ht_model))
+        results.append(benchmark_activation_cache(bridge_processed, test_text, reference_model=ht_model))
+    elif bridge_processed:
+        # No HT reference - just test processed bridge works
+        results.append(benchmark_run_with_cache(bridge_processed, test_text, reference_model=None))
+        results.append(benchmark_activation_cache(bridge_processed, test_text, reference_model=None))
 
     # Print results
     if verbose:
