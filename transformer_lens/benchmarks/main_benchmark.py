@@ -7,7 +7,7 @@ against reference implementations in a tiered approach:
 3. Third Priority: If model unavailable in HT, run TB-only validation
 """
 
-from typing import List, Optional, Union
+from typing import List, Optional
 
 import torch
 from transformers import AutoModelForCausalLM
@@ -177,22 +177,26 @@ def run_benchmark_suite(
     # Forward pass benchmarks (compare unprocessed Bridge vs HF)
     if verbose:
         print("1. Forward Pass Benchmarks (unprocessed Bridge vs HuggingFace)")
-    results.append(
-        benchmark_forward_pass(
-            bridge_unprocessed, test_text, reference_model=hf_model
-        )
-    )
+    results.append(benchmark_forward_pass(bridge_unprocessed, test_text, reference_model=hf_model))
 
     # Compatibility mode benchmarks (compare processed Bridge vs processed HT)
     if verbose:
         print("2. Compatibility Mode Benchmarks (processed Bridge vs HookedTransformer)")
     if bridge_processed and ht_model:
-        results.append(benchmark_loss_equivalence(bridge_processed, test_text, reference_model=ht_model))
-        results.append(benchmark_logits_equivalence(bridge_processed, test_text, reference_model=ht_model))
+        results.append(
+            benchmark_loss_equivalence(bridge_processed, test_text, reference_model=ht_model)
+        )
+        results.append(
+            benchmark_logits_equivalence(bridge_processed, test_text, reference_model=ht_model)
+        )
     elif bridge_processed:
         # No HT reference - just validate processed Bridge works
-        results.append(benchmark_loss_equivalence(bridge_processed, test_text, reference_model=None))
-        results.append(benchmark_logits_equivalence(bridge_processed, test_text, reference_model=None))
+        results.append(
+            benchmark_loss_equivalence(bridge_processed, test_text, reference_model=None)
+        )
+        results.append(
+            benchmark_logits_equivalence(bridge_processed, test_text, reference_model=None)
+        )
     else:
         # No processed bridge - skip compatibility tests
         if verbose:
@@ -204,27 +208,37 @@ def run_benchmark_suite(
     test_bridge = bridge_processed if bridge_processed and ht_model else bridge
     results.append(benchmark_hook_registry(test_bridge, reference_model=ht_model))
     results.append(benchmark_hook_functionality(test_bridge, test_text, reference_model=ht_model))
-    results.append(benchmark_critical_forward_hooks(test_bridge, test_text, reference_model=ht_model))
+    results.append(
+        benchmark_critical_forward_hooks(test_bridge, test_text, reference_model=ht_model)
+    )
 
     # Only run full forward hooks if HT reference is available (computationally expensive)
     if ht_model is not None and bridge_processed:
-        results.append(benchmark_forward_hooks(bridge_processed, test_text, reference_model=ht_model))
+        results.append(
+            benchmark_forward_hooks(bridge_processed, test_text, reference_model=ht_model)
+        )
 
     # Gradient benchmarks (use processed Bridge for compatibility with HT)
     if verbose:
         print("4. Backward Gradient Benchmarks")
     results.append(benchmark_gradient_computation(test_bridge, test_text, reference_model=ht_model))
-    results.append(benchmark_critical_backward_hooks(test_bridge, test_text, reference_model=ht_model))
+    results.append(
+        benchmark_critical_backward_hooks(test_bridge, test_text, reference_model=ht_model)
+    )
 
     # Only run full backward hooks if HT reference is available (computationally expensive)
     if ht_model is not None and bridge_processed:
-        results.append(benchmark_backward_hooks(bridge_processed, test_text, reference_model=ht_model))
+        results.append(
+            benchmark_backward_hooks(bridge_processed, test_text, reference_model=ht_model)
+        )
 
     # Generation benchmarks (test both unprocessed and processed)
     if verbose:
         print("5. Generation Benchmarks")
     results.append(benchmark_generation(bridge_unprocessed, test_text, max_new_tokens=10))
-    results.append(benchmark_generation_with_kv_cache(bridge_unprocessed, test_text, max_new_tokens=10))
+    results.append(
+        benchmark_generation_with_kv_cache(bridge_unprocessed, test_text, max_new_tokens=10)
+    )
     results.append(
         benchmark_multiple_generation_calls(
             bridge_unprocessed,
@@ -241,12 +255,18 @@ def run_benchmark_suite(
     if verbose:
         print("6. Weight Processing Benchmarks")
     if bridge_processed and ht_model:
-        results.append(benchmark_weight_processing(bridge_processed, test_text, reference_model=ht_model))
-        results.append(benchmark_weight_sharing(bridge_processed, test_text, reference_model=ht_model))
+        results.append(
+            benchmark_weight_processing(bridge_processed, test_text, reference_model=ht_model)
+        )
+        results.append(
+            benchmark_weight_sharing(bridge_processed, test_text, reference_model=ht_model)
+        )
         results.append(benchmark_weight_modification(bridge_processed, test_text))
     elif bridge_processed:
         # No HT reference - just test processed bridge works
-        results.append(benchmark_weight_processing(bridge_processed, test_text, reference_model=None))
+        results.append(
+            benchmark_weight_processing(bridge_processed, test_text, reference_model=None)
+        )
         results.append(benchmark_weight_sharing(bridge_processed, test_text, reference_model=None))
         results.append(benchmark_weight_modification(bridge_processed, test_text))
 
@@ -254,12 +274,18 @@ def run_benchmark_suite(
     if verbose:
         print("7. Activation Cache Benchmarks")
     if bridge_processed and ht_model:
-        results.append(benchmark_run_with_cache(bridge_processed, test_text, reference_model=ht_model))
-        results.append(benchmark_activation_cache(bridge_processed, test_text, reference_model=ht_model))
+        results.append(
+            benchmark_run_with_cache(bridge_processed, test_text, reference_model=ht_model)
+        )
+        results.append(
+            benchmark_activation_cache(bridge_processed, test_text, reference_model=ht_model)
+        )
     elif bridge_processed:
         # No HT reference - just test processed bridge works
         results.append(benchmark_run_with_cache(bridge_processed, test_text, reference_model=None))
-        results.append(benchmark_activation_cache(bridge_processed, test_text, reference_model=None))
+        results.append(
+            benchmark_activation_cache(bridge_processed, test_text, reference_model=None)
+        )
 
     # Print results
     if verbose:
