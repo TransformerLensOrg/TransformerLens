@@ -102,14 +102,16 @@ def benchmark_forward_hooks(
     test_text: str,
     reference_model: Optional[HookedTransformer] = None,
     tolerance: float = 0.5,
+    prepend_bos: Optional[bool] = None,
 ) -> BenchmarkResult:
     """Benchmark all forward hooks for activation matching.
 
     Args:
         bridge: TransformerBridge model to test
         test_text: Input text for testing
-        reference_model: Optional HookedTransformer reference model
-        tolerance: Tolerance for activation comparison
+        reference_model: Optional HookedTransformer for comparison
+        tolerance: Tolerance for activation matching (fraction of mismatches allowed)
+        prepend_bos: Whether to prepend BOS token. If None, uses model default.
 
     Returns:
         BenchmarkResult with hook activation comparison details
@@ -148,7 +150,10 @@ def benchmark_forward_hooks(
 
         # Run bridge forward pass
         with torch.no_grad():
-            _ = bridge(test_text)
+            if prepend_bos is not None:
+                _ = bridge(test_text, prepend_bos=prepend_bos)
+            else:
+                _ = bridge(test_text)
 
         # Clean up bridge hooks
         for hook_name, handle in bridge_handles:
@@ -201,7 +206,10 @@ def benchmark_forward_hooks(
 
         # Run reference forward pass
         with torch.no_grad():
-            _ = reference_model(test_text)
+            if prepend_bos is not None:
+                _ = reference_model(test_text, prepend_bos=prepend_bos)
+            else:
+                _ = reference_model(test_text)
 
         # Clean up reference hooks
         for handle in reference_handles:
