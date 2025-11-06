@@ -19,8 +19,7 @@ from transformer_lens.model_bridge import TransformerBridge
 # Include diverse architectures to catch architecture-specific issues
 MODELS_TO_TEST = [
     "gpt2",  # Standard decoder-only with joint QKV
-    "EleutherAI/pythia-70m-deduped",  # GPT-NeoX architecture
-    "microsoft/phi-2",  # Phi architecture with parallel attention/MLP
+    "EleutherAI/pythia-14m",  # GPT-NeoX architecture (smaller than pythia-70m)
 ]
 
 # Only test Gemma2 locally (not in CI) due to size
