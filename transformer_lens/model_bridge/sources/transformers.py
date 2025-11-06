@@ -282,7 +282,7 @@ def boot(
             model_name = official_name
             break
 
-    hf_config = AutoConfig.from_pretrained(model_name, output_attentions=True)
+    hf_config = AutoConfig.from_pretrained(model_name, output_attentions=True, trust_remote_code=True)
 
     # Apply config variables to hf_config before selecting adapter
     if hf_config_overrides:
@@ -316,6 +316,7 @@ def boot(
         model_name,
         config=hf_config,
         torch_dtype=dtype,
+        trust_remote_code=True,
     )
 
     # Move model to device
@@ -337,6 +338,7 @@ def boot(
                 add_bos_token=True,
                 use_fast=use_fast,
                 token=huggingface_token if len(huggingface_token) > 0 else None,
+                trust_remote_code=True,
             ),
             default_padding_side=default_padding_side,
         )
