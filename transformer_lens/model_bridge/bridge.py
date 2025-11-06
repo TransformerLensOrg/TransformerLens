@@ -107,7 +107,16 @@ class TransformerBridge(nn.Module):
 
         # Infer vocab size from tokenizer (similar to HookedTransformer)
         if self.cfg.d_vocab == -1:
-            self.cfg.d_vocab = max(self.tokenizer.vocab.values()) + 1
+            # Use get_vocab() method which works across different tokenizer types
+            # Some tokenizers (like CodeGenTokenizer) don't support direct .vocab access
+            if hasattr(self.tokenizer, 'get_vocab'):
+                vocab = self.tokenizer.get_vocab()
+                self.cfg.d_vocab = max(vocab.values()) + 1
+            elif hasattr(self.tokenizer, 'vocab'):
+                self.cfg.d_vocab = max(self.tokenizer.vocab.values()) + 1
+            else:
+                # Fallback: use vocab_size attribute if available
+                self.cfg.d_vocab = getattr(self.tokenizer, 'vocab_size', 50257)
         if self.cfg.d_vocab_out == -1:
             self.cfg.d_vocab_out = self.cfg.d_vocab
 

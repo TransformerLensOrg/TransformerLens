@@ -74,7 +74,17 @@ class Phi3ArchitectureAdapter(ArchitectureAdapter):
                 submodules={
                     "ln1": NormalizationBridge(name="input_layernorm", config=self.cfg),
                     "ln2": NormalizationBridge(name="post_attention_layernorm", config=self.cfg),
-                    "attn": AttentionBridge(name="self_attn", config=self.cfg),
+                    "attn": AttentionBridge(
+                        name="self_attn",
+                        config=self.cfg,
+                        submodules={
+                            # Phi-3 uses combined qkv_proj, but we still need submodules for hooks
+                            "q": LinearBridge(name="qkv_proj"),
+                            "k": LinearBridge(name="qkv_proj"),
+                            "v": LinearBridge(name="qkv_proj"),
+                            "o": LinearBridge(name="o_proj"),
+                        },
+                    ),
                     "mlp": MLPBridge(name="mlp"),
                 },
             ),
