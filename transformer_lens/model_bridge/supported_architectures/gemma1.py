@@ -25,6 +25,8 @@ class Gemma1ArchitectureAdapter(ArchitectureAdapter):
         """Initialize the Gemma1 architecture adapter."""
         super().__init__(cfg)
 
+        # Gemma models were not trained with BOS tokens
+        self.cfg.default_prepend_bos = False
         self.cfg.gated_mlp = True
 
         self.cfg.uses_rms_norm = True

@@ -26,6 +26,9 @@ class OptArchitectureAdapter(ArchitectureAdapter):
         """Initialize the OPT architecture adapter."""
         super().__init__(cfg)
 
+        # OPT models were trained with BOS tokens
+        self.cfg.default_prepend_bos = True
+
         self.conversion_rules = HookConversionSet(
             {
                 "embed.e": "model.decoder.embed_tokens.weight",
