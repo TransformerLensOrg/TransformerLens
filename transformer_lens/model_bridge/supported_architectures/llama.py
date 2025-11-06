@@ -45,6 +45,9 @@ class LlamaArchitectureAdapter(ArchitectureAdapter):
         # Llama uses 'variance_epsilon' instead of 'eps' for RMSNorm
         self.cfg.eps_attr = "variance_epsilon"
 
+        # Llama uses rotary position embeddings
+        self.cfg.positional_embedding_type = "rotary"
+
         self.conversion_rules = HookConversionSet(
             {
                 "embed.e": "model.embed_tokens.weight",
