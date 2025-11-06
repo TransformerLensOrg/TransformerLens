@@ -35,7 +35,9 @@ class GeneralizedComponent(nn.Module):
     # Subclasses can override this to define their own aliases
     # Values can be either a string (single target) or a list of strings (multiple fallback targets)
     hook_aliases: Dict[str, Union[str, List[str]]] = {}
-    property_aliases: Dict[str, str] = {}
+    # Dictionary mapping property names to hook names
+    # Values can be either a string (single target) or a list of strings (multiple fallback targets)
+    property_aliases: Dict[str, Union[str, List[str]]] = {}
 
     def __init__(
         self,

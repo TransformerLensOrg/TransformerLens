@@ -4275,15 +4275,27 @@ class TransformerBridge(nn.Module):
         original_tl_cache = past_kv_cache
 
         # Run model
-        if hasattr(self.original_model, "forward"):
-            # Pass labels for loss calculation if needed
-            if return_type in ["loss", "both"]:
-                kwargs["labels"] = input_ids
-            output = self.original_model.forward(input_ids, **kwargs)
-        else:
-            if return_type in ["loss", "both"]:
-                kwargs["labels"] = input_ids
-            output = self.original_model(input_ids, **kwargs)
+        try:
+            if hasattr(self.original_model, "forward"):
+                # Pass labels for loss calculation if needed
+                if return_type in ["loss", "both"]:
+                    kwargs["labels"] = input_ids
+                output = self.original_model.forward(input_ids, **kwargs)
+            else:
+                if return_type in ["loss", "both"]:
+                    kwargs["labels"] = input_ids
+                output = self.original_model(input_ids, **kwargs)
+        except ValueError as e:
+            # Some models (like Qwen-1) can't output attentions when using SDPA
+            # Retry with output_attentions=False if we get that specific error
+            if "Cannot output attentions" in str(e) and kwargs.get("output_attentions"):
+                kwargs["output_attentions"] = False
+                if hasattr(self.original_model, "forward"):
+                    output = self.original_model.forward(input_ids, **kwargs)
+                else:
+                    output = self.original_model(input_ids, **kwargs)
+            else:
+                raise
 
         # Update TransformerLensKeyValueCache if it was provided and model returned new cache
         if (
@@ -4735,17 +4747,36 @@ class TransformerBridge(nn.Module):
             if "output_attentions" not in filtered_kwargs:
                 filtered_kwargs["output_attentions"] = True
 
-            # Call forward with the input as the first argument
-            if processed_args:
-                output = self.forward(processed_args[0], **filtered_kwargs)
-            elif "input_ids" in filtered_kwargs:
-                # If we have input_ids but no processed_args, use the input_ids as input
-                output = self.forward(
-                    filtered_kwargs["input_ids"],
-                    **{k: v for k, v in filtered_kwargs.items() if k != "input_ids"},
-                )
-            else:
-                output = self.forward(**filtered_kwargs)
+            try:
+                # Call forward with the input as the first argument
+                if processed_args:
+                    output = self.forward(processed_args[0], **filtered_kwargs)
+                elif "input_ids" in filtered_kwargs:
+                    # If we have input_ids but no processed_args, use the input_ids as input
+                    output = self.forward(
+                        filtered_kwargs["input_ids"],
+                        **{k: v for k, v in filtered_kwargs.items() if k != "input_ids"},
+                    )
+                else:
+                    output = self.forward(**filtered_kwargs)
+            except ValueError as e:
+                # Some models (like Qwen-1) can't output attentions when using SDPA
+                # Retry with output_attentions=False if we get that specific error
+                if "Cannot output attentions" in str(e) and filtered_kwargs.get(
+                    "output_attentions"
+                ):
+                    filtered_kwargs["output_attentions"] = False
+                    if processed_args:
+                        output = self.forward(processed_args[0], **filtered_kwargs)
+                    elif "input_ids" in filtered_kwargs:
+                        output = self.forward(
+                            filtered_kwargs["input_ids"],
+                            **{k: v for k, v in filtered_kwargs.items() if k != "input_ids"},
+                        )
+                    else:
+                        output = self.forward(**filtered_kwargs)
+                else:
+                    raise
             # Extract logits if output is a HuggingFace model output object
             if hasattr(output, "logits"):
                 output = output.logits

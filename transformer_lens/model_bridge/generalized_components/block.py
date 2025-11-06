@@ -177,7 +177,13 @@ class BlockBridge(GeneralizedComponent):
                     # use past_key_value as the default (most common)
                     attn_kwargs["past_key_value"] = past_key_value
 
-            attn_result = attn(attn_input, **attn_kwargs)  # type: ignore[misc]
+            # Filter kwargs to only include parameters that the attention module accepts
+            # This prevents errors with models that don't support all parameters (e.g., Qwen-1 doesn't support cache_position)
+            filtered_attn_kwargs = {
+                k: v for k, v in attn_kwargs.items() if k in attn_params or k == "kwargs"
+            }
+
+            attn_result = attn(attn_input, **filtered_attn_kwargs)  # type: ignore[misc]
             # Handle different return formats: (output, weights) or (output, weights, past)
             if len(attn_result) >= 2:
                 attn_output = attn_result[0]
