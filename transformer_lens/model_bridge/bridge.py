@@ -30,6 +30,9 @@ from transformer_lens.cache.key_value_cache import TransformerLensKeyValueCache
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookPoint
 
+if TYPE_CHECKING:
+    pass
+
 
 class StopAtLayerException(Exception):
     """Exception to stop forward pass at a specific layer."""
@@ -801,7 +804,12 @@ class TransformerBridge(nn.Module):
         transformer.forward = fixed_transformer_forward
 
     def enable_compatibility_mode(
-        self, disable_warnings: bool = False, no_processing: bool = False
+        self,
+        disable_warnings: bool = False,
+        no_processing: bool = False,
+        fold_ln: bool = True,
+        center_writing_weights: bool = True,
+        center_unembed: bool = True,
     ) -> None:
         """Enable compatibility mode for the bridge.
 
@@ -810,7 +818,14 @@ class TransformerBridge(nn.Module):
 
         Args:
             disable_warnings: Whether to disable warnings about legacy components/hooks
-            no_processing: Whether to disable pre-processing steps of the model (e.g. folding layer norm weights, folding value biases)
+            no_processing: Whether to disable ALL pre-processing steps of the model.
+                If True, overrides fold_ln, center_writing_weights, and center_unembed to False.
+            fold_ln: Whether to fold layer norm weights into the subsequent linear layers.
+                Default: True. Ignored if no_processing=True.
+            center_writing_weights: Whether to center the writing weights (W_out in attention and MLPs).
+                Default: True. Ignored if no_processing=True.
+            center_unembed: Whether to center the unembedding matrix.
+                Default: True. Ignored if no_processing=True.
         """
         # Avoid circular import
         from transformer_lens.utilities.bridge_components import (
@@ -835,6 +850,11 @@ class TransformerBridge(nn.Module):
 
         # Setup attention hooks for no_processing mode to match HookedTransformer
         if no_processing:
+            # Override weight processing parameters when no_processing is True
+            fold_ln = False
+            center_writing_weights = False
+            center_unembed = False
+
             # Setup attention hooks (architecture adapters configure behavior via parameters
             # like maintain_native_attention, use_native_layernorm_autograd)
             self._setup_no_processing_hooks()
@@ -844,9 +864,13 @@ class TransformerBridge(nn.Module):
             # Re-initialize hook registry to pick up any changes
             self.clear_hook_registry()
             self._initialize_hook_registry()
-
-        if not no_processing:
-            self.process_compatibility_weights()
+        else:
+            # Apply weight processing with the specified parameters
+            self.process_compatibility_weights(
+                fold_ln=fold_ln,
+                center_writing_weights=center_writing_weights,
+                center_unembed=center_unembed,
+            )
 
     def _setup_no_processing_hooks(self) -> None:
         """Setup hooks for no_processing mode in all attention layers.
@@ -1119,11 +1143,20 @@ class TransformerBridge(nn.Module):
                     block.original_component.mlp = new_mlp
                 print(f"  Replaced blocks.{i}.mlp with HT-compatible version")
 
-    def process_compatibility_weights(self, verbose: bool = False) -> None:
+    def process_compatibility_weights(
+        self,
+        verbose: bool = False,
+        fold_ln: bool = True,
+        center_writing_weights: bool = True,
+        center_unembed: bool = True,
+    ) -> None:
         """Process and load weights from a reference HookedTransformer model.
 
         Args:
             verbose: If True, print detailed progress messages. Default: False
+            fold_ln: Whether to fold layer norm weights. Default: True
+            center_writing_weights: Whether to center writing weights. Default: True
+            center_unembed: Whether to center unembedding matrix. Default: True
         """
         # Import here to avoid circular imports
         from transformer_lens import HookedTransformer
@@ -1133,9 +1166,9 @@ class TransformerBridge(nn.Module):
         reference_hooked = HookedTransformer.from_pretrained(
             self.cfg.model_name,
             device=self.cfg.device,
-            fold_ln=True,
-            center_writing_weights=True,
-            center_unembed=True,
+            fold_ln=fold_ln,
+            center_writing_weights=center_writing_weights,
+            center_unembed=center_unembed,
             fold_value_biases=True,
             refactor_factored_attn_matrices=False,
         )
@@ -5199,15 +5232,41 @@ class TransformerBridge(nn.Module):
         else:
             raise AttributeError(f"Hook point '{hook_name}' not found on component")
 
-    def reset_hooks(self, clear_contexts=True):
-        """Remove all hooks from the model."""
+    def reset_hooks(
+        self,
+        clear_contexts: bool = True,
+        direction: str = "both",
+        including_permanent: bool = False,
+        level: int | None = None,
+    ):
+        """Remove all hooks from the model.
+
+        Args:
+            clear_contexts: Whether to clear hook contexts
+            direction: Direction of hooks to remove ("fwd", "bwd", or "both")
+            including_permanent: Whether to remove permanent hooks
+            level: Hook level to remove (None for all levels)
+        """
 
         # Recursively remove hooks from all components
         def remove_hooks_recursive(module):
+            # Check if the module is in a valid state before accessing attributes
+            if not hasattr(module, "__dict__"):
+                return
+
             if isinstance(module, GeneralizedComponent):
                 module.remove_hooks()
-            for child in module.children():
-                remove_hooks_recursive(child)
+
+            # Safely iterate through children
+            try:
+                # Directly access _modules to avoid triggering __getattr__
+                if hasattr(module, "_modules") and module.__dict__.get("_modules") is not None:
+                    for child in module.__dict__["_modules"].values():
+                        if child is not None:
+                            remove_hooks_recursive(child)
+            except (AttributeError, RuntimeError):
+                # Module may be partially destroyed during cleanup
+                pass
 
         remove_hooks_recursive(self)
 

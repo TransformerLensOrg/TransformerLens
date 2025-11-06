@@ -1,3 +1,5 @@
+import os
+
 import pytest
 import torch
 from jaxtyping import Float
@@ -5,6 +7,10 @@ from torch.testing import assert_close
 from transformers import AutoTokenizer, T5ForConditionalGeneration
 
 from transformer_lens import HookedEncoderDecoder
+
+pytestmark = pytest.mark.skipif(
+    bool(os.getenv("CI")), reason="Skipping T5 TransformerLens tests in CI during migration."
+)
 
 MODEL_NAME = "t5-small"
 

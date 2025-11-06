@@ -8,6 +8,7 @@ import logging
 import os
 
 import torch
+import transformers
 from transformers import (
     AutoConfig,
     AutoModel,
@@ -16,6 +17,22 @@ from transformers import (
     AutoTokenizer,
     PreTrainedTokenizerBase,
 )
+
+# ---------------------------------------------------------------------------
+# Compatibility shim for transformers>=4.57 where BeamSearchScorer is no longer
+# exported at the top-level. Some third-party remote code (e.g., Qwen models
+# via transformers_stream_generator) still imports it from `transformers`.
+# Provide a best-effort alias so those imports continue to succeed.
+# ---------------------------------------------------------------------------
+try:
+    from transformers.generation.beam_search import (
+        BeamSearchScorer as _BeamSearchScorer,
+    )
+except ImportError:  # pragma: no cover - only hit on very old transformers
+    _BeamSearchScorer = None
+else:
+    if not hasattr(transformers, "BeamSearchScorer"):
+        transformers.BeamSearchScorer = _BeamSearchScorer
 
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.model_bridge.bridge import TransformerBridge
