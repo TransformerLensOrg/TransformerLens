@@ -29,7 +29,7 @@ try:
         BeamSearchScorer as _BeamSearchScorer,
     )
 except ImportError:  # pragma: no cover - only hit on very old transformers
-    _BeamSearchScorer = None  # type: ignore[assignment]
+    _BeamSearchScorer = None  # type: ignore[misc,assignment]
 else:
     if not hasattr(transformers, "BeamSearchScorer"):
         transformers.BeamSearchScorer = _BeamSearchScorer  # type: ignore[attr-defined]
