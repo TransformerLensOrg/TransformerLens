@@ -12,8 +12,8 @@ from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
     BlockBridge,
     EmbeddingBridge,
+    GatedMLPBridge,
     LinearBridge,
-    MLPBridge,
     NormalizationBridge,
     UnembeddingBridge,
 )
@@ -86,7 +86,16 @@ class Phi3ArchitectureAdapter(ArchitectureAdapter):
                             "o": LinearBridge(name="o_proj"),
                         },
                     ),
-                    "mlp": MLPBridge(name="mlp"),
+                    "mlp": GatedMLPBridge(
+                        name="mlp",
+                        config=self.cfg,
+                        submodules={
+                            # Phi-3 uses joint gate_up_proj, but we need submodules for hooks
+                            "gate": LinearBridge(name="gate_up_proj"),
+                            "in": LinearBridge(name="gate_up_proj"),
+                            "out": LinearBridge(name="down_proj"),
+                        },
+                    ),
                 },
             ),
             "ln_final": NormalizationBridge(name="model.norm", config=self.cfg),
