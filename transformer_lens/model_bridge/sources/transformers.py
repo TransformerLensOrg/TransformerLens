@@ -29,10 +29,10 @@ try:
         BeamSearchScorer as _BeamSearchScorer,
     )
 except ImportError:  # pragma: no cover - only hit on very old transformers
-    _BeamSearchScorer = None
+    _BeamSearchScorer = None  # type: ignore[assignment]
 else:
     if not hasattr(transformers, "BeamSearchScorer"):
-        transformers.BeamSearchScorer = _BeamSearchScorer
+        transformers.BeamSearchScorer = _BeamSearchScorer  # type: ignore[attr-defined]
 
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.model_bridge.bridge import TransformerBridge
