@@ -129,6 +129,13 @@ def run_benchmark_suite(
             hf_model.to(device)  # type: ignore[arg-type]
             hf_model.eval()
             reference_model = hf_model
+            # If using HF as reference, disable processing in bridge to match raw weights
+            if enable_compatibility_mode and getattr(bridge, "_weights_processed", False):
+                if verbose:
+                    print("⚠ Disabling weight processing to match raw HuggingFace model\n")
+                # Reload bridge without processing for fair comparison
+                bridge = TransformerBridge.boot_transformers(model_name, device=device)  # type: ignore[attr-defined]
+                bridge.enable_compatibility_mode(disable_warnings=True, no_processing=True)
             if verbose:
                 print("✓ HuggingFace model loaded as primary reference\n")
         except Exception as e:
