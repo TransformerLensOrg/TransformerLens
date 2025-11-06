@@ -455,10 +455,12 @@ class JointQKVAttentionBridge(AttentionBridge):
             # Some cache implementations may return inconsistent lengths
             if k.shape[2] != v.shape[2]:
                 # Try to get full cached tensors
-                if hasattr(past_key_value_arg, 'key_cache') and hasattr(past_key_value_arg, 'value_cache'):
+                if hasattr(past_key_value_arg, "key_cache") and hasattr(
+                    past_key_value_arg, "value_cache"
+                ):
                     k = past_key_value_arg.key_cache[layer_idx]
                     v = past_key_value_arg.value_cache[layer_idx]
-                elif hasattr(past_key_value_arg, '__getitem__'):
+                elif hasattr(past_key_value_arg, "__getitem__"):
                     try:
                         cache_entry = past_key_value_arg[layer_idx]
                         k = cache_entry[0]
