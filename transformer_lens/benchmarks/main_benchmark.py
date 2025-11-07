@@ -22,6 +22,7 @@ from transformer_lens.benchmarks.backward_gradients import (
     benchmark_critical_backward_hooks,
     benchmark_gradient_computation,
 )
+from transformer_lens.benchmarks.component_benchmark import benchmark_all_components
 from transformer_lens.benchmarks.forward_pass import (
     benchmark_forward_pass,
     benchmark_logits_equivalence,
@@ -225,9 +226,25 @@ def run_benchmark_suite(
     if verbose:
         print("Running benchmarks...\n")
 
+    # Component-level benchmarks (compare unprocessed Bridge components vs HF)
+    if verbose:
+        print("1. Component-Level Benchmarks (unprocessed Bridge vs HuggingFace)")
+    try:
+        bridge_unproc = get_bridge_unprocessed()
+        hf = get_hf_model()
+        if hf:
+            component_result = benchmark_all_components(bridge_unproc, hf)
+            results.append(component_result)
+            if verbose:
+                status = "✓" if component_result.passed else "✗"
+                print(f"{status} {component_result.message}\n")
+    except Exception as e:
+        if verbose:
+            print(f"✗ Component benchmark failed: {e}\n")
+
     # Forward pass benchmarks (compare unprocessed Bridge vs HF)
     if verbose:
-        print("1. Forward Pass Benchmarks (unprocessed Bridge vs HuggingFace)")
+        print("2. Forward Pass Benchmarks (unprocessed Bridge vs HuggingFace)")
     try:
         results.append(benchmark_forward_pass(get_bridge_unprocessed(), test_text, reference_model=get_hf_model()))
     except Exception:
