@@ -510,10 +510,16 @@ class JointQKVAttentionBridge(AttentionBridge):
             if hasattr(self, "o") and hasattr(self.o, "hook_in"):
                 attn_reshaped = self.o.hook_in(attn_reshaped)
 
+            # Ensure attn_reshaped has the correct shape [batch, seq, n_heads, d_head]
+            if attn_reshaped.ndim == 3:
+                # Reshape from [batch, seq, d_model] to [batch, seq, n_heads, d_head]
+                batch_size, seq_len = attn_reshaped.shape[:2]
+                attn_reshaped = attn_reshaped.view(batch_size, seq_len, n_heads, d_head)
+
             # Apply W_O and sum across heads
-            # Using einsum provides better numerical stability in forward pass
-            attn_output = torch.einsum("bsnh,nhd->bsnd", attn_reshaped, self._W_O)
-            attn_output = attn_output.sum(dim=2)
+            attn_output = torch.stack(
+                [attn_reshaped[:, :, h, :] @ self._W_O[h] for h in range(self._W_O.shape[0])], dim=2
+            ).sum(dim=2)
 
             try:
                 if hasattr(self, "_b_O") and self._b_O is not None:

@@ -856,17 +856,17 @@ class AttentionBridge(GeneralizedComponent):
         # Compute Q, K, V using TransformerLens format weights
         # W_Q shape: [n_heads, d_model, d_head], b_Q shape: [n_heads, d_head]
         # x shape: [batch, seq, d_model]
-        q = torch.einsum("bsd,hdc->bshc", x, self._processed_W_Q) + self._processed_b_Q.unsqueeze(  # type: ignore[union-attr]
+        q = torch.stack([x @ self._processed_W_Q[h] for h in range(self._processed_W_Q.shape[0])], dim=2) + self._processed_b_Q.unsqueeze(  # type: ignore[union-attr]
             0
         ).unsqueeze(
             0
         )
-        k = torch.einsum("bsd,hdc->bshc", x, self._processed_W_K) + self._processed_b_K.unsqueeze(  # type: ignore[union-attr]
+        k = torch.stack([x @ self._processed_W_K[h] for h in range(self._processed_W_K.shape[0])], dim=2) + self._processed_b_K.unsqueeze(  # type: ignore[union-attr]
             0
         ).unsqueeze(
             0
         )
-        v = torch.einsum("bsd,hdc->bshc", x, self._processed_W_V) + self._processed_b_V.unsqueeze(  # type: ignore[union-attr]
+        v = torch.stack([x @ self._processed_W_V[h] for h in range(self._processed_W_V.shape[0])], dim=2) + self._processed_b_V.unsqueeze(  # type: ignore[union-attr]
             0
         ).unsqueeze(
             0
@@ -931,8 +931,14 @@ class AttentionBridge(GeneralizedComponent):
 
         # Apply output projection using TransformerLens format
         # attn_out: [batch, seq, n_heads, d_head], W_O: [n_heads, d_head, d_model]
-        result = torch.einsum(
-            "bshc,hcd->bsd", attn_out, self._processed_W_O
+        result = torch.stack(
+            [
+                attn_out[:, :, h, :] @ self._processed_W_O[h]
+                for h in range(self._processed_W_O.shape[0])
+            ],
+            dim=2,
+        ).sum(
+            dim=2
         ) + self._processed_b_O.unsqueeze(  # type: ignore[union-attr]
             0
         ).unsqueeze(

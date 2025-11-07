@@ -433,7 +433,10 @@ class ComponentBenchmarker:
                 # Some pos embeds just return their embeddings directly
                 # or may not take inputs
                 try:
-                    return component.weight[:seq_len]
+                    if hasattr(component, "weight") and isinstance(component.weight, torch.Tensor):
+                        return component.weight[:seq_len]
+                    else:
+                        raise AttributeError("Component has no weight attribute")
                 except AttributeError:
                     # Skip this component
                     raise ValueError("Cannot test pos_embed - unclear interface")
@@ -544,7 +547,7 @@ def benchmark_model(
 
     # Load models
     print(f"Loading models: {model_name}")
-    bridge_model = TransformerBridge.boot_transformers(model_name, device=device)
+    bridge_model = TransformerBridge.boot_transformers(model_name, device=device)  # type: ignore[attr-defined]
     hf_model = AutoModelForCausalLM.from_pretrained(model_name, device_map=device)
 
     # Get adapter

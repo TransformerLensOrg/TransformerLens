@@ -2140,7 +2140,9 @@ class TransformerBridge(nn.Module):
         q_pre = x
         if f"blocks.{layer}.attn.q.hook_in" in self.hook_dict:
             q_pre = self.hook_dict[f"blocks.{layer}.attn.q.hook_in"](q_pre)
-        q = torch.einsum("bsd,hdk->bhsk", q_pre, W_Q) + b_Q.unsqueeze(
+        # W_Q shape: [n_heads, d_model, d_head], x shape: [batch, seq, d_model]
+        # Result: [batch, n_heads, seq, d_head]
+        q = torch.stack([q_pre @ W_Q[h] for h in range(self.cfg.n_heads)], dim=1) + b_Q.unsqueeze(
             1
         )  # [batch, n_heads, seq, d_head]
         # Use bridge hook point for Q output - reshape to match expected format
@@ -2154,7 +2156,8 @@ class TransformerBridge(nn.Module):
         k_pre = x
         if f"blocks.{layer}.attn.k.hook_in" in self.hook_dict:
             k_pre = self.hook_dict[f"blocks.{layer}.attn.k.hook_in"](k_pre)
-        k = torch.einsum("bsd,hdk->bhsk", k_pre, W_K) + b_K.unsqueeze(
+        # W_K shape: [n_heads, d_model, d_head], x shape: [batch, seq, d_model]
+        k = torch.stack([k_pre @ W_K[h] for h in range(self.cfg.n_heads)], dim=1) + b_K.unsqueeze(
             1
         )  # [batch, n_heads, seq, d_head]
         # Use bridge hook point for K output - reshape to match expected format
@@ -2168,7 +2171,8 @@ class TransformerBridge(nn.Module):
         v_pre = x
         if f"blocks.{layer}.attn.v.hook_in" in self.hook_dict:
             v_pre = self.hook_dict[f"blocks.{layer}.attn.v.hook_in"](v_pre)
-        v = torch.einsum("bsd,hdk->bhsk", v_pre, W_V) + b_V.unsqueeze(
+        # W_V shape: [n_heads, d_model, d_head], x shape: [batch, seq, d_model]
+        v = torch.stack([v_pre @ W_V[h] for h in range(self.cfg.n_heads)], dim=1) + b_V.unsqueeze(
             1
         )  # [batch, n_heads, seq, d_head]
         # Use bridge hook point for V output - reshape to match expected format
@@ -2180,7 +2184,7 @@ class TransformerBridge(nn.Module):
         )
 
         # Scaled dot-product attention
-        scores = torch.einsum("bhqk,bhsk->bhqs", q, k) / (self.cfg.d_head**0.5)
+        scores = torch.matmul(q, k.transpose(-2, -1)) / (self.cfg.d_head**0.5)
 
         # Apply attention scores hook
         if f"blocks.{layer}.attn.hook_attn_scores" in self.hook_dict:
@@ -2196,13 +2200,19 @@ class TransformerBridge(nn.Module):
         if f"blocks.{layer}.attn.hook_pattern" in self.hook_dict:
             attn_weights = self.hook_dict[f"blocks.{layer}.attn.hook_pattern"](attn_weights)
 
-        attn_out = torch.einsum("bhqs,bhsk->bhqk", attn_weights, v)  # [batch, n_heads, seq, d_head]
+        # attn_weights: [batch, n_heads, seq, seq], v: [batch, n_heads, seq, d_head]
+        attn_out = torch.matmul(attn_weights, v)  # [batch, n_heads, seq, d_head]
 
         # Output projection with hooks
         o_pre = attn_out
         if f"blocks.{layer}.attn.o.hook_in" in self.hook_dict:
             o_pre = self.hook_dict[f"blocks.{layer}.attn.o.hook_in"](o_pre)
-        out = torch.einsum("bhsk,hkd->bsd", o_pre, W_O) + b_O  # [batch, seq, d_model]
+        # W_O shape: [n_heads, d_head, d_model], o_pre: [batch, n_heads, seq, d_head]
+        # Result: [batch, seq, d_model]
+        out = (
+            torch.stack([o_pre[:, h] @ W_O[h] for h in range(self.cfg.n_heads)], dim=1).sum(dim=1)
+            + b_O
+        )
         if f"blocks.{layer}.attn.o.hook_out" in self.hook_dict:
             out = self.hook_dict[f"blocks.{layer}.attn.o.hook_out"](out)
 
@@ -2230,28 +2240,33 @@ class TransformerBridge(nn.Module):
         b_O = processed_weights[f"blocks.{layer}.attn.b_O"]  # [d_model]
 
         # Apply Q, K, V projections
-        q = torch.einsum("bsd,hdk->bhsk", x, W_Q) + b_Q.unsqueeze(
+        q = torch.stack([x @ W_Q[h] for h in range(self.cfg.n_heads)], dim=1) + b_Q.unsqueeze(
             1
         )  # [batch, n_heads, seq, d_head]
-        k = torch.einsum("bsd,hdk->bhsk", x, W_K) + b_K.unsqueeze(
+        k = torch.stack([x @ W_K[h] for h in range(self.cfg.n_heads)], dim=1) + b_K.unsqueeze(
             1
         )  # [batch, n_heads, seq, d_head]
-        v = torch.einsum("bsd,hdk->bhsk", x, W_V) + b_V.unsqueeze(
+        v = torch.stack([x @ W_V[h] for h in range(self.cfg.n_heads)], dim=1) + b_V.unsqueeze(
             1
         )  # [batch, n_heads, seq, d_head]
 
         # Scaled dot-product attention
-        scores = torch.einsum("bhqk,bhsk->bhqs", q, k) / (self.cfg.d_head**0.5)
+        scores = torch.matmul(q, k.transpose(-2, -1)) / (self.cfg.d_head**0.5)
 
         # Apply causal mask
         causal_mask = torch.triu(torch.ones(seq_len, seq_len, device=x.device), diagonal=1).bool()
         scores.masked_fill_(causal_mask.unsqueeze(0).unsqueeze(0), float("-inf"))
 
         attn_weights = F.softmax(scores, dim=-1)
-        attn_out = torch.einsum("bhqs,bhsk->bhqk", attn_weights, v)  # [batch, n_heads, seq, d_head]
+        attn_out = torch.matmul(attn_weights, v)  # [batch, n_heads, seq, d_head]
 
         # Output projection
-        out = torch.einsum("bhsk,hkd->bsd", attn_out, W_O) + b_O  # [batch, seq, d_model]
+        out = (
+            torch.stack([attn_out[:, h] @ W_O[h] for h in range(self.cfg.n_heads)], dim=1).sum(
+                dim=1
+            )
+            + b_O
+        )  # [batch, seq, d_model]
 
         return out
 

@@ -58,7 +58,7 @@ def benchmark_component_forward(
             return BenchmarkResult(
                 name=f"{component_name}_forward",
                 passed=False,
-                severity=BenchmarkSeverity.CRITICAL,
+                severity=BenchmarkSeverity.DANGER,
                 message=f"Component {component_name} outputs differ: max_diff={max_diff:.6f}, mean_diff={mean_diff:.6f}",
                 details={
                     "max_diff": max_diff,
@@ -71,6 +71,7 @@ def benchmark_component_forward(
         return BenchmarkResult(
             name=f"{component_name}_forward",
             passed=True,
+            severity=BenchmarkSeverity.INFO,
             message=f"Component {component_name} produces equivalent outputs",
         )
 
@@ -80,7 +81,7 @@ def benchmark_component_forward(
             passed=False,
             severity=BenchmarkSeverity.ERROR,
             message=f"Error testing component {component_name}: {str(e)}",
-            error=str(e),
+            details={"exception": str(e)},
         )
 
 
@@ -210,7 +211,7 @@ def benchmark_block_components(
                 passed=False,
                 severity=BenchmarkSeverity.ERROR,
                 message=f"Error benchmarking block {block_idx} components: {str(e)}",
-                error=str(e),
+                details={"exception": str(e)},
             )
         )
 
@@ -286,7 +287,7 @@ def benchmark_attention_subcomponents(
                 passed=False,
                 severity=BenchmarkSeverity.ERROR,
                 message=f"Error benchmarking attention subcomponents: {str(e)}",
-                error=str(e),
+                details={"exception": str(e)},
             )
         )
 
@@ -348,11 +349,11 @@ def benchmark_all_components(
 
             # Determine overall severity
             if failures_by_severity["critical"]:
-                severity = BenchmarkSeverity.CRITICAL
+                severity = BenchmarkSeverity.ERROR
             elif failures_by_severity["high"]:
-                severity = BenchmarkSeverity.HIGH
+                severity = BenchmarkSeverity.DANGER
             else:
-                severity = BenchmarkSeverity.MEDIUM
+                severity = BenchmarkSeverity.WARNING
 
             # Create failure message
             failure_summary = []
