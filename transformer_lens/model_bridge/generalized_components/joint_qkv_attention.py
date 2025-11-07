@@ -448,7 +448,7 @@ class JointQKVAttentionBridge(AttentionBridge):
         v_new = v.transpose(1, 2)
 
         if past_key_value_arg is not None and hasattr(past_key_value_arg, "update"):
-            layer_idx = getattr(self, "layer_idx", 0)
+            layer_idx = self._layer_idx if self._layer_idx is not None else 0
             k, v = past_key_value_arg.update(k_new, v_new, layer_idx)
         else:
             k = k_new
