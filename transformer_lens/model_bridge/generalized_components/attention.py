@@ -1025,7 +1025,11 @@ class AttentionBridge(GeneralizedComponent):
             else:
                 # Generate dummy position embeddings
                 # Gemma-2 expects tuple of (cos, sin) each with shape [batch, seq, d_head]
-                d_head = self.config.d_head if hasattr(self.config, "d_head") else 128
+                d_head = (
+                    self.config.d_head
+                    if self.config is not None and hasattr(self.config, "d_head")
+                    else 128
+                )
                 cos = torch.ones(batch, seq_len, d_head, device=test_input.device)
                 sin = torch.zeros(batch, seq_len, d_head, device=test_input.device)
                 position_embeddings = (cos, sin)
