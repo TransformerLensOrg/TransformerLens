@@ -53,6 +53,8 @@ class AttentionBridge(GeneralizedComponent):
         conversion_rule: Optional[BaseHookConversion] = None,
         pattern_conversion_rule: Optional[BaseHookConversion] = None,
         maintain_native_attention: bool = False,
+        requires_attention_mask: bool = False,
+        requires_position_embeddings: bool = False,
     ):
         """Initialize the attention bridge.
 
@@ -66,6 +68,8 @@ class AttentionBridge(GeneralizedComponent):
             maintain_native_attention: If True, preserve the original HF attention implementation
                                       without wrapping. Use for models with custom attention
                                       (e.g., attention sinks, specialized RoPE). Defaults to False.
+            requires_attention_mask: If True, auto-generate attention_mask for component isolation testing
+            requires_position_embeddings: If True, auto-generate position_embeddings for component isolation testing
         """
         # Set up conversion rule - use AttentionAutoConversion if None
         if conversion_rule is None:
@@ -104,6 +108,10 @@ class AttentionBridge(GeneralizedComponent):
 
         # Store whether to maintain native attention implementation
         self.maintain_native_attention = maintain_native_attention
+
+        # Store component isolation testing requirements
+        self.requires_attention_mask = requires_attention_mask
+        self.requires_position_embeddings = requires_position_embeddings
 
     def setup_no_processing_hooks(self) -> None:
         """Setup hooks for no_processing mode.
@@ -797,6 +805,36 @@ class AttentionBridge(GeneralizedComponent):
         elif len(args) > 0 and isinstance(args[0], torch.Tensor):
             args = (self.hook_in(args[0]),) + args[1:]
 
+        # Generate default parameters for component isolation testing if configured
+        if self.requires_attention_mask or self.requires_position_embeddings:
+            # Get hidden_states to infer dimensions
+            hidden_states = None
+            if "hidden_states" in kwargs:
+                hidden_states = kwargs["hidden_states"]
+            elif len(args) > 0 and isinstance(args[0], torch.Tensor):
+                hidden_states = args[0]
+
+            if hidden_states is not None:
+                batch_size, seq_len = hidden_states.shape[:2]
+
+                # Generate attention_mask if configured and not provided
+                if self.requires_attention_mask and "attention_mask" not in kwargs:
+                    kwargs["attention_mask"] = torch.ones(
+                        batch_size, seq_len, device=hidden_states.device, dtype=hidden_states.dtype
+                    )
+
+                # Generate position_embeddings if configured and not provided
+                if self.requires_position_embeddings and "position_embeddings" not in kwargs:
+                    # Try to access rotary_emb from the parent bridge to generate position embeddings
+                    if hasattr(self, "_parent_bridge") and hasattr(
+                        self._parent_bridge, "rotary_emb"
+                    ):
+                        position_ids = torch.arange(seq_len, device=hidden_states.device).unsqueeze(
+                            0
+                        )
+                        rotary_emb = self._parent_bridge.rotary_emb.original_component
+                        kwargs["position_embeddings"] = rotary_emb(hidden_states, position_ids)
+
         # Forward through original component
         output = self.original_component(*args, **kwargs)
 
@@ -967,6 +1005,82 @@ class AttentionBridge(GeneralizedComponent):
             Attention patterns tensor or None if not cached
         """
         return getattr(self, "_cached_attention_patterns", None)
+
+    def get_dummy_inputs(
+        self, test_input: torch.Tensor, **kwargs: Any
+    ) -> tuple[tuple[Any, ...], dict[str, Any]]:
+        """Generate dummy inputs for attention forward method.
+
+        Some attention implementations (e.g., Gemma-2) require additional arguments like
+        position_embeddings and attention_mask. This method detects these requirements
+        and generates appropriate dummy inputs.
+
+        Args:
+            test_input: Base test input tensor [batch, seq, d_model]
+            **kwargs: Additional context including hf_model, position_ids
+
+        Returns:
+            Tuple of (args, kwargs) for the attention forward method
+        """
+        import inspect
+
+        if self.original_component is None:
+            # No original component, use default behavior
+            return (test_input,), {}
+
+        # Check the signature of the original component's forward method
+        sig = inspect.signature(self.original_component.forward)
+        params = sig.parameters
+
+        # Check if this requires Gemma-2 style inputs (position_embeddings, attention_mask)
+        if "position_embeddings" in params and "attention_mask" in params:
+            batch, seq_len, _ = test_input.shape
+
+            # Get position_ids from kwargs
+            position_ids = kwargs.get("position_ids")
+            if position_ids is None:
+                position_ids = (
+                    torch.arange(seq_len, device=test_input.device).unsqueeze(0).expand(batch, -1)
+                )
+
+            # Compute position_embeddings using the model's rotary_emb
+            hf_model = kwargs.get("hf_model")
+            if (
+                hf_model is not None
+                and hasattr(hf_model, "model")
+                and hasattr(hf_model.model, "rotary_emb")
+            ):
+                # Get rotary embeddings (cos, sin) for the positions
+                position_embeddings = hf_model.model.rotary_emb(test_input, position_ids)
+            else:
+                # Generate dummy position embeddings
+                # Gemma-2 expects tuple of (cos, sin) each with shape [batch, seq, d_head]
+                d_head = self.config.d_head if hasattr(self.config, "d_head") else 128
+                cos = torch.ones(batch, seq_len, d_head, device=test_input.device)
+                sin = torch.zeros(batch, seq_len, d_head, device=test_input.device)
+                position_embeddings = (cos, sin)
+
+            # Generate 4D causal attention mask [batch, 1, seq, seq]
+            # Gemma-2's eager attention expects 4D causal mask
+            attention_mask = (
+                torch.tril(torch.ones(seq_len, seq_len, device=test_input.device))
+                .unsqueeze(0)
+                .unsqueeze(0)
+                .expand(batch, 1, seq_len, seq_len)
+            )
+
+            # Return Gemma-2 style arguments
+            return (), {
+                "hidden_states": test_input,
+                "position_embeddings": position_embeddings,
+                "attention_mask": attention_mask,
+            }
+
+        # Default: just pass hidden_states or test_input
+        if "hidden_states" in params:
+            return (), {"hidden_states": test_input}
+        else:
+            return (test_input,), {}
 
     def __repr__(self) -> str:
         """String representation of the AttentionBridge."""

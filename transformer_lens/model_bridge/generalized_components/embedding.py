@@ -137,3 +137,45 @@ class EmbeddingBridge(GeneralizedComponent):
         """
         self._processed_weight = weight
         self._use_processed_weights = True
+
+    def get_dummy_inputs(
+        self, test_input: torch.Tensor, **kwargs: Any
+    ) -> tuple[tuple[Any, ...], dict[str, Any]]:
+        """Generate dummy inputs for embedding forward method.
+
+        Embeddings expect integer token indices, not float tensors.
+
+        Args:
+            test_input: Base test input tensor [batch, seq, d_model] - used for shape only
+            **kwargs: Additional context including shared_token_indices
+
+        Returns:
+            Tuple of (args, kwargs) for the embedding forward method
+        """
+        # Check if shared_token_indices were provided (to ensure consistency across components)
+        shared_indices = kwargs.get("shared_token_indices")
+        if shared_indices is not None:
+            return (shared_indices,), {}
+
+        # Generate random token indices
+        batch, seq_len, _ = test_input.shape
+
+        # Get vocab size from config or original component
+        vocab_size = None
+        if self.config is not None and hasattr(self.config, "d_vocab"):
+            vocab_size = self.config.d_vocab
+        elif self.original_component is not None and hasattr(
+            self.original_component, "num_embeddings"
+        ):
+            vocab_size = self.original_component.num_embeddings
+
+        if vocab_size is None:
+            # Default vocab size if we can't determine it
+            vocab_size = 50257  # GPT-2 default
+
+        # Generate random token indices
+        token_indices = torch.randint(
+            0, vocab_size, (batch, seq_len), device=test_input.device, dtype=torch.long
+        )
+
+        return (token_indices,), {}

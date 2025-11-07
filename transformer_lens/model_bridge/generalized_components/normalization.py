@@ -1,6 +1,6 @@
 """Normalization bridge component implementation."""
 
-from typing import Any, Dict, Optional, cast
+from typing import Any, Dict, Optional
 
 import torch
 
@@ -66,50 +66,20 @@ class NormalizationBridge(GeneralizedComponent):
                 f"Original component not set for {self.name}. Call set_original_component() first."
             )
 
-        # keep mypy happy
-        assert self.config is not None
-
+        # Apply input hook
         hidden_states = self.hook_in(hidden_states)
 
-        # Check if we should use HuggingFace's autograd directly (for exact gradient matching)
-        if self.use_native_layernorm_autograd:
-            # Use HuggingFace LayerNorm's forward directly to preserve exact computational graph
-            result = self._hf_autograd_forward(hidden_states)
         # Check if we should use LayerNormPre behavior (when layer norm folding is enabled)
-        elif hasattr(self.config, "layer_norm_folding") and self.config.layer_norm_folding:
+        if hasattr(self.config, "layer_norm_folding") and self.config.layer_norm_folding:
             # LayerNormPre mode: center and normalize without learnable parameters
             # This matches LayerNormPre behavior exactly
             result = self._layernorm_pre_forward(hidden_states)
         else:
-            # Standard normalization behavior with learnable parameters
-            if not getattr(self.config, "uses_rms_norm", False):
-                # Only center if not using RMSNorm
-                hidden_states = hidden_states - hidden_states.mean(-1, keepdim=True)
+            # Delegate to the original component's forward method
+            # This ensures we use the correct normalization implementation for each architecture
+            result = self.original_component(hidden_states, **kwargs)
 
-            scale = self.hook_scale(
-                (
-                    hidden_states.pow(2).mean(-1, keepdim=True) + getattr(self.config, "eps", 1e-5)
-                ).sqrt()
-            )
-            # Match HookedTransformer's dtype casting after normalization
-            dtype = getattr(self.config, "dtype", hidden_states.dtype)
-            hidden_states = self.hook_normalized(hidden_states / scale).to(dtype)
-
-            # Apply learnable parameters if not folding layer norms
-            if getattr(self.config, "uses_rms_norm", False):
-                # No bias if using RMSNorm
-                hidden_states = hidden_states * self.weight
-            else:
-                # Add bias if using LayerNorm and the original component has a bias
-                hidden_states = hidden_states * self.weight
-                if (
-                    hasattr(self.original_component, "bias")
-                    and self.original_component.bias is not None
-                ):
-                    hidden_states = hidden_states + cast(torch.Tensor, self.original_component.bias)
-
-            result = hidden_states
-
+        # Apply output hook
         output = self.hook_out(result)
         return output
 

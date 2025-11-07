@@ -119,6 +119,13 @@ def map_default_transformer_lens_config(hf_config):
     if hasattr(hf_config, "num_experts_per_tok"):
         tl_config.experts_per_token = hf_config.num_experts_per_tok
 
+    # Map logit soft-capping (Gemma-2 specific)
+    if (
+        hasattr(hf_config, "final_logit_softcapping")
+        and hf_config.final_logit_softcapping is not None
+    ):
+        tl_config.output_logits_soft_cap = hf_config.final_logit_softcapping
+
     # Set common defaults for transformer models
     tl_config.default_prepend_bos = True
 

@@ -93,6 +93,14 @@ class UnembeddingBridge(GeneralizedComponent):
                 # Fallback to original component's weights
                 output = torch.nn.functional.linear(hidden_states, self.W_U.T, self.b_U)
 
+            # Apply logit soft-capping if configured (e.g., for Gemma-2)
+            if self.config is not None and hasattr(self.config, "output_logits_soft_cap"):
+                output_logits_soft_cap = self.config.output_logits_soft_cap
+                if output_logits_soft_cap is not None and output_logits_soft_cap > 0:
+                    output = output / output_logits_soft_cap
+                    output = torch.tanh(output)
+                    output = output * output_logits_soft_cap
+
             # Apply output hook
             output = self.hook_out(output)
 
@@ -105,6 +113,15 @@ class UnembeddingBridge(GeneralizedComponent):
 
         hidden_states = self.hook_in(hidden_states)
         output = self.original_component(hidden_states, **kwargs)
+
+        # Apply logit soft-capping if configured (e.g., for Gemma-2)
+        if self.config is not None and hasattr(self.config, "output_logits_soft_cap"):
+            output_logits_soft_cap = self.config.output_logits_soft_cap
+            if output_logits_soft_cap is not None and output_logits_soft_cap > 0:
+                output = output / output_logits_soft_cap
+                output = torch.tanh(output)
+                output = output * output_logits_soft_cap
+
         output = self.hook_out(output)
 
         return output

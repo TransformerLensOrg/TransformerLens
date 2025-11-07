@@ -318,19 +318,30 @@ class ComponentBenchmarker:
             if test_input is None:
                 return None
 
-            # For embedding components, generate token indices once to use for both
+            # Get input args/kwargs from the Bridge component
+            # All bridge components inherit from GeneralizedComponent and have get_dummy_inputs()
+            batch, seq_len, _ = test_input.shape
+            pos_indices = (
+                torch.arange(seq_len, device=test_input.device).unsqueeze(0).expand(batch, -1)
+            )
+
+            # For embedding components, generate token indices once
             shared_token_indices = None
             if component_path == "embed":
-                batch, seq_len, _ = test_input.shape
-                shared_token_indices = torch.randint(0, self.cfg.d_vocab, (batch, seq_len))
+                shared_token_indices = torch.randint(
+                    0, self.cfg.d_vocab, (batch, seq_len), device=test_input.device
+                )
 
-            # Run through both components
-            bridge_output = self._run_component(
-                bridge_component, test_input, component_path, shared_token_indices
+            args, kwargs = bridge_component.get_dummy_inputs(
+                test_input,
+                hf_model=self.hf_model,
+                shared_token_indices=shared_token_indices,
+                position_ids=pos_indices,
             )
-            hf_output = self._run_component(
-                hf_component, test_input, component_path, shared_token_indices
-            )
+
+            # Use the same args/kwargs for both Bridge and HF components
+            bridge_output = bridge_component(*args, **kwargs)
+            hf_output = hf_component(*args, **kwargs)
 
             # Extract tensors if outputs are tuples
             bridge_tensor = bridge_output[0] if isinstance(bridge_output, tuple) else bridge_output
@@ -394,6 +405,19 @@ class ComponentBenchmarker:
         Returns:
             The component output
         """
+        # Check if component has get_dummy_inputs method (GeneralizedComponent)
+        if hasattr(component, "get_dummy_inputs"):
+            batch, seq_len, _ = test_input.shape
+            pos_indices = torch.arange(seq_len).unsqueeze(0).expand(batch, -1)
+
+            args, kwargs = component.get_dummy_inputs(
+                test_input,
+                hf_model=self.hf_model,
+                shared_token_indices=shared_token_indices,
+                position_ids=pos_indices,
+            )
+            return component(*args, **kwargs)
+
         # Try different calling conventions based on component type
         if "attn" in component_path and "attn" == component_path.split(".")[-1]:
             # Attention components
@@ -408,11 +432,70 @@ class ComponentBenchmarker:
                 )
             except TypeError:
                 try:
-                    # Try HuggingFace-style attention
-                    return component(hidden_states=test_input)
-                except TypeError:
+                    # Check signature for Gemma-2 style (position_embeddings + attention_mask)
+                    import inspect
+
+                    sig = inspect.signature(component.forward)
+                    params = sig.parameters
+
+                    if "position_embeddings" in params and "attention_mask" in params:
+                        # Gemma-2 style attention
+                        batch, seq_len, _ = test_input.shape
+                        pos_indices = (
+                            torch.arange(seq_len, device=test_input.device)
+                            .unsqueeze(0)
+                            .expand(batch, -1)
+                        )
+
+                        # Get rotary embeddings from the model
+                        if hasattr(self.hf_model, "rotary_emb"):
+                            position_embeddings = self.hf_model.rotary_emb(test_input, pos_indices)
+                        elif hasattr(self.hf_model, "model") and hasattr(
+                            self.hf_model.model, "rotary_emb"
+                        ):
+                            position_embeddings = self.hf_model.model.rotary_emb(
+                                test_input, pos_indices
+                            )
+                        else:
+                            # Fallback: dummy position embeddings
+                            d_head = 128  # reasonable default
+                            cos = torch.ones(batch, seq_len, d_head, device=test_input.device)
+                            sin = torch.zeros(batch, seq_len, d_head, device=test_input.device)
+                            position_embeddings = (cos, sin)
+
+                        attention_mask = torch.ones(
+                            batch, seq_len, dtype=torch.long, device=test_input.device
+                        )
+
+                        return component(
+                            hidden_states=test_input,
+                            position_embeddings=position_embeddings,
+                            attention_mask=attention_mask,
+                        )
+                    else:
+                        # Try HuggingFace-style attention
+                        return component(hidden_states=test_input)
+                except (TypeError, AttributeError):
                     # Simple call
                     return component(test_input)
+        elif component_path == "rotary_emb" or "rotary" in component_path:
+            # Rotary embeddings expect (x, position_ids)
+            import inspect
+
+            sig = inspect.signature(component.forward)
+            params = list(sig.parameters.keys())
+
+            batch, seq_len, _ = test_input.shape
+            pos_indices = (
+                torch.arange(seq_len, device=test_input.device).unsqueeze(0).expand(batch, -1)
+            )
+
+            if len(params) >= 2 and params[0] not in ["self"] and params[1] != "self":
+                # Has position_ids parameter
+                return component(test_input, pos_indices)
+            else:
+                # Fallback to just test_input
+                return component(test_input)
         elif component_path == "embed":
             # Main embedding component expects integer indices
             # Use shared token indices if provided, otherwise generate new ones

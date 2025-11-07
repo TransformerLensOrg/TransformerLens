@@ -111,9 +111,20 @@ class MLPBridge(GeneralizedComponent):
                 f"Original component not set for {self.name}. Call set_original_component() first."
             )
 
-        hidden_states = args[0]
+        # Extract hidden_states from either args or kwargs
+        if args:
+            hidden_states = args[0]
+            new_args = args[1:]
+        else:
+            hidden_states = kwargs.pop("hidden_states", None)
+            if hidden_states is None:
+                raise ValueError(
+                    "hidden_states must be provided either as first positional arg or as keyword arg"
+                )
+            new_args = ()
+
         hidden_states = self.hook_in(hidden_states)
-        new_args = (hidden_states,) + args[1:]
+        new_args = (hidden_states,) + new_args
         output = self.original_component(*new_args, **kwargs)
         output = self.hook_out(output)
         return output

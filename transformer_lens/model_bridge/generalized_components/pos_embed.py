@@ -127,3 +127,34 @@ class PosEmbedBridge(GeneralizedComponent):
         """
         self._processed_weight = weight
         self._use_processed_weights = True
+
+    def get_dummy_inputs(
+        self, test_input: torch.Tensor, **kwargs: Any
+    ) -> tuple[tuple[Any, ...], dict[str, Any]]:
+        """Generate dummy inputs for positional embedding forward method.
+
+        Positional embeddings expect integer position indices, not float tensors.
+
+        Args:
+            test_input: Base test input tensor [batch, seq, d_model] - used for shape only
+            **kwargs: Additional context including position_ids
+
+        Returns:
+            Tuple of (args, kwargs) for the positional embedding forward method
+        """
+        # Get position_ids from kwargs, or generate default
+        position_ids = kwargs.get("position_ids")
+        if position_ids is not None:
+            return (position_ids,), {}
+
+        # Generate position indices from test_input shape
+        batch, seq_len, _ = test_input.shape
+
+        # Generate position indices [batch, seq]
+        position_ids = (
+            torch.arange(seq_len, device=test_input.device, dtype=torch.long)
+            .unsqueeze(0)
+            .expand(batch, -1)
+        )
+
+        return (position_ids,), {}

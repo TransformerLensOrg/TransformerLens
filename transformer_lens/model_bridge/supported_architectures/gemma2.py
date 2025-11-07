@@ -13,7 +13,6 @@ from transformer_lens.model_bridge.generalized_components import (
     EmbeddingBridge,
     LinearBridge,
     MLPBridge,
-    NormalizationBridge,
     RMSNormalizationBridge,
     RotaryEmbeddingBridge,
     UnembeddingBridge,
@@ -81,6 +80,7 @@ class Gemma2ArchitectureAdapter(ArchitectureAdapter):
             "rotary_emb": RotaryEmbeddingBridge(name="model.rotary_emb"),
             "blocks": BlockBridge(
                 name="model.layers",
+                config=self.cfg,
                 submodules={
                     "ln1": RMSNormalizationBridge(name="input_layernorm", config=self.cfg),
                     "ln1_post": RMSNormalizationBridge(
@@ -89,7 +89,7 @@ class Gemma2ArchitectureAdapter(ArchitectureAdapter):
                     "ln2": RMSNormalizationBridge(
                         name="pre_feedforward_layernorm", config=self.cfg
                     ),
-                    "ln2_post": NormalizationBridge(
+                    "ln2_post": RMSNormalizationBridge(
                         name="post_feedforward_layernorm", config=self.cfg
                     ),
                     "attn": AttentionBridge(
@@ -101,6 +101,8 @@ class Gemma2ArchitectureAdapter(ArchitectureAdapter):
                             "v": LinearBridge(name="v_proj"),
                             "o": LinearBridge(name="o_proj"),
                         },
+                        requires_attention_mask=True,
+                        requires_position_embeddings=True,
                     ),
                     "mlp": MLPBridge(
                         name="mlp",
@@ -113,5 +115,5 @@ class Gemma2ArchitectureAdapter(ArchitectureAdapter):
                 },
             ),
             "ln_final": RMSNormalizationBridge(name="model.norm", config=self.cfg),
-            "unembed": UnembeddingBridge(name="lm_head"),
+            "unembed": UnembeddingBridge(name="lm_head", config=self.cfg),
         }

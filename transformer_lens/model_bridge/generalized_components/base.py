@@ -177,7 +177,49 @@ class GeneralizedComponent(nn.Module):
             refactor_factored_attn_matrices: Whether to refactor factored attention matrices
         """
         # Base implementation does nothing - components override this
-        pass
+
+    def get_dummy_inputs(
+        self, test_input: torch.Tensor, **kwargs: Any
+    ) -> tuple[tuple[Any, ...], dict[str, Any]]:
+        """Generate dummy inputs for this component's forward method.
+
+        This method should be overridden by components that have special
+        input requirements (e.g., attention masks, position embeddings).
+
+        The default implementation checks the original component's forward signature
+        and returns appropriate inputs based on typical HuggingFace patterns.
+
+        Args:
+            test_input: Base test input tensor [batch, seq, d_model]
+            **kwargs: Additional context (e.g., hf_model, position_ids, etc.)
+
+        Returns:
+            Tuple of (args, kwargs) for the component's forward method.
+            Default: (test_input,), {} for most components
+        """
+        if self.original_component is None:
+            # No original component, just pass test_input as positional arg
+            return (test_input,), {}
+
+        # Check the signature of the original component's forward method
+        try:
+            sig = inspect.signature(self.original_component.forward)
+            params = list(sig.parameters.keys())
+
+            # Skip 'self' parameter
+            if params and params[0] == "self":
+                params = params[1:]
+
+            # If first parameter is 'hidden_states', use it as keyword arg
+            if params and params[0] == "hidden_states":
+                return (), {"hidden_states": test_input}
+
+            # Default: pass as first positional argument (covers 'x', 'input', etc.)
+            return (test_input,), {}
+
+        except (ValueError, TypeError):
+            # If we can't inspect the signature, just pass test_input
+            return (test_input,), {}
 
     def custom_weight_processing(
         self, hf_state_dict: Dict[str, torch.Tensor], component_prefix: str, **processing_kwargs
