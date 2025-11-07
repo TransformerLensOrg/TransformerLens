@@ -133,6 +133,24 @@ class JointQKVAttentionBridge(AttentionBridge):
         self.k.set_original_component(k_transformation)
         self.v.set_original_component(v_transformation)
 
+    def setup_no_processing_hooks(self) -> None:
+        """Setup hooks for no_processing mode (JointQKV specific).
+
+        JointQKVAttentionBridge uses its own forward pass implementation,
+        so it does NOT need to wrap the HF attention forward method.
+        We only need to setup hook_z reshaping if we have an 'o' submodule.
+        """
+        if self._hf_forward_wrapped:
+            return  # Already set up
+
+        # Setup hook_z reshaping if we have an 'o' submodule
+        if hasattr(self, "o") and self.o is not None and hasattr(self.config, "n_heads"):
+            self._setup_hook_z_reshape()
+
+        # Mark as wrapped (even though we didn't wrap the forward)
+        # to prevent the parent class from trying to wrap it later
+        self._hf_forward_wrapped = True
+
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         """Forward pass through the qkv linear transformation with hooks.
 

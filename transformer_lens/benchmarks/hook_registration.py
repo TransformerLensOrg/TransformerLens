@@ -53,7 +53,7 @@ def benchmark_hook_registry(
             )
 
         # Compare with reference model
-        bridge_hooks = set(bridge._hook_registry.keys())
+        bridge_hooks = set(bridge.hook_dict.keys())
         reference_hooks = set(reference_model.hook_dict.keys())
 
         common_hooks = bridge_hooks & reference_hooks
@@ -124,7 +124,7 @@ def benchmark_forward_hooks(
         if reference_model is not None:
             hook_names = list(reference_model.hook_dict.keys())
         else:
-            hook_names = list(bridge._hook_registry.keys())
+            hook_names = list(bridge.hook_dict.keys())
 
         # Register hooks on bridge and track missing hooks
         def make_bridge_hook(name: str):
