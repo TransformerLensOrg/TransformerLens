@@ -7,7 +7,7 @@ model against their HuggingFace equivalents, ensuring output parity.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, cast
 
 import torch
 from torch import nn
@@ -308,7 +308,10 @@ class ComponentBenchmarker:
         """
         try:
             # Get bridge component
-            bridge_component = self.adapter.get_component(self.bridge_model, component_path)
+            # The adapter returns nn.Module, but for bridge models it's actually GeneralizedComponent
+            bridge_component = cast(
+                GeneralizedComponent, self.adapter.get_component(self.bridge_model, component_path)
+            )
 
             # Get HuggingFace component
             hf_component = self.adapter.get_component(self.hf_model, component_path)
@@ -332,12 +335,13 @@ class ComponentBenchmarker:
                     0, self.cfg.d_vocab, (batch, seq_len), device=test_input.device
                 )
 
-            args, kwargs = bridge_component.get_dummy_inputs(
+            result = bridge_component.get_dummy_inputs(
                 test_input,
                 hf_model=self.hf_model,
                 shared_token_indices=shared_token_indices,
                 position_ids=pos_indices,
             )
+            args, kwargs = result
 
             # Use the same args/kwargs for both Bridge and HF components
             bridge_output = bridge_component(*args, **kwargs)

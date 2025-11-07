@@ -70,7 +70,11 @@ class NormalizationBridge(GeneralizedComponent):
         hidden_states = self.hook_in(hidden_states)
 
         # Check if we should use LayerNormPre behavior (when layer norm folding is enabled)
-        if hasattr(self.config, "layer_norm_folding") and self.config.layer_norm_folding:
+        if (
+            self.config is not None
+            and hasattr(self.config, "layer_norm_folding")
+            and self.config.layer_norm_folding
+        ):
             # LayerNormPre mode: center and normalize without learnable parameters
             # This matches LayerNormPre behavior exactly
             result = self._layernorm_pre_forward(hidden_states)
