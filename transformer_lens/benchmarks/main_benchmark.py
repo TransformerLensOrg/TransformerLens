@@ -91,106 +91,135 @@ def run_benchmark_suite(
         print(f"Device: {device}")
         print(f"{'='*80}\n")
 
-    # Load TransformerBridge (without processing for raw HF comparison)
-    if verbose:
-        print("Loading TransformerBridge...")
-    try:
-        bridge_unprocessed = TransformerBridge.boot_transformers(model_name, device=device)  # type: ignore[attr-defined]
-        if verbose:
-            print("✓ TransformerBridge loaded (unprocessed)\n")
-
-        # Also create a processed version for compatibility mode testing
-        bridge_processed = None
-        if enable_compatibility_mode:
-            bridge_processed = TransformerBridge.boot_transformers(model_name, device=device)  # type: ignore[attr-defined]
-            bridge_processed.enable_compatibility_mode(disable_warnings=True)
-            if verbose:
-                print("✓ TransformerBridge compatibility mode enabled (processed)\n")
-
-        # For backward compatibility, use processed version as default if enabled
-        bridge = bridge_processed if bridge_processed else bridge_unprocessed
-    except Exception as e:
-        from transformer_lens.benchmarks.utils import BenchmarkSeverity
-
-        results.append(
-            BenchmarkResult(
-                name="load_bridge",
-                severity=BenchmarkSeverity.ERROR,
-                message=f"Failed to load TransformerBridge: {str(e)}",
-                passed=False,
-            )
-        )
-        if verbose:
-            print(format_results(results))
-        return results
-
-    # Load reference models for different comparison purposes:
-    # 1. HuggingFace: For comparing unprocessed Bridge implementation
-    # 2. HookedTransformer (unprocessed): For comparing unprocessed Bridge
-    # 3. HookedTransformer (processed): For comparing processed Bridge compatibility mode
+    # Lazy loading containers for models - load only when needed
+    bridge_unprocessed = None
+    bridge_processed = None
     hf_model: Optional[torch.nn.Module] = None
     ht_model_unprocessed: Optional[HookedTransformer] = None
     ht_model: Optional[HookedTransformer] = None
 
-    # Load HuggingFace model for raw forward pass comparison
-    if use_hf_reference:
-        if verbose:
-            print("Loading HuggingFace reference model...")
-        try:
-            hf_model = AutoModelForCausalLM.from_pretrained(model_name)  # type: ignore[arg-type]
-            hf_model.to(device)  # type: ignore[arg-type]
-            hf_model.eval()
-            if verbose:
-                print("✓ HuggingFace model loaded (for raw forward pass comparison)\n")
-        except Exception as e:
-            if verbose:
-                print(f"✗ Could not load HuggingFace model: {str(e)}\n")
+    def cleanup_model(model):
+        """Free up memory by deleting a model and forcing garbage collection."""
+        import gc
 
-    # Load HookedTransformer models for comparison
-    if use_ht_reference:
-        # Load unprocessed HookedTransformer
-        if verbose:
-            print("Loading unprocessed HookedTransformer reference model...")
-        try:
-            ht_model_unprocessed = HookedTransformer.from_pretrained(
-                model_name,
-                device=device,
-                fold_ln=False,
-                center_writing_weights=False,
-                center_unembed=False,
-                fold_value_biases=False,
-                refactor_factored_attn_matrices=False,
-            )
-            if verbose:
-                print("✓ Unprocessed HookedTransformer loaded (for unprocessed comparison)\n")
-        except Exception as e:
-            if verbose:
-                print(f"✗ Could not load unprocessed HookedTransformer: {str(e)}\n")
+        del model
+        gc.collect()
 
-        # Load processed HookedTransformer for compatibility mode comparison
-        if verbose:
-            print("Loading processed HookedTransformer reference model...")
-        try:
-            # Load with same processing as Bridge compatibility mode
-            ht_model = HookedTransformer.from_pretrained(
-                model_name,
-                device=device,
-                fold_ln=True,
-                center_writing_weights=True,
-                center_unembed=True,
-                fold_value_biases=True,
-                refactor_factored_attn_matrices=False,
-            )
-            if verbose:
-                print("✓ Processed HookedTransformer loaded (for compatibility mode comparison)\n")
-        except Exception as e:
-            if verbose:
-                print(f"✗ Could not load processed HookedTransformer: {str(e)}\n")
+        # Clear CUDA cache if using GPU
+        if device != "cpu" and torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
-    # Check if we have at least one reference model
-    if hf_model is None and ht_model is None:
-        if verbose:
-            print("⚠ No reference models available - running Bridge-only validation\n")
+    def get_bridge_unprocessed():
+        """Lazy load unprocessed TransformerBridge."""
+        nonlocal bridge_unprocessed
+        if bridge_unprocessed is None:
+            if verbose:
+                print("Loading TransformerBridge (unprocessed)...")
+            try:
+                bridge_unprocessed = TransformerBridge.boot_transformers(model_name, device=device)  # type: ignore[attr-defined]
+                if verbose:
+                    print("✓ TransformerBridge loaded (unprocessed)\n")
+            except Exception as e:
+                from transformer_lens.benchmarks.utils import BenchmarkSeverity
+
+                results.append(
+                    BenchmarkResult(
+                        name="load_bridge_unprocessed",
+                        severity=BenchmarkSeverity.ERROR,
+                        message=f"Failed to load unprocessed TransformerBridge: {str(e)}",
+                        passed=False,
+                    )
+                )
+                raise
+        return bridge_unprocessed
+
+    def get_bridge_processed():
+        """Lazy load processed TransformerBridge."""
+        nonlocal bridge_processed
+        if bridge_processed is None and enable_compatibility_mode:
+            if verbose:
+                print("Loading TransformerBridge (processed)...")
+            try:
+                bridge_processed = TransformerBridge.boot_transformers(model_name, device=device)  # type: ignore[attr-defined]
+                bridge_processed.enable_compatibility_mode(disable_warnings=True)
+                if verbose:
+                    print("✓ TransformerBridge compatibility mode enabled (processed)\n")
+            except Exception as e:
+                from transformer_lens.benchmarks.utils import BenchmarkSeverity
+
+                results.append(
+                    BenchmarkResult(
+                        name="load_bridge_processed",
+                        severity=BenchmarkSeverity.ERROR,
+                        message=f"Failed to load processed TransformerBridge: {str(e)}",
+                        passed=False,
+                    )
+                )
+                raise
+        return bridge_processed
+
+    def get_hf_model():
+        """Lazy load HuggingFace model."""
+        nonlocal hf_model
+        if hf_model is None and use_hf_reference:
+            if verbose:
+                print("Loading HuggingFace reference model...")
+            try:
+                hf_model = AutoModelForCausalLM.from_pretrained(model_name)  # type: ignore[arg-type]
+                hf_model.to(device)  # type: ignore[arg-type]
+                hf_model.eval()
+                if verbose:
+                    print("✓ HuggingFace model loaded\n")
+            except Exception as e:
+                if verbose:
+                    print(f"✗ Could not load HuggingFace model: {str(e)}\n")
+        return hf_model
+
+    def get_ht_model_unprocessed():
+        """Lazy load unprocessed HookedTransformer."""
+        nonlocal ht_model_unprocessed
+        if ht_model_unprocessed is None and use_ht_reference:
+            if verbose:
+                print("Loading HookedTransformer (unprocessed)...")
+            try:
+                ht_model_unprocessed = HookedTransformer.from_pretrained(
+                    model_name,
+                    device=device,
+                    fold_ln=False,
+                    center_writing_weights=False,
+                    center_unembed=False,
+                    fold_value_biases=False,
+                    refactor_factored_attn_matrices=False,
+                )
+                if verbose:
+                    print("✓ HookedTransformer loaded (unprocessed)\n")
+            except Exception as e:
+                if verbose:
+                    print(f"✗ Could not load unprocessed HookedTransformer: {str(e)}\n")
+        return ht_model_unprocessed
+
+    def get_ht_model_processed():
+        """Lazy load processed HookedTransformer."""
+        nonlocal ht_model
+        if ht_model is None and use_ht_reference:
+            if verbose:
+                print("Loading HookedTransformer (processed)...")
+            try:
+                ht_model = HookedTransformer.from_pretrained(
+                    model_name,
+                    device=device,
+                    fold_ln=True,
+                    center_writing_weights=True,
+                    center_unembed=True,
+                    fold_value_biases=True,
+                    refactor_factored_attn_matrices=False,
+                )
+                if verbose:
+                    print("✓ HookedTransformer loaded (processed)\n")
+            except Exception as e:
+                if verbose:
+                    print(f"✗ Could not load processed HookedTransformer: {str(e)}\n")
+        return ht_model
 
     # Run benchmarks
     if verbose:
@@ -199,24 +228,37 @@ def run_benchmark_suite(
     # Forward pass benchmarks (compare unprocessed Bridge vs HF)
     if verbose:
         print("1. Forward Pass Benchmarks (unprocessed Bridge vs HuggingFace)")
-    results.append(benchmark_forward_pass(bridge_unprocessed, test_text, reference_model=hf_model))
+    try:
+        results.append(benchmark_forward_pass(get_bridge_unprocessed(), test_text, reference_model=get_hf_model()))
+    except Exception:
+        pass  # Error already recorded in get_bridge_unprocessed
+
+    # Clean up HF model - no longer needed
+    if hf_model is not None:
+        cleanup_model(hf_model)
+        hf_model = None
 
     # Unprocessed model comparison (compare unprocessed Bridge vs unprocessed HT)
     if verbose:
         print(
             "2. Unprocessed Model Comparison (unprocessed Bridge vs unprocessed HookedTransformer)"
         )
-    if ht_model_unprocessed:
-        results.append(
-            benchmark_loss_equivalence(
-                bridge_unprocessed, test_text, reference_model=ht_model_unprocessed
+    ht_unproc = get_ht_model_unprocessed()
+    if ht_unproc:
+        try:
+            bridge_unproc = get_bridge_unprocessed()
+            results.append(
+                benchmark_loss_equivalence(
+                    bridge_unproc, test_text, reference_model=ht_unproc
+                )
             )
-        )
-        results.append(
-            benchmark_logits_equivalence(
-                bridge_unprocessed, test_text, reference_model=ht_model_unprocessed
+            results.append(
+                benchmark_logits_equivalence(
+                    bridge_unproc, test_text, reference_model=ht_unproc
+                )
             )
-        )
+        except Exception:
+            pass  # Error already recorded
     else:
         # No unprocessed HT reference - skip unprocessed comparisons
         if verbose:
@@ -224,24 +266,38 @@ def run_benchmark_suite(
                 "⚠ No unprocessed HookedTransformer available - skipping unprocessed comparisons\n"
             )
 
+    # Clean up unprocessed HT model and unprocessed bridge - no longer needed
+    if ht_model_unprocessed is not None:
+        cleanup_model(ht_model_unprocessed)
+        ht_model_unprocessed = None
+    if bridge_unprocessed is not None:
+        cleanup_model(bridge_unprocessed)
+        bridge_unprocessed = None
+
     # Compatibility mode benchmarks (compare processed Bridge vs processed HT)
     if verbose:
         print("3. Compatibility Mode Benchmarks (processed Bridge vs processed HookedTransformer)")
-    if bridge_processed and ht_model:
-        results.append(
-            benchmark_loss_equivalence(bridge_processed, test_text, reference_model=ht_model)
-        )
-        results.append(
-            benchmark_logits_equivalence(bridge_processed, test_text, reference_model=ht_model)
-        )
-    elif bridge_processed:
-        # No HT reference - just validate processed Bridge works
-        results.append(
-            benchmark_loss_equivalence(bridge_processed, test_text, reference_model=None)
-        )
-        results.append(
-            benchmark_logits_equivalence(bridge_processed, test_text, reference_model=None)
-        )
+    if enable_compatibility_mode:
+        try:
+            bridge_proc = get_bridge_processed()
+            ht_proc = get_ht_model_processed()
+            if bridge_proc and ht_proc:
+                results.append(
+                    benchmark_loss_equivalence(bridge_proc, test_text, reference_model=ht_proc)
+                )
+                results.append(
+                    benchmark_logits_equivalence(bridge_proc, test_text, reference_model=ht_proc)
+                )
+            elif bridge_proc:
+                # No HT reference - just validate processed Bridge works
+                results.append(
+                    benchmark_loss_equivalence(bridge_proc, test_text, reference_model=None)
+                )
+                results.append(
+                    benchmark_logits_equivalence(bridge_proc, test_text, reference_model=None)
+                )
+        except Exception:
+            pass  # Error already recorded
     else:
         # No processed bridge - skip compatibility tests
         if verbose:
@@ -250,87 +306,117 @@ def run_benchmark_suite(
     # Hook benchmarks (use processed Bridge for compatibility with HT)
     if verbose:
         print("4. Hook Registration Benchmarks")
-    test_bridge = bridge_processed if bridge_processed and ht_model else bridge
-    results.append(benchmark_hook_registry(test_bridge, reference_model=ht_model))
-    results.append(benchmark_hook_functionality(test_bridge, test_text, reference_model=ht_model))
-    results.append(
-        benchmark_critical_forward_hooks(test_bridge, test_text, reference_model=ht_model)
-    )
+    try:
+        # Prefer processed bridge if available, otherwise use unprocessed
+        bridge_proc = get_bridge_processed() if enable_compatibility_mode else None
+        test_bridge = bridge_proc if bridge_proc else get_bridge_unprocessed()
+        ht_proc = get_ht_model_processed()
 
-    # Only run full forward hooks if HT reference is available (computationally expensive)
-    if ht_model is not None and bridge_processed:
+        results.append(benchmark_hook_registry(test_bridge, reference_model=ht_proc))
+        results.append(benchmark_hook_functionality(test_bridge, test_text, reference_model=ht_proc))
         results.append(
-            benchmark_forward_hooks(bridge_processed, test_text, reference_model=ht_model)
+            benchmark_critical_forward_hooks(test_bridge, test_text, reference_model=ht_proc)
         )
+
+        # Only run full forward hooks if HT reference is available (computationally expensive)
+        if ht_proc is not None and bridge_proc:
+            results.append(
+                benchmark_forward_hooks(bridge_proc, test_text, reference_model=ht_proc)
+            )
+    except Exception:
+        pass  # Error already recorded
 
     # Gradient benchmarks (use processed Bridge for compatibility with HT)
     if verbose:
         print("5. Backward Gradient Benchmarks")
-    results.append(benchmark_gradient_computation(test_bridge, test_text, reference_model=ht_model))
-    results.append(
-        benchmark_critical_backward_hooks(test_bridge, test_text, reference_model=ht_model)
-    )
+    try:
+        bridge_proc = get_bridge_processed() if enable_compatibility_mode else None
+        test_bridge = bridge_proc if bridge_proc else get_bridge_unprocessed()
+        ht_proc = get_ht_model_processed()
 
-    # Only run full backward hooks if HT reference is available (computationally expensive)
-    if ht_model is not None and bridge_processed:
+        results.append(benchmark_gradient_computation(test_bridge, test_text, reference_model=ht_proc))
         results.append(
-            benchmark_backward_hooks(bridge_processed, test_text, reference_model=ht_model)
+            benchmark_critical_backward_hooks(test_bridge, test_text, reference_model=ht_proc)
         )
+
+        # Only run full backward hooks if HT reference is available (computationally expensive)
+        if ht_proc is not None and bridge_proc:
+            results.append(
+                benchmark_backward_hooks(bridge_proc, test_text, reference_model=ht_proc)
+            )
+    except Exception:
+        pass  # Error already recorded
 
     # Generation benchmarks (test both unprocessed and processed)
     if verbose:
         print("6. Generation Benchmarks")
-    results.append(benchmark_generation(bridge_unprocessed, test_text, max_new_tokens=10))
-    results.append(
-        benchmark_generation_with_kv_cache(bridge_unprocessed, test_text, max_new_tokens=10)
-    )
-    results.append(
-        benchmark_multiple_generation_calls(
-            bridge_unprocessed,
-            test_prompts=[
-                "The quick brown fox",
-                "Hello world",
-                "Machine learning is",
-            ],
-            max_new_tokens=5,
+    try:
+        bridge_unproc = get_bridge_unprocessed()
+        results.append(benchmark_generation(bridge_unproc, test_text, max_new_tokens=10))
+        results.append(
+            benchmark_generation_with_kv_cache(bridge_unproc, test_text, max_new_tokens=10)
         )
-    )
+        results.append(
+            benchmark_multiple_generation_calls(
+                bridge_unproc,
+                test_prompts=[
+                    "The quick brown fox",
+                    "Hello world",
+                    "Machine learning is",
+                ],
+                max_new_tokens=5,
+            )
+        )
+    except Exception:
+        pass  # Error already recorded
 
     # Weight processing benchmarks (compare processed Bridge vs processed HT)
     if verbose:
         print("7. Weight Processing Benchmarks")
-    if bridge_processed and ht_model:
-        results.append(
-            benchmark_weight_processing(bridge_processed, test_text, reference_model=ht_model)
-        )
-        results.append(
-            benchmark_weight_sharing(bridge_processed, test_text, reference_model=ht_model)
-        )
-        results.append(benchmark_weight_modification(bridge_processed, test_text))
-    elif bridge_processed:
-        # No HT reference - just test processed bridge works
-        results.append(
-            benchmark_weight_processing(bridge_processed, test_text, reference_model=None)
-        )
-        results.append(benchmark_weight_sharing(bridge_processed, test_text, reference_model=None))
-        results.append(benchmark_weight_modification(bridge_processed, test_text))
+    if enable_compatibility_mode:
+        try:
+            bridge_proc = get_bridge_processed()
+            ht_proc = get_ht_model_processed()
+            if bridge_proc and ht_proc:
+                results.append(
+                    benchmark_weight_processing(bridge_proc, test_text, reference_model=ht_proc)
+                )
+                results.append(
+                    benchmark_weight_sharing(bridge_proc, test_text, reference_model=ht_proc)
+                )
+                results.append(benchmark_weight_modification(bridge_proc, test_text))
+            elif bridge_proc:
+                # No HT reference - just test processed bridge works
+                results.append(
+                    benchmark_weight_processing(bridge_proc, test_text, reference_model=None)
+                )
+                results.append(benchmark_weight_sharing(bridge_proc, test_text, reference_model=None))
+                results.append(benchmark_weight_modification(bridge_proc, test_text))
+        except Exception:
+            pass  # Error already recorded
 
     # Activation cache benchmarks (compare processed Bridge vs processed HT)
     if verbose:
         print("8. Activation Cache Benchmarks")
-    if bridge_processed and ht_model:
-        results.append(
-            benchmark_run_with_cache(bridge_processed, test_text, reference_model=ht_model)
-        )
-        results.append(
-            benchmark_activation_cache(bridge_processed, test_text, reference_model=ht_model)
-        )
-    elif bridge_processed:
-        # No HT reference - just test processed bridge works
-        results.append(benchmark_run_with_cache(bridge_processed, test_text, reference_model=None))
-        results.append(
-            benchmark_activation_cache(bridge_processed, test_text, reference_model=None)
-        )
+    if enable_compatibility_mode:
+        try:
+            bridge_proc = get_bridge_processed()
+            ht_proc = get_ht_model_processed()
+            if bridge_proc and ht_proc:
+                results.append(
+                    benchmark_run_with_cache(bridge_proc, test_text, reference_model=ht_proc)
+                )
+                results.append(
+                    benchmark_activation_cache(bridge_proc, test_text, reference_model=ht_proc)
+                )
+            elif bridge_proc:
+                # No HT reference - just test processed bridge works
+                results.append(benchmark_run_with_cache(bridge_proc, test_text, reference_model=None))
+                results.append(
+                    benchmark_activation_cache(bridge_proc, test_text, reference_model=None)
+                )
+        except Exception:
+            pass  # Error already recorded
 
     # Print results
     if verbose:

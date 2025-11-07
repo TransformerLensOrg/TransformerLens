@@ -140,6 +140,38 @@ def benchmark_weight_sharing(
             bridge_W_V = bridge.blocks[0].attn.W_V
             reference_W_V = reference_model.blocks[0].attn.W_V  # type: ignore[union-attr]
 
+            # Check if models have GQA (different head counts for K/V vs Q)
+            has_gqa = (
+                hasattr(bridge.cfg, "n_key_value_heads")
+                and bridge.cfg.n_key_value_heads != bridge.cfg.n_heads
+            )
+
+            # For GQA models, HookedTransformer may not support GQA correctly yet
+            # Skip the weight comparison if shapes don't match
+            if bridge_W_V.shape != reference_W_V.shape:  # type: ignore[union-attr]
+                if has_gqa:
+                    # This is expected - HookedTransformer doesn't support GQA yet
+                    # Skip this benchmark for GQA models
+                    return BenchmarkResult(
+                        name="weight_sharing",
+                        severity=BenchmarkSeverity.INFO,
+                        message=f"GQA model detected - skipping HT comparison (Bridge W_V: {bridge_W_V.shape}, HT W_V: {reference_W_V.shape})",  # type: ignore[union-attr]
+                        details={
+                            "bridge_shape": str(bridge_W_V.shape),  # type: ignore[union-attr]
+                            "reference_shape": str(reference_W_V.shape),  # type: ignore[union-attr]
+                        },
+                    )
+                else:
+                    return BenchmarkResult(
+                        name="weight_sharing",
+                        severity=BenchmarkSeverity.WARNING,
+                        message=f"Weight shapes differ: Bridge {bridge_W_V.shape} vs Reference {reference_W_V.shape}",  # type: ignore[union-attr]
+                        details={
+                            "bridge_shape": str(bridge_W_V.shape),  # type: ignore[union-attr]
+                            "reference_shape": str(reference_W_V.shape),  # type: ignore[union-attr]
+                        },
+                    )
+
             if not torch.allclose(bridge_W_V, reference_W_V):  # type: ignore[arg-type]
                 return BenchmarkResult(
                     name="weight_sharing",

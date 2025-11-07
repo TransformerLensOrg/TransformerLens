@@ -848,16 +848,17 @@ class TransformerBridge(nn.Module):
         # Fix backward hook gradients by overriding transformer forward
         self._fix_backward_hook_gradients()
 
-        # Setup attention hooks for no_processing mode to match HookedTransformer
+        # Setup attention hooks to match HookedTransformer (needed for both modes)
+        # This wraps HF attention forward to:
+        # 1. Capture attention scores before softmax
+        # 2. Ensure Q/K/V/Z hooks fire properly
+        self._setup_no_processing_hooks()
+
         if no_processing:
             # Override weight processing parameters when no_processing is True
             fold_ln = False
             center_writing_weights = False
             center_unembed = False
-
-            # Setup attention hooks (architecture adapters configure behavior via parameters
-            # like maintain_native_attention, use_native_layernorm_autograd)
-            self._setup_no_processing_hooks()
 
             # Extract split Q/K/V weights for attention layers (uses architecture adapter)
             self._enable_split_qkv_attention()

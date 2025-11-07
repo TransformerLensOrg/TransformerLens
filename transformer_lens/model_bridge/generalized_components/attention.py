@@ -28,10 +28,10 @@ class AttentionBridge(GeneralizedComponent):
 
     hook_aliases = {
         "hook_result": "hook_out",
-        "hook_q": "q.hook_out",
-        "hook_k": "k.hook_out",
-        "hook_v": "v.hook_out",
-        "hook_z": "o.hook_in",
+        "hook_q": "q.hook_out",  # Q vectors after projection (used in attention)
+        "hook_k": "k.hook_out",  # K vectors after projection (used in attention)
+        "hook_v": "v.hook_out",  # V vectors after projection (used in attention)
+        "hook_z": "o.hook_in",   # Z tensor before output projection
     }
 
     property_aliases = {
