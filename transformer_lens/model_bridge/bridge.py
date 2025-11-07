@@ -142,6 +142,10 @@ class TransformerBridge(nn.Module):
         original_model = self.__dict__["original_model"]
         set_original_components(self, self.adapter, original_model)
 
+        # Allow adapter to perform post-initialization setup (e.g., setting up component references)
+        if hasattr(self.adapter, "post_init_setup"):
+            self.adapter.post_init_setup(self)
+
         # Initialize hook registry after components are set up
         self._initialize_hook_registry()
 

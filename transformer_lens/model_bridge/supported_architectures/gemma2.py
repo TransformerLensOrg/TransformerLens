@@ -117,3 +117,18 @@ class Gemma2ArchitectureAdapter(ArchitectureAdapter):
             "ln_final": RMSNormalizationBridge(name="model.norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head", config=self.cfg),
         }
+
+    def post_init_setup(self, bridge: Any) -> None:
+        """Perform post-initialization setup after components are created.
+
+        For Gemma-2, this sets up the rotary_emb reference on all attention components
+        so they can auto-generate position_embeddings for component isolation testing.
+
+        Args:
+            bridge: The TransformerBridge instance
+        """
+        # Set rotary_emb on all attention components
+        if hasattr(bridge, "rotary_emb") and hasattr(bridge, "blocks"):
+            for block in bridge.blocks:
+                if hasattr(block, "attn") and hasattr(block.attn, "set_rotary_emb"):
+                    block.attn.set_rotary_emb(bridge.rotary_emb)

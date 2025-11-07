@@ -113,6 +113,17 @@ class AttentionBridge(GeneralizedComponent):
         self.requires_attention_mask = requires_attention_mask
         self.requires_position_embeddings = requires_position_embeddings
 
+        # Rotary embedding component (set after initialization for models that need it)
+        self.rotary_emb = None
+
+    def set_rotary_emb(self, rotary_emb: Any) -> None:
+        """Set the rotary embedding component for position embeddings generation.
+
+        Args:
+            rotary_emb: The rotary embedding component (e.g., RotaryEmbeddingBridge)
+        """
+        self.rotary_emb = rotary_emb
+
     def setup_no_processing_hooks(self) -> None:
         """Setup hooks for no_processing mode.
 
@@ -825,15 +836,20 @@ class AttentionBridge(GeneralizedComponent):
 
                 # Generate position_embeddings if configured and not provided
                 if self.requires_position_embeddings and "position_embeddings" not in kwargs:
-                    # Try to access rotary_emb from the parent bridge to generate position embeddings
-                    if hasattr(self, "_parent_bridge") and hasattr(
-                        self._parent_bridge, "rotary_emb"
-                    ):
+                    # Use rotary_emb to generate position embeddings if available
+                    if self.rotary_emb is not None:
                         position_ids = torch.arange(seq_len, device=hidden_states.device).unsqueeze(
                             0
                         )
-                        rotary_emb = self._parent_bridge.rotary_emb.original_component
-                        kwargs["position_embeddings"] = rotary_emb(hidden_states, position_ids)
+                        # Access the original HF rotary_emb component
+                        rotary_emb_component = (
+                            self.rotary_emb.original_component
+                            if hasattr(self.rotary_emb, "original_component")
+                            else self.rotary_emb
+                        )
+                        kwargs["position_embeddings"] = rotary_emb_component(
+                            hidden_states, position_ids
+                        )
 
         # Forward through original component
         output = self.original_component(*args, **kwargs)
