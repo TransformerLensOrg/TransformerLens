@@ -68,8 +68,8 @@ class AttentionBridge(GeneralizedComponent):
             maintain_native_attention: If True, preserve the original HF attention implementation
                                       without wrapping. Use for models with custom attention
                                       (e.g., attention sinks, specialized RoPE). Defaults to False.
-            requires_attention_mask: If True, auto-generate attention_mask for component isolation testing
-            requires_position_embeddings: If True, auto-generate position_embeddings for component isolation testing
+            requires_attention_mask: If True, this attention requires attention_mask argument
+            requires_position_embeddings: If True, this attention requires position_embeddings argument
         """
         # Set up conversion rule - use AttentionAutoConversion if None
         if conversion_rule is None:
@@ -109,7 +109,7 @@ class AttentionBridge(GeneralizedComponent):
         # Store whether to maintain native attention implementation
         self.maintain_native_attention = maintain_native_attention
 
-        # Store component isolation testing requirements
+        # Store component requirements
         self.requires_attention_mask = requires_attention_mask
         self.requires_position_embeddings = requires_position_embeddings
 
@@ -805,41 +805,6 @@ class AttentionBridge(GeneralizedComponent):
         elif len(args) > 0 and isinstance(args[0], torch.Tensor):
             args = (self.hook_in(args[0]),) + args[1:]
 
-        # Generate default parameters for component isolation testing if configured
-        if self.requires_attention_mask or self.requires_position_embeddings:
-            # Get hidden_states to infer dimensions
-            hidden_states = None
-            if "hidden_states" in kwargs:
-                hidden_states = kwargs["hidden_states"]
-            elif len(args) > 0 and isinstance(args[0], torch.Tensor):
-                hidden_states = args[0]
-
-            if hidden_states is not None:
-                batch_size, seq_len = hidden_states.shape[:2]
-
-                # Generate attention_mask if configured and not provided
-                if self.requires_attention_mask and "attention_mask" not in kwargs:
-                    kwargs["attention_mask"] = torch.ones(
-                        batch_size, seq_len, device=hidden_states.device, dtype=hidden_states.dtype
-                    )
-
-                # Generate position_embeddings if configured and not provided
-                if self.requires_position_embeddings and "position_embeddings" not in kwargs:
-                    # Use rotary_emb to generate position embeddings if available
-                    if self.rotary_emb is not None:
-                        position_ids = torch.arange(seq_len, device=hidden_states.device).unsqueeze(
-                            0
-                        )
-                        # Access the original HF rotary_emb component
-                        rotary_emb_component = (
-                            self.rotary_emb.original_component
-                            if hasattr(self.rotary_emb, "original_component")
-                            else self.rotary_emb
-                        )
-                        kwargs["position_embeddings"] = rotary_emb_component(
-                            hidden_states, position_ids
-                        )
-
         # Forward through original component
         output = self.original_component(*args, **kwargs)
 
@@ -1060,11 +1025,7 @@ class AttentionBridge(GeneralizedComponent):
             else:
                 # Generate dummy position embeddings
                 # Gemma-2 expects tuple of (cos, sin) each with shape [batch, seq, d_head]
-                d_head = (
-                    self.config.d_head
-                    if self.config is not None and hasattr(self.config, "d_head")
-                    else 128
-                )
+                d_head = self.config.d_head if hasattr(self.config, "d_head") else 128
                 cos = torch.ones(batch, seq_len, d_head, device=test_input.device)
                 sin = torch.zeros(batch, seq_len, d_head, device=test_input.device)
                 position_embeddings = (cos, sin)
