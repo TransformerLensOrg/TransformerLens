@@ -1320,20 +1320,20 @@ class TransformerBridge(nn.Module):
         attn_component.set_processed_weights(W_Q, W_K, W_V, W_O, b_Q, b_K, b_V, b_O)
 
     def _load_mlp_weights(self, mlp_component, layer_idx, processed_weights, verbose: bool = False):
-        """Load MLP weights into the MLPBridge or GatedMLPBridge component.
+        """Load MLP weights into the MLPBridge or JointGateUpMLPBridge component.
 
         Args:
             verbose: If True, print detailed progress messages. Default: False
         """
-        from transformer_lens.model_bridge.generalized_components.gated_mlp import (
-            GatedMLPBridge,
+        from transformer_lens.model_bridge.generalized_components.joint_gate_up_mlp import (
+            JointGateUpMLPBridge,
         )
 
         # Check if this is a gated MLP (requires W_gate in addition to W_in/W_out)
-        is_gated = isinstance(mlp_component, GatedMLPBridge)
+        is_gated = isinstance(mlp_component, JointGateUpMLPBridge)
 
         if is_gated:
-            # GatedMLPBridge requires W_gate, W_in, W_out (and their biases)
+            # JointGateUpMLPBridge requires W_gate, W_in, W_out (and their biases)
             W_gate_key = f"blocks.{layer_idx}.mlp.W_gate"
             W_in_key = f"blocks.{layer_idx}.mlp.W_in"
             W_out_key = f"blocks.{layer_idx}.mlp.W_out"
