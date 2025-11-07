@@ -260,6 +260,26 @@ class AttentionBridge(GeneralizedComponent):
                 **kwargs,
             ):
                 """Wrapped forward that manually computes attention scores."""
+                # If KV caching is enabled, delegate to original forward
+                # Our hook implementation doesn't support caching yet
+                if past_key_values is not None:
+                    output = original_forward(
+                        hidden_states=hidden_states,
+                        past_key_values=past_key_values,
+                        cache_position=cache_position,
+                        attention_mask=attention_mask,
+                        head_mask=head_mask,
+                        encoder_hidden_states=encoder_hidden_states,
+                        encoder_attention_mask=encoder_attention_mask,
+                        output_attentions=output_attentions,
+                        **kwargs,
+                    )
+                    # Still apply hooks to the output
+                    if isinstance(output, tuple) and len(output) > 0:
+                        hooked_output = attention_bridge.hook_out(output[0])
+                        return (hooked_output,) + output[1:]
+                    return output
+
                 # Compute Q, K, V
                 query, key, value = hf_attn.c_attn(hidden_states).split(hf_attn.split_size, dim=2)  # type: ignore[union-attr,operator]
 
@@ -344,6 +364,28 @@ class AttentionBridge(GeneralizedComponent):
                 **kwargs,
             ):
                 """Wrapped forward for split QKV attention."""
+                # If KV caching is enabled, delegate to original forward
+                # Our hook implementation doesn't support caching yet
+                if past_key_values is not None:
+                    output = original_forward(
+                        hidden_states=hidden_states,
+                        position_embeddings=position_embeddings,
+                        past_key_values=past_key_values,
+                        cache_position=cache_position,
+                        attention_mask=attention_mask,
+                        position_ids=position_ids,
+                        head_mask=head_mask,
+                        encoder_hidden_states=encoder_hidden_states,
+                        encoder_attention_mask=encoder_attention_mask,
+                        output_attentions=output_attentions,
+                        **kwargs,
+                    )
+                    # Still apply hooks to the output
+                    if isinstance(output, tuple) and len(output) > 0:
+                        hooked_output = attention_bridge.hook_out(output[0])
+                        return (hooked_output,) + output[1:]
+                    return output
+
                 # Compute Q, K, V separately
                 query = hf_attn.q_proj(hidden_states)  # type: ignore[union-attr,operator]
                 key = hf_attn.k_proj(hidden_states)  # type: ignore[union-attr,operator]
