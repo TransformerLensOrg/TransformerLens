@@ -799,7 +799,12 @@ class TransformerBridge(nn.Module):
         transformer.forward = fixed_transformer_forward
 
     def enable_compatibility_mode(
-        self, disable_warnings: bool = False, no_processing: bool = False
+        self,
+        disable_warnings: bool = False,
+        no_processing: bool = False,
+        fold_ln: bool = True,
+        center_writing_weights: bool = True,
+        center_unembed: bool = True,
     ) -> None:
         """Enable compatibility mode for the bridge.
 
@@ -808,7 +813,14 @@ class TransformerBridge(nn.Module):
 
         Args:
             disable_warnings: Whether to disable warnings about legacy components/hooks
-            no_processing: Whether to disable pre-processing steps of the model (e.g. folding layer norm weights, folding value biases)
+            no_processing: Whether to disable ALL pre-processing steps of the model.
+                If True, overrides fold_ln, center_writing_weights, and center_unembed to False.
+            fold_ln: Whether to fold layer norm weights into the subsequent linear layers.
+                Default: True. Ignored if no_processing=True.
+            center_writing_weights: Whether to center the writing weights (W_out in attention and MLPs).
+                Default: True. Ignored if no_processing=True.
+            center_unembed: Whether to center the unembedding matrix.
+                Default: True. Ignored if no_processing=True.
         """
         # Avoid circular import
         from transformer_lens.utilities.bridge_components import (
@@ -831,20 +843,30 @@ class TransformerBridge(nn.Module):
         # Fix backward hook gradients by overriding transformer forward
         self._fix_backward_hook_gradients()
 
-        # Setup attention hooks for no_processing mode to match HookedTransformer
+        # Setup attention hooks to match HookedTransformer (needed for both modes)
+        # This wraps HF attention forward to:
+        # 1. Capture attention scores before softmax
+        # 2. Ensure Q/K/V/Z hooks fire properly
+        self._setup_no_processing_hooks()
+
         if no_processing:
-            # Setup attention hooks (architecture adapters configure behavior via parameters
-            # like maintain_native_attention, use_native_layernorm_autograd)
-            self._setup_no_processing_hooks()
+            # Override weight processing parameters when no_processing is True
+            fold_ln = False
+            center_writing_weights = False
+            center_unembed = False
 
             # Extract split Q/K/V weights for attention layers (uses architecture adapter)
             self._enable_split_qkv_attention()
             # Re-initialize hook registry to pick up any changes
             self.clear_hook_registry()
             self._initialize_hook_registry()
-
-        if not no_processing:
-            self.process_compatibility_weights()
+        else:
+            # Apply weight processing with the specified parameters
+            self.process_compatibility_weights(
+                fold_ln=fold_ln,
+                center_writing_weights=center_writing_weights,
+                center_unembed=center_unembed,
+            )
 
     def _setup_no_processing_hooks(self) -> None:
         """Setup hooks for no_processing mode in all attention layers.
@@ -1117,11 +1139,20 @@ class TransformerBridge(nn.Module):
                     block.original_component.mlp = new_mlp
                 print(f"  Replaced blocks.{i}.mlp with HT-compatible version")
 
-    def process_compatibility_weights(self, verbose: bool = False) -> None:
+    def process_compatibility_weights(
+        self,
+        verbose: bool = False,
+        fold_ln: bool = True,
+        center_writing_weights: bool = True,
+        center_unembed: bool = True,
+    ) -> None:
         """Process and load weights from a reference HookedTransformer model.
 
         Args:
             verbose: If True, print detailed progress messages. Default: False
+            fold_ln: Whether to fold layer norm weights. Default: True
+            center_writing_weights: Whether to center writing weights. Default: True
+            center_unembed: Whether to center unembedding matrix. Default: True
         """
         # Import here to avoid circular imports
         from transformer_lens import HookedTransformer
@@ -1131,9 +1162,9 @@ class TransformerBridge(nn.Module):
         reference_hooked = HookedTransformer.from_pretrained(
             self.cfg.model_name,
             device=self.cfg.device,
-            fold_ln=True,
-            center_writing_weights=True,
-            center_unembed=True,
+            fold_ln=fold_ln,
+            center_writing_weights=center_writing_weights,
+            center_unembed=center_unembed,
             fold_value_biases=True,
             refactor_factored_attn_matrices=False,
         )
@@ -1289,24 +1320,52 @@ class TransformerBridge(nn.Module):
         attn_component.set_processed_weights(W_Q, W_K, W_V, W_O, b_Q, b_K, b_V, b_O)
 
     def _load_mlp_weights(self, mlp_component, layer_idx, processed_weights, verbose: bool = False):
-        """Load MLP weights into the MLPBridge component.
+        """Load MLP weights into the MLPBridge or GatedMLPBridge component.
 
         Args:
             verbose: If True, print detailed progress messages. Default: False
         """
-        W_in_key = f"blocks.{layer_idx}.mlp.W_in"
-        W_out_key = f"blocks.{layer_idx}.mlp.W_out"
-        b_in_key = f"blocks.{layer_idx}.mlp.b_in"
-        b_out_key = f"blocks.{layer_idx}.mlp.b_out"
+        from transformer_lens.model_bridge.generalized_components.gated_mlp import (
+            GatedMLPBridge,
+        )
 
-        W_in = processed_weights.get(W_in_key)
-        W_out = processed_weights.get(W_out_key)
-        b_in = processed_weights.get(b_in_key)
-        b_out = processed_weights.get(b_out_key)
+        # Check if this is a gated MLP (requires W_gate in addition to W_in/W_out)
+        is_gated = isinstance(mlp_component, GatedMLPBridge)
 
-        if W_in is None or W_out is None:
-            return
-        mlp_component.set_processed_weights(W_in, W_out, b_in, b_out)
+        if is_gated:
+            # GatedMLPBridge requires W_gate, W_in, W_out (and their biases)
+            W_gate_key = f"blocks.{layer_idx}.mlp.W_gate"
+            W_in_key = f"blocks.{layer_idx}.mlp.W_in"
+            W_out_key = f"blocks.{layer_idx}.mlp.W_out"
+            b_gate_key = f"blocks.{layer_idx}.mlp.b_gate"
+            b_in_key = f"blocks.{layer_idx}.mlp.b_in"
+            b_out_key = f"blocks.{layer_idx}.mlp.b_out"
+
+            W_gate = processed_weights.get(W_gate_key)
+            W_in = processed_weights.get(W_in_key)
+            W_out = processed_weights.get(W_out_key)
+            b_gate = processed_weights.get(b_gate_key)
+            b_in = processed_weights.get(b_in_key)
+            b_out = processed_weights.get(b_out_key)
+
+            if W_gate is None or W_in is None or W_out is None:
+                return
+            mlp_component.set_processed_weights(W_gate, W_in, W_out, b_gate, b_in, b_out)
+        else:
+            # Standard MLPBridge only needs W_in and W_out
+            W_in_key = f"blocks.{layer_idx}.mlp.W_in"
+            W_out_key = f"blocks.{layer_idx}.mlp.W_out"
+            b_in_key = f"blocks.{layer_idx}.mlp.b_in"
+            b_out_key = f"blocks.{layer_idx}.mlp.b_out"
+
+            W_in = processed_weights.get(W_in_key)
+            W_out = processed_weights.get(W_out_key)
+            b_in = processed_weights.get(b_in_key)
+            b_out = processed_weights.get(b_out_key)
+
+            if W_in is None or W_out is None:
+                return
+            mlp_component.set_processed_weights(W_in, W_out, b_in, b_out)
 
     def _load_unembed_weights(self, verbose: bool = False):
         """Load unembedding weights into the UnembeddingBridge component.
