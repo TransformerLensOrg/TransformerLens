@@ -113,17 +113,6 @@ class AttentionBridge(GeneralizedComponent):
         self.requires_attention_mask = requires_attention_mask
         self.requires_position_embeddings = requires_position_embeddings
 
-        # Rotary embedding component (set after initialization for models that need it)
-        self.rotary_emb = None
-
-    def set_rotary_emb(self, rotary_emb: Any) -> None:
-        """Set the rotary embedding component for position embeddings generation.
-
-        Args:
-            rotary_emb: The rotary embedding component (e.g., RotaryEmbeddingBridge)
-        """
-        self.rotary_emb = rotary_emb
-
     def setup_no_processing_hooks(self) -> None:
         """Setup hooks for no_processing mode.
 
