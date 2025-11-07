@@ -448,8 +448,15 @@ class JointQKVAttentionBridge(AttentionBridge):
         v_new = v.transpose(1, 2)
 
         if past_key_value_arg is not None and hasattr(past_key_value_arg, "update"):
+            # New-style DynamicCache with update() method
             layer_idx = self._layer_idx if self._layer_idx is not None else 0
             k, v = past_key_value_arg.update(k_new, v_new, layer_idx)
+        elif past_key_value_arg is not None:
+            # Legacy tuple format: (cached_k, cached_v)
+            # Manually concatenate with cached values
+            cached_k, cached_v = past_key_value_arg
+            k = torch.cat([cached_k, k_new], dim=2)  # Concatenate along seq dimension
+            v = torch.cat([cached_v, v_new], dim=2)
         else:
             k = k_new
             v = v_new
