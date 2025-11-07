@@ -246,7 +246,11 @@ def run_benchmark_suite(
     if verbose:
         print("2. Forward Pass Benchmarks (unprocessed Bridge vs HuggingFace)")
     try:
-        results.append(benchmark_forward_pass(get_bridge_unprocessed(), test_text, reference_model=get_hf_model()))
+        results.append(
+            benchmark_forward_pass(
+                get_bridge_unprocessed(), test_text, reference_model=get_hf_model()
+            )
+        )
     except Exception:
         pass  # Error already recorded in get_bridge_unprocessed
 
@@ -265,14 +269,10 @@ def run_benchmark_suite(
         try:
             bridge_unproc = get_bridge_unprocessed()
             results.append(
-                benchmark_loss_equivalence(
-                    bridge_unproc, test_text, reference_model=ht_unproc
-                )
+                benchmark_loss_equivalence(bridge_unproc, test_text, reference_model=ht_unproc)
             )
             results.append(
-                benchmark_logits_equivalence(
-                    bridge_unproc, test_text, reference_model=ht_unproc
-                )
+                benchmark_logits_equivalence(bridge_unproc, test_text, reference_model=ht_unproc)
             )
         except Exception:
             pass  # Error already recorded
@@ -330,16 +330,16 @@ def run_benchmark_suite(
         ht_proc = get_ht_model_processed()
 
         results.append(benchmark_hook_registry(test_bridge, reference_model=ht_proc))
-        results.append(benchmark_hook_functionality(test_bridge, test_text, reference_model=ht_proc))
+        results.append(
+            benchmark_hook_functionality(test_bridge, test_text, reference_model=ht_proc)
+        )
         results.append(
             benchmark_critical_forward_hooks(test_bridge, test_text, reference_model=ht_proc)
         )
 
         # Only run full forward hooks if HT reference is available (computationally expensive)
         if ht_proc is not None and bridge_proc:
-            results.append(
-                benchmark_forward_hooks(bridge_proc, test_text, reference_model=ht_proc)
-            )
+            results.append(benchmark_forward_hooks(bridge_proc, test_text, reference_model=ht_proc))
     except Exception:
         pass  # Error already recorded
 
@@ -351,7 +351,9 @@ def run_benchmark_suite(
         test_bridge = bridge_proc if bridge_proc else get_bridge_unprocessed()
         ht_proc = get_ht_model_processed()
 
-        results.append(benchmark_gradient_computation(test_bridge, test_text, reference_model=ht_proc))
+        results.append(
+            benchmark_gradient_computation(test_bridge, test_text, reference_model=ht_proc)
+        )
         results.append(
             benchmark_critical_backward_hooks(test_bridge, test_text, reference_model=ht_proc)
         )
@@ -407,7 +409,9 @@ def run_benchmark_suite(
                 results.append(
                     benchmark_weight_processing(bridge_proc, test_text, reference_model=None)
                 )
-                results.append(benchmark_weight_sharing(bridge_proc, test_text, reference_model=None))
+                results.append(
+                    benchmark_weight_sharing(bridge_proc, test_text, reference_model=None)
+                )
                 results.append(benchmark_weight_modification(bridge_proc, test_text))
         except Exception:
             pass  # Error already recorded
@@ -428,7 +432,9 @@ def run_benchmark_suite(
                 )
             elif bridge_proc:
                 # No HT reference - just test processed bridge works
-                results.append(benchmark_run_with_cache(bridge_proc, test_text, reference_model=None))
+                results.append(
+                    benchmark_run_with_cache(bridge_proc, test_text, reference_model=None)
+                )
                 results.append(
                     benchmark_activation_cache(bridge_proc, test_text, reference_model=None)
                 )

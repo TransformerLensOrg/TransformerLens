@@ -14,7 +14,9 @@ from torch import nn
 
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
-from transformer_lens.model_bridge.generalized_components.base import GeneralizedComponent
+from transformer_lens.model_bridge.generalized_components.base import (
+    GeneralizedComponent,
+)
 
 
 @dataclass
@@ -335,7 +337,9 @@ class ComponentBenchmarker:
             hf_tensor = hf_output[0] if isinstance(hf_output, tuple) else hf_output
 
             # Ensure both are tensors
-            if not isinstance(bridge_tensor, torch.Tensor) or not isinstance(hf_tensor, torch.Tensor):
+            if not isinstance(bridge_tensor, torch.Tensor) or not isinstance(
+                hf_tensor, torch.Tensor
+            ):
                 return ComponentTestResult(
                     component_path=component_path,
                     component_type=type(component).__name__,
@@ -433,7 +437,11 @@ class ComponentBenchmarker:
                 except AttributeError:
                     # Skip this component
                     raise ValueError("Cannot test pos_embed - unclear interface")
-        elif component_path == "unembed" or "unembed" in component_path or "lm_head" in component_path:
+        elif (
+            component_path == "unembed"
+            or "unembed" in component_path
+            or "lm_head" in component_path
+        ):
             # Unembedding expects [batch, seq, d_model] input
             return component(test_input)
         else:

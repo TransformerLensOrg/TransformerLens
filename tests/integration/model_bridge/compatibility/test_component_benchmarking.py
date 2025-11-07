@@ -8,11 +8,11 @@ import pytest
 import torch
 from transformers import AutoModelForCausalLM
 
-from transformer_lens.model_bridge import TransformerBridge
 from transformer_lens.benchmarks.component_outputs import (
     BenchmarkReport,
     ComponentBenchmarker,
 )
+from transformer_lens.model_bridge import TransformerBridge
 
 
 class TestComponentBenchmarking:
@@ -124,7 +124,9 @@ class TestComponentBenchmarking:
                 hf_output = attn_hf(hidden_states=test_input)
 
                 # Extract tensors from tuples if needed
-                bridge_tensor = bridge_output[0] if isinstance(bridge_output, tuple) else bridge_output
+                bridge_tensor = (
+                    bridge_output[0] if isinstance(bridge_output, tuple) else bridge_output
+                )
                 hf_tensor = hf_output[0] if isinstance(hf_output, tuple) else hf_output
 
                 # Compare
@@ -160,7 +162,9 @@ class TestComponentBenchmarking:
                 hf_output = mlp_hf(test_input)
 
                 # Extract tensors from tuples if needed
-                bridge_tensor = bridge_output[0] if isinstance(bridge_output, tuple) else bridge_output
+                bridge_tensor = (
+                    bridge_output[0] if isinstance(bridge_output, tuple) else bridge_output
+                )
                 hf_tensor = hf_output[0] if isinstance(hf_output, tuple) else hf_output
 
                 # Compare
@@ -195,7 +199,9 @@ class TestComponentBenchmarking:
             hf_tensor = hf_output[0] if isinstance(hf_output, tuple) else hf_output
 
             assert bridge_tensor.shape == hf_tensor.shape, "ln_final output shapes don't match"
-            assert torch.allclose(bridge_tensor, hf_tensor, atol=1e-5), "ln_final outputs don't match"
+            assert torch.allclose(
+                bridge_tensor, hf_tensor, atol=1e-5
+            ), "ln_final outputs don't match"
 
         except Exception as e:
             pytest.skip(f"ln_final test skipped: {e}")
@@ -213,7 +219,9 @@ class TestComponentBenchmarking:
                     hf_output = ln_hf(test_input)
 
                     # Extract tensors from tuples if needed
-                    bridge_tensor = bridge_output[0] if isinstance(bridge_output, tuple) else bridge_output
+                    bridge_tensor = (
+                        bridge_output[0] if isinstance(bridge_output, tuple) else bridge_output
+                    )
                     hf_tensor = hf_output[0] if isinstance(hf_output, tuple) else hf_output
 
                     assert (
