@@ -176,7 +176,8 @@ class AttentionBridge(GeneralizedComponent):
             raise RuntimeError(f"Config not set for {self.name}")
         n_heads = self.config.n_heads if hasattr(self.config, "n_heads") else self.config.n_head
         d_model = self.config.d_model if hasattr(self.config, "d_model") else self.config.n_embd
-        d_head = d_model // n_heads
+        # Prefer explicit d_head from config (e.g., Gemma-2) over calculating from d_model
+        d_head = self.config.d_head if hasattr(self.config, "d_head") else d_model // n_heads
 
         # Apply conversion to o.hook_in (which is aliased as hook_z)
         reshape_conv = ReshapeForAttentionHeads(n_heads, d_head)

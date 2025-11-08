@@ -103,8 +103,13 @@ def map_default_transformer_lens_config(hf_config):
     elif hasattr(tl_config, "d_model"):  # Default to 4x for GPT2-style
         tl_config.d_mlp = getattr(hf_config, "n_inner", 4 * tl_config.d_model)
 
-    # Calculate d_head if we have both d_model and n_heads
-    if hasattr(tl_config, "d_model") and hasattr(tl_config, "n_heads"):
+    # Calculate d_head - prefer explicit head_dim from config (e.g., Gemma-2)
+    if hasattr(hf_config, "head_dim") and hf_config.head_dim is not None:
+        # Some models (like Gemma-2) explicitly specify head_dim
+        # which may not equal d_model // n_heads
+        tl_config.d_head = hf_config.head_dim
+    elif hasattr(tl_config, "d_model") and hasattr(tl_config, "n_heads"):
+        # Default: calculate from d_model and n_heads
         tl_config.d_head = tl_config.d_model // tl_config.n_heads
 
     # Set activation function
