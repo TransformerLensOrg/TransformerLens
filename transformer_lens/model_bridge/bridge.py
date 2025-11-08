@@ -730,6 +730,12 @@ class TransformerBridge(nn.Module):
             # DynamicCache is used during generation, tuple during normal forward
             use_cache_object = hasattr(past_key_values, "update")
 
+            past_key_values_list = None
+            next_past_key_values = None
+            if use_cache and not use_cache_object:
+                past_key_values_list = list(past_key_values)
+                next_past_key_values = []
+
             # === BLOCK LOOP - THE FIX ===
             # Call BlockBridge blocks directly instead of going through HF's loop
             # This preserves gradient flow for backward hooks
@@ -745,7 +751,13 @@ class TransformerBridge(nn.Module):
                 # Get the past key-value for this layer
                 # For DynamicCache, pass the whole cache object (it handles layer indexing internally)
                 # For tuple, pass the specific layer's cache
-                layer_past = past_key_values if use_cache_object else past_key_values[i]
+                if use_cache_object:
+                    layer_past = past_key_values
+                else:
+                    if past_key_values_list is not None:
+                        layer_past = past_key_values_list[i]
+                    else:
+                        layer_past = past_key_values[i]
 
                 # Call BlockBridge directly, which internally calls the HF block
                 # and applies hooks correctly
@@ -763,12 +775,26 @@ class TransformerBridge(nn.Module):
                 )
 
                 # Extract hidden states from output tuple
+                block_present = None
+                attn_output = block_outputs
+
                 if isinstance(block_outputs, tuple):
                     residual = block_outputs[0]
                     if output_attentions and len(block_outputs) > 1:
                         all_attentions = all_attentions + (block_outputs[1],)  # type: ignore[operator,assignment]
                 else:
                     residual = block_outputs
+
+                block_present = None
+                if use_cache:
+                    attn_module = getattr(block_bridge, "attn", None)
+                    if attn_module is not None and hasattr(attn_module, "_last_present_key_value"):
+                        block_present = getattr(attn_module, "_last_present_key_value")
+
+                if use_cache and not use_cache_object and next_past_key_values is not None:
+                    next_past_key_values.append(block_present)
+                    if past_key_values_list is not None:
+                        past_key_values_list[i] = block_present
 
             # === FINAL LAYER NORM ===
             hidden_states = residual
@@ -779,6 +805,18 @@ class TransformerBridge(nn.Module):
             if output_hidden_states:
                 all_hidden_states = all_hidden_states + (hidden_states,)  # type: ignore[operator]
 
+            if use_cache:
+                if use_cache_object:
+                    present_key_values = past_key_values
+                else:
+                    present_key_values = (
+                        tuple(next_past_key_values)
+                        if next_past_key_values is not None
+                        else tuple(past_key_values)
+                    )
+            else:
+                present_key_values = None
+
             # Return in HF format
             if return_dict:
                 from transformers.modeling_outputs import (
@@ -787,12 +825,14 @@ class TransformerBridge(nn.Module):
 
                 return BaseModelOutputWithPastAndCrossAttentions(
                     last_hidden_state=hidden_states,
-                    past_key_values=None,  # Simplified - could be extended
+                    past_key_values=present_key_values,
                     hidden_states=all_hidden_states,
                     attentions=all_attentions,
                 )
             else:
                 outputs: tuple[Any, ...] = (hidden_states,)
+                if use_cache:
+                    outputs = outputs + (present_key_values,)
                 if output_hidden_states:
                     outputs = outputs + (all_hidden_states,)  # type: ignore[assignment]
                 if output_attentions:
@@ -832,6 +872,7 @@ class TransformerBridge(nn.Module):
         )
 
         self.compatibility_mode = True
+        self._compatibility_mode_no_processing = no_processing
 
         def set_compatibility_mode(component: Any) -> None:
             """Set compatibility mode on a component."""
@@ -5295,7 +5336,12 @@ class TransformerBridge(nn.Module):
             generation_kwargs["eos_token_id"] = self.tokenizer.eos_token_id
 
         if use_past_kv_cache:
-            generation_kwargs["use_cache"] = True
+            if self.compatibility_mode and getattr(
+                self, "_compatibility_mode_no_processing", False
+            ):
+                generation_kwargs["use_cache"] = False
+            else:
+                generation_kwargs["use_cache"] = True
 
         # Generate using the original HuggingFace model
         with torch.no_grad():

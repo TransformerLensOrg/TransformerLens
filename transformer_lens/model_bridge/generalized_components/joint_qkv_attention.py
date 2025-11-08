@@ -539,10 +539,19 @@ class JointQKVAttentionBridge(AttentionBridge):
         attn_output = self.hook_out(attn_output)
 
         # Return format: (attn_output, cache/weights)
-        if use_cache and past_key_value_arg is not None:
-            return (attn_output, past_key_value_arg)
-        else:
-            return (attn_output, attn_weights)
+        present_key_value = None
+        if use_cache:
+            if past_key_value_arg is not None and hasattr(past_key_value_arg, "update"):
+                # Dynamic cache objects are updated in-place by .update(), so we can return them directly
+                present_key_value = past_key_value_arg
+            else:
+                # For tuple-style caches (or first pass with no cache yet), return the current K/V tensors
+                present_key_value = (k, v)
+
+        # Store the present key/value so the enclosing block/transformer can retrieve it
+        self._last_present_key_value = present_key_value
+
+        return (attn_output, attn_weights)
 
     def _apply_attention_input_hook(self, *args: Any, **kwargs: Any) -> torch.Tensor:
         """Apply attention input hook to the input tensor.
