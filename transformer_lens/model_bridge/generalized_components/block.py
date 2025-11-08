@@ -8,6 +8,8 @@ from __future__ import annotations
 import types
 from typing import Any, Callable, Dict, Optional
 
+import torch
+
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
@@ -59,6 +61,21 @@ class BlockBridge(GeneralizedComponent):
         self._register_hook("hook_resid_mid", self.hook_resid_mid)
 
         self._original_block_forward: Optional[Callable[..., Any]] = None
+
+    def set_original_component(self, component: torch.nn.Module):
+        """Set the original component and monkey-patch its forward method.
+
+        This method monkey-patches HuggingFace blocks to insert hook_mlp_out
+        at the correct position (after MLP, before residual addition), matching
+        HookedTransformer's architecture.
+
+        Args:
+            component: The original PyTorch module to wrap
+        """
+        super().set_original_component(component)
+
+        # Monkey-patch the block's forward method to insert hook_mlp_out
+        self._patch_block_forward()
 
     def _patch_block_forward(self):
         """Monkey-patch the HuggingFace block's forward method.

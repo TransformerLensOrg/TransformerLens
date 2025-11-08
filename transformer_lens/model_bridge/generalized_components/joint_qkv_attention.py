@@ -481,7 +481,29 @@ class JointQKVAttentionBridge(AttentionBridge):
 
         # Apply attention mask if provided
         if "attention_mask" in kwargs and kwargs["attention_mask"] is not None:
-            attn_scores = attn_scores + kwargs["attention_mask"]
+            attention_mask = kwargs["attention_mask"]
+            q_len = attn_scores.size(-2)
+            k_len = attn_scores.size(-1)
+
+            if attention_mask.dim() == 4:
+                # Slice the mask to match the current query/key lengths
+                mask_query_len = attention_mask.size(-2)
+                mask_key_len = attention_mask.size(-1)
+                attention_mask = attention_mask[
+                    :,
+                    :,
+                    mask_query_len - q_len : mask_query_len,
+                    mask_key_len - k_len : mask_key_len,
+                ]
+            elif attention_mask.dim() == 3:
+                mask_key_len = attention_mask.size(-1)
+                attention_mask = attention_mask[:, :, mask_key_len - k_len : mask_key_len]
+            elif attention_mask.dim() == 2:
+                mask_key_len = attention_mask.size(-1)
+                attention_mask = attention_mask[:, mask_key_len - k_len : mask_key_len]
+                attention_mask = attention_mask[:, None, None, :]
+
+            attn_scores = attn_scores + attention_mask
 
         # Apply attention scores hook
         attn_scores = self.hook_attn_scores(attn_scores)
