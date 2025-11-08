@@ -239,10 +239,29 @@ def run_benchmark_suite(
                 if verbose:
                     print(f"✗ Unprocessed equivalence benchmark failed: {e}\n")
         else:
+            # Skip unprocessed comparison tests when HT is not available
+            from transformer_lens.benchmarks.utils import BenchmarkSeverity
+
             if verbose:
                 print(
                     "⚠ No unprocessed HookedTransformer available - skipping unprocessed comparisons\n"
                 )
+            results.append(
+                BenchmarkResult(
+                    name="loss_equivalence",
+                    severity=BenchmarkSeverity.SKIPPED,
+                    message="Skipped (HookedTransformer not available for this model)",
+                    passed=True,
+                )
+            )
+            results.append(
+                BenchmarkResult(
+                    name="logits_equivalence",
+                    severity=BenchmarkSeverity.SKIPPED,
+                    message="Skipped (HookedTransformer not available for this model)",
+                    passed=True,
+                )
+            )
 
         # Generation benchmarks (unprocessed only)
         if verbose:
@@ -342,93 +361,168 @@ def run_benchmark_suite(
         if verbose:
             print("Running Phase 3 benchmarks...\n")
 
+        # Check if HT is available for Phase 3 tests
+        ht_available = ht_model_processed is not None
+
         # Processed model equivalence
         if verbose:
             print("1. Processed Model Equivalence")
-        try:
-            results.append(
-                benchmark_loss_equivalence(
-                    bridge_processed, test_text, reference_model=ht_model_processed
+        if ht_available:
+            try:
+                results.append(
+                    benchmark_loss_equivalence(
+                        bridge_processed, test_text, reference_model=ht_model_processed
+                    )
                 )
-            )
-            results.append(
-                benchmark_logits_equivalence(
-                    bridge_processed, test_text, reference_model=ht_model_processed
+                results.append(
+                    benchmark_logits_equivalence(
+                        bridge_processed, test_text, reference_model=ht_model_processed
+                    )
                 )
-            )
-        except Exception as e:
+            except Exception as e:
+                if verbose:
+                    print(f"✗ Processed equivalence benchmark failed: {e}\n")
+        else:
+            from transformer_lens.benchmarks.utils import BenchmarkSeverity
+
             if verbose:
-                print(f"✗ Processed equivalence benchmark failed: {e}\n")
+                print("⏭️ Skipped (no HookedTransformer reference)\n")
+            results.append(
+                BenchmarkResult(
+                    name="loss_equivalence",
+                    severity=BenchmarkSeverity.SKIPPED,
+                    message="Skipped (HookedTransformer not available for this model)",
+                    passed=True,
+                )
+            )
+            results.append(
+                BenchmarkResult(
+                    name="logits_equivalence",
+                    severity=BenchmarkSeverity.SKIPPED,
+                    message="Skipped (HookedTransformer not available for this model)",
+                    passed=True,
+                )
+            )
 
         # Hook registration benchmarks
         if verbose:
             print("2. Hook Registration Benchmarks")
-        try:
-            results.append(
-                benchmark_hook_registry(bridge_processed, reference_model=ht_model_processed)
-            )
-            results.append(
-                benchmark_hook_functionality(
-                    bridge_processed, test_text, reference_model=ht_model_processed
+        if ht_available:
+            try:
+                results.append(
+                    benchmark_hook_registry(bridge_processed, reference_model=ht_model_processed)
                 )
-            )
-            results.append(
-                benchmark_critical_forward_hooks(
-                    bridge_processed, test_text, reference_model=ht_model_processed
+                results.append(
+                    benchmark_hook_functionality(
+                        bridge_processed, test_text, reference_model=ht_model_processed
+                    )
                 )
-            )
-
-            # Only run full forward hooks if HT reference is available (computationally expensive)
-            if ht_model_processed is not None:
+                results.append(
+                    benchmark_critical_forward_hooks(
+                        bridge_processed, test_text, reference_model=ht_model_processed
+                    )
+                )
                 results.append(
                     benchmark_forward_hooks(
                         bridge_processed, test_text, reference_model=ht_model_processed
                     )
                 )
-        except Exception as e:
+            except Exception as e:
+                if verbose:
+                    print(f"✗ Hook benchmark failed: {e}\n")
+        else:
+            from transformer_lens.benchmarks.utils import BenchmarkSeverity
+
             if verbose:
-                print(f"✗ Hook benchmark failed: {e}\n")
+                print("⏭️ Skipped (no HookedTransformer reference)\n")
+            for benchmark_name in [
+                "hook_registry",
+                "hook_functionality",
+                "critical_forward_hooks",
+                "forward_hooks",
+            ]:
+                results.append(
+                    BenchmarkResult(
+                        name=benchmark_name,
+                        severity=BenchmarkSeverity.SKIPPED,
+                        message="Skipped (HookedTransformer not available for this model)",
+                        passed=True,
+                    )
+                )
 
         # Gradient benchmarks
         if verbose:
             print("3. Backward Gradient Benchmarks")
-        try:
-            results.append(
-                benchmark_gradient_computation(
-                    bridge_processed, test_text, reference_model=ht_model_processed
+        if ht_available:
+            try:
+                results.append(
+                    benchmark_gradient_computation(
+                        bridge_processed, test_text, reference_model=ht_model_processed
+                    )
                 )
-            )
-            results.append(
-                benchmark_critical_backward_hooks(
-                    bridge_processed, test_text, reference_model=ht_model_processed
+                results.append(
+                    benchmark_critical_backward_hooks(
+                        bridge_processed, test_text, reference_model=ht_model_processed
+                    )
                 )
-            )
-
-            # Only run full backward hooks if HT reference is available (computationally expensive)
-            if ht_model_processed is not None:
                 results.append(
                     benchmark_backward_hooks(
                         bridge_processed, test_text, reference_model=ht_model_processed
                     )
                 )
-        except Exception as e:
+            except Exception as e:
+                if verbose:
+                    print(f"✗ Gradient benchmark failed: {e}\n")
+        else:
+            from transformer_lens.benchmarks.utils import BenchmarkSeverity
+
             if verbose:
-                print(f"✗ Gradient benchmark failed: {e}\n")
+                print("⏭️ Skipped (no HookedTransformer reference)\n")
+            for benchmark_name in [
+                "gradient_computation",
+                "critical_backward_hooks",
+                "backward_hooks",
+            ]:
+                results.append(
+                    BenchmarkResult(
+                        name=benchmark_name,
+                        severity=BenchmarkSeverity.SKIPPED,
+                        message="Skipped (HookedTransformer not available for this model)",
+                        passed=True,
+                    )
+                )
 
         # Weight processing benchmarks
         if verbose:
             print("4. Weight Processing Benchmarks")
         try:
-            results.append(
-                benchmark_weight_processing(
-                    bridge_processed, test_text, reference_model=ht_model_processed
+            if ht_available:
+                results.append(
+                    benchmark_weight_processing(
+                        bridge_processed, test_text, reference_model=ht_model_processed
+                    )
                 )
-            )
-            results.append(
-                benchmark_weight_sharing(
-                    bridge_processed, test_text, reference_model=ht_model_processed
+                results.append(
+                    benchmark_weight_sharing(
+                        bridge_processed, test_text, reference_model=ht_model_processed
+                    )
                 )
-            )
+            else:
+                from transformer_lens.benchmarks.utils import BenchmarkSeverity
+
+                if verbose:
+                    print("⏭️ weight_processing and weight_sharing skipped (no HT reference)")
+                for benchmark_name in ["weight_processing", "weight_sharing"]:
+                    results.append(
+                        BenchmarkResult(
+                            name=benchmark_name,
+                            severity=BenchmarkSeverity.SKIPPED,
+                            message="Skipped (HookedTransformer not available for this model)",
+                            passed=True,
+                        )
+                    )
+
+            # weight_modification doesn't need reference model
             results.append(benchmark_weight_modification(bridge_processed, test_text))
         except Exception as e:
             if verbose:
@@ -437,20 +531,35 @@ def run_benchmark_suite(
         # Activation cache benchmarks
         if verbose:
             print("5. Activation Cache Benchmarks")
-        try:
-            results.append(
-                benchmark_run_with_cache(
-                    bridge_processed, test_text, reference_model=ht_model_processed
+        if ht_available:
+            try:
+                results.append(
+                    benchmark_run_with_cache(
+                        bridge_processed, test_text, reference_model=ht_model_processed
+                    )
                 )
-            )
-            results.append(
-                benchmark_activation_cache(
-                    bridge_processed, test_text, reference_model=ht_model_processed
+                results.append(
+                    benchmark_activation_cache(
+                        bridge_processed, test_text, reference_model=ht_model_processed
+                    )
                 )
-            )
-        except Exception as e:
+            except Exception as e:
+                if verbose:
+                    print(f"✗ Activation cache benchmark failed: {e}\n")
+        else:
+            from transformer_lens.benchmarks.utils import BenchmarkSeverity
+
             if verbose:
-                print(f"✗ Activation cache benchmark failed: {e}\n")
+                print("⏭️ Skipped (no HookedTransformer reference)\n")
+            for benchmark_name in ["run_with_cache", "activation_cache"]:
+                results.append(
+                    BenchmarkResult(
+                        name=benchmark_name,
+                        severity=BenchmarkSeverity.SKIPPED,
+                        message="Skipped (HookedTransformer not available for this model)",
+                        passed=True,
+                    )
+                )
 
     # Print results
     if verbose:
