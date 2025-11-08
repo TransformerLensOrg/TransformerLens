@@ -1191,9 +1191,12 @@ class ArchitectureAdapter:
             hasattr(hf_attn, "q_proj") and hasattr(hf_attn, "k_proj") and hasattr(hf_attn, "v_proj")
         ):
             # GPT-Neo/J, LLaMA style: separate q_proj, k_proj, v_proj
+            # Check if model uses GQA (Grouped Query Attention) with fewer K/V heads
+            n_kv_heads = getattr(self.cfg, "num_key_value_heads", n_heads)
+
             W_Q, b_Q = self._extract_linear_ht_format(hf_attn.q_proj, n_heads, d_head, d_model)
-            W_K, b_K = self._extract_linear_ht_format(hf_attn.k_proj, n_heads, d_head, d_model)
-            W_V, b_V = self._extract_linear_ht_format(hf_attn.v_proj, n_heads, d_head, d_model)
+            W_K, b_K = self._extract_linear_ht_format(hf_attn.k_proj, n_kv_heads, d_head, d_model)
+            W_V, b_V = self._extract_linear_ht_format(hf_attn.v_proj, n_kv_heads, d_head, d_model)
 
             out_proj = hf_attn.out_proj if hasattr(hf_attn, "out_proj") else hf_attn.o_proj
             W_O, b_O = self._extract_output_proj(out_proj, n_heads, d_head, d_model)
@@ -1320,8 +1323,19 @@ class ArchitectureAdapter:
         weight = linear_module.weight.data
         bias = linear_module.bias.data if hasattr(linear_module, "bias") else None
 
-        W = weight.T.view(n_heads, d_head, d_model).transpose(1, 2).contiguous()
-        b = bias.view(n_heads, d_head).contiguous() if bias is not None else None
+        # Infer actual d_head from weight shape
+        # weight shape: [out_features, in_features] = [n_heads * d_head, d_model]
+        out_features = weight.shape[0]
+        actual_d_head = out_features // n_heads
+
+        print(
+            f"DEBUG _extract_linear: weight.shape={weight.shape}, n_heads={n_heads}, actual_d_head={actual_d_head}, d_model={d_model}"
+        )
+
+        W = weight.T.view(n_heads, actual_d_head, d_model).transpose(1, 2).contiguous()
+        b = bias.view(n_heads, actual_d_head).contiguous() if bias is not None else None
+
+        print(f"DEBUG _extract_linear: W.shape={W.shape}")
 
         return W, b
 
@@ -1330,7 +1344,12 @@ class ArchitectureAdapter:
         weight = out_proj.weight.data
         bias = out_proj.bias.data if hasattr(out_proj, "bias") else None
 
-        W_O = weight.view(n_heads, d_head, d_model).contiguous()
+        # Infer actual d_head from weight shape
+        # weight shape: [d_model, n_heads * d_head]
+        in_features = weight.shape[1]
+        actual_d_head = in_features // n_heads
+
+        W_O = weight.view(n_heads, actual_d_head, d_model).contiguous()
         b_O = bias.contiguous() if bias is not None else None
 
         return W_O, b_O

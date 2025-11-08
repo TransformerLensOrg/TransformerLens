@@ -915,9 +915,24 @@ class AttentionBridge(GeneralizedComponent):
         d_head = self._processed_W_Q.shape[-1]  # Get d_head from weight shape
         attn_scores = torch.matmul(q, k.transpose(-2, -1)) / (d_head**0.5)
 
+        # Apply attention softcapping if configured (e.g., Gemma-2)
+        if self.config is not None and hasattr(self.config, "attn_scores_soft_cap"):
+            attn_scores_soft_cap = self.config.attn_scores_soft_cap
+            if attn_scores_soft_cap is not None and attn_scores_soft_cap > 0:
+                attn_scores = attn_scores / attn_scores_soft_cap
+                attn_scores = torch.tanh(attn_scores)
+                attn_scores = attn_scores * attn_scores_soft_cap
+
         # Apply causal mask
-        causal_mask = torch.tril(torch.ones(seq_len, seq_len, device=x.device))
-        attn_scores = attn_scores.masked_fill(causal_mask == 0, float("-inf"))
+        # Get the actual sequence length from the query tensor
+        # q shape after transpose: [batch, n_heads, seq, d_head]
+        actual_seq_len = q.shape[2]
+        causal_mask = torch.tril(
+            torch.ones(actual_seq_len, actual_seq_len, device=x.device, dtype=torch.bool)
+        )
+        # Expand to match attn_scores dimensions: [1, 1, seq_len, seq_len]
+        causal_mask = causal_mask.view(1, 1, actual_seq_len, actual_seq_len)
+        attn_scores = attn_scores.masked_fill(~causal_mask, float("-inf"))
 
         # Apply attention scores hook (for compatibility with HookedTransformer)
         attn_scores = self.hook_attn_scores(attn_scores)
