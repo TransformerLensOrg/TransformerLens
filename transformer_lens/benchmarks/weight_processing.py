@@ -1,6 +1,6 @@
 """Weight processing benchmarks for TransformerBridge."""
 
-from typing import Optional
+from typing import Optional, cast
 
 import torch
 
@@ -137,8 +137,10 @@ def benchmark_weight_sharing(
             reference_original = reference_model(test_text, return_type="loss")
 
             # Verify weights are identical before modification
-            bridge_W_V = bridge.blocks[0].attn.W_V
-            reference_W_V = reference_model.blocks[0].attn.W_V  # type: ignore[union-attr]
+            bridge_W_V = torch.clone(cast(torch.Tensor, bridge.blocks[0].attn.W_V))
+            reference_W_V = torch.clone(
+                cast(torch.Tensor, reference_model.blocks[0].attn.W_V)  # type: ignore[union-attr]
+            )
 
             # Check if models have GQA (different head counts for K/V vs Q)
             has_gqa = (
