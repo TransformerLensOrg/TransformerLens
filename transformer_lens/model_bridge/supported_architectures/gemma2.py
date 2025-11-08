@@ -33,6 +33,12 @@ class Gemma2ArchitectureAdapter(ArchitectureAdapter):
         # See: https://github.com/huggingface/transformers/pull/29402
         self.cfg.rmsnorm_uses_offset = True
 
+        # Gemma2 uses logit softcapping
+        if hasattr(self.cfg, "final_logit_softcapping"):
+            self.cfg.output_logits_soft_cap = self.cfg.final_logit_softcapping
+        if hasattr(self.cfg, "attn_logit_softcapping"):
+            self.cfg.attn_logits_soft_cap = self.cfg.attn_logit_softcapping
+
         # Note: n_key_value_heads is now automatically mapped from num_key_value_heads
         # by map_default_transformer_lens_config() in sources/transformers.py
 
@@ -47,7 +53,9 @@ class Gemma2ArchitectureAdapter(ArchitectureAdapter):
                     ),
                 ),
                 "blocks.{i}.ln1.w": "model.layers.{i}.input_layernorm.weight",
-                "blocks.{i}.ln2.w": "model.layers.{i}.post_attention_layernorm.weight",
+                "blocks.{i}.ln1_post.w": "model.layers.{i}.post_attention_layernorm.weight",
+                "blocks.{i}.ln2.w": "model.layers.{i}.pre_feedforward_layernorm.weight",
+                "blocks.{i}.ln2_post.w": "model.layers.{i}.post_feedforward_layernorm.weight",
                 "blocks.{i}.attn.q": (
                     "model.layers.{i}.self_attn.q_proj.weight",
                     RearrangeHookConversion("(n h) m -> n m h", n=self.cfg.n_heads),

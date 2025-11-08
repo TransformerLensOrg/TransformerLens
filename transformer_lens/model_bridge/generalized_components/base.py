@@ -304,7 +304,7 @@ class GeneralizedComponent(nn.Module):
         input_found = False
         # Try kwargs first
         for name in input_arg_names:
-            if name in kwargs:
+            if name in kwargs and isinstance(kwargs[name], torch.Tensor):
                 kwargs[name] = self.hook_in(kwargs[name])
                 input_found = True
                 break
@@ -318,11 +318,13 @@ class GeneralizedComponent(nn.Module):
 
         # Handle tuple outputs from transformer components
         if isinstance(output, tuple):
-            # Apply hook to first element (hidden states) and preserve the rest
-            hooked_first = self.hook_out(output[0])
-            output = (hooked_first,) + output[1:]
-        else:
-            # Pass output through hook_out
+            # Apply hook to first element (hidden states) if it's a tensor, preserve the rest
+            if isinstance(output[0], torch.Tensor):
+                hooked_first = self.hook_out(output[0])
+                output = (hooked_first,) + output[1:]
+            # Otherwise, leave the tuple as-is (e.g., rotary embeddings return nested structures)
+        elif isinstance(output, torch.Tensor):
+            # Pass output through hook_out only if it's a tensor
             output = self.hook_out(output)
 
         return output

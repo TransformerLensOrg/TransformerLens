@@ -288,10 +288,9 @@ def test_integration_compatibility():
     if overall_success:
         print("\n🎉🎉🎉 FULL INTEGRATION COMPATIBILITY ACHIEVED! 🎉🎉🎉")
         print("TransformerBridge is fully compatible with HookedTransformer!")
-        return True
     else:
         print("\n⚠️ Integration compatibility issues detected")
-        return False
+        pytest.fail("Integration compatibility issues detected")
 
 
 def test_weight_processing_results_loaded_into_model():
