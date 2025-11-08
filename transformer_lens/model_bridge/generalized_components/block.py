@@ -135,14 +135,43 @@ class BlockBridge(GeneralizedComponent):
             )
             attn_params = set(attn_sig.parameters.keys())
 
+            # Gemma3-style decoder layers provide separate global/local rotary embeddings.
+            # Capture them before building the attention kwargs so we can pass the correct tuple.
+            position_embeddings_global = kwargs.pop("position_embeddings_global", None)
+            position_embeddings_local = kwargs.pop("position_embeddings_local", None)
+
+            # Prefer an explicitly supplied position_embeddings argument.
+            if position_embeddings is None:
+                if "position_embeddings" in kwargs:
+                    position_embeddings = kwargs.pop("position_embeddings")
+                else:
+                    # For Gemma3, choose between global and local embeddings based on attention type.
+                    attention_type = getattr(block_self, "attention_type", None)
+                    is_sliding_layer = False
+                    if attention_type is not None:
+                        is_sliding_layer = attention_type == "sliding_attention"
+                    else:
+                        # Fallback: consult the attention module itself if it exposes the flag.
+                        is_sliding_layer = bool(
+                            getattr(attn, "is_sliding", False)
+                            or getattr(
+                                getattr(attn, "original_component", None), "is_sliding", False
+                            )
+                        )
+
+                    if is_sliding_layer and position_embeddings_local is not None:
+                        position_embeddings = position_embeddings_local
+                    elif position_embeddings_global is not None:
+                        position_embeddings = position_embeddings_global
+
             attn_kwargs = {
                 "cache_position": cache_position,
                 "attention_mask": attention_mask,
                 "head_mask": head_mask,
                 "use_cache": use_cache,
                 "output_attentions": output_attentions,
-                **kwargs,
             }
+            attn_kwargs.update(kwargs)
 
             # Handle position_embeddings for models like Gemma2
             # Position embeddings need to be passed through to attention

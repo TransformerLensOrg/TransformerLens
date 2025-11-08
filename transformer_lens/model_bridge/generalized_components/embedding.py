@@ -121,7 +121,7 @@ class EmbeddingBridge(GeneralizedComponent):
             output = self.original_component(input_ids, position_ids=position_ids, **kwargs)
 
         # Some models return tuples; extract embeddings
-        if isinstance(output, tuple):
+        if isinstance(output, tuple) and len(output) == 1:
             output = output[0]
 
         # Apply output hook
