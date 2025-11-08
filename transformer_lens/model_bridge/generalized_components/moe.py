@@ -7,8 +7,6 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
-import torch
-
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
@@ -49,7 +47,7 @@ class MoEBridge(GeneralizedComponent):
         # Add hook for router scores (expert selection probabilities)
         self.hook_router_scores = HookPoint()
 
-    def forward(self, *args: Any, **kwargs: Any) -> torch.Tensor:
+    def forward(self, *args: Any, **kwargs: Any) -> Any:
         """Forward pass through the MoE bridge.
 
         Args:
@@ -57,7 +55,9 @@ class MoEBridge(GeneralizedComponent):
             **kwargs: Input keyword arguments
 
         Returns:
-            Hidden states tensor (router scores are captured via hook but not returned)
+            Same return type as original component (tuple or tensor).
+            For MoE models that return (hidden_states, router_scores), preserves the tuple.
+            Router scores are also captured via hook for inspection.
         """
         if self.original_component is None:
             raise RuntimeError(
@@ -81,10 +81,14 @@ class MoEBridge(GeneralizedComponent):
                 router_scores = output[1]
                 # Apply router scores hook to allow inspection of expert routing
                 self.hook_router_scores(router_scores)
+
+            # Apply output hook to hidden states
+            hidden_states = self.hook_out(hidden_states)
+
+            # Preserve original return signature (tuple) to maintain compatibility
+            # with HuggingFace model code that expects tuple unpacking
+            return (hidden_states,) + output[1:]
         else:
-            hidden_states = output
-
-        # Apply output hook to hidden states
-        hidden_states = self.hook_out(hidden_states)
-
-        return hidden_states
+            # Non-tuple output (fallback for non-MoE or different MLP types)
+            hidden_states = self.hook_out(output)
+            return hidden_states

@@ -201,9 +201,12 @@ class TestFoldLayerIntegration:
         d_model = cfg.d_model
 
         # Convert back to TransformerLens format to check centering
-        w_q_tl = w_q.T.reshape(n_heads, d_model, d_head)  # [n_heads, d_model, d_head]
-        w_k_tl = w_k.T.reshape(n_heads, d_model, d_head)  # [n_heads, d_model, d_head]
-        w_v_tl = w_v.T.reshape(n_heads, d_model, d_head)  # [n_heads, d_model, d_head]
+        # NOTE: Must use the SAME pattern as the GPT2 adapter: "m (i h) -> i m h"
+        # The HF format is [d_model, d_model] where the SECOND dimension is split into heads
+        # NOT the first dimension!
+        w_q_tl = einops.rearrange(w_q, "m (i h) -> i m h", i=n_heads)  # [n_heads, d_model, d_head]
+        w_k_tl = einops.rearrange(w_k, "m (i h) -> i m h", i=n_heads)  # [n_heads, d_model, d_head]
+        w_v_tl = einops.rearrange(w_v, "m (i h) -> i m h", i=n_heads)  # [n_heads, d_model, d_head]
 
         # Check that weights are centered per head (TransformerLens format centering)
         w_q_mean = einops.reduce(w_q_tl, "head_index d_model d_head -> head_index 1 d_head", "mean")

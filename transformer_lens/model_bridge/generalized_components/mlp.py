@@ -66,16 +66,28 @@ class MLPBridge(GeneralizedComponent):
         # Check if we're using processed weights from a reference model (layer norm folding case)
         # This happens when set_processed_weights has been called
         if hasattr(self, "_use_processed_weights") and self._use_processed_weights:
+            from transformer_lens.utilities.addmm import batch_addmm
+
             hidden_states = args[0]
             # Apply input hook
             hidden_states = self.hook_in(hidden_states)
 
             # Use the processed weights directly with the same computation as reference model
             if hasattr(self, "_processed_W_in") and hasattr(self, "_processed_W_out"):
-                # Input projection using TransformerLens format
-                hidden = torch.nn.functional.linear(
-                    hidden_states, self._processed_W_in.T, self._processed_b_in
+                # Input projection using TransformerLens format weights [d_model, d_mlp]
+                # Use batch_addmm to match HookedTransformer exactly - no transpose needed!
+                # HookedTransformer: batch_addmm(self.b_in, self.W_in, x) where W_in is [d_model, d_mlp]
+                # Handle None bias by creating a zero tensor with the appropriate shape
+                b_in = (
+                    self._processed_b_in
+                    if self._processed_b_in is not None
+                    else torch.zeros(
+                        self._processed_W_in.shape[-1],
+                        device=hidden_states.device,
+                        dtype=hidden_states.dtype,
+                    )
                 )
+                hidden = batch_addmm(b_in, self._processed_W_in, hidden_states)
 
                 # Apply hook_pre (in.hook_out or input.hook_out) - pre-activation hidden state
                 # In compatibility mode, this hook is aliased as "blocks.L.mlp.hook_pre"
@@ -92,10 +104,18 @@ class MLPBridge(GeneralizedComponent):
                 if hasattr(self, "out") and hasattr(self.out, "hook_in"):
                     hidden = self.out.hook_in(hidden)
 
-                # Output projection using TransformerLens format
-                output = torch.nn.functional.linear(
-                    hidden, self._processed_W_out.T, self._processed_b_out
+                # Output projection using TransformerLens format weights [d_mlp, d_model]
+                # Use batch_addmm to match HookedTransformer exactly - no transpose needed!
+                # HookedTransformer: batch_addmm(self.b_out, self.W_out, post_act) where W_out is [d_mlp, d_model]
+                # Handle None bias by creating a zero tensor with the appropriate shape
+                b_out = (
+                    self._processed_b_out
+                    if self._processed_b_out is not None
+                    else torch.zeros(
+                        self._processed_W_out.shape[-1], device=hidden.device, dtype=hidden.dtype
+                    )
                 )
+                output = batch_addmm(b_out, self._processed_W_out, hidden)
             else:
                 # Fallback to original component
                 new_args = (hidden_states,) + args[1:]

@@ -122,7 +122,24 @@ class QKVBiasConversion(BaseHookConversion):
 
 
 class GPT2ArchitectureAdapter(ArchitectureAdapter):
-    """Architecture adapter for GPT2 models."""
+    """Architecture adapter for GPT2 models.
+
+    Optional Parameters (may not exist in state_dict):
+    -------------------------------------------------
+    GPT-2 models HAVE biases on ALL linear layers:
+
+    ✓ blocks.{i}.attn.b_Q - Has bias (from combined c_attn.bias)
+    ✓ blocks.{i}.attn.b_K - Has bias (from combined c_attn.bias)
+    ✓ blocks.{i}.attn.b_V - Has bias (from combined c_attn.bias)
+    ✓ blocks.{i}.attn.b_O - Has bias (c_proj.bias)
+    ✓ blocks.{i}.mlp.b_in - Has bias (c_fc.bias)
+    ✓ blocks.{i}.mlp.b_out - Has bias (c_proj.bias)
+    ✓ blocks.{i}.ln1.b - LayerNorm has bias
+    ✓ blocks.{i}.ln2.b - LayerNorm has bias
+    ✓ ln_final.b - LayerNorm has bias
+
+    No optional parameters - all biases exist in GPT-2.
+    """
 
     def __init__(self, cfg: Any) -> None:
         """Initialize the GPT2 architecture adapter."""

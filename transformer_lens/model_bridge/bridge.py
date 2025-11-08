@@ -1149,42 +1149,247 @@ class TransformerBridge(nn.Module):
         fold_ln: bool = True,
         center_writing_weights: bool = True,
         center_unembed: bool = True,
+        fold_value_biases: bool = True,
+        refactor_factored_attn_matrices: bool = False,
     ) -> None:
-        """Process and load weights from a reference HookedTransformer model.
+        """Process weights directly using ProcessWeights and architecture adapter.
+
+        This method applies weight processing transformations to improve model interpretability
+        without requiring a reference HookedTransformer model. Works with all architectures
+        supported by TransformerBridge, including GPT-OSS and other new models.
 
         Args:
             verbose: If True, print detailed progress messages. Default: False
-            fold_ln: Whether to fold layer norm weights. Default: True
-            center_writing_weights: Whether to center writing weights. Default: True
-            center_unembed: Whether to center unembedding matrix. Default: True
+            fold_ln: Fold LayerNorm weights/biases into subsequent layers. Default: True
+            center_writing_weights: Center weights that write to residual stream. Default: True
+            center_unembed: Center unembedding weights (translation invariant). Default: True
+            fold_value_biases: Fold value biases into output bias. Default: True
+            refactor_factored_attn_matrices: Experimental QK/OV factorization. Default: False
         """
-        # Import here to avoid circular imports
-        from transformer_lens import HookedTransformer
+        from transformer_lens.weight_processing import ProcessWeights
 
-        # Create reference model with same processing settings
-        # This loads the same model but with TransformerLens processing
-        reference_hooked = HookedTransformer.from_pretrained(
+        if verbose:
+            print(f"Processing weights for {self.cfg.model_name}...")
+
+        # Load a fresh HF model to avoid dealing with wrapped keys
+        import torch
+        from transformers import AutoModelForCausalLM
+
+        if verbose:
+            print("  Loading fresh HF model for processing...")
+
+        # Load fresh model with clean state dict
+        fresh_model = AutoModelForCausalLM.from_pretrained(
             self.cfg.model_name,
-            device=self.cfg.device,
-            fold_ln=fold_ln,
-            center_writing_weights=center_writing_weights,
-            center_unembed=center_unembed,
-            fold_value_biases=True,
-            refactor_factored_attn_matrices=False,
+            torch_dtype=self.cfg.dtype if hasattr(self.cfg, "dtype") else torch.float32,
         )
+        state_dict = fresh_model.state_dict()
 
-        hooked_state_dict = reference_hooked.state_dict()
+        # Get architecture adapter for path translation
+        adapter = self.adapter
 
-        object.__setattr__(self, "_processed_tl_weights", hooked_state_dict)
-        object.__setattr__(self, "_reference_hooked_model", reference_hooked)
+        # NOTE: Weight processing code (ProcessWeights) handles splitting joint QKV internally
+        # via convert_tensor_to_tl_format(), so we don't need to pre-split here
 
+        # Create unembed.b_U if it doesn't exist (needed for fold_layer_norm to fold ln_final.b)
+        # Some models like GPT-2 don't have unembed bias, but we need it as a zero tensor
+        # so that fold_layer_norm can fold ln_final.b into it
+        if adapter:
+            try:
+                unembed_b_U_key = ProcessWeights._get_param_key("unembed.b_U", adapter)
+                if unembed_b_U_key not in state_dict:
+                    # Create zero bias matching vocab size
+                    state_dict[unembed_b_U_key] = torch.zeros(
+                        self.cfg.d_vocab_out
+                        if hasattr(self.cfg, "d_vocab_out")
+                        else self.cfg.d_vocab,
+                        dtype=self.cfg.dtype if hasattr(self.cfg, "dtype") else torch.float32,
+                    )
+            except (ValueError, KeyError):
+                # If we can't get the key, skip this step
+                pass
+
+        # Apply weight processing in order (matches HookedTransformer processing order)
+        # IMPORTANT: The order must match ProcessWeights.process_weights() exactly:
+        # 1. fold_ln
+        # 2. center_writing_weights
+        # 3. center_unembed
+        # 4. fold_value_biases (uses the W_O AFTER fold_ln and centering)
+        # 5. Re-center b_O (done automatically by fold_value_biases in new code)
+
+        if fold_ln:
+            if verbose:
+                print("  Folding LayerNorm/RMSNorm...")
+
+            # For RMSNorm models, don't fold biases (they don't exist) or center weights
+            uses_rms_norm = (
+                getattr(self.cfg, "uses_rms_norm", False)
+                or getattr(self.cfg, "normalization_type", None) == "RMS"
+            )
+
+            state_dict = ProcessWeights.fold_layer_norm(
+                state_dict,
+                self.cfg,
+                fold_biases=not uses_rms_norm,  # Don't fold biases for RMSNorm
+                center_weights=center_writing_weights
+                and not uses_rms_norm,  # Don't center for RMSNorm
+                adapter=adapter,
+            )
+
+        if center_writing_weights:
+            if verbose:
+                print("  Centering writing weights...")
+            state_dict = ProcessWeights.center_writing_weights(
+                state_dict, self.cfg, adapter=adapter
+            )
+
+        if center_unembed:
+            if verbose:
+                print("  Centering unembed...")
+            state_dict = ProcessWeights.center_unembed(state_dict, adapter=adapter)
+
+        if fold_value_biases:
+            if verbose:
+                print("  Folding value biases...")
+            state_dict = ProcessWeights.fold_value_biases(state_dict, self.cfg, adapter=adapter)
+
+        if refactor_factored_attn_matrices:
+            if verbose:
+                print("  Refactoring attention matrices...")
+            state_dict = ProcessWeights.refactor_factored_attn_matrices(
+                state_dict, self.cfg, adapter=adapter
+            )
+
+        if verbose:
+            print("  Loading processed weights into components...")
+
+        # Store processed state dict
+        object.__setattr__(self, "_processed_tl_weights", state_dict)
+
+        # Configure components and load processed weights
         self._configure_components_for_processing(verbose=verbose)
-        self._load_all_processed_weights(verbose=verbose, reference_model=reference_hooked)
+        self._load_all_processed_weights(verbose=verbose, processed_state_dict=state_dict)
 
-        object.__setattr__(self, "_reference_hooked_model", None)
-        del reference_hooked
+        # Load processed weights into the fresh model
+        if verbose:
+            print("  Loading processed weights into fresh model...")
+
+        load_result = fresh_model.load_state_dict(state_dict, strict=False)
+
+        if verbose and (load_result.missing_keys or load_result.unexpected_keys):
+            if load_result.missing_keys:
+                print(f"    Warning: Missing keys: {len(load_result.missing_keys)}")
+            if load_result.unexpected_keys:
+                print(f"    Warning: Unexpected keys: {len(load_result.unexpected_keys)}")
+
+        # Replace original_model with the processed fresh model
+        # This ensures forward pass uses processed weights
+        self.__dict__["original_model"] = fresh_model
+
+        # Enable processed weights mode on all components
+        # This makes components use _forward_with_processed_weights instead of calling HF modules
+        if verbose:
+            print("  Enabling processed weights mode on components...")
+
+        def enable_processed_weights(component):
+            """Enable processed weights mode on a component and all subcomponents."""
+            # Always set the attribute, even if it didn't exist before
+            component._use_processed_weights = True
+            # Recursively enable for subcomponents
+            if hasattr(component, "submodules"):
+                for subcomp in component.submodules.values():
+                    enable_processed_weights(subcomp)
+
+        # Enable for all blocks
+        if hasattr(self, "blocks"):
+            for block in self.blocks:
+                enable_processed_weights(block)
+
+        # Enable for embed/unembed
+        if hasattr(self, "embed"):
+            enable_processed_weights(self.embed)
+        if hasattr(self, "pos_embed"):
+            enable_processed_weights(self.pos_embed)
+        if hasattr(self, "unembed"):
+            enable_processed_weights(self.unembed)
 
         object.__setattr__(self, "_weights_processed", True)
+
+        if verbose:
+            print("✓ Weight processing complete!")
+
+    def _split_joint_weights(
+        self, state_dict: Dict[str, torch.Tensor], adapter: Any, verbose: bool = False
+    ) -> Dict[str, torch.Tensor]:
+        """Split joint weights (QKV, gate-up MLP) into separate components.
+
+        Weight processing expects weights in split format. Models like GPT-2 store
+        Q, K, V as a single joint tensor that needs to be split first.
+
+        Args:
+            state_dict: HuggingFace format state dict with potentially joint weights
+            adapter: Architecture adapter for key translation
+            verbose: If True, print detailed progress messages
+
+        Returns:
+            State dict with split weights
+        """
+        import torch
+
+        cfg = self.cfg
+        new_state_dict = state_dict.copy()
+
+        # Split QKV for each layer
+        for layer_idx in range(cfg.n_layers):
+            # Try to get the joint QKV key
+            try:
+                # Get HF key for joint QKV (e.g., "transformer.h.0.attn.c_attn.weight")
+                qkv_weight_key = adapter.translate_transformer_lens_path(
+                    f"blocks.{layer_idx}.attn.W_Q"
+                )
+
+                if qkv_weight_key in state_dict:
+                    # This is a joint QKV weight that needs splitting
+                    qkv_weight = state_dict[qkv_weight_key]  # [d_model, 3 * d_model] for GPT-2
+
+                    # Split into Q, K, V
+                    d_model = cfg.d_model
+                    if qkv_weight.shape[-1] == 3 * d_model:
+                        # Joint QKV format
+                        q_weight, k_weight, v_weight = torch.split(
+                            qkv_weight, [d_model, d_model, d_model], dim=-1
+                        )
+
+                        # Create separate keys for Q, K, V
+                        # For now, we'll use a naming convention that includes .q, .k, .v
+                        # to distinguish them in the state dict
+                        base_key = qkv_weight_key.replace(".weight", "")
+                        new_state_dict[f"{base_key}.q.weight"] = q_weight
+                        new_state_dict[f"{base_key}.k.weight"] = k_weight
+                        new_state_dict[f"{base_key}.v.weight"] = v_weight
+
+                        # Also handle bias if it exists
+                        qkv_bias_key = qkv_weight_key.replace(".weight", ".bias")
+                        if qkv_bias_key in state_dict:
+                            qkv_bias = state_dict[qkv_bias_key]
+                            if qkv_bias.shape[-1] == 3 * d_model:
+                                q_bias, k_bias, v_bias = torch.split(
+                                    qkv_bias, [d_model, d_model, d_model], dim=-1
+                                )
+                                new_state_dict[f"{base_key}.q.bias"] = q_bias
+                                new_state_dict[f"{base_key}.k.bias"] = k_bias
+                                new_state_dict[f"{base_key}.v.bias"] = v_bias
+
+                        if verbose:
+                            print(f"    Split QKV for layer {layer_idx}")
+            except (ValueError, KeyError):
+                # Not a joint QKV model, or keys don't exist - skip
+                pass
+
+            # TODO: Handle joint gate-up MLP weights if needed (e.g., Llama)
+            # For now, GPT-2 doesn't use this so we can add it later if needed
+
+        return new_state_dict
 
     def _configure_components_for_processing(self, verbose: bool = False):
         """Configure all components for processed weight loading (Phase 1).
@@ -1209,16 +1414,20 @@ class TransformerBridge(nn.Module):
             self.ln_final.config.layer_norm_folding = True  # type: ignore[union-attr]
 
     def _load_all_processed_weights(
-        self, verbose: bool = False, reference_model: Optional[Any] = None
+        self, verbose: bool = False, processed_state_dict: Optional[Dict[str, torch.Tensor]] = None
     ) -> None:
         """Load processed weights into all components (Phase 2).
 
         Args:
             verbose: If True, print detailed progress messages. Default: False
-            reference_model: Optional reference HookedTransformer model to pass to components
+            processed_state_dict: Optional processed state dict (if None, uses self._processed_tl_weights)
         """
+        # Use provided state dict or fall back to stored one
+        if processed_state_dict is not None:
+            object.__setattr__(self, "_processed_tl_weights", processed_state_dict)
+
         self._load_embedding_weights(verbose=verbose)
-        self._load_transformer_block_weights(verbose=verbose, reference_model=reference_model)
+        self._load_transformer_block_weights(verbose=verbose)
         self._load_unembed_weights(verbose=verbose)
 
     def _load_embedding_weights(self, verbose: bool = False):
@@ -1227,26 +1436,36 @@ class TransformerBridge(nn.Module):
         Args:
             verbose: If True, print detailed progress messages. Default: False
         """
+        from transformer_lens.weight_processing import ProcessWeights
+
         processed_weights = self._processed_tl_weights
+        adapter = self.adapter
 
         # Load token embedding (embed.W_E) into EmbeddingBridge
-        if hasattr(self, "embed") and "embed.W_E" in processed_weights:
-            embed_weight = processed_weights["embed.W_E"]
-            self.embed.set_processed_weight(embed_weight)
+        if hasattr(self, "embed"):
+            try:
+                embed_key = ProcessWeights._get_param_key("embed.W_E", adapter)
+                if embed_key in processed_weights:
+                    embed_weight = processed_weights[embed_key]
+                    self.embed.set_processed_weight(embed_weight)
+            except (ValueError, KeyError):
+                pass  # Skip if key doesn't exist
 
         # Load positional embedding (pos_embed.W_pos) into PosEmbedBridge
-        if hasattr(self, "pos_embed") and "pos_embed.W_pos" in processed_weights:
-            pos_embed_weight = processed_weights["pos_embed.W_pos"]
-            self.pos_embed.set_processed_weight(pos_embed_weight)
+        if hasattr(self, "pos_embed"):
+            try:
+                pos_embed_key = ProcessWeights._get_param_key("pos_embed.W_pos", adapter)
+                if pos_embed_key in processed_weights:
+                    pos_embed_weight = processed_weights[pos_embed_key]
+                    self.pos_embed.set_processed_weight(pos_embed_weight)
+            except (ValueError, KeyError):
+                pass  # Skip if key doesn't exist (e.g., RoPE models)
 
-    def _load_transformer_block_weights(
-        self, verbose: bool = False, reference_model: Optional[Any] = None
-    ) -> None:
+    def _load_transformer_block_weights(self, verbose: bool = False) -> None:
         """Load transformer block weights into attention and MLP components.
 
         Args:
             verbose: If True, print detailed progress messages. Default: False
-            reference_model: Optional reference HookedTransformer model to pass to components
         """
         processed_weights = self._processed_tl_weights
 
@@ -1263,7 +1482,6 @@ class TransformerBridge(nn.Module):
                     layer_idx,
                     processed_weights,
                     verbose=verbose,
-                    reference_model=reference_model,
                 )
 
             # Load MLP weights
@@ -1276,50 +1494,46 @@ class TransformerBridge(nn.Module):
         layer_idx: int,
         processed_weights: Dict[str, torch.Tensor],
         verbose: bool = False,
-        reference_model: Optional[Any] = None,
     ) -> None:
         """Load attention weights into the AttentionBridge component.
 
         Args:
             attn_component: The attention component to load weights into
             layer_idx: The layer index
-            processed_weights: Dictionary of processed weights
+            processed_weights: Dictionary of processed weights (in HF format with processed values)
             verbose: If True, print detailed progress messages
-            reference_model: Optional reference HookedTransformer model
         """
-        # Get the processed attention weights in TransformerLens format
-        W_Q_key = f"blocks.{layer_idx}.attn.W_Q"
-        W_K_key = f"blocks.{layer_idx}.attn.W_K"
-        W_V_key = f"blocks.{layer_idx}.attn.W_V"
-        W_O_key = f"blocks.{layer_idx}.attn.W_O"
-        b_Q_key = f"blocks.{layer_idx}.attn.b_Q"
-        b_K_key = f"blocks.{layer_idx}.attn.b_K"
-        b_V_key = f"blocks.{layer_idx}.attn.b_V"
-        b_O_key = f"blocks.{layer_idx}.attn.b_O"
+        from transformer_lens.weight_processing import ProcessWeights
 
-        # Extract TransformerLens format weights
-        W_Q = processed_weights.get(W_Q_key)
-        # For GQA models, K and V weights may have underscore prefix (_W_K, _W_V)
-        W_K = processed_weights.get(W_K_key)
-        if W_K is None:
-            W_K = processed_weights.get(f"blocks.{layer_idx}.attn._W_K")
-        W_V = processed_weights.get(W_V_key)
-        if W_V is None:
-            W_V = processed_weights.get(f"blocks.{layer_idx}.attn._W_V")
-        W_O = processed_weights.get(W_O_key)
-        b_Q = processed_weights.get(b_Q_key)
-        # For GQA models, K and V biases may have underscore prefix (_b_K, _b_V)
-        b_K = processed_weights.get(b_K_key)
-        if b_K is None:
-            b_K = processed_weights.get(f"blocks.{layer_idx}.attn._b_K")
-        b_V = processed_weights.get(b_V_key)
-        if b_V is None:
-            b_V = processed_weights.get(f"blocks.{layer_idx}.attn._b_V")
-        b_O = processed_weights.get(b_O_key)
+        adapter = self.adapter
+        cfg = self.cfg
 
-        if reference_model is not None:
-            attn_component._reference_model = reference_model  # type: ignore[attr-defined]
-            attn_component._layer_idx = layer_idx  # type: ignore[attr-defined]
+        # Convert processed HF format weights to TL format (including splitting joint QKV)
+        # This handles both joint QKV formats (like GPT-2) and separate Q/K/V formats
+        W_Q = ProcessWeights.convert_tensor_to_tl_format(
+            f"blocks.{layer_idx}.attn.W_Q", adapter, processed_weights, cfg, layer_idx
+        )
+        W_K = ProcessWeights.convert_tensor_to_tl_format(
+            f"blocks.{layer_idx}.attn.W_K", adapter, processed_weights, cfg, layer_idx
+        )
+        W_V = ProcessWeights.convert_tensor_to_tl_format(
+            f"blocks.{layer_idx}.attn.W_V", adapter, processed_weights, cfg, layer_idx
+        )
+        W_O = ProcessWeights.convert_tensor_to_tl_format(
+            f"blocks.{layer_idx}.attn.W_O", adapter, processed_weights, cfg, layer_idx
+        )
+        b_Q = ProcessWeights.convert_tensor_to_tl_format(
+            f"blocks.{layer_idx}.attn.b_Q", adapter, processed_weights, cfg, layer_idx
+        )
+        b_K = ProcessWeights.convert_tensor_to_tl_format(
+            f"blocks.{layer_idx}.attn.b_K", adapter, processed_weights, cfg, layer_idx
+        )
+        b_V = ProcessWeights.convert_tensor_to_tl_format(
+            f"blocks.{layer_idx}.attn.b_V", adapter, processed_weights, cfg, layer_idx
+        )
+        b_O = ProcessWeights.convert_tensor_to_tl_format(
+            f"blocks.{layer_idx}.attn.b_O", adapter, processed_weights, cfg, layer_idx
+        )
 
         attn_component.set_processed_weights(W_Q, W_K, W_V, W_O, b_Q, b_K, b_V, b_O)
 
@@ -1329,47 +1543,28 @@ class TransformerBridge(nn.Module):
         Args:
             verbose: If True, print detailed progress messages. Default: False
         """
-        from transformer_lens.model_bridge.generalized_components.joint_gate_up_mlp import (
-            JointGateUpMLPBridge,
+        from transformer_lens.weight_processing import ProcessWeights
+
+        adapter = self.adapter
+        cfg = self.cfg
+
+        # Convert processed HF format weights to TL format (including format conversion)
+        W_in = ProcessWeights.convert_tensor_to_tl_format(
+            f"blocks.{layer_idx}.mlp.W_in", adapter, processed_weights, cfg, layer_idx
+        )
+        W_out = ProcessWeights.convert_tensor_to_tl_format(
+            f"blocks.{layer_idx}.mlp.W_out", adapter, processed_weights, cfg, layer_idx
+        )
+        b_in = ProcessWeights.convert_tensor_to_tl_format(
+            f"blocks.{layer_idx}.mlp.b_in", adapter, processed_weights, cfg, layer_idx
+        )
+        b_out = ProcessWeights.convert_tensor_to_tl_format(
+            f"blocks.{layer_idx}.mlp.b_out", adapter, processed_weights, cfg, layer_idx
         )
 
-        # Check if this is a gated MLP (requires W_gate in addition to W_in/W_out)
-        is_gated = isinstance(mlp_component, JointGateUpMLPBridge)
-
-        if is_gated:
-            # JointGateUpMLPBridge requires W_gate, W_in, W_out (and their biases)
-            W_gate_key = f"blocks.{layer_idx}.mlp.W_gate"
-            W_in_key = f"blocks.{layer_idx}.mlp.W_in"
-            W_out_key = f"blocks.{layer_idx}.mlp.W_out"
-            b_gate_key = f"blocks.{layer_idx}.mlp.b_gate"
-            b_in_key = f"blocks.{layer_idx}.mlp.b_in"
-            b_out_key = f"blocks.{layer_idx}.mlp.b_out"
-
-            W_gate = processed_weights.get(W_gate_key)
-            W_in = processed_weights.get(W_in_key)
-            W_out = processed_weights.get(W_out_key)
-            b_gate = processed_weights.get(b_gate_key)
-            b_in = processed_weights.get(b_in_key)
-            b_out = processed_weights.get(b_out_key)
-
-            if W_gate is None or W_in is None or W_out is None:
-                return
-            mlp_component.set_processed_weights(W_gate, W_in, W_out, b_gate, b_in, b_out)
-        else:
-            # Standard MLPBridge only needs W_in and W_out
-            W_in_key = f"blocks.{layer_idx}.mlp.W_in"
-            W_out_key = f"blocks.{layer_idx}.mlp.W_out"
-            b_in_key = f"blocks.{layer_idx}.mlp.b_in"
-            b_out_key = f"blocks.{layer_idx}.mlp.b_out"
-
-            W_in = processed_weights.get(W_in_key)
-            W_out = processed_weights.get(W_out_key)
-            b_in = processed_weights.get(b_in_key)
-            b_out = processed_weights.get(b_out_key)
-
-            if W_in is None or W_out is None:
-                return
-            mlp_component.set_processed_weights(W_in, W_out, b_in, b_out)
+        if W_in is None or W_out is None:
+            return
+        mlp_component.set_processed_weights(W_in, W_out, b_in, b_out)
 
     def _load_unembed_weights(self, verbose: bool = False):
         """Load unembedding weights into the UnembeddingBridge component.
@@ -1377,13 +1572,29 @@ class TransformerBridge(nn.Module):
         Args:
             verbose: If True, print detailed progress messages. Default: False
         """
+        from transformer_lens.weight_processing import ProcessWeights
+
         processed_weights = self._processed_tl_weights
+        adapter = self.adapter
 
         # Load unembedding (unembed.W_U) into UnembeddingBridge
-        if hasattr(self, "unembed") and "unembed.W_U" in processed_weights:
-            W_U = processed_weights["unembed.W_U"]
-            b_U = processed_weights.get("unembed.b_U")
-            self.unembed.set_processed_weight(W_U, b_U)
+        if hasattr(self, "unembed"):
+            try:
+                W_U_key = ProcessWeights._get_param_key("unembed.W_U", adapter)
+                if W_U_key in processed_weights:
+                    W_U_hf = processed_weights[W_U_key]  # HF format: [vocab_size, d_model]
+                    # Transpose to TL format: [d_model, vocab_size]
+                    W_U = W_U_hf.T
+
+                    # Try to get bias (may not exist)
+                    try:
+                        b_U_key = ProcessWeights._get_param_key("unembed.b_U", adapter)
+                        b_U = processed_weights.get(b_U_key)
+                    except (ValueError, KeyError):
+                        b_U = None
+                    self.unembed.set_processed_weight(W_U, b_U)
+            except (ValueError, KeyError):
+                pass  # Skip if key doesn't exist
 
     def _ported_forward_pass(
         self,
@@ -1667,13 +1878,9 @@ class TransformerBridge(nn.Module):
                 "No processed weights available. Call enable_compatibility_mode() first."
             )
 
-        # Convert TL format processed weights to HF format on demand
-        try:
-            from transformer_lens.weight_processing import ProcessWeights
-
-            return ProcessWeights.convert_tl_to_hf_format(self._processed_tl_weights, self.cfg)
-        except Exception as e:
-            raise ValueError(f"Failed to convert processed weights to HF format: {e}")
+        # The _processed_tl_weights is actually in HF format (despite the name)
+        # because process_compatibility_weights() processes HF format weights in-place
+        return self._processed_tl_weights
 
         print("Bridge set up with processed components created directly")
 

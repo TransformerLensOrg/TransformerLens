@@ -862,23 +862,25 @@ class AttentionBridge(GeneralizedComponent):
         batch_size, seq_len, d_model = x.shape
 
         # Compute Q, K, V using TransformerLens format weights
-        # W_Q shape: [n_heads, d_model, d_head], b_Q shape: [n_heads, d_head]
+        # W_Q shape: [n_heads, d_model, d_head], b_Q shape: [n_heads, d_head] or None
         # x shape: [batch, seq, d_model]
-        q = torch.stack([x @ self._processed_W_Q[h] for h in range(self._processed_W_Q.shape[0])], dim=2) + self._processed_b_Q.unsqueeze(  # type: ignore[union-attr]
-            0
-        ).unsqueeze(
-            0
+        q = torch.stack(
+            [x @ self._processed_W_Q[h] for h in range(self._processed_W_Q.shape[0])], dim=2
         )
-        k = torch.stack([x @ self._processed_W_K[h] for h in range(self._processed_W_K.shape[0])], dim=2) + self._processed_b_K.unsqueeze(  # type: ignore[union-attr]
-            0
-        ).unsqueeze(
-            0
+        if self._processed_b_Q is not None:
+            q = q + self._processed_b_Q.unsqueeze(0).unsqueeze(0)
+
+        k = torch.stack(
+            [x @ self._processed_W_K[h] for h in range(self._processed_W_K.shape[0])], dim=2
         )
-        v = torch.stack([x @ self._processed_W_V[h] for h in range(self._processed_W_V.shape[0])], dim=2) + self._processed_b_V.unsqueeze(  # type: ignore[union-attr]
-            0
-        ).unsqueeze(
-            0
+        if self._processed_b_K is not None:
+            k = k + self._processed_b_K.unsqueeze(0).unsqueeze(0)
+
+        v = torch.stack(
+            [x @ self._processed_W_V[h] for h in range(self._processed_W_V.shape[0])], dim=2
         )
+        if self._processed_b_V is not None:
+            v = v + self._processed_b_V.unsqueeze(0).unsqueeze(0)
 
         # Apply hook for V if it exists (this is what gets ablated in the comparison script)
         # Check for hook_v (compatibility mode) or v.hook_out (new architecture)
@@ -945,13 +947,11 @@ class AttentionBridge(GeneralizedComponent):
                 for h in range(self._processed_W_O.shape[0])
             ],
             dim=2,
-        ).sum(
-            dim=2
-        ) + self._processed_b_O.unsqueeze(  # type: ignore[union-attr]
-            0
-        ).unsqueeze(
-            0
-        )
+        ).sum(dim=2)
+
+        # Add output bias if it exists (models like Gemma/LLaMA/Qwen don't have biases)
+        if self._processed_b_O is not None:
+            result = result + self._processed_b_O.unsqueeze(0).unsqueeze(0)
 
         # Apply output hook
         result = self.hook_out(result)
