@@ -119,14 +119,16 @@ class PosEmbedBridge(GeneralizedComponent):
 
         return output
 
-    def set_processed_weight(self, weight: torch.Tensor) -> None:
+    def set_processed_weight(self, weight: torch.Tensor, enable_ht_mode: bool = False) -> None:
         """Set the processed weight to use when layer norm is folded.
 
         Args:
             weight: The processed positional embedding weight tensor
+            enable_ht_mode: If True, enable HT-style forward. Default: False.
         """
         self._processed_weight = weight
-        self._use_processed_weights = True
+        if enable_ht_mode:
+            self._use_processed_weights = True
 
     def get_dummy_inputs(
         self, test_input: torch.Tensor, **kwargs: Any

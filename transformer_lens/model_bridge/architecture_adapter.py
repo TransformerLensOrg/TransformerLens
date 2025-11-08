@@ -1271,7 +1271,9 @@ class ArchitectureAdapter:
         if n_heads is None or d_model is None:
             raise RuntimeError(f"Could not determine n_heads or d_model from config: {self.cfg}")
 
-        d_head = d_model // n_heads
+        # Use explicit d_head from config if available (e.g., Gemma-2)
+        # Some models have head_dim that doesn't equal d_model // n_heads
+        d_head = getattr(self.cfg, "d_head", d_model // n_heads)
 
         # Detect architecture and extract weights
         if hasattr(hf_attn, "c_attn"):
@@ -1330,25 +1332,23 @@ class ArchitectureAdapter:
         if hasattr(hf_mlp, "c_fc") and hasattr(hf_mlp, "c_proj"):
             # GPT-2 style
             W_in = hf_mlp.c_fc.weight.data
-            b_in = hf_mlp.c_fc.bias.data if hasattr(hf_mlp.c_fc, "bias") else None
+            b_in = hf_mlp.c_fc.bias.data if hasattr(hf_mlp.c_fc, "bias") and hf_mlp.c_fc.bias is not None else None
             W_out = hf_mlp.c_proj.weight.data
-            b_out = hf_mlp.c_proj.bias.data if hasattr(hf_mlp.c_proj, "bias") else None
+            b_out = hf_mlp.c_proj.bias.data if hasattr(hf_mlp.c_proj, "bias") and hf_mlp.c_proj.bias is not None else None
 
         elif hasattr(hf_mlp, "fc_in") and hasattr(hf_mlp, "fc_out"):
             # GPT-Neo/J style
             W_in = hf_mlp.fc_in.weight.data.T
-            b_in = hf_mlp.fc_in.bias.data if hasattr(hf_mlp.fc_in, "bias") else None
+            b_in = hf_mlp.fc_in.bias.data if hasattr(hf_mlp.fc_in, "bias") and hf_mlp.fc_in.bias is not None else None
             W_out = hf_mlp.fc_out.weight.data.T
-            b_out = hf_mlp.fc_out.bias.data if hasattr(hf_mlp.fc_out, "bias") else None
+            b_out = hf_mlp.fc_out.bias.data if hasattr(hf_mlp.fc_out, "bias") and hf_mlp.fc_out.bias is not None else None
 
         elif hasattr(hf_mlp, "dense_h_to_4h") and hasattr(hf_mlp, "dense_4h_to_h"):
             # Pythia/GPT-NeoX style
             W_in = hf_mlp.dense_h_to_4h.weight.data.T
-            b_in = hf_mlp.dense_h_to_4h.bias.data if hasattr(hf_mlp.dense_h_to_4h, "bias") else None
+            b_in = hf_mlp.dense_h_to_4h.bias.data if hasattr(hf_mlp.dense_h_to_4h, "bias") and hf_mlp.dense_h_to_4h.bias is not None else None
             W_out = hf_mlp.dense_4h_to_h.weight.data.T
-            b_out = (
-                hf_mlp.dense_4h_to_h.bias.data if hasattr(hf_mlp.dense_4h_to_h, "bias") else None
-            )
+            b_out = hf_mlp.dense_4h_to_h.bias.data if hasattr(hf_mlp.dense_4h_to_h, "bias") and hf_mlp.dense_4h_to_h.bias is not None else None
 
         elif (
             hasattr(hf_mlp, "gate_proj")
@@ -1357,9 +1357,9 @@ class ArchitectureAdapter:
         ):
             # LLaMA style
             W_in = hf_mlp.up_proj.weight.data.T
-            b_in = hf_mlp.up_proj.bias.data if hasattr(hf_mlp.up_proj, "bias") else None
+            b_in = hf_mlp.up_proj.bias.data if hasattr(hf_mlp.up_proj, "bias") and hf_mlp.up_proj.bias is not None else None
             W_out = hf_mlp.down_proj.weight.data.T
-            b_out = hf_mlp.down_proj.bias.data if hasattr(hf_mlp.down_proj, "bias") else None
+            b_out = hf_mlp.down_proj.bias.data if hasattr(hf_mlp.down_proj, "bias") and hf_mlp.down_proj.bias is not None else None
 
         else:
             raise ValueError(f"Unsupported MLP architecture. Module has attributes: {dir(hf_mlp)}")
@@ -1433,7 +1433,7 @@ class ArchitectureAdapter:
     def _extract_linear_ht_format(self, linear_module, n_heads, d_head, d_model):
         """Extract weights from a linear module and convert to HT format."""
         weight = linear_module.weight.data
-        bias = linear_module.bias.data if hasattr(linear_module, "bias") else None
+        bias = linear_module.bias.data if hasattr(linear_module, "bias") and linear_module.bias is not None else None
 
         # Infer actual d_head from weight shape
         # weight shape: [out_features, in_features] = [n_heads * d_head, d_model]
@@ -1460,7 +1460,7 @@ class ArchitectureAdapter:
         For Linear, weight is stored as [d_model, d_model] = [out_features, in_features].
         """
         weight = out_proj.weight.data
-        bias = out_proj.bias.data if hasattr(out_proj, "bias") else None
+        bias = out_proj.bias.data if hasattr(out_proj, "bias") and out_proj.bias is not None else None
 
         # Infer actual d_head from weight shape
         # weight shape: [d_model, n_heads * d_head]

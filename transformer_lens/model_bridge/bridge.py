@@ -1285,12 +1285,15 @@ class TransformerBridge(nn.Module):
         eps = getattr(self.cfg, "eps", getattr(self.cfg, "layer_norm_epsilon", 1e-5))
         d_mlp = getattr(self.cfg, "d_mlp", getattr(self.cfg, "n_inner", d_model * 4))
 
+        # Use explicit d_head from config if available (e.g., Gemma-2)
+        d_head = getattr(self.cfg, "d_head", d_model // n_heads)
+
         ht_cfg = HookedTransformerConfig(
             n_layers=n_layers,
             d_model=d_model,
             n_ctx=n_ctx,
             n_heads=n_heads,
-            d_head=d_model // n_heads,
+            d_head=d_head,
             d_mlp=d_mlp,
             act_fn=act_fn,
             d_vocab=d_vocab,
@@ -1533,11 +1536,15 @@ class TransformerBridge(nn.Module):
                 unembed_b_U_key = ProcessWeights._get_param_key("unembed.b_U", adapter)
                 if unembed_b_U_key not in state_dict:
                     # Create zero bias matching vocab size
+                    # Ensure dtype is a torch.dtype object, not a string
+                    cfg_dtype = getattr(self.cfg, "dtype", torch.float32)
+                    if isinstance(cfg_dtype, str):
+                        cfg_dtype = getattr(torch, cfg_dtype, torch.float32)
                     state_dict[unembed_b_U_key] = torch.zeros(
                         self.cfg.d_vocab_out
                         if hasattr(self.cfg, "d_vocab_out")
                         else self.cfg.d_vocab,
-                        dtype=self.cfg.dtype if hasattr(self.cfg, "dtype") else torch.float32,
+                        dtype=cfg_dtype,
                     )
             except (ValueError, KeyError):
                 # If we can't get the key, skip this step
@@ -1906,32 +1913,37 @@ class TransformerBridge(nn.Module):
             except (AttributeError, IndexError):
                 pass
 
-        # Enable processed weights mode on all components
-        # This makes components use _forward_with_processed_weights instead of calling HF modules
-        if verbose:
-            print("  Enabling processed weights mode on components...")
+        # NOTE: We do NOT enable _use_processed_weights mode here because that flag
+        # triggers _forward_with_processed_weights which requires set_processed_weights()
+        # to have been called with HT-format tensors. In this method, we're just doing
+        # standard weight processing (fold_ln, center_weights, etc.) and loading into
+        # the fresh HF model - we're not setting up HT-format processed weights.
+        # The bridge components will use the fresh_model via their original_component references.
 
-        def enable_processed_weights(component):
-            """Enable processed weights mode on a component and all subcomponents."""
-            # Always set the attribute, even if it didn't exist before
-            component._use_processed_weights = True
-            # Recursively enable for subcomponents
-            if hasattr(component, "submodules"):
-                for subcomp in component.submodules.values():
-                    enable_processed_weights(subcomp)
-
-        # Enable for all blocks
-        if hasattr(self, "blocks"):
-            for block in self.blocks:
-                enable_processed_weights(block)
-
-        # Enable for embed/unembed
-        if hasattr(self, "embed"):
-            enable_processed_weights(self.embed)
-        if hasattr(self, "pos_embed"):
-            enable_processed_weights(self.pos_embed)
-        if hasattr(self, "unembed"):
-            enable_processed_weights(self.unembed)
+        # if verbose:
+        #     print("  Enabling processed weights mode on components...")
+        #
+        # def enable_processed_weights(component):
+        #     """Enable processed weights mode on a component and all subcomponents."""
+        #     # Always set the attribute, even if it didn't exist before
+        #     component._use_processed_weights = True
+        #     # Recursively enable for subcomponents
+        #     if hasattr(component, "submodules"):
+        #         for subcomp in component.submodules.values():
+        #             enable_processed_weights(subcomp)
+        #
+        # # Enable for all blocks
+        # if hasattr(self, "blocks"):
+        #     for block in self.blocks:
+        #         enable_processed_weights(block)
+        #
+        # # Enable for embed/unembed
+        # if hasattr(self, "embed"):
+        #     enable_processed_weights(self.embed)
+        # if hasattr(self, "pos_embed"):
+        #     enable_processed_weights(self.pos_embed)
+        # if hasattr(self, "unembed"):
+        #     enable_processed_weights(self.unembed)
 
         # Extract 3D processed weights from state dict and set as component attributes
         # This must happen AFTER enable_processed_weights and BEFORE we return

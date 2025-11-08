@@ -177,12 +177,15 @@ class UnembeddingBridge(GeneralizedComponent):
             vocab_size: int = int(weight.shape[0])  # lm_head weight is [d_vocab, d_model]
             return torch.zeros(vocab_size, device=device, dtype=dtype)
 
-    def set_processed_weight(self, W_U: torch.Tensor, b_U: torch.Tensor | None = None) -> None:
+    def set_processed_weight(
+        self, W_U: torch.Tensor, b_U: torch.Tensor | None = None, enable_ht_mode: bool = False
+    ) -> None:
         """Set the processed weights to use when layer norm is folded.
 
         Args:
             W_U: The processed unembedding weight tensor
             b_U: The processed unembedding bias tensor (optional)
+            enable_ht_mode: If True, enable HT-style forward. Default: False.
         """
         # Register W_U as internal parameter (not exposed directly)
         self.register_parameter("_processed_W_U", torch.nn.Parameter(W_U))
@@ -198,7 +201,8 @@ class UnembeddingBridge(GeneralizedComponent):
                 torch.nn.Parameter(torch.zeros(vocab_size, device=W_U.device, dtype=W_U.dtype)),
             )
 
-        self._use_processed_weights = True
+        if enable_ht_mode:
+            self._use_processed_weights = True
 
     def named_parameters(
         self, prefix: str = "", recurse: bool = True, remove_duplicate: bool = True
