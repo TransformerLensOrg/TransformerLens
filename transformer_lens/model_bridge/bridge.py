@@ -731,7 +731,7 @@ class TransformerBridge(nn.Module):
             use_cache_object = hasattr(past_key_values, "update")
 
             past_key_values_list = None
-            next_past_key_values = None
+            next_past_key_values: Optional[List[Any]] = None
             if use_cache and not use_cache_object:
                 past_key_values_list = list(past_key_values)
                 next_past_key_values = []
