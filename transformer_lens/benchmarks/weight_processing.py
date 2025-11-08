@@ -137,8 +137,8 @@ def benchmark_weight_sharing(
             reference_original = reference_model(test_text, return_type="loss")
 
             # Verify weights are identical before modification
-            bridge_W_V = bridge.blocks[0].attn.W_V
-            reference_W_V = reference_model.blocks[0].attn.W_V  # type: ignore[union-attr]
+            bridge_W_V = bridge.blocks[0].attn.W_V.clone()
+            reference_W_V = reference_model.blocks[0].attn.W_V.clone()  # type: ignore[union-attr]
 
             # Check if models have GQA (different head counts for K/V vs Q)
             has_gqa = (
