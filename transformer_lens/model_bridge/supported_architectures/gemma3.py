@@ -14,7 +14,6 @@ from transformer_lens.model_bridge.generalized_components import (
     EmbeddingBridge,
     LinearBridge,
     MLPBridge,
-    NormalizationBridge,
     RMSNormalizationBridge,
     RotaryEmbeddingBridge,
     UnembeddingBridge,
@@ -31,6 +30,9 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
         self.cfg.gated_mlp = True
 
         self.cfg.uses_rms_norm = True
+        # Gemma models use (1.0 + weight) in RMSNorm instead of just weight
+        # See: https://github.com/huggingface/transformers/pull/29402
+        self.cfg.rmsnorm_uses_offset = True
 
         self.conversion_rules = HookConversionSet(
             {
@@ -43,7 +45,9 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
                     ),
                 ),
                 "blocks.{i}.ln1.w": "model.layers.{i}.input_layernorm.weight",
-                "blocks.{i}.ln2.w": "model.layers.{i}.post_attention_layernorm.weight",
+                "blocks.{i}.ln1_post.w": "model.layers.{i}.post_attention_layernorm.weight",
+                "blocks.{i}.ln2.w": "model.layers.{i}.pre_feedforward_layernorm.weight",
+                "blocks.{i}.ln2_post.w": "model.layers.{i}.post_feedforward_layernorm.weight",
                 "blocks.{i}.attn.q": (
                     "model.layers.{i}.self_attn.q_proj.weight",
                     RearrangeHookConversion("(n h) m -> n m h", n=self.cfg.n_heads),
@@ -91,13 +95,13 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
                 name="model.layers",
                 submodules={
                     "ln1": RMSNormalizationBridge(name="input_layernorm", config=self.cfg),
-                    "ln1_post": NormalizationBridge(
+                    "ln1_post": RMSNormalizationBridge(
                         name="post_attention_layernorm", config=self.cfg
                     ),
                     "ln2": RMSNormalizationBridge(
                         name="pre_feedforward_layernorm", config=self.cfg
                     ),
-                    "ln2_post": NormalizationBridge(
+                    "ln2_post": RMSNormalizationBridge(
                         name="post_feedforward_layernorm", config=self.cfg
                     ),
                     "attn": AttentionBridge(

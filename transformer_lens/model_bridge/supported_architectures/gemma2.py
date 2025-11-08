@@ -29,6 +29,9 @@ class Gemma2ArchitectureAdapter(ArchitectureAdapter):
         self.cfg.gated_mlp = True
 
         self.cfg.uses_rms_norm = True
+        # Gemma models use (1.0 + weight) in RMSNorm instead of just weight
+        # See: https://github.com/huggingface/transformers/pull/29402
+        self.cfg.rmsnorm_uses_offset = True
 
         # Note: n_key_value_heads is now automatically mapped from num_key_value_heads
         # by map_default_transformer_lens_config() in sources/transformers.py

@@ -98,7 +98,12 @@ class NormalizationBridge(GeneralizedComponent):
             # Apply learnable parameters if not folding layer norms
             if getattr(self.config, "uses_rms_norm", False):
                 # No bias if using RMSNorm
-                hidden_states = hidden_states * self.weight
+                # Gemma models use (1.0 + weight) instead of just weight
+                # See: https://github.com/huggingface/transformers/pull/29402
+                if getattr(self.config, "rmsnorm_uses_offset", False):
+                    hidden_states = hidden_states * (1.0 + self.weight)
+                else:
+                    hidden_states = hidden_states * self.weight
             else:
                 # Add bias if using LayerNorm and the original component has a bias
                 hidden_states = hidden_states * self.weight
