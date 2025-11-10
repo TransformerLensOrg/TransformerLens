@@ -204,6 +204,21 @@ class TransformerBridge(nn.Module):
                     # Target doesn't exist yet, skip
                     pass
 
+    def _register_all_aliases_recursive(self) -> None:
+        """Recursively register aliases on all bridge components.
+
+        This walks through all components and calls _register_aliases() on each one.
+        Used after weight processing to ensure aliases point to processed weights.
+        """
+        # Register on self first
+        if hasattr(self, "_register_aliases"):
+            self._register_aliases()
+
+        # Walk through all PyTorch modules recursively
+        for module in self.modules():
+            if module is not self and hasattr(module, "_register_aliases"):
+                module._register_aliases()
+
     def __setattr__(self, name: str, value: Any) -> None:
         """Override setattr to track HookPoint objects dynamically."""
         # Call parent setattr first
@@ -905,6 +920,10 @@ class TransformerBridge(nn.Module):
                 center_writing_weights=center_writing_weights,
                 center_unembed=center_unembed,
             )
+
+        # Register property aliases AFTER weight processing
+        # This ensures aliases point to the correct (processed) weights
+        self._register_all_aliases_recursive()
 
     def _setup_no_processing_hooks(self) -> None:
         """Setup hooks for no_processing mode in all attention layers.

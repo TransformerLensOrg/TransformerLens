@@ -13,7 +13,6 @@ from transformer_lens.conversion_utils.conversion_steps.base_hook_conversion imp
     BaseHookConversion,
 )
 from transformer_lens.hook_points import HookPoint
-from transformer_lens.utilities.aliases import resolve_alias
 
 
 class GeneralizedComponent(nn.Module):
@@ -74,10 +73,8 @@ class GeneralizedComponent(nn.Module):
             self.hook_in.hook_conversion = self.conversion_rule
             self.hook_out.hook_conversion = self.conversion_rule
 
-        # Register aliases at the END of init, after all subcomponents are set up
-        # Subclasses should call super().__init__() FIRST, then set up their subcomponents,
-        # and this will automatically register aliases
-        self._register_aliases()
+        # Note: _register_aliases() is called later after enable_compatibility_mode()
+        # to ensure aliases point to processed weights
 
     def _register_hook(self, name: str, hook: HookPoint) -> None:
         """Register a hook in the component's hook registry."""
@@ -89,8 +86,11 @@ class GeneralizedComponent(nn.Module):
     def _register_aliases(self) -> None:
         """Register aliases from class-level dictionaries.
 
-        This is called at the END of __init__ when all subcomponents are set up.
+        This is called ONLY in enable_compatibility_mode() after weight processing.
         It creates actual Python attributes/properties that directly reference the target objects.
+
+        Note: This should only be called when compatibility mode is enabled and after
+        weight processing is complete to ensure property aliases point to processed weights.
         """
         # Register hook aliases by storing them in the registry
         if self.hook_aliases:
@@ -100,11 +100,46 @@ class GeneralizedComponent(nn.Module):
         if self.property_aliases:
             self._property_alias_registry.update(self.property_aliases)
 
+        # Create actual attribute references for hook aliases
+        for alias_name, target_path in self._hook_alias_registry.items():
+            try:
+                # Resolve the target object (handles both single targets and lists)
+                if isinstance(target_path, list):
+                    # For list-based fallbacks, try each target until one works
+                    for single_target in target_path:
+                        try:
+                            target_obj = self
+                            for part in single_target.split("."):
+                                target_obj = getattr(target_obj, part)
+                            # Found it, set the alias
+                            object.__setattr__(self, alias_name, target_obj)
+                            break
+                        except AttributeError:
+                            continue
+                else:
+                    # Single target
+                    target_obj = self
+                    for part in target_path.split("."):
+                        target_obj = getattr(target_obj, part)
+                    object.__setattr__(self, alias_name, target_obj)
+            except AttributeError:
+                # Target doesn't exist yet, skip
+                pass
+
         # Create actual attribute references for property aliases
         # This way accessing self.W_Q directly returns self.q.weight without any __getattr__ overhead
         for alias_name, target_path in self._property_alias_registry.items():
             try:
-                # Resolve the target object
+                # Check if we should use processed weights instead
+                # If _use_processed_weights is True and _processed_{alias_name} exists, use that
+                if hasattr(self, "_use_processed_weights") and self._use_processed_weights:
+                    processed_attr = f"_processed_{alias_name}"
+                    if hasattr(self, processed_attr):
+                        target_obj = getattr(self, processed_attr)
+                        object.__setattr__(self, alias_name, target_obj)
+                        continue
+
+                # Otherwise, resolve the target object from the path
                 target_obj = self
                 for part in target_path.split("."):
                     target_obj = getattr(target_obj, part)
@@ -120,21 +155,14 @@ class GeneralizedComponent(nn.Module):
         """Get all hooks registered in this component."""
         hooks = self._hook_registry.copy()
 
-        # Add aliases if compatibility mode is enabled
+        # Add hook aliases if compatibility mode is enabled
+        # Since aliases are now real Python attributes, we can just use getattr
         if self.compatibility_mode and self._hook_alias_registry:
-            # Temporarily suppress warnings during internal hook collection
-            original_disable_warnings = getattr(self, "disable_warnings", False)
-            self.disable_warnings = True
-
-            try:
-                for alias_name, target_name in self._hook_alias_registry.items():
-                    # Use the existing alias system to resolve the target hook
-                    target_hook = resolve_alias(self, alias_name, self._hook_alias_registry)
-                    if target_hook is not None:
+            for alias_name in self._hook_alias_registry.keys():
+                if hasattr(self, alias_name):
+                    target_hook = getattr(self, alias_name)
+                    if isinstance(target_hook, HookPoint):
                         hooks[alias_name] = target_hook
-            finally:
-                # Restore original warning state
-                self.disable_warnings = original_disable_warnings
 
         return hooks
 

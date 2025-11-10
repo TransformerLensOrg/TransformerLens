@@ -102,8 +102,8 @@ def setup_submodules(
             if submodule.name is not None:
                 replace_remote_component(submodule, submodule.name, original_model)
 
-    # After all submodules are set up, register aliases so property aliases can be created
-    component._register_aliases()
+    # Note: Alias registration happens later in enable_compatibility_mode()
+    # after weight processing to ensure aliases point to processed weights
 
 
 def setup_components(
