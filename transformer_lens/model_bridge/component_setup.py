@@ -81,6 +81,10 @@ def setup_submodules(
             bridged_list = setup_blocks_bridge(submodule, architecture_adapter, original_model)
             # Set the list on the bridge module as a proper module
             component.add_module(module_name, bridged_list)
+
+            # Also set as direct attribute for easier access
+            object.__setattr__(component, module_name, bridged_list)
+
             replace_remote_component(bridged_list, submodule.name, original_model)
         # Only add if not already registered as a PyTorch module
         if module_name not in component._modules:
@@ -96,6 +100,9 @@ def setup_submodules(
             submodule.set_original_component(original_subcomponent)
             setup_submodules(submodule, architecture_adapter, original_subcomponent)
             component.add_module(module_name, submodule)
+
+            # Also set as direct attribute for easier access
+            object.__setattr__(component, module_name, submodule)
 
             # Replace original with bridge (skip if no container)
             if submodule.name is not None:
@@ -125,6 +132,10 @@ def setup_components(
             )
             # Set the list on the bridge module as a proper module
             bridge_module.add_module(tl_path, bridged_list)
+
+            # Also set as direct attribute for easier access
+            object.__setattr__(bridge_module, tl_path, bridged_list)
+
             replace_remote_component(bridged_list, remote_path, original_model)
         else:
             # Regular component handling
@@ -138,6 +149,9 @@ def setup_components(
 
             # Set the bridge component on the bridge module as a proper module
             bridge_module.add_module(tl_path, bridge_component)
+
+            # Also set as direct attribute for easier access
+            object.__setattr__(bridge_module, tl_path, bridge_component)
 
             # Replace the original component with the bridge component
             replace_remote_component(bridge_component, remote_path, original_model)
