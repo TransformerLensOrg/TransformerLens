@@ -55,12 +55,11 @@ class TestTransformerBridgeHooks:
 
         for hook_name in key_hooks:
             assert hook_name in reference_ht.hook_dict, f"Reference HT missing {hook_name}"
-            assert hook_name in bridge_model._hook_registry, f"Bridge missing {hook_name}"
+            # Aliases are in hook_dict, not _hook_registry
+            assert hook_name in bridge_model.hook_dict, f"Bridge missing {hook_name}"
 
-        # Bridge should have substantial number of hooks
-        assert (
-            len(bridge_model._hook_registry) > 100
-        ), "Bridge should have substantial hook registry"
+        # Bridge should have substantial number of hooks (canonical + aliases)
+        assert len(bridge_model.hook_dict) > 200, "Bridge should have substantial hook registry"
 
     def test_basic_hook_functionality(self, bridge_model):
         """Test that hooks fire and can modify activations."""
