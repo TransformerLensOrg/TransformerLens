@@ -63,9 +63,7 @@ class GeneralizedComponent(nn.Module):
         self._hook_alias_registry: Dict[
             str, Union[str, List[str]]
         ] = {}  # Permanent registry of hook aliases
-        self._property_alias_registry: Dict[
-            str, str
-        ] = {}  # Permanent registry of property aliases
+        self._property_alias_registry: Dict[str, str] = {}  # Permanent registry of property aliases
 
         # Standardized hooks for all bridge components
         self.hook_in = HookPoint()
@@ -108,7 +106,7 @@ class GeneralizedComponent(nn.Module):
             try:
                 # Resolve the target object
                 target_obj = self
-                for part in target_path.split('.'):
+                for part in target_path.split("."):
                     target_obj = getattr(target_obj, part)
 
                 # Set the alias as a direct attribute reference

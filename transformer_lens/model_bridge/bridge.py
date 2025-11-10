@@ -129,9 +129,7 @@ class TransformerBridge(nn.Module):
         self._hook_alias_registry: Dict[
             str, Union[str, List[str]]
         ] = {}  # Permanent registry of hook aliases
-        self._property_alias_registry: Dict[
-            str, str
-        ] = {}  # Permanent registry of property aliases
+        self._property_alias_registry: Dict[str, str] = {}  # Permanent registry of property aliases
 
         # Add device information to config from the loaded model
         if not hasattr(self.cfg, "device") or self.cfg.device is None:
@@ -189,7 +187,7 @@ class TransformerBridge(nn.Module):
                         for single_target in target_path:
                             try:
                                 target_obj = self
-                                for part in single_target.split('.'):
+                                for part in single_target.split("."):
                                     target_obj = getattr(target_obj, part)
                                 # Found it, set the alias
                                 object.__setattr__(self, alias_name, target_obj)
@@ -199,7 +197,7 @@ class TransformerBridge(nn.Module):
                     else:
                         # Single target
                         target_obj = self
-                        for part in target_path.split('.'):
+                        for part in target_path.split("."):
                             target_obj = getattr(target_obj, part)
                         object.__setattr__(self, alias_name, target_obj)
                 except AttributeError:
