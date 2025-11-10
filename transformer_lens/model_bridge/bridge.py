@@ -570,17 +570,6 @@ class TransformerBridge(nn.Module):
         if hasattr(self, "_modules") and name in self._modules:
             return self._modules[name]
 
-        # Check if this is a hook alias when compatibility mode is enabled
-        if self.compatibility_mode:
-            try:
-                hook_alias_registry = object.__getattribute__(self, "_hook_alias_registry")
-                if name in hook_alias_registry:
-                    resolved_hook = resolve_alias(self, name, hook_alias_registry)
-                    if resolved_hook is not None:
-                        return resolved_hook
-            except AttributeError:
-                pass  # Registry not initialized yet
-
         # Try to get from original_model if it exists
         if "original_model" in self.__dict__ and self.__dict__["original_model"] is not None:
             try:

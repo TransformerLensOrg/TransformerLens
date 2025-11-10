@@ -330,49 +330,6 @@ class GeneralizedComponent(nn.Module):
         if hasattr(self, "_modules") and name in self._modules:
             return self._modules[name]
 
-        # Only try to resolve aliases if compatibility mode is enabled
-        if self.compatibility_mode == True:
-            # Check if this is a deprecated hook alias using permanent registry
-            try:
-                hook_alias_registry = object.__getattribute__(self, "_hook_alias_registry")
-                if name in hook_alias_registry:
-                    resolved_hook = resolve_alias(self, name, hook_alias_registry)
-                    if resolved_hook is not None:
-                        return resolved_hook
-            except AttributeError:
-                pass  # Registry not initialized yet
-
-            # Check if we're using processed weights and this is a weight property
-            # For example, W_in should return _processed_W_in if available
-            try:
-                use_processed = object.__getattribute__(self, "_use_processed_weights")
-                if use_processed:
-                    processed_name = f"_processed_{name}"
-                    # Try to get from _parameters dict first (for registered parameters)
-                    try:
-                        params = object.__getattribute__(self, "_parameters")
-                        if processed_name in params:
-                            return params[processed_name]
-                    except AttributeError:
-                        pass
-                    # Fall back to regular attribute access
-                    try:
-                        return object.__getattribute__(self, processed_name)
-                    except AttributeError:
-                        pass  # processed weight not available, continue to resolve from original
-            except AttributeError:
-                pass  # _use_processed_weights not set
-
-            # Check if this is a deprecated property alias using permanent registry
-            try:
-                property_alias_registry = object.__getattribute__(self, "_property_alias_registry")
-                if name in property_alias_registry:
-                    resolved_property = resolve_alias(self, name, property_alias_registry)
-                    if resolved_property is not None:
-                        return resolved_property
-            except AttributeError:
-                pass  # Registry not initialized yet
-
         # Avoid recursion by checking if we're looking for original_component
         if name == "original_component":
             # This should not happen since original_component is a property
@@ -380,7 +337,7 @@ class GeneralizedComponent(nn.Module):
 
         # Check if this is a submodule that should be registered as a PyTorch module
         # but hasn't been yet. This prevents PyTorch's add_module from failing.
-        if name in self.submodules:
+        if hasattr(self, "submodules") and name in self.submodules:
             # Don't delegate to original component for submodules
             raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 
