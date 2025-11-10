@@ -217,7 +217,8 @@ class TransformerBridge(nn.Module):
         # Walk through all PyTorch modules recursively
         for module in self.modules():
             if module is not self and hasattr(module, "_register_aliases"):
-                module._register_aliases()
+                # Type checker: _register_aliases is a method on GeneralizedComponent
+                getattr(module, "_register_aliases")()
 
     def __setattr__(self, name: str, value: Any) -> None:
         """Override setattr to track HookPoint objects dynamically."""
