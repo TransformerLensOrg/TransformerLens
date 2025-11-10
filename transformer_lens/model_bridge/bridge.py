@@ -126,6 +126,12 @@ class TransformerBridge(nn.Module):
             str, HookPoint
         ] = {}  # Dynamic registry of hook names to HookPoints
         self._hook_registry_initialized = False  # Track if registry has been initialized
+        self._hook_alias_registry: Dict[
+            str, Union[str, List[str]]
+        ] = {}  # Permanent registry of hook aliases
+        self._property_alias_registry: Dict[
+            str, str
+        ] = {}  # Permanent registry of property aliases
 
         # Add device information to config from the loaded model
         if not hasattr(self.cfg, "device") or self.cfg.device is None:
@@ -145,6 +151,9 @@ class TransformerBridge(nn.Module):
         # Initialize hook registry after components are set up
         self._initialize_hook_registry()
 
+        # Register aliases after all components are set up
+        self._register_aliases()
+
         # Intiialize dictionary containing hooks that will be cached
         self._initialize_hooks_to_cache()
 
@@ -159,6 +168,43 @@ class TransformerBridge(nn.Module):
     def original_model(self, value: nn.Module) -> None:
         """Set the original model."""
         self.__dict__["original_model"] = value
+
+    def _register_aliases(self) -> None:
+        """Register bridge-level aliases.
+
+        This is called at the END of __init__ when all components are set up.
+        It registers the top-level bridge aliases (hook_embed, hook_pos_embed, etc.)
+        and creates direct attribute references.
+        """
+        # Register hook aliases from class attribute
+        if self.hook_aliases:
+            self._hook_alias_registry.update(self.hook_aliases)
+
+            # Create direct attribute references for hook aliases
+            for alias_name, target_path in self.hook_aliases.items():
+                try:
+                    # Resolve the target object (handles both single targets and lists)
+                    if isinstance(target_path, list):
+                        # For list-based fallbacks, try each target until one works
+                        for single_target in target_path:
+                            try:
+                                target_obj = self
+                                for part in single_target.split('.'):
+                                    target_obj = getattr(target_obj, part)
+                                # Found it, set the alias
+                                object.__setattr__(self, alias_name, target_obj)
+                                break
+                            except AttributeError:
+                                continue
+                    else:
+                        # Single target
+                        target_obj = self
+                        for part in target_path.split('.'):
+                            target_obj = getattr(target_obj, part)
+                        object.__setattr__(self, alias_name, target_obj)
+                except AttributeError:
+                    # Target doesn't exist yet, skip
+                    pass
 
     def __setattr__(self, name: str, value: Any) -> None:
         """Override setattr to track HookPoint objects dynamically."""
@@ -528,9 +574,14 @@ class TransformerBridge(nn.Module):
 
         # Check if this is a hook alias when compatibility mode is enabled
         if self.compatibility_mode:
-            resolved_hook = resolve_alias(self, name, self.hook_aliases)
-            if resolved_hook is not None:
-                return resolved_hook
+            try:
+                hook_alias_registry = object.__getattribute__(self, "_hook_alias_registry")
+                if name in hook_alias_registry:
+                    resolved_hook = resolve_alias(self, name, hook_alias_registry)
+                    if resolved_hook is not None:
+                        return resolved_hook
+            except AttributeError:
+                pass  # Registry not initialized yet
 
         # Try to get from original_model if it exists
         if "original_model" in self.__dict__ and self.__dict__["original_model"] is not None:

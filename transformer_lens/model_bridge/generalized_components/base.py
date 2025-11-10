@@ -60,6 +60,12 @@ class GeneralizedComponent(nn.Module):
         self._hook_registry: Dict[
             str, HookPoint
         ] = {}  # Dynamic registry of hook names to HookPoints
+        self._hook_alias_registry: Dict[
+            str, Union[str, List[str]]
+        ] = {}  # Permanent registry of hook aliases
+        self._property_alias_registry: Dict[
+            str, str
+        ] = {}  # Permanent registry of property aliases
 
         # Standardized hooks for all bridge components
         self.hook_in = HookPoint()
@@ -70,6 +76,11 @@ class GeneralizedComponent(nn.Module):
             self.hook_in.hook_conversion = self.conversion_rule
             self.hook_out.hook_conversion = self.conversion_rule
 
+        # Register aliases at the END of init, after all subcomponents are set up
+        # Subclasses should call super().__init__() FIRST, then set up their subcomponents,
+        # and this will automatically register aliases
+        self._register_aliases()
+
     def _register_hook(self, name: str, hook: HookPoint) -> None:
         """Register a hook in the component's hook registry."""
         # Set the name on the HookPoint
@@ -77,20 +88,50 @@ class GeneralizedComponent(nn.Module):
         # Add to registry
         self._hook_registry[name] = hook
 
+    def _register_aliases(self) -> None:
+        """Register aliases from class-level dictionaries.
+
+        This is called at the END of __init__ when all subcomponents are set up.
+        It creates actual Python attributes/properties that directly reference the target objects.
+        """
+        # Register hook aliases by storing them in the registry
+        if self.hook_aliases:
+            self._hook_alias_registry.update(self.hook_aliases)
+
+        # Register property aliases by storing them in the registry
+        if self.property_aliases:
+            self._property_alias_registry.update(self.property_aliases)
+
+        # Create actual attribute references for property aliases
+        # This way accessing self.W_Q directly returns self.q.weight without any __getattr__ overhead
+        for alias_name, target_path in self._property_alias_registry.items():
+            try:
+                # Resolve the target object
+                target_obj = self
+                for part in target_path.split('.'):
+                    target_obj = getattr(target_obj, part)
+
+                # Set the alias as a direct attribute reference
+                # This creates a "real" attribute that points to the same object
+                object.__setattr__(self, alias_name, target_obj)
+            except AttributeError:
+                # Target doesn't exist yet, skip
+                pass
+
     def get_hooks(self) -> Dict[str, HookPoint]:
         """Get all hooks registered in this component."""
         hooks = self._hook_registry.copy()
 
         # Add aliases if compatibility mode is enabled
-        if self.compatibility_mode and self.hook_aliases:
+        if self.compatibility_mode and self._hook_alias_registry:
             # Temporarily suppress warnings during internal hook collection
             original_disable_warnings = getattr(self, "disable_warnings", False)
             self.disable_warnings = True
 
             try:
-                for alias_name, target_name in self.hook_aliases.items():
+                for alias_name, target_name in self._hook_alias_registry.items():
                     # Use the existing alias system to resolve the target hook
-                    target_hook = resolve_alias(self, alias_name, self.hook_aliases)
+                    target_hook = resolve_alias(self, alias_name, self._hook_alias_registry)
                     if target_hook is not None:
                         hooks[alias_name] = target_hook
             finally:
@@ -293,10 +334,15 @@ class GeneralizedComponent(nn.Module):
 
         # Only try to resolve aliases if compatibility mode is enabled
         if self.compatibility_mode == True:
-            # Check if this is a deprecated hook alias
-            resolved_hook = resolve_alias(self, name, self.hook_aliases)
-            if resolved_hook is not None:
-                return resolved_hook
+            # Check if this is a deprecated hook alias using permanent registry
+            try:
+                hook_alias_registry = object.__getattribute__(self, "_hook_alias_registry")
+                if name in hook_alias_registry:
+                    resolved_hook = resolve_alias(self, name, hook_alias_registry)
+                    if resolved_hook is not None:
+                        return resolved_hook
+            except AttributeError:
+                pass  # Registry not initialized yet
 
             # Check if we're using processed weights and this is a weight property
             # For example, W_in should return _processed_W_in if available
@@ -319,10 +365,15 @@ class GeneralizedComponent(nn.Module):
             except AttributeError:
                 pass  # _use_processed_weights not set
 
-            # Check if this is a deprecated property alias
-            resolved_property = resolve_alias(self, name, self.property_aliases)
-            if resolved_property is not None:
-                return resolved_property
+            # Check if this is a deprecated property alias using permanent registry
+            try:
+                property_alias_registry = object.__getattribute__(self, "_property_alias_registry")
+                if name in property_alias_registry:
+                    resolved_property = resolve_alias(self, name, property_alias_registry)
+                    if resolved_property is not None:
+                        return resolved_property
+            except AttributeError:
+                pass  # Registry not initialized yet
 
         # Avoid recursion by checking if we're looking for original_component
         if name == "original_component":
