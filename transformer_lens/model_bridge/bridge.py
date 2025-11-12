@@ -151,7 +151,9 @@ class TransformerBridge(nn.Module):
         self._hook_alias_registry: Dict[
             str, Union[str, List[str]]
         ] = {}  # Permanent registry of hook aliases
-        self._property_alias_registry: Dict[str, str] = {}  # Permanent registry of property aliases
+        self._property_alias_registry: Dict[
+            str, Union[str, List[str]]
+        ] = {}  # Permanent registry of property aliases
 
         # Add device information to config from the loaded model
         if not hasattr(self.cfg, "device") or self.cfg.device is None:
