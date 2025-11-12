@@ -11,7 +11,6 @@ import pytest
 from transformer_lens.benchmarks import run_benchmark_suite
 from transformer_lens.benchmarks.utils import BenchmarkSeverity
 
-
 # Model list - start with gpt2, can be expanded with more models
 BENCHMARK_MODELS = ["gpt2"]
 
@@ -47,9 +46,7 @@ class TestBenchmarkSuite:
         )
 
         # Filter out skipped tests
-        non_skipped_results = [
-            r for r in results if r.severity != BenchmarkSeverity.SKIPPED
-        ]
+        non_skipped_results = [r for r in results if r.severity != BenchmarkSeverity.SKIPPED]
 
         # Collect failures
         failures = [r for r in non_skipped_results if not r.passed]
