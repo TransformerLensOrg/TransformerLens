@@ -28,6 +28,9 @@ from transformer_lens.model_bridge.generalized_components.linear import (
 from transformer_lens.model_bridge.generalized_components.joint_qkv_attention import (
     JointQKVAttentionBridge,
 )
+from transformer_lens.model_bridge.generalized_components.gemma3_attention import (
+    PositionEmbeddingsAttentionBridge,
+)
 from transformer_lens.model_bridge.generalized_components.mlp import MLPBridge
 from transformer_lens.model_bridge.generalized_components.gated_mlp import GatedMLPBridge
 from transformer_lens.model_bridge.generalized_components.moe import MoEBridge
@@ -55,6 +58,7 @@ __all__ = [
     "MLPBridge",
     "GatedMLPBridge",
     "MoEBridge",
+    "PositionEmbeddingsAttentionBridge",
     "UnembeddingBridge",
     "T5BlockBridge",
 ]

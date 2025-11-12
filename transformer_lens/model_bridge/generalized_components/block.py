@@ -10,7 +10,6 @@ from typing import Any, Callable, Dict, Optional
 
 import torch
 
-from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
@@ -28,7 +27,7 @@ class BlockBridge(GeneralizedComponent):
 
     hook_aliases = {
         "hook_resid_pre": "hook_in",
-        # hook_resid_mid is handled specially via monkey-patching (after attn, before ln2)
+        "hook_resid_mid": "ln2.hook_in",
         "hook_resid_post": "hook_out",
         "hook_attn_in": "attn.hook_in",
         "hook_attn_out": "attn.hook_out",
@@ -54,28 +53,17 @@ class BlockBridge(GeneralizedComponent):
         """
         super().__init__(name, config, submodules=submodules)
 
-        # Create custom hook_resid_mid that will be inserted via monkey-patching
-        # This hook captures the residual stream after attention but before ln2
-        # Unlike the alias to ln2.hook_in, this ensures gradients don't pass through LayerNorm
-        self.hook_resid_mid = HookPoint()
-        self._register_hook("hook_resid_mid", self.hook_resid_mid)
-
         self._original_block_forward: Optional[Callable[..., Any]] = None
 
-    def set_original_component(self, component: torch.nn.Module):
-        """Set the original component and monkey-patch its forward method.
-
-        This method monkey-patches HuggingFace blocks to insert hook_mlp_out
-        at the correct position (after MLP, before residual addition), matching
-        HookedTransformer's architecture.
+    def set_original_component(self, component: Any) -> None:
+        """Set the original component and patch its forward method.
 
         Args:
-            component: The original PyTorch module to wrap
+            component: The original HF block component
         """
         super().set_original_component(component)
-
-        # Monkey-patch the block's forward method to insert hook_mlp_out
-        self._patch_block_forward()
+        # Patch the block's forward method to insert intermediate hooks
+        # self._patch_block_forward()
 
     def _patch_block_forward(self):
         """Monkey-patch the HuggingFace block's forward method.
@@ -115,31 +103,20 @@ class BlockBridge(GeneralizedComponent):
             residual = hidden_states
 
             # Get architecture-specific attention name (attn, attention, self_attn, etc.)
-            attn = (
-                getattr(block_self, "attn", None)
-                or getattr(block_self, "attention", None)
-                or getattr(block_self, "self_attn", None)
-            )
+            attn = getattr(block_self, "attn", None)
             if attn is None:
                 raise RuntimeError(f"Could not find attention module in block {block_self}")
 
-            # Check if attention expects pre-ln1 input (for split Q/K/V compatibility with HookedTransformer)
-            # When enabled, attention will call ln1 three separate times internally
-            expects_pre_ln1 = getattr(attn, "_expects_pre_ln1_input", False)
-
-            if expects_pre_ln1:
-                # Attention will handle ln1 internally (3 separate calls for Q, K, V)
-                attn_input = residual
-            else:
-                # Normal path: apply ln1 once here in the block
-                ln1 = (
-                    getattr(block_self, "ln_1", None)
-                    or getattr(block_self, "input_layernorm", None)
-                    or getattr(block_self, "self_attn_layer_norm", None)
-                )
-                if ln1 is not None:
-                    hidden_states = ln1(hidden_states)
-                attn_input = hidden_states
+            # Normal path: apply ln1 once here in the block
+            # GPT-2 uses "ln_1", other models may use "ln1" or "input_layernorm"
+            ln1 = (
+                getattr(block_self, "ln_1", None)
+                or getattr(block_self, "ln1", None)
+                or getattr(block_self, "input_layernorm", None)
+            )
+            if ln1 is not None:
+                hidden_states = ln1(hidden_states)
+            attn_input = hidden_states
 
             # Some models use different parameter names for KV cache (e.g., GPTNeo uses 'layer_past')
             # Detect which parameter name the original HF attention expects
@@ -196,15 +173,8 @@ class BlockBridge(GeneralizedComponent):
             # Residual connection
             hidden_states = attn_output + residual
 
-            # Gemma2-specific: Apply post_attention_layernorm (ln1_post) after attention
-            # This is the 2nd normalization in Gemma2's 4-normalization architecture
-            ln1_post = getattr(block_self, "post_attention_layernorm", None)
-            if ln1_post is not None:
-                hidden_states = ln1_post(hidden_states)
-
-            # Apply hook_resid_mid (after attention, before ln2)
-            # This matches HookedTransformer where hook_resid_mid is separate from ln2
-            hidden_states = self.hook_resid_mid(hidden_states)
+            # Note: hook_resid_mid is aliased to ln2.hook_in, which will fire
+            # when ln2 is called below (not manually called here)
 
             # Cross attention (if applicable)
             if encoder_hidden_states is not None:
@@ -301,29 +271,27 @@ class BlockBridge(GeneralizedComponent):
                 f"Original component not set for {self.name}. Call set_original_component() first."
             )
 
-        # NOTE: hook_in and hook_out are now applied INSIDE the patched forward
-        # method to match HookedTransformer's architecture. We don't apply them
-        # here in the wrapper to avoid double-wrapping.
+        # Apply hook_in to the primary tensor input before delegating
+        if len(args) > 0 and isinstance(args[0], torch.Tensor):
+            hooked_input = self.hook_in(args[0])
+            args = (hooked_input,) + args[1:]
+        elif "hidden_states" in kwargs and isinstance(kwargs["hidden_states"], torch.Tensor):
+            kwargs["hidden_states"] = self.hook_in(kwargs["hidden_states"])
+
         output = self.original_component(*args, **kwargs)
 
-        # Handle tuple unwrapping based on model architecture
-        # For MoE models: Always unwrap to hidden_states (discard router scores)
-        # For non-MoE models: Only unwrap single-element tuples to preserve
-        # multi-element tuples like (hidden_states, attn_weights) for HF
-        if isinstance(output, tuple):
-            # Check if this is an MoE model by looking for MoEBridge in MLP
-            is_moe = hasattr(self, "submodules") and "mlp" in self.submodules
-            if is_moe:
-                from transformer_lens.model_bridge.generalized_components.moe import (
-                    MoEBridge,
-                )
+        # Apply hook_out on the resulting tensor(s)
+        if isinstance(output, tuple) and len(output) > 0:
+            first = output[0]
+            if isinstance(first, torch.Tensor):
+                first = self.hook_out(first)
+                if len(output) == 1:
+                    return first
+                output = (first,) + output[1:]
+            return output
 
-                is_moe = isinstance(self.submodules["mlp"], MoEBridge)
-
-            # MoE models: always unwrap tuples (router scores are handled in MoEBridge)
-            # Non-MoE models: only unwrap single-element tuples
-            if is_moe or len(output) == 1:
-                return output[0]
+        if isinstance(output, torch.Tensor):
+            output = self.hook_out(output)
 
         return output
 

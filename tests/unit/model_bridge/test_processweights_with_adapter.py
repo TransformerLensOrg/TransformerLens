@@ -4,6 +4,7 @@ Test ProcessWeights with architecture adapter for path translation.
 This validates that ProcessWeights can work with HF format weights using the adapter.
 """
 
+import pytest
 import torch
 from transformers import GPT2LMHeadModel
 
@@ -14,6 +15,7 @@ from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapt
 from transformer_lens.weight_processing import ProcessWeights
 
 
+@pytest.mark.filterwarnings("ignore::pytest.PytestReturnNotNoneWarning")
 def test_processweights_with_adapter():
     """Test ProcessWeights with architecture adapter for path translation."""
     print("=== TESTING PROCESSWEIGHTS WITH ARCHITECTURE ADAPTER ===")

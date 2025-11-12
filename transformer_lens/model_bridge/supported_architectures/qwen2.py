@@ -19,7 +19,26 @@ from transformer_lens.model_bridge.generalized_components import (
 
 
 class Qwen2ArchitectureAdapter(ArchitectureAdapter):
-    """Architecture adapter for Qwen2 models."""
+    """Architecture adapter for Qwen2 models.
+
+    Optional Parameters (may not exist in state_dict):
+    -------------------------------------------------
+    Qwen2 models do NOT have biases on any linear layers:
+
+    - blocks.{i}.attn.b_Q - No bias on query projection
+    - blocks.{i}.attn.b_K - No bias on key projection
+    - blocks.{i}.attn.b_V - No bias on value projection
+    - blocks.{i}.attn.b_O - No bias on output projection
+    - blocks.{i}.mlp.b_in - No bias on MLP input (up_proj)
+    - blocks.{i}.mlp.b_gate - No bias on MLP gate projection
+    - blocks.{i}.mlp.b_out - No bias on MLP output (down_proj)
+    - blocks.{i}.ln1.b - RMSNorm has no bias
+    - blocks.{i}.ln2.b - RMSNorm has no bias
+    - ln_final.b - RMSNorm has no bias
+
+    Weight processing must handle these missing biases gracefully using
+    ProcessWeights._safe_get_tensor() or by checking for None values.
+    """
 
     def __init__(self, cfg: Any) -> None:
         """Initialize the Qwen2 architecture adapter."""

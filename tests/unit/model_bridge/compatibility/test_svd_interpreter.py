@@ -25,10 +25,12 @@ def unfolded_model():
 @pytest.fixture(scope="module")
 def second_model():
     # Use a different model architecture if available, otherwise same model
+    # Note: If gpt2-medium fails to load, tests that need different models will be skipped
     try:
         return TransformerBridge.boot_transformers("gpt2-medium", device="cpu")
-    except:
+    except Exception:
         # Fallback to same model if gpt2-medium is not available
+        # The test will skip if both models end up being the same
         return TransformerBridge.boot_transformers(MODEL, device="cpu")
 
 
@@ -107,8 +109,8 @@ def test_svd_interpreter_returns_different_answers_for_different_layers(model):
 
 
 def test_svd_interpreter_returns_different_answers_for_different_models(model, second_model):
-    # Skip if both models are the same
-    if id(model) == id(second_model):
+    # Skip if both models are the same (check model name/config, not just object ID)
+    if id(model) == id(second_model) or model.cfg.model_name == second_model.cfg.model_name:
         pytest.skip("Same model used for both fixtures")
 
     # Get results from first model

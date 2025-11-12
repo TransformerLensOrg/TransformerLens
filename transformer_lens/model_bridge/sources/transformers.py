@@ -120,9 +120,14 @@ def map_default_transformer_lens_config(hf_config):
     elif hasattr(tl_config, "d_model"):  # Default to 4x for GPT2-style
         tl_config.d_mlp = getattr(hf_config, "n_inner", 4 * tl_config.d_model)
 
-    # Calculate d_head if we have both d_model and n_heads
+    # Map head dimension (prefer calculation from d_model // n_heads over explicit head_dim)
+    # This ensures correctness for models with incorrect head_dim in HF config (e.g., Gemma-3)
     if hasattr(tl_config, "d_model") and hasattr(tl_config, "n_heads"):
+        # Calculate d_head from d_model and n_heads
         tl_config.d_head = tl_config.d_model // tl_config.n_heads
+    elif hasattr(hf_config, "head_dim") and hf_config.head_dim is not None:
+        # Fallback to explicit head_dim from HF config if calculation not possible
+        tl_config.d_head = hf_config.head_dim
 
     # Set activation function
     # Try multiple attribute names for compatibility with different HF configs:
@@ -143,6 +148,10 @@ def map_default_transformer_lens_config(hf_config):
     # Set number of experts per token
     if hasattr(hf_config, "num_experts_per_tok"):
         tl_config.experts_per_token = hf_config.num_experts_per_tok
+
+    # Set sliding window size for models with local attention
+    if hasattr(hf_config, "sliding_window") and hf_config.sliding_window is not None:
+        tl_config.sliding_window = hf_config.sliding_window
 
     # Set common defaults for transformer models
     # Most models were trained with BOS tokens, so default to True
@@ -332,6 +341,18 @@ def boot(
 
     # Determine the correct HuggingFace model class based on architecture
     model_class = get_hf_model_class_for_architecture(architecture)
+
+    # Prepare model loading kwargs
+    model_kwargs = {
+        "config": hf_config,
+        "torch_dtype": dtype,
+    }
+
+    # Add attn_implementation if specified in config
+    # This allows architectures to specify their preferred attention implementation
+    # (e.g., 'sdpa' for Scaled Dot Product Attention, 'eager' for basic implementation)
+    if hasattr(adapter.cfg, "attn_implementation") and adapter.cfg.attn_implementation is not None:
+        model_kwargs["attn_implementation"] = adapter.cfg.attn_implementation
 
     # Load the model from HuggingFace using the appropriate model class
     hf_model = model_class.from_pretrained(

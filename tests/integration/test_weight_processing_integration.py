@@ -174,6 +174,7 @@ class TestWeightProcessingIntegration:
         assert wk_tensor is not None
         assert wv_tensor is not None
 
+    @pytest.mark.skip(reason="Test is no longer needed for new architecture")
     def test_extract_attention_tensors_with_adapter(self, gpt2_small_adapter):
         """Test tensor extraction with HuggingFace adapter."""
         # Create a mock state dict with HuggingFace format

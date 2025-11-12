@@ -122,7 +122,24 @@ class QKVBiasConversion(BaseHookConversion):
 
 
 class GPT2ArchitectureAdapter(ArchitectureAdapter):
-    """Architecture adapter for GPT2 models."""
+    """Architecture adapter for GPT2 models.
+
+    Optional Parameters (may not exist in state_dict):
+    -------------------------------------------------
+    GPT-2 models HAVE biases on ALL linear layers:
+
+    ✓ blocks.{i}.attn.b_Q - Has bias (from combined c_attn.bias)
+    ✓ blocks.{i}.attn.b_K - Has bias (from combined c_attn.bias)
+    ✓ blocks.{i}.attn.b_V - Has bias (from combined c_attn.bias)
+    ✓ blocks.{i}.attn.b_O - Has bias (c_proj.bias)
+    ✓ blocks.{i}.mlp.b_in - Has bias (c_fc.bias)
+    ✓ blocks.{i}.mlp.b_out - Has bias (c_proj.bias)
+    ✓ blocks.{i}.ln1.b - LayerNorm has bias
+    ✓ blocks.{i}.ln2.b - LayerNorm has bias
+    ✓ ln_final.b - LayerNorm has bias
+
+    No optional parameters - all biases exist in GPT-2.
+    """
 
     def __init__(self, cfg: Any) -> None:
         """Initialize the GPT2 architecture adapter."""
@@ -294,7 +311,7 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
                     "mlp": MLPBridge(
                         name="mlp",
                         submodules={
-                            "input": LinearBridge(name="c_fc"),
+                            "in": LinearBridge(name="c_fc"),
                             "out": LinearBridge(name="c_proj"),
                         },
                     ),
@@ -306,12 +323,13 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
 
     def split_qkv_matrix(
         self, original_attention_component: Any
-    ) -> tuple[torch.nn.Linear, torch.nn.Linear, torch.nn.Linear]:
+    ) -> tuple[torch.nn.Module, torch.nn.Module, torch.nn.Module]:
         """Split the QKV matrix into separate linear transformations.
+
         Args:
             attention_component: The original attention layer component
         Returns:
-            Tuple of nn.Linear modules for Q, K, and V transformations
+            Tuple of nn.Linear modules for Q, K, and V transformations (output 3D tensors)
         """
 
         # Keep mypy happy
@@ -337,10 +355,7 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
         qkv_bias = qkv_bias.reshape(3, self.cfg.n_heads * self.cfg.d_head)
         b_Q, b_K, b_V = qkv_bias[0, :], qkv_bias[1, :], qkv_bias[2, :]
 
-        # Create nn.Linear modules
-        # After tensor_split, W_Q, W_K, W_V shapes are [d_model, d_model] ([in_features, out_features])
-        # nn.Linear expects weight shape [out_features, in_features]
-        # So we need to transpose the weights
+        # Create plain nn.Linear modules that output 3D tensors [batch, seq, d_model]
         W_Q_transformation = torch.nn.Linear(W_Q.shape[0], W_Q.shape[1], bias=True)
         W_Q_transformation.weight = torch.nn.Parameter(W_Q.T)
         W_Q_transformation.bias = torch.nn.Parameter(b_Q)

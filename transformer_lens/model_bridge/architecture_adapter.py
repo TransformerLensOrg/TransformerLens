@@ -1057,10 +1057,13 @@ class ArchitectureAdapter:
         """Convert a HuggingFace-style key to a bridge key with _original_component references.
 
         Args:
-            hf_key: The HuggingFace-style key (e.g., "transformer.h.0.attn.c_attn.weight")
+            hf_key: The HuggingFace-style key (e.g., "transformer.h.0.attn.c_attn.weight" or "transformer.h.0.mlp.c_fc.weight")
 
         Returns:
-            The bridge key with _original_component references (e.g., "transformer.h.0._original_component.attn._original_component.c_attn._original_component.weight")
+            The bridge key with _original_component references. Note that attention and MLP components
+            follow different patterns:
+            - Attention: "transformer.h.0._original_component.attn._original_component.c_attn.weight"
+            - MLP: "transformer.h.0._original_component.mlp._original_component.c_fc._original_component.weight"
         """
         # Handle different key patterns
         if "transformer.h." in hf_key:
@@ -1068,13 +1071,13 @@ class ArchitectureAdapter:
             if len(parts) >= 4 and parts[2].isdigit():
                 layer = parts[2]
 
-                # Pattern: transformer.h.X.attn.c_attn.weight -> transformer.h.X._original_component.attn._original_component.c_attn._original_component.weight
+                # Pattern: transformer.h.X.attn.c_attn.weight -> transformer.h.X._original_component.attn._original_component.c_attn.weight
                 if "attn.c_attn" in hf_key:
-                    return f"transformer.h.{layer}._original_component.attn._original_component.c_attn._original_component.{parts[-1]}"
+                    return f"transformer.h.{layer}._original_component.attn._original_component.c_attn.{parts[-1]}"
 
-                # Pattern: transformer.h.X.attn.c_proj.weight -> transformer.h.X._original_component.attn._original_component.c_proj._original_component.weight
+                # Pattern: transformer.h.X.attn.c_proj.weight -> transformer.h.X._original_component.attn._original_component.c_proj.weight
                 elif "attn.c_proj" in hf_key:
-                    return f"transformer.h.{layer}._original_component.attn._original_component.c_proj._original_component.{parts[-1]}"
+                    return f"transformer.h.{layer}._original_component.attn._original_component.c_proj.{parts[-1]}"
 
                 # Pattern: transformer.h.X.mlp.c_fc.weight -> transformer.h.X._original_component.mlp._original_component.c_fc._original_component.weight
                 elif "mlp.c_fc" in hf_key:
@@ -1095,6 +1098,10 @@ class ArchitectureAdapter:
                 # Pattern: transformer.h.X.mlp.input.weight -> transformer.h.X._original_component.mlp.input._original_component.weight
                 elif "mlp.input" in hf_key:
                     return f"transformer.h.{layer}._original_component.mlp.input._original_component.{parts[-1]}"
+
+                # Pattern: transformer.h.X.mlp.in.weight -> transformer.h.X._original_component.mlp.in._original_component.weight
+                elif "mlp.in" in hf_key:
+                    return f"transformer.h.{layer}._original_component.mlp.in._original_component.{parts[-1]}"
 
                 # Pattern: transformer.h.X.mlp.out.weight -> transformer.h.X._original_component.mlp.out._original_component.weight
                 elif "mlp.out" in hf_key:
@@ -1137,6 +1144,93 @@ class ArchitectureAdapter:
 
         # If no pattern matches, return the original key
         return hf_key
+
+    def convert_hf_key_to_tl_key(self, hf_key: str) -> str:
+        """Convert a HuggingFace-style key to TransformerLens format key using component mapping.
+
+        The component mapping keys ARE the TL format names (e.g., "embed", "pos_embed", "blocks").
+        The component.name is the HF path (e.g., "transformer.wte").
+
+        Args:
+            hf_key: The HuggingFace-style key (e.g., "transformer.wte.weight")
+
+        Returns:
+            The TransformerLens format key (e.g., "embed.weight")
+        """
+        if self.component_mapping is None:
+            # If no component mapping, return original key
+            return hf_key
+
+        # Check top-level components first
+        for tl_name, component in self.component_mapping.items():
+            if tl_name == "blocks":
+                continue  # Handle blocks separately
+
+            # The component.name is the HF path (e.g., "transformer.wte")
+            hf_path = component.name
+
+            # Check if the key starts with this component's HF path
+            if hf_path is not None and hf_key.startswith(hf_path + "."):
+                # Extract the parameter name (e.g., "weight", "bias")
+                param = hf_key[len(hf_path) + 1 :]
+                return f"{tl_name}.{param}"
+
+        # Handle blocks (transformer layers)
+        blocks_component = self.component_mapping.get("blocks")
+        if blocks_component:
+            # The blocks component name is the HF prefix (e.g., "transformer.h")
+            hf_blocks_prefix = blocks_component.name
+
+            # Check if this is a block component
+            if hf_blocks_prefix is not None and hf_key.startswith(hf_blocks_prefix + "."):
+                # Extract layer number and rest of path
+                # e.g., "transformer.h.0.ln_1.weight" -> "0.ln_1.weight"
+                rest = hf_key[len(hf_blocks_prefix) + 1 :]
+                parts = rest.split(".", 1)
+
+                if len(parts) >= 2 and parts[0].isdigit():
+                    layer_idx = parts[0]
+                    subkey = parts[1]
+
+                    # Now check submodules within blocks
+                    if hasattr(blocks_component, "submodules"):
+                        for tl_subname, subcomponent in blocks_component.submodules.items():
+                            # The subcomponent.name is the HF path relative to the block
+                            # e.g., "ln_1" for LayerNorm
+                            hf_subpath = subcomponent.name
+
+                            if hf_subpath is not None and subkey.startswith(hf_subpath + "."):
+                                # Extract parameter name
+                                param = subkey[len(hf_subpath) + 1 :]
+                                return f"blocks.{layer_idx}.{tl_subname}.{param}"
+
+                            # Also check for nested submodules (e.g., attn.q, mlp.in)
+                            if hasattr(subcomponent, "submodules"):
+                                for tl_nested_name, nested_comp in subcomponent.submodules.items():
+                                    hf_nested_path = f"{hf_subpath}.{nested_comp.name}"
+
+                                    if subkey.startswith(hf_nested_path + "."):
+                                        param = subkey[len(hf_nested_path) + 1 :]
+                                        return f"blocks.{layer_idx}.{tl_subname}.{tl_nested_name}.{param}"
+
+        # If no mapping found, return original key
+        return hf_key
+
+    def setup_component_testing(self, hf_model: RemoteModel, bridge_model: Any = None) -> None:
+        """Set up model-specific references needed for component testing.
+
+        This hook is called after the adapter is created and has access to the HF model.
+        Subclasses can override this to configure bridges with model-specific components
+        (e.g., rotary embeddings, normalization parameters) needed for get_random_inputs().
+
+        Args:
+            hf_model: The HuggingFace model instance
+            bridge_model: Optional TransformerBridge model instance (for configuring actual bridges)
+
+        Note:
+            This is a no-op in the base class. Override in subclasses as needed.
+        """
+        pass
 
     def enable_ht_computation_for_bridge(self, bridge_model):
         """Enable HT-style computation for bridge components.
@@ -1326,21 +1420,31 @@ class ArchitectureAdapter:
         return W, b
 
     def _extract_output_proj(self, out_proj, n_heads, d_head, d_model):
-        """Extract output projection weights in HT format."""
+        """Extract output projection weights in HT format.
+
+        Returns W_O in [n_heads, d_head, d_model] format for HookedTransformer compatibility.
+
+        For Conv1D (GPT-2), weight is stored as [d_model, d_model] = [nx, nf].
+        For Linear, weight is stored as [d_model, d_model] = [out_features, in_features].
+        """
         weight = out_proj.weight.data
         bias = out_proj.bias.data if hasattr(out_proj, "bias") else None
 
+        # W_O in [n_heads, d_head, d_model] format for HookedTransformer
         W_O = weight.view(n_heads, d_head, d_model).contiguous()
         b_O = bias.contiguous() if bias is not None else None
 
         return W_O, b_O
 
     def _disable_hook_conversions(self, attn_bridge):
-        """Disable hook conversions for attention submodules."""
-        for submodule_name in ["q", "k", "v", "o"]:
-            if hasattr(attn_bridge, submodule_name):
-                submodule = getattr(attn_bridge, submodule_name)
-                if hasattr(submodule, "hook_in"):
-                    submodule.hook_in.hook_conversion = None
-                if hasattr(submodule, "hook_out"):
-                    submodule.hook_out.hook_conversion = None
+        """Disable hook conversions for attention submodules.
+
+        Note: In no_processing mode, we DON'T disable conversions because Q/K/V hooks need
+        to convert from 3D [batch, seq, d_model] to 4D [batch, seq, n_heads, d_head].
+        We also preserve o.hook_in.hook_conversion (hook_z).
+
+        This method is kept for potential future use but currently does nothing in no_processing mode.
+        """
+        # Don't disable any conversions in no_processing mode
+        # All hooks (q, k, v, o) need their conversions to work correctly
+        pass

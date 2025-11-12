@@ -176,15 +176,38 @@ class TestProcessWeights:
         # Check that original dict is not modified
         assert basic_state_dict == original_dict
 
-        # Check that LayerNorm weights are removed
+        # Check that LayerNorm weights are replaced with identity values
+        # (ones for weights, zeros for biases)
         for l in range(basic_config.n_layers):
-            assert f"blocks.{l}.ln1.w" not in processed_dict
-            assert f"blocks.{l}.ln1.b" not in processed_dict
-            assert f"blocks.{l}.ln2.w" not in processed_dict
-            assert f"blocks.{l}.ln2.b" not in processed_dict
+            assert f"blocks.{l}.ln1.w" in processed_dict
+            assert torch.allclose(
+                processed_dict[f"blocks.{l}.ln1.w"],
+                torch.ones_like(processed_dict[f"blocks.{l}.ln1.w"]),
+            )
+            assert f"blocks.{l}.ln1.b" in processed_dict
+            assert torch.allclose(
+                processed_dict[f"blocks.{l}.ln1.b"],
+                torch.zeros_like(processed_dict[f"blocks.{l}.ln1.b"]),
+            )
+            assert f"blocks.{l}.ln2.w" in processed_dict
+            assert torch.allclose(
+                processed_dict[f"blocks.{l}.ln2.w"],
+                torch.ones_like(processed_dict[f"blocks.{l}.ln2.w"]),
+            )
+            assert f"blocks.{l}.ln2.b" in processed_dict
+            assert torch.allclose(
+                processed_dict[f"blocks.{l}.ln2.b"],
+                torch.zeros_like(processed_dict[f"blocks.{l}.ln2.b"]),
+            )
 
-        assert "ln_final.w" not in processed_dict
-        assert "ln_final.b" not in processed_dict
+        assert "ln_final.w" in processed_dict
+        assert torch.allclose(
+            processed_dict["ln_final.w"], torch.ones_like(processed_dict["ln_final.w"])
+        )
+        assert "ln_final.b" in processed_dict
+        assert torch.allclose(
+            processed_dict["ln_final.b"], torch.zeros_like(processed_dict["ln_final.b"])
+        )
 
         # Check that attention and MLP weights are modified
         for l in range(basic_config.n_layers):
@@ -202,13 +225,20 @@ class TestProcessWeights:
             basic_state_dict, basic_config, fold_biases=False
         )
 
-        # When fold_biases=False, LayerNorm biases should NOT be removed
-        # (they're only removed when folding biases into subsequent layers)
+        # When fold_biases=False, LayerNorm biases should NOT be zeroed
+        # (they're only zeroed when folding biases into subsequent layers)
+        # but the ln1.w and ln2.w should be replaced with ones (identity for weight)
         for l in range(basic_config.n_layers):
-            # The ln1.b and ln2.b should still be present when fold_biases=False
-            # but the ln1.w and ln2.w should be removed (folded into weights)
-            assert f"blocks.{l}.ln1.w" not in processed_dict
-            assert f"blocks.{l}.ln2.w" not in processed_dict
+            assert f"blocks.{l}.ln1.w" in processed_dict
+            assert torch.allclose(
+                processed_dict[f"blocks.{l}.ln1.w"],
+                torch.ones_like(processed_dict[f"blocks.{l}.ln1.w"]),
+            )
+            assert f"blocks.{l}.ln2.w" in processed_dict
+            assert torch.allclose(
+                processed_dict[f"blocks.{l}.ln2.w"],
+                torch.ones_like(processed_dict[f"blocks.{l}.ln2.w"]),
+            )
 
     def test_fold_layer_norm_no_centering(self, basic_config, basic_state_dict):
         """Test LayerNorm folding without weight centering."""
@@ -217,8 +247,13 @@ class TestProcessWeights:
         )
 
         # Should still fold weights but not center them
+        # LayerNorm weights replaced with identity values
         for l in range(basic_config.n_layers):
-            assert f"blocks.{l}.ln1.w" not in processed_dict
+            assert f"blocks.{l}.ln1.w" in processed_dict
+            assert torch.allclose(
+                processed_dict[f"blocks.{l}.ln1.w"],
+                torch.ones_like(processed_dict[f"blocks.{l}.ln1.w"]),
+            )
             assert f"blocks.{l}.attn.W_Q" in processed_dict
 
     def test_fold_layer_norm_attn_only(self, attn_only_config, basic_state_dict):
@@ -307,10 +342,18 @@ class TestProcessWeights:
 
         processed_dict = ProcessWeights.fold_layer_norm(state_dict, cfg)
 
-        # Check that SoLU ln weights are removed
+        # Check that SoLU ln weights are replaced with identity values
         for l in range(cfg.n_layers):
-            assert f"blocks.{l}.mlp.ln.w" not in processed_dict
-            assert f"blocks.{l}.mlp.ln.b" not in processed_dict
+            assert f"blocks.{l}.mlp.ln.w" in processed_dict
+            assert torch.allclose(
+                processed_dict[f"blocks.{l}.mlp.ln.w"],
+                torch.ones_like(processed_dict[f"blocks.{l}.mlp.ln.w"]),
+            )
+            assert f"blocks.{l}.mlp.ln.b" in processed_dict
+            assert torch.allclose(
+                processed_dict[f"blocks.{l}.mlp.ln.b"],
+                torch.zeros_like(processed_dict[f"blocks.{l}.mlp.ln.b"]),
+            )
 
     def test_center_writing_weights(self, basic_config, basic_state_dict):
         """Test weight centering functionality."""
@@ -466,11 +509,22 @@ class TestProcessWeights:
         # Check that original dict is not modified
         assert basic_state_dict == original_dict
 
-        # Check that LayerNorm weights are removed
+        # Check that LayerNorm weights are replaced with identity values
         for l in range(basic_config.n_layers):
-            assert f"blocks.{l}.ln1.w" not in processed_dict
-            assert f"blocks.{l}.ln2.w" not in processed_dict
-        assert "ln_final.w" not in processed_dict
+            assert f"blocks.{l}.ln1.w" in processed_dict
+            assert torch.allclose(
+                processed_dict[f"blocks.{l}.ln1.w"],
+                torch.ones_like(processed_dict[f"blocks.{l}.ln1.w"]),
+            )
+            assert f"blocks.{l}.ln2.w" in processed_dict
+            assert torch.allclose(
+                processed_dict[f"blocks.{l}.ln2.w"],
+                torch.ones_like(processed_dict[f"blocks.{l}.ln2.w"]),
+            )
+        assert "ln_final.w" in processed_dict
+        assert torch.allclose(
+            processed_dict["ln_final.w"], torch.ones_like(processed_dict["ln_final.w"])
+        )
 
         # Check that weights are centered
         embed_mean = processed_dict["embed.W_E"].mean(-1, keepdim=True)
@@ -520,8 +574,11 @@ class TestProcessWeights:
         basic_config.normalization_type = "RMS"
         processed_dict = ProcessWeights.process_weights(basic_state_dict, basic_config)
 
-        # LayerNorm weights should be removed (RMS processing)
-        assert "blocks.0.ln1.w" not in processed_dict
+        # LayerNorm weights should be replaced with identity values (RMS processing)
+        assert "blocks.0.ln1.w" in processed_dict
+        assert torch.allclose(
+            processed_dict["blocks.0.ln1.w"], torch.ones_like(processed_dict["blocks.0.ln1.w"])
+        )
 
     def test_process_weights_final_rms(self, basic_config, basic_state_dict):
         """Test processing with final RMS (should skip writing weight centering)."""
@@ -665,7 +722,10 @@ class TestProcessWeights:
 
         # Should work with getattr defaults
         processed_dict = ProcessWeights.fold_layer_norm(state_dict, minimal_config)
-        assert "blocks.0.ln1.w" not in processed_dict
+        assert "blocks.0.ln1.w" in processed_dict
+        assert torch.allclose(
+            processed_dict["blocks.0.ln1.w"], torch.ones_like(processed_dict["blocks.0.ln1.w"])
+        )
 
     def test_extract_state_dict(self):
         """Test the extract_state_dict function with a small model."""
@@ -842,11 +902,23 @@ class TestProcessWeights:
             gqa="",
         )
 
-        # Verify LayerNorm weights are removed
-        assert "blocks.0.ln1.w" not in state_dict
-        assert "blocks.0.ln1.b" not in state_dict
-        assert "blocks.0.ln2.w" not in state_dict
-        assert "blocks.0.ln2.b" not in state_dict
+        # Verify LayerNorm weights are replaced with identity values
+        assert "blocks.0.ln1.w" in state_dict
+        assert torch.allclose(
+            state_dict["blocks.0.ln1.w"], torch.ones_like(state_dict["blocks.0.ln1.w"])
+        )
+        assert "blocks.0.ln1.b" in state_dict
+        assert torch.allclose(
+            state_dict["blocks.0.ln1.b"], torch.zeros_like(state_dict["blocks.0.ln1.b"])
+        )
+        assert "blocks.0.ln2.w" in state_dict
+        assert torch.allclose(
+            state_dict["blocks.0.ln2.w"], torch.ones_like(state_dict["blocks.0.ln2.w"])
+        )
+        assert "blocks.0.ln2.b" in state_dict
+        assert torch.allclose(
+            state_dict["blocks.0.ln2.b"], torch.zeros_like(state_dict["blocks.0.ln2.b"])
+        )
 
         # Verify attention weights are modified (folded and centered)
         w_q_processed = state_dict["blocks.0.attn.W_Q"]
@@ -956,11 +1028,23 @@ class TestProcessWeights:
         assert torch.allclose(state_dict["blocks.0.attn.W_Q"], expected_w_q, atol=1e-6)
         assert torch.allclose(state_dict["blocks.0.attn.b_Q"], expected_b_q, atol=1e-6)
 
-        # Verify LayerNorm weights are removed
-        assert "blocks.0.ln1.w" not in state_dict
-        assert "blocks.0.ln1.b" not in state_dict
-        assert "blocks.0.ln2.w" not in state_dict
-        assert "blocks.0.ln2.b" not in state_dict
+        # Verify LayerNorm weights are replaced with identity values
+        assert "blocks.0.ln1.w" in state_dict
+        assert torch.allclose(
+            state_dict["blocks.0.ln1.w"], torch.ones_like(state_dict["blocks.0.ln1.w"])
+        )
+        assert "blocks.0.ln1.b" in state_dict
+        assert torch.allclose(
+            state_dict["blocks.0.ln1.b"], torch.zeros_like(state_dict["blocks.0.ln1.b"])
+        )
+        assert "blocks.0.ln2.w" in state_dict
+        assert torch.allclose(
+            state_dict["blocks.0.ln2.w"], torch.ones_like(state_dict["blocks.0.ln2.w"])
+        )
+        assert "blocks.0.ln2.b" in state_dict
+        assert torch.allclose(
+            state_dict["blocks.0.ln2.b"], torch.zeros_like(state_dict["blocks.0.ln2.b"])
+        )
 
     def test_fold_layer_no_adapter_without_bias_folding(self, basic_config):
         """Test _fold_layer function without bias folding."""
@@ -1010,8 +1094,14 @@ class TestProcessWeights:
         assert torch.allclose(state_dict["blocks.0.attn.W_Q"], expected_w_q_centered, atol=1e-6)
         assert torch.allclose(state_dict["blocks.0.attn.b_Q"], b_q, atol=1e-6)  # Bias unchanged
 
-        # Verify LayerNorm weights are removed
-        assert "blocks.0.ln1.w" not in state_dict
+        # Verify LayerNorm weights are replaced with identity values
+        assert "blocks.0.ln1.w" in state_dict
+        assert torch.allclose(
+            state_dict["blocks.0.ln1.w"], torch.ones_like(state_dict["blocks.0.ln1.w"])
+        )
         assert "blocks.0.ln1.b" in state_dict  # Should still be present when fold_biases=False
-        assert "blocks.0.ln2.w" not in state_dict
+        assert "blocks.0.ln2.w" in state_dict
+        assert torch.allclose(
+            state_dict["blocks.0.ln2.w"], torch.ones_like(state_dict["blocks.0.ln2.w"])
+        )
         assert "blocks.0.ln2.b" in state_dict  # Should still be present when fold_biases=False

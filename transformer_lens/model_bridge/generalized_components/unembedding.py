@@ -103,7 +103,24 @@ class UnembeddingBridge(GeneralizedComponent):
                 f"Original component not set for {self.name}. Call set_original_component() first."
             )
 
+        # Get the target dtype from the original component's parameters
+        target_dtype = None
+        try:
+            target_dtype = next(self.original_component.parameters()).dtype
+        except StopIteration:
+            # Component has no parameters, keep inputs as-is
+            pass
+
         hidden_states = self.hook_in(hidden_states)
+
+        # Cast to target dtype if needed
+        if (
+            target_dtype is not None
+            and isinstance(hidden_states, torch.Tensor)
+            and hidden_states.is_floating_point()
+        ):
+            hidden_states = hidden_states.to(dtype=target_dtype)
+
         output = self.original_component(hidden_states, **kwargs)
         output = self.hook_out(output)
 
@@ -158,7 +175,7 @@ class UnembeddingBridge(GeneralizedComponent):
             self.register_parameter("_b_U", torch.nn.Parameter(b_U))
         else:
             # Register a zero bias parameter
-            vocab_size = W_U.shape[0]  # W_U is [d_model, d_vocab] transposed
+            vocab_size = W_U.shape[1]  # W_U is [d_model, d_vocab], so vocab_size is shape[1]
             self.register_parameter(
                 "_b_U",
                 torch.nn.Parameter(torch.zeros(vocab_size, device=W_U.device, dtype=W_U.dtype)),

@@ -21,16 +21,16 @@ class MLPBridge(GeneralizedComponent):
     """
 
     hook_aliases = {
-        # hook_pre: Output of input projection before activation
-        # Try "in.hook_out" first (most models), then "input.hook_out" (GPT-2)
-        "hook_pre": ["in.hook_out", "input.hook_out"],
-        # hook_post: After activation, before output projection
+        # hook_pre can be either "in.hook_out" (most models) or "input.hook_out" (GPT-2)
+        "hook_pre": "in.hook_out",
         "hook_post": "out.hook_in",
     }
 
     property_aliases = {
-        "W_in": ["in.weight", "input.weight"],
-        "b_in": ["in.bias", "input.bias"],
+        "W_gate": "gate.weight",
+        "b_gate": "gate.bias",
+        "W_in": "in.weight",
+        "b_in": "in.bias",
         "W_out": "out.weight",
         "b_out": "out.bias",
     }
@@ -113,20 +113,36 @@ class MLPBridge(GeneralizedComponent):
         Returns:
             Output hidden states
         """
-
         # Check if we're using processed weights from a reference model (layer norm folding case)
         # This happens when set_processed_weights has been called
         if hasattr(self, "_use_processed_weights") and self._use_processed_weights:
+            from transformer_lens.utilities.addmm import batch_addmm
+
             hidden_states = args[0]
             # Apply input hook
             hidden_states = self.hook_in(hidden_states)
 
+            # Also fire in.hook_in if it exists (for compatibility)
+            in_module = getattr(self, "in", None) or getattr(self, "input", None)
+            if in_module and hasattr(in_module, "hook_in"):
+                hidden_states = in_module.hook_in(hidden_states)
+
             # Use the processed weights directly with the same computation as reference model
             if hasattr(self, "_processed_W_in") and hasattr(self, "_processed_W_out"):
-                # Input projection using TransformerLens format
-                hidden = torch.nn.functional.linear(
-                    hidden_states, self._processed_W_in.T, self._processed_b_in
+                # Input projection using TransformerLens format weights [d_model, d_mlp]
+                # Use batch_addmm to match HookedTransformer exactly - no transpose needed!
+                # HookedTransformer: batch_addmm(self.b_in, self.W_in, x) where W_in is [d_model, d_mlp]
+                # Handle None bias by creating a zero tensor with the appropriate shape
+                b_in = (
+                    self._processed_b_in
+                    if self._processed_b_in is not None
+                    else torch.zeros(
+                        self._processed_W_in.shape[-1],
+                        device=hidden_states.device,
+                        dtype=hidden_states.dtype,
+                    )
                 )
+                hidden = batch_addmm(b_in, self._processed_W_in, hidden_states)
 
                 # Apply hook_pre (in.hook_out or input.hook_out) - pre-activation hidden state
                 # In compatibility mode, this hook is aliased as "blocks.L.mlp.hook_pre"
@@ -143,10 +159,18 @@ class MLPBridge(GeneralizedComponent):
                 if hasattr(self, "out") and hasattr(self.out, "hook_in"):
                     hidden = self.out.hook_in(hidden)
 
-                # Output projection using TransformerLens format
-                output = torch.nn.functional.linear(
-                    hidden, self._processed_W_out.T, self._processed_b_out
+                # Output projection using TransformerLens format weights [d_mlp, d_model]
+                # Use batch_addmm to match HookedTransformer exactly - no transpose needed!
+                # HookedTransformer: batch_addmm(self.b_out, self.W_out, post_act) where W_out is [d_mlp, d_model]
+                # Handle None bias by creating a zero tensor with the appropriate shape
+                b_out = (
+                    self._processed_b_out
+                    if self._processed_b_out is not None
+                    else torch.zeros(
+                        self._processed_W_out.shape[-1], device=hidden.device, dtype=hidden.dtype
+                    )
                 )
+                output = batch_addmm(b_out, self._processed_W_out, hidden)
             else:
                 # Fallback to original component
                 new_args = (hidden_states,) + args[1:]
@@ -155,18 +179,36 @@ class MLPBridge(GeneralizedComponent):
             # Apply output hook
             output = self.hook_out(output)
 
+            # Also fire out.hook_out if it exists (for compatibility)
+            if hasattr(self, "out") and hasattr(self.out, "hook_out"):
+                output = self.out.hook_out(output)
+
             return output
 
-        if self.original_component is None:
+        # Default path: use original component (unprocessed weights)
+        hidden_states = args[0]
+        hidden_states = self.hook_in(hidden_states)
+
+        # Also fire in.hook_in if it exists (for compatibility)
+        in_module = getattr(self, "in", None) or getattr(self, "input", None)
+        if in_module and hasattr(in_module, "hook_in"):
+            hidden_states = in_module.hook_in(hidden_states)
+
+        new_args = (hidden_states,) + args[1:]
+
+        original_component = self.original_component
+        if original_component is None:
             raise RuntimeError(
                 f"Original component not set for {self.name}. Call set_original_component() first."
             )
 
-        hidden_states = args[0]
-        hidden_states = self.hook_in(hidden_states)
-        new_args = (hidden_states,) + args[1:]
-        output = self.original_component(*new_args, **kwargs)
+        output = original_component(*new_args, **kwargs)
         output = self.hook_out(output)
+
+        # Also fire out.hook_out if it exists (for compatibility)
+        if hasattr(self, "out") and hasattr(self.out, "hook_out"):
+            output = self.out.hook_out(output)
+
         return output
 
     def set_processed_weights(
@@ -176,16 +218,37 @@ class MLPBridge(GeneralizedComponent):
         b_in: torch.Tensor | None = None,
         b_out: torch.Tensor | None = None,
     ) -> None:
-        """Set the processed weights to use when layer norm is folded.
+        """Set the processed weights for use in compatibility mode.
+
+        This stores the processed weights as attributes on the MLP component so they can be
+        used directly in the forward pass without modifying the original component.
 
         Args:
-            W_in: The processed MLP input weight tensor
-            W_out: The processed MLP output weight tensor
+            W_in: The processed MLP input weight tensor [d_model, d_mlp]
+            W_out: The processed MLP output weight tensor [d_mlp, d_model]
             b_in: The processed MLP input bias tensor (optional)
             b_out: The processed MLP output bias tensor (optional)
         """
+
+        if self.original_component is None:
+            raise RuntimeError(f"Original component not set for {self.name}")
+
+        # Store processed weights as attributes for use in forward()
         self._processed_W_in = W_in
         self._processed_W_out = W_out
         self._processed_b_in = b_in
         self._processed_b_out = b_out
         self._use_processed_weights = True
+
+        # Also load into the submodules for property access (e.g., bridge.blocks[0].mlp.W_in)
+        # Get the 'in' and 'out' submodules (LinearBridge instances)
+        in_module = getattr(self, "in", None)
+        out_module = getattr(self, "out", None)
+
+        # Use LinearBridge's set_processed_weights for the 'in' component
+        if in_module and hasattr(in_module, "set_processed_weights"):
+            in_module.set_processed_weights(weight=W_in, bias=b_in)
+
+        # Use LinearBridge's set_processed_weights for the 'out' component
+        if out_module and hasattr(out_module, "set_processed_weights"):
+            out_module.set_processed_weights(weight=W_out, bias=b_out)

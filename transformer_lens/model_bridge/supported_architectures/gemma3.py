@@ -9,14 +9,16 @@ from transformer_lens.conversion_utils.conversion_steps import (
 )
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
-    AttentionBridge,
     BlockBridge,
     EmbeddingBridge,
     LinearBridge,
     MLPBridge,
-    NormalizationBridge,
     RMSNormalizationBridge,
+    RotaryEmbeddingBridge,
     UnembeddingBridge,
+)
+from transformer_lens.model_bridge.generalized_components.gemma3_attention import (
+    PositionEmbeddingsAttentionBridge,
 )
 
 
@@ -30,6 +32,11 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
         self.cfg.gated_mlp = True
 
         self.cfg.uses_rms_norm = True
+
+        # Use SDPA for numerical consistency with HuggingFace
+        # Only set if not already configured
+        if self.cfg.attn_implementation is None:
+            self.cfg.attn_implementation = "sdpa"
 
         self.conversion_rules = HookConversionSet(
             {
@@ -84,22 +91,25 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
         # Set up component mapping with actual bridge instances
         self.component_mapping = {
             "embed": EmbeddingBridge(name="model.embed_tokens"),
-            "rotary_emb": EmbeddingBridge(name="model.rotary_emb"),
-            "rotary_emb_local": EmbeddingBridge(name="model.rotary_emb_local"),
+            "rotary_emb_local": RotaryEmbeddingBridge(
+                name="model.rotary_emb_local", config=self.cfg
+            ),
+            "rotary_emb": RotaryEmbeddingBridge(name="model.rotary_emb", config=self.cfg),
             "blocks": BlockBridge(
                 name="model.layers",
                 submodules={
+                    # All Gemma-3 normalizations use simple RMSNorm pass-through
                     "ln1": RMSNormalizationBridge(name="input_layernorm", config=self.cfg),
-                    "ln1_post": NormalizationBridge(
+                    "ln1_post": RMSNormalizationBridge(
                         name="post_attention_layernorm", config=self.cfg
                     ),
                     "ln2": RMSNormalizationBridge(
                         name="pre_feedforward_layernorm", config=self.cfg
                     ),
-                    "ln2_post": NormalizationBridge(
+                    "ln2_post": RMSNormalizationBridge(
                         name="post_feedforward_layernorm", config=self.cfg
                     ),
-                    "attn": AttentionBridge(
+                    "attn": PositionEmbeddingsAttentionBridge(
                         name="self_attn",
                         config=self.cfg,
                         submodules={
@@ -124,3 +134,41 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
             "ln_final": RMSNormalizationBridge(name="model.norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head"),
         }
+
+    def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
+        """Set up rotary embedding references and native autograd for Gemma-3 component testing.
+
+        Gemma-3 uses dual RoPE (global + local). We set local RoPE (used by 85% of layers)
+        on all attention bridge instances for component testing.
+
+        We also enable use_native_layernorm_autograd on all normalization bridges to ensure
+        they delegate to HuggingFace's exact implementation instead of using manual computation.
+
+        Note: Layers 5, 11, 17, 23 use global RoPE but will use local in component tests.
+        This is an acceptable tradeoff given the shared-instance constraint.
+
+        Args:
+            hf_model: The HuggingFace Gemma-3 model instance
+            bridge_model: The TransformerBridge model (if available, set rotary_emb on actual instances)
+        """
+        # Get rotary embedding instances from the model
+        rotary_emb_local = hf_model.model.rotary_emb_local  # Used by 22/26 layers
+
+        # Set rotary_emb on actual bridge instances in bridge_model if available
+        if bridge_model is not None and hasattr(bridge_model, "blocks"):
+            # Set on each layer's actual attention bridge instance
+            for block in bridge_model.blocks:
+                if hasattr(block, "attn"):
+                    block.attn.set_rotary_emb(rotary_emb_local)
+
+                    # Enable native autograd for q_norm/k_norm to match HF exactly
+                    if hasattr(block.attn, "original_component"):
+                        hf_attn = block.attn.original_component
+                        if hasattr(hf_attn, "q_norm"):
+                            hf_attn.q_norm.use_native_layernorm_autograd = True
+                        if hasattr(hf_attn, "k_norm"):
+                            hf_attn.k_norm.use_native_layernorm_autograd = True
+
+        # Also set on the template for get_generalized_component() calls
+        attn_bridge = self.get_generalized_component("blocks.0.attn")
+        attn_bridge.set_rotary_emb(rotary_emb_local)

@@ -14,6 +14,7 @@ class BenchmarkSeverity(Enum):
     WARNING = "warning"  # ⚠️ PASS with notes - Acceptable differences worth noting
     DANGER = "danger"  # ❌ FAIL - Significant mismatches or failures
     ERROR = "error"  # ❌ ERROR - Test crashed or couldn't run
+    SKIPPED = "skipped"  # ⏭️ SKIPPED - Test skipped (e.g., no reference model available)
 
 
 @dataclass
@@ -33,9 +34,15 @@ class BenchmarkResult:
             BenchmarkSeverity.WARNING: "🟡",
             BenchmarkSeverity.DANGER: "🔴",
             BenchmarkSeverity.ERROR: "❌",
+            BenchmarkSeverity.SKIPPED: "⏭️",
         }
         icon = severity_icons[self.severity]
-        status = "PASS" if self.passed else "FAIL"
+
+        if self.severity == BenchmarkSeverity.SKIPPED:
+            status = "SKIPPED"
+        else:
+            status = "PASS" if self.passed else "FAIL"
+
         result = f"{icon} [{status}] {self.name}: {self.message}"
 
         if self.details:
@@ -177,28 +184,39 @@ def format_results(results: List[BenchmarkResult]) -> str:
         BenchmarkSeverity.WARNING: 0,
         BenchmarkSeverity.DANGER: 0,
         BenchmarkSeverity.ERROR: 0,
+        BenchmarkSeverity.SKIPPED: 0,
     }
 
     passed = 0
     failed = 0
+    skipped = 0
 
     for result in results:
         severity_counts[result.severity] += 1
-        if result.passed:
+        if result.severity == BenchmarkSeverity.SKIPPED:
+            skipped += 1
+        elif result.passed:
             passed += 1
         else:
             failed += 1
 
     # Summary
     total = len(results)
+    run_tests = total - skipped
     output.append(f"\nTotal: {total} tests")
-    output.append(f"Passed: {passed} ({passed/total*100:.1f}%)")
-    output.append(f"Failed: {failed} ({failed/total*100:.1f}%)")
+    if skipped > 0:
+        output.append(f"Run: {run_tests} tests")
+        output.append(f"Skipped: {skipped} tests")
+    if run_tests > 0:
+        output.append(f"Passed: {passed} ({passed/run_tests*100:.1f}%)")
+        output.append(f"Failed: {failed} ({failed/run_tests*100:.1f}%)")
     output.append("")
     output.append(f"🟢 INFO: {severity_counts[BenchmarkSeverity.INFO]}")
     output.append(f"🟡 WARNING: {severity_counts[BenchmarkSeverity.WARNING]}")
     output.append(f"🔴 DANGER: {severity_counts[BenchmarkSeverity.DANGER]}")
     output.append(f"❌ ERROR: {severity_counts[BenchmarkSeverity.ERROR]}")
+    if skipped > 0:
+        output.append(f"⏭️ SKIPPED: {severity_counts[BenchmarkSeverity.SKIPPED]}")
     output.append("")
     output.append("-" * 80)
 
