@@ -5,6 +5,7 @@ from typing import Dict, Optional
 import torch
 
 from transformer_lens import HookedTransformer
+from transformer_lens.benchmarks.hook_structure import validate_hook_shape_compatibility
 from transformer_lens.benchmarks.utils import BenchmarkResult, BenchmarkSeverity
 from transformer_lens.model_bridge import TransformerBridge
 
@@ -15,6 +16,7 @@ def benchmark_backward_hooks(
     reference_model: Optional[HookedTransformer] = None,
     abs_tolerance: float = 0.2,
     rel_tolerance: float = 3e-4,
+    cross_model: bool = False,
 ) -> BenchmarkResult:
     """Benchmark all backward hooks for gradient matching.
 
@@ -24,6 +26,7 @@ def benchmark_backward_hooks(
         reference_model: Optional HookedTransformer reference model
         abs_tolerance: Absolute tolerance for gradient comparison
         rel_tolerance: Relative tolerance for gradient comparison
+        cross_model: If True, uses relaxed dimensional matching instead of exact shape matching
 
     Returns:
         BenchmarkResult with backward hook comparison details
@@ -139,11 +142,21 @@ def benchmark_backward_hooks(
             reference_grad = reference_gradients[hook_name]
 
             # Check shapes
-            if bridge_grad.shape != reference_grad.shape:
-                mismatches.append(
-                    f"{hook_name}: Shape mismatch - Bridge{bridge_grad.shape} vs Ref{reference_grad.shape}"
+            if cross_model:
+                # Use relaxed dimensional matching for cross-model comparison
+                is_compatible, error_msg = validate_hook_shape_compatibility(
+                    bridge_grad.shape, reference_grad.shape, hook_name
                 )
-                continue
+                if not is_compatible:
+                    mismatches.append(f"{hook_name}: {error_msg}")
+                    continue
+            else:
+                # Use exact shape matching for same-model comparison
+                if bridge_grad.shape != reference_grad.shape:
+                    mismatches.append(
+                        f"{hook_name}: Shape mismatch - Bridge{bridge_grad.shape} vs Ref{reference_grad.shape}"
+                    )
+                    continue
 
             # Handle special cases with inf or nan
             bridge_finite = bridge_grad[torch.isfinite(bridge_grad)]
@@ -255,10 +268,16 @@ def benchmark_backward_hooks(
         return result
 
     except Exception as e:
+        import traceback
         return BenchmarkResult(
             name="backward_hooks",
             severity=BenchmarkSeverity.ERROR,
             message=f"Backward hooks check failed: {str(e)}",
+            details={
+                "error_type": type(e).__name__,
+                "error_message": str(e),
+                "traceback": traceback.format_exc(),
+            },
             passed=False,
         )
 
@@ -269,6 +288,7 @@ def benchmark_critical_backward_hooks(
     reference_model: Optional[HookedTransformer] = None,
     abs_tolerance: float = 0.2,
     rel_tolerance: float = 3e-4,
+    cross_model: bool = False,
 ) -> BenchmarkResult:
     """Benchmark critical backward hooks for gradient matching.
 
@@ -278,6 +298,7 @@ def benchmark_critical_backward_hooks(
         reference_model: Optional HookedTransformer reference model
         abs_tolerance: Absolute tolerance for gradient comparison
         rel_tolerance: Relative tolerance for gradient comparison
+        cross_model: If True, uses relaxed dimensional matching instead of exact shape matching
 
     Returns:
         BenchmarkResult with critical backward hook comparison details
@@ -381,11 +402,22 @@ def benchmark_critical_backward_hooks(
             bridge_grad = bridge_gradients[hook_name]
             reference_grad = reference_gradients[hook_name]
 
-            if bridge_grad.shape != reference_grad.shape:
-                mismatches.append(
-                    f"{hook_name}: Shape mismatch - Bridge{bridge_grad.shape} vs Ref{reference_grad.shape}"
+            # Check shapes
+            if cross_model:
+                # Use relaxed dimensional matching for cross-model comparison
+                is_compatible, error_msg = validate_hook_shape_compatibility(
+                    bridge_grad.shape, reference_grad.shape, hook_name
                 )
-                continue
+                if not is_compatible:
+                    mismatches.append(f"{hook_name}: {error_msg}")
+                    continue
+            else:
+                # Use exact shape matching for same-model comparison
+                if bridge_grad.shape != reference_grad.shape:
+                    mismatches.append(
+                        f"{hook_name}: Shape mismatch - Bridge{bridge_grad.shape} vs Ref{reference_grad.shape}"
+                    )
+                    continue
 
             # Compare only finite values
             bridge_finite = bridge_grad[torch.isfinite(bridge_grad)]
@@ -462,10 +494,16 @@ def benchmark_critical_backward_hooks(
         return result
 
     except Exception as e:
+        import traceback
         return BenchmarkResult(
             name="critical_backward_hooks",
             severity=BenchmarkSeverity.ERROR,
             message=f"Critical backward hooks check failed: {str(e)}",
+            details={
+                "error_type": type(e).__name__,
+                "error_message": str(e),
+                "traceback": traceback.format_exc(),
+            },
             passed=False,
         )
 

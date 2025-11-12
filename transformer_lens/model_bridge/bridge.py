@@ -2148,31 +2148,66 @@ class TransformerBridge(nn.Module):
             attn_component.set_processed_weights(W_Q, W_K, W_V, W_O, b_Q, b_K, b_V, b_O)
 
     def _load_mlp_weights(self, mlp_component, layer_idx, processed_weights, verbose: bool = False):
-        """Load MLP weights into the MLPBridge or JointGateUpMLPBridge component.
+        """Load MLP weights into the MLPBridge or GatedMLPBridge component.
 
         Args:
             verbose: If True, print detailed progress messages. Default: False
         """
         from transformer_lens.weight_processing import ProcessWeights
+        from transformer_lens.model_bridge.generalized_components.gated_mlp import GatedMLPBridge
 
         adapter = self.adapter
         cfg = self.cfg
 
-        # processed_weights is already in TL format - directly look up TL keys
-        # Get HF keys from adapter for lookup
-        W_in_key = ProcessWeights._get_param_key(f"blocks.{layer_idx}.mlp.W_in", adapter)
-        W_out_key = ProcessWeights._get_param_key(f"blocks.{layer_idx}.mlp.W_out", adapter)
-        b_in_key = ProcessWeights._get_param_key(f"blocks.{layer_idx}.mlp.b_in", adapter)
-        b_out_key = ProcessWeights._get_param_key(f"blocks.{layer_idx}.mlp.b_out", adapter)
+        # Check if this is a gated MLP
+        is_gated = isinstance(mlp_component, GatedMLPBridge)
 
-        W_in = processed_weights.get(W_in_key)
-        W_out = processed_weights.get(W_out_key)
-        b_in = processed_weights.get(b_in_key)
-        b_out = processed_weights.get(b_out_key)
+        # Get the MLP prefix from the adapter (e.g., "model.layers.0.mlp" for Gemma)
+        # We need to extract the HF prefix for looking up processed weights
+        base_key = ProcessWeights._get_param_key(f"blocks.{layer_idx}.mlp.W_in", adapter)
+        # base_key will be something like "model.layers.0.mlp.up_proj.weight"
+        # Extract the MLP prefix (everything before the projection name)
+        parts = base_key.rsplit(".", 2)  # Split off last two parts (e.g., "up_proj" and "weight")
+        if len(parts) == 3:
+            mlp_prefix = parts[0]  # "model.layers.0.mlp"
+        else:
+            mlp_prefix = base_key.rsplit(".", 1)[0]  # Fallback
 
-        if W_in is None or W_out is None:
-            return
-        mlp_component.set_processed_weights(W_in, W_out, b_in, b_out)
+        # processed_weights stores split weights at keys like "model.layers.0.mlp.gate.weight"
+        if is_gated:
+            # Gated MLP needs W_gate, W_in, W_out
+            W_gate_key = f"{mlp_prefix}.gate.weight"
+            W_in_key = f"{mlp_prefix}.in.weight"
+            W_out_key = f"{mlp_prefix}.out.weight"
+            b_gate_key = f"{mlp_prefix}.gate.bias"
+            b_in_key = f"{mlp_prefix}.in.bias"
+            b_out_key = f"{mlp_prefix}.out.bias"
+
+            W_gate = processed_weights.get(W_gate_key)
+            W_in = processed_weights.get(W_in_key)
+            W_out = processed_weights.get(W_out_key)
+            b_gate = processed_weights.get(b_gate_key)
+            b_in = processed_weights.get(b_in_key)
+            b_out = processed_weights.get(b_out_key)
+
+            if W_gate is None or W_in is None or W_out is None:
+                return
+            mlp_component.set_processed_weights(W_gate, W_in, W_out, b_gate, b_in, b_out)
+        else:
+            # Regular MLP needs W_in, W_out
+            W_in_key = ProcessWeights._get_param_key(f"blocks.{layer_idx}.mlp.W_in", adapter)
+            W_out_key = ProcessWeights._get_param_key(f"blocks.{layer_idx}.mlp.W_out", adapter)
+            b_in_key = ProcessWeights._get_param_key(f"blocks.{layer_idx}.mlp.b_in", adapter)
+            b_out_key = ProcessWeights._get_param_key(f"blocks.{layer_idx}.mlp.b_out", adapter)
+
+            W_in = processed_weights.get(W_in_key)
+            W_out = processed_weights.get(W_out_key)
+            b_in = processed_weights.get(b_in_key)
+            b_out = processed_weights.get(b_out_key)
+
+            if W_in is None or W_out is None:
+                return
+            mlp_component.set_processed_weights(W_in, W_out, b_in, b_out)
 
     def _load_unembed_weights(self, verbose: bool = False):
         """Load unembedding weights into the UnembeddingBridge component.

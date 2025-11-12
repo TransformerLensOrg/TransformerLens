@@ -614,9 +614,15 @@ def benchmark_activation_cache_structure(
         )
 
     except Exception as e:
+        import traceback
         return BenchmarkResult(
             name="activation_cache_structure",
             severity=BenchmarkSeverity.ERROR,
             message=f"Activation cache structure check failed: {str(e)}",
+            details={
+                "error_type": type(e).__name__,
+                "error_message": str(e),
+                "traceback": traceback.format_exc(),
+            },
             passed=False,
         )

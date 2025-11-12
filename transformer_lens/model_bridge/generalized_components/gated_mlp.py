@@ -82,7 +82,7 @@ class GatedMLPBridge(GeneralizedComponent):
             if hasattr(self, "_processed_W_gate") and hasattr(self, "_processed_W_in"):
                 # Gate projection
                 gate_output = torch.nn.functional.linear(
-                    hidden_states, self._processed_W_gate.T, self._processed_b_gate
+                    hidden_states, self._processed_W_gate, self._processed_b_gate
                 )
 
                 # Apply hook_pre (gate.hook_out) - gate output before activation
@@ -91,7 +91,7 @@ class GatedMLPBridge(GeneralizedComponent):
 
                 # Input projection (linear component)
                 linear_output = torch.nn.functional.linear(
-                    hidden_states, self._processed_W_in.T, self._processed_b_in
+                    hidden_states, self._processed_W_in, self._processed_b_in
                 )
 
                 # Apply hook_pre_linear (in.hook_out) - linear component before gating
@@ -138,7 +138,7 @@ class GatedMLPBridge(GeneralizedComponent):
 
                 # Output projection
                 output = torch.nn.functional.linear(
-                    hidden, self._processed_W_out.T, self._processed_b_out
+                    hidden, self._processed_W_out, self._processed_b_out
                 )
             else:
                 # Fallback to original component

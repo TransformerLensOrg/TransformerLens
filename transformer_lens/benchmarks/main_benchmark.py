@@ -560,14 +560,13 @@ def run_benchmark_suite(
             if verbose:
                 print(f"✗ Could not load processed HookedTransformer: {str(e)}\n")
 
-    # Try loading GPT-2 as structural reference if HT not available for this model
+    # Automatically load GPT-2 as cross-model reference if HT not available for this model
     gpt2_reference = None
-    use_gpt2_fallback = False
     if use_ht_reference and ht_model_processed is None and model_name.lower() != "gpt2":
         try:
             if verbose:
                 print("HookedTransformer not available for this model.")
-                print("Loading GPT-2 as structural reference for hook validation...\n")
+                print("Loading GPT-2 as cross-model reference for hook validation...\n")
             gpt2_reference = HookedTransformer.from_pretrained(
                 "gpt2",
                 device=device,
@@ -577,12 +576,11 @@ def run_benchmark_suite(
                 fold_value_biases=True,
                 refactor_factored_attn_matrices=False,
             )
-            use_gpt2_fallback = True
             if verbose:
-                print("✓ GPT-2 structural reference loaded\n")
+                print("✓ GPT-2 cross-model reference loaded\n")
         except Exception as e:
             if verbose:
-                print(f"✗ Could not load GPT-2 structural reference: {str(e)}\n")
+                print(f"✗ Could not load GPT-2 cross-model reference: {str(e)}\n")
 
     # Run Phase 3 benchmarks
     if bridge_processed:
@@ -665,12 +663,12 @@ def run_benchmark_suite(
             except Exception as e:
                 if verbose:
                     print(f"✗ Hook benchmark failed: {e}\n")
-        elif use_gpt2_fallback and gpt2_reference is not None:
-            # Use GPT-2 for structural validation only
+        elif gpt2_reference is not None:
+            # Use GPT-2 for cross-model validation with dimensional matching
             try:
                 if verbose:
-                    print("Using GPT-2 for structural validation (shapes, existence, firing)")
-                # Structure-only benchmarks with cross-model comparison
+                    print("Using GPT-2 for cross-model validation (dimensional matching)")
+                # Cross-model benchmarks with dimensional matching
                 add_result(
                     benchmark_hook_registry(bridge_processed, reference_model=gpt2_reference)
                 )
@@ -680,25 +678,21 @@ def run_benchmark_suite(
                     )
                 )
                 add_result(
-                    benchmark_forward_hooks_structure(
+                    benchmark_critical_forward_hooks(
                         bridge_processed,
                         test_text,
                         reference_model=gpt2_reference,
                         cross_model=True,
                     )
                 )
-                # Value benchmarks are skipped
-                if verbose:
-                    print("⏭️ Value comparison skipped (requires same-model HT reference)\n")
-                for benchmark_name in ["critical_forward_hooks_values", "forward_hooks_values"]:
-                    add_result(
-                        BenchmarkResult(
-                            name=benchmark_name,
-                            severity=BenchmarkSeverity.SKIPPED,
-                            message="Skipped (value comparison requires same-model HT reference)",
-                            passed=True,
-                        )
+                add_result(
+                    benchmark_forward_hooks(
+                        bridge_processed,
+                        test_text,
+                        reference_model=gpt2_reference,
+                        cross_model=True,
                     )
+                )
                 # Reset hooks
                 if hasattr(bridge_processed, "reset_hooks"):
                     bridge_processed.reset_hooks()
@@ -707,7 +701,7 @@ def run_benchmark_suite(
                 gc.collect()
             except Exception as e:
                 if verbose:
-                    print(f"✗ Hook structure benchmark failed: {e}\n")
+                    print(f"✗ Hook benchmark failed: {e}\n")
         else:
             if verbose:
                 print("⏭️ Skipped (no HookedTransformer reference)\n")
@@ -755,38 +749,33 @@ def run_benchmark_suite(
             except Exception as e:
                 if verbose:
                     print(f"✗ Gradient benchmark failed: {e}\n")
-        elif use_gpt2_fallback and gpt2_reference is not None:
-            # Use GPT-2 for structural validation of backward hooks
+        elif gpt2_reference is not None:
+            # Use GPT-2 for cross-model validation with dimensional matching
             try:
                 if verbose:
-                    print("Using GPT-2 for backward hook structural validation")
-                # Structure-only benchmark with cross-model comparison
+                    print("Using GPT-2 for backward hook cross-model validation (dimensional matching)")
+                # Cross-model benchmarks with dimensional matching
                 add_result(
-                    benchmark_backward_hooks_structure(
+                    benchmark_gradient_computation(
+                        bridge_processed, test_text, reference_model=gpt2_reference
+                    )
+                )
+                add_result(
+                    benchmark_critical_backward_hooks(
                         bridge_processed,
                         test_text,
                         reference_model=gpt2_reference,
                         cross_model=True,
                     )
                 )
-                # Value benchmarks are skipped
-                if verbose:
-                    print(
-                        "⏭️ Gradient value comparison skipped (requires same-model HT reference)\n"
+                add_result(
+                    benchmark_backward_hooks(
+                        bridge_processed,
+                        test_text,
+                        reference_model=gpt2_reference,
+                        cross_model=True,
                     )
-                for benchmark_name in [
-                    "gradient_computation_values",
-                    "critical_backward_hooks_values",
-                    "backward_hooks_values",
-                ]:
-                    add_result(
-                        BenchmarkResult(
-                            name=benchmark_name,
-                            severity=BenchmarkSeverity.SKIPPED,
-                            message="Skipped (gradient value comparison requires same-model HT reference)",
-                            passed=True,
-                        )
-                    )
+                )
                 # Reset hooks
                 if hasattr(bridge_processed, "reset_hooks"):
                     bridge_processed.reset_hooks()
@@ -795,7 +784,7 @@ def run_benchmark_suite(
                 gc.collect()
             except Exception as e:
                 if verbose:
-                    print(f"✗ Backward hooks structure benchmark failed: {e}\n")
+                    print(f"✗ Backward hooks benchmark failed: {e}\n")
         else:
             if verbose:
                 print("⏭️ Skipped (no HookedTransformer reference)\n")
@@ -883,7 +872,7 @@ def run_benchmark_suite(
             except Exception as e:
                 if verbose:
                     print(f"✗ Activation cache benchmark failed: {e}\n")
-        elif use_gpt2_fallback and gpt2_reference is not None:
+        elif gpt2_reference is not None:
             # Use GPT-2 for structural validation of cache
             try:
                 if verbose:

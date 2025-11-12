@@ -504,6 +504,7 @@ def benchmark_forward_hooks(
     reference_model: Optional[HookedTransformer] = None,
     tolerance: float = 0.5,
     prepend_bos: Optional[bool] = None,
+    cross_model: bool = False,
 ) -> BenchmarkResult:
     """Benchmark all forward hooks for activation matching.
 
@@ -513,6 +514,7 @@ def benchmark_forward_hooks(
         reference_model: Optional HookedTransformer for comparison
         tolerance: Tolerance for activation matching (fraction of mismatches allowed)
         prepend_bos: Whether to prepend BOS token. If None, uses model default.
+        cross_model: If True, uses relaxed dimensional matching instead of exact shape matching
 
     Returns:
         BenchmarkResult with hook activation comparison details
@@ -654,11 +656,21 @@ def benchmark_forward_hooks(
             reference_tensor = reference_activations[hook_name]
 
             # Check shapes
-            if bridge_tensor.shape != reference_tensor.shape:
-                mismatches.append(
-                    f"{hook_name}: Shape mismatch - Bridge{bridge_tensor.shape} vs Ref{reference_tensor.shape}"
+            if cross_model:
+                # Use relaxed dimensional matching for cross-model comparison
+                is_compatible, error_msg = validate_hook_shape_compatibility(
+                    bridge_tensor.shape, reference_tensor.shape, hook_name
                 )
-                continue
+                if not is_compatible:
+                    mismatches.append(f"{hook_name}: {error_msg}")
+                    continue
+            else:
+                # Use exact shape matching for same-model comparison
+                if bridge_tensor.shape != reference_tensor.shape:
+                    mismatches.append(
+                        f"{hook_name}: Shape mismatch - Bridge{bridge_tensor.shape} vs Ref{reference_tensor.shape}"
+                    )
+                    continue
 
             # Check values
             if not torch.allclose(bridge_tensor, reference_tensor, atol=tolerance, rtol=0):
@@ -717,6 +729,7 @@ def benchmark_critical_forward_hooks(
     test_text: str,
     reference_model: Optional[HookedTransformer] = None,
     tolerance: float = 2e-2,
+    cross_model: bool = False,
 ) -> BenchmarkResult:
     """Benchmark critical forward hooks commonly used in interpretability research.
 
@@ -725,6 +738,7 @@ def benchmark_critical_forward_hooks(
         test_text: Input text for testing
         reference_model: Optional HookedTransformer reference model
         tolerance: Tolerance for activation comparison
+        cross_model: If True, uses relaxed dimensional matching instead of exact shape matching
 
     Returns:
         BenchmarkResult with critical hook comparison details
@@ -838,11 +852,22 @@ def benchmark_critical_forward_hooks(
             bridge_tensor = bridge_activations[hook_name]
             reference_tensor = reference_activations[hook_name]
 
-            if bridge_tensor.shape != reference_tensor.shape:
-                mismatches.append(
-                    f"{hook_name}: Shape mismatch - Bridge{bridge_tensor.shape} vs Ref{reference_tensor.shape}"
+            # Check shapes
+            if cross_model:
+                # Use relaxed dimensional matching for cross-model comparison
+                is_compatible, error_msg = validate_hook_shape_compatibility(
+                    bridge_tensor.shape, reference_tensor.shape, hook_name
                 )
-                continue
+                if not is_compatible:
+                    mismatches.append(f"{hook_name}: {error_msg}")
+                    continue
+            else:
+                # Use exact shape matching for same-model comparison
+                if bridge_tensor.shape != reference_tensor.shape:
+                    mismatches.append(
+                        f"{hook_name}: Shape mismatch - Bridge{bridge_tensor.shape} vs Ref{reference_tensor.shape}"
+                    )
+                    continue
 
             if not torch.allclose(bridge_tensor, reference_tensor, atol=tolerance, rtol=0):
                 max_diff = torch.max(torch.abs(bridge_tensor - reference_tensor)).item()
@@ -909,10 +934,16 @@ def benchmark_critical_forward_hooks(
         )
 
     except Exception as e:
+        import traceback
         return BenchmarkResult(
             name="critical_forward_hooks",
             severity=BenchmarkSeverity.ERROR,
             message=f"Critical hooks check failed: {str(e)}",
+            details={
+                "error_type": type(e).__name__,
+                "error_message": str(e),
+                "traceback": traceback.format_exc(),
+            },
             passed=False,
         )
 
@@ -988,9 +1019,15 @@ def benchmark_hook_functionality(
         )
 
     except Exception as e:
+        import traceback
         return BenchmarkResult(
             name="hook_functionality",
             severity=BenchmarkSeverity.ERROR,
             message=f"Hook functionality check failed: {str(e)}",
+            details={
+                "error_type": type(e).__name__,
+                "error_message": str(e),
+                "traceback": traceback.format_exc(),
+            },
             passed=False,
         )

@@ -1341,11 +1341,17 @@ class ArchitectureAdapter:
             and hasattr(hf_mlp, "up_proj")
             and hasattr(hf_mlp, "down_proj")
         ):
-            # LLaMA style
+            # LLaMA/Gemma style (gated MLP)
+            W_gate = hf_mlp.gate_proj.weight.data.T
+            b_gate = hf_mlp.gate_proj.bias.data if hasattr(hf_mlp.gate_proj, "bias") else None
             W_in = hf_mlp.up_proj.weight.data.T
             b_in = hf_mlp.up_proj.bias.data if hasattr(hf_mlp.up_proj, "bias") else None
             W_out = hf_mlp.down_proj.weight.data.T
             b_out = hf_mlp.down_proj.bias.data if hasattr(hf_mlp.down_proj, "bias") else None
+
+            # Gated MLPs need all 3 weight matrices
+            mlp_bridge.set_processed_weights(W_gate, W_in, W_out, b_gate, b_in, b_out)
+            return
 
         else:
             raise ValueError(f"Unsupported MLP architecture. Module has attributes: {dir(hf_mlp)}")
