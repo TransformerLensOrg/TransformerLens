@@ -111,7 +111,24 @@ class UnembeddingBridge(GeneralizedComponent):
                 f"Original component not set for {self.name}. Call set_original_component() first."
             )
 
+        # Get the target dtype from the original component's parameters
+        target_dtype = None
+        try:
+            target_dtype = next(self.original_component.parameters()).dtype
+        except StopIteration:
+            # Component has no parameters, keep inputs as-is
+            pass
+
         hidden_states = self.hook_in(hidden_states)
+
+        # Cast to target dtype if needed
+        if (
+            target_dtype is not None
+            and isinstance(hidden_states, torch.Tensor)
+            and hidden_states.is_floating_point()
+        ):
+            hidden_states = hidden_states.to(dtype=target_dtype)
+
         output = self.original_component(hidden_states, **kwargs)
 
         # Apply logit soft-capping if configured (e.g., for Gemma-2)

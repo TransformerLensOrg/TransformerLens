@@ -22,7 +22,7 @@ class MLPBridge(GeneralizedComponent):
 
     hook_aliases = {
         # hook_pre can be either "in.hook_out" (most models) or "input.hook_out" (GPT-2)
-        "hook_pre": ["in.hook_out", "input.hook_out"],
+        "hook_pre": "in.hook_out",
         "hook_post": "out.hook_in",
     }
 
@@ -62,7 +62,6 @@ class MLPBridge(GeneralizedComponent):
         Returns:
             Output hidden states
         """
-
         # Check if we're using processed weights from a reference model (layer norm folding case)
         # This happens when set_processed_weights has been called
         if hasattr(self, "_use_processed_weights") and self._use_processed_weights:
@@ -71,6 +70,11 @@ class MLPBridge(GeneralizedComponent):
             hidden_states = args[0]
             # Apply input hook
             hidden_states = self.hook_in(hidden_states)
+
+            # Also fire in.hook_in if it exists (for compatibility)
+            in_module = getattr(self, "in", None) or getattr(self, "input", None)
+            if in_module and hasattr(in_module, "hook_in"):
+                hidden_states = in_module.hook_in(hidden_states)
 
             # Use the processed weights directly with the same computation as reference model
             if hasattr(self, "_processed_W_in") and hasattr(self, "_processed_W_out"):
@@ -124,6 +128,10 @@ class MLPBridge(GeneralizedComponent):
             # Apply output hook
             output = self.hook_out(output)
 
+            # Also fire out.hook_out if it exists (for compatibility)
+            if hasattr(self, "out") and hasattr(self.out, "hook_out"):
+                output = self.out.hook_out(output)
+
             return output
 
         if self.original_component is None:
@@ -144,9 +152,27 @@ class MLPBridge(GeneralizedComponent):
             new_args = ()
 
         hidden_states = self.hook_in(hidden_states)
-        new_args = (hidden_states,) + new_args
-        output = self.original_component(*new_args, **kwargs)
+
+        # Also fire in.hook_in if it exists (for compatibility)
+        in_module = getattr(self, "in", None) or getattr(self, "input", None)
+        if in_module and hasattr(in_module, "hook_in"):
+            hidden_states = in_module.hook_in(hidden_states)
+
+        new_args = (hidden_states,) + args[1:]
+
+        original_component = self.original_component
+        if original_component is None:
+            raise RuntimeError(
+                f"Original component not set for {self.name}. Call set_original_component() first."
+            )
+
+        output = original_component(*new_args, **kwargs)
         output = self.hook_out(output)
+
+        # Also fire out.hook_out if it exists (for compatibility)
+        if hasattr(self, "out") and hasattr(self.out, "hook_out"):
+            output = self.out.hook_out(output)
+
         return output
 
     def set_processed_weights(
@@ -156,16 +182,37 @@ class MLPBridge(GeneralizedComponent):
         b_in: torch.Tensor | None = None,
         b_out: torch.Tensor | None = None,
     ) -> None:
-        """Set the processed weights to use when layer norm is folded.
+        """Set the processed weights for use in compatibility mode.
+
+        This stores the processed weights as attributes on the MLP component so they can be
+        used directly in the forward pass without modifying the original component.
 
         Args:
-            W_in: The processed MLP input weight tensor
-            W_out: The processed MLP output weight tensor
+            W_in: The processed MLP input weight tensor [d_model, d_mlp]
+            W_out: The processed MLP output weight tensor [d_mlp, d_model]
             b_in: The processed MLP input bias tensor (optional)
             b_out: The processed MLP output bias tensor (optional)
         """
+
+        if self.original_component is None:
+            raise RuntimeError(f"Original component not set for {self.name}")
+
+        # Store processed weights as attributes for use in forward()
         self._processed_W_in = W_in
         self._processed_W_out = W_out
         self._processed_b_in = b_in
         self._processed_b_out = b_out
         self._use_processed_weights = True
+
+        # Also load into the submodules for property access (e.g., bridge.blocks[0].mlp.W_in)
+        # Get the 'in' and 'out' submodules (LinearBridge instances)
+        in_module = getattr(self, "in", None)
+        out_module = getattr(self, "out", None)
+
+        # Use LinearBridge's set_processed_weights for the 'in' component
+        if in_module and hasattr(in_module, "set_processed_weights"):
+            in_module.set_processed_weights(weight=W_in, bias=b_in)
+
+        # Use LinearBridge's set_processed_weights for the 'out' component
+        if out_module and hasattr(out_module, "set_processed_weights"):
+            out_module.set_processed_weights(weight=W_out, bias=b_out)

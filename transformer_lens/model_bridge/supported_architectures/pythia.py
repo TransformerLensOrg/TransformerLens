@@ -135,9 +135,10 @@ class PythiaArchitectureAdapter(ArchitectureAdapter):
             }
         )
 
+        # NOTE: rotary_emb is not included in component_mapping because it's an internal helper
+        # used by attention, not a standalone testable component
         self.component_mapping = {
             "embed": EmbeddingBridge(name="gpt_neox.embed_in"),
-            "rotary_emb": EmbeddingBridge(name="gpt_neox.rotary_emb"),
             "blocks": BlockBridge(
                 name="gpt_neox.layers",
                 submodules={
@@ -147,6 +148,7 @@ class PythiaArchitectureAdapter(ArchitectureAdapter):
                         name="attention",
                         config=self.cfg,
                         split_qkv_matrix=self.split_qkv_matrix,
+                        requires_attention_mask=True,  # GPTNeoX/Pythia requires attention_mask
                         submodules={
                             "qkv": LinearBridge(name="query_key_value"),
                             "o": LinearBridge(name="dense"),

@@ -107,6 +107,14 @@ class EmbeddingBridge(GeneralizedComponent):
                 f"Original component not set for {self.name}. Call set_original_component() first."
             )
 
+        # Get the target dtype from the original component's weight
+        target_dtype = None
+        try:
+            target_dtype = next(self.original_component.parameters()).dtype
+        except StopIteration:
+            # Component has no parameters, keep inputs as-is
+            pass
+
         # Apply input hook
         input_ids = self.hook_in(input_ids)
 
@@ -123,6 +131,10 @@ class EmbeddingBridge(GeneralizedComponent):
         # Some models return tuples; extract embeddings
         if isinstance(output, tuple) and len(output) == 1:
             output = output[0]
+
+        # Ensure output dtype matches original component's dtype
+        if target_dtype is not None and output.dtype != target_dtype:
+            output = output.to(dtype=target_dtype)
 
         # Apply output hook
         output = self.hook_out(output)

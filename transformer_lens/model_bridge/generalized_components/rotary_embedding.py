@@ -39,6 +39,53 @@ class RotaryEmbeddingBridge(GeneralizedComponent):
         self.hook_cos = HookPoint()
         self.hook_sin = HookPoint()
 
+    def get_random_inputs(
+        self,
+        batch_size: int = 2,
+        seq_len: int = 8,
+        device: Optional[torch.device] = None,
+        dtype: Optional[torch.dtype] = None,
+    ) -> Dict[str, Any]:
+        """Generate random inputs for rotary embedding testing.
+
+        Rotary embeddings for Gemma-3 expect (x, position_ids) where:
+        - x: tensor with shape [batch, seq, num_heads, head_dim]
+        - position_ids: position indices with shape [batch, seq]
+
+        Args:
+            batch_size: Batch size for generated inputs
+            seq_len: Sequence length for generated inputs
+            device: Device to place tensors on
+            dtype: Dtype for generated tensors
+
+        Returns:
+            Dictionary with positional args as tuple under 'args' key
+        """
+        if device is None:
+            device = torch.device("cpu")
+        if dtype is None:
+            dtype = torch.float32
+
+        # Get model dimensions from config if available
+        if self.config and hasattr(self.config, "num_attention_heads"):
+            num_heads = self.config.num_attention_heads
+        else:
+            num_heads = 4  # fallback
+
+        if self.config and hasattr(self.config, "head_dim"):
+            head_dim = self.config.head_dim
+        else:
+            head_dim = 256  # fallback
+
+        # Create dummy x tensor (like Q or K)
+        x = torch.randn(batch_size, seq_len, num_heads, head_dim, device=device, dtype=dtype)
+
+        # Create position_ids
+        position_ids = torch.arange(seq_len, device=device).unsqueeze(0).expand(batch_size, -1)
+
+        # Return as positional args (not kwargs, since Gemma3RotaryEmbedding uses positional)
+        return {"args": (x, position_ids)}
+
     def forward(
         self,
         *args: Any,

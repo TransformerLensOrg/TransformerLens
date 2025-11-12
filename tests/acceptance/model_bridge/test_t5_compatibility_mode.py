@@ -142,10 +142,11 @@ class TestT5CompatibilityMode:
         # Check that hooks are registered
         assert len(bridge_model._hook_registry) > 0, "Hook registry should not be empty"
 
-        # Should have hundreds of hooks (encoder + decoder)
+        # Should have hundreds of canonical hooks (encoder + decoder)
+        # Note: _hook_registry only contains canonical hooks, not aliases
         assert (
-            len(bridge_model._hook_registry) > 500
-        ), f"Expected >500 hooks, got {len(bridge_model._hook_registry)}"
+            len(bridge_model._hook_registry) > 400
+        ), f"Expected >400 hooks, got {len(bridge_model._hook_registry)}"
 
     def test_critical_hooks_accessible(self, bridge_model):
         """Test that critical hooks are accessible after compatibility mode."""

@@ -227,16 +227,18 @@ def test_joint_qkv_custom_conversion_rule(gpt2_bridge):
         qkv_conversion_rule=custom_qkv_conversion_rule,
     )
 
-    # Verify the custom conversion rule was set on Q, K, V components
+    # Verify the custom conversion rule was set on Q, K, V hook_out (not hook_in)
+    # hook_in should remain 3D [batch, seq, d_model] without conversion
+    # hook_out gets the conversion to 4D [batch, seq, n_heads, d_head]
     assert (
-        test_bridge.q.hook_in.hook_conversion is custom_qkv_conversion_rule
-    ), "Custom QKV conversion rule should be set on hook_in of Q"
+        test_bridge.q.hook_in.hook_conversion is None
+    ), "hook_in should NOT have conversion (should be 3D)"
     assert (
-        test_bridge.k.hook_in.hook_conversion is custom_qkv_conversion_rule
-    ), "Custom QKV conversion rule should be set on hook_in of K"
+        test_bridge.k.hook_in.hook_conversion is None
+    ), "hook_in should NOT have conversion (should be 3D)"
     assert (
-        test_bridge.v.hook_in.hook_conversion is custom_qkv_conversion_rule
-    ), "Custom QKV conversion rule should be set on hook_in of V"
+        test_bridge.v.hook_in.hook_conversion is None
+    ), "hook_in should NOT have conversion (should be 3D)"
     assert (
         test_bridge.q.hook_out.hook_conversion is custom_qkv_conversion_rule
     ), "Custom QKV conversion rule should be set on hook_out of Q"

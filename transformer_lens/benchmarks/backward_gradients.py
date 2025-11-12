@@ -69,12 +69,18 @@ def benchmark_backward_hooks(
 
         if reference_model is None:
             # No reference - just verify gradients were captured
-            return BenchmarkResult(
+            result = BenchmarkResult(
                 name="backward_hooks",
                 severity=BenchmarkSeverity.INFO,
                 message=f"Bridge captured {len(bridge_gradients)} backward hook gradients",
                 details={"gradient_count": len(bridge_gradients)},
             )
+
+            # Clear model gradients (variables will be GC'd when function returns)
+            if hasattr(bridge, "zero_grad"):
+                bridge.zero_grad()
+
+            return result
 
         # Register backward hooks on reference model
         def make_reference_backward_hook(name: str):
@@ -187,7 +193,7 @@ def benchmark_backward_hooks(
             ]
 
             if len(acceptable_mismatches) == len(mismatches):
-                return BenchmarkResult(
+                result = BenchmarkResult(
                     name="backward_hooks",
                     severity=BenchmarkSeverity.WARNING,
                     message=f"All mismatches due to known architectural differences ({len(mismatches)} hooks)",
@@ -197,9 +203,17 @@ def benchmark_backward_hooks(
                         "excluded": len(excluded_hooks),
                     },
                 )
+
+                # Clear model gradients (variables will be GC'd when function returns)
+                if hasattr(bridge, "zero_grad"):
+                    bridge.zero_grad()
+                if hasattr(reference_model, "zero_grad"):
+                    reference_model.zero_grad()
+
+                return result
             else:
                 significant_mismatches = [m for m in mismatches if m not in acceptable_mismatches]
-                return BenchmarkResult(
+                result = BenchmarkResult(
                     name="backward_hooks",
                     severity=BenchmarkSeverity.DANGER,
                     message=f"Found {len(significant_mismatches)} significant numerical mismatches",
@@ -211,7 +225,15 @@ def benchmark_backward_hooks(
                     passed=False,
                 )
 
-        return BenchmarkResult(
+                # Clear model gradients (variables will be GC'd when function returns)
+                if hasattr(bridge, "zero_grad"):
+                    bridge.zero_grad()
+                if hasattr(reference_model, "zero_grad"):
+                    reference_model.zero_grad()
+
+                return result
+
+        result = BenchmarkResult(
             name="backward_hooks",
             severity=BenchmarkSeverity.INFO,
             message=f"All {matching_hooks}/{tested_hooks} hooks match within tolerance",
@@ -223,6 +245,14 @@ def benchmark_backward_hooks(
                 "rel_tolerance": rel_tolerance,
             },
         )
+
+        # Clear model gradients (variables will be GC'd when function returns)
+        if hasattr(bridge, "zero_grad"):
+            bridge.zero_grad()
+        if reference_model is not None and hasattr(reference_model, "zero_grad"):
+            reference_model.zero_grad()
+
+        return result
 
     except Exception as e:
         return BenchmarkResult(
@@ -299,12 +329,18 @@ def benchmark_critical_backward_hooks(
         if reference_model is None:
             # No reference - just verify gradients were captured
             captured_count = len(bridge_gradients)
-            return BenchmarkResult(
+            result = BenchmarkResult(
                 name="critical_backward_hooks",
                 severity=BenchmarkSeverity.INFO,
                 message=f"Bridge captured {captured_count}/{len(critical_hooks)} critical backward gradients",
                 details={"captured": captured_count, "expected": len(critical_hooks)},
             )
+
+            # Clear model gradients (variables will be GC'd when function returns)
+            if hasattr(bridge, "zero_grad"):
+                bridge.zero_grad()
+
+            return result
 
         # Register backward hooks on reference model
         reference_gradients: Dict[str, torch.Tensor] = {}
@@ -387,7 +423,7 @@ def benchmark_critical_backward_hooks(
             ]
 
             if significant_mismatches:
-                return BenchmarkResult(
+                result = BenchmarkResult(
                     name="critical_backward_hooks",
                     severity=BenchmarkSeverity.DANGER,
                     message=f"Found {len(significant_mismatches)} significant mismatches in critical hooks",
@@ -395,19 +431,35 @@ def benchmark_critical_backward_hooks(
                     passed=False,
                 )
             else:
-                return BenchmarkResult(
+                result = BenchmarkResult(
                     name="critical_backward_hooks",
                     severity=BenchmarkSeverity.WARNING,
                     message="All mismatches due to known architectural differences",
                     details={"total_hooks": len(critical_hooks)},
                 )
 
-        return BenchmarkResult(
+            # Clear model gradients (variables will be GC'd when function returns)
+            if hasattr(bridge, "zero_grad"):
+                bridge.zero_grad()
+            if hasattr(reference_model, "zero_grad"):
+                reference_model.zero_grad()
+
+            return result
+
+        result = BenchmarkResult(
             name="critical_backward_hooks",
             severity=BenchmarkSeverity.INFO,
             message=f"All critical backward hooks match",
             details={"hook_count": len(critical_hooks)},
         )
+
+        # Clear model gradients (variables will be GC'd when function returns)
+        if hasattr(bridge, "zero_grad"):
+            bridge.zero_grad()
+        if hasattr(reference_model, "zero_grad"):
+            reference_model.zero_grad()
+
+        return result
 
     except Exception as e:
         return BenchmarkResult(
@@ -449,20 +501,28 @@ def benchmark_gradient_computation(
                 break
 
         if not has_gradients:
-            return BenchmarkResult(
+            result = BenchmarkResult(
                 name="gradient_computation",
                 severity=BenchmarkSeverity.DANGER,
                 message="No gradients were computed",
                 passed=False,
             )
+            # Clear gradients anyway
+            if hasattr(bridge, "zero_grad"):
+                bridge.zero_grad()
+            return result
 
         if reference_model is None:
             # No reference - just verify gradients exist
-            return BenchmarkResult(
+            result = BenchmarkResult(
                 name="gradient_computation",
                 severity=BenchmarkSeverity.INFO,
                 message="Gradients computed successfully",
             )
+            # Clear gradients
+            if hasattr(bridge, "zero_grad"):
+                bridge.zero_grad()
+            return result
 
         # Compare with reference model
         reference_output = reference_model(test_text)
@@ -475,19 +535,27 @@ def benchmark_gradient_computation(
 
         diff = abs(bridge_loss_val - reference_loss_val)
         if diff < atol:
-            return BenchmarkResult(
+            result = BenchmarkResult(
                 name="gradient_computation",
                 severity=BenchmarkSeverity.INFO,
                 message=f"Loss values match: {bridge_loss_val:.6f} ≈ {reference_loss_val:.6f}",
                 details={"diff": diff, "atol": atol},
             )
         else:
-            return BenchmarkResult(
+            result = BenchmarkResult(
                 name="gradient_computation",
                 severity=BenchmarkSeverity.WARNING,
                 message=f"Loss values differ: {bridge_loss_val:.6f} vs {reference_loss_val:.6f}",
                 details={"diff": diff, "atol": atol},
             )
+
+        # Clean up gradients
+        if hasattr(bridge, "zero_grad"):
+            bridge.zero_grad()
+        if reference_model is not None and hasattr(reference_model, "zero_grad"):
+            reference_model.zero_grad()
+
+        return result
 
     except Exception as e:
         return BenchmarkResult(

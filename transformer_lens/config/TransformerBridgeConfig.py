@@ -23,6 +23,7 @@ class TransformerBridgeConfig(TransformerLensConfig):
         n_layers: int,
         n_ctx: int,
         n_heads: int = -1,  # Add n_heads to signature so it's not filtered out by from_dict
+        d_vocab: int = -1,
         architecture: Optional[str] = None,
         tokenizer_prepends_bos: bool = True,
         default_padding_side: Optional[str] = None,
@@ -83,10 +84,18 @@ class TransformerBridgeConfig(TransformerLensConfig):
         NTK_by_parts_factor: float = 8.0,
         eps_attr: str = "eps",
         rmsnorm_uses_offset: bool = False,
+        attn_implementation: Optional[str] = None,
         **kwargs,
     ):
         """Initialize TransformerBridgeConfig."""
-        super().__init__(d_model=d_model, d_head=d_head, n_layers=n_layers, n_ctx=n_ctx, n_heads=n_heads, **kwargs)
+        super().__init__(
+            d_model=d_model,
+            d_head=d_head,
+            n_layers=n_layers,
+            n_ctx=n_ctx,
+            d_vocab=d_vocab,
+            **kwargs,
+        )
 
         # Architecture information for adapter selection
         self.architecture = architecture
@@ -155,6 +164,7 @@ class TransformerBridgeConfig(TransformerLensConfig):
         self.NTK_by_parts_factor = NTK_by_parts_factor
         self.eps_attr = eps_attr
         self.rmsnorm_uses_offset = rmsnorm_uses_offset
+        self.attn_implementation = attn_implementation
 
         self.__post_init__()
 

@@ -70,19 +70,25 @@ class NormalizationBridge(GeneralizedComponent):
         assert self.config is not None
 
         hidden_states = self.hook_in(hidden_states)
+        self._last_input_before_norm = hidden_states
 
         # Check if we should use HuggingFace's autograd directly (for exact gradient matching)
         if self.use_native_layernorm_autograd:
             # Use HuggingFace LayerNorm's forward directly to preserve exact computational graph
-            result = self._hf_autograd_forward(hidden_states)
+            # But still fire hooks by decomposing the computation
+            result = self._hf_autograd_forward_with_hooks(hidden_states)
         # Check if we should use LayerNormPre behavior (when layer norm folding is enabled)
         elif hasattr(self.config, "layer_norm_folding") and self.config.layer_norm_folding:
-            # LayerNormPre mode: center and normalize without learnable parameters
-            # This matches LayerNormPre behavior exactly
-            result = self._layernorm_pre_forward(hidden_states)
+            # When layer norm folding is enabled, the original component has identity weights (w=1, b=0)
+            # So we can just call the original HF LayerNorm, which will apply LayerNorm with identity params
+            # This is equivalent to LayerNormPre (center + scale) but uses the original computation
+            # IMPORTANT: Still fire hooks for compatibility with HookedTransformer behavior
+            result = self._hf_autograd_forward_with_hooks(hidden_states)
         else:
             # Standard normalization behavior with learnable parameters
-            if not getattr(self.config, "uses_rms_norm", False):
+            # OPTIMIZATION: Cache config attributes to avoid repeated getattr calls
+            uses_rms_norm = getattr(self.config, "uses_rms_norm", False)
+            if not uses_rms_norm:
                 # Only center if not using RMSNorm
                 hidden_states = hidden_states - hidden_states.mean(-1, keepdim=True)
 
@@ -96,7 +102,7 @@ class NormalizationBridge(GeneralizedComponent):
             hidden_states = self.hook_normalized(hidden_states / scale).to(dtype)
 
             # Apply learnable parameters if not folding layer norms
-            if getattr(self.config, "uses_rms_norm", False):
+            if uses_rms_norm:
                 # No bias if using RMSNorm
                 # Gemma models use (1.0 + weight) instead of just weight
                 # See: https://github.com/huggingface/transformers/pull/29402
@@ -119,11 +125,15 @@ class NormalizationBridge(GeneralizedComponent):
         output = self.hook_out(result)
         return output
 
-    def _hf_autograd_forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Forward pass matching HookedTransformer's LayerNorm computation exactly.
+    def get_last_input_before_norm(self) -> Optional[torch.Tensor]:
+        """Return the most recent pre-normalization input if available."""
+        return getattr(self, "_last_input_before_norm", None)
 
-        This replicates HookedTransformer's LayerNorm forward method to ensure
-        the same computational graph and gradients.
+    def _hf_autograd_forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass delegating directly to HuggingFace's normalization implementation.
+
+        This ensures we match HF's computation exactly by delegating to the
+        original component rather than reimplementing the logic.
 
         Args:
             x: Input tensor
@@ -135,39 +145,49 @@ class NormalizationBridge(GeneralizedComponent):
         if self.original_component is None:
             raise RuntimeError(f"Original component not set for {self.name}")
 
-        # Handle different eps attribute names based on config
-        # Most models use 'eps', but some (like Llama) use 'variance_epsilon'
-        eps_attr = getattr(self.config, "eps_attr", "eps")
-        eps = getattr(self.original_component, eps_attr, 1e-5)
-        weight = self.original_component.weight
-        bias = getattr(self.original_component, "bias", None)  # RMSNorm doesn't have bias
+        # Simply delegate to the original HuggingFace component
+        # This ensures exact numerical match including all dtype handling and computational graph
+        return self.original_component(x)
 
-        # Match HookedTransformer LayerNorm computation exactly
-        # dtype handling: convert to float32 if not float32/float64
-        original_dtype = x.dtype
-        if (
-            self.config is not None
-            and hasattr(self.config, "dtype")
-            and self.config.dtype not in [torch.float32, torch.float64]
-        ):
-            x = x.to(torch.float32)
+    def _hf_autograd_forward_with_hooks(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass that preserves HF's autograd while firing intermediate hooks.
 
-        x = x - x.mean(-1, keepdim=True)
-        scale = self.hook_scale((x.pow(2).mean(-1, keepdim=True) + eps).sqrt())  # type: ignore[operator]
-        x = self.hook_normalized(x / scale)
+        This method calls HF's LayerNorm for the final result (to preserve exact gradients),
+        but also computes intermediate values to fire hook_scale and hook_normalized.
 
-        # Convert back to original dtype or config dtype
-        if self.config is not None and hasattr(self.config, "dtype"):
-            x = x.to(self.config.dtype)  # type: ignore[union-attr]
-        else:
-            # If no config dtype, use the weight's dtype to ensure consistency
-            x = x.to(weight.dtype)  # type: ignore[arg-type]
+        Args:
+            x: Input tensor
 
-        # Apply weight and bias (bias may be None for RMSNorm)
-        if bias is not None:
-            return x * weight + bias  # type: ignore[operator]
-        else:
-            return x * weight  # type: ignore[operator]
+        Returns:
+            Normalized output tensor from HF's LayerNorm
+        """
+        if self.original_component is None:
+            raise RuntimeError(f"Original component not set for {self.name}")
+
+        # Compute intermediate values for hooks (without affecting the computational graph)
+        # These computations match what LayerNorm does internally
+        with torch.no_grad():
+            # Check if we're using RMSNorm or LayerNorm
+            if not getattr(self.config, "uses_rms_norm", False):
+                # LayerNorm: center first
+                x_centered = x - x.mean(-1, keepdim=True)
+            else:
+                # RMSNorm: no centering
+                x_centered = x
+
+            # Compute scale for hook
+            eps = getattr(self.config, "eps", 1e-5)
+            scale = (x_centered.pow(2).mean(-1, keepdim=True) + eps).sqrt()
+
+            # Compute normalized value for hook
+            x_normalized = x_centered / scale
+
+        # Fire hooks with the intermediate values (these don't affect gradients)
+        _ = self.hook_scale(scale)
+        _ = self.hook_normalized(x_normalized)
+
+        # Return the result from HF's LayerNorm to preserve exact autograd
+        return self.original_component(x)
 
     def _layernorm_pre_forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass matching LayerNormPre behavior exactly.

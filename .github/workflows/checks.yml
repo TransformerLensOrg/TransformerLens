@@ -221,6 +221,7 @@ jobs:
     name: Notebook Checks
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         notebook:
           # - "Activation_Patching_in_TL_Demo"

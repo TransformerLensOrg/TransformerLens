@@ -81,6 +81,7 @@ def setup_submodules(
             bridged_list = setup_blocks_bridge(submodule, architecture_adapter, original_model)
             # Set the list on the bridge module as a proper module
             component.add_module(module_name, bridged_list)
+
             replace_remote_component(bridged_list, submodule.name, original_model)
         # Only add if not already registered as a PyTorch module
         if module_name not in component._modules:
@@ -100,6 +101,9 @@ def setup_submodules(
             # Replace original with bridge (skip if no container)
             if submodule.name is not None:
                 replace_remote_component(submodule, submodule.name, original_model)
+
+    # Note: Alias registration happens later in enable_compatibility_mode()
+    # after weight processing to ensure aliases point to processed weights
 
 
 def setup_components(
@@ -125,6 +129,7 @@ def setup_components(
             )
             # Set the list on the bridge module as a proper module
             bridge_module.add_module(tl_path, bridged_list)
+
             replace_remote_component(bridged_list, remote_path, original_model)
         else:
             # Regular component handling

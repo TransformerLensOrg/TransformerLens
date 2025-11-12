@@ -2,6 +2,7 @@
 
 from typing import Any, Dict, Optional
 
+import einops
 import torch
 
 from transformer_lens.conversion_utils.conversion_steps.base_hook_conversion import (
@@ -76,59 +77,131 @@ class LinearBridge(GeneralizedComponent):
         else:
             return f"LinearBridge(name={self.name}, original_component=None)"
 
-    def process_weights(
+    def set_processed_weights(
         self,
-        fold_ln: bool = False,
-        center_writing_weights: bool = False,
-        center_unembed: bool = False,
-        fold_value_biases: bool = False,
-        refactor_factored_attn_matrices: bool = False,
+        weight: torch.Tensor,
+        bias: torch.Tensor | None = None,
     ) -> None:
-        """Process linear weights according to GPT2 pretrained logic.
+        """Set the processed weights by loading them into the original component.
 
-        For linear layers, this is typically a direct mapping without transformation.
+        This loads the processed weights directly into the original_component's parameters,
+        so when forward() delegates to original_component, it uses the processed weights.
+
+        Handles both Conv1D (GPT-2 style, shape [in, out]) and Linear (shape [out, in]).
+        Also handles 3D weights [n_heads, d_model, d_head] by flattening them first.
+
+        Args:
+            weight: The processed weight tensor. Can be:
+                - 2D [in, out] format
+                - 3D [n_heads, d_model, d_head] format (will be flattened to 2D)
+            bias: The processed bias tensor (optional). Can be:
+                - 1D [out] format
+                - 2D [n_heads, d_head] format (will be flattened to 1D)
         """
         if self.original_component is None:
-            return
+            raise RuntimeError(f"Original component not set for {self.name}")
 
-        # Determine weight keys based on component name and context
-        component_name = self.name or ""
-        if "c_fc" in component_name or "input" in component_name:
-            weight_key = "W_in"
-            bias_key = "b_in"
-        elif "c_proj" in component_name and "mlp" in str(type(self)).lower():
-            weight_key = "W_out"
-            bias_key = "b_out"
-        elif "c_proj" in component_name and "attn" in str(type(self)).lower():
-            weight_key = "W_O"
-            bias_key = "b_O"
-        else:
-            # Default keys
-            weight_key = "weight"
-            bias_key = "bias"
+        # Handle 3D weight tensors by flattening to 2D
+        if weight.ndim == 3:
+            n_heads, dim1, dim2 = weight.shape
+            # Detect if this is W_Q/W_K/W_V format [n_heads, d_model, d_head] or W_O format [n_heads, d_head, d_model]
+            # W_Q/W_K/W_V: d_model (e.g., 768) > d_head (e.g., 64), so dim1 > dim2
+            # W_O: d_head (e.g., 64) < d_model (e.g., 768), so dim1 < dim2
+            if dim1 > dim2:
+                # W_Q/W_K/W_V format: [n_heads, d_model, d_head] -> [d_model, (n_heads*d_head)]
+                # This is the weight for transforming d_model inputs to (n_heads*d_head) outputs
+                weight = einops.rearrange(
+                    weight, "n_heads d_model d_head -> d_model (n_heads d_head)"
+                )
+            else:
+                # W_O format: [n_heads, d_head, d_model] -> [(n_heads*d_head), d_model]
+                # This is the weight for transforming (n_heads*d_head) inputs to d_model outputs
+                weight = einops.rearrange(
+                    weight, "n_heads d_head d_model -> (n_heads d_head) d_model"
+                )
 
-        # Store processed weights in TransformerLens format (direct mapping)
-        weight_tensor = getattr(self.original_component, "weight", None)
-        bias_tensor = getattr(self.original_component, "bias", None)
+        # Handle 2D bias tensors by flattening to 1D
+        if bias is not None and bias.ndim == 2:
+            # Shape: [n_heads, d_head] -> [(n_heads*d_head)]
+            bias = einops.rearrange(bias, "n_heads d_head -> (n_heads d_head)")
 
-        processed_weights = {}
-        if weight_tensor is not None:
-            processed_weights[weight_key] = weight_tensor.clone()
+        for name, param in self.original_component.named_parameters():
+            if "weight" in name.lower():
+                # Check layer type to determine if we need to transpose
+                # Conv1D stores weights as [in_features, out_features]
+                # Linear stores weights as [out_features, in_features]
+                # weight is provided in [in_features, out_features] format from flattening
 
-        # Add bias if it exists
-        if bias_tensor is not None:
-            processed_weights[bias_key] = bias_tensor.clone()
+                # Import Conv1D here to avoid circular imports
+                try:
+                    from transformers.pytorch_utils import Conv1D
 
-        self._processed_weights = processed_weights
+                    is_conv1d = isinstance(self.original_component, Conv1D)
+                except ImportError:
+                    is_conv1d = False
 
-    def get_processed_state_dict(self) -> Dict[str, torch.Tensor]:
-        """Get the processed weights in TransformerLens format.
+                if is_conv1d:
+                    # Conv1D format - use as-is
+                    param.data = weight.contiguous()
+                else:
+                    # Linear format - transpose
+                    param.data = weight.T.contiguous()
+            elif "bias" in name.lower() and bias is not None:
+                param.data = bias.contiguous()
 
-        Returns:
-            Dictionary mapping TransformerLens parameter names to processed tensors
-        """
-        if not hasattr(self, "_processed_weights") or self._processed_weights is None:
-            # If weights haven't been processed, process them now
-            self.process_weights()
+    # def process_weights(
+    #     self,
+    #     fold_ln: bool = False,
+    #     center_writing_weights: bool = False,
+    #     center_unembed: bool = False,
+    #     fold_value_biases: bool = False,
+    #     refactor_factored_attn_matrices: bool = False,
+    # ) -> None:
+    #     """Process linear weights according to GPT2 pretrained logic.
 
-        return self._processed_weights.copy()
+    #     For linear layers, this is typically a direct mapping without transformation.
+    #     """
+    #     if self.original_component is None:
+    #         return
+
+    #     # Determine weight keys based on component name and context
+    #     component_name = self.name or ""
+    #     if "c_fc" in component_name or "input" in component_name:
+    #         weight_key = "W_in"
+    #         bias_key = "b_in"
+    #     elif "c_proj" in component_name and "mlp" in str(type(self)).lower():
+    #         weight_key = "W_out"
+    #         bias_key = "b_out"
+    #     elif "c_proj" in component_name and "attn" in str(type(self)).lower():
+    #         weight_key = "W_O"
+    #         bias_key = "b_O"
+    #     else:
+    #         # Default keys
+    #         weight_key = "weight"
+    #         bias_key = "bias"
+
+    #     # Store processed weights in TransformerLens format (direct mapping)
+    #     weight_tensor = getattr(self.original_component, "weight", None)
+    #     bias_tensor = getattr(self.original_component, "bias", None)
+
+    #     processed_weights = {}
+    #     if weight_tensor is not None:
+    #         processed_weights[weight_key] = weight_tensor.clone()
+
+    #     # Add bias if it exists
+    #     if bias_tensor is not None:
+    #         processed_weights[bias_key] = bias_tensor.clone()
+
+    #     self._processed_weights = processed_weights
+
+    # def get_processed_state_dict(self) -> Dict[str, torch.Tensor]:
+    #     """Get the processed weights in TransformerLens format.
+
+    #     Returns:
+    #         Dictionary mapping TransformerLens parameter names to processed tensors
+    #     """
+    #     if not hasattr(self, "_processed_weights") or self._processed_weights is None:
+    #         # If weights haven't been processed, process them now
+    #         self.process_weights()
+
+    #     return self._processed_weights.copy()

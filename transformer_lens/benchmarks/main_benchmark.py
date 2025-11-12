@@ -7,6 +7,7 @@ Phase 2: Bridge (unprocessed) + HT (unprocessed) - Compare unprocessed models
 Phase 3: Bridge (processed) + HT (processed) - Full compatibility mode testing
 """
 
+import gc
 from typing import List, Optional
 
 import torch
@@ -41,6 +42,13 @@ from transformer_lens.benchmarks.hook_registration import (
 )
 from transformer_lens.benchmarks.utils import BenchmarkResult, format_results
 from transformer_lens.benchmarks.weight_processing import (
+    benchmark_attention_output_centering,
+    benchmark_layer_norm_folding,
+    benchmark_mlp_output_centering,
+    benchmark_no_nan_inf,
+    benchmark_unembed_centering,
+    benchmark_value_bias_folding,
+    benchmark_weight_magnitudes,
     benchmark_weight_modification,
     benchmark_weight_processing,
     benchmark_weight_sharing,
@@ -56,6 +64,7 @@ def run_benchmark_suite(
     use_ht_reference: bool = True,
     enable_compatibility_mode: bool = True,
     verbose: bool = True,
+    track_memory: bool = False,
 ) -> List[BenchmarkResult]:
     """Run comprehensive benchmark suite for TransformerBridge.
 
@@ -72,6 +81,7 @@ def run_benchmark_suite(
         use_ht_reference: Whether to compare against HookedTransformer
         enable_compatibility_mode: Whether to enable compatibility mode on bridge
         verbose: Whether to print results to console
+        track_memory: Whether to track and report memory usage (requires psutil)
 
     Returns:
         List of BenchmarkResult objects
@@ -84,6 +94,26 @@ def run_benchmark_suite(
         )
 
     results: List[BenchmarkResult] = []
+
+    # Memory tracking setup
+    memory_tracker = None
+    if track_memory:
+        try:
+            import psutil
+
+            process = psutil.Process()
+            initial_memory = process.memory_info().rss / 1024 / 1024  # MB
+
+            def get_memory_mb():
+                return process.memory_info().rss / 1024 / 1024
+
+            memory_tracker = {"initial": initial_memory, "checkpoints": []}
+            if verbose:
+                print(f"Memory tracking enabled (initial: {initial_memory:.1f} MB)")
+        except ImportError:
+            if verbose:
+                print("⚠ psutil not available - memory tracking disabled")
+            track_memory = False
 
     if verbose:
         print(f"\n{'='*80}")
@@ -98,12 +128,94 @@ def run_benchmark_suite(
 
         if verbose:
             print(f"Cleaning up {model_name_str}...")
+
+        # Track memory before cleanup
+        if track_memory and memory_tracker is not None:
+            memory_before = get_memory_mb()
+
+        # Explicitly remove all hooks to prevent memory leaks
+        if hasattr(model, "modules"):
+            try:
+                for module in model.modules():
+                    # Clear PyTorch hooks
+                    if hasattr(module, "_forward_hooks"):
+                        module._forward_hooks.clear()
+                    if hasattr(module, "_backward_hooks"):
+                        module._backward_hooks.clear()
+                    if hasattr(module, "_forward_pre_hooks"):
+                        module._forward_pre_hooks.clear()
+                    if hasattr(module, "_backward_pre_hooks"):
+                        module._backward_pre_hooks.clear()
+                    if hasattr(module, "_state_dict_hooks"):
+                        module._state_dict_hooks.clear()
+                    if hasattr(module, "_state_dict_pre_hooks"):
+                        module._state_dict_pre_hooks.clear()
+                    if hasattr(module, "_load_state_dict_pre_hooks"):
+                        module._load_state_dict_pre_hooks.clear()
+                    if hasattr(module, "_load_state_dict_post_hooks"):
+                        module._load_state_dict_post_hooks.clear()
+
+                    # Clear TransformerLens-specific hooks
+                    if hasattr(module, "remove_all_hooks"):
+                        module.remove_all_hooks()
+            except Exception:
+                # If hook cleanup fails, continue anyway
+                pass
+
+        # Clear top-level hooks
+        if hasattr(model, "_forward_hooks"):
+            model._forward_hooks.clear()
+        if hasattr(model, "_backward_hooks"):
+            model._backward_hooks.clear()
+        if hasattr(model, "_forward_pre_hooks"):
+            model._forward_pre_hooks.clear()
+
+        # OPTIMIZATION: Break circular references more aggressively
+        # Clear all submodule references to help GC
+        if hasattr(model, "_modules"):
+            # Clear each submodule's __dict__ to break circular references
+            for name, submodule in list(model._modules.items()):
+                if submodule is not None:
+                    # Clear submodule hooks
+                    if hasattr(submodule, "_forward_hooks"):
+                        submodule._forward_hooks.clear()
+                    if hasattr(submodule, "_backward_hooks"):
+                        submodule._backward_hooks.clear()
+                    # Break reference
+                    model._modules[name] = None
+            model._modules.clear()
+
+        # Clear parameters dict
+        if hasattr(model, "_parameters"):
+            model._parameters.clear()
+
+        # Clear buffers dict
+        if hasattr(model, "_buffers"):
+            model._buffers.clear()
+
         del model
-        gc.collect()
+
+        # Aggressive garbage collection (multiple passes to break circular references)
+        for _ in range(3):
+            gc.collect()
 
         # Clear CUDA cache if using GPU
         if device != "cpu" and torch.cuda.is_available():
             torch.cuda.empty_cache()
+
+        # Track memory after cleanup
+        if track_memory and memory_tracker is not None:
+            memory_after = get_memory_mb()
+            freed_mb = memory_before - memory_after
+            memory_tracker["checkpoints"].append(
+                {
+                    "label": f"Cleanup: {model_name_str}",
+                    "memory_mb": memory_after,
+                    "freed_mb": freed_mb,
+                }
+            )
+            if verbose and freed_mb > 0:
+                print(f"  Freed {freed_mb:.1f} MB")
 
     # ========================================================================
     # PHASE 1: HuggingFace + Bridge (unprocessed)
@@ -133,7 +245,14 @@ def run_benchmark_suite(
     try:
         if verbose:
             print("Loading TransformerBridge (unprocessed)...")
-        bridge_unprocessed = TransformerBridge.boot_transformers(model_name, device=device)  # type: ignore[attr-defined]
+        # Detect dtype from HF model if available, otherwise use float32
+        bridge_dtype = torch.float32
+        if hf_model is not None:
+            try:
+                bridge_dtype = next(hf_model.parameters()).dtype
+            except StopIteration:
+                pass
+        bridge_unprocessed = TransformerBridge.boot_transformers(model_name, device=device, dtype=bridge_dtype)  # type: ignore[attr-defined]
         if verbose:
             print("✓ TransformerBridge loaded (unprocessed)\n")
     except Exception as e:
@@ -193,13 +312,42 @@ def run_benchmark_suite(
         print("PHASE 2: TransformerBridge (unprocessed) + HookedTransformer (unprocessed)")
         print(f"{'='*80}\n")
 
-    ht_model_unprocessed = None
+    # OPTIMIZATION: Run generation benchmarks first (only bridge in memory)
+    # Then cleanup bridge before loading HT to reduce peak memory
+    if bridge_unprocessed:
+        if verbose:
+            print("Running Phase 2 benchmarks...\n")
 
-    # Load HookedTransformer (unprocessed) for Phase 2
+        # Generation benchmarks (unprocessed only) - RUN FIRST
+        if verbose:
+            print("1. Generation Benchmarks (unprocessed)")
+        try:
+            results.append(benchmark_generation(bridge_unprocessed, test_text, max_new_tokens=10))
+            results.append(
+                benchmark_generation_with_kv_cache(bridge_unprocessed, test_text, max_new_tokens=10)
+            )
+            results.append(
+                benchmark_multiple_generation_calls(
+                    bridge_unprocessed,
+                    test_prompts=[
+                        "The quick brown fox",
+                        "Hello world",
+                        "Machine learning is",
+                    ],
+                    max_new_tokens=5,
+                )
+            )
+            gc.collect()  # Force cleanup after generation benchmarks
+        except Exception as e:
+            if verbose:
+                print(f"✗ Generation benchmark failed: {e}\n")
+
+    # Load HookedTransformer for comparison (after generation benchmarks)
+    ht_model_unprocessed = None
     if use_ht_reference:
         try:
             if verbose:
-                print("Loading HookedTransformer (unprocessed)...")
+                print("Loading HookedTransformer (unprocessed) for comparison...")
             ht_model_unprocessed = HookedTransformer.from_pretrained(
                 model_name,
                 device=device,
@@ -215,15 +363,12 @@ def run_benchmark_suite(
             if verbose:
                 print(f"✗ Could not load unprocessed HookedTransformer: {str(e)}\n")
 
-    # Run Phase 2 benchmarks
+    # Run comparison benchmarks
     if bridge_unprocessed:
-        if verbose:
-            print("Running Phase 2 benchmarks...\n")
-
         # Unprocessed model comparison
         if ht_model_unprocessed:
             if verbose:
-                print("1. Unprocessed Model Equivalence")
+                print("2. Unprocessed Model Equivalence")
             try:
                 results.append(
                     benchmark_loss_equivalence(
@@ -235,6 +380,7 @@ def run_benchmark_suite(
                         bridge_unprocessed, test_text, reference_model=ht_model_unprocessed
                     )
                 )
+                gc.collect()  # Force cleanup after equivalence benchmarks
             except Exception as e:
                 if verbose:
                     print(f"✗ Unprocessed equivalence benchmark failed: {e}\n")
@@ -263,28 +409,7 @@ def run_benchmark_suite(
                 )
             )
 
-        # Generation benchmarks (unprocessed only)
-        if verbose:
-            print("2. Generation Benchmarks (unprocessed)")
-        try:
-            results.append(benchmark_generation(bridge_unprocessed, test_text, max_new_tokens=10))
-            results.append(
-                benchmark_generation_with_kv_cache(bridge_unprocessed, test_text, max_new_tokens=10)
-            )
-            results.append(
-                benchmark_multiple_generation_calls(
-                    bridge_unprocessed,
-                    test_prompts=[
-                        "The quick brown fox",
-                        "Hello world",
-                        "Machine learning is",
-                    ],
-                    max_new_tokens=5,
-                )
-            )
-        except Exception as e:
-            if verbose:
-                print(f"✗ Generation benchmark failed: {e}\n")
+        # Generation benchmarks already run above (before loading HT)
 
     # Clean up unprocessed models - no longer needed
     if ht_model_unprocessed is not None:
@@ -316,7 +441,14 @@ def run_benchmark_suite(
     try:
         if verbose:
             print("Loading TransformerBridge (processed)...")
-        bridge_processed = TransformerBridge.boot_transformers(model_name, device=device)  # type: ignore[attr-defined]
+        # Use same dtype detection as Phase 1
+        bridge_dtype = torch.float32
+        if hf_model is not None:
+            try:
+                bridge_dtype = next(hf_model.parameters()).dtype
+            except StopIteration:
+                pass
+        bridge_processed = TransformerBridge.boot_transformers(model_name, device=device, dtype=bridge_dtype)  # type: ignore[attr-defined]
         bridge_processed.enable_compatibility_mode(disable_warnings=True)
         if verbose:
             print("✓ TransformerBridge compatibility mode enabled (processed)\n")
@@ -379,6 +511,7 @@ def run_benchmark_suite(
                         bridge_processed, test_text, reference_model=ht_model_processed
                     )
                 )
+                gc.collect()  # Force cleanup after equivalence benchmarks
             except Exception as e:
                 if verbose:
                     print(f"✗ Processed equivalence benchmark failed: {e}\n")
@@ -427,6 +560,12 @@ def run_benchmark_suite(
                         bridge_processed, test_text, reference_model=ht_model_processed
                     )
                 )
+                # Reset hooks to prevent handle leaks
+                if hasattr(bridge_processed, "reset_hooks"):
+                    bridge_processed.reset_hooks()
+                if ht_model_processed is not None and hasattr(ht_model_processed, "reset_hooks"):
+                    ht_model_processed.reset_hooks()
+                gc.collect()  # Force cleanup after hook benchmarks
             except Exception as e:
                 if verbose:
                     print(f"✗ Hook benchmark failed: {e}\n")
@@ -470,6 +609,12 @@ def run_benchmark_suite(
                         bridge_processed, test_text, reference_model=ht_model_processed
                     )
                 )
+                # Reset hooks to prevent handle leaks
+                if hasattr(bridge_processed, "reset_hooks"):
+                    bridge_processed.reset_hooks()
+                if ht_model_processed is not None and hasattr(ht_model_processed, "reset_hooks"):
+                    ht_model_processed.reset_hooks()
+                gc.collect()  # Force cleanup after gradient benchmarks
             except Exception as e:
                 if verbose:
                     print(f"✗ Gradient benchmark failed: {e}\n")
@@ -524,6 +669,16 @@ def run_benchmark_suite(
 
             # weight_modification doesn't need reference model
             results.append(benchmark_weight_modification(bridge_processed, test_text))
+
+            # Detailed weight processing validation benchmarks (don't need reference model)
+            results.append(benchmark_layer_norm_folding(bridge_processed, test_text))
+            results.append(benchmark_attention_output_centering(bridge_processed, test_text))
+            results.append(benchmark_mlp_output_centering(bridge_processed, test_text))
+            results.append(benchmark_unembed_centering(bridge_processed, test_text))
+            results.append(benchmark_value_bias_folding(bridge_processed, test_text))
+            results.append(benchmark_no_nan_inf(bridge_processed, test_text))
+            results.append(benchmark_weight_magnitudes(bridge_processed, test_text))
+            gc.collect()  # Force cleanup after weight processing benchmarks
         except Exception as e:
             if verbose:
                 print(f"✗ Weight processing benchmark failed: {e}\n")
@@ -543,6 +698,12 @@ def run_benchmark_suite(
                         bridge_processed, test_text, reference_model=ht_model_processed
                     )
                 )
+                # Reset hooks to prevent handle leaks
+                if hasattr(bridge_processed, "reset_hooks"):
+                    bridge_processed.reset_hooks()
+                if ht_model_processed is not None and hasattr(ht_model_processed, "reset_hooks"):
+                    ht_model_processed.reset_hooks()
+                gc.collect()  # Force cleanup after cache benchmarks
             except Exception as e:
                 if verbose:
                     print(f"✗ Activation cache benchmark failed: {e}\n")
@@ -564,6 +725,29 @@ def run_benchmark_suite(
     # Print results
     if verbose:
         print("\n" + format_results(results))
+
+    # Print memory summary
+    if track_memory and memory_tracker is not None:
+        final_memory = get_memory_mb()
+        total_increase = final_memory - memory_tracker["initial"]
+
+        if verbose:
+            print("\n" + "=" * 80)
+            print("MEMORY USAGE SUMMARY")
+            print("=" * 80)
+            print(f"Initial memory:  {memory_tracker['initial']:>8.1f} MB")
+            print(f"Final memory:    {final_memory:>8.1f} MB")
+            print(f"Net increase:    {total_increase:>+8.1f} MB")
+
+            if memory_tracker["checkpoints"]:
+                print("\nCleanup operations:")
+                for cp in memory_tracker["checkpoints"]:
+                    if cp.get("freed_mb", 0) > 0:
+                        print(
+                            f"  {cp['label']:<40} freed {cp['freed_mb']:>7.1f} MB "
+                            f"(after: {cp['memory_mb']:.1f} MB)"
+                        )
+            print("=" * 80)
 
     return results
 

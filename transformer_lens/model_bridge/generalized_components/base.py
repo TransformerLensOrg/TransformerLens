@@ -13,7 +13,6 @@ from transformer_lens.conversion_utils.conversion_steps.base_hook_conversion imp
     BaseHookConversion,
 )
 from transformer_lens.hook_points import HookPoint
-from transformer_lens.utilities.aliases import resolve_alias
 
 
 class GeneralizedComponent(nn.Module):
@@ -60,6 +59,10 @@ class GeneralizedComponent(nn.Module):
         self._hook_registry: Dict[
             str, HookPoint
         ] = {}  # Dynamic registry of hook names to HookPoints
+        self._hook_alias_registry: Dict[
+            str, Union[str, List[str]]
+        ] = {}  # Permanent registry of hook aliases
+        self._property_alias_registry: Dict[str, str] = {}  # Permanent registry of property aliases
 
         # Standardized hooks for all bridge components
         self.hook_in = HookPoint()
@@ -70,6 +73,9 @@ class GeneralizedComponent(nn.Module):
             self.hook_in.hook_conversion = self.conversion_rule
             self.hook_out.hook_conversion = self.conversion_rule
 
+        # Note: _register_aliases() is called later after enable_compatibility_mode()
+        # to ensure aliases point to processed weights
+
     def _register_hook(self, name: str, hook: HookPoint) -> None:
         """Register a hook in the component's hook registry."""
         # Set the name on the HookPoint
@@ -77,25 +83,86 @@ class GeneralizedComponent(nn.Module):
         # Add to registry
         self._hook_registry[name] = hook
 
+    def _register_aliases(self) -> None:
+        """Register aliases from class-level dictionaries.
+
+        This is called ONLY in enable_compatibility_mode() after weight processing.
+        It creates actual Python attributes/properties that directly reference the target objects.
+
+        Note: This should only be called when compatibility mode is enabled and after
+        weight processing is complete to ensure property aliases point to processed weights.
+        """
+        # Register hook aliases by storing them in the registry
+        if self.hook_aliases:
+            self._hook_alias_registry.update(self.hook_aliases)
+
+        # Register property aliases by storing them in the registry
+        if self.property_aliases:
+            self._property_alias_registry.update(self.property_aliases)
+
+        # Create actual attribute references for hook aliases
+        for alias_name, target_path in self._hook_alias_registry.items():
+            try:
+                # Resolve the target object (handles both single targets and lists)
+                if isinstance(target_path, list):
+                    # For list-based fallbacks, try each target until one works
+                    for single_target in target_path:
+                        try:
+                            target_obj = self
+                            for part in single_target.split("."):
+                                target_obj = getattr(target_obj, part)
+                            # Found it, set the alias
+                            object.__setattr__(self, alias_name, target_obj)
+                            break
+                        except AttributeError:
+                            continue
+                else:
+                    # Single target
+                    target_obj = self
+                    for part in target_path.split("."):
+                        target_obj = getattr(target_obj, part)
+                    object.__setattr__(self, alias_name, target_obj)
+            except AttributeError:
+                # Target doesn't exist yet, skip
+                pass
+
+        # Create actual attribute references for property aliases
+        # This way accessing self.W_Q directly returns self.q.weight without any __getattr__ overhead
+        for alias_name, target_path in self._property_alias_registry.items():
+            try:
+                # Check if we should use processed weights instead
+                # If _use_processed_weights is True and _processed_{alias_name} exists, use that
+                if hasattr(self, "_use_processed_weights") and self._use_processed_weights:
+                    processed_attr = f"_processed_{alias_name}"
+                    if hasattr(self, processed_attr):
+                        target_obj = getattr(self, processed_attr)
+                        object.__setattr__(self, alias_name, target_obj)
+                        continue
+
+                # Otherwise, resolve the target object from the path
+                target_obj = self
+                for part in target_path.split("."):
+                    target_obj = getattr(target_obj, part)
+
+                # Set the alias as a direct attribute reference
+                # This creates a "real" attribute that points to the same object
+                object.__setattr__(self, alias_name, target_obj)
+            except AttributeError:
+                # Target doesn't exist yet, skip
+                pass
+
     def get_hooks(self) -> Dict[str, HookPoint]:
         """Get all hooks registered in this component."""
         hooks = self._hook_registry.copy()
 
-        # Add aliases if compatibility mode is enabled
-        if self.compatibility_mode and self.hook_aliases:
-            # Temporarily suppress warnings during internal hook collection
-            original_disable_warnings = getattr(self, "disable_warnings", False)
-            self.disable_warnings = True
-
-            try:
-                for alias_name, target_name in self.hook_aliases.items():
-                    # Use the existing alias system to resolve the target hook
-                    target_hook = resolve_alias(self, alias_name, self.hook_aliases)
-                    if target_hook is not None:
+        # Add hook aliases if compatibility mode is enabled
+        # Since aliases are now real Python attributes, we can just use getattr
+        if self.compatibility_mode and self._hook_alias_registry:
+            for alias_name in self._hook_alias_registry.keys():
+                if hasattr(self, alias_name):
+                    target_hook = getattr(self, alias_name)
+                    if isinstance(target_hook, HookPoint):
                         hooks[alias_name] = target_hook
-            finally:
-                # Restore original warning state
-                self.disable_warnings = original_disable_warnings
 
         return hooks
 
@@ -292,6 +359,14 @@ class GeneralizedComponent(nn.Module):
                 f"Original component not set for {self.name}. Call set_original_component() first."
             )
 
+        # Get the target dtype from the original component's parameters
+        target_dtype = None
+        try:
+            target_dtype = next(original_component.parameters()).dtype
+        except StopIteration:
+            # Component has no parameters, keep inputs as-is
+            pass
+
         # Try to find the main input
         input_arg_names = [
             "input",
@@ -304,13 +379,24 @@ class GeneralizedComponent(nn.Module):
         input_found = False
         # Try kwargs first
         for name in input_arg_names:
-            if name in kwargs and isinstance(kwargs[name], torch.Tensor):
-                kwargs[name] = self.hook_in(kwargs[name])
+            if name in kwargs:
+                hooked = self.hook_in(kwargs[name])
+                # Cast to target dtype if needed and input is a float tensor
+                if (
+                    target_dtype is not None
+                    and isinstance(hooked, torch.Tensor)
+                    and hooked.is_floating_point()
+                ):
+                    hooked = hooked.to(dtype=target_dtype)
+                kwargs[name] = hooked
                 input_found = True
                 break
         # If not in kwargs, try first positional arg
         if not input_found and len(args) > 0 and isinstance(args[0], torch.Tensor):
             hooked_input = self.hook_in(args[0])
+            # Cast to target dtype if needed and input is a float tensor
+            if target_dtype is not None and hooked_input.is_floating_point():
+                hooked_input = hooked_input.to(dtype=target_dtype)
             args = (hooked_input,) + args[1:]
             input_found = True
         # Call the original component's forward
@@ -331,69 +417,39 @@ class GeneralizedComponent(nn.Module):
 
     def __getattr__(self, name: str) -> Any:
         # Only called if attribute not found through normal lookup
-        # First check if it's a module attribute (like hook_in, hook_out)
-        if hasattr(self, "_modules") and name in self._modules:
-            return self._modules[name]
-
-        # Only try to resolve aliases if compatibility mode is enabled
-        if self.compatibility_mode == True:
-            # Check if this is a deprecated hook alias
-            resolved_hook = resolve_alias(self, name, self.hook_aliases)
-            if resolved_hook is not None:
-                return resolved_hook
-
-            # Check if we're using processed weights and this is a weight property
-            # For example, W_in should return _processed_W_in if available
-            try:
-                use_processed = object.__getattribute__(self, "_use_processed_weights")
-                if use_processed:
-                    processed_name = f"_processed_{name}"
-                    # Try to get from _parameters dict first (for registered parameters)
-                    try:
-                        params = object.__getattribute__(self, "_parameters")
-                        if processed_name in params:
-                            return params[processed_name]
-                    except AttributeError:
-                        pass
-                    # Fall back to regular attribute access
-                    try:
-                        return object.__getattribute__(self, processed_name)
-                    except AttributeError:
-                        pass  # processed weight not available, continue to resolve from original
-            except AttributeError:
-                pass  # _use_processed_weights not set
-
-            # Check if this is a deprecated property alias
-            resolved_property = resolve_alias(self, name, self.property_aliases)
-            if resolved_property is not None:
-                return resolved_property
+        # OPTIMIZATION: Check most common case first (module attributes)
+        # Avoid hasattr() which is expensive - use direct dict access
+        modules = object.__getattribute__(self, "__dict__").get("_modules")
+        if modules is not None and name in modules:
+            return modules[name]
 
         # Avoid recursion by checking if we're looking for original_component
         if name == "original_component":
             # This should not happen since original_component is a property
             raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 
-        # Check if this is a submodule that should be registered as a PyTorch module
-        # but hasn't been yet. This prevents PyTorch's add_module from failing.
-        if name in self.submodules:
+        # OPTIMIZATION: Check submodules - use direct dict access instead of hasattr
+        submodules = object.__getattribute__(self, "__dict__").get("submodules")
+        if submodules is not None and name in submodules:
             # Don't delegate to original component for submodules
             raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 
         # Try to get from original_component if it exists
-        original_component = self._modules.get("_original_component", None)
-        if original_component is not None:
-            try:
-                name_split = name.split(".")
-
-                if len(name_split) > 1:
-                    current = getattr(original_component, name_split[0])
-                    for part in name_split[1:]:
-                        current = getattr(current, part)
-                    return current
-                else:
-                    return getattr(original_component, name)
-            except AttributeError:
-                pass
+        if modules is not None:
+            original_component = modules.get("_original_component")
+            if original_component is not None:
+                try:
+                    # OPTIMIZATION: Check for dots first to avoid split if not needed
+                    if "." in name:
+                        name_split = name.split(".")
+                        current = getattr(original_component, name_split[0])
+                        for part in name_split[1:]:
+                            current = getattr(current, part)
+                        return current
+                    else:
+                        return getattr(original_component, name)
+                except AttributeError:
+                    pass
 
         # If we get here, the attribute wasn't found anywhere
         raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")

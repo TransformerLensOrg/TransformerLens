@@ -53,8 +53,8 @@ class AttentionBridge(GeneralizedComponent):
         conversion_rule: Optional[BaseHookConversion] = None,
         pattern_conversion_rule: Optional[BaseHookConversion] = None,
         maintain_native_attention: bool = False,
-        requires_attention_mask: bool = False,
         requires_position_embeddings: bool = False,
+        requires_attention_mask: bool = False,
     ):
         """Initialize the attention bridge.
 
@@ -68,8 +68,10 @@ class AttentionBridge(GeneralizedComponent):
             maintain_native_attention: If True, preserve the original HF attention implementation
                                       without wrapping. Use for models with custom attention
                                       (e.g., attention sinks, specialized RoPE). Defaults to False.
-            requires_attention_mask: If True, this attention requires attention_mask argument
             requires_position_embeddings: If True, this attention requires position_embeddings argument
+                                        (e.g., Gemma-3 with dual RoPE). Defaults to False.
+            requires_attention_mask: If True, this attention requires attention_mask argument
+                                    (e.g., GPTNeoX/Pythia). Defaults to False.
         """
         # Set up conversion rule - use AttentionAutoConversion if None
         if conversion_rule is None:
@@ -109,9 +111,9 @@ class AttentionBridge(GeneralizedComponent):
         # Store whether to maintain native attention implementation
         self.maintain_native_attention = maintain_native_attention
 
-        # Store component requirements
-        self.requires_attention_mask = requires_attention_mask
+        # Store input requirements for testing
         self.requires_position_embeddings = requires_position_embeddings
+        self.requires_attention_mask = requires_attention_mask
 
     def setup_no_processing_hooks(self) -> None:
         """Setup hooks for no_processing mode.
@@ -140,6 +142,74 @@ class AttentionBridge(GeneralizedComponent):
             self._wrap_hf_attention_forward()
 
         self._hf_forward_wrapped = True
+
+    def get_random_inputs(
+        self,
+        batch_size: int = 2,
+        seq_len: int = 8,
+        device: Optional[torch.device] = None,
+        dtype: Optional[torch.dtype] = None,
+    ) -> Dict[str, Any]:
+        """Get random inputs for testing this attention component.
+
+        Generates appropriate inputs based on the attention's requirements
+        (position_embeddings, attention_mask, etc.).
+
+        Args:
+            batch_size: Batch size for the test inputs
+            seq_len: Sequence length for the test inputs
+            device: Device to create tensors on (defaults to CPU)
+            dtype: Dtype for generated tensors (defaults to float32)
+
+        Returns:
+            Dictionary of keyword arguments to pass to forward()
+        """
+        if device is None:
+            device = torch.device("cpu")
+        if dtype is None:
+            dtype = torch.float32
+
+        # Start with base hidden_states
+        d_model = self.config.d_model if self.config and hasattr(self.config, "d_model") else 768
+        inputs: Dict[str, Any] = {
+            "hidden_states": torch.randn(batch_size, seq_len, d_model, device=device, dtype=dtype)
+        }
+
+        # Add position_embeddings if required (e.g., Gemma-3)
+        if self.requires_position_embeddings:
+            # Generate dummy cos/sin tensors for testing
+            # Note: We use a fallback approach instead of calling rotary_emb directly
+            # because different models have different rotary_emb interfaces and shapes
+
+            # Try to get head dimension from config (different models use different attribute names)
+            if self.config:
+                if hasattr(self.config, "d_head"):
+                    d_head = self.config.d_head
+                elif hasattr(self.config, "head_dim"):
+                    d_head = self.config.head_dim
+                else:
+                    d_head = 64  # fallback
+            else:
+                d_head = 64
+
+            # Calculate rotary dimension (some models use partial rotary)
+            rotary_pct = getattr(self.config, "rotary_pct", 1.0) if self.config else 1.0
+            rotary_ndims = int(rotary_pct * d_head)
+            # Create dummy rotary embeddings: shape [1, seq_len, rotary_ndims]
+            # Note: First dimension is 1 (not batch_size) because RoPE embeddings
+            # are typically broadcast across the batch dimension
+            cos = torch.ones(1, seq_len, rotary_ndims, device=device, dtype=dtype)
+            sin = torch.zeros(1, seq_len, rotary_ndims, device=device, dtype=dtype)
+            inputs["position_embeddings"] = (cos, sin)
+
+        # Add attention_mask if required (e.g., GPTNeoX/Pythia)
+        if self.requires_attention_mask:
+            # Generate a causal attention mask (lower triangular matrix)
+            # Shape: [batch_size, seq_len] with 1s for allowed positions
+            # For causal masking, we want to attend to all previous positions
+            inputs["attention_mask"] = torch.ones(batch_size, seq_len, device=device)
+
+        return inputs
 
     def _setup_hook_z_reshape(self) -> None:
         """Setup hook_z (o.hook_in) to reshape from [batch, seq, d_model] to [batch, seq, n_heads, d_head]."""
@@ -499,11 +569,9 @@ class AttentionBridge(GeneralizedComponent):
             if not isinstance(attn_pattern, torch.Tensor):
                 raise TypeError(f"Expected 'pattern' to be a Tensor, got {type(attn_pattern)}")
 
-            # For now, hook the pattern as scores as well so the CI passes,
-            # until we figured out how to properly hook the scores before softmax is applied
-            attn_pattern = self.hook_attn_scores(attn_pattern)
-
-            # Create attention pattern the same way as old implementation
+            # Note: hook_attn_scores is already applied in wrapped_forward BEFORE softmax
+            # We only need to hook the pattern here (wrapped_forward also hooks it, but
+            # this handles the case where wrapped_forward is not used, e.g., maintain_native_attention=True)
             attn_pattern = self.hook_pattern(attn_pattern)
 
             # Store the pattern for potential use in result calculation
@@ -780,7 +848,8 @@ class AttentionBridge(GeneralizedComponent):
         """Forward pass through the attention layer.
 
         This method forwards all arguments to the original component and applies hooks
-        to the output, or uses processed weights if available.
+        to the output. If processed weights have been set via set_processed_weights(),
+        the original_component will use those weights directly.
 
         Args:
             *args: Input arguments to pass to the original component
@@ -789,10 +858,6 @@ class AttentionBridge(GeneralizedComponent):
         Returns:
             The output from the original component, with hooks applied
         """
-        # Check if we're using processed weights from a reference model (layer norm folding case)
-        if hasattr(self, "_use_processed_weights") and self._use_processed_weights:
-            return self._forward_with_processed_weights(*args, **kwargs)
-
         if self.original_component is None:
             raise RuntimeError(
                 f"Original component not set for {self.name}. Call set_original_component() first."
@@ -806,7 +871,7 @@ class AttentionBridge(GeneralizedComponent):
         elif len(args) > 0 and isinstance(args[0], torch.Tensor):
             args = (self.hook_in(args[0]),) + args[1:]
 
-        # Forward through original component
+        # Forward through original component (uses processed weights if set_processed_weights was called)
         output = self.original_component(*args, **kwargs)
 
         # Process output
@@ -825,27 +890,45 @@ class AttentionBridge(GeneralizedComponent):
         b_V: Optional[torch.Tensor] = None,
         b_O: Optional[torch.Tensor] = None,
     ) -> None:
-        """Set the processed weights to use when layer norm is folded.
+        """Set the processed weights by delegating to LinearBridge submodules.
+
+        This uses LinearBridge's set_processed_weights method for Q/K/V/O submodules,
+        so when forward() delegates to original_component, it uses the processed weights.
+
+        The weights should already be in the correct 2D format from weight processing.
 
         Args:
-            W_Q: Query weight tensor [n_heads, d_model, d_head]
-            W_K: Key weight tensor [n_heads, d_model, d_head]
-            W_V: Value weight tensor [n_heads, d_model, d_head]
-            W_O: Output projection weight tensor [n_heads, d_head, d_model]
-            b_Q: Query bias tensor [n_heads, d_head] (optional)
-            b_K: Key bias tensor [n_heads, d_head] (optional)
-            b_V: Value bias tensor [n_heads, d_head] (optional)
-            b_O: Output bias tensor [d_model] (optional)
+            W_Q: Query weight tensor (already in 2D format)
+            W_K: Key weight tensor (already in 2D format)
+            W_V: Value weight tensor (already in 2D format)
+            W_O: Output projection weight tensor (already in 2D format)
+            b_Q: Query bias tensor (optional)
+            b_K: Key bias tensor (optional)
+            b_V: Value bias tensor (optional)
+            b_O: Output bias tensor (optional)
         """
-        self._processed_W_Q = W_Q
-        self._processed_W_K = W_K
-        self._processed_W_V = W_V
-        self._processed_W_O = W_O
-        self._processed_b_Q = b_Q
-        self._processed_b_K = b_K
-        self._processed_b_V = b_V
-        self._processed_b_O = b_O
-        self._use_processed_weights = True
+        if self.original_component is None:
+            raise RuntimeError(f"Original component not set for {self.name}")
+
+        # Get Q/K/V/O submodules (LinearBridge instances)
+        q_module = getattr(self, "q", None)
+        k_module = getattr(self, "k", None)
+        v_module = getattr(self, "v", None)
+        o_module = getattr(self, "o", None)
+
+        # Use LinearBridge's set_processed_weights for each submodule
+        # Weights should already be in 2D format [in, out] from weight processing
+        if q_module and hasattr(q_module, "set_processed_weights"):
+            q_module.set_processed_weights(weight=W_Q, bias=b_Q)
+
+        if k_module and hasattr(k_module, "set_processed_weights"):
+            k_module.set_processed_weights(weight=W_K, bias=b_K)
+
+        if v_module and hasattr(v_module, "set_processed_weights"):
+            v_module.set_processed_weights(weight=W_V, bias=b_V)
+
+        if o_module and hasattr(o_module, "set_processed_weights"):
+            o_module.set_processed_weights(weight=W_O, bias=b_O)
 
     def _forward_with_processed_weights(self, *args: Any, **kwargs: Any) -> tuple[Any, Any]:
         """Direct implementation of reference model's attention computation with hooks."""

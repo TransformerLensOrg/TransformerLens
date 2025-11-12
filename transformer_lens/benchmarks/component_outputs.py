@@ -7,7 +7,7 @@ model against their HuggingFace equivalents, ensuring output parity.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple, cast
+from typing import Any, Callable, Dict, List, Optional, Tuple, cast
 
 import torch
 from torch import nn
@@ -222,8 +222,24 @@ class ComponentBenchmarker:
         self.hf_model = hf_model
         self.adapter = adapter
         self.cfg = cfg
-        self.atol = atol
-        self.rtol = rtol
+
+        # Adjust tolerances based on dtype for reduced precision formats
+        model_dtype = getattr(cfg, "dtype", torch.float32)
+        if model_dtype == torch.bfloat16:
+            # bfloat16 has ~7 bits of precision (3 decimal digits)
+            # Use more lenient tolerance
+            # Normalization layers (RMSNorm/LayerNorm) can have larger errors due to
+            # square roots and divisions, so use 0.3 tolerance
+            self.atol = max(atol, 0.3)
+            self.rtol = max(rtol, 0.3)
+        elif model_dtype == torch.float16:
+            # float16 has ~10 bits of precision (3-4 decimal digits)
+            self.atol = max(atol, 5e-3)
+            self.rtol = max(rtol, 5e-3)
+        else:
+            # float32 or float64 - use provided tolerances
+            self.atol = atol
+            self.rtol = rtol
 
     def benchmark_all_components(
         self,
@@ -331,21 +347,57 @@ class ComponentBenchmarker:
             # For embedding components, generate token indices once
             shared_token_indices = None
             if component_path == "embed":
-                shared_token_indices = torch.randint(
-                    0, self.cfg.d_vocab, (batch, seq_len), device=test_input.device
+                batch, seq_len, _ = test_input.shape
+                shared_token_indices = torch.randint(0, self.cfg.d_vocab, (batch, seq_len))
+
+            # Generate shared inputs for attention/MLP/rotary components that have get_random_inputs()
+            # This is needed for model-specific inputs like position_embeddings or attention_mask
+            shared_inputs = None
+            if (
+                ("attn" in component_path or "mlp" in component_path or "rotary" in component_path)
+                and hasattr(bridge_component, "get_random_inputs")
+                and callable(getattr(bridge_component, "get_random_inputs"))
+            ):
+                batch_size, seq_len = test_input.shape[:2]
+                # Cast to callable to satisfy mypy - we've already verified it exists and is callable
+                get_random_inputs_fn = cast(
+                    Callable[..., Dict[str, Any]], bridge_component.get_random_inputs
+                )
+                shared_inputs = get_random_inputs_fn(
+                    batch_size=batch_size,
+                    seq_len=seq_len,
+                    device=test_input.device,
+                    dtype=test_input.dtype,
                 )
 
-            result = bridge_component.get_dummy_inputs(
-                test_input,
-                hf_model=self.hf_model,
-                shared_token_indices=shared_token_indices,
-                position_ids=pos_indices,
-            )
-            args, kwargs = result
+                # Override position_embeddings with correct values from HF model's rotary_emb
+                # This is needed for models with partial RoPE or non-standard rotary dims
+                if (
+                    "attn" in component_path
+                    and "position_embeddings" in shared_inputs
+                    and hasattr(self.hf_model, "model")
+                ):
+                    rotary_attr = getattr(self.hf_model.model, "rotary_emb", None)
+                    if callable(rotary_attr):
+                        try:
+                            position_ids = (
+                                torch.arange(seq_len, device=test_input.device)
+                                .unsqueeze(0)
+                                .expand(batch_size, -1)
+                            )
+                            position_embeddings = rotary_attr(test_input, position_ids)
+                            shared_inputs["position_embeddings"] = position_embeddings
+                        except Exception:
+                            # If rotary_emb fails, keep the fallback position_embeddings from get_random_inputs()
+                            pass
 
-            # Use the same args/kwargs for both Bridge and HF components
-            bridge_output = bridge_component(*args, **kwargs)
-            hf_output = hf_component(*args, **kwargs)
+            # Run through both components with shared inputs (for attention) or standard inputs (for others)
+            bridge_output = self._run_component(
+                bridge_component, test_input, component_path, shared_token_indices, shared_inputs
+            )
+            hf_output = self._run_component(
+                hf_component, test_input, component_path, shared_token_indices, shared_inputs
+            )
 
             # Extract tensors if outputs are tuples
             bridge_tensor = bridge_output[0] if isinstance(bridge_output, tuple) else bridge_output
@@ -391,6 +443,97 @@ class ComponentBenchmarker:
                 error_message=str(e),
             )
 
+    def _run_component(
+        self,
+        component: nn.Module,
+        test_input: torch.Tensor,
+        component_path: str,
+        shared_token_indices: Optional[torch.Tensor] = None,
+        shared_inputs: Optional[dict] = None,
+    ) -> Any:
+        """Run a component with appropriate arguments.
+
+        Args:
+            component: The component to run
+            test_input: The test input tensor
+            component_path: Path to the component for debugging
+            shared_token_indices: Pre-generated token indices for embedding components
+            shared_inputs: Pre-generated inputs from get_random_inputs() to use for both bridge and HF components
+
+        Returns:
+            The component output
+        """
+        # Use shared inputs if provided (generated from bridge component's get_random_inputs())
+        if shared_inputs is not None:
+            # Check if shared_inputs contains positional args
+            if "args" in shared_inputs:
+                # Call with positional args (e.g., for rotary embeddings)
+                return component(*shared_inputs["args"])
+            else:
+                # Call with keyword args (e.g., for attention)
+                return component(**shared_inputs)
+
+        # Fallback: Use legacy calling conventions for components without get_random_inputs()
+        if "attn" in component_path and "attn" == component_path.split(".")[-1]:
+            # Attention components (legacy fallback)
+            try:
+                # Try TransformerLens-style attention
+                return component(
+                    query_input=test_input,
+                    key_input=test_input,
+                    value_input=test_input,
+                    past_kv_cache_entry=None,
+                    attention_mask=None,
+                )
+            except TypeError:
+                try:
+                    # Try HuggingFace-style attention
+                    return component(hidden_states=test_input)
+                except TypeError:
+                    # Try simple call
+                    return component(test_input)
+        elif component_path == "embed":
+            # Main embedding component expects integer indices
+            # Use shared token indices if provided, otherwise generate new ones
+            if shared_token_indices is not None:
+                token_indices = shared_token_indices
+            else:
+                batch, seq_len, _ = test_input.shape
+                token_indices = torch.randint(0, self.cfg.d_vocab, (batch, seq_len))
+            return component(token_indices)
+        elif component_path == "pos_embed" or "pos_embed" in component_path:
+            # Position embedding expects integer position indices
+            batch, seq_len, _ = test_input.shape
+            # For positional embeddings, we need position indices
+            pos_indices = torch.arange(seq_len).unsqueeze(0).expand(batch, -1)
+            try:
+                return component(pos_indices)
+            except (TypeError, IndexError):
+                # Some pos embeds just return their embeddings directly
+                # or may not take inputs
+                try:
+                    if hasattr(component, "weight") and isinstance(component.weight, torch.Tensor):
+                        return component.weight[:seq_len]
+                    else:
+                        raise AttributeError("Component has no weight attribute")
+                except AttributeError:
+                    # Skip this component
+                    raise ValueError("Cannot test pos_embed - unclear interface")
+        elif (
+            component_path == "unembed"
+            or "unembed" in component_path
+            or "lm_head" in component_path
+        ):
+            # Unembedding expects [batch, seq, d_model] input
+            return component(test_input)
+        else:
+            # Standard components (MLP, LayerNorm, etc.)
+            try:
+                return component(test_input)
+            except TypeError:
+                # Try with hidden_states kwarg
+                return component(hidden_states=test_input)
+
     def _get_test_input_for_component(
         self, component_path: str, test_inputs: Dict[str, torch.Tensor]
     ) -> Optional[torch.Tensor]:
@@ -416,9 +559,13 @@ class ComponentBenchmarker:
         seq_len = 8
         d_model = self.cfg.d_model
 
+        # Use dtype from config (matches HF model's dtype)
+        dtype = getattr(self.cfg, "dtype", torch.float32)
+        device = next(self.hf_model.parameters()).device
+
         return {
-            "hidden_states": torch.randn(batch_size, seq_len, d_model),
-            "token_ids": torch.randint(0, self.cfg.d_vocab, (batch_size, seq_len)),
+            "hidden_states": torch.randn(batch_size, seq_len, d_model, dtype=dtype, device=device),
+            "token_ids": torch.randint(0, self.cfg.d_vocab, (batch_size, seq_len), device=device),
         }
 
     def _compare_outputs(
@@ -443,7 +590,10 @@ class ComponentBenchmarker:
         mean_diff = diff.mean().item()
 
         # Compute percentile differences
+        # Convert to float32 for quantile computation (bfloat16 not supported)
         flat_diff = diff.flatten()
+        if flat_diff.dtype == torch.bfloat16 or flat_diff.dtype == torch.float16:
+            flat_diff = flat_diff.float()
         percentile_diffs = {
             "50th": torch.quantile(flat_diff, 0.5).item(),
             "90th": torch.quantile(flat_diff, 0.9).item(),
@@ -484,10 +634,28 @@ def benchmark_model(
     # Load models
     print(f"Loading models: {model_name}")
     bridge_model = TransformerBridge.boot_transformers(model_name, device=device)  # type: ignore[attr-defined]
-    hf_model = AutoModelForCausalLM.from_pretrained(model_name, device_map=device)
+
+    # Load HF model with same attn_implementation as bridge model (if specified)
+    # This ensures numerical consistency between bridge and HF models
+    hf_kwargs = {"device_map": device}
+    if (
+        hasattr(bridge_model.adapter.cfg, "attn_implementation")
+        and bridge_model.adapter.cfg.attn_implementation is not None
+    ):
+        hf_kwargs["attn_implementation"] = bridge_model.adapter.cfg.attn_implementation
+
+    hf_model = AutoModelForCausalLM.from_pretrained(model_name, **hf_kwargs)
+
+    # Set models to eval mode (disable dropout, etc.)
+    bridge_model.eval()
+    hf_model.eval()
 
     # Get adapter
     adapter = bridge_model.adapter
+
+    # Set up component testing (e.g., sync rotary_emb references for Gemma-3)
+    # Pass bridge_model so adapter can set up actual bridge instances, not just templates
+    adapter.setup_component_testing(hf_model, bridge_model=bridge_model)
 
     # Create benchmarker
     benchmarker = ComponentBenchmarker(
