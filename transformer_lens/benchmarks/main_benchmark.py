@@ -298,30 +298,12 @@ def run_benchmark_suite(
     bridge_unprocessed = None
     hf_model = None
 
-    # Load models for Phase 1
-    if use_hf_reference:
-        try:
-            if verbose:
-                print("Loading HuggingFace reference model...")
-            hf_model = AutoModelForCausalLM.from_pretrained(model_name)  # type: ignore[arg-type]
-            hf_model.to(device)  # type: ignore[arg-type]
-            hf_model.eval()
-            if verbose:
-                print("✓ HuggingFace model loaded\n")
-        except Exception as e:
-            if verbose:
-                print(f"✗ Could not load HuggingFace model: {str(e)}\n")
-
+    # Load bridge first to detect attn_implementation
+    if verbose:
+        print("Loading TransformerBridge (unprocessed)...")
+    # Detect dtype - will be updated if HF model loads successfully
+    bridge_dtype = torch.float32
     try:
-        if verbose:
-            print("Loading TransformerBridge (unprocessed)...")
-        # Detect dtype from HF model if available, otherwise use float32
-        bridge_dtype = torch.float32
-        if hf_model is not None:
-            try:
-                bridge_dtype = next(hf_model.parameters()).dtype
-            except StopIteration:
-                pass
         bridge_unprocessed = TransformerBridge.boot_transformers(model_name, device=device, dtype=bridge_dtype)  # type: ignore[attr-defined]
         if verbose:
             print("✓ TransformerBridge loaded (unprocessed)\n")
@@ -339,6 +321,59 @@ def run_benchmark_suite(
         if verbose:
             print(f"✗ Failed to load TransformerBridge: {str(e)}\n")
         return results
+
+    # Load HF model with matching attn_implementation
+    if use_hf_reference:
+        try:
+            if verbose:
+                print("Loading HuggingFace reference model...")
+            # Match attn_implementation from bridge model to ensure numerical consistency
+            hf_kwargs = {"device_map": device}
+            if (
+                hasattr(bridge_unprocessed.adapter.cfg, "attn_implementation")
+                and bridge_unprocessed.adapter.cfg.attn_implementation is not None
+            ):
+                hf_kwargs[
+                    "attn_implementation"
+                ] = bridge_unprocessed.adapter.cfg.attn_implementation
+                if verbose:
+                    print(f"Using attn_implementation={hf_kwargs['attn_implementation']}")
+            hf_model = AutoModelForCausalLM.from_pretrained(model_name, **hf_kwargs)  # type: ignore[arg-type]
+            hf_model.eval()
+            # Update bridge dtype to match HF model
+            try:
+                bridge_dtype = next(hf_model.parameters()).dtype
+            except StopIteration:
+                pass
+            if verbose:
+                print("✓ HuggingFace model loaded\n")
+        except Exception as e:
+            if verbose:
+                print(f"✗ Could not load HuggingFace model: {str(e)}\n")
+
+    # Reload bridge with correct dtype if HF model was loaded
+    if hf_model is not None and bridge_dtype != torch.float32:
+        if verbose:
+            print(f"Reloading TransformerBridge with dtype={bridge_dtype}...")
+        cleanup_model(bridge_unprocessed, "TransformerBridge (initial)")
+        try:
+            bridge_unprocessed = TransformerBridge.boot_transformers(model_name, device=device, dtype=bridge_dtype)  # type: ignore[attr-defined]
+            if verbose:
+                print("✓ TransformerBridge reloaded with matching dtype\n")
+        except Exception as e:
+            from transformer_lens.benchmarks.utils import BenchmarkSeverity
+
+            add_result(
+                BenchmarkResult(
+                    name="load_bridge_unprocessed",
+                    severity=BenchmarkSeverity.ERROR,
+                    message=f"Failed to reload TransformerBridge with correct dtype: {str(e)}",
+                    passed=False,
+                )
+            )
+            if verbose:
+                print(f"✗ Failed to reload TransformerBridge: {str(e)}\n")
+            return results
 
     # Run Phase 1 benchmarks
     if hf_model and bridge_unprocessed:
