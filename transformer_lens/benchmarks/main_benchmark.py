@@ -40,7 +40,12 @@ from transformer_lens.benchmarks.hook_registration import (
     benchmark_hook_functionality,
     benchmark_hook_registry,
 )
-from transformer_lens.benchmarks.utils import BenchmarkResult, format_results
+from transformer_lens.benchmarks.hook_structure import (
+    benchmark_activation_cache_structure,
+    benchmark_backward_hooks_structure,
+    benchmark_forward_hooks_structure,
+)
+from transformer_lens.benchmarks.utils import BenchmarkResult, BenchmarkSeverity, format_results
 from transformer_lens.benchmarks.weight_processing import (
     benchmark_attention_output_centering,
     benchmark_layer_norm_folding,
@@ -488,6 +493,30 @@ def run_benchmark_suite(
             if verbose:
                 print(f"✗ Could not load processed HookedTransformer: {str(e)}\n")
 
+    # Try loading GPT-2 as structural reference if HT not available for this model
+    gpt2_reference = None
+    use_gpt2_fallback = False
+    if use_ht_reference and ht_model_processed is None and model_name.lower() != "gpt2":
+        try:
+            if verbose:
+                print("HookedTransformer not available for this model.")
+                print("Loading GPT-2 as structural reference for hook validation...\n")
+            gpt2_reference = HookedTransformer.from_pretrained(
+                "gpt2",
+                device=device,
+                fold_ln=True,
+                center_writing_weights=True,
+                center_unembed=True,
+                fold_value_biases=True,
+                refactor_factored_attn_matrices=False,
+            )
+            use_gpt2_fallback = True
+            if verbose:
+                print("✓ GPT-2 structural reference loaded\n")
+        except Exception as e:
+            if verbose:
+                print(f"✗ Could not load GPT-2 structural reference: {str(e)}\n")
+
     # Run Phase 3 benchmarks
     if bridge_processed:
         if verbose:
@@ -569,9 +598,47 @@ def run_benchmark_suite(
             except Exception as e:
                 if verbose:
                     print(f"✗ Hook benchmark failed: {e}\n")
+        elif use_gpt2_fallback and gpt2_reference is not None:
+            # Use GPT-2 for structural validation only
+            try:
+                if verbose:
+                    print("Using GPT-2 for structural validation (shapes, existence, firing)")
+                # Structure-only benchmarks with cross-model comparison
+                results.append(
+                    benchmark_hook_registry(bridge_processed, reference_model=gpt2_reference)
+                )
+                results.append(
+                    benchmark_hook_functionality(
+                        bridge_processed, test_text, reference_model=gpt2_reference
+                    )
+                )
+                results.append(
+                    benchmark_forward_hooks_structure(
+                        bridge_processed, test_text, reference_model=gpt2_reference, cross_model=True
+                    )
+                )
+                # Value benchmarks are skipped
+                if verbose:
+                    print("⏭️ Value comparison skipped (requires same-model HT reference)\n")
+                for benchmark_name in ["critical_forward_hooks_values", "forward_hooks_values"]:
+                    results.append(
+                        BenchmarkResult(
+                            name=benchmark_name,
+                            severity=BenchmarkSeverity.SKIPPED,
+                            message="Skipped (value comparison requires same-model HT reference)",
+                            passed=True,
+                        )
+                    )
+                # Reset hooks
+                if hasattr(bridge_processed, "reset_hooks"):
+                    bridge_processed.reset_hooks()
+                if gpt2_reference is not None and hasattr(gpt2_reference, "reset_hooks"):
+                    gpt2_reference.reset_hooks()
+                gc.collect()
+            except Exception as e:
+                if verbose:
+                    print(f"✗ Hook structure benchmark failed: {e}\n")
         else:
-            from transformer_lens.benchmarks.utils import BenchmarkSeverity
-
             if verbose:
                 print("⏭️ Skipped (no HookedTransformer reference)\n")
             for benchmark_name in [
@@ -618,9 +685,39 @@ def run_benchmark_suite(
             except Exception as e:
                 if verbose:
                     print(f"✗ Gradient benchmark failed: {e}\n")
+        elif use_gpt2_fallback and gpt2_reference is not None:
+            # Use GPT-2 for structural validation of backward hooks
+            try:
+                if verbose:
+                    print("Using GPT-2 for backward hook structural validation")
+                # Structure-only benchmark with cross-model comparison
+                results.append(
+                    benchmark_backward_hooks_structure(
+                        bridge_processed, test_text, reference_model=gpt2_reference, cross_model=True
+                    )
+                )
+                # Value benchmarks are skipped
+                if verbose:
+                    print("⏭️ Gradient value comparison skipped (requires same-model HT reference)\n")
+                for benchmark_name in ["gradient_computation_values", "critical_backward_hooks_values", "backward_hooks_values"]:
+                    results.append(
+                        BenchmarkResult(
+                            name=benchmark_name,
+                            severity=BenchmarkSeverity.SKIPPED,
+                            message="Skipped (gradient value comparison requires same-model HT reference)",
+                            passed=True,
+                        )
+                    )
+                # Reset hooks
+                if hasattr(bridge_processed, "reset_hooks"):
+                    bridge_processed.reset_hooks()
+                if gpt2_reference is not None and hasattr(gpt2_reference, "reset_hooks"):
+                    gpt2_reference.reset_hooks()
+                gc.collect()
+            except Exception as e:
+                if verbose:
+                    print(f"✗ Backward hooks structure benchmark failed: {e}\n")
         else:
-            from transformer_lens.benchmarks.utils import BenchmarkSeverity
-
             if verbose:
                 print("⏭️ Skipped (no HookedTransformer reference)\n")
             for benchmark_name in [
@@ -707,9 +804,39 @@ def run_benchmark_suite(
             except Exception as e:
                 if verbose:
                     print(f"✗ Activation cache benchmark failed: {e}\n")
+        elif use_gpt2_fallback and gpt2_reference is not None:
+            # Use GPT-2 for structural validation of cache
+            try:
+                if verbose:
+                    print("Using GPT-2 for cache structural validation")
+                # Structure-only benchmark with cross-model comparison
+                results.append(
+                    benchmark_activation_cache_structure(
+                        bridge_processed, test_text, reference_model=gpt2_reference, cross_model=True
+                    )
+                )
+                # Value benchmarks are skipped
+                if verbose:
+                    print("⏭️ Cache value comparison skipped (requires same-model HT reference)\n")
+                for benchmark_name in ["run_with_cache_values", "activation_cache_values"]:
+                    results.append(
+                        BenchmarkResult(
+                            name=benchmark_name,
+                            severity=BenchmarkSeverity.SKIPPED,
+                            message="Skipped (cache value comparison requires same-model HT reference)",
+                            passed=True,
+                        )
+                    )
+                # Reset hooks
+                if hasattr(bridge_processed, "reset_hooks"):
+                    bridge_processed.reset_hooks()
+                if gpt2_reference is not None and hasattr(gpt2_reference, "reset_hooks"):
+                    gpt2_reference.reset_hooks()
+                gc.collect()
+            except Exception as e:
+                if verbose:
+                    print(f"✗ Activation cache structure benchmark failed: {e}\n")
         else:
-            from transformer_lens.benchmarks.utils import BenchmarkSeverity
-
             if verbose:
                 print("⏭️ Skipped (no HookedTransformer reference)\n")
             for benchmark_name in ["run_with_cache", "activation_cache"]:
