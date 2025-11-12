@@ -101,6 +101,7 @@ def benchmark_forward_hooks_structure(
                     if isinstance(tensor[0], torch.Tensor):
                         bridge_activations[name] = tensor[0].detach().clone()
                 return tensor
+
             return hook_fn
 
         bridge_handles = []
@@ -159,6 +160,7 @@ def benchmark_forward_hooks_structure(
                     if isinstance(tensor[0], torch.Tensor):
                         reference_activations[name] = tensor[0].detach().clone()
                 return tensor
+
             return hook_fn
 
         reference_handles = []
@@ -219,9 +221,7 @@ def benchmark_forward_hooks_structure(
             if cross_model:
                 # Use relaxed shape matching for cross-model comparison
                 is_compatible, error_msg = validate_hook_shape_compatibility(
-                    bridge_tensor.shape,
-                    reference_tensor.shape,
-                    hook_name
+                    bridge_tensor.shape, reference_tensor.shape, hook_name
                 )
                 if not is_compatible:
                     shape_mismatches.append(f"{hook_name}: {error_msg}")
@@ -300,6 +300,7 @@ def benchmark_forward_hooks_values(
                     if isinstance(tensor[0], torch.Tensor):
                         bridge_activations[name] = tensor[0].detach().clone()
                 return tensor
+
             return hook_fn
 
         bridge_handles = []
@@ -330,6 +331,7 @@ def benchmark_forward_hooks_values(
                     if isinstance(tensor[0], torch.Tensor):
                         reference_activations[name] = tensor[0].detach().clone()
                 return tensor
+
             return hook_fn
 
         reference_handles = []
@@ -370,7 +372,8 @@ def benchmark_forward_hooks_values(
         if value_mismatches:
             # Filter out known architectural differences
             significant_mismatches = [
-                m for m in value_mismatches
+                m
+                for m in value_mismatches
                 if "hook_attn_scores" not in m  # Exclude attn_scores (has inf from masking)
             ]
 

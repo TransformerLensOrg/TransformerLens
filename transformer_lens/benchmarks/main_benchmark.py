@@ -45,7 +45,11 @@ from transformer_lens.benchmarks.hook_structure import (
     benchmark_backward_hooks_structure,
     benchmark_forward_hooks_structure,
 )
-from transformer_lens.benchmarks.utils import BenchmarkResult, BenchmarkSeverity, format_results
+from transformer_lens.benchmarks.utils import (
+    BenchmarkResult,
+    BenchmarkSeverity,
+    format_results,
+)
 from transformer_lens.benchmarks.weight_processing import (
     benchmark_attention_output_centering,
     benchmark_layer_norm_folding,
@@ -614,7 +618,10 @@ def run_benchmark_suite(
                 )
                 results.append(
                     benchmark_forward_hooks_structure(
-                        bridge_processed, test_text, reference_model=gpt2_reference, cross_model=True
+                        bridge_processed,
+                        test_text,
+                        reference_model=gpt2_reference,
+                        cross_model=True,
                     )
                 )
                 # Value benchmarks are skipped
@@ -693,13 +700,22 @@ def run_benchmark_suite(
                 # Structure-only benchmark with cross-model comparison
                 results.append(
                     benchmark_backward_hooks_structure(
-                        bridge_processed, test_text, reference_model=gpt2_reference, cross_model=True
+                        bridge_processed,
+                        test_text,
+                        reference_model=gpt2_reference,
+                        cross_model=True,
                     )
                 )
                 # Value benchmarks are skipped
                 if verbose:
-                    print("⏭️ Gradient value comparison skipped (requires same-model HT reference)\n")
-                for benchmark_name in ["gradient_computation_values", "critical_backward_hooks_values", "backward_hooks_values"]:
+                    print(
+                        "⏭️ Gradient value comparison skipped (requires same-model HT reference)\n"
+                    )
+                for benchmark_name in [
+                    "gradient_computation_values",
+                    "critical_backward_hooks_values",
+                    "backward_hooks_values",
+                ]:
                     results.append(
                         BenchmarkResult(
                             name=benchmark_name,
@@ -812,7 +828,10 @@ def run_benchmark_suite(
                 # Structure-only benchmark with cross-model comparison
                 results.append(
                     benchmark_activation_cache_structure(
-                        bridge_processed, test_text, reference_model=gpt2_reference, cross_model=True
+                        bridge_processed,
+                        test_text,
+                        reference_model=gpt2_reference,
+                        cross_model=True,
                     )
                 )
                 # Value benchmarks are skipped
