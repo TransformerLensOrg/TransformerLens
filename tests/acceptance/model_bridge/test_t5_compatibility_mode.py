@@ -5,15 +5,9 @@ compatibility mode can be successfully enabled with proper hook registration.
 """
 
 import gc
-import os
 
 import pytest
 import torch
-
-pytestmark = pytest.mark.skipif(
-    bool(os.getenv("CI")),
-    reason="Skipping T5 TransformerLens tests in CI during migration.",
-)
 
 from transformer_lens.model_bridge.bridge import TransformerBridge
 from transformer_lens.utilities.bridge_components import apply_fn_to_all_components
