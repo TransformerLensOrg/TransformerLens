@@ -11,8 +11,8 @@ from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
     BlockBridge,
     EmbeddingBridge,
+    GatedMLPBridge,
     LinearBridge,
-    MLPBridge,
     RMSNormalizationBridge,
     RotaryEmbeddingBridge,
     UnembeddingBridge,
@@ -63,6 +63,9 @@ class LlamaArchitectureAdapter(ArchitectureAdapter):
         self.cfg.uses_rms_norm = True
         # Llama uses 'variance_epsilon' instead of 'eps' for RMSNorm
         self.cfg.eps_attr = "variance_epsilon"
+
+        # Llama uses rotary position embeddings
+        self.cfg.positional_embedding_type = "rotary"
 
         self.conversion_rules = HookConversionSet(
             {
@@ -117,8 +120,9 @@ class LlamaArchitectureAdapter(ArchitectureAdapter):
                             "o": LinearBridge(name="o_proj"),
                         },
                     ),
-                    "mlp": MLPBridge(
+                    "mlp": GatedMLPBridge(
                         name="mlp",
+                        config=self.cfg,
                         submodules={
                             "gate": LinearBridge(name="gate_proj"),
                             "in": LinearBridge(name="up_proj"),

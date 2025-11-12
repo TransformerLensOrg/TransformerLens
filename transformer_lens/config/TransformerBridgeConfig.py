@@ -63,7 +63,7 @@ class TransformerBridgeConfig(TransformerLensConfig):
         gated_mlp: bool = False,
         dtype: Optional[torch.dtype] = torch.float32,
         post_embedding_ln: bool = False,
-        rotary_base: int = 10000,
+        rotary_base: int | float = 10000,
         trust_remote_code: bool = False,
         rotary_adjacent_pairs: bool = False,
         load_in_4bit: bool = False,
@@ -142,7 +142,7 @@ class TransformerBridgeConfig(TransformerLensConfig):
         self.gated_mlp = gated_mlp
         self.dtype = dtype if dtype is not None else torch.float32
         self.post_embedding_ln = post_embedding_ln
-        self.rotary_base = rotary_base
+        self.rotary_base = int(rotary_base)
         self.trust_remote_code = trust_remote_code
         self.rotary_adjacent_pairs = rotary_adjacent_pairs
         self.load_in_4bit = load_in_4bit

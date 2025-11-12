@@ -145,9 +145,10 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
         """Initialize the GPT2 architecture adapter."""
         super().__init__(cfg)
 
+        # GPT-2 uses BOS tokens (inherits default_prepend_bos = True)
+
         # Set default config for GPT2 models
         self.default_cfg = {
-            "default_prepend_bos": True,  # Default for GPT-2 style models
             "uses_split_attention": True,  # GPT-2 uses combined QKV attention that needs splitting
         }
 

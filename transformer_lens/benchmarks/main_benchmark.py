@@ -40,7 +40,16 @@ from transformer_lens.benchmarks.hook_registration import (
     benchmark_hook_functionality,
     benchmark_hook_registry,
 )
-from transformer_lens.benchmarks.utils import BenchmarkResult, format_results
+from transformer_lens.benchmarks.hook_structure import (
+    benchmark_activation_cache_structure,
+    benchmark_backward_hooks_structure,
+    benchmark_forward_hooks_structure,
+)
+from transformer_lens.benchmarks.utils import (
+    BenchmarkResult,
+    BenchmarkSeverity,
+    format_results,
+)
 from transformer_lens.benchmarks.weight_processing import (
     benchmark_attention_output_centering,
     benchmark_layer_norm_folding,
@@ -122,6 +131,32 @@ def run_benchmark_suite(
         print(f"Device: {device}")
         print(f"{'='*80}\n")
 
+    def add_result(result: BenchmarkResult) -> None:
+        """Add a result and optionally print it immediately."""
+        results.append(result)
+        if verbose:
+            result.print_immediate()
+
+    def cleanup_tensors(*tensors) -> None:
+        """Free memory from tensors and caches."""
+        for tensor in tensors:
+            if tensor is not None:
+                # If it's an ActivationCache, clear all tensors
+                if hasattr(tensor, "cache_dict"):
+                    for key in list(tensor.cache_dict.keys()):
+                        val = tensor.cache_dict[key]
+                        if val is not None and isinstance(val, torch.Tensor):
+                            del val
+                        tensor.cache_dict[key] = None
+                    tensor.cache_dict.clear()
+                # If it's a regular tensor, just delete it
+                elif isinstance(tensor, torch.Tensor):
+                    del tensor
+        # Force cleanup
+        gc.collect()
+        if device != "cpu" and torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
     def cleanup_model(model, model_name_str: str):
         """Free up memory by deleting a model and forcing garbage collection."""
         import gc
@@ -132,6 +167,15 @@ def run_benchmark_suite(
         # Track memory before cleanup
         if track_memory and memory_tracker is not None:
             memory_before = get_memory_mb()
+
+        # NEW: Move model to CPU first to free GPU memory immediately
+        if device != "cpu" and hasattr(model, "cpu"):
+            try:
+                model.cpu()
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            except Exception:
+                pass
 
         # Explicitly remove all hooks to prevent memory leaks
         if hasattr(model, "modules"):
@@ -158,6 +202,13 @@ def run_benchmark_suite(
                     # Clear TransformerLens-specific hooks
                     if hasattr(module, "remove_all_hooks"):
                         module.remove_all_hooks()
+
+                    # NEW: Clear gradients
+                    if hasattr(module, "zero_grad"):
+                        try:
+                            module.zero_grad(set_to_none=True)
+                        except Exception:
+                            pass
             except Exception:
                 # If hook cleanup fails, continue anyway
                 pass
@@ -169,6 +220,13 @@ def run_benchmark_suite(
             model._backward_hooks.clear()
         if hasattr(model, "_forward_pre_hooks"):
             model._forward_pre_hooks.clear()
+
+        # NEW: Clear top-level gradients
+        if hasattr(model, "zero_grad"):
+            try:
+                model.zero_grad(set_to_none=True)
+            except Exception:
+                pass
 
         # OPTIMIZATION: Break circular references more aggressively
         # Clear all submodule references to help GC
@@ -187,10 +245,22 @@ def run_benchmark_suite(
 
         # Clear parameters dict
         if hasattr(model, "_parameters"):
+            for param_name in list(model._parameters.keys()):
+                param = model._parameters[param_name]
+                if param is not None:
+                    # NEW: Delete parameter tensor
+                    del param
+                model._parameters[param_name] = None
             model._parameters.clear()
 
         # Clear buffers dict
         if hasattr(model, "_buffers"):
+            for buffer_name in list(model._buffers.keys()):
+                buffer = model._buffers[buffer_name]
+                if buffer is not None:
+                    # NEW: Delete buffer tensor
+                    del buffer
+                model._buffers[buffer_name] = None
             model._buffers.clear()
 
         del model
@@ -202,6 +272,8 @@ def run_benchmark_suite(
         # Clear CUDA cache if using GPU
         if device != "cpu" and torch.cuda.is_available():
             torch.cuda.empty_cache()
+            # NEW: Synchronize to ensure GPU operations complete
+            torch.cuda.synchronize()
 
         # Track memory after cleanup
         if track_memory and memory_tracker is not None:
@@ -258,7 +330,7 @@ def run_benchmark_suite(
     except Exception as e:
         from transformer_lens.benchmarks.utils import BenchmarkSeverity
 
-        results.append(
+        add_result(
             BenchmarkResult(
                 name="load_bridge_unprocessed",
                 severity=BenchmarkSeverity.ERROR,
@@ -280,7 +352,7 @@ def run_benchmark_suite(
             print("1. Component-Level Benchmarks")
         try:
             component_result = benchmark_all_components(bridge_unprocessed, hf_model)
-            results.append(component_result)
+            add_result(component_result)
             if verbose:
                 status = "✓" if component_result.passed else "✗"
                 print(f"{status} {component_result.message}\n")
@@ -292,7 +364,7 @@ def run_benchmark_suite(
         if verbose:
             print("2. Forward Pass Benchmarks")
         try:
-            results.append(
+            add_result(
                 benchmark_forward_pass(bridge_unprocessed, test_text, reference_model=hf_model)
             )
         except Exception as e:
@@ -322,11 +394,11 @@ def run_benchmark_suite(
         if verbose:
             print("1. Generation Benchmarks (unprocessed)")
         try:
-            results.append(benchmark_generation(bridge_unprocessed, test_text, max_new_tokens=10))
-            results.append(
+            add_result(benchmark_generation(bridge_unprocessed, test_text, max_new_tokens=10))
+            add_result(
                 benchmark_generation_with_kv_cache(bridge_unprocessed, test_text, max_new_tokens=10)
             )
-            results.append(
+            add_result(
                 benchmark_multiple_generation_calls(
                     bridge_unprocessed,
                     test_prompts=[
@@ -370,12 +442,12 @@ def run_benchmark_suite(
             if verbose:
                 print("2. Unprocessed Model Equivalence")
             try:
-                results.append(
+                add_result(
                     benchmark_loss_equivalence(
                         bridge_unprocessed, test_text, reference_model=ht_model_unprocessed
                     )
                 )
-                results.append(
+                add_result(
                     benchmark_logits_equivalence(
                         bridge_unprocessed, test_text, reference_model=ht_model_unprocessed
                     )
@@ -392,7 +464,7 @@ def run_benchmark_suite(
                 print(
                     "⚠ No unprocessed HookedTransformer available - skipping unprocessed comparisons\n"
                 )
-            results.append(
+            add_result(
                 BenchmarkResult(
                     name="loss_equivalence",
                     severity=BenchmarkSeverity.SKIPPED,
@@ -400,7 +472,7 @@ def run_benchmark_suite(
                     passed=True,
                 )
             )
-            results.append(
+            add_result(
                 BenchmarkResult(
                     name="logits_equivalence",
                     severity=BenchmarkSeverity.SKIPPED,
@@ -455,7 +527,7 @@ def run_benchmark_suite(
     except Exception as e:
         from transformer_lens.benchmarks.utils import BenchmarkSeverity
 
-        results.append(
+        add_result(
             BenchmarkResult(
                 name="load_bridge_processed",
                 severity=BenchmarkSeverity.ERROR,
@@ -488,6 +560,30 @@ def run_benchmark_suite(
             if verbose:
                 print(f"✗ Could not load processed HookedTransformer: {str(e)}\n")
 
+    # Try loading GPT-2 as structural reference if HT not available for this model
+    gpt2_reference = None
+    use_gpt2_fallback = False
+    if use_ht_reference and ht_model_processed is None and model_name.lower() != "gpt2":
+        try:
+            if verbose:
+                print("HookedTransformer not available for this model.")
+                print("Loading GPT-2 as structural reference for hook validation...\n")
+            gpt2_reference = HookedTransformer.from_pretrained(
+                "gpt2",
+                device=device,
+                fold_ln=True,
+                center_writing_weights=True,
+                center_unembed=True,
+                fold_value_biases=True,
+                refactor_factored_attn_matrices=False,
+            )
+            use_gpt2_fallback = True
+            if verbose:
+                print("✓ GPT-2 structural reference loaded\n")
+        except Exception as e:
+            if verbose:
+                print(f"✗ Could not load GPT-2 structural reference: {str(e)}\n")
+
     # Run Phase 3 benchmarks
     if bridge_processed:
         if verbose:
@@ -501,12 +597,12 @@ def run_benchmark_suite(
             print("1. Processed Model Equivalence")
         if ht_available:
             try:
-                results.append(
+                add_result(
                     benchmark_loss_equivalence(
                         bridge_processed, test_text, reference_model=ht_model_processed
                     )
                 )
-                results.append(
+                add_result(
                     benchmark_logits_equivalence(
                         bridge_processed, test_text, reference_model=ht_model_processed
                     )
@@ -520,7 +616,7 @@ def run_benchmark_suite(
 
             if verbose:
                 print("⏭️ Skipped (no HookedTransformer reference)\n")
-            results.append(
+            add_result(
                 BenchmarkResult(
                     name="loss_equivalence",
                     severity=BenchmarkSeverity.SKIPPED,
@@ -528,7 +624,7 @@ def run_benchmark_suite(
                     passed=True,
                 )
             )
-            results.append(
+            add_result(
                 BenchmarkResult(
                     name="logits_equivalence",
                     severity=BenchmarkSeverity.SKIPPED,
@@ -542,20 +638,20 @@ def run_benchmark_suite(
             print("2. Hook Registration Benchmarks")
         if ht_available:
             try:
-                results.append(
+                add_result(
                     benchmark_hook_registry(bridge_processed, reference_model=ht_model_processed)
                 )
-                results.append(
+                add_result(
                     benchmark_hook_functionality(
                         bridge_processed, test_text, reference_model=ht_model_processed
                     )
                 )
-                results.append(
+                add_result(
                     benchmark_critical_forward_hooks(
                         bridge_processed, test_text, reference_model=ht_model_processed
                     )
                 )
-                results.append(
+                add_result(
                     benchmark_forward_hooks(
                         bridge_processed, test_text, reference_model=ht_model_processed
                     )
@@ -569,9 +665,50 @@ def run_benchmark_suite(
             except Exception as e:
                 if verbose:
                     print(f"✗ Hook benchmark failed: {e}\n")
+        elif use_gpt2_fallback and gpt2_reference is not None:
+            # Use GPT-2 for structural validation only
+            try:
+                if verbose:
+                    print("Using GPT-2 for structural validation (shapes, existence, firing)")
+                # Structure-only benchmarks with cross-model comparison
+                add_result(
+                    benchmark_hook_registry(bridge_processed, reference_model=gpt2_reference)
+                )
+                add_result(
+                    benchmark_hook_functionality(
+                        bridge_processed, test_text, reference_model=gpt2_reference
+                    )
+                )
+                add_result(
+                    benchmark_forward_hooks_structure(
+                        bridge_processed,
+                        test_text,
+                        reference_model=gpt2_reference,
+                        cross_model=True,
+                    )
+                )
+                # Value benchmarks are skipped
+                if verbose:
+                    print("⏭️ Value comparison skipped (requires same-model HT reference)\n")
+                for benchmark_name in ["critical_forward_hooks_values", "forward_hooks_values"]:
+                    add_result(
+                        BenchmarkResult(
+                            name=benchmark_name,
+                            severity=BenchmarkSeverity.SKIPPED,
+                            message="Skipped (value comparison requires same-model HT reference)",
+                            passed=True,
+                        )
+                    )
+                # Reset hooks
+                if hasattr(bridge_processed, "reset_hooks"):
+                    bridge_processed.reset_hooks()
+                if gpt2_reference is not None and hasattr(gpt2_reference, "reset_hooks"):
+                    gpt2_reference.reset_hooks()
+                gc.collect()
+            except Exception as e:
+                if verbose:
+                    print(f"✗ Hook structure benchmark failed: {e}\n")
         else:
-            from transformer_lens.benchmarks.utils import BenchmarkSeverity
-
             if verbose:
                 print("⏭️ Skipped (no HookedTransformer reference)\n")
             for benchmark_name in [
@@ -580,7 +717,7 @@ def run_benchmark_suite(
                 "critical_forward_hooks",
                 "forward_hooks",
             ]:
-                results.append(
+                add_result(
                     BenchmarkResult(
                         name=benchmark_name,
                         severity=BenchmarkSeverity.SKIPPED,
@@ -594,17 +731,17 @@ def run_benchmark_suite(
             print("3. Backward Gradient Benchmarks")
         if ht_available:
             try:
-                results.append(
+                add_result(
                     benchmark_gradient_computation(
                         bridge_processed, test_text, reference_model=ht_model_processed
                     )
                 )
-                results.append(
+                add_result(
                     benchmark_critical_backward_hooks(
                         bridge_processed, test_text, reference_model=ht_model_processed
                     )
                 )
-                results.append(
+                add_result(
                     benchmark_backward_hooks(
                         bridge_processed, test_text, reference_model=ht_model_processed
                     )
@@ -618,9 +755,48 @@ def run_benchmark_suite(
             except Exception as e:
                 if verbose:
                     print(f"✗ Gradient benchmark failed: {e}\n")
+        elif use_gpt2_fallback and gpt2_reference is not None:
+            # Use GPT-2 for structural validation of backward hooks
+            try:
+                if verbose:
+                    print("Using GPT-2 for backward hook structural validation")
+                # Structure-only benchmark with cross-model comparison
+                add_result(
+                    benchmark_backward_hooks_structure(
+                        bridge_processed,
+                        test_text,
+                        reference_model=gpt2_reference,
+                        cross_model=True,
+                    )
+                )
+                # Value benchmarks are skipped
+                if verbose:
+                    print(
+                        "⏭️ Gradient value comparison skipped (requires same-model HT reference)\n"
+                    )
+                for benchmark_name in [
+                    "gradient_computation_values",
+                    "critical_backward_hooks_values",
+                    "backward_hooks_values",
+                ]:
+                    add_result(
+                        BenchmarkResult(
+                            name=benchmark_name,
+                            severity=BenchmarkSeverity.SKIPPED,
+                            message="Skipped (gradient value comparison requires same-model HT reference)",
+                            passed=True,
+                        )
+                    )
+                # Reset hooks
+                if hasattr(bridge_processed, "reset_hooks"):
+                    bridge_processed.reset_hooks()
+                if gpt2_reference is not None and hasattr(gpt2_reference, "reset_hooks"):
+                    gpt2_reference.reset_hooks()
+                gc.collect()
+            except Exception as e:
+                if verbose:
+                    print(f"✗ Backward hooks structure benchmark failed: {e}\n")
         else:
-            from transformer_lens.benchmarks.utils import BenchmarkSeverity
-
             if verbose:
                 print("⏭️ Skipped (no HookedTransformer reference)\n")
             for benchmark_name in [
@@ -628,7 +804,7 @@ def run_benchmark_suite(
                 "critical_backward_hooks",
                 "backward_hooks",
             ]:
-                results.append(
+                add_result(
                     BenchmarkResult(
                         name=benchmark_name,
                         severity=BenchmarkSeverity.SKIPPED,
@@ -642,12 +818,12 @@ def run_benchmark_suite(
             print("4. Weight Processing Benchmarks")
         try:
             if ht_available:
-                results.append(
+                add_result(
                     benchmark_weight_processing(
                         bridge_processed, test_text, reference_model=ht_model_processed
                     )
                 )
-                results.append(
+                add_result(
                     benchmark_weight_sharing(
                         bridge_processed, test_text, reference_model=ht_model_processed
                     )
@@ -658,7 +834,7 @@ def run_benchmark_suite(
                 if verbose:
                     print("⏭️ weight_processing and weight_sharing skipped (no HT reference)")
                 for benchmark_name in ["weight_processing", "weight_sharing"]:
-                    results.append(
+                    add_result(
                         BenchmarkResult(
                             name=benchmark_name,
                             severity=BenchmarkSeverity.SKIPPED,
@@ -668,16 +844,16 @@ def run_benchmark_suite(
                     )
 
             # weight_modification doesn't need reference model
-            results.append(benchmark_weight_modification(bridge_processed, test_text))
+            add_result(benchmark_weight_modification(bridge_processed, test_text))
 
             # Detailed weight processing validation benchmarks (don't need reference model)
-            results.append(benchmark_layer_norm_folding(bridge_processed, test_text))
-            results.append(benchmark_attention_output_centering(bridge_processed, test_text))
-            results.append(benchmark_mlp_output_centering(bridge_processed, test_text))
-            results.append(benchmark_unembed_centering(bridge_processed, test_text))
-            results.append(benchmark_value_bias_folding(bridge_processed, test_text))
-            results.append(benchmark_no_nan_inf(bridge_processed, test_text))
-            results.append(benchmark_weight_magnitudes(bridge_processed, test_text))
+            add_result(benchmark_layer_norm_folding(bridge_processed, test_text))
+            add_result(benchmark_attention_output_centering(bridge_processed, test_text))
+            add_result(benchmark_mlp_output_centering(bridge_processed, test_text))
+            add_result(benchmark_unembed_centering(bridge_processed, test_text))
+            add_result(benchmark_value_bias_folding(bridge_processed, test_text))
+            add_result(benchmark_no_nan_inf(bridge_processed, test_text))
+            add_result(benchmark_weight_magnitudes(bridge_processed, test_text))
             gc.collect()  # Force cleanup after weight processing benchmarks
         except Exception as e:
             if verbose:
@@ -688,12 +864,12 @@ def run_benchmark_suite(
             print("5. Activation Cache Benchmarks")
         if ht_available:
             try:
-                results.append(
+                add_result(
                     benchmark_run_with_cache(
                         bridge_processed, test_text, reference_model=ht_model_processed
                     )
                 )
-                results.append(
+                add_result(
                     benchmark_activation_cache(
                         bridge_processed, test_text, reference_model=ht_model_processed
                     )
@@ -707,13 +883,46 @@ def run_benchmark_suite(
             except Exception as e:
                 if verbose:
                     print(f"✗ Activation cache benchmark failed: {e}\n")
+        elif use_gpt2_fallback and gpt2_reference is not None:
+            # Use GPT-2 for structural validation of cache
+            try:
+                if verbose:
+                    print("Using GPT-2 for cache structural validation")
+                # Structure-only benchmark with cross-model comparison
+                add_result(
+                    benchmark_activation_cache_structure(
+                        bridge_processed,
+                        test_text,
+                        reference_model=gpt2_reference,
+                        cross_model=True,
+                    )
+                )
+                # Value benchmarks are skipped
+                if verbose:
+                    print("⏭️ Cache value comparison skipped (requires same-model HT reference)\n")
+                for benchmark_name in ["run_with_cache_values", "activation_cache_values"]:
+                    add_result(
+                        BenchmarkResult(
+                            name=benchmark_name,
+                            severity=BenchmarkSeverity.SKIPPED,
+                            message="Skipped (cache value comparison requires same-model HT reference)",
+                            passed=True,
+                        )
+                    )
+                # Reset hooks
+                if hasattr(bridge_processed, "reset_hooks"):
+                    bridge_processed.reset_hooks()
+                if gpt2_reference is not None and hasattr(gpt2_reference, "reset_hooks"):
+                    gpt2_reference.reset_hooks()
+                gc.collect()
+            except Exception as e:
+                if verbose:
+                    print(f"✗ Activation cache structure benchmark failed: {e}\n")
         else:
-            from transformer_lens.benchmarks.utils import BenchmarkSeverity
-
             if verbose:
                 print("⏭️ Skipped (no HookedTransformer reference)\n")
             for benchmark_name in ["run_with_cache", "activation_cache"]:
-                results.append(
+                add_result(
                     BenchmarkResult(
                         name=benchmark_name,
                         severity=BenchmarkSeverity.SKIPPED,
@@ -722,9 +931,36 @@ def run_benchmark_suite(
                     )
                 )
 
-    # Print results
+    # Clean up Phase 3 models before reporting memory
+    if bridge_processed is not None:
+        cleanup_model(bridge_processed, "TransformerBridge (processed)")
+        bridge_processed = None
+    if ht_model_processed is not None:
+        cleanup_model(ht_model_processed, "HookedTransformer (processed)")
+        ht_model_processed = None
+
+    # Print summary (individual results already printed immediately)
     if verbose:
-        print("\n" + format_results(results))
+        from transformer_lens.benchmarks.utils import BenchmarkSeverity
+
+        print("\n" + "=" * 80)
+        print("BENCHMARK SUMMARY")
+        print("=" * 80)
+
+        passed = sum(1 for r in results if r.passed and r.severity != BenchmarkSeverity.SKIPPED)
+        failed = sum(1 for r in results if not r.passed and r.severity != BenchmarkSeverity.SKIPPED)
+        skipped = sum(1 for r in results if r.severity == BenchmarkSeverity.SKIPPED)
+        total = len(results)
+        run_tests = total - skipped
+
+        print(f"Total: {total} tests")
+        if skipped > 0:
+            print(f"Run: {run_tests} tests")
+            print(f"Skipped: {skipped} tests")
+        if run_tests > 0:
+            print(f"Passed: {passed}/{run_tests} ({passed/run_tests*100:.1f}%)")
+            print(f"Failed: {failed}/{run_tests} ({failed/run_tests*100:.1f}%)")
+        print("=" * 80)
 
     # Print memory summary
     if track_memory and memory_tracker is not None:

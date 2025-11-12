@@ -26,6 +26,8 @@ class NeoArchitectureAdapter(ArchitectureAdapter):
         """Initialize the Neo architecture adapter."""
         super().__init__(cfg)
 
+        # GPT-Neo uses BOS tokens (inherits default_prepend_bos = True)
+
         self.conversion_rules = HookConversionSet(
             {
                 "embed.e": "transformer.wte.weight",

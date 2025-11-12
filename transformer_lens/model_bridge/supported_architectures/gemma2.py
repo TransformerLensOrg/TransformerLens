@@ -10,6 +10,7 @@ from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapt
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
+    GatedMLPBridge,
     LinearBridge,
     MLPBridge,
     PositionEmbeddingsAttentionBridge,
@@ -26,11 +27,13 @@ class Gemma2ArchitectureAdapter(ArchitectureAdapter):
         """Initialize the Gemma2 architecture adapter."""
         super().__init__(cfg)
 
+        # Gemma models were not trained with BOS tokens
+        self.cfg.default_prepend_bos = False
         self.cfg.gated_mlp = True
 
         self.cfg.uses_rms_norm = True
 
-        # Gemma 2 uses rotary positional embeddings
+        # Gemma2 uses rotary position embeddings
         self.cfg.positional_embedding_type = "rotary"
 
         # Note: n_key_value_heads is now automatically mapped from num_key_value_heads
@@ -106,8 +109,9 @@ class Gemma2ArchitectureAdapter(ArchitectureAdapter):
                             "o": LinearBridge(name="o_proj"),
                         },
                     ),
-                    "mlp": MLPBridge(
+                    "mlp": GatedMLPBridge(
                         name="mlp",
+                        config=self.cfg,
                         submodules={
                             "gate": LinearBridge(name="gate_proj"),
                             "in": LinearBridge(name="up_proj"),

@@ -11,8 +11,8 @@ from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
     BlockBridge,
     EmbeddingBridge,
+    GatedMLPBridge,
     LinearBridge,
-    MLPBridge,
     RMSNormalizationBridge,
     UnembeddingBridge,
 )
@@ -25,9 +25,14 @@ class Gemma1ArchitectureAdapter(ArchitectureAdapter):
         """Initialize the Gemma1 architecture adapter."""
         super().__init__(cfg)
 
+        # Gemma models were not trained with BOS tokens
+        self.cfg.default_prepend_bos = False
         self.cfg.gated_mlp = True
 
         self.cfg.uses_rms_norm = True
+
+        # Gemma1 uses rotary position embeddings
+        self.cfg.positional_embedding_type = "rotary"
 
         self.conversion_rules = HookConversionSet(
             {
@@ -83,8 +88,9 @@ class Gemma1ArchitectureAdapter(ArchitectureAdapter):
                             "o": LinearBridge(name="o_proj"),
                         },
                     ),
-                    "mlp": MLPBridge(
+                    "mlp": GatedMLPBridge(
                         name="mlp",
+                        config=self.cfg,
                         submodules={
                             "gate": LinearBridge(name="gate_proj"),
                             "in": LinearBridge(name="up_proj"),

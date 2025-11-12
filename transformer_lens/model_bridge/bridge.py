@@ -4,7 +4,10 @@ This module provides the bridge components that wrap remote model components and
 a consistent interface for accessing their weights and performing operations.
 """
 
+# Pre-compiled regex patterns for performance
+import re
 from contextlib import contextmanager
+from functools import lru_cache
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -29,6 +32,8 @@ from transformer_lens.ActivationCache import ActivationCache
 from transformer_lens.cache.key_value_cache import TransformerLensKeyValueCache
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookPoint
+
+_BLOCK_PATTERN = re.compile(r"blocks\.(\d+)")
 
 
 class StopAtLayerException(Exception):
@@ -405,49 +410,69 @@ class TransformerBridge(nn.Module):
 
         return aliases
 
+    @staticmethod
+    @lru_cache(maxsize=128)
+    def _compute_hook_aliases_cached(
+        hook_names_tuple: Tuple[str, ...], component_aliases_tuple: Tuple[Tuple[str, str], ...]
+    ) -> Tuple[Tuple[str, str], ...]:
+        """Cached computation of hook aliases. Takes immutable inputs for caching."""
+        aliases = {}
+        component_aliases = dict(component_aliases_tuple)
+
+        # Apply component aliases to all existing hooks
+        for hook_name in hook_names_tuple:
+            # Check if this hook matches any component alias pattern
+            for alias_pattern, target_pattern in component_aliases.items():
+                # Handle dynamic block patterns (blocks.0, blocks.1, etc.)
+                if "blocks." in target_pattern and "blocks." in hook_name:
+                    # Extract the block number from the hook name
+                    block_match = _BLOCK_PATTERN.search(hook_name)
+                    if block_match:
+                        block_num = block_match.group(1)
+                        # Replace generic patterns with actual block numbers using f-strings
+                        # This is faster than str.replace() for simple substitutions
+                        dynamic_alias_pattern = alias_pattern.replace(
+                            "blocks.", f"blocks.{block_num}."
+                        )
+                        dynamic_target_pattern = target_pattern.replace(
+                            "blocks.", f"blocks.{block_num}."
+                        )
+
+                        # Check if this hook name matches the target pattern
+                        if hook_name.endswith(dynamic_target_pattern):
+                            # Create alias using string slicing instead of replace
+                            # Since we know it ends with the pattern, we can slice and concatenate
+                            target_len = len(dynamic_target_pattern)
+                            alias_name = hook_name[:-target_len] + dynamic_alias_pattern
+                            aliases[alias_name] = hook_name
+                else:
+                    # Handle non-block patterns
+                    if hook_name.endswith(target_pattern):
+                        # Create alias using string slicing instead of replace
+                        target_len = len(target_pattern)
+                        alias_name = hook_name[:-target_len] + alias_pattern
+                        aliases[alias_name] = hook_name
+
+        return tuple(aliases.items())
+
     def _collect_hook_aliases_from_registry(self):
         """Collect aliases based on existing hooks in the registry."""
-        aliases = {}
-
         # Get component aliases from the adapter
         if hasattr(self.adapter, "component_mapping"):
             component_aliases = self._collect_component_aliases(self.adapter.component_mapping)
 
-            # Apply component aliases to all existing hooks
-            for hook_name in self._hook_registry.keys():
-                # Check if this hook matches any component alias pattern
-                for alias_pattern, target_pattern in component_aliases.items():
-                    # Handle dynamic block patterns (blocks.0, blocks.1, etc.)
-                    if "blocks." in target_pattern and "blocks." in hook_name:
-                        # Extract the block number from the hook name
-                        import re
+            # Convert to immutable types for caching
+            hook_names_tuple = tuple(sorted(self._hook_registry.keys()))
+            component_aliases_tuple = tuple(sorted(component_aliases.items()))
 
-                        block_match = re.search(r"blocks\.(\d+)", hook_name)
-                        if block_match:
-                            block_num = block_match.group(1)
-                            # Replace generic patterns with actual block numbers
-                            dynamic_alias_pattern = alias_pattern.replace(
-                                "blocks.", f"blocks.{block_num}."
-                            )
-                            dynamic_target_pattern = target_pattern.replace(
-                                "blocks.", f"blocks.{block_num}."
-                            )
+            # Use cached computation
+            aliases_tuple = self._compute_hook_aliases_cached(
+                hook_names_tuple, component_aliases_tuple
+            )
 
-                            # Check if this hook name matches the target pattern
-                            if hook_name.endswith(dynamic_target_pattern):
-                                # Create the alias name by replacing the target with the alias
-                                alias_name = hook_name.replace(
-                                    dynamic_target_pattern, dynamic_alias_pattern
-                                )
-                                aliases[alias_name] = hook_name
-                    else:
-                        # Handle non-block patterns
-                        if hook_name.endswith(target_pattern):
-                            # Create the alias name by replacing the target with the alias
-                            alias_name = hook_name.replace(target_pattern, alias_pattern)
-                            aliases[alias_name] = hook_name
+            return dict(aliases_tuple)
 
-        return aliases
+        return {}
 
     def _add_aliases_to_hooks(self, hooks: Dict[str, HookPoint]) -> None:
         """Add aliases to hooks in place."""

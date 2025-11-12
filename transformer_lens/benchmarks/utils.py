@@ -53,6 +53,10 @@ class BenchmarkResult:
 
         return result
 
+    def print_immediate(self) -> None:
+        """Print this result immediately to console."""
+        print(str(self))
+
 
 def compare_tensors(
     tensor1: torch.Tensor,
