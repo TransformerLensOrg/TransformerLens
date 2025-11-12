@@ -160,10 +160,7 @@ class MLPBridge(GeneralizedComponent):
 
         return output
 
-    def set_processed_weights(
-        self,
-        weights: dict[str, torch.Tensor]
-    ) -> None:
+    def set_processed_weights(self, weights: dict[str, torch.Tensor]) -> None:
         """Set the processed weights for use in compatibility mode.
 
         This stores the processed weights as attributes on the MLP component so they can be
@@ -185,13 +182,12 @@ class MLPBridge(GeneralizedComponent):
         b_in = weights["b_in"]
         W_out = weights["W_out"]
         b_out = weights["b_out"]
-        
+
         self._use_processed_weights = True
         self._processed_W_in = W_in
         self._processed_b_in = b_in
         self._processed_W_out = W_out
         self._processed_b_out = b_out
-
 
         # Also load into the submodules for property access (e.g., bridge.blocks[0].mlp.W_in)
         # Get the 'in', 'out', and 'gate' submodules (LinearBridge instances)
@@ -200,7 +196,7 @@ class MLPBridge(GeneralizedComponent):
 
         # Use LinearBridge's set_processed_weights for the 'in' component
         if in_module and hasattr(in_module, "set_processed_weights"):
-            in_module.set_processed_weights({"weight": W_in, "bias" :b_in })
+            in_module.set_processed_weights({"weight": W_in, "bias": b_in})
 
         # Use LinearBridge's set_processed_weights for the 'out' component
         if out_module and hasattr(out_module, "set_processed_weights"):

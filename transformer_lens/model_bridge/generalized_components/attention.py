@@ -3,7 +3,7 @@
 This module contains the bridge component for attention layers.
 """
 
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional
 
 import torch
 

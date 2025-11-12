@@ -10,9 +10,7 @@ import torch
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
-from transformer_lens.model_bridge.generalized_components.mlp import (
-    MLPBridge,
-)
+from transformer_lens.model_bridge.generalized_components.mlp import MLPBridge
 
 
 class GatedMLPBridge(MLPBridge):
@@ -164,10 +162,7 @@ class GatedMLPBridge(MLPBridge):
         output = self.hook_out(output)
         return output
 
-    def set_processed_weights(
-        self,
-        weights: dict[str, torch.Tensor]
-    ) -> None:
+    def set_processed_weights(self, weights: dict[str, torch.Tensor]) -> None:
         """Set the processed weights to use when layer norm is folded.
 
         Args:
@@ -182,12 +177,11 @@ class GatedMLPBridge(MLPBridge):
         W_gate = weights["W_gate"]
         b_gate = weights["b_gate"]
         gate_module = getattr(self, "gate", None)
-        
+
         self._use_processed_weights = True
         self._processed_W_gate = W_gate
         self._processed_b_gate = b_gate
 
-
         # Use LinearBridge's set_processed_weights for the 'gate' component
         if gate_module and hasattr(gate_module, "set_processed_weights"):
-            gate_module.set_processed_weights({"weight" : W_gate, "bias": b_gate})
+            gate_module.set_processed_weights({"weight": W_gate, "bias": b_gate})

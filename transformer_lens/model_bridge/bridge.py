@@ -1689,16 +1689,18 @@ class TransformerBridge(nn.Module):
                                 )
 
                             # Call set_processed_weights with TL format Q/K/V and HF format W_O
-                            attn_component.set_processed_weights({
-                                "W_Q": q_weight_tl,
-                                "W_K": k_weight_tl,
-                                "W_V": v_weight_tl,
-                                "W_O": o_weight_hf,
-                                "b_Q": b_Q_tl,
-                                "b_K": b_K_tl,
-                                "b_V": b_V_tl,
-                                "b_O": o_bias,
-                            })
+                            attn_component.set_processed_weights(
+                                {
+                                    "W_Q": q_weight_tl,
+                                    "W_K": k_weight_tl,
+                                    "W_V": v_weight_tl,
+                                    "W_O": o_weight_hf,
+                                    "b_Q": b_Q_tl,
+                                    "b_K": b_K_tl,
+                                    "b_V": b_V_tl,
+                                    "b_O": o_bias,
+                                }
+                            )
 
                         # Handle biases if they exist
                         if q_bias_key in state_dict:
@@ -2145,16 +2147,18 @@ class TransformerBridge(nn.Module):
         # Call set_processed_weights on the attention component
         # The weights from weight_processing are already in 2D format, so pass them directly
         if W_Q is not None and W_K is not None and W_V is not None and W_O is not None:
-            attn_component.set_processed_weights({
-                "W_Q": W_Q,
-                "W_K": W_K,
-                "W_V": W_V,
-                "W_O": W_O,
-                "b_Q": b_Q,
-                "b_K": b_K,
-                "b_V": b_V,
-                "b_O": b_O,
-            })
+            attn_component.set_processed_weights(
+                {
+                    "W_Q": W_Q,
+                    "W_K": W_K,
+                    "W_V": W_V,
+                    "W_O": W_O,
+                    "b_Q": b_Q,
+                    "b_K": b_K,
+                    "b_V": b_V,
+                    "b_O": b_O,
+                }
+            )
 
     def _load_mlp_weights(self, mlp_component, layer_idx, processed_weights, verbose: bool = False):
         """Load MLP weights into the MLPBridge or JointGateUpMLPBridge component.
@@ -2185,14 +2189,16 @@ class TransformerBridge(nn.Module):
 
         if W_in is None or W_out is None:
             return
-        mlp_component.set_processed_weights({
-            "W_in": W_in,
-            "W_out": W_out,
-            "b_in": b_in,
-            "b_out": b_out,
-            "W_gate": W_gate,
-            "b_gate": b_gate,
-        })
+        mlp_component.set_processed_weights(
+            {
+                "W_in": W_in,
+                "W_out": W_out,
+                "b_in": b_in,
+                "b_out": b_out,
+                "W_gate": W_gate,
+                "b_gate": b_gate,
+            }
+        )
 
     def _load_unembed_weights(self, verbose: bool = False):
         """Load unembedding weights into the UnembeddingBridge component.

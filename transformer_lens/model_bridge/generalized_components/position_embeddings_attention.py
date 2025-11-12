@@ -159,13 +159,19 @@ class PositionEmbeddingsAttentionBridge(AttentionBridge):
 
                     # Generate position_embeddings using rotary_emb
                     if self._rotary_emb is not None:
-                        head_dim = self.config.head_dim if self.config and hasattr(self.config, "head_dim") else 256
+                        head_dim = (
+                            self.config.head_dim
+                            if self.config and hasattr(self.config, "head_dim")
+                            else 256
+                        )
                         num_heads = (
                             self.config.num_attention_heads
                             if self.config and hasattr(self.config, "num_attention_heads")
                             else 4
                         )
-                        dummy_qk = torch.randn(1, seq_len, num_heads, head_dim, device=device, dtype=dtype)
+                        dummy_qk = torch.randn(
+                            1, seq_len, num_heads, head_dim, device=device, dtype=dtype
+                        )
                         position_ids = torch.arange(seq_len, device=device).unsqueeze(0)
 
                         try:
@@ -175,7 +181,11 @@ class PositionEmbeddingsAttentionBridge(AttentionBridge):
                             sin = torch.zeros(1, seq_len, head_dim, device=device, dtype=dtype)
                             kwargs["position_embeddings"] = (cos, sin)
                     else:
-                        head_dim = self.config.head_dim if self.config and hasattr(self.config, "head_dim") else 256
+                        head_dim = (
+                            self.config.head_dim
+                            if self.config and hasattr(self.config, "head_dim")
+                            else 256
+                        )
                         cos = torch.ones(1, seq_len, head_dim, device=device, dtype=dtype)
                         sin = torch.zeros(1, seq_len, head_dim, device=device, dtype=dtype)
                         kwargs["position_embeddings"] = (cos, sin)
@@ -265,7 +275,11 @@ class PositionEmbeddingsAttentionBridge(AttentionBridge):
             # Generate position_embeddings using rotary_emb
             if self._rotary_emb is not None:
                 # Create dummy Q/K tensor and position_ids with batch=1
-                head_dim = self.config.head_dim if self.config and hasattr(self.config, "head_dim") else 256
+                head_dim = (
+                    self.config.head_dim
+                    if self.config and hasattr(self.config, "head_dim")
+                    else 256
+                )
                 num_heads = (
                     self.config.num_attention_heads
                     if self.config and hasattr(self.config, "num_attention_heads")
@@ -283,7 +297,11 @@ class PositionEmbeddingsAttentionBridge(AttentionBridge):
                     kwargs["position_embeddings"] = (cos, sin)
             else:
                 # Fallback if rotary_emb not available
-                head_dim = self.config.head_dim if self.config and hasattr(self.config, "head_dim") else 256
+                head_dim = (
+                    self.config.head_dim
+                    if self.config and hasattr(self.config, "head_dim")
+                    else 256
+                )
                 cos = torch.ones(1, seq_len, head_dim, device=device, dtype=dtype)
                 sin = torch.zeros(1, seq_len, head_dim, device=device, dtype=dtype)
                 kwargs["position_embeddings"] = (cos, sin)

@@ -77,10 +77,7 @@ class LinearBridge(GeneralizedComponent):
         else:
             return f"LinearBridge(name={self.name}, original_component=None)"
 
-    def set_processed_weights(
-        self,
-        weights: dict[str, torch.Tensor]
-    ) -> None:
+    def set_processed_weights(self, weights: dict[str, torch.Tensor]) -> None:
         """Set the processed weights by loading them into the original component.
 
         This loads the processed weights directly into the original_component's parameters,
@@ -150,4 +147,3 @@ class LinearBridge(GeneralizedComponent):
                     param.data = weight.T.contiguous()
             elif "bias" in name.lower() and bias is not None:
                 param.data = bias.contiguous()
-
