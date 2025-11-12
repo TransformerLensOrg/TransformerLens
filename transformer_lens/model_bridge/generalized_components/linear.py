@@ -1,6 +1,6 @@
 """Linear bridge component for wrapping linear layers with hook points."""
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Mapping, Optional
 
 import einops
 import torch
@@ -77,7 +77,7 @@ class LinearBridge(GeneralizedComponent):
         else:
             return f"LinearBridge(name={self.name}, original_component=None)"
 
-    def set_processed_weights(self, weights: dict[str, torch.Tensor]) -> None:
+    def set_processed_weights(self, weights: Mapping[str, torch.Tensor | None]) -> None:
         """Set the processed weights by loading them into the original component.
 
         This loads the processed weights directly into the original_component's parameters,
@@ -97,8 +97,10 @@ class LinearBridge(GeneralizedComponent):
         if self.original_component is None:
             raise RuntimeError(f"Original component not set for {self.name}")
 
-        weight = weights["weight"]
-        bias = weights["bias"]
+        weight = weights.get("weight")
+        if weight is None:
+            raise ValueError("Processed weights for LinearBridge must include 'weight'.")
+        bias = weights.get("bias")
 
         # Handle 3D weight tensors by flattening to 2D
         if weight.ndim == 3:

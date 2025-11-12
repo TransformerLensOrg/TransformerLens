@@ -3,7 +3,7 @@
 This module contains the bridge component for gated MLP layers (e.g., LLaMA, Gemma).
 """
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Mapping, Optional
 
 import torch
 
@@ -162,7 +162,7 @@ class GatedMLPBridge(MLPBridge):
         output = self.hook_out(output)
         return output
 
-    def set_processed_weights(self, weights: dict[str, torch.Tensor]) -> None:
+    def set_processed_weights(self, weights: Mapping[str, torch.Tensor | None]) -> None:
         """Set the processed weights to use when layer norm is folded.
 
         Args:
@@ -174,8 +174,10 @@ class GatedMLPBridge(MLPBridge):
             b_out: The processed MLP output bias tensor (optional)
         """
         super().set_processed_weights(weights)
-        W_gate = weights["W_gate"]
-        b_gate = weights["b_gate"]
+        W_gate = weights.get("W_gate")
+        if W_gate is None:
+            raise ValueError("Processed gated MLP weights must include 'W_gate'.")
+        b_gate = weights.get("b_gate")
         gate_module = getattr(self, "gate", None)
 
         self._use_processed_weights = True

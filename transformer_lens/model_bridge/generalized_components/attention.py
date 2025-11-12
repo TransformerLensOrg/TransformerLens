@@ -3,7 +3,7 @@
 This module contains the bridge component for attention layers.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Mapping, Optional
 
 import torch
 
@@ -321,7 +321,7 @@ class AttentionBridge(GeneralizedComponent):
 
         return output
 
-    def set_processed_weights(self, weights: Dict[str, torch.Tensor]) -> None:
+    def set_processed_weights(self, weights: Mapping[str, torch.Tensor | None]) -> None:
         """Set the processed weights by delegating to LinearBridge submodules.
 
         This uses LinearBridge's set_processed_weights method for Q/K/V/O submodules,
@@ -343,10 +343,14 @@ class AttentionBridge(GeneralizedComponent):
         if self.original_component is None:
             raise RuntimeError(f"Original component not set for {self.name}")
 
-        W_Q = weights["W_Q"]
-        W_K = weights["W_K"]
-        W_V = weights["W_V"]
-        W_O = weights["W_O"]
+        W_Q = weights.get("W_Q")
+        W_K = weights.get("W_K")
+        W_V = weights.get("W_V")
+        W_O = weights.get("W_O")
+        if W_Q is None or W_K is None or W_V is None or W_O is None:
+            raise ValueError(
+                "Processed attention weights must include W_Q, W_K, W_V, and W_O tensors."
+            )
         b_Q = weights.get("b_Q")
         b_K = weights.get("b_K")
         b_V = weights.get("b_V")

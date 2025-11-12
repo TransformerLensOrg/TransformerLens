@@ -4,7 +4,7 @@ This module contains the bridge component for MLP layers.
 """
 
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Mapping, Optional
 
 import torch
 
@@ -160,7 +160,7 @@ class MLPBridge(GeneralizedComponent):
 
         return output
 
-    def set_processed_weights(self, weights: dict[str, torch.Tensor]) -> None:
+    def set_processed_weights(self, weights: Mapping[str, torch.Tensor | None]) -> None:
         """Set the processed weights for use in compatibility mode.
 
         This stores the processed weights as attributes on the MLP component so they can be
@@ -178,10 +178,13 @@ class MLPBridge(GeneralizedComponent):
         if self.original_component is None:
             raise RuntimeError(f"Original component not set for {self.name}")
 
-        W_in = weights["W_in"]
-        b_in = weights["b_in"]
-        W_out = weights["W_out"]
-        b_out = weights["b_out"]
+        W_in = weights.get("W_in")
+        W_out = weights.get("W_out")
+        if W_in is None or W_out is None:
+            raise ValueError("Processed MLP weights must include 'W_in' and 'W_out' tensors.")
+
+        b_in = weights.get("b_in")
+        b_out = weights.get("b_out")
 
         self._use_processed_weights = True
         self._processed_W_in = W_in

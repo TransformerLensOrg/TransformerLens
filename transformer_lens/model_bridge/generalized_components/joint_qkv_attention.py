@@ -3,7 +3,7 @@
 This module contains the bridge component for attention layers that use a fused qkv matrix.
 """
 
-from typing import Any, Callable, Dict, Optional, cast
+from typing import Any, Callable, Dict, Mapping, Optional, cast
 
 import einops
 import torch
@@ -848,7 +848,7 @@ class JointQKVAttentionBridge(AttentionBridge):
 
         return output
 
-    def set_processed_weights(self, weights: Dict[str, torch.Tensor]) -> None:
+    def set_processed_weights(self, weights: Mapping[str, torch.Tensor | None]) -> None:
         """Set processed weights for Joint QKV attention.
 
         For Joint QKV attention, the Q/K/V weights are stored in a single c_attn component.
@@ -868,10 +868,12 @@ class JointQKVAttentionBridge(AttentionBridge):
         """
         import einops
 
-        W_Q = weights["W_Q"]
-        W_K = weights["W_K"]
-        W_V = weights["W_V"]
-        W_O = weights["W_O"]
+        W_Q = weights.get("W_Q")
+        W_K = weights.get("W_K")
+        W_V = weights.get("W_V")
+        if W_Q is None or W_K is None or W_V is None:
+            raise ValueError("Processed joint QKV weights must include W_Q, W_K, and W_V tensors.")
+        W_O = weights.get("W_O")
         b_Q = weights.get("b_Q")
         b_K = weights.get("b_K")
         b_V = weights.get("b_V")
@@ -915,7 +917,12 @@ class JointQKVAttentionBridge(AttentionBridge):
             self.k.set_processed_weights({"weight": W_K, "bias": b_K})
         if hasattr(self, "v") and self.v is not None and hasattr(self.v, "set_processed_weights"):
             self.v.set_processed_weights({"weight": W_V, "bias": b_V})
-        if hasattr(self, "o") and self.o is not None and hasattr(self.o, "set_processed_weights"):
+        if (
+            hasattr(self, "o")
+            and self.o is not None
+            and hasattr(self.o, "set_processed_weights")
+            and W_O is not None
+        ):
             self.o.set_processed_weights({"weight": W_O, "bias": b_O})
 
     def process_weights(
