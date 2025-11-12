@@ -1,6 +1,6 @@
 """Linear bridge component for wrapping linear layers with hook points."""
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Mapping, Optional
 
 import einops
 import torch
@@ -77,11 +77,7 @@ class LinearBridge(GeneralizedComponent):
         else:
             return f"LinearBridge(name={self.name}, original_component=None)"
 
-    def set_processed_weights(
-        self,
-        weight: torch.Tensor,
-        bias: torch.Tensor | None = None,
-    ) -> None:
+    def set_processed_weights(self, weights: Mapping[str, torch.Tensor | None]) -> None:
         """Set the processed weights by loading them into the original component.
 
         This loads the processed weights directly into the original_component's parameters,
@@ -100,6 +96,11 @@ class LinearBridge(GeneralizedComponent):
         """
         if self.original_component is None:
             raise RuntimeError(f"Original component not set for {self.name}")
+
+        weight = weights.get("weight")
+        if weight is None:
+            raise ValueError("Processed weights for LinearBridge must include 'weight'.")
+        bias = weights.get("bias")
 
         # Handle 3D weight tensors by flattening to 2D
         if weight.ndim == 3:
@@ -148,60 +149,3 @@ class LinearBridge(GeneralizedComponent):
                     param.data = weight.T.contiguous()
             elif "bias" in name.lower() and bias is not None:
                 param.data = bias.contiguous()
-
-    # def process_weights(
-    #     self,
-    #     fold_ln: bool = False,
-    #     center_writing_weights: bool = False,
-    #     center_unembed: bool = False,
-    #     fold_value_biases: bool = False,
-    #     refactor_factored_attn_matrices: bool = False,
-    # ) -> None:
-    #     """Process linear weights according to GPT2 pretrained logic.
-
-    #     For linear layers, this is typically a direct mapping without transformation.
-    #     """
-    #     if self.original_component is None:
-    #         return
-
-    #     # Determine weight keys based on component name and context
-    #     component_name = self.name or ""
-    #     if "c_fc" in component_name or "input" in component_name:
-    #         weight_key = "W_in"
-    #         bias_key = "b_in"
-    #     elif "c_proj" in component_name and "mlp" in str(type(self)).lower():
-    #         weight_key = "W_out"
-    #         bias_key = "b_out"
-    #     elif "c_proj" in component_name and "attn" in str(type(self)).lower():
-    #         weight_key = "W_O"
-    #         bias_key = "b_O"
-    #     else:
-    #         # Default keys
-    #         weight_key = "weight"
-    #         bias_key = "bias"
-
-    #     # Store processed weights in TransformerLens format (direct mapping)
-    #     weight_tensor = getattr(self.original_component, "weight", None)
-    #     bias_tensor = getattr(self.original_component, "bias", None)
-
-    #     processed_weights = {}
-    #     if weight_tensor is not None:
-    #         processed_weights[weight_key] = weight_tensor.clone()
-
-    #     # Add bias if it exists
-    #     if bias_tensor is not None:
-    #         processed_weights[bias_key] = bias_tensor.clone()
-
-    #     self._processed_weights = processed_weights
-
-    # def get_processed_state_dict(self) -> Dict[str, torch.Tensor]:
-    #     """Get the processed weights in TransformerLens format.
-
-    #     Returns:
-    #         Dictionary mapping TransformerLens parameter names to processed tensors
-    #     """
-    #     if not hasattr(self, "_processed_weights") or self._processed_weights is None:
-    #         # If weights haven't been processed, process them now
-    #         self.process_weights()
-
-    #     return self._processed_weights.copy()

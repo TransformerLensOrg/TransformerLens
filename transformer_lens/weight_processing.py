@@ -51,12 +51,16 @@ class ProcessWeights:
         try:
             return adapter.translate_transformer_lens_path(tl_key)
         except Exception:
-            component_path, param_attr = ProcessWeights._prepare_component_path(tl_key)
-            remote_path = adapter.translate_transformer_lens_path(component_path)
+            try:
+                component_path, param_attr = ProcessWeights._prepare_component_path(tl_key)
+                remote_path = adapter.translate_transformer_lens_path(component_path)
 
-            if param_attr:
-                return f"{remote_path}.{param_attr}"
-            return remote_path
+                if param_attr:
+                    return f"{remote_path}.{param_attr}"
+                return remote_path
+            except Exception:
+                # component does not exist in the architecture
+                return tl_key
 
     @staticmethod
     def _prepare_component_path(tl_key: str) -> tuple[str, str]:

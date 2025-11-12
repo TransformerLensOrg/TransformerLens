@@ -17,7 +17,7 @@ from transformer_lens.model_bridge.generalized_components import (
     RotaryEmbeddingBridge,
     UnembeddingBridge,
 )
-from transformer_lens.model_bridge.generalized_components.gemma3_attention import (
+from transformer_lens.model_bridge.generalized_components.position_embeddings_attention import (
     PositionEmbeddingsAttentionBridge,
 )
 
@@ -35,6 +35,9 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
         # Gemma models use (1.0 + weight) in RMSNorm instead of just weight
         # See: https://github.com/huggingface/transformers/pull/29402
         self.cfg.rmsnorm_uses_offset = True
+
+        # Gemma 3 uses rotary positional embeddings (dual RoPE)
+        self.cfg.positional_embedding_type = "rotary"
 
         # Use SDPA for numerical consistency with HuggingFace
         # Only set if not already configured
