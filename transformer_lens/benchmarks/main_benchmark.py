@@ -674,7 +674,7 @@ def run_benchmark_suite(
                 )
                 add_result(
                     benchmark_hook_functionality(
-                        bridge_processed, test_text, reference_model=gpt2_reference
+                        bridge_processed, test_text, reference_model=gpt2_reference, cross_model=True
                     )
                 )
                 add_result(

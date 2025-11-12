@@ -150,6 +150,8 @@ def benchmark_backward_hooks(
                 if not is_compatible:
                     mismatches.append(f"{hook_name}: {error_msg}")
                     continue
+                # Skip value comparison for cross-model (different architectures have different gradients)
+                # We only check that hooks exist, fire, and have compatible structure
             else:
                 # Use exact shape matching for same-model comparison
                 if bridge_grad.shape != reference_grad.shape:
@@ -158,24 +160,25 @@ def benchmark_backward_hooks(
                     )
                     continue
 
-            # Handle special cases with inf or nan
-            bridge_finite = bridge_grad[torch.isfinite(bridge_grad)]
-            reference_finite = reference_grad[torch.isfinite(reference_grad)]
+                # Only compare values for same-model comparison
+                # Handle special cases with inf or nan
+                bridge_finite = bridge_grad[torch.isfinite(bridge_grad)]
+                reference_finite = reference_grad[torch.isfinite(reference_grad)]
 
-            if bridge_finite.numel() > 0 and reference_finite.numel() > 0:
-                # Compare finite values
-                if not torch.allclose(
-                    bridge_finite, reference_finite, atol=abs_tolerance, rtol=rel_tolerance
-                ):
-                    max_diff = torch.max(torch.abs(bridge_finite - reference_finite)).item()
-                    mean_diff = torch.mean(torch.abs(bridge_finite - reference_finite)).item()
-                    rel_diff = torch.abs(bridge_finite - reference_finite) / (
-                        torch.abs(bridge_finite) + 1e-8
-                    )
-                    mean_rel = rel_diff.mean().item()
-                    mismatches.append(
-                        f"{hook_name}: Value mismatch - max_diff={max_diff:.6f}, mean_diff={mean_diff:.6f}, mean_rel={mean_rel:.6f}"
-                    )
+                if bridge_finite.numel() > 0 and reference_finite.numel() > 0:
+                    # Compare finite values
+                    if not torch.allclose(
+                        bridge_finite, reference_finite, atol=abs_tolerance, rtol=rel_tolerance
+                    ):
+                        max_diff = torch.max(torch.abs(bridge_finite - reference_finite)).item()
+                        mean_diff = torch.mean(torch.abs(bridge_finite - reference_finite)).item()
+                        rel_diff = torch.abs(bridge_finite - reference_finite) / (
+                            torch.abs(bridge_finite) + 1e-8
+                        )
+                        mean_rel = rel_diff.mean().item()
+                        mismatches.append(
+                            f"{hook_name}: Value mismatch - max_diff={max_diff:.6f}, mean_diff={mean_diff:.6f}, mean_rel={mean_rel:.6f}"
+                        )
 
         tested_hooks = len(common_hooks) - len(excluded_hooks)
         matching_hooks = tested_hooks - len(mismatches)
@@ -411,6 +414,8 @@ def benchmark_critical_backward_hooks(
                 if not is_compatible:
                     mismatches.append(f"{hook_name}: {error_msg}")
                     continue
+                # Skip value comparison for cross-model (different architectures have different gradients)
+                # We only check that hooks exist, fire, and have compatible structure
             else:
                 # Use exact shape matching for same-model comparison
                 if bridge_grad.shape != reference_grad.shape:
@@ -419,16 +424,17 @@ def benchmark_critical_backward_hooks(
                     )
                     continue
 
-            # Compare only finite values
-            bridge_finite = bridge_grad[torch.isfinite(bridge_grad)]
-            reference_finite = reference_grad[torch.isfinite(reference_grad)]
+                # Only compare values for same-model comparison
+                # Compare only finite values
+                bridge_finite = bridge_grad[torch.isfinite(bridge_grad)]
+                reference_finite = reference_grad[torch.isfinite(reference_grad)]
 
-            if bridge_finite.numel() > 0 and reference_finite.numel() > 0:
-                if not torch.allclose(
-                    bridge_finite, reference_finite, atol=abs_tolerance, rtol=rel_tolerance
-                ):
-                    max_diff = torch.max(torch.abs(bridge_finite - reference_finite)).item()
-                    mismatches.append(f"{hook_name}: max_diff={max_diff:.6f}")
+                if bridge_finite.numel() > 0 and reference_finite.numel() > 0:
+                    if not torch.allclose(
+                        bridge_finite, reference_finite, atol=abs_tolerance, rtol=rel_tolerance
+                    ):
+                        max_diff = torch.max(torch.abs(bridge_finite - reference_finite)).item()
+                        mismatches.append(f"{hook_name}: max_diff={max_diff:.6f}")
 
         if mismatches:
             # Filter out known architectural differences

@@ -50,27 +50,7 @@ class RMSNormalizationBridge(NormalizationBridge):
         if self.config is not None and not hasattr(self.config, "uses_rms_norm"):
             self.config.uses_rms_norm = True
 
-    def forward(
-        self,
-        hidden_states: torch.Tensor,
-        **kwargs: Any,
-    ) -> torch.Tensor:
-        """Forward pass with simple delegation to the original component.
-
-        Args:
-            hidden_states: Input hidden states
-            **kwargs: Additional arguments to pass to the original component
-
-        Returns:
-            Normalized output
-        """
-        if self.original_component is None:
-            raise RuntimeError(
-                f"Original component not set for {self.name}. Call set_original_component() first."
-            )
-
-        # Simple pass-through: hook_in → delegate → hook_out
-        hidden_states = self.hook_in(hidden_states)
-        result = self.original_component(hidden_states, **kwargs)
-        output = self.hook_out(result)
-        return output
+    # Note: We deliberately do NOT override forward() here.
+    # The parent NormalizationBridge.forward() properly handles RMSNorm
+    # (when config.uses_rms_norm is True) and fires all hooks including
+    # hook_normalized and hook_scale, which are needed for interpretability.

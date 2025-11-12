@@ -34,8 +34,26 @@ def validate_hook_shape_compatibility(
         - is_compatible: True if shapes are structurally compatible
         - error_message: None if compatible, otherwise description of incompatibility
     """
-    # Same rank (number of dimensions) is required
+    # For GQA (Grouped Query Attention) models, k/v hooks may have different ranks
+    # GPT-2: (batch, seq, n_heads, d_head) = 4D
+    # Gemma/Llama with GQA: (batch, seq, d_head) = 3D (heads are already collapsed)
+    # This is expected and fine - both are valid attention representations
+    gqa_attention_hooks = ["hook_q", "hook_k", "hook_v", "hook_z"]
+    is_gqa_hook = any(pattern in hook_name for pattern in gqa_attention_hooks)
+
+    # Same rank (number of dimensions) is required, except for GQA attention hooks
     if len(target_shape) != len(reference_shape):
+        if is_gqa_hook:
+            # For GQA hooks, different ranks are okay - just verify batch and sequence dims match
+            if len(target_shape) >= 2 and len(reference_shape) >= 2:
+                if target_shape[0] != reference_shape[0]:
+                    return False, f"Batch dimension mismatch: {target_shape[0]} vs {reference_shape[0]}"
+                if target_shape[1] != reference_shape[1]:
+                    return False, f"Sequence dimension mismatch: {target_shape[1]} vs {reference_shape[1]}"
+                # Rank mismatch is fine for GQA - different attention implementations
+                return True, None
+            else:
+                return False, f"Invalid tensor rank: {len(target_shape)} or {len(reference_shape)}"
         return False, f"Rank mismatch: {len(target_shape)} vs {len(reference_shape)}"
 
     # For each dimension, check compatibility

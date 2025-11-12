@@ -38,8 +38,7 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
 
         # Use SDPA for numerical consistency with HuggingFace
         # Only set if not already configured
-        if self.cfg.attn_implementation is None:
-            self.cfg.attn_implementation = "sdpa"
+        self.cfg.attn_implementation = "sdpa"
 
         self.conversion_rules = HookConversionSet(
             {
