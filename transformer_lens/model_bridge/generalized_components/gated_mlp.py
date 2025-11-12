@@ -10,9 +10,12 @@ import torch
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
+from transformer_lens.model_bridge.generalized_components.mlp import (
+    MLPBridge,
+)
 
 
-class GatedMLPBridge(GeneralizedComponent):
+class GatedMLPBridge(MLPBridge):
     """Bridge component for gated MLP layers.
 
     This component wraps a gated MLP layer from a remote model (e.g., LLaMA, Gemma)
@@ -163,12 +166,7 @@ class GatedMLPBridge(GeneralizedComponent):
 
     def set_processed_weights(
         self,
-        W_gate: torch.Tensor,
-        W_in: torch.Tensor,
-        W_out: torch.Tensor,
-        b_gate: torch.Tensor | None = None,
-        b_in: torch.Tensor | None = None,
-        b_out: torch.Tensor | None = None,
+        weights: dict[str, torch.Tensor]
     ) -> None:
         """Set the processed weights to use when layer norm is folded.
 
@@ -180,10 +178,16 @@ class GatedMLPBridge(GeneralizedComponent):
             b_in: The processed MLP input bias tensor (optional)
             b_out: The processed MLP output bias tensor (optional)
         """
-        self._processed_W_gate = W_gate
-        self._processed_W_in = W_in
-        self._processed_W_out = W_out
-        self._processed_b_gate = b_gate
-        self._processed_b_in = b_in
-        self._processed_b_out = b_out
+        super().set_processed_weights(weights)
+        W_gate = weights["W_gate"]
+        b_gate = weights["b_gate"]
+        gate_module = getattr(self, "gate", None)
+        
         self._use_processed_weights = True
+        self._processed_W_gate = W_gate
+        self._processed_b_gate = b_gate
+
+
+        # Use LinearBridge's set_processed_weights for the 'gate' component
+        if gate_module and hasattr(gate_module, "set_processed_weights"):
+            gate_module.set_processed_weights({"weight" : W_gate, "bias": b_gate})

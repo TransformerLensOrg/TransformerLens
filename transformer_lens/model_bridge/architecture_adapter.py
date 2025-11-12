@@ -1305,7 +1305,16 @@ class ArchitectureAdapter:
             )
 
         # Use existing infrastructure
-        attn_bridge.set_processed_weights(W_Q, W_K, W_V, W_O, b_Q, b_K, b_V, b_O)
+        attn_bridge.set_processed_weights({
+            "W_Q": W_Q,
+            "W_K": W_K,
+            "W_V": W_V,
+            "W_O": W_O,
+            "b_Q": b_Q,
+            "b_K": b_K,
+            "b_V": b_V,
+            "b_O": b_O,
+        })
 
         # Disable hook conversions since processed weights produce correct shapes
         self._disable_hook_conversions(attn_bridge)
@@ -1350,7 +1359,12 @@ class ArchitectureAdapter:
         else:
             raise ValueError(f"Unsupported MLP architecture. Module has attributes: {dir(hf_mlp)}")
 
-        mlp_bridge.set_processed_weights(W_in, W_out, b_in, b_out)
+        mlp_bridge.set_processed_weights({
+            "W_in": W_in,
+            "W_out": W_out,
+            "b_in": b_in,
+            "b_out": b_out,
+        })
 
     def _extract_qkv_gpt2_style(self, c_attn, n_heads, d_model, d_head):
         """Extract Q, K, V weights from GPT-2 style combined c_attn.

@@ -321,17 +321,7 @@ class AttentionBridge(GeneralizedComponent):
 
         return output
 
-    def set_processed_weights(
-        self,
-        W_Q: torch.Tensor,
-        W_K: torch.Tensor,
-        W_V: torch.Tensor,
-        W_O: torch.Tensor,
-        b_Q: Optional[torch.Tensor] = None,
-        b_K: Optional[torch.Tensor] = None,
-        b_V: Optional[torch.Tensor] = None,
-        b_O: Optional[torch.Tensor] = None,
-    ) -> None:
+    def set_processed_weights(self, weights: Dict[str, torch.Tensor]) -> None:
         """Set the processed weights by delegating to LinearBridge submodules.
 
         This uses LinearBridge's set_processed_weights method for Q/K/V/O submodules,
@@ -340,17 +330,27 @@ class AttentionBridge(GeneralizedComponent):
         The weights should already be in the correct 2D format from weight processing.
 
         Args:
-            W_Q: Query weight tensor (already in 2D format)
-            W_K: Key weight tensor (already in 2D format)
-            W_V: Value weight tensor (already in 2D format)
-            W_O: Output projection weight tensor (already in 2D format)
-            b_Q: Query bias tensor (optional)
-            b_K: Key bias tensor (optional)
-            b_V: Value bias tensor (optional)
-            b_O: Output bias tensor (optional)
+            weights: Dictionary containing processed weight tensors with keys:
+                - "W_Q": Query weight tensor (already in 2D format)
+                - "W_K": Key weight tensor (already in 2D format)
+                - "W_V": Value weight tensor (already in 2D format)
+                - "W_O": Output projection weight tensor (already in 2D format)
+                - "b_Q": Query bias tensor (optional)
+                - "b_K": Key bias tensor (optional)
+                - "b_V": Value bias tensor (optional)
+                - "b_O": Output bias tensor (optional)
         """
         if self.original_component is None:
             raise RuntimeError(f"Original component not set for {self.name}")
+
+        W_Q = weights["W_Q"]
+        W_K = weights["W_K"]
+        W_V = weights["W_V"]
+        W_O = weights["W_O"]
+        b_Q = weights.get("b_Q")
+        b_K = weights.get("b_K")
+        b_V = weights.get("b_V")
+        b_O = weights.get("b_O")
 
         # Get Q/K/V/O submodules (LinearBridge instances)
         q_module = getattr(self, "q", None)
@@ -361,16 +361,16 @@ class AttentionBridge(GeneralizedComponent):
         # Use LinearBridge's set_processed_weights for each submodule
         # Weights should already be in 2D format [in, out] from weight processing
         if q_module and hasattr(q_module, "set_processed_weights"):
-            q_module.set_processed_weights(weight=W_Q, bias=b_Q)
+            q_module.set_processed_weights({"weight": W_Q, "bias": b_Q})
 
         if k_module and hasattr(k_module, "set_processed_weights"):
-            k_module.set_processed_weights(weight=W_K, bias=b_K)
+            k_module.set_processed_weights({"weight": W_K, "bias": b_K})
 
         if v_module and hasattr(v_module, "set_processed_weights"):
-            v_module.set_processed_weights(weight=W_V, bias=b_V)
+            v_module.set_processed_weights({"weight": W_V, "bias": b_V})
 
         if o_module and hasattr(o_module, "set_processed_weights"):
-            o_module.set_processed_weights(weight=W_O, bias=b_O)
+            o_module.set_processed_weights({"weight": W_O, "bias": b_O})
 
     def _forward_with_processed_weights(self, *args: Any, **kwargs: Any) -> tuple[Any, Any]:
         """Direct implementation of reference model's attention computation with hooks."""

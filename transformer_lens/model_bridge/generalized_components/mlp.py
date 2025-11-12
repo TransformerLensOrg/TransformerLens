@@ -162,10 +162,7 @@ class MLPBridge(GeneralizedComponent):
 
     def set_processed_weights(
         self,
-        W_in: torch.Tensor,
-        W_out: torch.Tensor,
-        b_in: torch.Tensor | None = None,
-        b_out: torch.Tensor | None = None,
+        weights: dict[str, torch.Tensor]
     ) -> None:
         """Set the processed weights for use in compatibility mode.
 
@@ -177,27 +174,34 @@ class MLPBridge(GeneralizedComponent):
             W_out: The processed MLP output weight tensor [d_mlp, d_model]
             b_in: The processed MLP input bias tensor (optional)
             b_out: The processed MLP output bias tensor (optional)
+            W_gate: The processed MLP gate weight tensor [d_model, d_mlp] (for gated MLPs)
+            b_gate: The processed MLP gate bias tensor (optional, for gated MLPs)
         """
 
         if self.original_component is None:
             raise RuntimeError(f"Original component not set for {self.name}")
 
-        # Store processed weights as attributes for use in forward()
-        self._processed_W_in = W_in
-        self._processed_W_out = W_out
-        self._processed_b_in = b_in
-        self._processed_b_out = b_out
+        W_in = weights["W_in"]
+        b_in = weights["b_in"]
+        W_out = weights["W_out"]
+        b_out = weights["b_out"]
+        
         self._use_processed_weights = True
+        self._processed_W_in = W_in
+        self._processed_b_in = b_in
+        self._processed_W_out = W_out
+        self._processed_b_out = b_out
+
 
         # Also load into the submodules for property access (e.g., bridge.blocks[0].mlp.W_in)
-        # Get the 'in' and 'out' submodules (LinearBridge instances)
+        # Get the 'in', 'out', and 'gate' submodules (LinearBridge instances)
         in_module = getattr(self, "in", None)
         out_module = getattr(self, "out", None)
 
         # Use LinearBridge's set_processed_weights for the 'in' component
         if in_module and hasattr(in_module, "set_processed_weights"):
-            in_module.set_processed_weights(weight=W_in, bias=b_in)
+            in_module.set_processed_weights({"weight": W_in, "bias" :b_in })
 
         # Use LinearBridge's set_processed_weights for the 'out' component
         if out_module and hasattr(out_module, "set_processed_weights"):
-            out_module.set_processed_weights(weight=W_out, bias=b_out)
+            out_module.set_processed_weights({"weight": W_out, "bias": b_out})

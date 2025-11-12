@@ -848,17 +848,7 @@ class JointQKVAttentionBridge(AttentionBridge):
 
         return output
 
-    def set_processed_weights(
-        self,
-        W_Q: torch.Tensor,
-        W_K: torch.Tensor,
-        W_V: torch.Tensor,
-        W_O: torch.Tensor,
-        b_Q: Optional[torch.Tensor] = None,
-        b_K: Optional[torch.Tensor] = None,
-        b_V: Optional[torch.Tensor] = None,
-        b_O: Optional[torch.Tensor] = None,
-    ) -> None:
+    def set_processed_weights(self, weights: Dict[str, torch.Tensor]) -> None:
         """Set processed weights for Joint QKV attention.
 
         For Joint QKV attention, the Q/K/V weights are stored in a single c_attn component.
@@ -866,16 +856,26 @@ class JointQKVAttentionBridge(AttentionBridge):
         [n_heads, d_model, d_head] for Q/K/V weights.
 
         Args:
-            W_Q: Query weight tensor (2D or 3D format)
-            W_K: Key weight tensor (2D or 3D format)
-            W_V: Value weight tensor (2D or 3D format)
-            W_O: Output projection weight (2D HF format [d_model, d_model] or 3D TL format)
-            b_Q: Query bias tensor (optional)
-            b_K: Key bias tensor (optional)
-            b_V: Value bias tensor (optional)
-            b_O: Output bias tensor (optional)
+            weights: Dictionary containing processed weight tensors with keys:
+                - "W_Q": Query weight tensor (2D or 3D format)
+                - "W_K": Key weight tensor (2D or 3D format)
+                - "W_V": Value weight tensor (2D or 3D format)
+                - "W_O": Output projection weight (2D HF format [d_model, d_model] or 3D TL format)
+                - "b_Q": Query bias tensor (optional)
+                - "b_K": Key bias tensor (optional)
+                - "b_V": Value bias tensor (optional)
+                - "b_O": Output bias tensor (optional)
         """
         import einops
+
+        W_Q = weights["W_Q"]
+        W_K = weights["W_K"]
+        W_V = weights["W_V"]
+        W_O = weights["W_O"]
+        b_Q = weights.get("b_Q")
+        b_K = weights.get("b_K")
+        b_V = weights.get("b_V")
+        b_O = weights.get("b_O")
 
         # Convert Q/K/V weights to TL format [n_heads, d_model, d_head] if needed
         if W_Q.ndim == 2:
@@ -910,13 +910,13 @@ class JointQKVAttentionBridge(AttentionBridge):
         self._b_V = b_V
 
         if hasattr(self, "q") and self.q is not None and hasattr(self.q, "set_processed_weights"):
-            self.q.set_processed_weights(weight=W_Q, bias=b_Q)
+            self.q.set_processed_weights({"weight": W_Q, "bias": b_Q})
         if hasattr(self, "k") and self.k is not None and hasattr(self.k, "set_processed_weights"):
-            self.k.set_processed_weights(weight=W_K, bias=b_K)
+            self.k.set_processed_weights({"weight": W_K, "bias": b_K})
         if hasattr(self, "v") and self.v is not None and hasattr(self.v, "set_processed_weights"):
-            self.v.set_processed_weights(weight=W_V, bias=b_V)
+            self.v.set_processed_weights({"weight": W_V, "bias": b_V})
         if hasattr(self, "o") and self.o is not None and hasattr(self.o, "set_processed_weights"):
-            self.o.set_processed_weights(weight=W_O, bias=b_O)
+            self.o.set_processed_weights({"weight": W_O, "bias": b_O})
 
     def process_weights(
         self,

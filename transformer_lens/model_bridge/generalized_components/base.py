@@ -130,15 +130,6 @@ class GeneralizedComponent(nn.Module):
         # This way accessing self.W_Q directly returns self.q.weight without any __getattr__ overhead
         for alias_name, target_path in self._property_alias_registry.items():
             try:
-                # Check if we should use processed weights instead
-                # If _use_processed_weights is True and _processed_{alias_name} exists, use that
-                if hasattr(self, "_use_processed_weights") and self._use_processed_weights:
-                    processed_attr = f"_processed_{alias_name}"
-                    if hasattr(self, processed_attr):
-                        target_obj = getattr(self, processed_attr)
-                        object.__setattr__(self, alias_name, target_obj)
-                        continue
-
                 # Otherwise, resolve the target object from the path
                 target_obj = self
                 for part in target_path.split("."):
@@ -273,6 +264,21 @@ class GeneralizedComponent(nn.Module):
         """
         # Base implementation returns the standard state dict
         return self.state_dict()
+
+    def set_processed_weights(self, weights: Dict[str, torch.Tensor]) -> None:
+        """Set the processed weights for use in compatibility mode.
+
+        This method stores processed weights as attributes on the component so they can be
+        used directly in the forward pass without modifying the original component.
+
+        Components should override this method to handle their specific weight structure.
+        The weights dict contains keys like "weight", "bias", "W_in", "W_out", etc.
+
+        Args:
+            weights: Dictionary of processed weight tensors
+        """
+        # Base implementation does nothing - components should override
+        pass
 
     def get_expected_parameter_names(self, prefix: str = "") -> list[str]:
         """Get the expected TransformerLens parameter names for this component.
