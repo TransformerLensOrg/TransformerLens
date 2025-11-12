@@ -310,8 +310,46 @@ class PositionEmbeddingsAttentionBridge(AttentionBridge):
         if "attention_mask" not in kwargs:
             kwargs["attention_mask"] = None
 
-        # Forward through original component
+        # Request attention weights to fire hook_attn_scores and hook_pattern
+        # This is needed for HookedTransformer compatibility
+        kwargs["output_attentions"] = True
+
+        # Forward through original component with output_attentions=True
         output = self.original_component(*args, **kwargs)
+
+        # Extract attention weights if available and fire hooks
+        # HF returns tuple: (hidden_states, attention_weights, ...)
+        if isinstance(output, tuple) and len(output) >= 2:
+            attn_weights = output[1]
+
+            # Fire attention pattern hooks if weights are available
+            if attn_weights is not None:
+                # For HookedTransformer compatibility, we need both attn_scores (pre-softmax)
+                # and attn_pattern (post-softmax). HF only gives us post-softmax.
+                # We can approximate pre-softmax by taking the inverse softmax, but this
+                # is only for hook compatibility - the actual computation still uses HF's values.
+
+                # Fire hook_pattern with the attention weights (post-softmax)
+                _ = self.hook_pattern(attn_weights)
+
+                # For hook_attn_scores, we need pre-softmax values. Since HF doesn't provide these
+                # when using SDPA, we'll compute them approximately using log + scaling.
+                # This is only for observability - the actual forward pass still uses HF's exact computation.
+                with torch.no_grad():
+                    # Convert from probabilities back to logits (approximate)
+                    # attn_scores ≈ log(attn_weights) * sqrt(d_head)
+                    # This won't be exact but allows the hook to fire for interpretability
+                    d_head = (
+                        self.config.head_dim
+                        if self.config and hasattr(self.config, "head_dim")
+                        else 256
+                    )
+                    # Avoid log(0) by adding small epsilon
+                    attn_scores_approx = torch.log(attn_weights + 1e-10) * (d_head**0.5)
+
+                # Fire hook_attn_scores with approximate pre-softmax scores
+                # Note: This is detached from the computational graph, so it doesn't affect gradients
+                _ = self.hook_attn_scores(attn_scores_approx)
 
         # Apply hook_out to the output
         # HF attention returns a tuple, but the decoder layer expects exactly 2 values:

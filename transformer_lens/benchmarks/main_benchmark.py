@@ -42,8 +42,6 @@ from transformer_lens.benchmarks.hook_registration import (
 )
 from transformer_lens.benchmarks.hook_structure import (
     benchmark_activation_cache_structure,
-    benchmark_backward_hooks_structure,
-    benchmark_forward_hooks_structure,
 )
 from transformer_lens.benchmarks.utils import (
     BenchmarkResult,
@@ -674,7 +672,10 @@ def run_benchmark_suite(
                 )
                 add_result(
                     benchmark_hook_functionality(
-                        bridge_processed, test_text, reference_model=gpt2_reference, cross_model=True
+                        bridge_processed,
+                        test_text,
+                        reference_model=gpt2_reference,
+                        cross_model=True,
                     )
                 )
                 add_result(
@@ -753,7 +754,9 @@ def run_benchmark_suite(
             # Use GPT-2 for cross-model validation with dimensional matching
             try:
                 if verbose:
-                    print("Using GPT-2 for backward hook cross-model validation (dimensional matching)")
+                    print(
+                        "Using GPT-2 for backward hook cross-model validation (dimensional matching)"
+                    )
                 # Cross-model benchmarks with dimensional matching
                 add_result(
                     benchmark_gradient_computation(

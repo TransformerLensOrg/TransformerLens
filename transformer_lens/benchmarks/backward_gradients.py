@@ -272,6 +272,7 @@ def benchmark_backward_hooks(
 
     except Exception as e:
         import traceback
+
         return BenchmarkResult(
             name="backward_hooks",
             severity=BenchmarkSeverity.ERROR,
@@ -501,6 +502,7 @@ def benchmark_critical_backward_hooks(
 
     except Exception as e:
         import traceback
+
         return BenchmarkResult(
             name="critical_backward_hooks",
             severity=BenchmarkSeverity.ERROR,

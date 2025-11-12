@@ -6,8 +6,6 @@ Unlike LayerNorm, RMSNorm doesn't center the inputs (no mean subtraction) and ha
 
 from typing import Any, Dict, Optional
 
-import torch
-
 from transformer_lens.model_bridge.generalized_components.normalization import (
     NormalizationBridge,
 )
@@ -34,6 +32,7 @@ class RMSNormalizationBridge(NormalizationBridge):
         name: str,
         config: Any,
         submodules: Optional[Dict[str, "GeneralizedComponent"]] = None,  # type: ignore
+        use_native_layernorm_autograd: bool = True,
     ):
         """Initialize the RMS normalization bridge.
 
@@ -41,16 +40,18 @@ class RMSNormalizationBridge(NormalizationBridge):
             name: The name of this component
             config: Configuration object
             submodules: Dictionary of GeneralizedComponent submodules to register
+            use_native_layernorm_autograd: Use HF's RMSNorm implementation for exact numerical match
         """
-        super().__init__(name, config, submodules=submodules or {})
+        # Always use native autograd for RMSNorm to match HF exactly
+        super().__init__(
+            name,
+            config,
+            submodules=submodules or {},
+            use_native_layernorm_autograd=use_native_layernorm_autograd,
+        )
 
         # Override config to indicate this is RMSNorm
         # This ensures the parent NormalizationBridge forward method
         # uses the correct normalization formula
         if self.config is not None and not hasattr(self.config, "uses_rms_norm"):
             self.config.uses_rms_norm = True
-
-    # Note: We deliberately do NOT override forward() here.
-    # The parent NormalizationBridge.forward() properly handles RMSNorm
-    # (when config.uses_rms_norm is True) and fires all hooks including
-    # hook_normalized and hook_scale, which are needed for interpretability.

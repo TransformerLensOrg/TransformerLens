@@ -170,7 +170,13 @@ class NormalizationBridge(GeneralizedComponent):
                 x_centered = x
 
             # Compute scale for hook
-            eps = getattr(self.config, "eps", 1e-5)
+            # Get eps from the original HF component if available, otherwise from config
+            if hasattr(self.original_component, "eps"):
+                eps = self.original_component.eps
+            elif hasattr(self.original_component, "variance_epsilon"):
+                eps = self.original_component.variance_epsilon
+            else:
+                eps = getattr(self.config, "eps", 1e-5)
             scale = (x_centered.pow(2).mean(-1, keepdim=True) + eps).sqrt()
 
             # Compute normalized value for hook

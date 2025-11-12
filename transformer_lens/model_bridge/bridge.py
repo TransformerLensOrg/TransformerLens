@@ -2167,7 +2167,6 @@ class TransformerBridge(nn.Module):
             verbose: If True, print detailed progress messages. Default: False
         """
         from transformer_lens.weight_processing import ProcessWeights
-        from transformer_lens.model_bridge.generalized_components.gated_mlp import GatedMLPBridge
 
         adapter = self.adapter
         cfg = self.cfg

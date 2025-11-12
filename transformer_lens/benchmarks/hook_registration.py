@@ -40,15 +40,25 @@ def validate_hook_shape_compatibility(
     gqa_attention_hooks = ["hook_q", "hook_k", "hook_v", "hook_z"]
     is_gqa_hook = any(pattern in hook_name for pattern in gqa_attention_hooks)
 
+    # Attention pattern hooks have shape [batch, n_heads, seq_q, seq_k]
+    # Different models can have different numbers of heads
+    is_attention_pattern_hook = "hook_pattern" in hook_name or "hook_attn_scores" in hook_name
+
     # Same rank (number of dimensions) is required, except for GQA attention hooks
     if len(target_shape) != len(reference_shape):
         if is_gqa_hook:
             # For GQA hooks, different ranks are okay - just verify batch and sequence dims match
             if len(target_shape) >= 2 and len(reference_shape) >= 2:
                 if target_shape[0] != reference_shape[0]:
-                    return False, f"Batch dimension mismatch: {target_shape[0]} vs {reference_shape[0]}"
+                    return (
+                        False,
+                        f"Batch dimension mismatch: {target_shape[0]} vs {reference_shape[0]}",
+                    )
                 if target_shape[1] != reference_shape[1]:
-                    return False, f"Sequence dimension mismatch: {target_shape[1]} vs {reference_shape[1]}"
+                    return (
+                        False,
+                        f"Sequence dimension mismatch: {target_shape[1]} vs {reference_shape[1]}",
+                    )
                 # Rank mismatch is fine for GQA - different attention implementations
                 return True, None
             else:
@@ -61,7 +71,19 @@ def validate_hook_shape_compatibility(
             # Should be same (both use same test input)
             if target_dim != ref_dim:
                 return False, f"Batch dimension mismatch: {target_dim} vs {ref_dim}"
-        elif i == 1:  # Sequence dimension
+        elif i == 1:  # Usually sequence dimension, but n_heads for attention patterns
+            if is_attention_pattern_hook:
+                # For attention patterns: [batch, n_heads, seq_q, seq_k]
+                # Dimension 1 is n_heads, which can differ between models
+                # Just verify it's valid
+                if target_dim <= 0 or ref_dim <= 0:
+                    return False, f"Invalid n_heads dimension: {target_dim} vs {ref_dim}"
+            else:
+                # For other hooks, dimension 1 is sequence - should be same
+                if target_dim != ref_dim:
+                    return False, f"Sequence dimension mismatch: {target_dim} vs {ref_dim}"
+        elif i >= 2 and is_attention_pattern_hook:
+            # For attention patterns, dimensions 2 and 3 are seq_q and seq_k
             # Should be same (both use same test input)
             if target_dim != ref_dim:
                 return False, f"Sequence dimension mismatch: {target_dim} vs {ref_dim}"
@@ -652,6 +674,18 @@ def benchmark_forward_hooks(
             )
 
         # CRITICAL CHECK: All registered hooks must fire
+        # Filter out expected missing hooks in cross-model mode
+        if cross_model and hooks_that_didnt_fire:
+            # In cross-model mode, some hooks are expected to not fire due to architectural differences
+            # For example, rotary embedding models (Gemma, LLaMA) don't have hook_pos_embed
+            expected_missing_patterns = ["hook_pos_embed"]
+            actual_didnt_fire = [
+                h
+                for h in hooks_that_didnt_fire
+                if not any(pattern in h for pattern in expected_missing_patterns)
+            ]
+            hooks_that_didnt_fire = set(actual_didnt_fire)
+
         if hooks_that_didnt_fire:
             return BenchmarkResult(
                 name="forward_hooks",
@@ -682,6 +716,9 @@ def benchmark_forward_hooks(
                 if not is_compatible:
                     mismatches.append(f"{hook_name}: {error_msg}")
                     continue
+                # Skip value comparison for cross-model (different architectures have different values)
+                # We only check that hooks exist, fire, and have compatible structure
+                continue
             else:
                 # Use exact shape matching for same-model comparison
                 if bridge_tensor.shape != reference_tensor.shape:
@@ -690,7 +727,7 @@ def benchmark_forward_hooks(
                     )
                     continue
 
-            # Check values
+            # Check values (only for same-model comparison)
             if not torch.allclose(bridge_tensor, reference_tensor, atol=tolerance, rtol=0):
                 max_diff = torch.max(torch.abs(bridge_tensor - reference_tensor)).item()
                 mean_diff = torch.mean(torch.abs(bridge_tensor - reference_tensor)).item()
@@ -901,7 +938,8 @@ def benchmark_critical_forward_hooks(
             # For example, rotary embedding models (Gemma, LLaMA) don't have hook_pos_embed
             expected_missing_patterns = ["hook_pos_embed"]
             actual_missing = [
-                h for h in bridge_missing
+                h
+                for h in bridge_missing
                 if not any(pattern in h for pattern in expected_missing_patterns)
             ]
             bridge_missing = actual_missing
@@ -967,6 +1005,7 @@ def benchmark_critical_forward_hooks(
 
     except Exception as e:
         import traceback
+
         return BenchmarkResult(
             name="critical_forward_hooks",
             severity=BenchmarkSeverity.ERROR,
@@ -1063,6 +1102,7 @@ def benchmark_hook_functionality(
 
     except Exception as e:
         import traceback
+
         return BenchmarkResult(
             name="hook_functionality",
             severity=BenchmarkSeverity.ERROR,

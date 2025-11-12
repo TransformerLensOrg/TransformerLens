@@ -41,15 +41,25 @@ def validate_hook_shape_compatibility(
     gqa_attention_hooks = ["hook_q", "hook_k", "hook_v", "hook_z"]
     is_gqa_hook = any(pattern in hook_name for pattern in gqa_attention_hooks)
 
+    # Attention pattern hooks have shape [batch, n_heads, seq_q, seq_k]
+    # Different models can have different numbers of heads
+    is_attention_pattern_hook = "hook_pattern" in hook_name or "hook_attn_scores" in hook_name
+
     # Same rank (number of dimensions) is required, except for GQA attention hooks
     if len(target_shape) != len(reference_shape):
         if is_gqa_hook:
             # For GQA hooks, different ranks are okay - just verify batch and sequence dims match
             if len(target_shape) >= 2 and len(reference_shape) >= 2:
                 if target_shape[0] != reference_shape[0]:
-                    return False, f"Batch dimension mismatch: {target_shape[0]} vs {reference_shape[0]}"
+                    return (
+                        False,
+                        f"Batch dimension mismatch: {target_shape[0]} vs {reference_shape[0]}",
+                    )
                 if target_shape[1] != reference_shape[1]:
-                    return False, f"Sequence dimension mismatch: {target_shape[1]} vs {reference_shape[1]}"
+                    return (
+                        False,
+                        f"Sequence dimension mismatch: {target_shape[1]} vs {reference_shape[1]}",
+                    )
                 # Rank mismatch is fine for GQA - different attention implementations
                 return True, None
             else:
@@ -62,7 +72,19 @@ def validate_hook_shape_compatibility(
             # Should be same (both use same test input)
             if target_dim != ref_dim:
                 return False, f"Batch dimension mismatch: {target_dim} vs {ref_dim}"
-        elif i == 1:  # Sequence dimension
+        elif i == 1:  # Usually sequence dimension, but n_heads for attention patterns
+            if is_attention_pattern_hook:
+                # For attention patterns: [batch, n_heads, seq_q, seq_k]
+                # Dimension 1 is n_heads, which can differ between models
+                # Just verify it's valid
+                if target_dim <= 0 or ref_dim <= 0:
+                    return False, f"Invalid n_heads dimension: {target_dim} vs {ref_dim}"
+            else:
+                # For other hooks, dimension 1 is sequence - should be same
+                if target_dim != ref_dim:
+                    return False, f"Sequence dimension mismatch: {target_dim} vs {ref_dim}"
+        elif i >= 2 and is_attention_pattern_hook:
+            # For attention patterns, dimensions 2 and 3 are seq_q and seq_k
             # Should be same (both use same test input)
             if target_dim != ref_dim:
                 return False, f"Sequence dimension mismatch: {target_dim} vs {ref_dim}"
@@ -574,6 +596,19 @@ def benchmark_activation_cache_structure(
 
         # Check for missing keys
         missing_keys = ref_keys - bridge_keys
+
+        # Filter out expected missing hooks in cross-model mode
+        if cross_model and missing_keys:
+            # In cross-model mode, some hooks are expected to be missing due to architectural differences
+            # For example, rotary embedding models (Gemma, LLaMA) don't have hook_pos_embed
+            expected_missing_patterns = ["hook_pos_embed"]
+            actual_missing = [
+                k
+                for k in missing_keys
+                if not any(pattern in k for pattern in expected_missing_patterns)
+            ]
+            missing_keys = set(actual_missing)
+
         if missing_keys:
             return BenchmarkResult(
                 name="activation_cache_structure",
@@ -633,6 +668,7 @@ def benchmark_activation_cache_structure(
 
     except Exception as e:
         import traceback
+
         return BenchmarkResult(
             name="activation_cache_structure",
             severity=BenchmarkSeverity.ERROR,

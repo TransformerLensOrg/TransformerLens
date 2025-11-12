@@ -36,9 +36,9 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
         # Gemma 3 uses rotary positional embeddings (dual RoPE)
         self.cfg.positional_embedding_type = "rotary"
 
-        # Use SDPA for numerical consistency with HuggingFace
-        # Only set if not already configured
-        self.cfg.attn_implementation = "sdpa"
+        # Use eager attention to support output_attentions for hook_attn_scores and hook_pattern
+        # SDPA doesn't support output_attentions, which is required for HookedTransformer compatibility
+        self.cfg.attn_implementation = "eager"
 
         self.conversion_rules = HookConversionSet(
             {
