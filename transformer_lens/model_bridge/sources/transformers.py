@@ -8,7 +8,6 @@ import logging
 import os
 
 import torch
-import transformers
 from transformers import (
     AutoConfig,
     AutoModel,
@@ -17,22 +16,6 @@ from transformers import (
     AutoTokenizer,
     PreTrainedTokenizerBase,
 )
-
-# ---------------------------------------------------------------------------
-# Compatibility shim for transformers>=4.57 where BeamSearchScorer is no longer
-# exported at the top-level. Some third-party remote code (e.g., Qwen models
-# via transformers_stream_generator) still imports it from `transformers`.
-# Provide a best-effort alias so those imports continue to succeed.
-# ---------------------------------------------------------------------------
-try:
-    from transformers.generation.beam_search import (
-        BeamSearchScorer as _BeamSearchScorer,
-    )
-except ImportError:  # pragma: no cover - only hit on very old transformers
-    _BeamSearchScorer = None  # type: ignore[misc,assignment]
-else:
-    if not hasattr(transformers, "BeamSearchScorer"):
-        transformers.BeamSearchScorer = _BeamSearchScorer  # type: ignore[attr-defined]
 
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.model_bridge.bridge import TransformerBridge
@@ -130,16 +113,8 @@ def map_default_transformer_lens_config(hf_config):
         tl_config.d_head = hf_config.head_dim
 
     # Set activation function
-    # Try multiple attribute names for compatibility with different HF configs:
-    # - activation_function: OPT, LLaMA, Mistral
-    # - hidden_activation: Gemma-2
-    # - hidden_act: BERT, GPT-2, GPT-Neo
     if hasattr(hf_config, "activation_function"):
         tl_config.act_fn = hf_config.activation_function
-    elif hasattr(hf_config, "hidden_activation"):
-        tl_config.act_fn = hf_config.hidden_activation
-    elif hasattr(hf_config, "hidden_act"):
-        tl_config.act_fn = hf_config.hidden_act
 
     # Set number of experts
     if hasattr(hf_config, "num_local_experts"):
@@ -154,9 +129,6 @@ def map_default_transformer_lens_config(hf_config):
         tl_config.sliding_window = hf_config.sliding_window
 
     # Set common defaults for transformer models
-    # Most models were trained with BOS tokens, so default to True
-    # Individual architecture adapters can override this if needed
-    # (e.g., Pythia/NeoX, Gemma, Phi, Qwen don't use BOS tokens)
     tl_config.default_prepend_bos = True
 
     return tl_config
@@ -311,9 +283,7 @@ def boot(
             model_name = official_name
             break
 
-    hf_config = AutoConfig.from_pretrained(
-        model_name, output_attentions=True, trust_remote_code=True
-    )
+    hf_config = AutoConfig.from_pretrained(model_name, output_attentions=True)
 
     # Apply config variables to hf_config before selecting adapter
     if hf_config_overrides:
@@ -355,12 +325,7 @@ def boot(
         model_kwargs["attn_implementation"] = adapter.cfg.attn_implementation
 
     # Load the model from HuggingFace using the appropriate model class
-    hf_model = model_class.from_pretrained(
-        model_name,
-        config=hf_config,
-        torch_dtype=dtype,
-        trust_remote_code=True,
-    )
+    hf_model = model_class.from_pretrained(model_name, **model_kwargs)
 
     # Move model to device
     if device is not None:
@@ -381,7 +346,6 @@ def boot(
                 add_bos_token=True,
                 use_fast=use_fast,
                 token=huggingface_token if len(huggingface_token) > 0 else None,
-                trust_remote_code=True,
             ),
             default_padding_side=default_padding_side,
         )
