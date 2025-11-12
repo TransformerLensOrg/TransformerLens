@@ -26,6 +26,8 @@ class OptArchitectureAdapter(ArchitectureAdapter):
         """Initialize the OPT architecture adapter."""
         super().__init__(cfg)
 
+        # OPT models were trained with BOS tokens (inherits default_prepend_bos = True)
+
         self.conversion_rules = HookConversionSet(
             {
                 "embed.e": "model.decoder.embed_tokens.weight",
@@ -84,6 +86,7 @@ class OptArchitectureAdapter(ArchitectureAdapter):
                     "ln2": NormalizationBridge(name="final_layer_norm", config=self.cfg),
                     "mlp": MLPBridge(
                         name=None,  # No MLP container; fc1/fc2 are on block
+                        config=self.cfg,  # Pass config for activation function
                         submodules={
                             "in": LinearBridge(name="fc1"),
                             "out": LinearBridge(name="fc2"),

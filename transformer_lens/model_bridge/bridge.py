@@ -4,7 +4,10 @@ This module provides the bridge components that wrap remote model components and
 a consistent interface for accessing their weights and performing operations.
 """
 
+# Pre-compiled regex patterns for performance
+import re
 from contextlib import contextmanager
+from functools import lru_cache
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -29,6 +32,8 @@ from transformer_lens.ActivationCache import ActivationCache
 from transformer_lens.cache.key_value_cache import TransformerLensKeyValueCache
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookPoint
+
+_BLOCK_PATTERN = re.compile(r"blocks\.(\d+)")
 
 
 class StopAtLayerException(Exception):
@@ -409,49 +414,69 @@ class TransformerBridge(nn.Module):
 
         return aliases
 
+    @staticmethod
+    @lru_cache(maxsize=128)
+    def _compute_hook_aliases_cached(
+        hook_names_tuple: Tuple[str, ...], component_aliases_tuple: Tuple[Tuple[str, str], ...]
+    ) -> Tuple[Tuple[str, str], ...]:
+        """Cached computation of hook aliases. Takes immutable inputs for caching."""
+        aliases = {}
+        component_aliases = dict(component_aliases_tuple)
+
+        # Apply component aliases to all existing hooks
+        for hook_name in hook_names_tuple:
+            # Check if this hook matches any component alias pattern
+            for alias_pattern, target_pattern in component_aliases.items():
+                # Handle dynamic block patterns (blocks.0, blocks.1, etc.)
+                if "blocks." in target_pattern and "blocks." in hook_name:
+                    # Extract the block number from the hook name
+                    block_match = _BLOCK_PATTERN.search(hook_name)
+                    if block_match:
+                        block_num = block_match.group(1)
+                        # Replace generic patterns with actual block numbers using f-strings
+                        # This is faster than str.replace() for simple substitutions
+                        dynamic_alias_pattern = alias_pattern.replace(
+                            "blocks.", f"blocks.{block_num}."
+                        )
+                        dynamic_target_pattern = target_pattern.replace(
+                            "blocks.", f"blocks.{block_num}."
+                        )
+
+                        # Check if this hook name matches the target pattern
+                        if hook_name.endswith(dynamic_target_pattern):
+                            # Create alias using string slicing instead of replace
+                            # Since we know it ends with the pattern, we can slice and concatenate
+                            target_len = len(dynamic_target_pattern)
+                            alias_name = hook_name[:-target_len] + dynamic_alias_pattern
+                            aliases[alias_name] = hook_name
+                else:
+                    # Handle non-block patterns
+                    if hook_name.endswith(target_pattern):
+                        # Create alias using string slicing instead of replace
+                        target_len = len(target_pattern)
+                        alias_name = hook_name[:-target_len] + alias_pattern
+                        aliases[alias_name] = hook_name
+
+        return tuple(aliases.items())
+
     def _collect_hook_aliases_from_registry(self):
         """Collect aliases based on existing hooks in the registry."""
-        aliases = {}
-
         # Get component aliases from the adapter
         if hasattr(self.adapter, "component_mapping"):
             component_aliases = self._collect_component_aliases(self.adapter.component_mapping)
 
-            # Apply component aliases to all existing hooks
-            for hook_name in self._hook_registry.keys():
-                # Check if this hook matches any component alias pattern
-                for alias_pattern, target_pattern in component_aliases.items():
-                    # Handle dynamic block patterns (blocks.0, blocks.1, etc.)
-                    if "blocks." in target_pattern and "blocks." in hook_name:
-                        # Extract the block number from the hook name
-                        import re
+            # Convert to immutable types for caching
+            hook_names_tuple = tuple(sorted(self._hook_registry.keys()))
+            component_aliases_tuple = tuple(sorted(component_aliases.items()))
 
-                        block_match = re.search(r"blocks\.(\d+)", hook_name)
-                        if block_match:
-                            block_num = block_match.group(1)
-                            # Replace generic patterns with actual block numbers
-                            dynamic_alias_pattern = alias_pattern.replace(
-                                "blocks.", f"blocks.{block_num}."
-                            )
-                            dynamic_target_pattern = target_pattern.replace(
-                                "blocks.", f"blocks.{block_num}."
-                            )
+            # Use cached computation
+            aliases_tuple = self._compute_hook_aliases_cached(
+                hook_names_tuple, component_aliases_tuple
+            )
 
-                            # Check if this hook name matches the target pattern
-                            if hook_name.endswith(dynamic_target_pattern):
-                                # Create the alias name by replacing the target with the alias
-                                alias_name = hook_name.replace(
-                                    dynamic_target_pattern, dynamic_alias_pattern
-                                )
-                                aliases[alias_name] = hook_name
-                    else:
-                        # Handle non-block patterns
-                        if hook_name.endswith(target_pattern):
-                            # Create the alias name by replacing the target with the alias
-                            alias_name = hook_name.replace(target_pattern, alias_pattern)
-                            aliases[alias_name] = hook_name
+            return dict(aliases_tuple)
 
-        return aliases
+        return {}
 
     def _add_aliases_to_hooks(self, hooks: Dict[str, HookPoint]) -> None:
         """Add aliases to hooks in place."""
@@ -1831,6 +1856,53 @@ class TransformerBridge(nn.Module):
             print(f"    Loaded {loaded_count} weights into Bridge components")
             print(f"    Skipped {missing_count} keys")
             print(f"    Processed state_dict has {len(state_dict)} keys")
+
+        # After loading processed weights, set layer norm weights to identity if folding was enabled
+        # This ensures state_dict() returns the correct values for benchmarks
+        if fold_ln:
+            for layer_idx in range(self.cfg.n_layers):
+                # Set ln1 and ln2 weights to 1.0 (identity) for all layers
+                for ln_name in ["ln1", "ln2"]:
+                    try:
+                        block = self.blocks[layer_idx]
+                        ln_component = getattr(block, ln_name, None)
+                        if ln_component is not None:
+                            # Get the actual normalization module
+                            if hasattr(ln_component, "_original_component"):
+                                norm_module = ln_component._original_component
+                            else:
+                                norm_module = ln_component
+
+                            # Set weight to ones
+                            if hasattr(norm_module, "weight") and norm_module.weight is not None:
+                                with torch.no_grad():
+                                    norm_module.weight.fill_(1.0)
+
+                            # Set bias to zeros if it exists
+                            if hasattr(norm_module, "bias") and norm_module.bias is not None:
+                                with torch.no_grad():
+                                    norm_module.bias.zero_()
+                    except (AttributeError, IndexError):
+                        pass
+
+            # Set ln_final weight to 1.0 as well
+            try:
+                if hasattr(self, "ln_final"):
+                    ln_final = self.ln_final
+                    if hasattr(ln_final, "_original_component"):
+                        norm_module = ln_final._original_component
+                    else:
+                        norm_module = ln_final
+
+                    if hasattr(norm_module, "weight") and norm_module.weight is not None:
+                        with torch.no_grad():
+                            norm_module.weight.fill_(1.0)
+
+                    if hasattr(norm_module, "bias") and norm_module.bias is not None:
+                        with torch.no_grad():
+                            norm_module.bias.zero_()
+            except (AttributeError, IndexError):
+                pass
 
         # Enable processed weights mode on all components
         # This makes components use _forward_with_processed_weights instead of calling HF modules
@@ -4088,9 +4160,45 @@ class TransformerBridge(nn.Module):
                         "ln_2.bias",
                         "ln_f.weight",
                         "ln_f.bias",
+                        "input_layernorm.weight",
+                        "post_attention_layernorm.weight",
+                        "pre_feedforward_layernorm.weight",
+                        "post_feedforward_layernorm.weight",
                     ]
                 ):
                     expected_missing_keys.add(key)
+
+            # For missing layer norm keys, set them to identity (1.0 for weights, 0.0 for biases)
+            # This ensures state_dict() returns the correct folded values
+            # We need to actually modify the parameters in the model, not just a local state_dict
+            for key in expected_missing_keys:
+                # Navigate to the actual parameter in the model
+                try:
+                    parts = key.split(".")
+                    obj: Any = self.original_model
+                    for part in parts[:-1]:
+                        if part.isdigit():
+                            obj = obj[int(part)]
+                        else:
+                            obj = getattr(obj, part, None)
+                            if obj is None:
+                                break
+
+                    if obj is not None:
+                        param_name = parts[-1]
+                        if hasattr(obj, param_name):
+                            param = getattr(obj, param_name)
+                            if param is not None and isinstance(param, torch.nn.Parameter):
+                                with torch.no_grad():
+                                    if "weight" in key:
+                                        # Set weights to identity (ones)
+                                        param.fill_(1.0)
+                                    elif "bias" in key:
+                                        # Set biases to zero
+                                        param.zero_()
+                except (AttributeError, IndexError, KeyError):
+                    # Skip if we can't navigate to this parameter
+                    pass
 
             # Remove expected missing keys from the missing_keys set
             actual_missing_keys = set(missing_keys) - expected_missing_keys

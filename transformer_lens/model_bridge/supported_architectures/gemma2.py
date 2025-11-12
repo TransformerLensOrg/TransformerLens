@@ -11,8 +11,8 @@ from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
     BlockBridge,
     EmbeddingBridge,
+    GatedMLPBridge,
     LinearBridge,
-    MLPBridge,
     RMSNormalizationBridge,
     RotaryEmbeddingBridge,
     UnembeddingBridge,
@@ -26,6 +26,8 @@ class Gemma2ArchitectureAdapter(ArchitectureAdapter):
         """Initialize the Gemma2 architecture adapter."""
         super().__init__(cfg)
 
+        # Gemma models were not trained with BOS tokens
+        self.cfg.default_prepend_bos = False
         self.cfg.gated_mlp = True
 
         self.cfg.uses_rms_norm = True
@@ -38,6 +40,9 @@ class Gemma2ArchitectureAdapter(ArchitectureAdapter):
             self.cfg.output_logits_soft_cap = self.cfg.final_logit_softcapping
         if hasattr(self.cfg, "attn_logit_softcapping"):
             self.cfg.attn_scores_soft_cap = self.cfg.attn_logit_softcapping
+
+        # Gemma2 uses rotary position embeddings
+        self.cfg.positional_embedding_type = "rotary"
 
         # Note: n_key_value_heads is now automatically mapped from num_key_value_heads
         # by map_default_transformer_lens_config() in sources/transformers.py
@@ -115,8 +120,9 @@ class Gemma2ArchitectureAdapter(ArchitectureAdapter):
                         requires_attention_mask=True,
                         requires_position_embeddings=True,
                     ),
-                    "mlp": MLPBridge(
+                    "mlp": GatedMLPBridge(
                         name="mlp",
+                        config=self.cfg,
                         submodules={
                             "gate": LinearBridge(name="gate_proj"),
                             "in": LinearBridge(name="up_proj"),
