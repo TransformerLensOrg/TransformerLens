@@ -147,8 +147,6 @@ class BlockBridge(GeneralizedComponent):
             if past_key_value is not None:
                 if "layer_past" in attn_params:
                     attn_kwargs["layer_past"] = past_key_value
-                elif "past_key_values" in attn_params:
-                    attn_kwargs["past_key_values"] = past_key_value
                 elif "past_key_value" in attn_params:
                     attn_kwargs["past_key_value"] = past_key_value
                 else:
@@ -156,13 +154,7 @@ class BlockBridge(GeneralizedComponent):
                     # use past_key_value as the default (most common)
                     attn_kwargs["past_key_value"] = past_key_value
 
-            # Filter kwargs to only include parameters that the attention module accepts
-            # This prevents errors with models that don't support all parameters (e.g., Qwen-1 doesn't support cache_position)
-            filtered_attn_kwargs = {
-                k: v for k, v in attn_kwargs.items() if k in attn_params or k == "kwargs"
-            }
-
-            attn_result = attn(attn_input, **filtered_attn_kwargs)  # type: ignore[misc]
+            attn_result = attn(attn_input, **attn_kwargs)  # type: ignore[misc]
             # Handle different return formats: (output, weights) or (output, weights, past)
             if len(attn_result) >= 2:
                 attn_output = attn_result[0]
@@ -199,11 +191,10 @@ class BlockBridge(GeneralizedComponent):
 
             # MLP block - THIS IS WHERE WE INSERT hook_mlp_out
             residual = hidden_states
-            # Get architecture-specific second layer norm name (ln_2, pre_feedforward_layernorm, final_layer_norm, etc.)
-            # NOTE: Do NOT check for post_attention_layernorm here - that's ln1_post for Gemma2, called after attention
+            # Get architecture-specific second layer norm name (ln_2, post_attention_layernorm, final_layer_norm, etc.)
             ln2 = (
                 getattr(block_self, "ln_2", None)
-                or getattr(block_self, "pre_feedforward_layernorm", None)  # Gemma2
+                or getattr(block_self, "post_attention_layernorm", None)
                 or getattr(block_self, "final_layer_norm", None)
             )
             if ln2 is not None:
@@ -232,11 +223,6 @@ class BlockBridge(GeneralizedComponent):
                     feed_forward_hidden_states = fc2(hidden_states)
                 else:
                     raise RuntimeError(f"Could not find MLP module in block {block_self}")
-
-            # Gemma2 post-feedforward normalization (applied AFTER MLP, BEFORE residual)
-            ln2_post = getattr(block_self, "post_feedforward_layernorm", None)
-            if ln2_post is not None:
-                feed_forward_hidden_states = ln2_post(feed_forward_hidden_states)
 
             # Residual connection
             hidden_states = residual + feed_forward_hidden_states

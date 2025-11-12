@@ -28,10 +28,10 @@ class AttentionBridge(GeneralizedComponent):
 
     hook_aliases = {
         "hook_result": "hook_out",
-        "hook_q": "q.hook_out",  # Q vectors after projection (used in attention)
-        "hook_k": "k.hook_out",  # K vectors after projection (used in attention)
-        "hook_v": "v.hook_out",  # V vectors after projection (used in attention)
-        "hook_z": "o.hook_in",  # Z tensor before output projection
+        "hook_q": "q.hook_out",
+        "hook_k": "k.hook_out",
+        "hook_v": "v.hook_out",
+        "hook_z": "o.hook_in",
     }
 
     property_aliases = {
@@ -317,7 +317,7 @@ class AttentionBridge(GeneralizedComponent):
         )
 
         if has_c_attn:
-            # Joint QKV wrapper (GPT-2 style with c_attn)
+            # Joint QKV wrapper (GPT-2 style)
             def wrapped_forward(
                 hidden_states,
                 past_key_values=None,
@@ -330,13 +330,8 @@ class AttentionBridge(GeneralizedComponent):
                 **kwargs,
             ):
                 """Wrapped forward that manually computes attention scores."""
-                # Compute Q, K, V (support both c_attn and query_key_value)
-                if has_c_attn:
-                    query, key, value = hf_attn.c_attn(hidden_states).split(hf_attn.split_size, dim=2)  # type: ignore[union-attr,operator]
-                else:  # has_query_key_value (Pythia/GPT-NeoX)
-                    qkv = hf_attn.query_key_value(hidden_states)  # type: ignore[union-attr,operator]
-                    # Split into Q, K, V - they're concatenated along the last dimension
-                    query, key, value = qkv.split(hf_attn.num_attention_heads * hf_attn.head_size, dim=-1)  # type: ignore[union-attr]
+                # Compute Q, K, V
+                query, key, value = hf_attn.c_attn(hidden_states).split(hf_attn.split_size, dim=2)  # type: ignore[union-attr,operator]
 
                 # Split into heads
                 query = split_heads(query, hf_attn.num_heads, hf_attn.head_dim)  # type: ignore[union-attr]
@@ -419,12 +414,10 @@ class AttentionBridge(GeneralizedComponent):
                 **kwargs,
             ):
                 """Wrapped forward for split QKV attention."""
-                # Compute Q, K, V separately using bridge submodules (so hooks fire)
-                # Use attention_bridge.q/k/v instead of hf_attn.q_proj/k_proj/v_proj
-                # This ensures the LinearBridge hooks (q.hook_in, q.hook_out, etc.) fire properly
-                query = attention_bridge.q(hidden_states) if hasattr(attention_bridge, "q") else hf_attn.q_proj(hidden_states)  # type: ignore[union-attr,operator]
-                key = attention_bridge.k(hidden_states) if hasattr(attention_bridge, "k") else hf_attn.k_proj(hidden_states)  # type: ignore[union-attr,operator]
-                value = attention_bridge.v(hidden_states) if hasattr(attention_bridge, "v") else hf_attn.v_proj(hidden_states)  # type: ignore[union-attr,operator]
+                # Compute Q, K, V separately
+                query = hf_attn.q_proj(hidden_states)  # type: ignore[union-attr,operator]
+                key = hf_attn.k_proj(hidden_states)  # type: ignore[union-attr,operator]
+                value = hf_attn.v_proj(hidden_states)  # type: ignore[union-attr,operator]
 
                 # Get num_heads from config (may differ for K/V with GQA)
                 # Gemma3 stores these in config, not as attributes
@@ -448,20 +441,10 @@ class AttentionBridge(GeneralizedComponent):
                 if position_embeddings is not None:
                     cos, sin = position_embeddings
                     query, key = apply_rotary_pos_emb(query, key, cos, sin)
-                    # Apply rotary hooks after rotary embeddings (for compatibility with HookedTransformer)
-                    if hasattr(attention_bridge, "hook_rot_q"):
-                        query = attention_bridge.hook_rot_q(query)
-                    if hasattr(attention_bridge, "hook_rot_k"):
-                        key = attention_bridge.hook_rot_k(key)
                 # Other models may use position_ids
                 elif hasattr(hf_attn, "rotary_emb") and position_ids is not None:
                     cos, sin = hf_attn.rotary_emb(value, position_ids)  # type: ignore[union-attr,operator]
                     query, key = apply_rotary_pos_emb(query, key, cos, sin)
-                    # Apply rotary hooks after rotary embeddings (for compatibility with HookedTransformer)
-                    if hasattr(attention_bridge, "hook_rot_q"):
-                        query = attention_bridge.hook_rot_q(query)
-                    if hasattr(attention_bridge, "hook_rot_k"):
-                        key = attention_bridge.hook_rot_k(key)
 
                 # Apply Q/K normalization if present (Gemma3 has this)
                 if hasattr(hf_attn, "q_norm") and hf_attn.q_norm is not None:  # type: ignore[union-attr]
@@ -536,9 +519,8 @@ class AttentionBridge(GeneralizedComponent):
                 new_shape = attn_output.size()[:-2] + (num_heads * head_dim,)  # type: ignore[operator]
                 attn_output = attn_output.view(new_shape)
 
-                # Output projection using bridge submodule (so hooks fire)
-                # This ensures hook_z (o.hook_in) and hook_result (o.hook_out) fire properly
-                attn_output = attention_bridge.o(attn_output) if hasattr(attention_bridge, "o") else hf_attn.o_proj(attn_output)  # type: ignore[union-attr,operator]
+                # Output projection
+                attn_output = hf_attn.o_proj(attn_output)  # type: ignore[union-attr,operator]
 
                 # Return in HF format - check config for expected format
                 # Some models return (output, attn_weights), others return (output, attn_weights, past)

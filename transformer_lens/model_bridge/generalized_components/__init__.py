@@ -32,7 +32,9 @@ from transformer_lens.model_bridge.generalized_components.gemma3_attention impor
     PositionEmbeddingsAttentionBridge,
 )
 from transformer_lens.model_bridge.generalized_components.mlp import MLPBridge
-from transformer_lens.model_bridge.generalized_components.gated_mlp import GatedMLPBridge
+from transformer_lens.model_bridge.generalized_components.gated_mlp import (
+    GatedMLPBridge,
+)
 from transformer_lens.model_bridge.generalized_components.moe import MoEBridge
 from transformer_lens.model_bridge.generalized_components.joint_gate_up_mlp import (
     JointGateUpMLPBridge,

@@ -34,9 +34,7 @@ class GeneralizedComponent(nn.Module):
     # Subclasses can override this to define their own aliases
     # Values can be either a string (single target) or a list of strings (multiple fallback targets)
     hook_aliases: Dict[str, Union[str, List[str]]] = {}
-    # Dictionary mapping property names to hook names
-    # Values can be either a string (single target) or a list of strings (multiple fallback targets)
-    property_aliases: Dict[str, Union[str, List[str]]] = {}
+    property_aliases: Dict[str, str] = {}
 
     def __init__(
         self,
@@ -64,9 +62,7 @@ class GeneralizedComponent(nn.Module):
         self._hook_alias_registry: Dict[
             str, Union[str, List[str]]
         ] = {}  # Permanent registry of hook aliases
-        self._property_alias_registry: Dict[
-            str, Union[str, List[str]]
-        ] = {}  # Permanent registry of property aliases
+        self._property_alias_registry: Dict[str, str] = {}  # Permanent registry of property aliases
 
         # Standardized hooks for all bridge components
         self.hook_in = HookPoint()
@@ -133,29 +129,27 @@ class GeneralizedComponent(nn.Module):
         # Create actual attribute references for property aliases
         # This way accessing self.W_Q directly returns self.q.weight without any __getattr__ overhead
         for alias_name, target_path in self._property_alias_registry.items():
-            # Check if we should use processed weights instead
-            # If _use_processed_weights is True and _processed_{alias_name} exists, use that
-            if hasattr(self, "_use_processed_weights") and self._use_processed_weights:
-                processed_attr = f"_processed_{alias_name}"
-                if hasattr(self, processed_attr):
-                    target_obj = getattr(self, processed_attr)
-                    object.__setattr__(self, alias_name, target_obj)
-                    continue
+            try:
+                # Check if we should use processed weights instead
+                # If _use_processed_weights is True and _processed_{alias_name} exists, use that
+                if hasattr(self, "_use_processed_weights") and self._use_processed_weights:
+                    processed_attr = f"_processed_{alias_name}"
+                    if hasattr(self, processed_attr):
+                        target_obj = getattr(self, processed_attr)
+                        object.__setattr__(self, alias_name, target_obj)
+                        continue
 
-            target_paths = target_path if isinstance(target_path, list) else [target_path]
-            for single_target in target_paths:
-                try:
-                    target_obj = self
-                    for part in single_target.split("."):
-                        target_obj = getattr(target_obj, part)
+                # Otherwise, resolve the target object from the path
+                target_obj = self
+                for part in target_path.split("."):
+                    target_obj = getattr(target_obj, part)
 
-                    # Set the alias as a direct attribute reference
-                    # This creates a "real" attribute that points to the same object
-                    object.__setattr__(self, alias_name, target_obj)
-                    break
-                except AttributeError:
-                    # Try the next fallback target if available
-                    continue
+                # Set the alias as a direct attribute reference
+                # This creates a "real" attribute that points to the same object
+                object.__setattr__(self, alias_name, target_obj)
+            except AttributeError:
+                # Target doesn't exist yet, skip
+                pass
 
     def get_hooks(self) -> Dict[str, HookPoint]:
         """Get all hooks registered in this component."""
