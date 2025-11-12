@@ -30,9 +30,6 @@ from transformer_lens.cache.key_value_cache import TransformerLensKeyValueCache
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookPoint
 
-if TYPE_CHECKING:
-    pass
-
 
 class StopAtLayerException(Exception):
     """Exception to stop forward pass at a specific layer."""
@@ -127,18 +124,16 @@ class TransformerBridge(nn.Module):
 
         # Infer vocab size from tokenizer (similar to HookedTransformer)
         if self.cfg.d_vocab == -1:
-            # Try multiple methods to get vocab size, as different tokenizers have different APIs
-            if hasattr(self.tokenizer, "vocab_size") and self.tokenizer.vocab_size is not None:
-                self.cfg.d_vocab = self.tokenizer.vocab_size
-            elif hasattr(self.tokenizer, "vocab") and self.tokenizer.vocab is not None:
-                self.cfg.d_vocab = max(self.tokenizer.vocab.values()) + 1
-            elif hasattr(self.tokenizer, "get_vocab"):
+            # Use get_vocab() method which works across different tokenizer types
+            # Some tokenizers (like CodeGenTokenizer) don't support direct .vocab access
+            if hasattr(self.tokenizer, "get_vocab"):
                 vocab = self.tokenizer.get_vocab()
                 self.cfg.d_vocab = max(vocab.values()) + 1
+            elif hasattr(self.tokenizer, "vocab"):
+                self.cfg.d_vocab = max(self.tokenizer.vocab.values()) + 1
             else:
-                raise ValueError(
-                    f"Could not infer vocab size from tokenizer of type {type(self.tokenizer)}"
-                )
+                # Fallback: use vocab_size attribute if available
+                self.cfg.d_vocab = getattr(self.tokenizer, "vocab_size", 50257)
         if self.cfg.d_vocab_out == -1:
             self.cfg.d_vocab_out = self.cfg.d_vocab
 
@@ -151,9 +146,7 @@ class TransformerBridge(nn.Module):
         self._hook_alias_registry: Dict[
             str, Union[str, List[str]]
         ] = {}  # Permanent registry of hook aliases
-        self._property_alias_registry: Dict[
-            str, Union[str, List[str]]
-        ] = {}  # Permanent registry of property aliases
+        self._property_alias_registry: Dict[str, str] = {}  # Permanent registry of property aliases
 
         # Add device information to config from the loaded model
         if not hasattr(self.cfg, "device") or self.cfg.device is None:
@@ -1061,6 +1054,11 @@ class TransformerBridge(nn.Module):
                 center_writing_weights=center_writing_weights,
                 center_unembed=center_unembed,
             )
+
+        # Register property aliases AFTER weight processing
+        # This ensures aliases point to the correct (processed) weights
+        # Note: _set_processed_weight_attributes() is called inside process_compatibility_weights()
+        self._register_all_aliases_recursive()
 
     def _setup_no_processing_hooks(self) -> None:
         """Setup hooks for no_processing mode in all attention layers.
@@ -5066,27 +5064,15 @@ class TransformerBridge(nn.Module):
         original_tl_cache = past_kv_cache
 
         # Run model
-        try:
-            if hasattr(self.original_model, "forward"):
-                # Pass labels for loss calculation if needed
-                if return_type in ["loss", "both"]:
-                    kwargs["labels"] = input_ids
-                output = self.original_model.forward(input_ids, **kwargs)
-            else:
-                if return_type in ["loss", "both"]:
-                    kwargs["labels"] = input_ids
-                output = self.original_model(input_ids, **kwargs)
-        except ValueError as e:
-            # Some models (like Qwen-1) can't output attentions when using SDPA
-            # Retry with output_attentions=False if we get that specific error
-            if "Cannot output attentions" in str(e) and kwargs.get("output_attentions"):
-                kwargs["output_attentions"] = False
-                if hasattr(self.original_model, "forward"):
-                    output = self.original_model.forward(input_ids, **kwargs)
-                else:
-                    output = self.original_model(input_ids, **kwargs)
-            else:
-                raise
+        if hasattr(self.original_model, "forward"):
+            # Pass labels for loss calculation if needed
+            if return_type in ["loss", "both"]:
+                kwargs["labels"] = input_ids
+            output = self.original_model.forward(input_ids, **kwargs)
+        else:
+            if return_type in ["loss", "both"]:
+                kwargs["labels"] = input_ids
+            output = self.original_model(input_ids, **kwargs)
 
         # Update TransformerLensKeyValueCache if it was provided and model returned new cache
         if (
@@ -5580,36 +5566,17 @@ class TransformerBridge(nn.Module):
             if "output_attentions" not in filtered_kwargs:
                 filtered_kwargs["output_attentions"] = True
 
-            try:
-                # Call forward with the input as the first argument
-                if processed_args:
-                    output = self.forward(processed_args[0], **filtered_kwargs)
-                elif "input_ids" in filtered_kwargs:
-                    # If we have input_ids but no processed_args, use the input_ids as input
-                    output = self.forward(
-                        filtered_kwargs["input_ids"],
-                        **{k: v for k, v in filtered_kwargs.items() if k != "input_ids"},
-                    )
-                else:
-                    output = self.forward(**filtered_kwargs)
-            except ValueError as e:
-                # Some models (like Qwen-1) can't output attentions when using SDPA
-                # Retry with output_attentions=False if we get that specific error
-                if "Cannot output attentions" in str(e) and filtered_kwargs.get(
-                    "output_attentions"
-                ):
-                    filtered_kwargs["output_attentions"] = False
-                    if processed_args:
-                        output = self.forward(processed_args[0], **filtered_kwargs)
-                    elif "input_ids" in filtered_kwargs:
-                        output = self.forward(
-                            filtered_kwargs["input_ids"],
-                            **{k: v for k, v in filtered_kwargs.items() if k != "input_ids"},
-                        )
-                    else:
-                        output = self.forward(**filtered_kwargs)
-                else:
-                    raise
+            # Call forward with the input as the first argument
+            if processed_args:
+                output = self.forward(processed_args[0], **filtered_kwargs)
+            elif "input_ids" in filtered_kwargs:
+                # If we have input_ids but no processed_args, use the input_ids as input
+                output = self.forward(
+                    filtered_kwargs["input_ids"],
+                    **{k: v for k, v in filtered_kwargs.items() if k != "input_ids"},
+                )
+            else:
+                output = self.forward(**filtered_kwargs)
             # Extract logits if output is a HuggingFace model output object
             if hasattr(output, "logits"):
                 output = output.logits
@@ -5940,22 +5907,14 @@ class TransformerBridge(nn.Module):
         with torch.no_grad():
             outputs = self.original_model.generate(input_ids, **generation_kwargs)  # type: ignore[operator]
 
-        # Some models return GenerateDecoderOnlyOutput, others return plain tensors
-        # Extract sequences appropriately
-        if hasattr(outputs, "sequences"):
-            sequences = outputs.sequences
-        else:
-            # Plain tensor output
-            sequences = outputs
-
         # Return based on return_type and input format
         if return_type == "input" or return_type is None:
             if isinstance(input, str):
                 # Decode the full output back to string
-                return self.tokenizer.decode(sequences[0], skip_special_tokens=True)
+                return self.tokenizer.decode(outputs[0], skip_special_tokens=True)
             elif isinstance(input, list):
                 # Decode each sequence in the batch
-                return [self.tokenizer.decode(seq, skip_special_tokens=True) for seq in sequences]
+                return [self.tokenizer.decode(seq, skip_special_tokens=True) for seq in outputs]
             else:
                 # Return the full token sequence including input
                 return outputs
@@ -5964,9 +5923,9 @@ class TransformerBridge(nn.Module):
         else:
             # For other return types, default to the decoded text
             if isinstance(input, str):
-                return self.tokenizer.decode(sequences[0], skip_special_tokens=True)
+                return self.tokenizer.decode(outputs[0], skip_special_tokens=True)
             elif isinstance(input, list):
-                return [self.tokenizer.decode(seq, skip_special_tokens=True) for seq in sequences]
+                return [self.tokenizer.decode(seq, skip_special_tokens=True) for seq in outputs]
             else:
                 return outputs
 
@@ -6062,41 +6021,15 @@ class TransformerBridge(nn.Module):
         else:
             raise AttributeError(f"Hook point '{hook_name}' not found on component")
 
-    def reset_hooks(
-        self,
-        clear_contexts: bool = True,
-        direction: str = "both",
-        including_permanent: bool = False,
-        level: int | None = None,
-    ):
-        """Remove all hooks from the model.
-
-        Args:
-            clear_contexts: Whether to clear hook contexts
-            direction: Direction of hooks to remove ("fwd", "bwd", or "both")
-            including_permanent: Whether to remove permanent hooks
-            level: Hook level to remove (None for all levels)
-        """
+    def reset_hooks(self, clear_contexts=True):
+        """Remove all hooks from the model."""
 
         # Recursively remove hooks from all components
         def remove_hooks_recursive(module):
-            # Check if the module is in a valid state before accessing attributes
-            if not hasattr(module, "__dict__"):
-                return
-
             if isinstance(module, GeneralizedComponent):
                 module.remove_hooks()
-
-            # Safely iterate through children
-            try:
-                # Directly access _modules to avoid triggering __getattr__
-                if hasattr(module, "_modules") and module.__dict__.get("_modules") is not None:
-                    for child in module.__dict__["_modules"].values():
-                        if child is not None:
-                            remove_hooks_recursive(child)
-            except (AttributeError, RuntimeError):
-                # Module may be partially destroyed during cleanup
-                pass
+            for child in module.children():
+                remove_hooks_recursive(child)
 
         remove_hooks_recursive(self)
 
