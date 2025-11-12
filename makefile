@@ -22,8 +22,11 @@ integration-test:
 acceptance-test:
 	$(RUN) pytest tests/acceptance
 
+benchmark-test:
+	$(RUN) pytest tests/benchmarks
+
 coverage-report-test:
-	$(RUN) pytest --cov=transformer_lens/ --cov-report=html --cov-branch tests/unit tests/integration tests/acceptance
+	$(RUN) pytest --cov=transformer_lens/ --cov-report=html --cov-branch tests/integration tests/benchmarks tests/unit tests/acceptance 
 
 docstring-test:
 	$(RUN) pytest transformer_lens/
@@ -55,6 +58,7 @@ test:
 	make unit-test
 	make integration-test
 	make acceptance-test
+	make benchmark-test
 	make docstring-test
 	make notebook-test
 
