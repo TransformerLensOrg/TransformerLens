@@ -3,7 +3,7 @@
 This module contains the bridge component for attention layers.
 """
 
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Mapping, Optional
 
 import torch
 
@@ -118,11 +118,8 @@ class AttentionBridge(GeneralizedComponent):
     def setup_no_processing_hooks(self) -> None:
         """Setup hooks for no_processing mode.
 
-        In no_processing mode, we need to:
-        1. Wrap HF attention forward to capture raw scores before softmax (unless disabled by config)
-        2. Setup hook_z (o.hook_in) reshaping for proper head dimensions
-
-        This should be called after the attention component and its submodules are fully initialized.
+        In no_processing mode, we use a simplified forward pass that just wraps
+        the original component with hook_in and hook_out.
         """
         if self._hf_forward_wrapped:
             return  # Already set up
@@ -130,16 +127,6 @@ class AttentionBridge(GeneralizedComponent):
         # Setup hook_z reshaping if we have an 'o' submodule
         if hasattr(self, "o") and self.o is not None and hasattr(self.config, "n_heads"):
             self._setup_hook_z_reshape()
-
-        # Wrap HF attention forward to capture scores before softmax (unless maintaining native)
-        # Models with custom attention (e.g., GPT-OSS with attention sinks) set
-        # maintain_native_attention=True to preserve their original behavior
-        if (
-            not self.maintain_native_attention
-            and hasattr(self, "original_component")
-            and self.original_component is not None
-        ):
-            self._wrap_hf_attention_forward()
 
         self._hf_forward_wrapped = True
 
@@ -252,643 +239,89 @@ class AttentionBridge(GeneralizedComponent):
         reshape_conv = ReshapeForAttentionHeads(n_heads, d_head)
         self.o.hook_in.hook_conversion = reshape_conv
 
-    def _wrap_hf_attention_forward(self) -> None:  # type: ignore[misc]
-        """Wrap HuggingFace attention forward to capture scores before softmax."""
-        import torch
-        import torch.nn.functional as F
-
-        if self.original_component is None:
-            raise RuntimeError(f"Original component not set for {self.name}")
-
-        hf_attn = self.original_component  # type: ignore[misc]
-
-        # Save original forward
-        original_forward = hf_attn.forward
-
-        def split_heads(tensor, num_heads, attn_head_size):
-            """Split hidden states into attention heads."""
-            new_shape = tensor.size()[:-1] + (num_heads, attn_head_size)
-            tensor = tensor.view(new_shape)
-            return tensor.permute(0, 2, 1, 3)  # (batch, head, seq_length, head_features)
-
-        def apply_rotary_pos_emb(q, k, cos, sin):
-            """Apply rotary position embeddings to query and key tensors."""
-            # Try to use the model-specific apply_rotary_pos_emb if available
-            # This handles model-specific cases like partial rotary embeddings
-            model_module = hf_attn.__class__.__module__
-            if model_module:
-                try:
-                    import importlib
-
-                    module = importlib.import_module(model_module)
-                    if hasattr(module, "apply_rotary_pos_emb"):
-                        return module.apply_rotary_pos_emb(q, k, cos, sin)
-                except (ImportError, AttributeError):
-                    pass
-
-            # Fallback to simplified version for models without specialized implementation
-            q_embed = (q * cos) + (rotate_half(q) * sin)
-            k_embed = (k * cos) + (rotate_half(k) * sin)
-            return q_embed, k_embed
-
-        def rotate_half(x):
-            """Rotate half the hidden dims of the input."""
-            x1 = x[..., : x.shape[-1] // 2]
-            x2 = x[..., x.shape[-1] // 2 :]
-            return torch.cat((-x2, x1), dim=-1)
-
-        def repeat_kv(hidden_states, n_rep):
-            """Repeat key/value heads for grouped query attention."""
-            batch, num_key_value_heads, slen, head_dim = hidden_states.shape
-            if n_rep == 1:
-                return hidden_states
-            hidden_states = hidden_states[:, :, None, :, :].expand(
-                batch, num_key_value_heads, n_rep, slen, head_dim
-            )
-            return hidden_states.reshape(batch, num_key_value_heads * n_rep, slen, head_dim)
-
-        # Create closure that captures 'self' (the AttentionBridge)
-        attention_bridge = self
-
-        # Detect if this attention uses joint QKV (c_attn) or split QKV (q_proj, k_proj, v_proj)
-        has_c_attn = hasattr(hf_attn, "c_attn")
-        has_split_qkv = (
-            hasattr(hf_attn, "q_proj") and hasattr(hf_attn, "k_proj") and hasattr(hf_attn, "v_proj")
-        )
-
-        if has_c_attn:
-            # Joint QKV wrapper (GPT-2 style)
-            def wrapped_forward(
-                hidden_states,
-                past_key_values=None,
-                cache_position=None,
-                attention_mask=None,
-                head_mask=None,
-                encoder_hidden_states=None,
-                encoder_attention_mask=None,
-                output_attentions=False,
-                **kwargs,
-            ):
-                """Wrapped forward that manually computes attention scores."""
-                # Compute Q, K, V
-                query, key, value = hf_attn.c_attn(hidden_states).split(hf_attn.split_size, dim=2)  # type: ignore[union-attr,operator]
-
-                # Split into heads
-                query = split_heads(query, hf_attn.num_heads, hf_attn.head_dim)  # type: ignore[union-attr]
-                key = split_heads(key, hf_attn.num_heads, hf_attn.head_dim)  # type: ignore[union-attr]
-                value = split_heads(value, hf_attn.num_heads, hf_attn.head_dim)  # type: ignore[union-attr]
-
-                # Compute attention scores
-                attn_scores = torch.matmul(query, key.transpose(-1, -2))
-
-                # Scale
-                if hf_attn.scale_attn_weights:
-                    attn_scores = attn_scores / torch.full(
-                        [],
-                        value.size(-1) ** 0.5,
-                        dtype=attn_scores.dtype,
-                        device=attn_scores.device,
-                    )
-
-                # Apply causal mask
-                query_length, key_length = query.size(-2), key.size(-2)
-                causal_mask = hf_attn.bias[:, :, key_length - query_length : key_length, :key_length]  # type: ignore[union-attr,index]
-                # Use -inf for masked positions to match HookedTransformer exactly
-                mask_value = float("-inf")
-                attn_scores = torch.where(
-                    causal_mask, attn_scores.to(attn_scores.dtype), mask_value
-                )
-
-                # Apply attention mask if provided
-                if attention_mask is not None:
-                    attn_scores = attn_scores + attention_mask
-
-                # Apply hook_attn_scores to raw scores BEFORE softmax
-                attn_scores = attention_bridge.hook_attn_scores(attn_scores)
-
-                # Softmax
-                attn_weights = F.softmax(attn_scores, dim=-1)
-                attn_weights = attn_weights.to(value.dtype)
-
-                # Dropout
-                attn_weights = hf_attn.attn_dropout(attn_weights)  # type: ignore[union-attr,operator]
-
-                # Apply head mask if provided
-                if head_mask is not None:
-                    attn_weights = attn_weights * head_mask
-
-                # Apply hook_pattern to probabilities AFTER softmax
-                attn_weights = attention_bridge.hook_pattern(attn_weights)
-
-                # Compute output
-                attn_output = torch.matmul(attn_weights, value)
-
-                # Merge heads
-                attn_output = attn_output.transpose(1, 2).contiguous()
-                new_shape = attn_output.size()[:-2] + (hf_attn.embed_dim,)  # type: ignore[union-attr,operator]
-                attn_output = attn_output.view(new_shape)
-
-                # Output projection
-                attn_output = hf_attn.c_proj(attn_output)  # type: ignore[union-attr,operator]
-                attn_output = hf_attn.resid_dropout(attn_output)  # type: ignore[union-attr,operator]
-
-                # Return in HF format
-                if output_attentions:
-                    return (attn_output, None, attn_weights)
-                else:
-                    return (attn_output, None)
-
-        elif has_split_qkv:
-            # Split QKV wrapper (Gemma3 style)
-            def wrapped_forward(  # type: ignore[misc]
-                hidden_states,
-                position_embeddings=None,  # Gemma3 uses position_embeddings (cos, sin)
-                past_key_values=None,
-                cache_position=None,
-                attention_mask=None,
-                position_ids=None,
-                head_mask=None,
-                encoder_hidden_states=None,
-                encoder_attention_mask=None,
-                output_attentions=False,
-                **kwargs,
-            ):
-                """Wrapped forward for split QKV attention."""
-                # Compute Q, K, V separately
-                query = hf_attn.q_proj(hidden_states)  # type: ignore[union-attr,operator]
-                key = hf_attn.k_proj(hidden_states)  # type: ignore[union-attr,operator]
-                value = hf_attn.v_proj(hidden_states)  # type: ignore[union-attr,operator]
-
-                # Get num_heads from config (may differ for K/V with GQA)
-                # Gemma3 stores these in config, not as attributes
-                if hasattr(hf_attn, "num_heads"):
-                    num_heads = hf_attn.num_heads  # type: ignore[union-attr]
-                    num_key_value_heads = getattr(hf_attn, "num_key_value_heads", num_heads)  # type: ignore[union-attr]
-                    head_dim = hf_attn.head_dim  # type: ignore[union-attr]
-                else:
-                    # Use config attributes
-                    num_heads = hf_attn.config.num_attention_heads  # type: ignore[union-attr]
-                    num_key_value_heads = getattr(hf_attn.config, "num_key_value_heads", num_heads)  # type: ignore[union-attr]
-                    head_dim = hf_attn.head_dim  # type: ignore[union-attr]
-
-                # Split into heads
-                query = split_heads(query, num_heads, head_dim)
-                key = split_heads(key, num_key_value_heads, head_dim)
-                value = split_heads(value, num_key_value_heads, head_dim)
-
-                # Apply rotary embeddings if present
-                # Gemma3 passes position_embeddings (cos, sin tuple) directly
-                if position_embeddings is not None:
-                    cos, sin = position_embeddings
-                    query, key = apply_rotary_pos_emb(query, key, cos, sin)
-                # Other models may use position_ids
-                elif hasattr(hf_attn, "rotary_emb") and position_ids is not None:
-                    cos, sin = hf_attn.rotary_emb(value, position_ids)  # type: ignore[union-attr,operator]
-                    query, key = apply_rotary_pos_emb(query, key, cos, sin)
-
-                # Apply Q/K normalization if present (Gemma3 has this)
-                if hasattr(hf_attn, "q_norm") and hf_attn.q_norm is not None:  # type: ignore[union-attr]
-                    query = hf_attn.q_norm(query)  # type: ignore[union-attr,operator]
-                if hasattr(hf_attn, "k_norm") and hf_attn.k_norm is not None:  # type: ignore[union-attr]
-                    key = hf_attn.k_norm(key)  # type: ignore[union-attr,operator]
-
-                # Repeat K/V heads for GQA if needed
-                if num_key_value_heads != num_heads:
-                    key = repeat_kv(key, num_heads // num_key_value_heads)  # type: ignore[operator]
-                    value = repeat_kv(value, num_heads // num_key_value_heads)  # type: ignore[operator]
-
-                # Compute attention scores
-                attn_scores = torch.matmul(query, key.transpose(-1, -2))
-
-                # Scale
-                attn_scores = attn_scores / (head_dim**0.5)  # type: ignore[operator]
-
-                # Apply causal mask (using attention_mask if provided)
-                if attention_mask is not None:
-                    # HF attention mask is typically [batch, 1, query_len, key_len] or [batch, 1, 1, key_len]
-                    # Make sure it matches our attn_scores shape [batch, n_heads, query_len, key_len]
-                    # During generation with KV cache, mask might be larger than current query length
-                    query_len = attn_scores.size(-2)
-                    key_len = attn_scores.size(-1)
-
-                    if attention_mask.dim() == 4:
-                        # Slice to match our sequence lengths
-                        # attention_mask is [batch, 1, query_len_total, key_len_total]
-                        # we need [batch, 1, query_len, key_len]
-                        mask_query_len = attention_mask.size(-2)
-                        mask_key_len = attention_mask.size(-1)
-
-                        # Slice from the end to get the relevant portion
-                        mask_to_use = attention_mask[
-                            :,
-                            :,
-                            mask_query_len - query_len : mask_query_len,
-                            mask_key_len - key_len : mask_key_len,
-                        ]
-                        attn_scores = attn_scores + mask_to_use
-                    elif attention_mask.dim() == 2:
-                        # [batch, seq_len] -> need to expand
-                        # This is a simplification - proper implementation would create causal mask
-                        pass  # Skip for now
-                    else:
-                        attn_scores = attn_scores + attention_mask
-
-                # Apply hook_attn_scores to raw scores BEFORE softmax
-                attn_scores = attention_bridge.hook_attn_scores(attn_scores)
-
-                # Softmax
-                attn_weights = F.softmax(attn_scores, dim=-1)
-                attn_weights = attn_weights.to(value.dtype)
-
-                # Apply dropout if present
-                if hasattr(hf_attn, "attn_dropout"):
-                    attn_weights = hf_attn.attn_dropout(attn_weights)  # type: ignore[union-attr,operator]
-
-                # Apply head mask if provided
-                if head_mask is not None:
-                    attn_weights = attn_weights * head_mask
-
-                # Apply hook_pattern to probabilities AFTER softmax
-                attn_weights = attention_bridge.hook_pattern(attn_weights)
-
-                # Compute output
-                attn_output = torch.matmul(attn_weights, value)
-
-                # Merge heads
-                attn_output = attn_output.transpose(1, 2).contiguous()
-                new_shape = attn_output.size()[:-2] + (num_heads * head_dim,)  # type: ignore[operator]
-                attn_output = attn_output.view(new_shape)
-
-                # Output projection
-                attn_output = hf_attn.o_proj(attn_output)  # type: ignore[union-attr,operator]
-
-                # Return in HF format - check config for expected format
-                # Some models return (output, attn_weights), others return (output, attn_weights, past)
-                return_format = getattr(
-                    attention_bridge.config, "attention_output_format", "tuple_3"
-                )
-
-                if return_format == "tuple_2":
-                    # Models like GPT-OSS return (output, attn_weights)
-                    if output_attentions:
-                        return (attn_output, attn_weights)
-                    else:
-                        return (attn_output, None)
-                else:
-                    # Default: return 3-tuple (output, attn_weights, past_key_values)
-                    if output_attentions:
-                        return (attn_output, attn_weights, past_key_values)
-                    else:
-                        return (attn_output, None, past_key_values)
-
-        else:
-            raise RuntimeError(
-                f"Attention component has neither c_attn nor split q_proj/k_proj/v_proj"
-            )
-
-        # Replace the forward method
-        hf_attn.forward = wrapped_forward
-
-    def _process_output(self, output: Any) -> Any:
-        """Process the output from the original component.
-
-        This method intercepts the output to create attention patterns
-        the same way as the old implementation and applies hook_out.
-
-        Args:
-            output: Raw output from the original component
-
-        Returns:
-            Processed output with hooks applied
-        """
-        # Extract attention scores from the output
-        attn_pattern = self._extract_attention_pattern(output)
-
-        if attn_pattern is not None:
-            if not isinstance(attn_pattern, torch.Tensor):
-                raise TypeError(f"Expected 'pattern' to be a Tensor, got {type(attn_pattern)}")
-
-            # Note: hook_attn_scores is already applied in wrapped_forward BEFORE softmax
-            # We only need to hook the pattern here (wrapped_forward also hooks it, but
-            # this handles the case where wrapped_forward is not used, e.g., maintain_native_attention=True)
-            attn_pattern = self.hook_pattern(attn_pattern)
-
-            # Store the pattern for potential use in result calculation
-            self._pattern = attn_pattern
-
-            # Apply the pattern to the output if needed
-            output = self._apply_pattern_to_output(output, attn_pattern)
-        else:
-            # If no attention pattern found, still apply hooks to the output
-            if isinstance(output, tuple):
-                output = self._process_tuple_output(output)
-            elif isinstance(output, dict):
-                output = self._process_dict_output(output)
-            else:
-                output = self._process_single_output(output)
-
-        # Always apply hook_out to the main output
-        output = self._apply_hook_out_to_output(output)
-
-        return output
-
-    def _extract_attention_pattern(self, output: Any) -> Optional[torch.Tensor]:
-        """Extract attention pattern from the output.
-
-        Args:
-            output: Output from the original component
-
-        Returns:
-            Attention pattern tensor or None if not found
-        """
-        if isinstance(output, tuple):
-            # Look for attention pattern in tuple output
-            for element in output:
-                if isinstance(element, torch.Tensor) and element.dim() == 4:
-                    # Assume 4D tensor is attention pattern [batch, heads, query_pos, key_pos]
-                    return element
-        elif isinstance(output, dict):
-            # Look for attention pattern in dict output
-            for key in ["attentions", "attention_weights", "attention_scores", "attn_weights"]:
-                if key in output and isinstance(output[key], torch.Tensor):
-                    return output[key]
-
-        return None
-
-    def _apply_pattern_to_output(self, output: Any, pattern: torch.Tensor) -> Any:
-        """Apply the attention pattern to the output.
-
-        This method simulates how the old implementation uses the pattern
-        to calculate the final output.
-
-        Args:
-            output: Original output from the component
-            pattern: Attention pattern tensor
-
-        Returns:
-            Modified output with pattern applied
-        """
-        if isinstance(output, tuple):
-            return self._apply_pattern_to_tuple_output(output, pattern)
-        elif isinstance(output, dict):
-            return self._apply_pattern_to_dict_output(output, pattern)
-        else:
-            return self._apply_pattern_to_single_output(output, pattern)
-
-    def _apply_pattern_to_tuple_output(
-        self, output: Tuple[Any, ...], pattern: torch.Tensor
-    ) -> Tuple[Any, ...]:
-        """Apply pattern to tuple output.
-
-        Args:
-            output: Tuple output from attention
-            pattern: Attention pattern tensor
-
-        Returns:
-            Processed tuple with pattern applied
-        """
-        processed_output = []
-
-        for i, element in enumerate(output):
-            if i == 0:  # First element is typically hidden states
-                if element is not None:
-                    element = self._apply_hook_preserving_structure(
-                        element, self.hook_hidden_states
-                    )
-                    # Apply the pattern to the hidden states
-                    element = self._apply_pattern_to_hidden_states(element, pattern)
-            elif i == 1 or i == 2:  # Attention weights indices
-                if isinstance(element, torch.Tensor):
-                    # Replace with our computed pattern
-                    element = pattern
-            processed_output.append(element)
-
-        return tuple(processed_output)
-
-    def _apply_pattern_to_dict_output(
-        self, output: Dict[str, Any], pattern: torch.Tensor
-    ) -> Dict[str, Any]:
-        """Apply pattern to dictionary output.
-
-        Args:
-            output: Dictionary output from attention
-            pattern: Attention pattern tensor
-
-        Returns:
-            Processed dictionary with pattern applied
-        """
-        processed_output = {}
-
-        for key, value in output.items():
-            if key in ["last_hidden_state", "hidden_states"] and value is not None:
-                value = self._apply_hook_preserving_structure(value, self.hook_hidden_states)
-                # Apply the pattern to the hidden states
-                value = self._apply_pattern_to_hidden_states(value, pattern)
-            elif key in ["attentions", "attention_weights"] and value is not None:
-                # Replace with our computed pattern
-                value = pattern
-            processed_output[key] = value
-
-        return processed_output
-
-    def _apply_pattern_to_single_output(
-        self, output: torch.Tensor, pattern: torch.Tensor
-    ) -> torch.Tensor:
-        """Apply pattern to single tensor output.
-
-        Args:
-            output: Single tensor output from attention
-            pattern: Attention pattern tensor
-
-        Returns:
-            Processed tensor with pattern applied
-        """
-        # Apply hooks for single tensor output
-        output = self._apply_hook_preserving_structure(output, self.hook_hidden_states)
-        # Apply the pattern to the output
-        output = self._apply_pattern_to_hidden_states(output, pattern)
-        return output
-
-    def _apply_pattern_to_hidden_states(
-        self, hidden_states: torch.Tensor, pattern: torch.Tensor
-    ) -> torch.Tensor:
-        """Apply attention pattern to hidden states.
-
-        This simulates the old implementation's calculate_z_scores method.
-
-        Args:
-            hidden_states: Hidden states tensor
-            pattern: Attention pattern tensor
-
-        Returns:
-            Modified hidden states with pattern applied
-        """
-        # This is a simplified version - in the real implementation,
-        # we would need to extract V from the original component and apply
-        # the pattern properly. For now, we just apply the pattern as a hook.
-        return self.hook_hidden_states(hidden_states)
-
-    def _process_tuple_output(self, output: Tuple[Any, ...]) -> Tuple[Any, ...]:
-        """Process tuple output from attention layer.
-
-        Args:
-            output: Tuple output from attention
-
-        Returns:
-            Processed tuple with hooks applied
-        """
-        processed_output = []
-
-        for i, element in enumerate(output):
-            if i == 0:  # First element is typically hidden states
-                if element is not None:
-                    element = self._apply_hook_preserving_structure(
-                        element, self.hook_hidden_states
-                    )
-            elif i == 1:
-                # When use_cache=False, attention weights may be at index 1
-                if isinstance(element, torch.Tensor):
-                    element = self._apply_hook_preserving_structure(element, self.hook_pattern)
-                # else: assume KV cache and skip
-            elif i == 2:  # With cache enabled, attention weights are typically at index 2
-                if isinstance(element, torch.Tensor):
-                    element = self._apply_hook_preserving_structure(element, self.hook_pattern)
-            processed_output.append(element)
-
-        return tuple(processed_output)
-
-    def _process_dict_output(self, output: Dict[str, Any]) -> Dict[str, Any]:
-        """Process dictionary output from attention layer.
-
-        Args:
-            output: Dictionary output from attention
-
-        Returns:
-            Processed dictionary with hooks applied
-        """
-        processed_output = {}
-
-        for key, value in output.items():
-            if key in ["last_hidden_state", "hidden_states"] and value is not None:
-                value = self._apply_hook_preserving_structure(value, self.hook_hidden_states)
-            elif key in ["attentions", "attention_weights"] and value is not None:
-                value = self._apply_hook_preserving_structure(value, self.hook_pattern)
-            processed_output[key] = value
-
-        return processed_output
-
-    def _process_single_output(self, output: torch.Tensor) -> torch.Tensor:
-        """Process single tensor output from attention layer.
-
-        Args:
-            output: Single tensor output from attention
-
-        Returns:
-            Processed tensor with hooks applied
-        """
-        # Apply hooks for single tensor output
-        output = self._apply_hook_preserving_structure(output, self.hook_hidden_states)
-        return output
-
-    def _apply_hook_preserving_structure(self, element: Any, hook_fn) -> Any:
-        """Apply a hook while preserving the original structure.
-
-        Args:
-            element: The element to process (tensor, tuple, etc.)
-            hook_fn: The hook function to apply to tensors
-
-        Returns:
-            The processed element with the same structure as input
-        """
-        if isinstance(element, torch.Tensor):
-            return hook_fn(element)
-        elif isinstance(element, tuple) and len(element) > 0:
-            # For tuple outputs, process the first element if it's a tensor
-            processed_elements = list(element)
-            if isinstance(element[0], torch.Tensor):
-                processed_elements[0] = hook_fn(element[0])
-            return tuple(processed_elements)
-        else:
-            return element
-
-    def _apply_hook_out_to_output(self, output: Any) -> Any:
-        """Apply hook_out to the main output tensor.
-
-        Args:
-            output: The output to process (can be tensor, tuple, or dict)
-
-        Returns:
-            The output with hook_out applied to the main tensor
-        """
-        if isinstance(output, torch.Tensor):
-            return self.hook_out(output)
-        elif isinstance(output, tuple) and len(output) > 0:
-            # Apply hook_out to the first element (typically hidden states)
-            processed_tuple = list(output)
-            if isinstance(output[0], torch.Tensor):
-                processed_tuple[0] = self.hook_out(output[0])
-            # If tuple has only 1 element, return just the tensor (unwrap)
-            # This prevents tuple from being passed to normalization layers
-            if len(processed_tuple) == 1:
-                return processed_tuple[0]
-            return tuple(processed_tuple)
-        elif isinstance(output, dict):
-            # Apply hook_out to the main hidden states in dictionary
-            processed_dict = output.copy()
-            for key in ["last_hidden_state", "hidden_states"]:
-                if key in processed_dict and isinstance(processed_dict[key], torch.Tensor):
-                    processed_dict[key] = self.hook_out(processed_dict[key])
-                    break  # Only apply to the first found key
-            return processed_dict
-        else:
-            return output
-
     def forward(self, *args: Any, **kwargs: Any) -> Any:
-        """Forward pass through the attention layer.
+        """Simplified forward pass - minimal wrapping around original component.
 
-        This method forwards all arguments to the original component and applies hooks
-        to the output. If processed weights have been set via set_processed_weights(),
-        the original_component will use those weights directly.
+        This does minimal wrapping: hook_in → delegate to HF → hook_out.
+        This ensures we match HuggingFace's exact output without complex intermediate processing.
 
         Args:
             *args: Input arguments to pass to the original component
             **kwargs: Input keyword arguments to pass to the original component
 
         Returns:
-            The output from the original component, with hooks applied
+            The output from the original component, with only input/output hooks applied
         """
         if self.original_component is None:
             raise RuntimeError(
                 f"Original component not set for {self.name}. Call set_original_component() first."
             )
 
-        # Apply input hook
-        if "query_input" in kwargs:
-            kwargs["query_input"] = self.hook_in(kwargs["query_input"])
-        elif "hidden_states" in kwargs:
-            kwargs["hidden_states"] = self.hook_in(kwargs["hidden_states"])
-        elif len(args) > 0 and isinstance(args[0], torch.Tensor):
-            args = (self.hook_in(args[0]),) + args[1:]
+        # Get the target dtype from the original component's parameters
+        target_dtype = None
+        try:
+            target_dtype = next(self.original_component.parameters()).dtype
+        except StopIteration:
+            # Component has no parameters, keep inputs as-is
+            pass
 
-        # Forward through original component (uses processed weights if set_processed_weights was called)
+        # Apply input hook - check for various input formats
+        if "query_input" in kwargs:
+            # Some models use query_input parameter
+            hooked = self.hook_in(kwargs["query_input"])
+            # Cast to target dtype if needed
+            if (
+                target_dtype is not None
+                and isinstance(hooked, torch.Tensor)
+                and hooked.is_floating_point()
+            ):
+                hooked = hooked.to(dtype=target_dtype)
+            kwargs["query_input"] = hooked
+        elif "hidden_states" in kwargs:
+            # Most models use hidden_states parameter
+            hooked = self.hook_in(kwargs["hidden_states"])
+            # Cast to target dtype if needed
+            if (
+                target_dtype is not None
+                and isinstance(hooked, torch.Tensor)
+                and hooked.is_floating_point()
+            ):
+                hooked = hooked.to(dtype=target_dtype)
+            kwargs["hidden_states"] = hooked
+        elif len(args) > 0 and isinstance(args[0], torch.Tensor):
+            # hidden_states passed as first positional argument
+            hooked = self.hook_in(args[0])
+            # Cast to target dtype if needed
+            if (
+                target_dtype is not None
+                and isinstance(hooked, torch.Tensor)
+                and hooked.is_floating_point()
+            ):
+                hooked = hooked.to(dtype=target_dtype)
+            args = (hooked,) + args[1:]
+            # Move it to kwargs for HF compatibility
+            kwargs["hidden_states"] = args[0]
+            args = args[1:]
+
+        # Forward through original component
         output = self.original_component(*args, **kwargs)
 
-        # Process output
-        output = self._process_output(output)
+        # Apply hook_out to the output
+        # HF attention returns a tuple: (hidden_states, attention_weights, ...)
+        # We apply hooks to the first element and preserve the rest
+        if isinstance(output, tuple) and len(output) >= 2:
+            # Return with hooked first element: (hooked_hidden_states, attention_weights, ...)
+            output = (self.hook_out(output[0]), output[1])
+        elif isinstance(output, tuple) and len(output) == 1:
+            # Single element tuple
+            output = (self.hook_out(output[0]),)
+        else:
+            # Not a tuple, just hook the output directly
+            output = self.hook_out(output)
 
         return output
 
-    def set_processed_weights(
-        self,
-        W_Q: torch.Tensor,
-        W_K: torch.Tensor,
-        W_V: torch.Tensor,
-        W_O: torch.Tensor,
-        b_Q: Optional[torch.Tensor] = None,
-        b_K: Optional[torch.Tensor] = None,
-        b_V: Optional[torch.Tensor] = None,
-        b_O: Optional[torch.Tensor] = None,
-    ) -> None:
+    def set_processed_weights(self, weights: Mapping[str, torch.Tensor | None]) -> None:
         """Set the processed weights by delegating to LinearBridge submodules.
 
         This uses LinearBridge's set_processed_weights method for Q/K/V/O submodules,
@@ -897,17 +330,31 @@ class AttentionBridge(GeneralizedComponent):
         The weights should already be in the correct 2D format from weight processing.
 
         Args:
-            W_Q: Query weight tensor (already in 2D format)
-            W_K: Key weight tensor (already in 2D format)
-            W_V: Value weight tensor (already in 2D format)
-            W_O: Output projection weight tensor (already in 2D format)
-            b_Q: Query bias tensor (optional)
-            b_K: Key bias tensor (optional)
-            b_V: Value bias tensor (optional)
-            b_O: Output bias tensor (optional)
+            weights: Dictionary containing processed weight tensors with keys:
+                - "W_Q": Query weight tensor (already in 2D format)
+                - "W_K": Key weight tensor (already in 2D format)
+                - "W_V": Value weight tensor (already in 2D format)
+                - "W_O": Output projection weight tensor (already in 2D format)
+                - "b_Q": Query bias tensor (optional)
+                - "b_K": Key bias tensor (optional)
+                - "b_V": Value bias tensor (optional)
+                - "b_O": Output bias tensor (optional)
         """
         if self.original_component is None:
             raise RuntimeError(f"Original component not set for {self.name}")
+
+        W_Q = weights.get("W_Q")
+        W_K = weights.get("W_K")
+        W_V = weights.get("W_V")
+        W_O = weights.get("W_O")
+        if W_Q is None or W_K is None or W_V is None or W_O is None:
+            raise ValueError(
+                "Processed attention weights must include W_Q, W_K, W_V, and W_O tensors."
+            )
+        b_Q = weights.get("b_Q")
+        b_K = weights.get("b_K")
+        b_V = weights.get("b_V")
+        b_O = weights.get("b_O")
 
         # Get Q/K/V/O submodules (LinearBridge instances)
         q_module = getattr(self, "q", None)
@@ -918,16 +365,16 @@ class AttentionBridge(GeneralizedComponent):
         # Use LinearBridge's set_processed_weights for each submodule
         # Weights should already be in 2D format [in, out] from weight processing
         if q_module and hasattr(q_module, "set_processed_weights"):
-            q_module.set_processed_weights(weight=W_Q, bias=b_Q)
+            q_module.set_processed_weights({"weight": W_Q, "bias": b_Q})
 
         if k_module and hasattr(k_module, "set_processed_weights"):
-            k_module.set_processed_weights(weight=W_K, bias=b_K)
+            k_module.set_processed_weights({"weight": W_K, "bias": b_K})
 
         if v_module and hasattr(v_module, "set_processed_weights"):
-            v_module.set_processed_weights(weight=W_V, bias=b_V)
+            v_module.set_processed_weights({"weight": W_V, "bias": b_V})
 
         if o_module and hasattr(o_module, "set_processed_weights"):
-            o_module.set_processed_weights(weight=W_O, bias=b_O)
+            o_module.set_processed_weights({"weight": W_O, "bias": b_O})
 
     def _forward_with_processed_weights(self, *args: Any, **kwargs: Any) -> tuple[Any, Any]:
         """Direct implementation of reference model's attention computation with hooks."""

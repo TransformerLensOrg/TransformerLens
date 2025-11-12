@@ -3,7 +3,7 @@
 This module contains the bridge component for attention layers that use a fused qkv matrix.
 """
 
-from typing import Any, Callable, Dict, Optional, cast
+from typing import Any, Callable, Dict, Mapping, Optional, cast
 
 import einops
 import torch
@@ -248,8 +248,18 @@ class JointQKVAttentionBridge(AttentionBridge):
             processed_output[0] = self.hook_hidden_states(output[0])
             output = tuple(processed_output)
 
-        # Apply hook_out to the main output
-        output = self._apply_hook_out_to_output(output)
+        # Apply hook_out to the main output tensor
+        if isinstance(output, torch.Tensor):
+            output = self.hook_out(output)
+        elif isinstance(output, tuple) and len(output) > 0:
+            # Apply hook_out to the first element (typically hidden states)
+            processed_tuple = list(output)
+            if isinstance(output[0], torch.Tensor):
+                processed_tuple[0] = self.hook_out(output[0])
+            # If tuple has only 1 element, return just the tensor
+            if len(processed_tuple) == 1:
+                return processed_tuple[0]
+            output = tuple(processed_tuple)
 
         return output
 
@@ -838,17 +848,7 @@ class JointQKVAttentionBridge(AttentionBridge):
 
         return output
 
-    def set_processed_weights(
-        self,
-        W_Q: torch.Tensor,
-        W_K: torch.Tensor,
-        W_V: torch.Tensor,
-        W_O: torch.Tensor,
-        b_Q: Optional[torch.Tensor] = None,
-        b_K: Optional[torch.Tensor] = None,
-        b_V: Optional[torch.Tensor] = None,
-        b_O: Optional[torch.Tensor] = None,
-    ) -> None:
+    def set_processed_weights(self, weights: Mapping[str, torch.Tensor | None]) -> None:
         """Set processed weights for Joint QKV attention.
 
         For Joint QKV attention, the Q/K/V weights are stored in a single c_attn component.
@@ -856,16 +856,28 @@ class JointQKVAttentionBridge(AttentionBridge):
         [n_heads, d_model, d_head] for Q/K/V weights.
 
         Args:
-            W_Q: Query weight tensor (2D or 3D format)
-            W_K: Key weight tensor (2D or 3D format)
-            W_V: Value weight tensor (2D or 3D format)
-            W_O: Output projection weight (2D HF format [d_model, d_model] or 3D TL format)
-            b_Q: Query bias tensor (optional)
-            b_K: Key bias tensor (optional)
-            b_V: Value bias tensor (optional)
-            b_O: Output bias tensor (optional)
+            weights: Dictionary containing processed weight tensors with keys:
+                - "W_Q": Query weight tensor (2D or 3D format)
+                - "W_K": Key weight tensor (2D or 3D format)
+                - "W_V": Value weight tensor (2D or 3D format)
+                - "W_O": Output projection weight (2D HF format [d_model, d_model] or 3D TL format)
+                - "b_Q": Query bias tensor (optional)
+                - "b_K": Key bias tensor (optional)
+                - "b_V": Value bias tensor (optional)
+                - "b_O": Output bias tensor (optional)
         """
         import einops
+
+        W_Q = weights.get("W_Q")
+        W_K = weights.get("W_K")
+        W_V = weights.get("W_V")
+        if W_Q is None or W_K is None or W_V is None:
+            raise ValueError("Processed joint QKV weights must include W_Q, W_K, and W_V tensors.")
+        W_O = weights.get("W_O")
+        b_Q = weights.get("b_Q")
+        b_K = weights.get("b_K")
+        b_V = weights.get("b_V")
+        b_O = weights.get("b_O")
 
         # Convert Q/K/V weights to TL format [n_heads, d_model, d_head] if needed
         if W_Q.ndim == 2:
@@ -900,13 +912,18 @@ class JointQKVAttentionBridge(AttentionBridge):
         self._b_V = b_V
 
         if hasattr(self, "q") and self.q is not None and hasattr(self.q, "set_processed_weights"):
-            self.q.set_processed_weights(weight=W_Q, bias=b_Q)
+            self.q.set_processed_weights({"weight": W_Q, "bias": b_Q})
         if hasattr(self, "k") and self.k is not None and hasattr(self.k, "set_processed_weights"):
-            self.k.set_processed_weights(weight=W_K, bias=b_K)
+            self.k.set_processed_weights({"weight": W_K, "bias": b_K})
         if hasattr(self, "v") and self.v is not None and hasattr(self.v, "set_processed_weights"):
-            self.v.set_processed_weights(weight=W_V, bias=b_V)
-        if hasattr(self, "o") and self.o is not None and hasattr(self.o, "set_processed_weights"):
-            self.o.set_processed_weights(weight=W_O, bias=b_O)
+            self.v.set_processed_weights({"weight": W_V, "bias": b_V})
+        if (
+            hasattr(self, "o")
+            and self.o is not None
+            and hasattr(self.o, "set_processed_weights")
+            and W_O is not None
+        ):
+            self.o.set_processed_weights({"weight": W_O, "bias": b_O})
 
     def process_weights(
         self,
