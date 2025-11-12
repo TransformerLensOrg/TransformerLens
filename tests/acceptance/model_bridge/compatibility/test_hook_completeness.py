@@ -147,7 +147,7 @@ class TestHookCompleteness:
 class TestArchitectureSpecificHooks:
     """Test architecture-specific hook requirements."""
 
-    @pytest.mark.skipif(os.getenv("CI"), reason="Gemma2 is too large for CI")
+    @pytest.mark.skipif(bool(os.getenv("CI")), reason="Gemma2 is too large for CI")
     def test_gemma2_ln2_hook(self):
         """Specific test for Gemma2 ln2 hook (regression test).
 
