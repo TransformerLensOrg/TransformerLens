@@ -142,7 +142,7 @@ def run_benchmark_suite(
         for tensor in tensors:
             if tensor is not None:
                 # If it's an ActivationCache, clear all tensors
-                if hasattr(tensor, 'cache_dict'):
+                if hasattr(tensor, "cache_dict"):
                     for key in list(tensor.cache_dict.keys()):
                         val = tensor.cache_dict[key]
                         if val is not None and isinstance(val, torch.Tensor):

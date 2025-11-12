@@ -4,6 +4,8 @@ This module provides the bridge components that wrap remote model components and
 a consistent interface for accessing their weights and performing operations.
 """
 
+# Pre-compiled regex patterns for performance
+import re
 from contextlib import contextmanager
 from functools import lru_cache
 from typing import (
@@ -31,8 +33,6 @@ from transformer_lens.cache.key_value_cache import TransformerLensKeyValueCache
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookPoint
 
-# Pre-compiled regex patterns for performance
-import re
 _BLOCK_PATTERN = re.compile(r"blocks\.(\d+)")
 
 
@@ -413,8 +413,7 @@ class TransformerBridge(nn.Module):
     @staticmethod
     @lru_cache(maxsize=128)
     def _compute_hook_aliases_cached(
-        hook_names_tuple: Tuple[str, ...],
-        component_aliases_tuple: Tuple[Tuple[str, str], ...]
+        hook_names_tuple: Tuple[str, ...], component_aliases_tuple: Tuple[Tuple[str, str], ...]
     ) -> Tuple[Tuple[str, str], ...]:
         """Cached computation of hook aliases. Takes immutable inputs for caching."""
         aliases = {}
@@ -468,8 +467,7 @@ class TransformerBridge(nn.Module):
 
             # Use cached computation
             aliases_tuple = self._compute_hook_aliases_cached(
-                hook_names_tuple,
-                component_aliases_tuple
+                hook_names_tuple, component_aliases_tuple
             )
 
             return dict(aliases_tuple)
