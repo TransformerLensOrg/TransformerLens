@@ -30,6 +30,9 @@ class Gemma2ArchitectureAdapter(ArchitectureAdapter):
 
         self.cfg.uses_rms_norm = True
 
+        # Gemma 2 uses rotary positional embeddings
+        self.cfg.positional_embedding_type = "rotary"
+
         # Note: n_key_value_heads is now automatically mapped from num_key_value_heads
         # by map_default_transformer_lens_config() in sources/transformers.py
 

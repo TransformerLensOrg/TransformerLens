@@ -248,8 +248,18 @@ class JointQKVAttentionBridge(AttentionBridge):
             processed_output[0] = self.hook_hidden_states(output[0])
             output = tuple(processed_output)
 
-        # Apply hook_out to the main output
-        output = self._apply_hook_out_to_output(output)
+        # Apply hook_out to the main output tensor
+        if isinstance(output, torch.Tensor):
+            output = self.hook_out(output)
+        elif isinstance(output, tuple) and len(output) > 0:
+            # Apply hook_out to the first element (typically hidden states)
+            processed_tuple = list(output)
+            if isinstance(output[0], torch.Tensor):
+                processed_tuple[0] = self.hook_out(output[0])
+            # If tuple has only 1 element, return just the tensor
+            if len(processed_tuple) == 1:
+                return processed_tuple[0]
+            output = tuple(processed_tuple)
 
         return output
 
