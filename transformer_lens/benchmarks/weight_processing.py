@@ -489,6 +489,17 @@ def benchmark_mlp_output_centering(
         BenchmarkResult with MLP output centering verification details
     """
     try:
+        # Check if this is an MoE model - MoE models don't have a single W_out weight
+        from transformer_lens.model_bridge.generalized_components.moe import MoEBridge
+
+        if isinstance(bridge.blocks[0].mlp, MoEBridge):
+            return BenchmarkResult(
+                name="mlp_output_centering",
+                severity=BenchmarkSeverity.INFO,
+                message="Skipped for MoE models (no single W_out weight)",
+                details={"is_moe": True},
+            )
+
         # Check if W_out exists and is accessible
         if not hasattr(bridge.blocks[0].mlp, "W_out"):
             return BenchmarkResult(
@@ -770,6 +781,19 @@ def benchmark_weight_magnitudes(
 
             # Skip value biases - they are expected to be zero after folding
             if ".v.bias" in key:
+                continue
+
+            # Skip attention projection biases - they can be zero in some models
+            if (
+                ".k_proj.bias" in key
+                or ".q_proj.bias" in key
+                or ".v_proj.bias" in key
+                or ".o_proj.bias" in key
+                or ".k.bias" in key
+                or ".q.bias" in key
+                or ".v.bias" in key
+                or ".o.bias" in key
+            ):
                 continue
 
             # Skip layer norm biases - they are expected to be zero after folding
