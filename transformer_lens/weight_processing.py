@@ -1236,11 +1236,11 @@ class ProcessWeights:
             if "embed.W_E" in state_dict:
                 # Standard TL format
                 embed_W_E_key = "embed.W_E"
-                pos_embed_W_pos_key = "pos_embed.W_pos"
+                pos_embed_W_pos_key = "pos_embed.W_pos" if getattr(cfg, "positional_embedding_type", "standard") != "rotary" else None
             else:
                 # Alternative TL format (embed.weight instead of embed.W_E)
                 embed_W_E_key = "embed.weight"
-                pos_embed_W_pos_key = "pos_embed.weight"
+                pos_embed_W_pos_key = "pos_embed.weight" if getattr(cfg, "positional_embedding_type", "standard") != "rotary" else None
             embed_W_E_key = ProcessWeights._resolve_tl_key(state_dict, embed_W_E_key)
             if pos_embed_W_pos_key is not None:
                 pos_embed_W_pos_key = ProcessWeights._resolve_tl_key(
@@ -1265,11 +1265,11 @@ class ProcessWeights:
                 if "embed.W_E" in state_dict:
                     # Standard TL format
                     embed_W_E_key = "embed.W_E"
-                    pos_embed_W_pos_key = "pos_embed.W_pos"
+                    pos_embed_W_pos_key = "pos_embed.W_pos" if getattr(cfg, "positional_embedding_type", "standard") != "rotary" else None
                 else:
                     # Alternative TL format (embed.weight instead of embed.W_E)
                     embed_W_E_key = "embed.weight"
-                    pos_embed_W_pos_key = "pos_embed.weight"
+                    pos_embed_W_pos_key = "pos_embed.weight" if getattr(cfg, "positional_embedding_type", "standard") != "rotary" else None
                 embed_W_E_key = ProcessWeights._resolve_tl_key(state_dict, embed_W_E_key)
                 if pos_embed_W_pos_key is not None:
                     pos_embed_W_pos_key = ProcessWeights._resolve_tl_key(
@@ -1376,23 +1376,79 @@ class ProcessWeights:
                 state_dict[attn_b_O_key] = (
                     state_dict[attn_b_O_key] - state_dict[attn_b_O_key].mean()
                 )  # b_O is [d_model]
-            if not getattr(cfg, "attn_only", False) and mlp_W_out_key is not None:
-                # Validate that MLP weight key exists before accessing it
-                if mlp_W_out_key not in state_dict:
-                    raise KeyError(
-                        f"Expected MLP W_out key '{mlp_W_out_key}' not found in state_dict for layer {l}. "
-                        f"Available keys: {list(state_dict.keys())[:10]}..."
-                    )
+            if not getattr(cfg, "attn_only", False):
+                # Check if this is a MoE model
+                is_moe = getattr(cfg, "num_experts", None) is not None and cfg.num_experts > 0
 
-                state_dict[mlp_W_out_key] = state_dict[mlp_W_out_key] - state_dict[
-                    mlp_W_out_key
-                ].mean(-1, keepdim=True)
+                if is_moe:
+                    # For MoE models, center each expert's W_out individually
+                    num_experts = cfg.num_experts
+                    for e in range(num_experts):
+                        # Try to find expert weights in different formats
+                        expert_W_out_key = None
+                        expert_b_out_key = None
 
-                # Only center bias if it exists (models like Qwen2/LLaMA may not have MLP biases)
-                if mlp_b_out_key is not None and mlp_b_out_key in state_dict:
-                    state_dict[mlp_b_out_key] = (
-                        state_dict[mlp_b_out_key] - state_dict[mlp_b_out_key].mean()
-                    )
+                        # Try TL format first: blocks.{l}.mlp.experts.{e}.W_out
+                        expert_W_out_patterns = [
+                            f"blocks.{l}.mlp.experts.{e}.W_out",
+                            f"blocks.{l}.mlp.experts.{e}.W_out.weight",
+                        ]
+
+                        for pattern in expert_W_out_patterns:
+                            resolved = ProcessWeights._resolve_tl_key(state_dict, pattern)
+                            if resolved in state_dict:
+                                expert_W_out_key = resolved
+                                break
+
+                        # If not found in TL format, try HF format via adapter
+                        if expert_W_out_key is None and adapter:
+                            try:
+                                expert_W_out_key = ProcessWeights._get_param_key(
+                                    f"blocks.{l}.mlp.experts.{e}.W_out", adapter
+                                )
+                            except ValueError:
+                                pass
+
+                        # Center expert weights if found
+                        if expert_W_out_key and expert_W_out_key in state_dict:
+                            state_dict[expert_W_out_key] = state_dict[expert_W_out_key] - state_dict[
+                                expert_W_out_key
+                            ].mean(-1, keepdim=True)
+
+                        # Try to find and center expert bias
+                        expert_b_out_patterns = [
+                            f"blocks.{l}.mlp.experts.{e}.b_out",
+                            f"blocks.{l}.mlp.experts.{e}.b_out.bias",
+                        ]
+
+                        for pattern in expert_b_out_patterns:
+                            resolved = ProcessWeights._resolve_tl_key(state_dict, pattern)
+                            if resolved in state_dict:
+                                expert_b_out_key = resolved
+                                break
+
+                        if expert_b_out_key and expert_b_out_key in state_dict:
+                            state_dict[expert_b_out_key] = (
+                                state_dict[expert_b_out_key] - state_dict[expert_b_out_key].mean()
+                            )
+                elif mlp_W_out_key is not None:
+                    # Regular MLP (not MoE)
+                    # Validate that MLP weight key exists before accessing it
+                    if mlp_W_out_key not in state_dict:
+                        raise KeyError(
+                            f"Expected MLP W_out key '{mlp_W_out_key}' not found in state_dict for layer {l}. "
+                            f"Available keys: {list(state_dict.keys())[:10]}..."
+                        )
+
+                    state_dict[mlp_W_out_key] = state_dict[mlp_W_out_key] - state_dict[
+                        mlp_W_out_key
+                    ].mean(-1, keepdim=True)
+
+                    # Only center bias if it exists (models like Qwen2/LLaMA may not have MLP biases)
+                    if mlp_b_out_key is not None and mlp_b_out_key in state_dict:
+                        state_dict[mlp_b_out_key] = (
+                            state_dict[mlp_b_out_key] - state_dict[mlp_b_out_key].mean()
+                        )
         return state_dict
 
     @staticmethod

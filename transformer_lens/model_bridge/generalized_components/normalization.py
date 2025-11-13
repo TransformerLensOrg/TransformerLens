@@ -192,7 +192,13 @@ class NormalizationBridge(GeneralizedComponent):
         _ = self.hook_normalized(x_normalized)
 
         # Return the result from HF's LayerNorm to preserve exact autograd
-        return self.original_component(x)
+        # IMPORTANT: Preserve input dtype to avoid float32 promotion
+        input_dtype = x.dtype
+        result = self.original_component(x)
+        # Ensure output matches input dtype (HF component might promote to float32)
+        if result.dtype != input_dtype:
+            result = result.to(input_dtype)
+        return result
 
     def _layernorm_pre_forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass matching LayerNormPre behavior exactly.

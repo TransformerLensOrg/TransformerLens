@@ -176,7 +176,10 @@ class PositionEmbeddingsAttentionBridge(AttentionBridge):
 
                         try:
                             kwargs["position_embeddings"] = self._rotary_emb(dummy_qk, position_ids)
-                        except Exception:
+                        except Exception as e:
+                            # Fallback to dummy tensors if rotary_emb fails
+                            import warnings
+                            warnings.warn(f"Rotary embedding call failed: {e}, using fallback")
                             cos = torch.ones(1, seq_len, head_dim, device=device, dtype=dtype)
                             sin = torch.zeros(1, seq_len, head_dim, device=device, dtype=dtype)
                             kwargs["position_embeddings"] = (cos, sin)

@@ -12,6 +12,7 @@ from transformer_lens.model_bridge.generalized_components import (
     EmbeddingBridge,
     LinearBridge,
     MoEBridge,
+    RMSNormalizationBridge,
     NormalizationBridge,
     PositionEmbeddingsAttentionBridge,
     RotaryEmbeddingBridge,
@@ -31,6 +32,8 @@ class GPTOSSArchitectureAdapter(ArchitectureAdapter):
         self.cfg.uses_rms_norm = True
         # GPT-OSS uses 'variance_epsilon' instead of 'eps' for RMSNorm
         self.cfg.eps_attr = "variance_epsilon"
+        # GPT-OSS uses rotary position embeddings, not learned embeddings
+        self.cfg.positional_embedding_type = "rotary"
         # GPT-OSS attention returns (output, attn_weights), not a 3-tuple
         # Note: attention_output_format is not a standard config attribute, handled in architecture code
 
@@ -71,10 +74,10 @@ class GPTOSSArchitectureAdapter(ArchitectureAdapter):
             "blocks": BlockBridge(
                 name="model.layers",
                 submodules={
-                    "ln1": NormalizationBridge(
+                    "ln1": RMSNormalizationBridge(
                         name="input_layernorm",
                         config=self.cfg,
-                        use_native_layernorm_autograd=False,  # Avoid activation mismatches with RMSNorm
+                        use_native_layernorm_autograd=True,  # Use HF's RMSNorm for correct dtype handling
                     ),
                     "attn": PositionEmbeddingsAttentionBridge(
                         name="self_attn",
@@ -91,7 +94,7 @@ class GPTOSSArchitectureAdapter(ArchitectureAdapter):
                     "ln2": NormalizationBridge(
                         name="post_attention_layernorm",
                         config=self.cfg,
-                        use_native_layernorm_autograd=False,  # Avoid activation mismatches with RMSNorm
+                        use_native_layernorm_autograd=True,  # Use HF's RMSNorm for correct dtype handling
                     ),
                     # GPT-OSS uses batched MoE experts with router scores
                     # MoEBridge handles the (hidden_states, router_scores) tuple returns
@@ -101,7 +104,28 @@ class GPTOSSArchitectureAdapter(ArchitectureAdapter):
             "ln_final": NormalizationBridge(
                 name="model.norm",
                 config=self.cfg,
-                use_native_layernorm_autograd=False,  # Avoid activation mismatches with RMSNorm
+                use_native_layernorm_autograd=True,  # Use HF's RMSNorm for correct dtype handling
             ),
             "unembed": UnembeddingBridge(name="lm_head"),
         }
+
+    def setup_no_processing_hooks(self, bridge_model: Any) -> None:
+        """Set up hooks for GPT-OSS when not using weight processing.
+
+        This configures rotary embedding references for attention layers.
+
+        Args:
+            bridge_model: The TransformerBridge instance
+        """
+        # Get the rotary_emb component from the actual bridge model
+        if bridge_model is None or not hasattr(bridge_model, "rotary_emb"):
+            return
+
+        # Get the actual HF rotary_emb from the bridge's rotary_emb component
+        rotary_emb = bridge_model.rotary_emb.original_component
+
+        # Set rotary_emb on all attention bridge instances
+        if hasattr(bridge_model, "blocks"):
+            for block in bridge_model.blocks:
+                if hasattr(block, "attn"):
+                    block.attn.set_rotary_emb(rotary_emb)

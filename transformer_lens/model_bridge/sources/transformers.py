@@ -103,14 +103,14 @@ def map_default_transformer_lens_config(hf_config):
     elif hasattr(tl_config, "d_model"):  # Default to 4x for GPT2-style
         tl_config.d_mlp = getattr(hf_config, "n_inner", 4 * tl_config.d_model)
 
-    # Map head dimension (prefer calculation from d_model // n_heads over explicit head_dim)
-    # This ensures correctness for models with incorrect head_dim in HF config (e.g., Gemma-3)
-    if hasattr(tl_config, "d_model") and hasattr(tl_config, "n_heads"):
-        # Calculate d_head from d_model and n_heads
-        tl_config.d_head = tl_config.d_model // tl_config.n_heads
-    elif hasattr(hf_config, "head_dim") and hf_config.head_dim is not None:
-        # Fallback to explicit head_dim from HF config if calculation not possible
+    # Map head dimension
+    # First try to use explicit head_dim from config if available
+    if hasattr(hf_config, "head_dim") and hf_config.head_dim is not None:
         tl_config.d_head = hf_config.head_dim
+    elif hasattr(tl_config, "d_model") and hasattr(tl_config, "n_heads"):
+        # Fallback: calculate d_head from d_model and n_heads
+        # This works for standard architectures where hidden_size == n_heads * head_dim
+        tl_config.d_head = tl_config.d_model // tl_config.n_heads
 
     # Set activation function
     if hasattr(hf_config, "activation_function"):
@@ -255,6 +255,7 @@ def boot(
     device: str | torch.device | None = None,
     dtype: torch.dtype = torch.float32,
     tokenizer: PreTrainedTokenizerBase | None = None,
+    load_weights: bool = True,
 ) -> TransformerBridge:
     """Boot a model from HuggingFace.
 
@@ -264,6 +265,7 @@ def boot(
         device: The device to use. If None, will be determined automatically.
         dtype: The dtype to use for the model.
         tokenizer: Optional pre-initialized tokenizer to use; if not provided one will be created.
+        load_weights: If False, load model without weights (on meta device) for config inspection only.
 
     Returns:
         The bridge to the loaded model.
@@ -325,11 +327,18 @@ def boot(
         model_kwargs["attn_implementation"] = adapter.cfg.attn_implementation
 
     # Load the model from HuggingFace using the appropriate model class
-    hf_model = model_class.from_pretrained(model_name, **model_kwargs)
-
-    # Move model to device
-    if device is not None:
-        hf_model = hf_model.to(device)  # type: ignore
+    if not load_weights:
+        # Load model without weights on meta device for config inspection only
+        # This saves memory when we only need to inspect config/architecture
+        import contextlib
+        with contextlib.redirect_stdout(None):  # Suppress warnings about missing weights
+            hf_model = model_class.from_config(hf_config)
+        # Note: Model will be on meta device and cannot be used for inference
+    else:
+        hf_model = model_class.from_pretrained(model_name, **model_kwargs)
+        # Move model to device
+        if device is not None:
+            hf_model = hf_model.to(device)  # type: ignore
 
     # Load the tokenizer
     tokenizer = tokenizer

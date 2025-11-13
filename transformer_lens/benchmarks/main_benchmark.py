@@ -298,11 +298,54 @@ def run_benchmark_suite(
     bridge_unprocessed = None
     hf_model = None
 
-    # Load bridge first to detect attn_implementation
+    # Load bridge without weights first to detect attn_implementation and dtype
+    if verbose:
+        print("Detecting model configuration...")
+    bridge_dtype = torch.float32
+    attn_implementation = None
+    try:
+        # Load a lightweight version without weights to get config
+        bridge_config_only = TransformerBridge.boot_transformers(model_name, device=device, dtype=bridge_dtype, load_weights=False)  # type: ignore[attr-defined]
+        # Extract attn_implementation for HF model loading
+        if hasattr(bridge_config_only.adapter.cfg, "attn_implementation"):
+            attn_implementation = bridge_config_only.adapter.cfg.attn_implementation
+        if verbose and attn_implementation:
+            print(f"✓ Detected attn_implementation={attn_implementation}")
+        # Clean up config-only bridge
+        del bridge_config_only
+    except Exception as e:
+        if verbose:
+            print(f"⚠ Could not detect config (will use defaults): {str(e)}")
+
+    # Load HF model with matching attn_implementation
+    if use_hf_reference:
+        try:
+            if verbose:
+                print("Loading HuggingFace reference model...")
+            # Match attn_implementation from bridge to ensure numerical consistency
+            hf_kwargs = {"device_map": device}
+            if attn_implementation is not None:
+                hf_kwargs["attn_implementation"] = attn_implementation
+                if verbose:
+                    print(f"Using attn_implementation={attn_implementation}")
+            hf_model = AutoModelForCausalLM.from_pretrained(model_name, **hf_kwargs)  # type: ignore[arg-type]
+            hf_model.eval()
+            # Detect dtype from HF model
+            try:
+                bridge_dtype = next(hf_model.parameters()).dtype
+                if verbose:
+                    print(f"Detected dtype={bridge_dtype}")
+            except StopIteration:
+                pass
+            if verbose:
+                print("✓ HuggingFace model loaded\n")
+        except Exception as e:
+            if verbose:
+                print(f"✗ Could not load HuggingFace model: {str(e)}\n")
+
+    # Now load the full bridge with correct dtype
     if verbose:
         print("Loading TransformerBridge (unprocessed)...")
-    # Detect dtype - will be updated if HF model loads successfully
-    bridge_dtype = torch.float32
     try:
         bridge_unprocessed = TransformerBridge.boot_transformers(model_name, device=device, dtype=bridge_dtype)  # type: ignore[attr-defined]
         if verbose:
@@ -321,59 +364,6 @@ def run_benchmark_suite(
         if verbose:
             print(f"✗ Failed to load TransformerBridge: {str(e)}\n")
         return results
-
-    # Load HF model with matching attn_implementation
-    if use_hf_reference:
-        try:
-            if verbose:
-                print("Loading HuggingFace reference model...")
-            # Match attn_implementation from bridge model to ensure numerical consistency
-            hf_kwargs = {"device_map": device}
-            if (
-                hasattr(bridge_unprocessed.adapter.cfg, "attn_implementation")
-                and bridge_unprocessed.adapter.cfg.attn_implementation is not None
-            ):
-                hf_kwargs[
-                    "attn_implementation"
-                ] = bridge_unprocessed.adapter.cfg.attn_implementation
-                if verbose:
-                    print(f"Using attn_implementation={hf_kwargs['attn_implementation']}")
-            hf_model = AutoModelForCausalLM.from_pretrained(model_name, **hf_kwargs)  # type: ignore[arg-type]
-            hf_model.eval()
-            # Update bridge dtype to match HF model
-            try:
-                bridge_dtype = next(hf_model.parameters()).dtype
-            except StopIteration:
-                pass
-            if verbose:
-                print("✓ HuggingFace model loaded\n")
-        except Exception as e:
-            if verbose:
-                print(f"✗ Could not load HuggingFace model: {str(e)}\n")
-
-    # Reload bridge with correct dtype if HF model was loaded
-    if hf_model is not None and bridge_dtype != torch.float32:
-        if verbose:
-            print(f"Reloading TransformerBridge with dtype={bridge_dtype}...")
-        cleanup_model(bridge_unprocessed, "TransformerBridge (initial)")
-        try:
-            bridge_unprocessed = TransformerBridge.boot_transformers(model_name, device=device, dtype=bridge_dtype)  # type: ignore[attr-defined]
-            if verbose:
-                print("✓ TransformerBridge reloaded with matching dtype\n")
-        except Exception as e:
-            from transformer_lens.benchmarks.utils import BenchmarkSeverity
-
-            add_result(
-                BenchmarkResult(
-                    name="load_bridge_unprocessed",
-                    severity=BenchmarkSeverity.ERROR,
-                    message=f"Failed to reload TransformerBridge with correct dtype: {str(e)}",
-                    passed=False,
-                )
-            )
-            if verbose:
-                print(f"✗ Failed to reload TransformerBridge: {str(e)}\n")
-            return results
 
     # Run Phase 1 benchmarks
     if hf_model and bridge_unprocessed:
@@ -403,6 +393,9 @@ def run_benchmark_suite(
         except Exception as e:
             if verbose:
                 print(f"✗ Forward pass benchmark failed: {e}\n")
+
+    # Save bridge_dtype before cleaning up HF model (needed for Phase 3)
+    saved_bridge_dtype = bridge_dtype
 
     # Clean up HF model - no longer needed
     if hf_model is not None:
@@ -546,13 +539,10 @@ def run_benchmark_suite(
     try:
         if verbose:
             print("Loading TransformerBridge (processed)...")
-        # Use same dtype detection as Phase 1
-        bridge_dtype = torch.float32
-        if hf_model is not None:
-            try:
-                bridge_dtype = next(hf_model.parameters()).dtype
-            except StopIteration:
-                pass
+        # Use saved dtype from Phase 1 (HF model has been cleaned up)
+        bridge_dtype = saved_bridge_dtype
+        if verbose:
+            print(f"Using dtype={bridge_dtype} from Phase 1")
         bridge_processed = TransformerBridge.boot_transformers(model_name, device=device, dtype=bridge_dtype)  # type: ignore[attr-defined]
         bridge_processed.enable_compatibility_mode(disable_warnings=True)
         if verbose:

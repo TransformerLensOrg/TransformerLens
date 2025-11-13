@@ -23,6 +23,7 @@ class TransformerBridgeConfig(TransformerLensConfig):
         n_layers: int,
         n_ctx: int,
         d_vocab: int = -1,
+        n_heads: int = -1,
         architecture: Optional[str] = None,
         tokenizer_prepends_bos: bool = True,
         default_padding_side: Optional[str] = None,
@@ -92,6 +93,7 @@ class TransformerBridgeConfig(TransformerLensConfig):
             n_layers=n_layers,
             n_ctx=n_ctx,
             d_vocab=d_vocab,
+            n_heads=n_heads,
             **kwargs,
         )
 
@@ -180,3 +182,8 @@ class TransformerBridgeConfig(TransformerLensConfig):
         # Call parent's __post_init__ after our validation
         if hasattr(super(), "__post_init__"):
             super().__post_init__()
+
+    @property
+    def head_dim(self) -> int:
+        """Alias for d_head to match HuggingFace config naming convention."""
+        return self.d_head

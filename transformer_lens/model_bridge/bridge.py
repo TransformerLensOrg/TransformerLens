@@ -1092,7 +1092,14 @@ class TransformerBridge(nn.Module):
         which handles:
         1. hook_z reshaping for proper head dimensions
         2. Wrapping HF attention forward to capture scores before softmax
+
+        Also calls the adapter's setup_no_processing_hooks if available, which handles
+        architecture-specific setup like setting rotary embedding references.
         """
+        # Call adapter's setup method first (if available) to handle architecture-specific setup
+        if hasattr(self.adapter, "setup_no_processing_hooks"):
+            self.adapter.setup_no_processing_hooks(self)
+
         # Handle both decoder-only (blocks) and encoder-decoder (encoder_blocks, decoder_blocks)
         blocks_to_process = []
         if hasattr(self, "blocks"):

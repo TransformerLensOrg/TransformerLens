@@ -614,6 +614,17 @@ def benchmark_value_bias_folding(
         BenchmarkResult with value bias folding verification details
     """
     try:
+        # Skip for GQA models (where n_key_value_heads != n_heads)
+        # Value bias folding doesn't work the same way because V outputs are repeated
+        if hasattr(bridge.cfg, "n_key_value_heads") and bridge.cfg.n_key_value_heads is not None:
+            if bridge.cfg.n_key_value_heads != bridge.cfg.n_heads:
+                return BenchmarkResult(
+                    name="value_bias_folding",
+                    severity=BenchmarkSeverity.INFO,
+                    message="Skipped for GQA models (n_key_value_heads != n_heads)",
+                    details={"is_gqa": True, "n_heads": bridge.cfg.n_heads, "n_kv_heads": bridge.cfg.n_key_value_heads},
+                )
+
         # Check if b_V exists
         if not hasattr(bridge.blocks[0].attn, "b_V"):
             return BenchmarkResult(
