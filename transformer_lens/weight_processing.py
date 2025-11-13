@@ -1236,11 +1236,19 @@ class ProcessWeights:
             if "embed.W_E" in state_dict:
                 # Standard TL format
                 embed_W_E_key = "embed.W_E"
-                pos_embed_W_pos_key = "pos_embed.W_pos" if getattr(cfg, "positional_embedding_type", "standard") != "rotary" else None
+                pos_embed_W_pos_key = (
+                    "pos_embed.W_pos"
+                    if getattr(cfg, "positional_embedding_type", "standard") != "rotary"
+                    else None
+                )
             else:
                 # Alternative TL format (embed.weight instead of embed.W_E)
                 embed_W_E_key = "embed.weight"
-                pos_embed_W_pos_key = "pos_embed.weight" if getattr(cfg, "positional_embedding_type", "standard") != "rotary" else None
+                pos_embed_W_pos_key = (
+                    "pos_embed.weight"
+                    if getattr(cfg, "positional_embedding_type", "standard") != "rotary"
+                    else None
+                )
             embed_W_E_key = ProcessWeights._resolve_tl_key(state_dict, embed_W_E_key)
             if pos_embed_W_pos_key is not None:
                 pos_embed_W_pos_key = ProcessWeights._resolve_tl_key(
@@ -1265,11 +1273,19 @@ class ProcessWeights:
                 if "embed.W_E" in state_dict:
                     # Standard TL format
                     embed_W_E_key = "embed.W_E"
-                    pos_embed_W_pos_key = "pos_embed.W_pos" if getattr(cfg, "positional_embedding_type", "standard") != "rotary" else None
+                    pos_embed_W_pos_key = (
+                        "pos_embed.W_pos"
+                        if getattr(cfg, "positional_embedding_type", "standard") != "rotary"
+                        else None
+                    )
                 else:
                     # Alternative TL format (embed.weight instead of embed.W_E)
                     embed_W_E_key = "embed.weight"
-                    pos_embed_W_pos_key = "pos_embed.weight" if getattr(cfg, "positional_embedding_type", "standard") != "rotary" else None
+                    pos_embed_W_pos_key = (
+                        "pos_embed.weight"
+                        if getattr(cfg, "positional_embedding_type", "standard") != "rotary"
+                        else None
+                    )
                 embed_W_E_key = ProcessWeights._resolve_tl_key(state_dict, embed_W_E_key)
                 if pos_embed_W_pos_key is not None:
                     pos_embed_W_pos_key = ProcessWeights._resolve_tl_key(
@@ -1411,9 +1427,9 @@ class ProcessWeights:
 
                         # Center expert weights if found
                         if expert_W_out_key and expert_W_out_key in state_dict:
-                            state_dict[expert_W_out_key] = state_dict[expert_W_out_key] - state_dict[
+                            state_dict[expert_W_out_key] = state_dict[
                                 expert_W_out_key
-                            ].mean(-1, keepdim=True)
+                            ] - state_dict[expert_W_out_key].mean(-1, keepdim=True)
 
                         # Try to find and center expert bias
                         expert_b_out_patterns = [

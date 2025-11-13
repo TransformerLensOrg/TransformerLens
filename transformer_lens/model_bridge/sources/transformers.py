@@ -331,6 +331,7 @@ def boot(
         # Load model without weights on meta device for config inspection only
         # This saves memory when we only need to inspect config/architecture
         import contextlib
+
         with contextlib.redirect_stdout(None):  # Suppress warnings about missing weights
             hf_model = model_class.from_config(hf_config)
         # Note: Model will be on meta device and cannot be used for inference

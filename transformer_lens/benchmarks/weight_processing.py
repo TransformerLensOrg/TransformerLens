@@ -633,7 +633,11 @@ def benchmark_value_bias_folding(
                     name="value_bias_folding",
                     severity=BenchmarkSeverity.INFO,
                     message="Skipped for GQA models (n_key_value_heads != n_heads)",
-                    details={"is_gqa": True, "n_heads": bridge.cfg.n_heads, "n_kv_heads": bridge.cfg.n_key_value_heads},
+                    details={
+                        "is_gqa": True,
+                        "n_heads": bridge.cfg.n_heads,
+                        "n_kv_heads": bridge.cfg.n_key_value_heads,
+                    },
                 )
 
         # Check if b_V exists
