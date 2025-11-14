@@ -142,6 +142,9 @@ class PositionEmbeddingsAttentionBridge(AttentionBridge):
         This is necessary because some code paths may call the HF attention directly,
         bypassing the bridge's forward method.
 
+        Also sets up rotary embedding hooks (hook_rot_q, hook_rot_k) by monkey-patching
+        the HF attention's forward to intercept Q/K after rotary position embeddings are applied.
+
         Also sets up Q/K/V/Z hook reshaping like the base AttentionBridge.
 
         This is called during Bridge.__init__ and should always be run.
@@ -154,7 +157,7 @@ class PositionEmbeddingsAttentionBridge(AttentionBridge):
         original_hf_forward = self.original_component.forward
 
         def wrapped_forward(*args, **kwargs):
-            """Wrapper that injects position_embeddings and attention_mask if missing."""
+            """Wrapper that injects position_embeddings, attention_mask, and rotary hooks."""
             # Generate position_embeddings if missing
             if "position_embeddings" not in kwargs or kwargs["position_embeddings"] is None:
                 # Need hidden_states to determine batch size and sequence length
@@ -205,8 +208,37 @@ class PositionEmbeddingsAttentionBridge(AttentionBridge):
             if "attention_mask" not in kwargs:
                 kwargs["attention_mask"] = None
 
-            # Call original forward
-            return original_hf_forward(*args, **kwargs)
+            # Monkey-patch apply_rotary_pos_emb to inject rotary hooks
+            # We need to intercept Q and K after rotary embeddings are applied
+            import transformers.models.gemma2.modeling_gemma2 as gemma2_module
+
+            # Save original apply_rotary_pos_emb function
+            original_apply_rotary = gemma2_module.apply_rotary_pos_emb
+
+            def hooked_apply_rotary(q, k, cos, sin, position_ids=None, unsqueeze_dim=1):
+                """Wrapper that applies rotary hooks after rotation."""
+                # Apply original rotation
+                rotated_q, rotated_k = original_apply_rotary(q, k, cos, sin, position_ids, unsqueeze_dim)
+
+                # Apply hooks if they exist (hook_rot_q and hook_rot_k are defined in AttentionBridge)
+                if hasattr(self, 'hook_rot_q'):
+                    rotated_q = self.hook_rot_q(rotated_q)
+                if hasattr(self, 'hook_rot_k'):
+                    rotated_k = self.hook_rot_k(rotated_k)
+
+                return rotated_q, rotated_k
+
+            # Temporarily replace the function
+            gemma2_module.apply_rotary_pos_emb = hooked_apply_rotary
+
+            try:
+                # Call original forward (which will now use our hooked apply_rotary_pos_emb)
+                result = original_hf_forward(*args, **kwargs)
+            finally:
+                # Restore original function
+                gemma2_module.apply_rotary_pos_emb = original_apply_rotary
+
+            return result
 
         # Replace HF forward with wrapper
         self.original_component.forward = wrapped_forward

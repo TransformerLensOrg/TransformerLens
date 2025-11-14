@@ -55,6 +55,14 @@ class BlockBridge(GeneralizedComponent):
 
         self._original_block_forward: Optional[Callable[..., Any]] = None
 
+        # Conditionally set hook_mlp_out alias based on whether ln2_post exists
+        # For models with post-normalization (Gemma-2, Gemma-3), hook_mlp_out should
+        # capture the output AFTER ln2_post to match HookedTransformer behavior
+        if "ln2_post" in submodules:
+            # Create instance-specific hook_aliases dict
+            self.hook_aliases = self.__class__.hook_aliases.copy()
+            self.hook_aliases["hook_mlp_out"] = "ln2_post.hook_out"
+
     def set_original_component(self, component: Any) -> None:
         """Set the original component and patch its forward method.
 

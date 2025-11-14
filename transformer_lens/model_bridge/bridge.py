@@ -1972,6 +1972,12 @@ class TransformerBridge(nn.Module):
                 # Handle tuple returns from bridge components
                 if isinstance(attn_out, tuple):
                     attn_out = attn_out[0]
+
+                # Apply post-attention norm if it exists (Gemma-2, Gemma-3)
+                # This must be done BEFORE the residual addition to match HookedTransformer
+                if hasattr(block, "ln1_post"):
+                    attn_out = block.ln1_post(attn_out)
+
                 residual = residual + attn_out
 
             # Apply hook_resid_mid (after attention, before MLP)
@@ -1991,6 +1997,12 @@ class TransformerBridge(nn.Module):
                 # Handle tuple returns from bridge components
                 if isinstance(mlp_out, tuple):
                     mlp_out = mlp_out[0]
+
+                # Apply post-feedforward norm if it exists (Gemma-2, Gemma-3)
+                # This must be done AFTER MLP but BEFORE hook_mlp_out to match HookedTransformer
+                if hasattr(block, "ln2_post"):
+                    mlp_out = block.ln2_post(mlp_out)
+
                 # Apply hook_mlp_out before residual addition (matches HookedTransformer)
                 if hasattr(block, "hook_mlp_out"):
                     mlp_out = block.hook_mlp_out(mlp_out)

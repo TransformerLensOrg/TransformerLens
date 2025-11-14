@@ -285,6 +285,34 @@ class AttentionBridge(GeneralizedComponent):
             z_reshape = ReshapeForAttentionHeads(n_heads, d_head)
             self.o.hook_in.hook_conversion = z_reshape
 
+        # Setup reshaping for rotary hooks (hook_rot_q, hook_rot_k)
+        # These come from HF attention with shape [batch, n_heads, seq, d_head]
+        # and need to be transposed to [batch, seq, n_heads, d_head]
+        class TransposeRotaryHeads(BaseHookConversion):
+            """Transpose rotary hook tensors from HF format to HookedTransformer format."""
+
+            def handle_conversion(self, input_value, *full_context):
+                """Convert from [batch, n_heads, seq, d_head] to [batch, seq, n_heads, d_head]."""
+                if len(input_value.shape) == 4:
+                    # Transpose dimensions 1 and 2 (n_heads and seq)
+                    return input_value.transpose(1, 2)
+                return input_value
+
+            def revert(self, input_value, *full_context):
+                """Revert from [batch, seq, n_heads, d_head] to [batch, n_heads, seq, d_head]."""
+                if len(input_value.shape) == 4:
+                    # Transpose dimensions 1 and 2 back
+                    return input_value.transpose(1, 2)
+                return input_value
+
+        # Apply transpose to hook_rot_q (uses n_heads)
+        if hasattr(self, "hook_rot_q"):
+            self.hook_rot_q.hook_conversion = TransposeRotaryHeads()
+
+        # Apply transpose to hook_rot_k (uses n_kv_heads for GQA models)
+        if hasattr(self, "hook_rot_k"):
+            self.hook_rot_k.hook_conversion = TransposeRotaryHeads()
+
     def _setup_hook_z_reshape(self) -> None:
         """Backward compatibility alias for _setup_qkv_hook_reshaping."""
         self._setup_qkv_hook_reshaping()
