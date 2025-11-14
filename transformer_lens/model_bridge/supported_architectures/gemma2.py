@@ -122,3 +122,72 @@ class Gemma2ArchitectureAdapter(ArchitectureAdapter):
             "ln_final": RMSNormalizationBridge(name="model.norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head"),
         }
+
+    def setup_hook_compatibility(self, bridge: Any) -> None:
+        """Setup hook compatibility for Gemma2 models.
+
+        Gemma2 scales embeddings by sqrt(d_model) in its forward pass,
+        but the HuggingFace embed_tokens layer doesn't include this scaling.
+        We need to apply it to hook_embed to match HookedTransformer behavior.
+
+        Args:
+            bridge: The TransformerBridge instance
+        """
+        from transformer_lens.conversion_utils.conversion_steps.base_hook_conversion import (
+            BaseHookConversion,
+        )
+
+        class EmbeddingScaleConversion(BaseHookConversion):
+            """Scale embeddings by sqrt(d_model) for Gemma models.
+
+            This only applies when NOT using processed weights, since processed
+            weights have the scaling baked into the embedding matrix itself.
+            """
+
+            def __init__(self, scale: float, embed_component):
+                super().__init__()
+                self.scale = scale
+                self.embed_component = embed_component
+
+            def handle_conversion(self, input_value, *full_context):
+                """Scale the embedding output if not using processed weights."""
+                # Skip scaling if using processed weights (they're already scaled)
+                if hasattr(self.embed_component, "_use_processed_weights") and self.embed_component._use_processed_weights:
+                    return input_value
+                return input_value * self.scale
+
+            def revert(self, input_value, *full_context):
+                """Unscale the embedding output (for user modifications)."""
+                # Skip unscaling if using processed weights
+                if hasattr(self.embed_component, "_use_processed_weights") and self.embed_component._use_processed_weights:
+                    return input_value
+                return input_value / self.scale
+
+        # Apply scaling to embed.hook_out
+        if hasattr(bridge, "embed") and hasattr(bridge.embed, "hook_out"):
+            scale_factor = self.cfg.d_model ** 0.5
+            bridge.embed.hook_out.hook_conversion = EmbeddingScaleConversion(scale_factor, bridge.embed)
+
+    def preprocess_weights(self, state_dict: dict[str, Any]) -> dict[str, Any]:
+        """Apply Gemma2-specific weight transformations before ProcessWeights.
+
+        Gemma2 models scale embeddings by sqrt(d_model) in their forward pass.
+        We bake this scaling into the embedding weights to avoid applying it every forward pass.
+
+        Args:
+            state_dict: The state dictionary with HuggingFace format keys
+
+        Returns:
+            The modified state dictionary with scaled embedding weights
+        """
+        from transformer_lens.weight_processing import ProcessWeights
+
+        # Get the HF key for the embedding weight
+        embed_key = ProcessWeights._get_param_key("embed.W_E", self)
+
+        if embed_key in state_dict:
+            # Scale embeddings by sqrt(d_model) to match Gemma2's forward pass behavior
+            scale_factor = self.cfg.d_model ** 0.5
+            state_dict[embed_key] = state_dict[embed_key] * scale_factor
+
+        return state_dict

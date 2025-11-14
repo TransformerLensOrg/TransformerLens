@@ -58,6 +58,22 @@ class ArchitectureAdapter:
             if not hasattr(self.cfg, key):
                 setattr(self.cfg, key, value)
 
+    def preprocess_weights(self, state_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
+        """Apply architecture-specific weight transformations before ProcessWeights.
+
+        This method allows architectures to apply custom transformations to weights
+        before standard weight processing (fold_layer_norm, center_writing_weights, etc.).
+        For example, Gemma models scale embeddings by sqrt(d_model).
+
+        Args:
+            state_dict: The state dictionary with HuggingFace format keys
+
+        Returns:
+            The modified state dictionary (default implementation returns unchanged)
+        """
+        # Default implementation: no preprocessing
+        return state_dict
+
     def get_component_mapping(self) -> ComponentMapping:
         """Get the full component mapping.
 

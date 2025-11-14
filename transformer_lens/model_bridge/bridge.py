@@ -1221,6 +1221,11 @@ class TransformerBridge(nn.Module):
         # Get architecture adapter for path translation
         adapter = self.adapter
 
+        # Apply architecture-specific weight transformations BEFORE ProcessWeights
+        # The adapter can preprocess weights before standard weight processing
+        if adapter and hasattr(adapter, 'preprocess_weights'):
+            state_dict = adapter.preprocess_weights(state_dict)
+
         # NOTE: Weight processing code (ProcessWeights) handles splitting joint QKV internally
         # via convert_tensor_to_tl_format(), so we don't need to pre-split here
 
@@ -1713,6 +1718,8 @@ class TransformerBridge(nn.Module):
         adapter = self.adapter
 
         # Load token embedding (embed.W_E) into EmbeddingBridge
+        # Note: Architecture-specific transformations (e.g., Gemma scaling) are now applied
+        # in process_compatibility_weights() BEFORE ProcessWeights runs
         if hasattr(self, "embed"):
             try:
                 embed_key = ProcessWeights._get_param_key("embed.W_E", adapter)
