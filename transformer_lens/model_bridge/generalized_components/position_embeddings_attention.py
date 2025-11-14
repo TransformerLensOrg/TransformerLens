@@ -142,7 +142,7 @@ class PositionEmbeddingsAttentionBridge(AttentionBridge):
         This is necessary because some code paths may call the HF attention directly,
         bypassing the bridge's forward method.
 
-        Also sets up hook_z reshaping like the base AttentionBridge.
+        Also sets up Q/K/V/Z hook reshaping like the base AttentionBridge.
 
         This is called during Bridge.__init__ and should always be run.
         Note: This method is idempotent - can be called multiple times safely.
@@ -212,9 +212,9 @@ class PositionEmbeddingsAttentionBridge(AttentionBridge):
         self.original_component.forward = wrapped_forward
         self._hf_forward_wrapped = True
 
-        # Still setup hook_z reshaping if needed
-        if hasattr(self, "o") and self.o is not None and hasattr(self.config, "n_heads"):
-            self._setup_hook_z_reshape()
+        # Setup Q/K/V/Z hook reshaping if needed
+        if hasattr(self.config, "n_heads"):
+            self._setup_qkv_hook_reshaping()
 
     def setup_no_processing_hooks(self) -> None:
         """Backward compatibility alias for setup_hook_compatibility."""

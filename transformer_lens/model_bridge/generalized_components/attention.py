@@ -119,8 +119,8 @@ class AttentionBridge(GeneralizedComponent):
         """Setup hook compatibility transformations to match HookedTransformer behavior.
 
         This sets up hook conversions that ensure Bridge hooks have the same shapes
-        as HookedTransformer hooks, particularly for hook_z which needs to be reshaped
-        from [batch, seq, d_model] to [batch, seq, n_heads, d_head].
+        as HookedTransformer hooks. This includes reshaping Q/K/V/Z hooks from
+        [batch, seq, d_model] to [batch, seq, n_heads, d_head] format.
 
         This is called during Bridge.__init__ and should always be run.
         Note: This method is idempotent - can be called multiple times safely.
@@ -128,9 +128,9 @@ class AttentionBridge(GeneralizedComponent):
         if self._hf_forward_wrapped:
             return  # Already set up
 
-        # Setup hook_z reshaping if we have an 'o' submodule
-        if hasattr(self, "o") and self.o is not None and hasattr(self.config, "n_heads"):
-            self._setup_hook_z_reshape()
+        # Setup hook reshaping for Q/K/V/Z if we have the submodules
+        if hasattr(self.config, "n_heads"):
+            self._setup_qkv_hook_reshaping()
 
         self._hf_forward_wrapped = True
 
@@ -206,14 +206,24 @@ class AttentionBridge(GeneralizedComponent):
 
         return inputs
 
-    def _setup_hook_z_reshape(self) -> None:
-        """Setup hook_z (o.hook_in) to reshape from [batch, seq, d_model] to [batch, seq, n_heads, d_head]."""
+    def _setup_qkv_hook_reshaping(self) -> None:
+        """Setup hook reshaping for Q/K/V/Z to match HookedTransformer shapes.
+
+        Reshapes hooks from [batch, seq, d_model] to [batch, seq, n_heads, d_head] format.
+        For models with Grouped Query Attention (GQA), K and V use n_kv_heads instead of n_heads.
+
+        Sets up conversions for:
+        - q.hook_out (aliased as hook_q)
+        - k.hook_out (aliased as hook_k) - uses n_kv_heads if GQA
+        - v.hook_out (aliased as hook_v) - uses n_kv_heads if GQA
+        - o.hook_in (aliased as hook_z)
+        """
         from transformer_lens.conversion_utils.conversion_steps.base_hook_conversion import (
             BaseHookConversion,
         )
 
         class ReshapeForAttentionHeads(BaseHookConversion):
-            """Reshape tensors to split attention heads for hook_z compatibility."""
+            """Reshape tensors to split attention heads for Q/K/V/Z compatibility."""
 
             def __init__(self, n_heads: int, d_head: int):
                 super().__init__()
@@ -239,13 +249,45 @@ class AttentionBridge(GeneralizedComponent):
         # Get dimensions
         if self.config is None:
             raise RuntimeError(f"Config not set for {self.name}")
-        n_heads = self.config.n_heads if hasattr(self.config, "n_heads") else self.config.n_head
-        d_model = self.config.d_model if hasattr(self.config, "d_model") else self.config.n_embd
-        d_head = d_model // n_heads
 
-        # Apply conversion to o.hook_in (which is aliased as hook_z)
-        reshape_conv = ReshapeForAttentionHeads(n_heads, d_head)
-        self.o.hook_in.hook_conversion = reshape_conv
+        n_heads = self.config.n_heads if hasattr(self.config, "n_heads") else self.config.n_head
+
+        # Get d_head from config if available, otherwise calculate from d_model
+        if hasattr(self.config, "d_head"):
+            d_head = self.config.d_head
+        else:
+            d_model = self.config.d_model if hasattr(self.config, "d_model") else self.config.n_embd
+            d_head = d_model // n_heads
+
+        # Check if this model uses Grouped Query Attention (GQA)
+        # GQA means K and V have fewer heads than Q
+        n_kv_heads = n_heads  # Default: same as n_heads
+        if hasattr(self.config, "n_key_value_heads") and self.config.n_key_value_heads is not None:
+            n_kv_heads = self.config.n_key_value_heads
+
+        # Setup reshaping for Q (uses n_heads)
+        if hasattr(self, "q") and self.q is not None and hasattr(self.q, "hook_out"):
+            q_reshape = ReshapeForAttentionHeads(n_heads, d_head)
+            self.q.hook_out.hook_conversion = q_reshape
+
+        # Setup reshaping for K (uses n_kv_heads for GQA models)
+        if hasattr(self, "k") and self.k is not None and hasattr(self.k, "hook_out"):
+            k_reshape = ReshapeForAttentionHeads(n_kv_heads, d_head)
+            self.k.hook_out.hook_conversion = k_reshape
+
+        # Setup reshaping for V (uses n_kv_heads for GQA models)
+        if hasattr(self, "v") and self.v is not None and hasattr(self.v, "hook_out"):
+            v_reshape = ReshapeForAttentionHeads(n_kv_heads, d_head)
+            self.v.hook_out.hook_conversion = v_reshape
+
+        # Setup reshaping for Z (uses n_heads)
+        if hasattr(self, "o") and self.o is not None and hasattr(self.o, "hook_in"):
+            z_reshape = ReshapeForAttentionHeads(n_heads, d_head)
+            self.o.hook_in.hook_conversion = z_reshape
+
+    def _setup_hook_z_reshape(self) -> None:
+        """Backward compatibility alias for _setup_qkv_hook_reshaping."""
+        self._setup_qkv_hook_reshaping()
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         """Simplified forward pass - minimal wrapping around original component.
