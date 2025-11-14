@@ -115,11 +115,15 @@ class AttentionBridge(GeneralizedComponent):
         self.requires_position_embeddings = requires_position_embeddings
         self.requires_attention_mask = requires_attention_mask
 
-    def setup_no_processing_hooks(self) -> None:
-        """Setup hooks for no_processing mode.
+    def setup_hook_compatibility(self) -> None:
+        """Setup hook compatibility transformations to match HookedTransformer behavior.
 
-        In no_processing mode, we use a simplified forward pass that just wraps
-        the original component with hook_in and hook_out.
+        This sets up hook conversions that ensure Bridge hooks have the same shapes
+        as HookedTransformer hooks, particularly for hook_z which needs to be reshaped
+        from [batch, seq, d_model] to [batch, seq, n_heads, d_head].
+
+        This is called during Bridge.__init__ and should always be run.
+        Note: This method is idempotent - can be called multiple times safely.
         """
         if self._hf_forward_wrapped:
             return  # Already set up
@@ -129,6 +133,10 @@ class AttentionBridge(GeneralizedComponent):
             self._setup_hook_z_reshape()
 
         self._hf_forward_wrapped = True
+
+    def setup_no_processing_hooks(self) -> None:
+        """Backward compatibility alias for setup_hook_compatibility."""
+        self.setup_hook_compatibility()
 
     def get_random_inputs(
         self,

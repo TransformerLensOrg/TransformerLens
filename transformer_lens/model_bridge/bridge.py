@@ -6,7 +6,6 @@ a consistent interface for accessing their weights and performing operations.
 
 # Pre-compiled regex patterns for performance
 import re
-from contextlib import contextmanager
 from functools import lru_cache
 from typing import (
     TYPE_CHECKING,
@@ -82,7 +81,6 @@ from transformer_lens.model_bridge.generalized_components.base import (
 )
 from transformer_lens.model_bridge.get_params_util import get_bridge_params
 from transformer_lens.model_bridge.hook_point_wrapper import HookPointWrapper
-from transformer_lens.model_bridge.types import ComponentMapping
 from transformer_lens.utilities.aliases import resolve_alias
 
 if TYPE_CHECKING:
@@ -178,6 +176,10 @@ class TransformerBridge(nn.Module):
         # This ensures hook aliases like hook_q_input, hook_mlp_in, etc. are available
         # even when not using compatibility mode
         self._register_all_aliases_recursive()
+
+        # Setup hook compatibility transformations (hook_z reshaping, etc.)
+        # This should always be done to ensure hooks match HookedTransformer's shape expectations
+        self._setup_hook_compatibility()
 
         # Intiialize dictionary containing hooks that will be cached
         self._initialize_hooks_to_cache()
@@ -986,11 +988,10 @@ class TransformerBridge(nn.Module):
         # Fix backward hook gradients by overriding transformer forward
         self._fix_backward_hook_gradients()
 
-        # Setup attention hooks to match HookedTransformer (needed for both modes)
-        # This wraps HF attention forward to:
-        # 1. Capture attention scores before softmax
-        # 2. Ensure Q/K/V/Z hooks fire properly
-        self._setup_no_processing_hooks()
+        # Setup hook compatibility transformations (idempotent - safe to call again)
+        # This ensures hooks match HookedTransformer shapes and behavior
+        # Note: This was already called in __init__, but calling again is safe
+        self._setup_hook_compatibility()
 
         if no_processing:
             # Override weight processing parameters when no_processing is True
@@ -1016,19 +1017,25 @@ class TransformerBridge(nn.Module):
         # Note: _set_processed_weight_attributes() is called inside process_compatibility_weights()
         self._register_all_aliases_recursive()
 
-    def _setup_no_processing_hooks(self) -> None:
-        """Setup hooks for no_processing mode in all attention layers.
+    def _setup_hook_compatibility(self) -> None:
+        """Setup hook compatibility transformations to match HookedTransformer behavior.
 
-        This delegates to each AttentionBridge's setup_no_processing_hooks() method,
-        which handles:
-        1. hook_z reshaping for proper head dimensions
-        2. Wrapping HF attention forward to capture scores before softmax
+        This method sets up hook conversions and wrappers that ensure Bridge hooks
+        have the same shapes and behavior as HookedTransformer hooks. This includes:
+        1. hook_z reshaping from [batch, seq, d_model] to [batch, seq, n_heads, d_head]
+        2. Wrapping HF attention forward to inject position embeddings/attention masks
+        3. Architecture-specific setup (e.g., rotary embedding references)
 
-        Also calls the adapter's setup_no_processing_hooks if available, which handles
-        architecture-specific setup like setting rotary embedding references.
+        This is called during __init__ and should always be run, regardless of whether
+        compatibility mode or weight processing is enabled.
+
+        Note: This method is idempotent - can be called multiple times safely.
         """
         # Call adapter's setup method first (if available) to handle architecture-specific setup
-        if hasattr(self.adapter, "setup_no_processing_hooks"):
+        if hasattr(self.adapter, "setup_hook_compatibility"):
+            self.adapter.setup_hook_compatibility(self)
+        elif hasattr(self.adapter, "setup_no_processing_hooks"):
+            # Fallback to old name for backward compatibility
             self.adapter.setup_no_processing_hooks(self)
 
         # Handle both decoder-only (blocks) and encoder-decoder (encoder_blocks, decoder_blocks)
@@ -1045,7 +1052,10 @@ class TransformerBridge(nn.Module):
             for attn_name in ["attn", "self_attn", "cross_attn"]:
                 if hasattr(block, attn_name):
                     attn = getattr(block, attn_name)
-                    if hasattr(attn, "setup_no_processing_hooks"):
+                    if hasattr(attn, "setup_hook_compatibility"):
+                        attn.setup_hook_compatibility()
+                    elif hasattr(attn, "setup_no_processing_hooks"):
+                        # Fallback to old name for backward compatibility
                         attn.setup_no_processing_hooks()
 
     def _enable_split_qkv_attention(self) -> None:

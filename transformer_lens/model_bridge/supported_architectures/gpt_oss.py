@@ -109,10 +109,13 @@ class GPTOSSArchitectureAdapter(ArchitectureAdapter):
             "unembed": UnembeddingBridge(name="lm_head"),
         }
 
-    def setup_no_processing_hooks(self, bridge_model: Any) -> None:
-        """Set up hooks for GPT-OSS when not using weight processing.
+    def setup_hook_compatibility(self, bridge_model: Any) -> None:
+        """Setup hook compatibility transformations for GPT-OSS models.
 
-        This configures rotary embedding references for attention layers.
+        This configures rotary embedding references for attention layers, which is
+        needed for models using RoPE (Rotary Position Embeddings).
+
+        This is called during Bridge.__init__ and should always be run.
 
         Args:
             bridge_model: The TransformerBridge instance
@@ -129,3 +132,7 @@ class GPTOSSArchitectureAdapter(ArchitectureAdapter):
             for block in bridge_model.blocks:
                 if hasattr(block, "attn"):
                     block.attn.set_rotary_emb(rotary_emb)
+
+    def setup_no_processing_hooks(self, bridge_model: Any) -> None:
+        """Backward compatibility alias for setup_hook_compatibility."""
+        self.setup_hook_compatibility(bridge_model)

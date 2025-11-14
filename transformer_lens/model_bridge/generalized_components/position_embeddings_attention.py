@@ -134,11 +134,18 @@ class PositionEmbeddingsAttentionBridge(AttentionBridge):
 
         return inputs
 
-    def setup_no_processing_hooks(self) -> None:
-        """Wrap HF attention forward to inject required position_embeddings and attention_mask.
+    def setup_hook_compatibility(self) -> None:
+        """Setup hook compatibility transformations to match HookedTransformer behavior.
 
-        This wrapping is necessary because some code paths (e.g., weight modification tests)
-        may call the HF attention's forward directly, bypassing the bridge's forward method.
+        For models requiring position embeddings (like Gemma with RoPE), this wraps the
+        HF attention forward to inject required position_embeddings and attention_mask.
+        This is necessary because some code paths may call the HF attention directly,
+        bypassing the bridge's forward method.
+
+        Also sets up hook_z reshaping like the base AttentionBridge.
+
+        This is called during Bridge.__init__ and should always be run.
+        Note: This method is idempotent - can be called multiple times safely.
         """
         if self.original_component is None:
             return
@@ -208,6 +215,10 @@ class PositionEmbeddingsAttentionBridge(AttentionBridge):
         # Still setup hook_z reshaping if needed
         if hasattr(self, "o") and self.o is not None and hasattr(self.config, "n_heads"):
             self._setup_hook_z_reshape()
+
+    def setup_no_processing_hooks(self) -> None:
+        """Backward compatibility alias for setup_hook_compatibility."""
+        self.setup_hook_compatibility()
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         """Simplified forward pass - minimal wrapping around original component.
