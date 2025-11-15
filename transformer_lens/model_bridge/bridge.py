@@ -1565,7 +1565,14 @@ class TransformerBridge(nn.Module):
 
         # After loading processed weights, set layer norm weights to identity if folding was enabled
         # This ensures state_dict() returns the correct values for benchmarks
-        if fold_ln:
+        # IMPORTANT: Skip this for Gemma models because they use a unique (1 + weight) formula
+        # where the +1 is hardcoded in the HF module, making weights non-separable
+        is_gemma_model = (
+            getattr(self.cfg, "architecture", None) in ["GemmaForCausalLM", "Gemma2ForCausalLM"]
+            or getattr(self.cfg, "original_architecture", None) in ["GemmaForCausalLM", "Gemma2ForCausalLM"]
+        )
+
+        if fold_ln and not is_gemma_model:
             for layer_idx in range(self.cfg.n_layers):
                 # Set ln1 and ln2 weights to 1.0 (identity) for all layers
                 for ln_name in ["ln1", "ln2"]:
@@ -2573,6 +2580,12 @@ class TransformerBridge(nn.Module):
         missing_keys, unexpected_keys = self.load_state_dict(processed_hf_state_dict, strict=False)
 
         # Filter out expected missing keys (layer norm keys that were removed during processing)
+        # IMPORTANT: Skip setting weights to 1.0 for Gemma models - they use (1 + weight) formula
+        is_gemma_model = (
+            getattr(self.cfg, "architecture", None) in ["GemmaForCausalLM", "Gemma2ForCausalLM"]
+            or getattr(self.cfg, "original_architecture", None) in ["GemmaForCausalLM", "Gemma2ForCausalLM"]
+        )
+
         if fold_ln:
             expected_missing_keys = set()
             for key in missing_keys:
@@ -2596,34 +2609,36 @@ class TransformerBridge(nn.Module):
             # For missing layer norm keys, set them to identity (1.0 for weights, 0.0 for biases)
             # This ensures state_dict() returns the correct folded values
             # We need to actually modify the parameters in the model, not just a local state_dict
-            for key in expected_missing_keys:
-                # Navigate to the actual parameter in the model
-                try:
-                    parts = key.split(".")
-                    obj: Any = self.original_model
-                    for part in parts[:-1]:
-                        if part.isdigit():
-                            obj = obj[int(part)]
-                        else:
-                            obj = getattr(obj, part, None)
-                            if obj is None:
-                                break
+            # SKIP for Gemma models which have (1 + weight) formula where +1 is hardcoded
+            if not is_gemma_model:
+                for key in expected_missing_keys:
+                    # Navigate to the actual parameter in the model
+                    try:
+                        parts = key.split(".")
+                        obj: Any = self.original_model
+                        for part in parts[:-1]:
+                            if part.isdigit():
+                                obj = obj[int(part)]
+                            else:
+                                obj = getattr(obj, part, None)
+                                if obj is None:
+                                    break
 
-                    if obj is not None:
-                        param_name = parts[-1]
-                        if hasattr(obj, param_name):
-                            param = getattr(obj, param_name)
-                            if param is not None and isinstance(param, torch.nn.Parameter):
-                                with torch.no_grad():
-                                    if "weight" in key:
-                                        # Set weights to identity (ones)
-                                        param.fill_(1.0)
-                                    elif "bias" in key:
-                                        # Set biases to zero
-                                        param.zero_()
-                except (AttributeError, IndexError, KeyError):
-                    # Skip if we can't navigate to this parameter
-                    pass
+                        if obj is not None:
+                            param_name = parts[-1]
+                            if hasattr(obj, param_name):
+                                param = getattr(obj, param_name)
+                                if param is not None and isinstance(param, torch.nn.Parameter):
+                                    with torch.no_grad():
+                                        if "weight" in key:
+                                            # Set weights to identity (ones)
+                                            param.fill_(1.0)
+                                        elif "bias" in key:
+                                            # Set biases to zero
+                                            param.zero_()
+                    except (AttributeError, IndexError, KeyError):
+                        # Skip if we can't navigate to this parameter
+                        pass
 
             # Remove expected missing keys from the missing_keys set
             actual_missing_keys = set(missing_keys) - expected_missing_keys

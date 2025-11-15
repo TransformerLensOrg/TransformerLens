@@ -216,15 +216,16 @@ class PositionEmbeddingsAttentionBridge(AttentionBridge):
             original_apply_rotary = gemma2_module.apply_rotary_pos_emb
 
             def hooked_apply_rotary(q, k, cos, sin, position_ids=None, unsqueeze_dim=1):
-                """Wrapper that applies rotary hooks after rotation."""
+                """Wrapper that applies rotary hooks BEFORE rotation (matching HookedTransformer)."""
+                # Apply hooks BEFORE rotation if they exist
+                # (hook_rot_q and hook_rot_k are defined in AttentionBridge)
+                if hasattr(self, 'hook_rot_q'):
+                    q = self.hook_rot_q(q)
+                if hasattr(self, 'hook_rot_k'):
+                    k = self.hook_rot_k(k)
+
                 # Apply original rotation
                 rotated_q, rotated_k = original_apply_rotary(q, k, cos, sin, position_ids, unsqueeze_dim)
-
-                # Apply hooks if they exist (hook_rot_q and hook_rot_k are defined in AttentionBridge)
-                if hasattr(self, 'hook_rot_q'):
-                    rotated_q = self.hook_rot_q(rotated_q)
-                if hasattr(self, 'hook_rot_k'):
-                    rotated_k = self.hook_rot_k(rotated_k)
 
                 return rotated_q, rotated_k
 
