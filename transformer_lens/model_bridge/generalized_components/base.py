@@ -260,8 +260,9 @@ class GeneralizedComponent(nn.Module):
             raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
         submodules = object.__getattribute__(self, "__dict__").get("submodules")
         if submodules is not None and name in submodules:
-            # Return submodule directly if it exists but hasn't been registered as PyTorch module yet
-            return submodules[name]
+            # Don't return submodule here - it should be accessed via _modules after add_module()
+            # Raising AttributeError allows PyTorch's add_module() to work correctly
+            raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
         if modules is not None:
             original_component = modules.get("_original_component")
             if original_component is not None:
