@@ -3127,43 +3127,43 @@ class TransformerBridge(nn.Module):
 
         # Use processed computation if weights have been processed AND no KV cache is provided
         # (KV cache support requires using the original HuggingFace forward path)
-        if (
-            hasattr(self, "_weights_processed")
-            and self._weights_processed
-            and past_kv_cache is None
-        ):
-            # Check if we're using true HF format processing
-            if hasattr(self, "_true_hf_format_processing") and self._true_hf_format_processing:
-                # Use custom HF format forward pass that works with processed weights
-                return self._true_hf_format_forward_pass(
-                    input,
-                    return_type=return_type,
-                    prepend_bos=prepend_bos,
-                    loss_per_token=loss_per_token,
-                    start_at_layer=start_at_layer,
-                    stop_at_layer=stop_at_layer,
-                )
-            # Check if we're using standard HF format processing
-            elif hasattr(self, "_hf_format_processing") and self._hf_format_processing:
-                # Use HF format forward pass (delegate to original model with processed weights)
-                return self._hf_format_forward_pass(
-                    input,
-                    return_type=return_type,
-                    prepend_bos=prepend_bos,
-                    loss_per_token=loss_per_token,
-                    start_at_layer=start_at_layer,
-                    stop_at_layer=stop_at_layer,
-                )
-            else:
-                # Use ported HookedTransformer functionality
-                return self._ported_forward_pass(
-                    input,
-                    return_type=return_type,
-                    prepend_bos=prepend_bos,
-                    loss_per_token=loss_per_token,
-                    start_at_layer=start_at_layer,
-                    stop_at_layer=stop_at_layer,
-                )
+        # if (
+        #     hasattr(self, "_weights_processed")
+        #     and self._weights_processed
+        #     and past_kv_cache is None
+        # ):
+        #     # Check if we're using true HF format processing
+        #     if hasattr(self, "_true_hf_format_processing") and self._true_hf_format_processing:
+        #         # Use custom HF format forward pass that works with processed weights
+        #         return self._true_hf_format_forward_pass(
+        #             input,
+        #             return_type=return_type,
+        #             prepend_bos=prepend_bos,
+        #             loss_per_token=loss_per_token,
+        #             start_at_layer=start_at_layer,
+        #             stop_at_layer=stop_at_layer,
+        #         )
+        #     # Check if we're using standard HF format processing
+        #     elif hasattr(self, "_hf_format_processing") and self._hf_format_processing:
+        #         # Use HF format forward pass (delegate to original model with processed weights)
+        #         return self._hf_format_forward_pass(
+        #             input,
+        #             return_type=return_type,
+        #             prepend_bos=prepend_bos,
+        #             loss_per_token=loss_per_token,
+        #             start_at_layer=start_at_layer,
+        #             stop_at_layer=stop_at_layer,
+        #         )
+        #     else:
+        #         # Use ported HookedTransformer functionality
+        #         return self._ported_forward_pass(
+        #             input,
+        #             return_type=return_type,
+        #             prepend_bos=prepend_bos,
+        #             loss_per_token=loss_per_token,
+        #             start_at_layer=start_at_layer,
+        #             stop_at_layer=stop_at_layer,
+        #         )
 
         # Handle string input
         if isinstance(input, (str, list)):
@@ -3226,16 +3226,16 @@ class TransformerBridge(nn.Module):
         # Store reference to original TransformerLensKeyValueCache for updating
         original_tl_cache = past_kv_cache
 
-        # Run model
-        if hasattr(self.original_model, "forward"):
-            # Pass labels for loss calculation if needed
-            if return_type in ["loss", "both"]:
-                kwargs["labels"] = input_ids
-            output = self.original_model.forward(input_ids, **kwargs)
-        else:
-            if return_type in ["loss", "both"]:
-                kwargs["labels"] = input_ids
-            output = self.original_model(input_ids, **kwargs)
+        # # Run model
+        # if hasattr(self.original_model, "forward"):
+        #     # Pass labels for loss calculation if needed
+        #     if return_type in ["loss", "both"]:
+        #         kwargs["labels"] = input_ids
+        #     output = self.original_model.forward(input_ids, **kwargs)
+        # else:
+        if return_type in ["loss", "both"]:
+            kwargs["labels"] = input_ids
+        output = self.original_model(input_ids, **kwargs)
 
         # Update TransformerLensKeyValueCache if it was provided and model returned new cache
         if (
