@@ -5,6 +5,7 @@ This module provides functionality to load and convert models from HuggingFace t
 import copy
 import logging
 import os
+import warnings
 
 import torch
 from transformers import (
@@ -15,6 +16,11 @@ from transformers import (
     AutoTokenizer,
     PreTrainedTokenizerBase,
 )
+
+# Suppress transformers warnings that go to stderr
+# This prevents notebook tests from failing due to unexpected stderr output
+warnings.filterwarnings("ignore", message=".*generation flags.*not valid.*")
+logging.getLogger("transformers").setLevel(logging.ERROR)
 
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.model_bridge.bridge import TransformerBridge

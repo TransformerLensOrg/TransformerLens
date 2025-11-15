@@ -541,30 +541,37 @@ def test_run_with_hooks_stop_at_layer_compat_with_processing(
 def test_manual_hooks_stop_at_layer_compat_with_processing(
     bridge_with_compat_and_processing,
 ):
-    """Test that manually added hooks respect stop_at_layer with compat mode and processing."""
+    """Test that execution stops at stop_at_layer with compat mode and processing."""
     rand_input = torch.randint(0, 100, (2, 10))
 
-    counting_list = []
+    # Track which layers actually executed
+    layer_0_fired = False
+    layer_1_fired = False
 
-    def count_hook(activation, hook):
-        counting_list.append(len(counting_list))
+    def layer_0_hook(activation, hook):
+        nonlocal layer_0_fired
+        layer_0_fired = True
+        return None
+
+    def layer_1_hook(activation, hook):
+        nonlocal layer_1_fired
+        layer_1_fired = True
         return None
 
     # Manually add hooks to different layers
-    bridge_with_compat_and_processing.embed.add_hook(count_hook)
-    bridge_with_compat_and_processing.blocks[0].attn.add_hook(count_hook)
-    bridge_with_compat_and_processing.blocks[1].attn.add_hook(count_hook)
+    bridge_with_compat_and_processing.blocks[0].attn.add_hook(layer_0_hook)
+    bridge_with_compat_and_processing.blocks[1].attn.add_hook(layer_1_hook)
 
     try:
-        # Run with stop_at_layer=1 (should only fire first two hooks)
+        # Run with stop_at_layer=1 (should stop after layer 0)
         output = bridge_with_compat_and_processing(rand_input, stop_at_layer=1)
 
-        # Verify that only the first two hooks fired
-        assert len(counting_list) == 2, f"Expected 2 hooks to fire, got {len(counting_list)}"
+        # Verify that layer 0 executed but layer 1 did NOT
+        assert layer_0_fired, "Layer 0 should have executed"
+        assert not layer_1_fired, "Layer 1 should NOT have executed (stop_at_layer=1)"
 
     finally:
         # Clean up hooks
-        bridge_with_compat_and_processing.embed.remove_hooks()
         bridge_with_compat_and_processing.blocks[0].attn.remove_hooks()
         bridge_with_compat_and_processing.blocks[1].attn.remove_hooks()
 
