@@ -555,8 +555,9 @@ class TransformerBridge(nn.Module):
         """Provide a clear error message for missing attributes."""
         if name in self.__dict__:  # type: ignore[arg-type]
             return self.__dict__[name]
-        if hasattr(self, "_modules") and name in self._modules:  # type: ignore[arg-type]
-            return self._modules[name]
+        # Use direct __dict__ access instead of hasattr to avoid recursion risk
+        if "_modules" in self.__dict__ and name in self.__dict__["_modules"]:  # type: ignore[arg-type]
+            return self.__dict__["_modules"][name]
         if "original_model" in self.__dict__ and self.__dict__["original_model"] is not None:
             try:
                 name_split = name.split(".")
@@ -2384,15 +2385,17 @@ class TransformerBridge(nn.Module):
                 if remove_batch_dim:
                     original_hook_fn = hook_fn
 
-                    def wrapped_hook_fn(tensor, hook):
+                    # Use default argument to capture hook_fn by value, not reference
+                    # This prevents all closures from using the last hook_fn in the loop
+                    def wrapped_hook_fn(tensor, hook, _orig_fn=original_hook_fn):
                         if tensor.shape[0] == 1:
                             tensor_no_batch = tensor.squeeze(0)
-                            result = original_hook_fn(tensor_no_batch, hook)
+                            result = _orig_fn(tensor_no_batch, hook)
                             if result.dim() == tensor_no_batch.dim():
                                 result = result.unsqueeze(0)
                             return result
                         else:
-                            return original_hook_fn(tensor, hook)
+                            return _orig_fn(tensor, hook)
 
                     hook_fn = wrapped_hook_fn
                 if isinstance(hook_name_or_filter, str):
