@@ -64,11 +64,11 @@ def benchmark_weight_processing(
 
             # Check weight centering - writing weights should be approximately centered
             bridge_w_out = bridge.blocks[0].mlp.W_out
-            reference_w_out = reference_model.blocks[0].mlp.W_out
+            reference_w_out = reference_model.blocks[0].mlp.W_out  # type: ignore[union-attr]
 
             bridge_mean = torch.mean(torch.abs(torch.mean(bridge_w_out, dim=-1, keepdim=True)))
             reference_mean = torch.mean(
-                torch.abs(torch.mean(reference_w_out, dim=-1, keepdim=True))
+                torch.abs(torch.mean(reference_w_out, dim=-1, keepdim=True))  # type: ignore[arg-type]
             )
 
             if bridge_mean.item() > 1e-3:

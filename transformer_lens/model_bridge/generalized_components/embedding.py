@@ -4,17 +4,28 @@ This module contains the bridge component for embedding layers.
 """
 import inspect
 from typing import Any, Dict, Optional
+
 import torch
-from transformer_lens.model_bridge.generalized_components.base import GeneralizedComponent
+
+from transformer_lens.model_bridge.generalized_components.base import (
+    GeneralizedComponent,
+)
+
 
 class EmbeddingBridge(GeneralizedComponent):
     """Embedding bridge that wraps transformer embedding layers.
 
     This component provides standardized input/output hooks.
     """
-    property_aliases = {'W_E': 'e.weight', 'W_pos': 'pos.weight'}
 
-    def __init__(self, name: str, config: Optional[Any]=None, submodules: Optional[Dict[str, GeneralizedComponent]]={}):
+    property_aliases = {"W_E": "e.weight", "W_pos": "pos.weight"}
+
+    def __init__(
+        self,
+        name: str,
+        config: Optional[Any] = None,
+        submodules: Optional[Dict[str, GeneralizedComponent]] = {},
+    ):
         """Initialize the embedding bridge.
 
         Args:
@@ -27,21 +38,27 @@ class EmbeddingBridge(GeneralizedComponent):
     @property
     def W_E(self) -> torch.Tensor:
         """Return the embedding weight matrix."""
-        if hasattr(self, '_use_processed_weights') and self._use_processed_weights:
-            if hasattr(self, '_processed_weight'):
+        if hasattr(self, "_use_processed_weights") and self._use_processed_weights:
+            if hasattr(self, "_processed_weight"):
                 return self._processed_weight
         if self.original_component is None:
-            raise RuntimeError(f'Original component not set for {self.name}')
-        if hasattr(self.original_component, 'inv_freq') and (not hasattr(self.original_component, 'weight')):
+            raise RuntimeError(f"Original component not set for {self.name}")
+        if hasattr(self.original_component, "inv_freq") and (
+            not hasattr(self.original_component, "weight")
+        ):
             inv_freq = self.original_component.inv_freq
-            assert isinstance(inv_freq, torch.Tensor), f'inv_freq is not a tensor for {self.name}'
+            assert isinstance(inv_freq, torch.Tensor), f"inv_freq is not a tensor for {self.name}"
             return inv_freq
-        assert hasattr(self.original_component, 'weight'), f'Component {self.name} has neither weight nor inv_freq attribute'
+        assert hasattr(
+            self.original_component, "weight"
+        ), f"Component {self.name} has neither weight nor inv_freq attribute"
         weight = self.original_component.weight
-        assert isinstance(weight, torch.Tensor), f'Weight is not a tensor for {self.name}'
+        assert isinstance(weight, torch.Tensor), f"Weight is not a tensor for {self.name}"
         return weight
 
-    def forward(self, input_ids: torch.Tensor, position_ids: torch.Tensor | None=None, **kwargs: Any) -> torch.Tensor:
+    def forward(
+        self, input_ids: torch.Tensor, position_ids: torch.Tensor | None = None, **kwargs: Any
+    ) -> torch.Tensor:
         """Forward pass through the embedding bridge.
 
         Args:
@@ -52,16 +69,18 @@ class EmbeddingBridge(GeneralizedComponent):
         Returns:
             Embedded output
         """
-        if hasattr(self, '_use_processed_weights') and self._use_processed_weights:
+        if hasattr(self, "_use_processed_weights") and self._use_processed_weights:
             input_ids = self.hook_in(input_ids)
-            if hasattr(self, '_processed_weight'):
+            if hasattr(self, "_processed_weight"):
                 output = torch.nn.functional.embedding(input_ids, self._processed_weight)
             else:
                 output = torch.nn.functional.embedding(input_ids, self.W_E)
             output = self.hook_out(output)
             return output
         if self.original_component is None:
-            raise RuntimeError(f'Original component not set for {self.name}. Call set_original_component() first.')
+            raise RuntimeError(
+                f"Original component not set for {self.name}. Call set_original_component() first."
+            )
         target_dtype = None
         try:
             target_dtype = next(self.original_component.parameters()).dtype
@@ -69,9 +88,9 @@ class EmbeddingBridge(GeneralizedComponent):
             pass
         input_ids = self.hook_in(input_ids)
         sig = inspect.signature(self.original_component.forward)
-        supports_position_ids = 'position_ids' in sig.parameters
-        if not hasattr(self.original_component, 'forward') or not supports_position_ids:
-            kwargs.pop('position_ids', None)
+        supports_position_ids = "position_ids" in sig.parameters
+        if not hasattr(self.original_component, "forward") or not supports_position_ids:
+            kwargs.pop("position_ids", None)
             output = self.original_component(input_ids, **kwargs)
         else:
             output = self.original_component(input_ids, position_ids=position_ids, **kwargs)

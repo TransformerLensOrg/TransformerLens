@@ -362,8 +362,8 @@ class ComponentBenchmarker:
                     # Check if parent has a joint qkv module
                     if hasattr(parent_component, "submodules"):
                         if (
-                            "qkv" in parent_component.submodules
-                            or "c_attn" in parent_component.submodules
+                            "qkv" in parent_component.submodules  # type: ignore[operator]
+                            or "c_attn" in parent_component.submodules  # type: ignore[operator]
                         ):
                             # Skip - this is a virtual q/k/v split from joint projection
                             return

@@ -109,4 +109,4 @@ class NanogptArchitectureAdapter(ArchitectureAdapter):
             if k.startswith(unwanted_prefix):
                 state_dict[k[len(unwanted_prefix) :]] = state_dict.pop(k)
 
-        return super().convert_weights(remote_module)
+        return super().convert_weights(remote_module)  # type: ignore[misc]

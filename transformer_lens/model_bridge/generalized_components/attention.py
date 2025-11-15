@@ -3,11 +3,20 @@
 This module contains the bridge component for attention layers.
 """
 from typing import Any, Dict, Mapping, Optional
+
 import torch
-from transformer_lens.conversion_utils.conversion_steps.attention_auto_conversion import AttentionAutoConversion
-from transformer_lens.conversion_utils.conversion_steps.base_hook_conversion import BaseHookConversion
+
+from transformer_lens.conversion_utils.conversion_steps.attention_auto_conversion import (
+    AttentionAutoConversion,
+)
+from transformer_lens.conversion_utils.conversion_steps.base_hook_conversion import (
+    BaseHookConversion,
+)
 from transformer_lens.hook_points import HookPoint
-from transformer_lens.model_bridge.generalized_components.base import GeneralizedComponent
+from transformer_lens.model_bridge.generalized_components.base import (
+    GeneralizedComponent,
+)
+
 
 class AttentionBridge(GeneralizedComponent):
     """Bridge component for attention layers.
@@ -15,10 +24,36 @@ class AttentionBridge(GeneralizedComponent):
     This component handles the conversion between Hugging Face attention layers
     and TransformerLens attention components.
     """
-    hook_aliases = {'hook_result': 'hook_out', 'hook_q': 'q.hook_out', 'hook_k': 'k.hook_out', 'hook_v': 'v.hook_out', 'hook_z': 'o.hook_in'}
-    property_aliases = {'W_Q': 'q.weight', 'W_K': 'k.weight', 'W_V': 'v.weight', 'W_O': 'o.weight', 'b_Q': 'q.bias', 'b_K': 'k.bias', 'b_V': 'v.bias', 'b_O': 'o.bias'}
 
-    def __init__(self, name: str, config: Any, submodules: Optional[Dict[str, GeneralizedComponent]]=None, conversion_rule: Optional[BaseHookConversion]=None, pattern_conversion_rule: Optional[BaseHookConversion]=None, maintain_native_attention: bool=False, requires_position_embeddings: bool=False, requires_attention_mask: bool=False):
+    hook_aliases = {
+        "hook_result": "hook_out",
+        "hook_q": "q.hook_out",
+        "hook_k": "k.hook_out",
+        "hook_v": "v.hook_out",
+        "hook_z": "o.hook_in",
+    }
+    property_aliases = {
+        "W_Q": "q.weight",
+        "W_K": "k.weight",
+        "W_V": "v.weight",
+        "W_O": "o.weight",
+        "b_Q": "q.bias",
+        "b_K": "k.bias",
+        "b_V": "v.bias",
+        "b_O": "o.bias",
+    }
+
+    def __init__(
+        self,
+        name: str,
+        config: Any,
+        submodules: Optional[Dict[str, GeneralizedComponent]] = None,
+        conversion_rule: Optional[BaseHookConversion] = None,
+        pattern_conversion_rule: Optional[BaseHookConversion] = None,
+        maintain_native_attention: bool = False,
+        requires_position_embeddings: bool = False,
+        requires_attention_mask: bool = False,
+    ):
         """Initialize the attention bridge.
 
         Args:
@@ -38,11 +73,16 @@ class AttentionBridge(GeneralizedComponent):
         """
         if conversion_rule is None:
             conversion_rule = AttentionAutoConversion(config)
-        super().__init__(name, config=config, submodules=submodules or {}, conversion_rule=conversion_rule)
+        super().__init__(
+            name, config=config, submodules=submodules or {}, conversion_rule=conversion_rule
+        )
         self.hook_attn_scores = HookPoint()
         self.hook_pattern = HookPoint()
         self.hook_hidden_states = HookPoint()
-        if hasattr(config, 'positional_embedding_type') and config.positional_embedding_type == 'rotary':
+        if (
+            hasattr(config, "positional_embedding_type")
+            and config.positional_embedding_type == "rotary"
+        ):
             self.hook_rot_k = HookPoint()
             self.hook_rot_q = HookPoint()
         self.hook_hidden_states.hook_conversion = conversion_rule
@@ -67,16 +107,22 @@ class AttentionBridge(GeneralizedComponent):
         """
         if self._hf_forward_wrapped:
             return
-        if hasattr(self.config, 'n_heads'):
+        if hasattr(self.config, "n_heads"):
             self._setup_qkv_hook_reshaping()
         self._hf_forward_wrapped = True
 
     def setup_no_processing_hooks(self) -> None:
         """Backward compatibility alias for setup_hook_compatibility."""
-        print(f'CALLED: {__file__}::AttentionBridge.setup_no_processing_hooks')
+        print(f"CALLED: {__file__}::AttentionBridge.setup_no_processing_hooks")
         self.setup_hook_compatibility()
 
-    def get_random_inputs(self, batch_size: int=2, seq_len: int=8, device: Optional[torch.device]=None, dtype: Optional[torch.dtype]=None) -> Dict[str, Any]:
+    def get_random_inputs(
+        self,
+        batch_size: int = 2,
+        seq_len: int = 8,
+        device: Optional[torch.device] = None,
+        dtype: Optional[torch.dtype] = None,
+    ) -> Dict[str, Any]:
         """Get random inputs for testing this attention component.
 
         Generates appropriate inputs based on the attention's requirements
@@ -92,28 +138,30 @@ class AttentionBridge(GeneralizedComponent):
             Dictionary of keyword arguments to pass to forward()
         """
         if device is None:
-            device = torch.device('cpu')
+            device = torch.device("cpu")
         if dtype is None:
             dtype = torch.float32
-        d_model = self.config.d_model if self.config and hasattr(self.config, 'd_model') else 768
-        inputs: Dict[str, Any] = {'hidden_states': torch.randn(batch_size, seq_len, d_model, device=device, dtype=dtype)}
+        d_model = self.config.d_model if self.config and hasattr(self.config, "d_model") else 768
+        inputs: Dict[str, Any] = {
+            "hidden_states": torch.randn(batch_size, seq_len, d_model, device=device, dtype=dtype)
+        }
         if self.requires_position_embeddings:
             if self.config:
-                if hasattr(self.config, 'd_head'):
+                if hasattr(self.config, "d_head"):
                     d_head = self.config.d_head
-                elif hasattr(self.config, 'head_dim'):
+                elif hasattr(self.config, "head_dim"):
                     d_head = self.config.head_dim
                 else:
                     d_head = 64
             else:
                 d_head = 64
-            rotary_pct = getattr(self.config, 'rotary_pct', 1.0) if self.config else 1.0
+            rotary_pct = getattr(self.config, "rotary_pct", 1.0) if self.config else 1.0
             rotary_ndims = int(rotary_pct * d_head)
             cos = torch.ones(1, seq_len, rotary_ndims, device=device, dtype=dtype)
             sin = torch.zeros(1, seq_len, rotary_ndims, device=device, dtype=dtype)
-            inputs['position_embeddings'] = (cos, sin)
+            inputs["position_embeddings"] = (cos, sin)
         if self.requires_attention_mask:
-            inputs['attention_mask'] = torch.ones(batch_size, seq_len, device=device)
+            inputs["attention_mask"] = torch.ones(batch_size, seq_len, device=device)
         return inputs
 
     def _setup_qkv_hook_reshaping(self) -> None:
@@ -128,7 +176,9 @@ class AttentionBridge(GeneralizedComponent):
         - v.hook_out (aliased as hook_v) - uses n_kv_heads if GQA
         - o.hook_in (aliased as hook_z)
         """
-        from transformer_lens.conversion_utils.conversion_steps.base_hook_conversion import BaseHookConversion
+        from transformer_lens.conversion_utils.conversion_steps.base_hook_conversion import (
+            BaseHookConversion,
+        )
 
         class ReshapeForAttentionHeads(BaseHookConversion):
             """Reshape tensors to split attention heads for Q/K/V/Z compatibility."""
@@ -153,27 +203,42 @@ class AttentionBridge(GeneralizedComponent):
                     if n_h == self.n_heads and d_h == self.d_head:
                         return input_value.view(b, s, n_h * d_h)
                 return input_value
+
         if self.config is None:
-            raise RuntimeError(f'Config not set for {self.name}')
-        n_heads = self.config.n_heads if hasattr(self.config, 'n_heads') else self.config.n_head
-        if hasattr(self.config, 'd_head'):
-            d_head = self.config.d_head
+            raise RuntimeError(f"Config not set for {self.name}")
+
+        # Get n_heads (try n_heads first, then n_head)
+        if hasattr(self.config, "n_heads"):
+            n_heads = self.config.n_heads
+        elif hasattr(self.config, "n_head"):
+            n_heads = self.config.n_head
         else:
-            d_model = self.config.d_model if hasattr(self.config, 'd_model') else self.config.n_embd
-            d_head = d_model // n_heads
+            # Can't setup reshaping without knowing number of heads
+            return
+
+        # Get d_head (try d_head first, then compute from d_model or n_embd)
+        if hasattr(self.config, "d_head"):
+            d_head = self.config.d_head
+        elif hasattr(self.config, "d_model"):
+            d_head = self.config.d_model // n_heads
+        elif hasattr(self.config, "n_embd"):
+            d_head = self.config.n_embd // n_heads
+        else:
+            # Can't setup reshaping without knowing head dimension
+            return
         n_kv_heads = n_heads
-        if hasattr(self.config, 'n_key_value_heads') and self.config.n_key_value_heads is not None:
+        if hasattr(self.config, "n_key_value_heads") and self.config.n_key_value_heads is not None:
             n_kv_heads = self.config.n_key_value_heads
-        if hasattr(self, 'q') and self.q is not None and hasattr(self.q, 'hook_out'):
+        if hasattr(self, "q") and self.q is not None and hasattr(self.q, "hook_out"):
             q_reshape = ReshapeForAttentionHeads(n_heads, d_head)
             self.q.hook_out.hook_conversion = q_reshape
-        if hasattr(self, 'k') and self.k is not None and hasattr(self.k, 'hook_out'):
+        if hasattr(self, "k") and self.k is not None and hasattr(self.k, "hook_out"):
             k_reshape = ReshapeForAttentionHeads(n_kv_heads, d_head)
             self.k.hook_out.hook_conversion = k_reshape
-        if hasattr(self, 'v') and self.v is not None and hasattr(self.v, 'hook_out'):
+        if hasattr(self, "v") and self.v is not None and hasattr(self.v, "hook_out"):
             v_reshape = ReshapeForAttentionHeads(n_kv_heads, d_head)
             self.v.hook_out.hook_conversion = v_reshape
-        if hasattr(self, 'o') and self.o is not None and hasattr(self.o, 'hook_in'):
+        if hasattr(self, "o") and self.o is not None and hasattr(self.o, "hook_in"):
             z_reshape = ReshapeForAttentionHeads(n_heads, d_head)
             self.o.hook_in.hook_conversion = z_reshape
 
@@ -191,14 +256,15 @@ class AttentionBridge(GeneralizedComponent):
                 if len(input_value.shape) == 4:
                     return input_value.transpose(1, 2)
                 return input_value
-        if hasattr(self, 'hook_rot_q'):
+
+        if hasattr(self, "hook_rot_q"):
             self.hook_rot_q.hook_conversion = TransposeRotaryHeads()
-        if hasattr(self, 'hook_rot_k'):
+        if hasattr(self, "hook_rot_k"):
             self.hook_rot_k.hook_conversion = TransposeRotaryHeads()
 
     def _setup_hook_z_reshape(self) -> None:
         """Backward compatibility alias for _setup_qkv_hook_reshaping."""
-        print(f'CALLED: {__file__}::AttentionBridge._setup_hook_z_reshape')
+        print(f"CALLED: {__file__}::AttentionBridge._setup_hook_z_reshape")
         self._setup_qkv_hook_reshaping()
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:
@@ -214,30 +280,44 @@ class AttentionBridge(GeneralizedComponent):
         Returns:
             The output from the original component, with only input/output hooks applied
         """
-        print(f'CALLED: {__file__}::AttentionBridge.forward')
+        print(f"CALLED: {__file__}::AttentionBridge.forward")
         if self.original_component is None:
-            raise RuntimeError(f'Original component not set for {self.name}. Call set_original_component() first.')
+            raise RuntimeError(
+                f"Original component not set for {self.name}. Call set_original_component() first."
+            )
         target_dtype = None
         try:
             target_dtype = next(self.original_component.parameters()).dtype
         except StopIteration:
             pass
-        if 'query_input' in kwargs:
-            hooked = self.hook_in(kwargs['query_input'])
-            if target_dtype is not None and isinstance(hooked, torch.Tensor) and hooked.is_floating_point():
+        if "query_input" in kwargs:
+            hooked = self.hook_in(kwargs["query_input"])
+            if (
+                target_dtype is not None
+                and isinstance(hooked, torch.Tensor)
+                and hooked.is_floating_point()
+            ):
                 hooked = hooked.to(dtype=target_dtype)
-            kwargs['query_input'] = hooked
-        elif 'hidden_states' in kwargs:
-            hooked = self.hook_in(kwargs['hidden_states'])
-            if target_dtype is not None and isinstance(hooked, torch.Tensor) and hooked.is_floating_point():
+            kwargs["query_input"] = hooked
+        elif "hidden_states" in kwargs:
+            hooked = self.hook_in(kwargs["hidden_states"])
+            if (
+                target_dtype is not None
+                and isinstance(hooked, torch.Tensor)
+                and hooked.is_floating_point()
+            ):
                 hooked = hooked.to(dtype=target_dtype)
-            kwargs['hidden_states'] = hooked
+            kwargs["hidden_states"] = hooked
         elif len(args) > 0 and isinstance(args[0], torch.Tensor):
             hooked = self.hook_in(args[0])
-            if target_dtype is not None and isinstance(hooked, torch.Tensor) and hooked.is_floating_point():
+            if (
+                target_dtype is not None
+                and isinstance(hooked, torch.Tensor)
+                and hooked.is_floating_point()
+            ):
                 hooked = hooked.to(dtype=target_dtype)
             args = (hooked,) + args[1:]
-            kwargs['hidden_states'] = args[0]
+            kwargs["hidden_states"] = args[0]
             args = args[1:]
         output = self.original_component(*args, **kwargs)
         if isinstance(output, tuple) and len(output) >= 2:
@@ -267,56 +347,64 @@ class AttentionBridge(GeneralizedComponent):
                 - "b_V": Value bias tensor (optional)
                 - "b_O": Output bias tensor (optional)
         """
-        print(f'CALLED: {__file__}::AttentionBridge.set_processed_weights')
+        print(f"CALLED: {__file__}::AttentionBridge.set_processed_weights")
         if self.original_component is None:
-            raise RuntimeError(f'Original component not set for {self.name}')
-        W_Q = weights.get('W_Q')
-        W_K = weights.get('W_K')
-        W_V = weights.get('W_V')
-        W_O = weights.get('W_O')
+            raise RuntimeError(f"Original component not set for {self.name}")
+        W_Q = weights.get("W_Q")
+        W_K = weights.get("W_K")
+        W_V = weights.get("W_V")
+        W_O = weights.get("W_O")
         if W_Q is None or W_K is None or W_V is None or (W_O is None):
-            raise ValueError('Processed attention weights must include W_Q, W_K, W_V, and W_O tensors.')
-        b_Q = weights.get('b_Q')
-        b_K = weights.get('b_K')
-        b_V = weights.get('b_V')
-        b_O = weights.get('b_O')
-        q_module = getattr(self, 'q', None)
-        k_module = getattr(self, 'k', None)
-        v_module = getattr(self, 'v', None)
-        o_module = getattr(self, 'o', None)
-        if q_module and hasattr(q_module, 'set_processed_weights'):
-            q_module.set_processed_weights({'weight': W_Q, 'bias': b_Q})
-        if k_module and hasattr(k_module, 'set_processed_weights'):
-            k_module.set_processed_weights({'weight': W_K, 'bias': b_K})
-        if v_module and hasattr(v_module, 'set_processed_weights'):
-            v_module.set_processed_weights({'weight': W_V, 'bias': b_V})
-        if o_module and hasattr(o_module, 'set_processed_weights'):
-            o_module.set_processed_weights({'weight': W_O, 'bias': b_O})
+            raise ValueError(
+                "Processed attention weights must include W_Q, W_K, W_V, and W_O tensors."
+            )
+        b_Q = weights.get("b_Q")
+        b_K = weights.get("b_K")
+        b_V = weights.get("b_V")
+        b_O = weights.get("b_O")
+        q_module = getattr(self, "q", None)
+        k_module = getattr(self, "k", None)
+        v_module = getattr(self, "v", None)
+        o_module = getattr(self, "o", None)
+        if q_module and hasattr(q_module, "set_processed_weights"):
+            q_module.set_processed_weights({"weight": W_Q, "bias": b_Q})
+        if k_module and hasattr(k_module, "set_processed_weights"):
+            k_module.set_processed_weights({"weight": W_K, "bias": b_K})
+        if v_module and hasattr(v_module, "set_processed_weights"):
+            v_module.set_processed_weights({"weight": W_V, "bias": b_V})
+        if o_module and hasattr(o_module, "set_processed_weights"):
+            o_module.set_processed_weights({"weight": W_O, "bias": b_O})
 
     def _forward_with_processed_weights(self, *args: Any, **kwargs: Any) -> tuple[Any, Any]:
         """Direct implementation of reference model's attention computation with hooks."""
-        print(f'CALLED: {__file__}::AttentionBridge._forward_with_processed_weights')
+        print(f"CALLED: {__file__}::AttentionBridge._forward_with_processed_weights")
         if len(args) > 0 and isinstance(args[0], torch.Tensor):
             x = args[0]
-        elif 'hidden_states' in kwargs:
-            x = kwargs['hidden_states']
+        elif "hidden_states" in kwargs:
+            x = kwargs["hidden_states"]
         else:
-            raise ValueError('No valid input tensor found in args or kwargs')
+            raise ValueError("No valid input tensor found in args or kwargs")
         x = self.hook_in(x)
         batch_size, seq_len, d_model = x.shape
-        q = torch.stack([x @ self._processed_W_Q[h] for h in range(self._processed_W_Q.shape[0])], dim=2)
+        q = torch.stack(
+            [x @ self._processed_W_Q[h] for h in range(self._processed_W_Q.shape[0])], dim=2
+        )
         if self._processed_b_Q is not None:
             q = q + self._processed_b_Q.unsqueeze(0).unsqueeze(0)
-        k = torch.stack([x @ self._processed_W_K[h] for h in range(self._processed_W_K.shape[0])], dim=2)
+        k = torch.stack(
+            [x @ self._processed_W_K[h] for h in range(self._processed_W_K.shape[0])], dim=2
+        )
         if self._processed_b_K is not None:
             k = k + self._processed_b_K.unsqueeze(0).unsqueeze(0)
-        v = torch.stack([x @ self._processed_W_V[h] for h in range(self._processed_W_V.shape[0])], dim=2)
+        v = torch.stack(
+            [x @ self._processed_W_V[h] for h in range(self._processed_W_V.shape[0])], dim=2
+        )
         if self._processed_b_V is not None:
             v = v + self._processed_b_V.unsqueeze(0).unsqueeze(0)
-        if hasattr(self, 'v') and hasattr(self.v, 'hook_out'):
+        if hasattr(self, "v") and hasattr(self.v, "hook_out"):
             v = self.v.hook_out(v)
-        elif 'hook_v' in self.hook_aliases:
-            original_disable_warnings = getattr(self, 'disable_warnings', False)
+        elif "hook_v" in self.hook_aliases:
+            original_disable_warnings = getattr(self, "disable_warnings", False)
             self.disable_warnings = True
             try:
                 v = self.hook_v(v)
@@ -332,17 +420,23 @@ class AttentionBridge(GeneralizedComponent):
             k = k.repeat_interleave(repeats, dim=1)
             v = v.repeat_interleave(repeats, dim=1)
         d_head = self._processed_W_Q.shape[-1]
-        attn_scores = torch.matmul(q, k.transpose(-2, -1)) / d_head ** 0.5
+        attn_scores = torch.matmul(q, k.transpose(-2, -1)) / d_head**0.5
         causal_mask = torch.tril(torch.ones(seq_len, seq_len, device=x.device))
-        attn_scores = attn_scores.masked_fill(causal_mask == 0, float('-inf'))
+        attn_scores = attn_scores.masked_fill(causal_mask == 0, float("-inf"))
         attn_scores = self.hook_attn_scores(attn_scores)
         attn_weights = torch.nn.functional.softmax(attn_scores, dim=-1)
         attn_weights = self.hook_pattern(attn_weights)
         attn_out = torch.matmul(attn_weights, v)
         attn_out = attn_out.transpose(1, 2)
-        if hasattr(self, 'o') and hasattr(self.o, 'hook_in'):
+        if hasattr(self, "o") and hasattr(self.o, "hook_in"):
             attn_out = self.o.hook_in(attn_out)
-        result = torch.stack([attn_out[:, :, h, :] @ self._processed_W_O[h] for h in range(self._processed_W_O.shape[0])], dim=2).sum(dim=2)
+        result = torch.stack(
+            [
+                attn_out[:, :, h, :] @ self._processed_W_O[h]
+                for h in range(self._processed_W_O.shape[0])
+            ],
+            dim=2,
+        ).sum(dim=2)
         if self._processed_b_O is not None:
             result = result + self._processed_b_O.unsqueeze(0).unsqueeze(0)
         result = self.hook_out(result)
@@ -354,8 +448,8 @@ class AttentionBridge(GeneralizedComponent):
         Returns:
             Attention weights tensor or None if not cached
         """
-        print(f'CALLED: {__file__}::AttentionBridge.get_attention_weights')
-        return getattr(self, '_cached_attention_weights', None)
+        print(f"CALLED: {__file__}::AttentionBridge.get_attention_weights")
+        return getattr(self, "_cached_attention_weights", None)
 
     def get_attention_patterns(self) -> Optional[torch.Tensor]:
         """Get cached attention patterns if available.
@@ -363,9 +457,9 @@ class AttentionBridge(GeneralizedComponent):
         Returns:
             Attention patterns tensor or None if not cached
         """
-        print(f'CALLED: {__file__}::AttentionBridge.get_attention_patterns')
-        return getattr(self, '_cached_attention_patterns', None)
+        print(f"CALLED: {__file__}::AttentionBridge.get_attention_patterns")
+        return getattr(self, "_cached_attention_patterns", None)
 
     def __repr__(self) -> str:
         """String representation of the AttentionBridge."""
-        return f'AttentionBridge(name={self.name})'
+        return f"AttentionBridge(name={self.name})"

@@ -3,9 +3,15 @@
 This module contains the bridge component for transformer blocks.
 """
 from __future__ import annotations
+
 from typing import Any, Callable, Dict, Optional
+
 import torch
-from transformer_lens.model_bridge.generalized_components.base import GeneralizedComponent
+
+from transformer_lens.model_bridge.generalized_components.base import (
+    GeneralizedComponent,
+)
+
 
 class BlockBridge(GeneralizedComponent):
     """Bridge component for transformer blocks.
@@ -13,10 +19,27 @@ class BlockBridge(GeneralizedComponent):
     This component provides standardized input/output hooks and monkey-patches
     HuggingFace blocks to insert hooks at positions matching HookedTransformer.
     """
-    is_list_item: bool = True
-    hook_aliases = {'hook_resid_pre': 'hook_in', 'hook_resid_mid': 'ln2.hook_in', 'hook_resid_post': 'hook_out', 'hook_attn_in': 'attn.hook_in', 'hook_attn_out': 'attn.hook_out', 'hook_q_input': 'attn.q.hook_in', 'hook_k_input': 'attn.k.hook_in', 'hook_v_input': 'attn.v.hook_in', 'hook_mlp_in': 'mlp.hook_in', 'hook_mlp_out': 'mlp.hook_out'}
 
-    def __init__(self, name: str, config: Optional[Any]=None, submodules: Optional[Dict[str, GeneralizedComponent]]={}):
+    is_list_item: bool = True
+    hook_aliases = {
+        "hook_resid_pre": "hook_in",
+        "hook_resid_mid": "ln2.hook_in",
+        "hook_resid_post": "hook_out",
+        "hook_attn_in": "attn.hook_in",
+        "hook_attn_out": "attn.hook_out",
+        "hook_q_input": "attn.q.hook_in",
+        "hook_k_input": "attn.k.hook_in",
+        "hook_v_input": "attn.v.hook_in",
+        "hook_mlp_in": "mlp.hook_in",
+        "hook_mlp_out": "mlp.hook_out",
+    }
+
+    def __init__(
+        self,
+        name: str,
+        config: Optional[Any] = None,
+        submodules: Optional[Dict[str, GeneralizedComponent]] = None,
+    ):
         """Initialize the block bridge.
 
         Args:
@@ -24,11 +47,11 @@ class BlockBridge(GeneralizedComponent):
             config: Optional configuration (unused for BlockBridge)
             submodules: Dictionary of submodules to register
         """
-        super().__init__(name, config, submodules=submodules)
+        super().__init__(name, config, submodules=submodules if submodules is not None else {})
         self._original_block_forward: Optional[Callable[..., Any]] = None
-        if 'ln2_post' in submodules:
+        if submodules is not None and "ln2_post" in submodules:
             self.hook_aliases = self.__class__.hook_aliases.copy()
-            self.hook_aliases['hook_mlp_out'] = 'ln2_post.hook_out'
+            self.hook_aliases["hook_mlp_out"] = "ln2_post.hook_out"
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         """Forward pass through the block bridge.
@@ -41,12 +64,14 @@ class BlockBridge(GeneralizedComponent):
             The output from the original component
         """
         if self.original_component is None:
-            raise RuntimeError(f'Original component not set for {self.name}. Call set_original_component() first.')
+            raise RuntimeError(
+                f"Original component not set for {self.name}. Call set_original_component() first."
+            )
         if len(args) > 0 and isinstance(args[0], torch.Tensor):
             hooked_input = self.hook_in(args[0])
             args = (hooked_input,) + args[1:]
-        elif 'hidden_states' in kwargs and isinstance(kwargs['hidden_states'], torch.Tensor):
-            kwargs['hidden_states'] = self.hook_in(kwargs['hidden_states'])
+        elif "hidden_states" in kwargs and isinstance(kwargs["hidden_states"], torch.Tensor):
+            kwargs["hidden_states"] = self.hook_in(kwargs["hidden_states"])
         output = self.original_component(*args, **kwargs)
         if isinstance(output, tuple) and len(output) > 0:
             first = output[0]
@@ -60,7 +85,7 @@ class BlockBridge(GeneralizedComponent):
             output = self.hook_out(output)
         return output
 
-    def get_expected_parameter_names(self, prefix: str='') -> list[str]:
+    def get_expected_parameter_names(self, prefix: str = "") -> list[str]:
         """Get the expected TransformerLens parameter names for this block component.
 
         Block components delegate to their subcomponents to get parameter names.
@@ -71,10 +96,10 @@ class BlockBridge(GeneralizedComponent):
         Returns:
             List of expected parameter names in TransformerLens format
         """
-        print(f'CALLED: {__file__}::BlockBridge.get_expected_parameter_names')
+        print(f"CALLED: {__file__}::BlockBridge.get_expected_parameter_names")
         param_names = []
         for sub_name, sub_component in self.submodules.items():
-            sub_prefix = f'{prefix}.{sub_name}' if prefix else sub_name
+            sub_prefix = f"{prefix}.{sub_name}" if prefix else sub_name
             param_names.extend(sub_component.get_expected_parameter_names(sub_prefix))
         return param_names
 
@@ -86,7 +111,7 @@ class BlockBridge(GeneralizedComponent):
         Returns:
             Number of layers in the model
         """
-        print(f'CALLED: {__file__}::BlockBridge.get_list_size')
+        print(f"CALLED: {__file__}::BlockBridge.get_list_size")
         if self.config is None:
             return 0
-        return getattr(self.config, 'n_layers', 0)
+        return getattr(self.config, "n_layers", 0)

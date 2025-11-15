@@ -3,13 +3,22 @@
 This module contains the base class for architecture adapters that map between different model architectures.
 """
 from typing import Any, cast
+
 import torch
-from torch import nn
+
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.conversion_utils.conversion_steps import HookConversionSet
-from transformer_lens.model_bridge.generalized_components.base import GeneralizedComponent
-from transformer_lens.model_bridge.generalized_components.joint_qkv_attention import JointQKVAttentionBridge
-from transformer_lens.model_bridge.types import ComponentMapping, RemoteComponent, RemoteModel, RemotePath, TransformerLensPath
+from transformer_lens.model_bridge.generalized_components.base import (
+    GeneralizedComponent,
+)
+from transformer_lens.model_bridge.types import (
+    ComponentMapping,
+    RemoteComponent,
+    RemoteModel,
+    RemotePath,
+    TransformerLensPath,
+)
+
 
 class ArchitectureAdapter:
     """Base class for architecture adapters.
@@ -18,6 +27,7 @@ class ArchitectureAdapter:
     It handles both component mapping (for accessing model parts) and weight conversion
     (for initializing weights from one format to another).
     """
+
     default_cfg: dict[str, Any] = {}
 
     def __init__(self, cfg: TransformerBridgeConfig) -> None:
@@ -29,7 +39,7 @@ class ArchitectureAdapter:
         self.cfg = cfg
         self.component_mapping: ComponentMapping | None = None
         self.conversion_rules: HookConversionSet | None = None
-        self.uses_split_attention: bool = getattr(cfg, 'uses_split_attention', False)
+        self.uses_split_attention: bool = getattr(cfg, "uses_split_attention", False)
         self._merge_default_config()
 
     def _merge_default_config(self) -> None:
@@ -63,7 +73,7 @@ class ArchitectureAdapter:
             ValueError: If the component mapping is not set
         """
         if self.component_mapping is None:
-            raise ValueError('component_mapping must be set before calling get_component_mapping')
+            raise ValueError("component_mapping must be set before calling get_component_mapping")
         return self.component_mapping
 
     def get_remote_component(self, model: RemoteModel, path: RemotePath) -> RemoteComponent:
@@ -93,7 +103,7 @@ class ArchitectureAdapter:
             Get a transformer block:
 
             >>> # adapter.get_remote_component(model, "model.layers.0")
-            >>> # <TransformerBlock>
+            >>> # <TransformerBlock> # type: ignore[index]
 
             Get a layer norm component:
 
@@ -101,14 +111,16 @@ class ArchitectureAdapter:
             >>> # <LayerNorm>
         """
         current = model
-        for part in path.split('.'):
+        for part in path.split("."):
             if part.isdigit():
-                current = current[int(part)]
+                current = current[int(part)]  # type: ignore[index]
             else:
                 current = getattr(current, part)
         return current
 
-    def get_component_from_list_module(self, list_module: RemoteComponent, bridge_component: GeneralizedComponent, parts: list[str]) -> RemoteComponent:
+    def get_component_from_list_module(
+        self, list_module: RemoteComponent, bridge_component: GeneralizedComponent, parts: list[str]
+    ) -> RemoteComponent:
         """Get a component from a list module using the bridge component and the transformer lens path.
         Args:
             list_module: The remote list module to get the component from
@@ -119,9 +131,9 @@ class ArchitectureAdapter:
         """
         item_index = parts[1]
         if not item_index.isdigit():
-            raise ValueError(f'Expected item index, got {item_index}')
-        if not hasattr(list_module, '__getitem__'):
-            raise TypeError(f'Component {bridge_component.name} is not indexable')
+            raise ValueError(f"Expected item index, got {item_index}")
+        if not hasattr(list_module, "__getitem__"):
+            raise TypeError(f"Component {bridge_component.name} is not indexable")
         indexable_container = cast(Any, list_module)
         item = indexable_container[int(item_index)]
         if len(parts) == 2:
@@ -139,7 +151,9 @@ class ArchitectureAdapter:
                     for i in range(3, len(parts)):
                         deeper_component_name = parts[i]
                         if deeper_component_name.isdigit() and current_bridge.is_list_item:
-                            return self.get_component_from_list_module(current, current_bridge, parts[i - 1:])
+                            return self.get_component_from_list_module(
+                                current, current_bridge, parts[i - 1 :]
+                            )
                         if deeper_component_name in current_bridge.submodules:
                             current_bridge = current_bridge.submodules[deeper_component_name]
                             if current_bridge.name is None:
@@ -147,14 +161,18 @@ class ArchitectureAdapter:
                             else:
                                 current = getattr(current, current_bridge.name)
                         else:
-                            raise ValueError(f"Component {deeper_component_name} not found in {'.'.join(parts[:i])} components")
+                            raise ValueError(
+                                f"Component {deeper_component_name} not found in {'.'.join(parts[:i])} components"
+                            )
                     return current
                 elif subcomponent_bridge.name is None:
                     return item
                 else:
                     return getattr(item, subcomponent_bridge.name)
             else:
-                raise ValueError(f'Component {subcomponent_name} not found in {parts[0]} components')
+                raise ValueError(
+                    f"Component {subcomponent_name} not found in {parts[0]} components"
+                )
 
     def get_generalized_component(self, path: TransformerLensPath) -> GeneralizedComponent:
         """Get the generalized component (bridge component) for a given TransformerLens path.
@@ -180,13 +198,15 @@ class ArchitectureAdapter:
             >>> # <AttentionBridge>
         """
         if self.component_mapping is None:
-            raise ValueError('component_mapping must be set before calling get_generalized_component')
+            raise ValueError(
+                "component_mapping must be set before calling get_generalized_component"
+            )
         component_path, _ = self._preprocess_parameter_path(path)
-        parts = component_path.split('.')
+        parts = component_path.split(".")
         if not parts:
-            raise ValueError('Empty path')
+            raise ValueError("Empty path")
         if parts[0] not in self.component_mapping:
-            raise ValueError(f'Component {parts[0]} not found in component mapping')
+            raise ValueError(f"Component {parts[0]} not found in component mapping")
         bridge_component = self.component_mapping[parts[0]]
         if len(parts) == 1:
             return bridge_component
@@ -195,16 +215,30 @@ class ArchitectureAdapter:
             part = parts[i]
             if part.isdigit():
                 continue
-            if hasattr(current_component, 'submodules') and part in current_component.submodules:
+            if hasattr(current_component, "submodules") and part in current_component.submodules:
                 current_component = current_component.submodules[part]
-            elif hasattr(current_component, '__class__') and 'AttentionBridge' in current_component.__class__.__name__ and (part in ['q', 'k', 'v', 'o']):
-                if 'JointQKV' in current_component.__class__.__name__:
+            elif (
+                hasattr(current_component, "__class__")
+                and "AttentionBridge" in current_component.__class__.__name__
+                and (part in ["q", "k", "v", "o"])
+            ):
+                if "JointQKV" in current_component.__class__.__name__:
                     continue
-                elif hasattr(current_component, 'submodules') and part in current_component.submodules:
+                elif (
+                    hasattr(current_component, "submodules")
+                    and part in current_component.submodules
+                ):
                     current_component = current_component.submodules[part]
                     continue
-            elif hasattr(current_component, '__class__') and 'MLPBridge' in current_component.__class__.__name__ and (part in ['in', 'out', 'gate']):
-                if hasattr(current_component, 'submodules') and part in current_component.submodules:
+            elif (
+                hasattr(current_component, "__class__")
+                and "MLPBridge" in current_component.__class__.__name__
+                and (part in ["in", "out", "gate"])
+            ):
+                if (
+                    hasattr(current_component, "submodules")
+                    and part in current_component.submodules
+                ):
                     current_component = current_component.submodules[part]
                     continue
                 else:
@@ -245,12 +279,12 @@ class ArchitectureAdapter:
             >>> # <LayerNorm>
         """
         if self.component_mapping is None:
-            raise ValueError('component_mapping must be set before calling get_component')
-        parts = path.split('.')
+            raise ValueError("component_mapping must be set before calling get_component")
+        parts = path.split(".")
         if not parts:
-            raise ValueError('Empty path')
+            raise ValueError("Empty path")
         if self.component_mapping is None or parts[0] not in self.component_mapping:
-            raise ValueError(f'Component {parts[0]} not found in component mapping')
+            raise ValueError(f"Component {parts[0]} not found in component mapping")
         bridge_component = self.component_mapping[parts[0]]
         if len(parts) == 1:
             if bridge_component.name is None:
@@ -258,17 +292,19 @@ class ArchitectureAdapter:
             return self.get_remote_component(model, bridge_component.name)
         if bridge_component.is_list_item and len(parts) >= 2:
             if bridge_component.name is None:
-                raise ValueError(f'List component {parts[0]} must have a name')
+                raise ValueError(f"List component {parts[0]} must have a name")
             list_module = self.get_remote_component(model, bridge_component.name)
             return self.get_component_from_list_module(list_module, bridge_component, parts)
         remote_path = bridge_component.name
         if remote_path is None:
-            raise ValueError(f'Component {parts[0]} must have a name for nested paths')
+            raise ValueError(f"Component {parts[0]} must have a name for nested paths")
         if len(parts) > 1:
             remote_path = f"{remote_path}.{'.'.join(parts[1:])}"
         return self.get_remote_component(model, remote_path)
 
-    def translate_transformer_lens_path(self, path: TransformerLensPath, last_component_only: bool=False) -> RemotePath:
+    def translate_transformer_lens_path(
+        self, path: TransformerLensPath, last_component_only: bool = False
+    ) -> RemotePath:
         """Translate a TransformerLens path to a remote model path.
 
         Args:
@@ -282,36 +318,38 @@ class ArchitectureAdapter:
             ValueError: If the path is not found in the component mapping
         """
         if self.component_mapping is None:
-            raise ValueError('component_mapping must be set before calling translate_transformer_lens_path')
+            raise ValueError(
+                "component_mapping must be set before calling translate_transformer_lens_path"
+            )
         path, param_suffix = self._preprocess_parameter_path(path)
-        parts = path.split('.')
+        parts = path.split(".")
         if not parts:
-            raise ValueError('Empty path')
+            raise ValueError("Empty path")
         if parts[0] not in self.component_mapping:
-            raise ValueError(f'Component {parts[0]} not found in component mapping')
+            raise ValueError(f"Component {parts[0]} not found in component mapping")
         bridge_component = self.component_mapping[parts[0]]
         if len(parts) == 1:
             remote_path = bridge_component.name
             if remote_path is None:
-                raise ValueError(f'Component {parts[0]} must have a name for path translation')
+                raise ValueError(f"Component {parts[0]} must have a name for path translation")
             if param_suffix:
                 remote_path = remote_path + param_suffix
             if last_component_only:
-                return remote_path.split('.')[-1]
+                return remote_path.split(".")[-1]
             return remote_path
         if bridge_component.is_list_item and len(parts) >= 2:
             item_index = parts[1]
             if not item_index.isdigit():
-                raise ValueError(f'Expected item index, got {item_index}')
+                raise ValueError(f"Expected item index, got {item_index}")
             items_path = bridge_component.name
             if items_path is None:
-                raise ValueError(f'List component {parts[0]} must have a name for path translation')
+                raise ValueError(f"List component {parts[0]} must have a name for path translation")
             if len(parts) == 2:
-                remote_path = f'{items_path}.{item_index}'
+                remote_path = f"{items_path}.{item_index}"
                 if param_suffix:
                     remote_path = remote_path + param_suffix
                 if last_component_only:
-                    return remote_path.split('.')[-1]
+                    return remote_path.split(".")[-1]
                 return remote_path
             else:
                 subcomponent_name = parts[2]
@@ -321,7 +359,9 @@ class ArchitectureAdapter:
                         current_bridge = subcomponent_bridge
                         subcomponent_name_str = subcomponent_bridge.name
                         if subcomponent_name_str is None:
-                            raise ValueError(f'Subcomponent {subcomponent_name} must have a name for path translation')
+                            raise ValueError(
+                                f"Subcomponent {subcomponent_name} must have a name for path translation"
+                            )
                         remote_path_parts = [items_path, item_index, subcomponent_name_str]
                         for i in range(3, len(parts)):
                             deeper_component_name = parts[i]
@@ -329,37 +369,45 @@ class ArchitectureAdapter:
                                 current_bridge = current_bridge.submodules[deeper_component_name]
                                 deeper_name = current_bridge.name
                                 if deeper_name is None:
-                                    raise ValueError(f'Component {deeper_component_name} must have a name for path translation')
+                                    raise ValueError(
+                                        f"Component {deeper_component_name} must have a name for path translation"
+                                    )
                                 remote_path_parts.append(deeper_name)
                             else:
-                                raise ValueError(f"Component {deeper_component_name} not found in {'.'.join(parts[:i])} components")
-                        remote_path = '.'.join(remote_path_parts)
+                                raise ValueError(
+                                    f"Component {deeper_component_name} not found in {'.'.join(parts[:i])} components"
+                                )
+                        remote_path = ".".join(remote_path_parts)
                         if param_suffix:
                             remote_path = remote_path + param_suffix
                         if last_component_only:
-                            return remote_path.split('.')[-1]
+                            return remote_path.split(".")[-1]
                         return remote_path
                     else:
                         subcomponent_name_str = subcomponent_bridge.name
                         if subcomponent_name_str is None:
-                            raise ValueError(f'Subcomponent {subcomponent_name} must have a name for path translation')
-                        remote_path = f'{items_path}.{item_index}.{subcomponent_name_str}'
+                            raise ValueError(
+                                f"Subcomponent {subcomponent_name} must have a name for path translation"  # type: ignore[assignment]
+                            )
+                        remote_path = f"{items_path}.{item_index}.{subcomponent_name_str}"
                         if param_suffix:
                             remote_path = remote_path + param_suffix
                         if last_component_only:
-                            return remote_path.split('.')[-1]
+                            return remote_path.split(".")[-1]
                         return remote_path
                 else:
-                    raise ValueError(f'Component {subcomponent_name} not found in {parts[0]} components')
+                    raise ValueError(
+                        f"Component {subcomponent_name} not found in {parts[0]} components"
+                    )
         remote_path = bridge_component.name
         if remote_path is None:
-            raise ValueError(f'Component {parts[0]} must have a name for path translation')
+            raise ValueError(f"Component {parts[0]} must have a name for path translation")
         if len(parts) > 1:
             remote_path = f"{remote_path}.{'.'.join(parts[1:])}"
         if param_suffix:
             remote_path = remote_path + param_suffix
         if last_component_only:
-            return remote_path.split('.')[-1]
+            return remote_path.split(".")[-1]
         return remote_path
 
     def _preprocess_parameter_path(self, path: str) -> tuple[str, str]:
@@ -371,115 +419,176 @@ class ArchitectureAdapter:
         Returns:
             Tuple of (preprocessed_path, parameter_suffix)
         """
-        param_suffix = ''
-        if path.endswith(('.W_Q', '.W_K', '.W_V', '.W_O', '.W_in', '.W_out', '.W_gate', '.W_E', '.W_U', '.W_pos', '.w', '._W_K', '._W_V')):
-            param_suffix = '.weight'
-        elif path.endswith(('.b_Q', '.b_K', '.b_V', '.b_O', '.b_in', '.b_out', '.b_gate', '.b_E', '.b_U', '.b_pos', '.b', '._b_K', '._b_V')):
-            param_suffix = '.bias'
-        if any((path.endswith(suffix) for suffix in ['.W_Q', '.W_K', '.W_V', '.b_Q', '.b_K', '.b_V', '._W_K', '._W_V', '._b_K', '._b_V'])):
-            attn_path_parts = path.split('.')
-            if len(attn_path_parts) >= 3 and attn_path_parts[-2] == 'attn':
-                attn_component_path = '.'.join(attn_path_parts[:-1])
+        param_suffix = ""
+        if path.endswith(
+            (
+                ".W_Q",
+                ".W_K",
+                ".W_V",
+                ".W_O",
+                ".W_in",
+                ".W_out",
+                ".W_gate",
+                ".W_E",
+                ".W_U",
+                ".W_pos",
+                ".w",
+                "._W_K",
+                "._W_V",
+            )
+        ):
+            param_suffix = ".weight"
+        elif path.endswith(
+            (
+                ".b_Q",
+                ".b_K",  # type: ignore[assignment]
+                ".b_V",
+                ".b_O",
+                ".b_in",
+                ".b_out",
+                ".b_gate",
+                ".b_E",
+                ".b_U",
+                ".b_pos",
+                ".b",
+                "._b_K",
+                "._b_V",
+            )
+        ):
+            param_suffix = ".bias"
+        if any(
+            (
+                path.endswith(suffix)
+                for suffix in [
+                    ".W_Q",
+                    ".W_K",
+                    ".W_V",
+                    ".b_Q",
+                    ".b_K",
+                    ".b_V",
+                    "._W_K",
+                    "._W_V",
+                    "._b_K",
+                    "._b_V",
+                ]
+            )
+        ):
+            attn_path_parts = path.split(".")
+            if len(attn_path_parts) >= 3 and attn_path_parts[-2] == "attn":
+                attn_component_path = ".".join(attn_path_parts[:-1])
                 try:
                     if self.component_mapping:
                         current_mapping = self.component_mapping
-                        for part in attn_component_path.split('.'):
-                            if hasattr(current_mapping, 'submodules') and part in current_mapping.submodules:
+                        for part in attn_component_path.split("."):
+                            if (
+                                hasattr(current_mapping, "submodules")
+                                and part in current_mapping.submodules
+                            ):
                                 current_mapping = current_mapping.submodules[part]
-                            elif hasattr(current_mapping, '__getitem__'):
-                                current_mapping = current_mapping[part]
-                        if hasattr(current_mapping, 'submodules'):
+                            elif hasattr(current_mapping, "__getitem__"):
+                                current_mapping = current_mapping[part]  # type: ignore[assignment]
+                        if hasattr(current_mapping, "submodules"):
                             attn_components = list(current_mapping.submodules.keys())
-                            if 'qkv' in attn_components:
-                                path = path.replace('.W_Q', '.qkv')
-                                path = path.replace('.W_K', '.qkv')
-                                path = path.replace('.W_V', '.qkv')
-                                path = path.replace('.b_Q', '.qkv')
-                                path = path.replace('.b_K', '.qkv')
-                                path = path.replace('.b_V', '.qkv')
-                                path = path.replace('._W_K', '.qkv')
-                                path = path.replace('._W_V', '.qkv')
-                                path = path.replace('._b_K', '.qkv')
-                                path = path.replace('._b_V', '.qkv')
-                            elif all((comp in attn_components for comp in ['q', 'k', 'v'])):
-                                path = path.replace('.W_Q', '.q')
-                                path = path.replace('.W_K', '.k')
-                                path = path.replace('.W_V', '.v')
-                                path = path.replace('.b_Q', '.q')
-                                path = path.replace('.b_K', '.k')
-                                path = path.replace('.b_V', '.v')
-                                path = path.replace('._W_K', '.k')
-                                path = path.replace('._W_V', '.v')
-                                path = path.replace('._b_K', '.k')
-                                path = path.replace('._b_V', '.v')
-                            elif 'qkv_proj' in attn_components:
-                                path = path.replace('.W_Q', '.qkv_proj')
-                                path = path.replace('.W_K', '.qkv_proj')
-                                path = path.replace('.W_V', '.qkv_proj')
-                                path = path.replace('.b_Q', '.qkv_proj')
-                                path = path.replace('.b_K', '.qkv_proj')
-                                path = path.replace('.b_V', '.qkv_proj')
+                            if "qkv" in attn_components:
+                                path = path.replace(".W_Q", ".qkv")
+                                path = path.replace(".W_K", ".qkv")
+                                path = path.replace(".W_V", ".qkv")
+                                path = path.replace(".b_Q", ".qkv")
+                                path = path.replace(".b_K", ".qkv")
+                                path = path.replace(".b_V", ".qkv")
+                                path = path.replace("._W_K", ".qkv")
+                                path = path.replace("._W_V", ".qkv")
+                                path = path.replace("._b_K", ".qkv")
+                                path = path.replace("._b_V", ".qkv")
+                            elif all((comp in attn_components for comp in ["q", "k", "v"])):
+                                path = path.replace(".W_Q", ".q")
+                                path = path.replace(".W_K", ".k")
+                                path = path.replace(".W_V", ".v")
+                                path = path.replace(".b_Q", ".q")
+                                path = path.replace(".b_K", ".k")
+                                path = path.replace(".b_V", ".v")
+                                path = path.replace("._W_K", ".k")
+                                path = path.replace("._W_V", ".v")
+                                path = path.replace("._b_K", ".k")
+                                path = path.replace("._b_V", ".v")
+                            elif "qkv_proj" in attn_components:
+                                path = path.replace(".W_Q", ".qkv_proj")
+                                path = path.replace(".W_K", ".qkv_proj")
+                                path = path.replace(".W_V", ".qkv_proj")
+                                path = path.replace(".b_Q", ".qkv_proj")
+                                path = path.replace(".b_K", ".qkv_proj")
+                                path = path.replace(".b_V", ".qkv_proj")
                 except Exception:
                     pass
-        if any((path.endswith(suffix) for suffix in ['.W_Q', '.W_K', '.W_V', '.b_Q', '.b_K', '.b_V'])):
-            path = path.replace('.W_Q', '.q')
-            path = path.replace('.W_K', '.k')
-            path = path.replace('.W_V', '.v')
-            path = path.replace('.b_Q', '.q')
-            path = path.replace('.b_K', '.k')
-            path = path.replace('.b_V', '.v')
-        path = path.replace('.W_O', '.o')
-        path = path.replace('.b_O', '.o')
-        if any((path.endswith(suffix) for suffix in ['.W_in', '.W_out', '.b_in', '.b_out', '.ln.w', '.ln.b'])):
-            mlp_path_parts = path.split('.')
-            if len(mlp_path_parts) >= 3 and mlp_path_parts[-2] == 'mlp':
-                mlp_component_path = '.'.join(mlp_path_parts[:-1])
+        if any(
+            (path.endswith(suffix) for suffix in [".W_Q", ".W_K", ".W_V", ".b_Q", ".b_K", ".b_V"])
+        ):
+            path = path.replace(".W_Q", ".q")
+            path = path.replace(".W_K", ".k")
+            path = path.replace(".W_V", ".v")
+            path = path.replace(".b_Q", ".q")
+            path = path.replace(".b_K", ".k")
+            path = path.replace(".b_V", ".v")
+        path = path.replace(".W_O", ".o")
+        path = path.replace(".b_O", ".o")
+        if any(
+            (
+                path.endswith(suffix)
+                for suffix in [".W_in", ".W_out", ".b_in", ".b_out", ".ln.w", ".ln.b"]
+            )
+        ):
+            mlp_path_parts = path.split(".")
+            if len(mlp_path_parts) >= 3 and mlp_path_parts[-2] == "mlp":
+                mlp_component_path = ".".join(mlp_path_parts[:-1])
                 try:
                     if self.component_mapping:
                         current_mapping = self.component_mapping
-                        for part in mlp_component_path.split('.'):
-                            if hasattr(current_mapping, 'submodules') and part in current_mapping.submodules:
+                        for part in mlp_component_path.split("."):
+                            if (
+                                hasattr(current_mapping, "submodules")
+                                and part in current_mapping.submodules
+                            ):
                                 current_mapping = current_mapping.submodules[part]
-                            elif hasattr(current_mapping, '__getitem__'):
-                                current_mapping = current_mapping[part]
-                        if hasattr(current_mapping, 'submodules'):
+                            elif hasattr(current_mapping, "__getitem__"):
+                                current_mapping = current_mapping[part]  # type: ignore[assignment]
+                        if hasattr(current_mapping, "submodules"):
                             mlp_components = list(current_mapping.submodules.keys())
-                            if 'input' in mlp_components and 'out' in mlp_components:
-                                path = path.replace('.W_in', '.input')
-                                path = path.replace('.b_in', '.input')
-                                path = path.replace('.W_out', '.out')
-                                path = path.replace('.b_out', '.out')
-                            elif 'in' in mlp_components and 'out' in mlp_components:
-                                path = path.replace('.W_in', '.in')
-                                path = path.replace('.b_in', '.in')
-                                path = path.replace('.W_out', '.out')
-                                path = path.replace('.b_out', '.out')
-                            elif 'fc_in' in mlp_components and 'fc_out' in mlp_components:
-                                path = path.replace('.W_in', '.fc_in')
-                                path = path.replace('.b_in', '.fc_in')
-                                path = path.replace('.W_out', '.fc_out')
-                                path = path.replace('.b_out', '.fc_out')
-                            if 'ln' in mlp_components:
-                                path = path.replace('.ln.w', '.ln')
-                                path = path.replace('.ln.b', '.ln')
+                            if "input" in mlp_components and "out" in mlp_components:
+                                path = path.replace(".W_in", ".input")
+                                path = path.replace(".b_in", ".input")
+                                path = path.replace(".W_out", ".out")
+                                path = path.replace(".b_out", ".out")
+                            elif "in" in mlp_components and "out" in mlp_components:
+                                path = path.replace(".W_in", ".in")
+                                path = path.replace(".b_in", ".in")
+                                path = path.replace(".W_out", ".out")
+                                path = path.replace(".b_out", ".out")
+                            elif "fc_in" in mlp_components and "fc_out" in mlp_components:
+                                path = path.replace(".W_in", ".fc_in")
+                                path = path.replace(".b_in", ".fc_in")
+                                path = path.replace(".W_out", ".fc_out")
+                                path = path.replace(".b_out", ".fc_out")
+                            if "ln" in mlp_components:
+                                path = path.replace(".ln.w", ".ln")
+                                path = path.replace(".ln.b", ".ln")
                 except Exception:
                     pass
-        if any((path.endswith(suffix) for suffix in ['.W_in', '.W_out', '.b_in', '.b_out'])):
-            path = path.replace('.W_in', '.in')
-            path = path.replace('.b_in', '.in')
-            path = path.replace('.W_out', '.out')
-            path = path.replace('.b_out', '.out')
-        path = path.replace('.W_gate', '.gate')
-        path = path.replace('.b_gate', '.gate')
-        if not (path.endswith('.weight') or path.endswith('.bias')):
-            path = path.replace('.W_E', '')
-            path = path.replace('.b_E', '')
-            path = path.replace('.W_U', '')
-            path = path.replace('.b_U', '')
-            path = path.replace('.W_pos', '')
-            path = path.replace('.b_pos', '')
-            path = path.replace('.w', '')
-            path = path.replace('.b', '')
+        if any((path.endswith(suffix) for suffix in [".W_in", ".W_out", ".b_in", ".b_out"])):
+            path = path.replace(".W_in", ".in")
+            path = path.replace(".b_in", ".in")
+            path = path.replace(".W_out", ".out")
+            path = path.replace(".b_out", ".out")
+        path = path.replace(".W_gate", ".gate")
+        path = path.replace(".b_gate", ".gate")
+        if not (path.endswith(".weight") or path.endswith(".bias")):
+            path = path.replace(".W_E", "")
+            path = path.replace(".b_E", "")
+            path = path.replace(".W_U", "")
+            path = path.replace(".b_U", "")
+            path = path.replace(".W_pos", "")
+            path = path.replace(".b_pos", "")
+            path = path.replace(".w", "")
+            path = path.replace(".b", "")
         return (path, param_suffix)
 
     def convert_hf_key_to_bridge_key(self, hf_key: str) -> str:
@@ -494,47 +603,47 @@ class ArchitectureAdapter:
             - Attention: "transformer.h.0._original_component.attn._original_component.c_attn.weight"
             - MLP: "transformer.h.0._original_component.mlp._original_component.c_fc._original_component.weight"
         """
-        if 'transformer.h.' in hf_key:
-            parts = hf_key.split('.')
+        if "transformer.h." in hf_key:
+            parts = hf_key.split(".")
             if len(parts) >= 4 and parts[2].isdigit():
                 layer = parts[2]
-                if 'attn.c_attn' in hf_key:
-                    return f'transformer.h.{layer}._original_component.attn._original_component.c_attn.{parts[-1]}'
-                elif 'attn.c_proj' in hf_key:
-                    return f'transformer.h.{layer}._original_component.attn._original_component.c_proj.{parts[-1]}'
-                elif 'mlp.c_fc' in hf_key:
-                    return f'transformer.h.{layer}._original_component.mlp._original_component.c_fc._original_component.{parts[-1]}'
-                elif 'mlp.c_proj' in hf_key:
-                    return f'transformer.h.{layer}._original_component.mlp._original_component.c_proj._original_component.{parts[-1]}'
-                elif 'attn.qkv' in hf_key:
-                    return f'transformer.h.{layer}._original_component.attn.qkv._original_component.{parts[-1]}'
-                elif 'attn.o' in hf_key:
-                    return f'transformer.h.{layer}._original_component.attn.o._original_component.{parts[-1]}'
-                elif 'mlp.input' in hf_key:
-                    return f'transformer.h.{layer}._original_component.mlp.input._original_component.{parts[-1]}'
-                elif 'mlp.in' in hf_key:
-                    return f'transformer.h.{layer}._original_component.mlp.in._original_component.{parts[-1]}'
-                elif 'mlp.out' in hf_key:
-                    return f'transformer.h.{layer}._original_component.mlp.out._original_component.{parts[-1]}'
-                elif 'ln_1' in hf_key:
-                    return f'transformer.h.{layer}._original_component.ln_1._original_component.{parts[-1]}'
-                elif 'ln_2' in hf_key:
-                    return f'transformer.h.{layer}._original_component.ln_2._original_component.{parts[-1]}'
-                elif 'ln1' in hf_key:
-                    return f'transformer.h.{layer}._original_component.ln_1._original_component.{parts[-1]}'
-                elif 'ln2' in hf_key:
-                    return f'transformer.h.{layer}._original_component.ln_2._original_component.{parts[-1]}'
-        elif hf_key == 'transformer.wte.weight':
-            return 'transformer.wte._original_component.weight'
-        elif hf_key == 'transformer.wpe.weight':
-            return 'transformer.wpe._original_component.weight'
-        elif hf_key == 'lm_head.weight':
-            return 'lm_head._original_component.weight'
-        elif 'transformer.ln_f' in hf_key:
-            if 'weight' in hf_key:
-                return 'transformer.ln_f._original_component.weight'
-            elif 'bias' in hf_key:
-                return 'transformer.ln_f._original_component.bias'
+                if "attn.c_attn" in hf_key:
+                    return f"transformer.h.{layer}._original_component.attn._original_component.c_attn.{parts[-1]}"
+                elif "attn.c_proj" in hf_key:
+                    return f"transformer.h.{layer}._original_component.attn._original_component.c_proj.{parts[-1]}"
+                elif "mlp.c_fc" in hf_key:  # type: ignore[attr-defined]
+                    return f"transformer.h.{layer}._original_component.mlp._original_component.c_fc._original_component.{parts[-1]}"  # type: ignore[attr-defined]
+                elif "mlp.c_proj" in hf_key:  # type: ignore[attr-defined]
+                    return f"transformer.h.{layer}._original_component.mlp._original_component.c_proj._original_component.{parts[-1]}"
+                elif "attn.qkv" in hf_key:
+                    return f"transformer.h.{layer}._original_component.attn.qkv._original_component.{parts[-1]}"
+                elif "attn.o" in hf_key:  # type: ignore[attr-defined]
+                    return f"transformer.h.{layer}._original_component.attn.o._original_component.{parts[-1]}"
+                elif "mlp.input" in hf_key:
+                    return f"transformer.h.{layer}._original_component.mlp.input._original_component.{parts[-1]}"
+                elif "mlp.in" in hf_key:
+                    return f"transformer.h.{layer}._original_component.mlp.in._original_component.{parts[-1]}"
+                elif "mlp.out" in hf_key:
+                    return f"transformer.h.{layer}._original_component.mlp.out._original_component.{parts[-1]}"
+                elif "ln_1" in hf_key:
+                    return f"transformer.h.{layer}._original_component.ln_1._original_component.{parts[-1]}"
+                elif "ln_2" in hf_key:
+                    return f"transformer.h.{layer}._original_component.ln_2._original_component.{parts[-1]}"
+                elif "ln1" in hf_key:
+                    return f"transformer.h.{layer}._original_component.ln_1._original_component.{parts[-1]}"
+                elif "ln2" in hf_key:
+                    return f"transformer.h.{layer}._original_component.ln_2._original_component.{parts[-1]}"
+        elif hf_key == "transformer.wte.weight":
+            return "transformer.wte._original_component.weight"
+        elif hf_key == "transformer.wpe.weight":
+            return "transformer.wpe._original_component.weight"
+        elif hf_key == "lm_head.weight":
+            return "lm_head._original_component.weight"
+        elif "transformer.ln_f" in hf_key:
+            if "weight" in hf_key:
+                return "transformer.ln_f._original_component.weight"
+            elif "bias" in hf_key:
+                return "transformer.ln_f._original_component.bias"
         return hf_key
 
     def convert_hf_key_to_tl_key(self, hf_key: str) -> str:
@@ -552,36 +661,36 @@ class ArchitectureAdapter:
         if self.component_mapping is None:
             return hf_key
         for tl_name, component in self.component_mapping.items():
-            if tl_name == 'blocks':
+            if tl_name == "blocks":
                 continue
             hf_path = component.name
-            if hf_path is not None and hf_key.startswith(hf_path + '.'):
-                param = hf_key[len(hf_path) + 1:]
-                return f'{tl_name}.{param}'
-        blocks_component = self.component_mapping.get('blocks')
+            if hf_path is not None and hf_key.startswith(hf_path + "."):
+                param = hf_key[len(hf_path) + 1 :]
+                return f"{tl_name}.{param}"
+        blocks_component = self.component_mapping.get("blocks")
         if blocks_component:
             hf_blocks_prefix = blocks_component.name
-            if hf_blocks_prefix is not None and hf_key.startswith(hf_blocks_prefix + '.'):
-                rest = hf_key[len(hf_blocks_prefix) + 1:]
-                parts = rest.split('.', 1)
+            if hf_blocks_prefix is not None and hf_key.startswith(hf_blocks_prefix + "."):
+                rest = hf_key[len(hf_blocks_prefix) + 1 :]
+                parts = rest.split(".", 1)
                 if len(parts) >= 2 and parts[0].isdigit():
                     layer_idx = parts[0]
                     subkey = parts[1]
-                    if hasattr(blocks_component, 'submodules'):
+                    if hasattr(blocks_component, "submodules"):
                         for tl_subname, subcomponent in blocks_component.submodules.items():
                             hf_subpath = subcomponent.name
-                            if hf_subpath is not None and subkey.startswith(hf_subpath + '.'):
-                                param = subkey[len(hf_subpath) + 1:]
-                                return f'blocks.{layer_idx}.{tl_subname}.{param}'
-                            if hasattr(subcomponent, 'submodules'):
+                            if hf_subpath is not None and subkey.startswith(hf_subpath + "."):
+                                param = subkey[len(hf_subpath) + 1 :]
+                                return f"blocks.{layer_idx}.{tl_subname}.{param}"
+                            if hasattr(subcomponent, "submodules"):
                                 for tl_nested_name, nested_comp in subcomponent.submodules.items():
-                                    hf_nested_path = f'{hf_subpath}.{nested_comp.name}'
-                                    if subkey.startswith(hf_nested_path + '.'):
-                                        param = subkey[len(hf_nested_path) + 1:]
-                                        return f'blocks.{layer_idx}.{tl_subname}.{tl_nested_name}.{param}'
+                                    hf_nested_path = f"{hf_subpath}.{nested_comp.name}"
+                                    if subkey.startswith(hf_nested_path + "."):
+                                        param = subkey[len(hf_nested_path) + 1 :]
+                                        return f"blocks.{layer_idx}.{tl_subname}.{tl_nested_name}.{param}"
         return hf_key
 
-    def setup_component_testing(self, hf_model: RemoteModel, bridge_model: Any=None) -> None:
+    def setup_component_testing(self, hf_model: RemoteModel, bridge_model: Any = None) -> None:
         """Set up model-specific references needed for component testing.
 
         This hook is called after the adapter is created and has access to the HF model.
@@ -602,26 +711,51 @@ class ArchitectureAdapter:
 
         Detects the architecture by checking which weight attributes exist.
         """
-        n_heads = getattr(self.cfg, 'n_heads', getattr(self.cfg, 'n_head', getattr(self.cfg, 'num_attention_heads', None)))
-        d_model = getattr(self.cfg, 'd_model', getattr(self.cfg, 'n_embd', getattr(self.cfg, 'hidden_size', None)))
+        n_heads = getattr(
+            self.cfg,
+            "n_heads",
+            getattr(self.cfg, "n_head", getattr(self.cfg, "num_attention_heads", None)),
+        )
+        d_model = getattr(
+            self.cfg, "d_model", getattr(self.cfg, "n_embd", getattr(self.cfg, "hidden_size", None))
+        )
         if n_heads is None or d_model is None:
-            raise RuntimeError(f'Could not determine n_heads or d_model from config: {self.cfg}')
+            raise RuntimeError(f"Could not determine n_heads or d_model from config: {self.cfg}")
         d_head = d_model // n_heads
-        if hasattr(hf_attn, 'c_attn'):
-            W_Q, W_K, W_V, b_Q, b_K, b_V = self._extract_qkv_gpt2_style(hf_attn.c_attn, n_heads, d_model, d_head)
+        if hasattr(hf_attn, "c_attn"):
+            W_Q, W_K, W_V, b_Q, b_K, b_V = self._extract_qkv_gpt2_style(
+                hf_attn.c_attn, n_heads, d_model, d_head
+            )
             W_O, b_O = self._extract_output_proj(hf_attn.c_proj, n_heads, d_head, d_model)
-        elif hasattr(hf_attn, 'q_proj') and hasattr(hf_attn, 'k_proj') and hasattr(hf_attn, 'v_proj'):
-            W_Q, b_Q = self._extract_linear_ht_format(hf_attn.q_proj, n_heads, d_head, d_model)
-            W_K, b_K = self._extract_linear_ht_format(hf_attn.k_proj, n_heads, d_head, d_model)
-            W_V, b_V = self._extract_linear_ht_format(hf_attn.v_proj, n_heads, d_head, d_model)
-            out_proj = hf_attn.out_proj if hasattr(hf_attn, 'out_proj') else hf_attn.o_proj
+        elif (
+            hasattr(hf_attn, "q_proj") and hasattr(hf_attn, "k_proj") and hasattr(hf_attn, "v_proj")
+        ):
+            W_Q, b_Q = self._extract_linear_ht_format(hf_attn.q_proj, n_heads, d_head, d_model)  # type: ignore[attr-defined]
+            W_K, b_K = self._extract_linear_ht_format(hf_attn.k_proj, n_heads, d_head, d_model)  # type: ignore[attr-defined]
+            W_V, b_V = self._extract_linear_ht_format(hf_attn.v_proj, n_heads, d_head, d_model)  # type: ignore[attr-defined]
+            out_proj = hf_attn.out_proj if hasattr(hf_attn, "out_proj") else hf_attn.o_proj
             W_O, b_O = self._extract_output_proj(out_proj, n_heads, d_head, d_model)
-        elif hasattr(hf_attn, 'query_key_value'):
-            W_Q, W_K, W_V, b_Q, b_K, b_V = self._extract_qkv_neox_style(hf_attn.query_key_value, n_heads, d_model, d_head)
+        elif hasattr(hf_attn, "query_key_value"):
+            W_Q, W_K, W_V, b_Q, b_K, b_V = self._extract_qkv_neox_style(  # type: ignore[attr-defined]
+                hf_attn.query_key_value, n_heads, d_model, d_head
+            )
             W_O, b_O = self._extract_output_proj(hf_attn.dense, n_heads, d_head, d_model)
         else:
-            raise ValueError(f'Unsupported attention architecture. Module has attributes: {dir(hf_attn)}')
-        attn_bridge.set_processed_weights({'W_Q': W_Q, 'W_K': W_K, 'W_V': W_V, 'W_O': W_O, 'b_Q': b_Q, 'b_K': b_K, 'b_V': b_V, 'b_O': b_O})
+            raise ValueError(
+                f"Unsupported attention architecture. Module has attributes: {dir(hf_attn)}"
+            )
+        attn_bridge.set_processed_weights(
+            {
+                "W_Q": W_Q,
+                "W_K": W_K,
+                "W_V": W_V,
+                "W_O": W_O,
+                "b_Q": b_Q,
+                "b_K": b_K,
+                "b_V": b_V,
+                "b_O": b_O,
+            }
+        )
         self._disable_hook_conversions(attn_bridge)
 
     def _extract_qkv_gpt2_style(self, c_attn, n_heads, d_model, d_head):
@@ -631,13 +765,16 @@ class ArchitectureAdapter:
         We need to split and reshape to [n_heads, d_model, d_head] format for HookedTransformer.
         """
         import einops
+
         W = c_attn.weight.data
         W_Q, W_K, W_V = torch.tensor_split(W, 3, dim=1)
-        W_Q = einops.rearrange(W_Q, 'm (i h)->i m h', i=n_heads)
-        W_K = einops.rearrange(W_K, 'm (i h)->i m h', i=n_heads)
-        W_V = einops.rearrange(W_V, 'm (i h)->i m h', i=n_heads)
+        W_Q = einops.rearrange(W_Q, "m (i h)->i m h", i=n_heads)
+        W_K = einops.rearrange(W_K, "m (i h)->i m h", i=n_heads)
+        W_V = einops.rearrange(W_V, "m (i h)->i m h", i=n_heads)
         qkv_bias = c_attn.bias.data
-        qkv_bias = einops.rearrange(qkv_bias, '(qkv index head)->qkv index head', qkv=3, index=n_heads, head=d_head)
+        qkv_bias = einops.rearrange(
+            qkv_bias, "(qkv index head)->qkv index head", qkv=3, index=n_heads, head=d_head
+        )
         b_Q = qkv_bias[0]
         b_K = qkv_bias[1]
         b_V = qkv_bias[2]
@@ -652,7 +789,7 @@ class ArchitectureAdapter:
         For Linear, weight is stored as [d_model, d_model] = [out_features, in_features].
         """
         weight = out_proj.weight.data
-        bias = out_proj.bias.data if hasattr(out_proj, 'bias') else None
+        bias = out_proj.bias.data if hasattr(out_proj, "bias") else None
         W_O = weight.view(n_heads, d_head, d_model).contiguous()
         b_O = bias.contiguous() if bias is not None else None
         return (W_O, b_O)

@@ -1,13 +1,21 @@
 from __future__ import annotations
-'Component setup utilities for creating and configuring bridged components.'
+
+"Component setup utilities for creating and configuring bridged components."
 import copy
 from typing import Any, cast
+
 import torch.nn as nn
+
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
-from transformer_lens.model_bridge.generalized_components.base import GeneralizedComponent
+from transformer_lens.model_bridge.generalized_components.base import (
+    GeneralizedComponent,
+)
 from transformer_lens.model_bridge.types import RemoteModel
 
-def replace_remote_component(replacement_component: nn.Module, remote_path: str, remote_model: RemoteModel) -> None:
+
+def replace_remote_component(
+    replacement_component: nn.Module, remote_path: str, remote_model: RemoteModel
+) -> None:
     """Replace a component in a remote model.
 
     Args:
@@ -15,20 +23,23 @@ def replace_remote_component(replacement_component: nn.Module, remote_path: str,
         remote_path: Path to the component in the remote model
         remote_model: The remote model to modify
     """
-    path_parts = remote_path.split('.')
+    path_parts = remote_path.split(".")
     current = remote_model
     for part in path_parts[:-1]:
         if hasattr(current, part):
             current = getattr(current, part)
         else:
-            raise ValueError(f'Path {remote_path} not found in model')
+            raise ValueError(f"Path {remote_path} not found in model")
     target_attr = path_parts[-1]
     if hasattr(current, target_attr):
         setattr(current, target_attr, replacement_component)
     else:
-        raise ValueError(f'Attribute {target_attr} not found in {current}')
+        raise ValueError(f"Attribute {target_attr} not found in {current}")
 
-def set_original_components(bridge_module: nn.Module, architecture_adapter: ArchitectureAdapter, original_model: RemoteModel) -> None:
+
+def set_original_components(
+    bridge_module: nn.Module, architecture_adapter: ArchitectureAdapter, original_model: RemoteModel
+) -> None:
     """Set original components on the pre-created bridge components.
 
     Args:
@@ -39,7 +50,12 @@ def set_original_components(bridge_module: nn.Module, architecture_adapter: Arch
     component_mapping = architecture_adapter.get_component_mapping()
     setup_components(component_mapping, bridge_module, architecture_adapter, original_model)
 
-def setup_submodules(component: GeneralizedComponent, architecture_adapter: ArchitectureAdapter, original_model: RemoteModel) -> None:
+
+def setup_submodules(
+    component: GeneralizedComponent,
+    architecture_adapter: ArchitectureAdapter,
+    original_model: RemoteModel,
+) -> None:
     """Set up submodules for a bridge component using proper component setup.
 
     Args:
@@ -50,7 +66,7 @@ def setup_submodules(component: GeneralizedComponent, architecture_adapter: Arch
     for module_name, submodule in component.submodules.items():
         if submodule.is_list_item:
             if submodule.name is None:
-                raise ValueError(f'List item component {module_name} must have a name')
+                raise ValueError(f"List item component {module_name} must have a name")
             bridged_list = setup_blocks_bridge(submodule, architecture_adapter, original_model)
             component.add_module(module_name, bridged_list)
             replace_remote_component(bridged_list, submodule.name, original_model)
@@ -59,14 +75,22 @@ def setup_submodules(component: GeneralizedComponent, architecture_adapter: Arch
                 original_subcomponent = original_model
             else:
                 remote_path = submodule.name
-                original_subcomponent = architecture_adapter.get_remote_component(original_model, remote_path)
+                original_subcomponent = architecture_adapter.get_remote_component(
+                    original_model, remote_path
+                )
             submodule.set_original_component(original_subcomponent)
             setup_submodules(submodule, architecture_adapter, original_subcomponent)
             component.add_module(module_name, submodule)
             if submodule.name is not None:
                 replace_remote_component(submodule, submodule.name, original_model)
 
-def setup_components(components: dict[str, Any], bridge_module: nn.Module, architecture_adapter: ArchitectureAdapter, original_model: RemoteModel) -> None:
+
+def setup_components(
+    components: dict[str, Any],
+    bridge_module: nn.Module,
+    architecture_adapter: ArchitectureAdapter,
+    original_model: RemoteModel,
+) -> None:
     """Set up components on the bridge module.
 
     Args:
@@ -78,17 +102,24 @@ def setup_components(components: dict[str, Any], bridge_module: nn.Module, archi
     for tl_path, bridge_component in components.items():
         remote_path = bridge_component.name
         if bridge_component.is_list_item:
-            bridged_list = setup_blocks_bridge(bridge_component, architecture_adapter, original_model)
+            bridged_list = setup_blocks_bridge(
+                bridge_component, architecture_adapter, original_model
+            )
             bridge_module.add_module(tl_path, bridged_list)
             replace_remote_component(bridged_list, remote_path, original_model)
         else:
-            original_component = architecture_adapter.get_remote_component(original_model, remote_path)
+            original_component = architecture_adapter.get_remote_component(
+                original_model, remote_path
+            )
             bridge_component.set_original_component(original_component)
             setup_submodules(bridge_component, architecture_adapter, original_component)
             bridge_module.add_module(tl_path, bridge_component)
             replace_remote_component(bridge_component, remote_path, original_model)
 
-def setup_blocks_bridge(blocks_template: Any, architecture_adapter: ArchitectureAdapter, original_model: RemoteModel) -> nn.ModuleList:
+
+def setup_blocks_bridge(
+    blocks_template: Any, architecture_adapter: ArchitectureAdapter, original_model: RemoteModel
+) -> nn.ModuleList:
     """Set up blocks bridge with proper ModuleList structure.
 
     Args:
@@ -99,14 +130,16 @@ def setup_blocks_bridge(blocks_template: Any, architecture_adapter: Architecture
     Returns:
         ModuleList of bridged block components
     """
-    original_blocks = architecture_adapter.get_remote_component(original_model, blocks_template.name)
-    if not hasattr(original_blocks, '__iter__'):
-        raise TypeError(f'Component {blocks_template.name} is not iterable')
+    original_blocks = architecture_adapter.get_remote_component(
+        original_model, blocks_template.name
+    )
+    if not hasattr(original_blocks, "__iter__"):
+        raise TypeError(f"Component {blocks_template.name} is not iterable")
     bridged_blocks = nn.ModuleList()
     iterable_blocks = cast(Any, original_blocks)
     for i, original_block in enumerate(iterable_blocks):
         block_bridge = copy.deepcopy(blocks_template)
-        block_bridge.name = f'{blocks_template.name}.{i}'
+        block_bridge.name = f"{blocks_template.name}.{i}"
         block_bridge.set_original_component(original_block)
         setup_submodules(block_bridge, architecture_adapter, original_block)
         bridged_blocks.append(block_bridge)

@@ -1,17 +1,29 @@
 """Normalization bridge component implementation."""
 from typing import Any, Dict, Optional, cast
+
 import torch
+
 from transformer_lens.hook_points import HookPoint
-from transformer_lens.model_bridge.generalized_components.base import GeneralizedComponent
+from transformer_lens.model_bridge.generalized_components.base import (
+    GeneralizedComponent,
+)
+
 
 class NormalizationBridge(GeneralizedComponent):
     """Normalization bridge that wraps transformer normalization layers but implements the calculation from scratch.
 
     This component provides standardized input/output hooks.
     """
-    property_aliases = {'w': 'weight', 'b': 'bias'}
 
-    def __init__(self, name: str, config: Any, submodules: Optional[Dict[str, GeneralizedComponent]]={}, use_native_layernorm_autograd: bool=False):
+    property_aliases = {"w": "weight", "b": "bias"}
+
+    def __init__(
+        self,
+        name: str,
+        config: Any,
+        submodules: Optional[Dict[str, GeneralizedComponent]] = {},
+        use_native_layernorm_autograd: bool = False,
+    ):
         """Initialize the normalization bridge.
 
         Args:
@@ -38,26 +50,35 @@ class NormalizationBridge(GeneralizedComponent):
             Normalized output
         """
         if self.original_component is None:
-            raise RuntimeError(f'Original component not set for {self.name}. Call set_original_component() first.')
+            raise RuntimeError(
+                f"Original component not set for {self.name}. Call set_original_component() first."
+            )
         assert self.config is not None
         hidden_states = self.hook_in(hidden_states)
         self._last_input_before_norm = hidden_states
         if self.use_native_layernorm_autograd:
             result = self._hf_autograd_forward_with_hooks(hidden_states)
-        elif hasattr(self.config, 'layer_norm_folding') and self.config.layer_norm_folding:
+        elif hasattr(self.config, "layer_norm_folding") and self.config.layer_norm_folding:
             result = self._hf_autograd_forward_with_hooks(hidden_states)
         else:
-            uses_rms_norm = getattr(self.config, 'uses_rms_norm', False)
+            uses_rms_norm = getattr(self.config, "uses_rms_norm", False)
             if not uses_rms_norm:
                 hidden_states = hidden_states - hidden_states.mean(-1, keepdim=True)
-            scale = self.hook_scale((hidden_states.pow(2).mean(-1, keepdim=True) + getattr(self.config, 'eps', 1e-05)).sqrt())
-            dtype = getattr(self.config, 'dtype', hidden_states.dtype)
+            scale = self.hook_scale(
+                (
+                    hidden_states.pow(2).mean(-1, keepdim=True) + getattr(self.config, "eps", 1e-05)
+                ).sqrt()
+            )
+            dtype = getattr(self.config, "dtype", hidden_states.dtype)
             hidden_states = self.hook_normalized(hidden_states / scale).to(dtype)
             if uses_rms_norm:
                 hidden_states = hidden_states * self.weight
             else:
                 hidden_states = hidden_states * self.weight
-                if hasattr(self.original_component, 'bias') and self.original_component.bias is not None:
+                if (
+                    hasattr(self.original_component, "bias")
+                    and self.original_component.bias is not None
+                ):
                     hidden_states = hidden_states + cast(torch.Tensor, self.original_component.bias)
             result = hidden_states
         output = self.hook_out(result)
@@ -65,8 +86,8 @@ class NormalizationBridge(GeneralizedComponent):
 
     def get_last_input_before_norm(self) -> Optional[torch.Tensor]:
         """Return the most recent pre-normalization input if available."""
-        print(f'CALLED: {__file__}::NormalizationBridge.get_last_input_before_norm')
-        return getattr(self, '_last_input_before_norm', None)
+        print(f"CALLED: {__file__}::NormalizationBridge.get_last_input_before_norm")
+        return getattr(self, "_last_input_before_norm", None)
 
     def _hf_autograd_forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass delegating directly to HuggingFace's normalization implementation.
@@ -80,9 +101,9 @@ class NormalizationBridge(GeneralizedComponent):
         Returns:
             Normalized output tensor
         """
-        print(f'CALLED: {__file__}::NormalizationBridge._hf_autograd_forward')
+        print(f"CALLED: {__file__}::NormalizationBridge._hf_autograd_forward")
         if self.original_component is None:
-            raise RuntimeError(f'Original component not set for {self.name}')
+            raise RuntimeError(f"Original component not set for {self.name}")
         return self.original_component(x)
 
     def _hf_autograd_forward_with_hooks(self, x: torch.Tensor) -> torch.Tensor:
@@ -98,17 +119,17 @@ class NormalizationBridge(GeneralizedComponent):
             Normalized output tensor from HF's LayerNorm
         """
         if self.original_component is None:
-            raise RuntimeError(f'Original component not set for {self.name}')
+            raise RuntimeError(f"Original component not set for {self.name}")
         with torch.no_grad():
-            if not getattr(self.config, 'uses_rms_norm', False):
+            if not getattr(self.config, "uses_rms_norm", False):
                 x_centered = x - x.mean(-1, keepdim=True)
             else:
                 x_centered = x
-            eps_tensor = getattr(self.original_component, 'eps', None)
+            eps_tensor = getattr(self.original_component, "eps", None)
             if eps_tensor is None:
-                eps_tensor = getattr(self.original_component, 'variance_epsilon', None)
+                eps_tensor = getattr(self.original_component, "variance_epsilon", None)
             if eps_tensor is None:
-                eps_value: float | torch.Tensor = getattr(self.config, 'eps', 1e-05)
+                eps_value: float | torch.Tensor = getattr(self.config, "eps", 1e-05)
             else:
                 eps_value = eps_tensor
             if isinstance(eps_value, torch.Tensor):
@@ -137,40 +158,47 @@ class NormalizationBridge(GeneralizedComponent):
         Returns:
             Normalized output tensor
         """
-        print(f'CALLED: {__file__}::NormalizationBridge._layernorm_pre_forward')
+        print(f"CALLED: {__file__}::NormalizationBridge._layernorm_pre_forward")
         original_dtype = x.dtype
-        config_dtype = getattr(self.config, 'dtype', torch.float32)
+        config_dtype = getattr(self.config, "dtype", torch.float32)
         if config_dtype not in [torch.float32, torch.float64]:
             x = x.to(torch.float32)
         x = x - x.mean(-1, keepdim=True)
-        eps = getattr(self.config, 'eps', 1e-05)
+        eps = getattr(self.config, "eps", 1e-05)
         scale = self.hook_scale((x.pow(2).mean(-1, keepdim=True) + eps).sqrt())
         result = self.hook_normalized(x / scale)
         return result.to(original_dtype)
 
-    def process_weights(self, fold_ln: bool=False, center_writing_weights: bool=False, center_unembed: bool=False, fold_value_biases: bool=False, refactor_factored_attn_matrices: bool=False) -> None:
+    def process_weights(
+        self,
+        fold_ln: bool = False,
+        center_writing_weights: bool = False,
+        center_unembed: bool = False,
+        fold_value_biases: bool = False,
+        refactor_factored_attn_matrices: bool = False,
+    ) -> None:
         """Process normalization weights according to GPT2 pretrained logic.
 
         For layer norm, this is a direct mapping without transformation.
         """
-        print(f'CALLED: {__file__}::NormalizationBridge.process_weights')
+        print(f"CALLED: {__file__}::NormalizationBridge.process_weights")
         if self.original_component is None:
             return
-        component_name = self.name or ''
-        if 'ln_f' in component_name or 'final' in component_name:
-            weight_key = 'w'
-            bias_key = 'b'
-        elif 'ln_1' in component_name:
-            weight_key = 'w'
-            bias_key = 'b'
-        elif 'ln_2' in component_name:
-            weight_key = 'w'
-            bias_key = 'b'
+        component_name = self.name or ""
+        if "ln_f" in component_name or "final" in component_name:
+            weight_key = "w"
+            bias_key = "b"
+        elif "ln_1" in component_name:
+            weight_key = "w"
+            bias_key = "b"
+        elif "ln_2" in component_name:
+            weight_key = "w"
+            bias_key = "b"
         else:
-            weight_key = 'w'
-            bias_key = 'b'
-        weight_tensor = getattr(self.original_component, 'weight', None)
-        bias_tensor = getattr(self.original_component, 'bias', None)
+            weight_key = "w"
+            bias_key = "b"
+        weight_tensor = getattr(self.original_component, "weight", None)
+        bias_tensor = getattr(self.original_component, "bias", None)
         processed_weights = {}
         if weight_tensor is not None:
             processed_weights[weight_key] = weight_tensor.clone()
@@ -184,12 +212,12 @@ class NormalizationBridge(GeneralizedComponent):
         Returns:
             Dictionary mapping TransformerLens parameter names to processed tensors
         """
-        print(f'CALLED: {__file__}::NormalizationBridge.get_processed_state_dict')
-        if not hasattr(self, '_processed_weights') or self._processed_weights is None:
+        print(f"CALLED: {__file__}::NormalizationBridge.get_processed_state_dict")
+        if not hasattr(self, "_processed_weights") or self._processed_weights is None:
             self.process_weights()
         return self._processed_weights.copy()
 
-    def get_expected_parameter_names(self, prefix: str='') -> list[str]:
+    def get_expected_parameter_names(self, prefix: str = "") -> list[str]:
         """Get the expected TransformerLens parameter names for this normalization component.
 
         Args:
@@ -198,13 +226,15 @@ class NormalizationBridge(GeneralizedComponent):
         Returns:
             List of expected parameter names in TransformerLens format
         """
-        print(f'CALLED: {__file__}::NormalizationBridge.get_expected_parameter_names')
-        weight_name = f'{prefix}.w' if prefix else 'w'
-        bias_name = f'{prefix}.b' if prefix else 'b'
+        print(f"CALLED: {__file__}::NormalizationBridge.get_expected_parameter_names")
+        weight_name = f"{prefix}.w" if prefix else "w"
+        bias_name = f"{prefix}.b" if prefix else "b"
         return [weight_name, bias_name]
 
     @classmethod
-    def create_normalization_bridge(cls, name: str, config: Any, original_component: Any) -> 'NormalizationBridge':
+    def create_normalization_bridge(
+        cls, name: str, config: Any, original_component: Any
+    ) -> "NormalizationBridge":
         """Create a normalization bridge that adapts behavior based on runtime config.
 
         Args:
@@ -215,7 +245,7 @@ class NormalizationBridge(GeneralizedComponent):
         Returns:
             NormalizationBridge that adapts its behavior based on config.layer_norm_folding
         """
-        print(f'CALLED: {__file__}::NormalizationBridge.create_normalization_bridge')
+        print(f"CALLED: {__file__}::NormalizationBridge.create_normalization_bridge")
         bridge = cls(name=name, config=config)
         bridge.set_original_component(original_component)
         return bridge
