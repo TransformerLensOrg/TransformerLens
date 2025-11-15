@@ -26,7 +26,7 @@ benchmark-test:
 	$(RUN) pytest tests/benchmarks
 
 coverage-report-test:
-	$(RUN) pytest --cov=transformer_lens/ --cov-report=html --cov-branch tests/integration tests/benchmarks tests/unit tests/acceptance -v --tb=short
+	$(RUN) pytest --cov=transformer_lens/ --cov-report=html --cov-branch tests/integration tests/benchmarks tests/unit tests/acceptance -vv --tb=long
 
 docstring-test:
 	$(RUN) pytest transformer_lens/
