@@ -229,7 +229,6 @@ class PositionEmbeddingsAttentionBridge(AttentionBridge):
 
     def setup_no_processing_hooks(self) -> None:
         """Backward compatibility alias for setup_hook_compatibility."""
-        print(f"CALLED: {__file__}::PositionEmbeddingsAttentionBridge.setup_no_processing_hooks")
         self.setup_hook_compatibility()
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:

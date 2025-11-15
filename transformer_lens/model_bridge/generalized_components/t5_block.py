@@ -44,7 +44,6 @@ class T5BlockBridge(GeneralizedComponent):
             submodules: Dictionary of submodules to register
             is_decoder: Whether this is a decoder block (has cross-attention)
         """
-        print(f"CALLED: {__file__}::T5BlockBridge.__init__")
         super().__init__(name, config, submodules=submodules or {})
         self.is_decoder = is_decoder
         self.hook_resid_mid = HookPoint()
@@ -60,13 +59,11 @@ class T5BlockBridge(GeneralizedComponent):
         Args:
             component: The original PyTorch module to wrap
         """
-        print(f"CALLED: {__file__}::T5BlockBridge.set_original_component")
         super().set_original_component(component)
         self._patch_t5_block_forward()
 
     def _patch_t5_block_forward(self):
         """Monkey-patch the T5 block's forward method to insert hooks."""
-        print(f"CALLED: {__file__}::T5BlockBridge._patch_t5_block_forward")
         if self.original_component is None:
             return
         self._original_block_forward = self.original_component.forward
@@ -160,7 +157,6 @@ class T5BlockBridge(GeneralizedComponent):
         Returns:
             The output from the original component
         """
-        print(f"CALLED: {__file__}::T5BlockBridge.forward")
         if self.original_component is None:
             raise RuntimeError(
                 f"Original component not set for {self.name}. Call set_original_component() first."
@@ -177,7 +173,6 @@ class T5BlockBridge(GeneralizedComponent):
         Returns:
             List of expected parameter names in TransformerLens format
         """
-        print(f"CALLED: {__file__}::T5BlockBridge.get_expected_parameter_names")
         param_names = []
         for sub_name, sub_component in self.submodules.items():
             sub_prefix = f"{prefix}.{sub_name}" if prefix else sub_name
@@ -190,7 +185,6 @@ class T5BlockBridge(GeneralizedComponent):
         Returns:
             Number of layers in the model
         """
-        print(f"CALLED: {__file__}::T5BlockBridge.get_list_size")
         if self.config is None:
             return 0
         return getattr(self.config, "n_layers", 0)

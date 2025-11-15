@@ -37,7 +37,6 @@ class StopAtLayerException(Exception):
     """Exception to stop forward pass at a specific layer."""
 
     def __init__(self, tensor, layer_idx):
-        print(f"CALLED: {__file__}::StopAtLayerException.__init__")
         self.tensor = tensor
         self.layer_idx = layer_idx
         self.layer_output = tensor
@@ -593,7 +592,6 @@ class TransformerBridge(nn.Module):
                Returns:
                    A string describing the bridge's components # type: ignore[operator]
         """
-        print(f"CALLED: {__file__}::TransformerBridge.__str__")
         lines = ["TransformerBridge:"]
         mapping = self.adapter.get_component_mapping()
         lines.extend(self._format_component_mapping(mapping, indent=1))

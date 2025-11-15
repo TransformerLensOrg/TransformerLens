@@ -207,7 +207,6 @@ class JointQKVAttentionBridge(AttentionBridge):
         This implements the HookedTransformer-style attention computation using
         the standard HF c_attn component but with split QKV logic.
         """
-        print(f"CALLED: {__file__}::JointQKVAttentionBridge._forward_folded")
         if len(args) > 0 and isinstance(args[0], torch.Tensor):
             hidden_states = args[0]
         elif "hidden_states" in kwargs:
@@ -285,7 +284,6 @@ class JointQKVAttentionBridge(AttentionBridge):
 
     def _forward_standard(self, *args: Any, **kwargs: Any) -> Any:
         """Forward pass using standard HF attention component and hook processing."""
-        print(f"CALLED: {__file__}::JointQKVAttentionBridge._forward_standard")
 
     def _compatibility_mode_forward_with_hooks(self, *args: Any, **kwargs: Any) -> Any:
         """Forward pass in compatibility mode that matches HookedTransformer behavior exactly.
@@ -294,7 +292,6 @@ class JointQKVAttentionBridge(AttentionBridge):
         the computation path matches HookedTransformer exactly by computing V values
         using the same method as HookedTransformer (simple_attn_linear).
         """
-        print(f"CALLED: {__file__}::JointQKVAttentionBridge._compatibility_mode_forward_with_hooks")
         if len(args) > 0 and isinstance(args[0], torch.Tensor):
             input_tensor = args[0]
         elif "hidden_states" in kwargs:
@@ -518,9 +515,6 @@ class JointQKVAttentionBridge(AttentionBridge):
         Returns:
             Tuple of (q, k, v) tensors after projection
         """
-        print(
-            f"CALLED: {__file__}::JointQKVAttentionBridge._apply_qkv_projection_with_functional_linear"
-        )
         original_component = self.original_component
         assert original_component is not None
         assert self.config is not None
@@ -554,9 +548,6 @@ class JointQKVAttentionBridge(AttentionBridge):
         Returns:
             Final output tensor after projection
         """
-        print(
-            f"CALLED: {__file__}::JointQKVAttentionBridge._apply_output_projection_with_functional_linear"
-        )
         original_component = self.original_component
         assert original_component is not None
         if hasattr(original_component, "c_proj"):
@@ -651,7 +642,6 @@ class JointQKVAttentionBridge(AttentionBridge):
         Ports the weight processing from transformer_lens.pretrained.weight_conversions.gpt2
         to work with the architecture adapter.
         """
-        print(f"CALLED: {__file__}::JointQKVAttentionBridge.process_weights")
         import einops
 
         original_component = self.original_component
@@ -724,7 +714,6 @@ class JointQKVAttentionBridge(AttentionBridge):
         Returns:
             Dictionary mapping TransformerLens parameter names to processed tensors
         """
-        print(f"CALLED: {__file__}::JointQKVAttentionBridge.get_processed_state_dict")  # type: ignore[operator,union-attr]
         if self._processed_weights is None:  # type: ignore[operator,union-attr]
             return {}  # type: ignore[operator,union-attr]
         return self._processed_weights.copy()  # type: ignore[operator,union-attr]
@@ -739,7 +728,6 @@ class JointQKVAttentionBridge(AttentionBridge):
                Returns:
                    List of expected parameter names in TransformerLens format
         """
-        print(f"CALLED: {__file__}::JointQKVAttentionBridge.get_expected_parameter_names")
         base_names = ["W_Q", "b_Q", "W_K", "b_K", "W_V", "b_V", "W_O", "b_O"]
         if prefix:
             return [f"{prefix}.{name}" for name in base_names]
@@ -759,7 +747,6 @@ class JointQKVAttentionBridge(AttentionBridge):
         Returns:
             Dictionary of processed weights for Q, K, V components
         """
-        print(f"CALLED: {__file__}::JointQKVAttentionBridge.custom_weight_processing")
         processed_weights = {}
         qkv_weight_key = f"{component_prefix}.c_attn.weight"
         qkv_bias_key = f"{component_prefix}.c_attn.bias"
@@ -948,7 +935,6 @@ class JointQKVAttentionBridge(AttentionBridge):
         Args:
             reference_attn: The HookedTransformer attention component to copy weights from
         """
-        print(f"CALLED: {__file__}::JointQKVAttentionBridge._load_reference_weights")
         print(f"Loading reference weights for layer attention...")
         self._W_Q = reference_attn.W_Q.clone()
         self._W_K = reference_attn.W_K.clone()

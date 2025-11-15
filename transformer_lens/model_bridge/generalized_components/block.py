@@ -96,7 +96,6 @@ class BlockBridge(GeneralizedComponent):
         Returns:
             List of expected parameter names in TransformerLens format
         """
-        print(f"CALLED: {__file__}::BlockBridge.get_expected_parameter_names")
         param_names = []
         for sub_name, sub_component in self.submodules.items():
             sub_prefix = f"{prefix}.{sub_name}" if prefix else sub_name
@@ -111,7 +110,6 @@ class BlockBridge(GeneralizedComponent):
         Returns:
             Number of layers in the model
         """
-        print(f"CALLED: {__file__}::BlockBridge.get_list_size")
         if self.config is None:
             return 0
         return getattr(self.config, "n_layers", 0)

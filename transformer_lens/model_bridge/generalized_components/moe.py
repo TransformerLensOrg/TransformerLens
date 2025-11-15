@@ -39,7 +39,6 @@ class MoEBridge(GeneralizedComponent):
             config: Optional configuration (unused for MoEBridge)
             submodules: Dictionary of GeneralizedComponent submodules to register
         """
-        print(f"CALLED: {__file__}::MoEBridge.__init__")
         super().__init__(name, config, submodules=submodules)
         self.hook_router_scores = HookPoint()
 
@@ -61,7 +60,6 @@ class MoEBridge(GeneralizedComponent):
         Returns:
             Dictionary of input tensors matching the component's expected input signature
         """
-        print(f"CALLED: {__file__}::MoEBridge.get_random_inputs")
         if device is None:
             device = torch.device("cpu")
         if dtype is None:
@@ -83,7 +81,6 @@ class MoEBridge(GeneralizedComponent):
             For MoE models that return (hidden_states, router_scores), preserves the tuple.
             Router scores are also captured via hook for inspection.
         """
-        print(f"CALLED: {__file__}::MoEBridge.forward")
         if self.original_component is None:
             raise RuntimeError(
                 f"Original component not set for {self.name}. Call set_original_component() first."

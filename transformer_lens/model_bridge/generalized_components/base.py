@@ -117,7 +117,6 @@ class GeneralizedComponent(nn.Module):
         """This function checks if the __getattr__ method was being called internally
         (e.g by the setup process or run_with_cache).
         """
-        print(f"CALLED: {__file__}::GeneralizedComponent._is_getattr_called_internally")
         for frame_info in inspect.stack():
             if "setup_components" in frame_info.function or "run_with_cache" in frame_info.function:
                 return True
@@ -190,7 +189,6 @@ class GeneralizedComponent(nn.Module):
             fold_value_biases: Whether to fold value biases
             refactor_factored_attn_matrices: Whether to refactor factored attention matrices
         """
-        print(f"CALLED: {__file__}::GeneralizedComponent.process_weights")
         pass
 
     def custom_weight_processing(
@@ -209,7 +207,6 @@ class GeneralizedComponent(nn.Module):
         Returns:
             Dictionary of processed weights ready for general folding operations
         """
-        print(f"CALLED: {__file__}::GeneralizedComponent.custom_weight_processing")
         return {}
 
     def get_processed_state_dict(self) -> Dict[str, torch.Tensor]:
@@ -218,7 +215,6 @@ class GeneralizedComponent(nn.Module):
         Returns:
             Dictionary mapping parameter names to processed tensors
         """
-        print(f"CALLED: {__file__}::GeneralizedComponent.get_processed_state_dict")
         return self.state_dict()
 
     def set_processed_weights(self, weights: Dict[str, torch.Tensor]) -> None:
@@ -233,7 +229,6 @@ class GeneralizedComponent(nn.Module):
         Args:
             weights: Dictionary of processed weight tensors
         """
-        print(f"CALLED: {__file__}::GeneralizedComponent.set_processed_weights")
         pass
 
     def get_expected_parameter_names(self, prefix: str = "") -> list[str]:
@@ -248,7 +243,6 @@ class GeneralizedComponent(nn.Module):
         Returns:
             List of expected parameter names in TransformerLens format
         """
-        print(f"CALLED: {__file__}::GeneralizedComponent.get_expected_parameter_names")
         return []
 
     def get_list_size(self) -> int:
@@ -264,14 +258,12 @@ class GeneralizedComponent(nn.Module):
         Returns:
             Number of items in the list, or 0 if not a list component
         """
-        print(f"CALLED: {__file__}::GeneralizedComponent.get_list_size")
         if not self.is_list_item:
             return 0
         return 0
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         """Generic forward pass for bridge components with input/output hooks."""
-        print(f"CALLED: {__file__}::GeneralizedComponent.forward")
         original_component = self._modules.get("_original_component", None)
         if original_component is None:
             raise RuntimeError(
@@ -384,7 +376,6 @@ class GeneralizedComponent(nn.Module):
         Returns:
             NamedTuple with missing_keys and unexpected_keys fields
         """
-        print(f"CALLED: {__file__}::GeneralizedComponent.load_state_dict")
         if self.original_component is None:
             raise RuntimeError(
                 f"Original component not set for {self.name}. Call set_original_component() first."
@@ -393,7 +384,6 @@ class GeneralizedComponent(nn.Module):
 
     def has_bias(self) -> bool:
         """Check if the linear layer has a bias."""
-        print(f"CALLED: {__file__}::GeneralizedComponent.has_bias")
         if self.original_component is None:
             raise RuntimeError(
                 f"Original component not set for {self.name}. Call set_original_component() first."

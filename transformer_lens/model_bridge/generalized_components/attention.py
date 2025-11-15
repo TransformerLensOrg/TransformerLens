@@ -113,7 +113,6 @@ class AttentionBridge(GeneralizedComponent):
 
     def setup_no_processing_hooks(self) -> None:
         """Backward compatibility alias for setup_hook_compatibility."""
-        print(f"CALLED: {__file__}::AttentionBridge.setup_no_processing_hooks")
         self.setup_hook_compatibility()
 
     def get_random_inputs(
@@ -264,7 +263,6 @@ class AttentionBridge(GeneralizedComponent):
 
     def _setup_hook_z_reshape(self) -> None:
         """Backward compatibility alias for _setup_qkv_hook_reshaping."""
-        print(f"CALLED: {__file__}::AttentionBridge._setup_hook_z_reshape")
         self._setup_qkv_hook_reshaping()
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:
@@ -280,7 +278,6 @@ class AttentionBridge(GeneralizedComponent):
         Returns:
             The output from the original component, with only input/output hooks applied
         """
-        print(f"CALLED: {__file__}::AttentionBridge.forward")
         if self.original_component is None:
             raise RuntimeError(
                 f"Original component not set for {self.name}. Call set_original_component() first."
@@ -347,7 +344,6 @@ class AttentionBridge(GeneralizedComponent):
                 - "b_V": Value bias tensor (optional)
                 - "b_O": Output bias tensor (optional)
         """
-        print(f"CALLED: {__file__}::AttentionBridge.set_processed_weights")
         if self.original_component is None:
             raise RuntimeError(f"Original component not set for {self.name}")
         W_Q = weights.get("W_Q")
@@ -377,7 +373,6 @@ class AttentionBridge(GeneralizedComponent):
 
     def _forward_with_processed_weights(self, *args: Any, **kwargs: Any) -> tuple[Any, Any]:
         """Direct implementation of reference model's attention computation with hooks."""
-        print(f"CALLED: {__file__}::AttentionBridge._forward_with_processed_weights")
         if len(args) > 0 and isinstance(args[0], torch.Tensor):
             x = args[0]
         elif "hidden_states" in kwargs:
@@ -448,7 +443,6 @@ class AttentionBridge(GeneralizedComponent):
         Returns:
             Attention weights tensor or None if not cached
         """
-        print(f"CALLED: {__file__}::AttentionBridge.get_attention_weights")
         return getattr(self, "_cached_attention_weights", None)
 
     def get_attention_patterns(self) -> Optional[torch.Tensor]:
@@ -457,7 +451,6 @@ class AttentionBridge(GeneralizedComponent):
         Returns:
             Attention patterns tensor or None if not cached
         """
-        print(f"CALLED: {__file__}::AttentionBridge.get_attention_patterns")
         return getattr(self, "_cached_attention_patterns", None)
 
     def __repr__(self) -> str:

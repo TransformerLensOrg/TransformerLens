@@ -39,7 +39,6 @@ class JointGateUpMLPBridge(MLPBridge):
             submodules: Dictionary of submodules to register (e.g., gate_proj, up_proj, down_proj)
             gate_up_config: Gate_Up-specific configuration which holds function to split the joint projection into two
         """
-        print(f"CALLED: {__file__}::JointGateUpMLPBridge.__init__")
         super().__init__(name, model_config, submodules=submodules)
         self.gate_up_config = gate_up_config or {}
         self.gate = LinearBridge(name="gate", config=model_config)
@@ -51,7 +50,6 @@ class JointGateUpMLPBridge(MLPBridge):
         Args:
             original_component: The original MLP component to wrap
         """
-        print(f"CALLED: {__file__}::JointGateUpMLPBridge.set_original_component")
         super().set_original_component(original_component)
         Gate_projection, Up_projection = self.gate_up_config["split_gate_up_matrix"](
             original_component
@@ -69,7 +67,6 @@ class JointGateUpMLPBridge(MLPBridge):
         Returns:
             Output hidden states
         """
-        print(f"CALLED: {__file__}::JointGateUpMLPBridge.forward")
         output = super().forward(*args, **kwargs)
         input_tensor = (
             args[0] if len(args) > 0 else kwargs.get("input", kwargs.get("hidden_states"))

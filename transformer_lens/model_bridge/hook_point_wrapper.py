@@ -12,6 +12,5 @@ class HookPointWrapper:
             hook_in: The input hook point
             hook_out: The output hook point
         """
-        print(f"CALLED: {__file__}::HookPointWrapper.__init__")
         self.hook_in = hook_in
         self.hook_out = hook_out

@@ -86,7 +86,6 @@ class NormalizationBridge(GeneralizedComponent):
 
     def get_last_input_before_norm(self) -> Optional[torch.Tensor]:
         """Return the most recent pre-normalization input if available."""
-        print(f"CALLED: {__file__}::NormalizationBridge.get_last_input_before_norm")
         return getattr(self, "_last_input_before_norm", None)
 
     def _hf_autograd_forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -101,7 +100,6 @@ class NormalizationBridge(GeneralizedComponent):
         Returns:
             Normalized output tensor
         """
-        print(f"CALLED: {__file__}::NormalizationBridge._hf_autograd_forward")
         if self.original_component is None:
             raise RuntimeError(f"Original component not set for {self.name}")
         return self.original_component(x)
@@ -158,7 +156,6 @@ class NormalizationBridge(GeneralizedComponent):
         Returns:
             Normalized output tensor
         """
-        print(f"CALLED: {__file__}::NormalizationBridge._layernorm_pre_forward")
         original_dtype = x.dtype
         config_dtype = getattr(self.config, "dtype", torch.float32)
         if config_dtype not in [torch.float32, torch.float64]:
@@ -181,7 +178,6 @@ class NormalizationBridge(GeneralizedComponent):
 
         For layer norm, this is a direct mapping without transformation.
         """
-        print(f"CALLED: {__file__}::NormalizationBridge.process_weights")
         if self.original_component is None:
             return
         component_name = self.name or ""
@@ -212,7 +208,6 @@ class NormalizationBridge(GeneralizedComponent):
         Returns:
             Dictionary mapping TransformerLens parameter names to processed tensors
         """
-        print(f"CALLED: {__file__}::NormalizationBridge.get_processed_state_dict")
         if not hasattr(self, "_processed_weights") or self._processed_weights is None:
             self.process_weights()
         return self._processed_weights.copy()
@@ -226,7 +221,6 @@ class NormalizationBridge(GeneralizedComponent):
         Returns:
             List of expected parameter names in TransformerLens format
         """
-        print(f"CALLED: {__file__}::NormalizationBridge.get_expected_parameter_names")
         weight_name = f"{prefix}.w" if prefix else "w"
         bias_name = f"{prefix}.b" if prefix else "b"
         return [weight_name, bias_name]
@@ -245,7 +239,6 @@ class NormalizationBridge(GeneralizedComponent):
         Returns:
             NormalizationBridge that adapts its behavior based on config.layer_norm_folding
         """
-        print(f"CALLED: {__file__}::NormalizationBridge.create_normalization_bridge")
         bridge = cls(name=name, config=config)
         bridge.set_original_component(original_component)
         return bridge
