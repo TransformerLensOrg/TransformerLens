@@ -114,6 +114,40 @@ class TransformerBridge(nn.Module):
         self._setup_hook_compatibility()
         self._initialize_hooks_to_cache()
 
+    @classmethod
+    def boot_transformers(
+        cls,
+        model_name: str,
+        hf_config_overrides: Optional[dict] = None,
+        device: Optional[Union[str, torch.device]] = None,
+        dtype: torch.dtype = torch.float32,
+        tokenizer: Optional[Any] = None,
+        load_weights: bool = True,
+    ) -> "TransformerBridge":
+        """Boot a model from HuggingFace (alias for sources.transformers.boot).
+
+        Args:
+            model_name: The name of the model to load.
+            hf_config_overrides: Optional overrides applied to the HuggingFace config before model load.
+            device: The device to use. If None, will be determined automatically.
+            dtype: The dtype to use for the model.
+            tokenizer: Optional pre-initialized tokenizer to use; if not provided one will be created.
+            load_weights: If False, load model without weights (on meta device) for config inspection only.
+
+        Returns:
+            The bridge to the loaded model.
+        """
+        from transformer_lens.model_bridge.sources.transformers import boot
+
+        return boot(
+            model_name=model_name,
+            hf_config_overrides=hf_config_overrides,
+            device=device,
+            dtype=dtype,
+            tokenizer=tokenizer,
+            load_weights=load_weights,
+        )
+
     @property
     def original_model(self) -> nn.Module:
         """Get the original model."""
