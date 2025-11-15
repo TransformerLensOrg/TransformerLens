@@ -147,6 +147,11 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
         We also enable use_native_layernorm_autograd on all normalization bridges to ensure
         they delegate to HuggingFace's exact implementation instead of using manual computation.
 
+        Additionally, we force the HF model to use "eager" attention to match the bridge's
+        implementation. The bridge uses "eager" to support output_attentions for hooks, while
+        HF defaults to "sdpa". These produce mathematically equivalent results but with small
+        numerical differences due to different implementations.
+
         Note: Layers 5, 11, 17, 23 use global RoPE but will use local in component tests.
         This is an acceptable tradeoff given the shared-instance constraint.
 
@@ -156,6 +161,18 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
         """
         # Get rotary embedding instances from the model
         rotary_emb_local = hf_model.model.rotary_emb_local  # Used by 22/26 layers
+
+        # Force HF model to use "eager" attention to match bridge implementation
+        # Bridge uses "eager" to support output_attentions for hook compatibility
+        # SDPA and eager are mathematically equivalent but have numerical differences
+        if hasattr(hf_model, "config") and hasattr(hf_model.config, "_attn_implementation"):
+            hf_model.config._attn_implementation = "eager"
+
+        # Also set on all attention layers
+        if hasattr(hf_model, "model") and hasattr(hf_model.model, "layers"):
+            for layer in hf_model.model.layers:
+                if hasattr(layer, "self_attn") and hasattr(layer.self_attn, "config"):
+                    layer.self_attn.config._attn_implementation = "eager"
 
         # Set rotary_emb on actual bridge instances in bridge_model if available
         if bridge_model is not None and hasattr(bridge_model, "blocks"):
