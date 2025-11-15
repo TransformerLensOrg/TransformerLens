@@ -361,7 +361,10 @@ class ComponentBenchmarker:
                     parent_component = self.adapter.get_component(self.bridge_model, parent_path)
                     # Check if parent has a joint qkv module
                     if hasattr(parent_component, "submodules"):
-                        if "qkv" in parent_component.submodules or "c_attn" in parent_component.submodules:
+                        if (
+                            "qkv" in parent_component.submodules
+                            or "c_attn" in parent_component.submodules
+                        ):
                             # Skip - this is a virtual q/k/v split from joint projection
                             return
                 except Exception:

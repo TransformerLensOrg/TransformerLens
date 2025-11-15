@@ -1223,7 +1223,7 @@ class TransformerBridge(nn.Module):
 
         # Apply architecture-specific weight transformations BEFORE ProcessWeights
         # The adapter can preprocess weights before standard weight processing
-        if adapter and hasattr(adapter, 'preprocess_weights'):
+        if adapter and hasattr(adapter, "preprocess_weights"):
             state_dict = adapter.preprocess_weights(state_dict)
 
         # NOTE: Weight processing code (ProcessWeights) handles splitting joint QKV internally
@@ -1567,10 +1567,13 @@ class TransformerBridge(nn.Module):
         # This ensures state_dict() returns the correct values for benchmarks
         # IMPORTANT: Skip this for Gemma models because they use a unique (1 + weight) formula
         # where the +1 is hardcoded in the HF module, making weights non-separable
-        is_gemma_model = (
-            getattr(self.cfg, "architecture", None) in ["GemmaForCausalLM", "Gemma2ForCausalLM"]
-            or getattr(self.cfg, "original_architecture", None) in ["GemmaForCausalLM", "Gemma2ForCausalLM"]
-        )
+        is_gemma_model = getattr(self.cfg, "architecture", None) in [
+            "GemmaForCausalLM",
+            "Gemma2ForCausalLM",
+        ] or getattr(self.cfg, "original_architecture", None) in [
+            "GemmaForCausalLM",
+            "Gemma2ForCausalLM",
+        ]
 
         if fold_ln and not is_gemma_model:
             for layer_idx in range(self.cfg.n_layers):
@@ -2581,10 +2584,13 @@ class TransformerBridge(nn.Module):
 
         # Filter out expected missing keys (layer norm keys that were removed during processing)
         # IMPORTANT: Skip setting weights to 1.0 for Gemma models - they use (1 + weight) formula
-        is_gemma_model = (
-            getattr(self.cfg, "architecture", None) in ["GemmaForCausalLM", "Gemma2ForCausalLM"]
-            or getattr(self.cfg, "original_architecture", None) in ["GemmaForCausalLM", "Gemma2ForCausalLM"]
-        )
+        is_gemma_model = getattr(self.cfg, "architecture", None) in [
+            "GemmaForCausalLM",
+            "Gemma2ForCausalLM",
+        ] or getattr(self.cfg, "original_architecture", None) in [
+            "GemmaForCausalLM",
+            "Gemma2ForCausalLM",
+        ]
 
         if fold_ln:
             expected_missing_keys = set()

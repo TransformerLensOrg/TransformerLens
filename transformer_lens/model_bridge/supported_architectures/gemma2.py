@@ -152,21 +152,29 @@ class Gemma2ArchitectureAdapter(ArchitectureAdapter):
             def handle_conversion(self, input_value, *full_context):
                 """Scale the embedding output if not using processed weights."""
                 # Skip scaling if using processed weights (they're already scaled)
-                if hasattr(self.embed_component, "_use_processed_weights") and self.embed_component._use_processed_weights:
+                if (
+                    hasattr(self.embed_component, "_use_processed_weights")
+                    and self.embed_component._use_processed_weights
+                ):
                     return input_value
                 return input_value * self.scale
 
             def revert(self, input_value, *full_context):
                 """Unscale the embedding output (for user modifications)."""
                 # Skip unscaling if using processed weights
-                if hasattr(self.embed_component, "_use_processed_weights") and self.embed_component._use_processed_weights:
+                if (
+                    hasattr(self.embed_component, "_use_processed_weights")
+                    and self.embed_component._use_processed_weights
+                ):
                     return input_value
                 return input_value / self.scale
 
         # Apply scaling to embed.hook_out
         if hasattr(bridge, "embed") and hasattr(bridge.embed, "hook_out"):
-            scale_factor = self.cfg.d_model ** 0.5
-            bridge.embed.hook_out.hook_conversion = EmbeddingScaleConversion(scale_factor, bridge.embed)
+            scale_factor = self.cfg.d_model**0.5
+            bridge.embed.hook_out.hook_conversion = EmbeddingScaleConversion(
+                scale_factor, bridge.embed
+            )
 
     def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
         """Set up rotary embedding references and attention implementation for Gemma-2 component testing.
@@ -228,7 +236,7 @@ class Gemma2ArchitectureAdapter(ArchitectureAdapter):
 
         if embed_key in state_dict:
             # Scale embeddings by sqrt(d_model) to match Gemma2's forward pass behavior
-            scale_factor = self.cfg.d_model ** 0.5
+            scale_factor = self.cfg.d_model**0.5
             state_dict[embed_key] = state_dict[embed_key] * scale_factor
 
         return state_dict

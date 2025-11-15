@@ -5,7 +5,6 @@ This module contains the bridge component for transformer blocks.
 
 from __future__ import annotations
 
-import types
 from typing import Any, Callable, Dict, Optional
 
 import torch

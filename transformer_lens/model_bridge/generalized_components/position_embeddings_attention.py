@@ -219,13 +219,15 @@ class PositionEmbeddingsAttentionBridge(AttentionBridge):
                 """Wrapper that applies rotary hooks BEFORE rotation (matching HookedTransformer)."""
                 # Apply hooks BEFORE rotation if they exist
                 # (hook_rot_q and hook_rot_k are defined in AttentionBridge)
-                if hasattr(self, 'hook_rot_q'):
+                if hasattr(self, "hook_rot_q"):
                     q = self.hook_rot_q(q)
-                if hasattr(self, 'hook_rot_k'):
+                if hasattr(self, "hook_rot_k"):
                     k = self.hook_rot_k(k)
 
                 # Apply original rotation
-                rotated_q, rotated_k = original_apply_rotary(q, k, cos, sin, position_ids, unsqueeze_dim)
+                rotated_q, rotated_k = original_apply_rotary(
+                    q, k, cos, sin, position_ids, unsqueeze_dim
+                )
 
                 return rotated_q, rotated_k
 
