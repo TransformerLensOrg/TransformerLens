@@ -79,8 +79,10 @@ jobs:
             ~/.cache/huggingface/hub/models--ArthurConmy--redwood_attn_2l
             ~/.cache/huggingface/hub/models--stas--tiny-random-llama-2
             ~/.cache/huggingface/hub/models--microsoft--DialoGPT-medium
-          key: ${{ runner.os }}-huggingface-models-v2
+            ~/.cache/huggingface/xet
+          key: ${{ runner.os }}-huggingface-models-v3
           restore-keys: |
+            ${{ runner.os }}-huggingface-models-v2
             ${{ runner.os }}-huggingface-models-v1
             ${{ runner.os }}-huggingface-models
       - name: Install dependencies
@@ -190,8 +192,10 @@ jobs:
             ~/.cache/huggingface/hub/models--ArthurConmy--redwood_attn_2l
             ~/.cache/huggingface/hub/models--stas--tiny-random-llama-2
             ~/.cache/huggingface/hub/models--microsoft--DialoGPT-medium
-          key: ${{ runner.os }}-huggingface-models-v2
+            ~/.cache/huggingface/xet
+          key: ${{ runner.os }}-huggingface-models-v3
           restore-keys: |
+            ${{ runner.os }}-huggingface-models-v2
             ${{ runner.os }}-huggingface-models-v1
             ${{ runner.os }}-huggingface-models
       - name: Install dependencies
