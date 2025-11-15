@@ -79,8 +79,7 @@ jobs:
             ~/.cache/huggingface/hub/models--ArthurConmy--redwood_attn_2l
             ~/.cache/huggingface/hub/models--stas--tiny-random-llama-2
             ~/.cache/huggingface/hub/models--microsoft--DialoGPT-medium
-            ~/.cache/huggingface/xet
-          key: ${{ runner.os }}-huggingface-models-v3
+          key: ${{ runner.os }}-huggingface-models-v4
           restore-keys: |
             ${{ runner.os }}-huggingface-models-v2
             ${{ runner.os }}-huggingface-models-v1
@@ -192,8 +191,7 @@ jobs:
             ~/.cache/huggingface/hub/models--ArthurConmy--redwood_attn_2l
             ~/.cache/huggingface/hub/models--stas--tiny-random-llama-2
             ~/.cache/huggingface/hub/models--microsoft--DialoGPT-medium
-            ~/.cache/huggingface/xet
-          key: ${{ runner.os }}-huggingface-models-v3
+          key: ${{ runner.os }}-huggingface-models-v4
           restore-keys: |
             ${{ runner.os }}-huggingface-models-v2
             ${{ runner.os }}-huggingface-models-v1
