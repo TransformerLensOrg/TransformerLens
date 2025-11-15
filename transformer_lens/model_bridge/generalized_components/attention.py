@@ -111,10 +111,6 @@ class AttentionBridge(GeneralizedComponent):
             self._setup_qkv_hook_reshaping()
         self._hf_forward_wrapped = True
 
-    def setup_no_processing_hooks(self) -> None:
-        """Backward compatibility alias for setup_hook_compatibility."""
-        self.setup_hook_compatibility()
-
     def get_random_inputs(
         self,
         batch_size: int = 2,
@@ -370,88 +366,6 @@ class AttentionBridge(GeneralizedComponent):
             v_module.set_processed_weights({"weight": W_V, "bias": b_V})
         if o_module and hasattr(o_module, "set_processed_weights"):
             o_module.set_processed_weights({"weight": W_O, "bias": b_O})
-
-    def _forward_with_processed_weights(self, *args: Any, **kwargs: Any) -> tuple[Any, Any]:
-        """Direct implementation of reference model's attention computation with hooks."""
-        if len(args) > 0 and isinstance(args[0], torch.Tensor):
-            x = args[0]
-        elif "hidden_states" in kwargs:
-            x = kwargs["hidden_states"]
-        else:
-            raise ValueError("No valid input tensor found in args or kwargs")
-        x = self.hook_in(x)
-        batch_size, seq_len, d_model = x.shape
-        q = torch.stack(
-            [x @ self._processed_W_Q[h] for h in range(self._processed_W_Q.shape[0])], dim=2
-        )
-        if self._processed_b_Q is not None:
-            q = q + self._processed_b_Q.unsqueeze(0).unsqueeze(0)
-        k = torch.stack(
-            [x @ self._processed_W_K[h] for h in range(self._processed_W_K.shape[0])], dim=2
-        )
-        if self._processed_b_K is not None:
-            k = k + self._processed_b_K.unsqueeze(0).unsqueeze(0)
-        v = torch.stack(
-            [x @ self._processed_W_V[h] for h in range(self._processed_W_V.shape[0])], dim=2
-        )
-        if self._processed_b_V is not None:
-            v = v + self._processed_b_V.unsqueeze(0).unsqueeze(0)
-        if hasattr(self, "v") and hasattr(self.v, "hook_out"):
-            v = self.v.hook_out(v)
-        elif "hook_v" in self.hook_aliases:
-            original_disable_warnings = getattr(self, "disable_warnings", False)
-            self.disable_warnings = True
-            try:
-                v = self.hook_v(v)
-            finally:
-                self.disable_warnings = original_disable_warnings
-        q = q.transpose(1, 2)
-        k = k.transpose(1, 2)
-        v = v.transpose(1, 2)
-        n_heads_q = q.shape[1]
-        n_heads_kv = k.shape[1]
-        if n_heads_kv < n_heads_q:
-            repeats = n_heads_q // n_heads_kv
-            k = k.repeat_interleave(repeats, dim=1)
-            v = v.repeat_interleave(repeats, dim=1)
-        d_head = self._processed_W_Q.shape[-1]
-        attn_scores = torch.matmul(q, k.transpose(-2, -1)) / d_head**0.5
-        causal_mask = torch.tril(torch.ones(seq_len, seq_len, device=x.device))
-        attn_scores = attn_scores.masked_fill(causal_mask == 0, float("-inf"))
-        attn_scores = self.hook_attn_scores(attn_scores)
-        attn_weights = torch.nn.functional.softmax(attn_scores, dim=-1)
-        attn_weights = self.hook_pattern(attn_weights)
-        attn_out = torch.matmul(attn_weights, v)
-        attn_out = attn_out.transpose(1, 2)
-        if hasattr(self, "o") and hasattr(self.o, "hook_in"):
-            attn_out = self.o.hook_in(attn_out)
-        result = torch.stack(
-            [
-                attn_out[:, :, h, :] @ self._processed_W_O[h]
-                for h in range(self._processed_W_O.shape[0])
-            ],
-            dim=2,
-        ).sum(dim=2)
-        if self._processed_b_O is not None:
-            result = result + self._processed_b_O.unsqueeze(0).unsqueeze(0)
-        result = self.hook_out(result)
-        return (result, attn_weights)
-
-    def get_attention_weights(self) -> Optional[torch.Tensor]:
-        """Get cached attention weights if available.
-
-        Returns:
-            Attention weights tensor or None if not cached
-        """
-        return getattr(self, "_cached_attention_weights", None)
-
-    def get_attention_patterns(self) -> Optional[torch.Tensor]:
-        """Get cached attention patterns if available.
-
-        Returns:
-            Attention patterns tensor or None if not cached
-        """
-        return getattr(self, "_cached_attention_patterns", None)
 
     def __repr__(self) -> str:
         """String representation of the AttentionBridge."""

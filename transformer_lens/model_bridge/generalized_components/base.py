@@ -191,32 +191,6 @@ class GeneralizedComponent(nn.Module):
         """
         pass
 
-    def custom_weight_processing(
-        self, hf_state_dict: Dict[str, torch.Tensor], component_prefix: str, **processing_kwargs
-    ) -> Dict[str, torch.Tensor]:
-        """Custom weight processing for component-specific transformations.
-
-        This method allows components to perform heavy lifting weight processing
-        directly on raw HF weights before general folding operations.
-
-        Args:
-            hf_state_dict: Raw HuggingFace state dict
-            component_prefix: Prefix for this component's weights (e.g., "transformer.h.0.attn")
-            **processing_kwargs: Additional processing arguments
-
-        Returns:
-            Dictionary of processed weights ready for general folding operations
-        """
-        return {}
-
-    def get_processed_state_dict(self) -> Dict[str, torch.Tensor]:
-        """Get the state dict after weight processing.
-
-        Returns:
-            Dictionary mapping parameter names to processed tensors
-        """
-        return self.state_dict()
-
     def set_processed_weights(self, weights: Dict[str, torch.Tensor]) -> None:
         """Set the processed weights for use in compatibility mode.
 
@@ -230,37 +204,6 @@ class GeneralizedComponent(nn.Module):
             weights: Dictionary of processed weight tensors
         """
         pass
-
-    def get_expected_parameter_names(self, prefix: str = "") -> list[str]:
-        """Get the expected TransformerLens parameter names for this component.
-
-        This method should be overridden by specific components to return
-        the parameter names they expect in the TransformerLens format.
-
-        Args:
-            prefix: Prefix to add to parameter names (e.g., "blocks.0.attn")
-
-        Returns:
-            List of expected parameter names in TransformerLens format
-        """
-        return []
-
-    def get_list_size(self) -> int:
-        """Get the number of items if this is a list component.
-
-        For components where is_list_item=True, this should return the number
-        of items in the list (e.g., number of layers for blocks, number of experts
-        for MoE experts).
-
-        Subclasses should override this method to return the correct count
-        based on their specific configuration attribute.
-
-        Returns:
-            Number of items in the list, or 0 if not a list component
-        """
-        if not self.is_list_item:
-            return 0
-        return 0
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         """Generic forward pass for bridge components with input/output hooks."""
@@ -364,30 +307,3 @@ class GeneralizedComponent(nn.Module):
                 except AttributeError:
                     pass
         super().__setattr__(name, value)
-
-    def load_state_dict(self, state_dict, strict=True, assign=False):
-        """Load state dict into the component, forwarding to the original component.
-
-        Args:
-            state_dict: Dictionary containing a whole state of the module
-            strict: Whether to strictly enforce that the keys in state_dict match the keys returned by this module's state_dict() function
-            assign: Whether to assign items in the state dictionary to their corresponding keys in the module instead of copying them
-
-        Returns:
-            NamedTuple with missing_keys and unexpected_keys fields
-        """
-        if self.original_component is None:
-            raise RuntimeError(
-                f"Original component not set for {self.name}. Call set_original_component() first."
-            )
-        return self.original_component.load_state_dict(state_dict, strict=strict, assign=assign)
-
-    def has_bias(self) -> bool:
-        """Check if the linear layer has a bias."""
-        if self.original_component is None:
-            raise RuntimeError(
-                f"Original component not set for {self.name}. Call set_original_component() first."
-            )
-        if not hasattr(self.original_component, "bias"):
-            return False
-        return self.original_component.bias is not None

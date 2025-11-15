@@ -227,10 +227,6 @@ class PositionEmbeddingsAttentionBridge(AttentionBridge):
         if hasattr(self.config, "n_heads"):
             self._setup_qkv_hook_reshaping()
 
-    def setup_no_processing_hooks(self) -> None:
-        """Backward compatibility alias for setup_hook_compatibility."""
-        self.setup_hook_compatibility()
-
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         """Simplified forward pass - minimal wrapping around original component.
 

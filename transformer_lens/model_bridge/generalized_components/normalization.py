@@ -84,26 +84,6 @@ class NormalizationBridge(GeneralizedComponent):
         output = self.hook_out(result)
         return output
 
-    def get_last_input_before_norm(self) -> Optional[torch.Tensor]:
-        """Return the most recent pre-normalization input if available."""
-        return getattr(self, "_last_input_before_norm", None)
-
-    def _hf_autograd_forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Forward pass delegating directly to HuggingFace's normalization implementation.
-
-        This ensures we match HF's computation exactly by delegating to the
-        original component rather than reimplementing the logic.
-
-        Args:
-            x: Input tensor
-
-        Returns:
-            Normalized output tensor
-        """
-        if self.original_component is None:
-            raise RuntimeError(f"Original component not set for {self.name}")
-        return self.original_component(x)
-
     def _hf_autograd_forward_with_hooks(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass that preserves HF's autograd while firing intermediate hooks.
 
@@ -143,29 +123,6 @@ class NormalizationBridge(GeneralizedComponent):
             result = result.to(input_dtype)
         return result
 
-    def _layernorm_pre_forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Forward pass matching LayerNormPre behavior exactly.
-
-        This is the 'center and normalise' part of LayerNorm without learnable parameters.
-        Centering is equivalent to deleting one direction of residual space.
-        Normalising projects the residual stream onto the unit hypersphere.
-
-        Args:
-            x: Input tensor
-
-        Returns:
-            Normalized output tensor
-        """
-        original_dtype = x.dtype
-        config_dtype = getattr(self.config, "dtype", torch.float32)
-        if config_dtype not in [torch.float32, torch.float64]:
-            x = x.to(torch.float32)
-        x = x - x.mean(-1, keepdim=True)
-        eps = getattr(self.config, "eps", 1e-05)
-        scale = self.hook_scale((x.pow(2).mean(-1, keepdim=True) + eps).sqrt())
-        result = self.hook_normalized(x / scale)
-        return result.to(original_dtype)
-
     def process_weights(
         self,
         fold_ln: bool = False,
@@ -201,44 +158,3 @@ class NormalizationBridge(GeneralizedComponent):
         if bias_tensor is not None:
             processed_weights[bias_key] = bias_tensor.clone()
         self._processed_weights = processed_weights
-
-    def get_processed_state_dict(self) -> Dict[str, torch.Tensor]:
-        """Get the processed weights in TransformerLens format.
-
-        Returns:
-            Dictionary mapping TransformerLens parameter names to processed tensors
-        """
-        if not hasattr(self, "_processed_weights") or self._processed_weights is None:
-            self.process_weights()
-        return self._processed_weights.copy()
-
-    def get_expected_parameter_names(self, prefix: str = "") -> list[str]:
-        """Get the expected TransformerLens parameter names for this normalization component.
-
-        Args:
-            prefix: Prefix to add to parameter names (e.g., "blocks.0")
-
-        Returns:
-            List of expected parameter names in TransformerLens format
-        """
-        weight_name = f"{prefix}.w" if prefix else "w"
-        bias_name = f"{prefix}.b" if prefix else "b"
-        return [weight_name, bias_name]
-
-    @classmethod
-    def create_normalization_bridge(
-        cls, name: str, config: Any, original_component: Any
-    ) -> "NormalizationBridge":
-        """Create a normalization bridge that adapts behavior based on runtime config.
-
-        Args:
-            name: The name of this component
-            config: Configuration object
-            original_component: The original layer norm component
-
-        Returns:
-            NormalizationBridge that adapts its behavior based on config.layer_norm_folding
-        """
-        bridge = cls(name=name, config=config)
-        bridge.set_original_component(original_component)
-        return bridge

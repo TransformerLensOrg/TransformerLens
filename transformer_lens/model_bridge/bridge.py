@@ -77,7 +77,6 @@ from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
 from transformer_lens.model_bridge.get_params_util import get_bridge_params
-from transformer_lens.model_bridge.hook_point_wrapper import HookPointWrapper
 from transformer_lens.utilities.aliases import resolve_alias
 
 if TYPE_CHECKING:
@@ -305,13 +304,6 @@ class TransformerBridge(nn.Module):
         if isinstance(value, HookPoint):
             value.name = name
             self._hook_registry[name] = value
-        elif isinstance(value, HookPointWrapper):
-            hook_in_name = f"{name}.hook_in"
-            hook_out_name = f"{name}.hook_out"
-            value.hook_in.name = hook_in_name
-            value.hook_out.name = hook_out_name
-            self._hook_registry[hook_in_name] = value.hook_in
-            self._hook_registry[hook_out_name] = value.hook_out
         elif hasattr(value, "get_hooks") and callable(getattr(value, "get_hooks")):
             component_hooks = value.get_hooks()
             for hook_name, hook in component_hooks.items():
@@ -470,13 +462,6 @@ class TransformerBridge(nn.Module):
                 if isinstance(attr, HookPoint):
                     attr.name = name
                     self._hook_registry[name] = attr
-                elif isinstance(attr, HookPointWrapper):
-                    hook_in_name = f"{name}.hook_in"
-                    hook_out_name = f"{name}.hook_out"
-                    attr.hook_in.name = hook_in_name
-                    attr.hook_out.name = hook_out_name
-                    self._hook_registry[hook_in_name] = attr.hook_in
-                    self._hook_registry[hook_out_name] = attr.hook_out
             for child_name, child_module in mod.named_children():
                 if (
                     child_name == "original_component"
