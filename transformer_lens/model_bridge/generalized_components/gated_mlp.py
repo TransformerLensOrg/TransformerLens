@@ -2,16 +2,10 @@
 
 This module contains the bridge component for gated MLP layers (e.g., LLaMA, Gemma).
 """
-
 from typing import Any, Dict, Mapping, Optional
-
 import torch
-
-from transformer_lens.model_bridge.generalized_components.base import (
-    GeneralizedComponent,
-)
+from transformer_lens.model_bridge.generalized_components.base import GeneralizedComponent
 from transformer_lens.model_bridge.generalized_components.mlp import MLPBridge
-
 
 class GatedMLPBridge(MLPBridge):
     """Bridge component for gated MLP layers.
@@ -27,31 +21,10 @@ class GatedMLPBridge(MLPBridge):
     - up_proj (in): The input projection (produces the linear component)
     - down_proj (out): The output projection
     """
+    hook_aliases = {'hook_pre': 'gate.hook_out', 'hook_pre_linear': 'in.hook_out', 'hook_post': 'out.hook_in'}
+    property_aliases = {'W_gate': 'gate.weight', 'b_gate': 'gate.bias', 'W_in': 'in.weight', 'b_in': 'in.bias', 'W_out': 'out.weight', 'b_out': 'out.bias'}
 
-    hook_aliases = {
-        # hook_pre: The gate output before activation (gate_proj output)
-        "hook_pre": "gate.hook_out",
-        # hook_pre_linear: The linear component in gated MLPs (up_proj/in output before gating)
-        "hook_pre_linear": "in.hook_out",
-        # hook_post: After gating, before output projection (down_proj input)
-        "hook_post": "out.hook_in",
-    }
-
-    property_aliases = {
-        "W_gate": "gate.weight",
-        "b_gate": "gate.bias",
-        "W_in": "in.weight",
-        "b_in": "in.bias",
-        "W_out": "out.weight",
-        "b_out": "out.bias",
-    }
-
-    def __init__(
-        self,
-        name: Optional[str],
-        config: Optional[Any] = None,
-        submodules: Optional[Dict[str, GeneralizedComponent]] = None,
-    ):
+    def __init__(self, name: Optional[str], config: Optional[Any]=None, submodules: Optional[Dict[str, GeneralizedComponent]]=None):
         """Initialize the gated MLP bridge.
 
         Args:
@@ -60,8 +33,6 @@ class GatedMLPBridge(MLPBridge):
             submodules: Dictionary of submodules to register (e.g., gate_proj, up_proj, down_proj)
         """
         super().__init__(name, config, submodules=submodules or {})
-
-        # No extra hooks; use only hook_in and hook_out
 
     def forward(self, *args, **kwargs) -> torch.Tensor:
         """Forward pass through the gated MLP bridge.
@@ -73,88 +44,49 @@ class GatedMLPBridge(MLPBridge):
         Returns:
             Output hidden states
         """
-        # Check if we're using processed weights from a reference model (layer norm folding case)
-        if hasattr(self, "_use_processed_weights") and self._use_processed_weights:
+        if hasattr(self, '_use_processed_weights') and self._use_processed_weights:
             hidden_states = args[0]
-            # Apply input hook
             hidden_states = self.hook_in(hidden_states)
-
-            # Use the processed weights directly with the same computation as reference model
-            if hasattr(self, "_processed_W_gate") and hasattr(self, "_processed_W_in"):
-                # Gate projection
-                gate_output = torch.nn.functional.linear(
-                    hidden_states, self._processed_W_gate, self._processed_b_gate
-                )
-
-                # Apply hook_pre (gate.hook_out) - gate output before activation
-                if hasattr(self, "gate") and hasattr(self.gate, "hook_out"):
+            if hasattr(self, '_processed_W_gate') and hasattr(self, '_processed_W_in'):
+                gate_output = torch.nn.functional.linear(hidden_states, self._processed_W_gate, self._processed_b_gate)
+                if hasattr(self, 'gate') and hasattr(self.gate, 'hook_out'):
                     gate_output = self.gate.hook_out(gate_output)
-
-                # Input projection (linear component)
-                linear_output = torch.nn.functional.linear(
-                    hidden_states, self._processed_W_in, self._processed_b_in
-                )
-
-                # Apply hook_pre_linear (in.hook_out) - linear component before gating
-                in_module = getattr(self, "in", None)
-                if in_module and hasattr(in_module, "hook_out"):
+                linear_output = torch.nn.functional.linear(hidden_states, self._processed_W_in, self._processed_b_in)
+                in_module = getattr(self, 'in', None)
+                if in_module and hasattr(in_module, 'hook_out'):
                     linear_output = in_module.hook_out(linear_output)
-
-                # Apply gated activation (e.g., SiLU for LLaMA/Gemma)
-                # Determine activation function from config or use SiLU as default
-                # Try multiple config attributes for compatibility
                 act_fn_name = None
                 if self.config:
-                    act_fn_name = getattr(self.config, "activation_function", None)
+                    act_fn_name = getattr(self.config, 'activation_function', None)
                     if act_fn_name is None:
-                        act_fn_name = getattr(self.config, "hidden_activation", None)
+                        act_fn_name = getattr(self.config, 'hidden_activation', None)
                     if act_fn_name is None:
-                        act_fn_name = getattr(self.config, "hidden_act", None)
+                        act_fn_name = getattr(self.config, 'hidden_act', None)
                     if act_fn_name is None:
-                        act_fn_name = getattr(self.config, "act_fn", None)
-
-                # Default to SiLU for gated MLPs if not specified
+                        act_fn_name = getattr(self.config, 'act_fn', None)
                 if act_fn_name is None:
-                    act_fn_name = "silu"
-
-                # Apply the activation function
-                if act_fn_name in ("silu", "swish"):
+                    act_fn_name = 'silu'
+                if act_fn_name in ('silu', 'swish'):
                     activated = torch.nn.functional.silu(gate_output)
-                elif act_fn_name == "gelu":
+                elif act_fn_name == 'gelu':
                     activated = torch.nn.functional.gelu(gate_output)
-                elif act_fn_name == "gelu_new" or act_fn_name == "gelu_pytorch_tanh":
-                    activated = torch.nn.functional.gelu(gate_output, approximate="tanh")
-                elif act_fn_name == "relu":
+                elif act_fn_name == 'gelu_new' or act_fn_name == 'gelu_pytorch_tanh':
+                    activated = torch.nn.functional.gelu(gate_output, approximate='tanh')
+                elif act_fn_name == 'relu':
                     activated = torch.nn.functional.relu(gate_output)
                 else:
-                    # Default to SiLU for gated MLPs
                     activated = torch.nn.functional.silu(gate_output)
-
-                # Gate the linear component
                 hidden = activated * linear_output
-
-                # Apply hook_post (out.hook_in) - after gating, before output projection
-                if hasattr(self, "out") and hasattr(self.out, "hook_in"):
+                if hasattr(self, 'out') and hasattr(self.out, 'hook_in'):
                     hidden = self.out.hook_in(hidden)
-
-                # Output projection
-                output = torch.nn.functional.linear(
-                    hidden, self._processed_W_out, self._processed_b_out
-                )
+                output = torch.nn.functional.linear(hidden, self._processed_W_out, self._processed_b_out)
             else:
-                # Fallback to original component
                 new_args = (hidden_states,) + args[1:]
-                output = self.original_component(*new_args, **kwargs)  # type: ignore[misc]
-
-            # Apply output hook
+                output = self.original_component(*new_args, **kwargs)
             output = self.hook_out(output)
             return output
-
         if self.original_component is None:
-            raise RuntimeError(
-                f"Original component not set for {self.name}. Call set_original_component() first."
-            )
-
+            raise RuntimeError(f'Original component not set for {self.name}. Call set_original_component() first.')
         hidden_states = args[0]
         hidden_states = self.hook_in(hidden_states)
         new_args = (hidden_states,) + args[1:]
@@ -174,16 +106,13 @@ class GatedMLPBridge(MLPBridge):
             b_out: The processed MLP output bias tensor (optional)
         """
         super().set_processed_weights(weights)
-        W_gate = weights.get("W_gate")
+        W_gate = weights.get('W_gate')
         if W_gate is None:
             raise ValueError("Processed gated MLP weights must include 'W_gate'.")
-        b_gate = weights.get("b_gate")
-        gate_module = getattr(self, "gate", None)
-
+        b_gate = weights.get('b_gate')
+        gate_module = getattr(self, 'gate', None)
         self._use_processed_weights = True
         self._processed_W_gate = W_gate
         self._processed_b_gate = b_gate
-
-        # Use LinearBridge's set_processed_weights for the 'gate' component
-        if gate_module and hasattr(gate_module, "set_processed_weights"):
-            gate_module.set_processed_weights({"weight": W_gate, "bias": b_gate})
+        if gate_module and hasattr(gate_module, 'set_processed_weights'):
+            gate_module.set_processed_weights({'weight': W_gate, 'bias': b_gate})

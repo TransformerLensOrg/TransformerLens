@@ -1,7 +1,5 @@
 """Hook point wrapper for providing dotted access to hook points."""
-
 from transformer_lens.hook_points import HookPoint
-
 
 class HookPointWrapper:
     """Wrapper class to provide dotted access to hook points."""
@@ -13,5 +11,6 @@ class HookPointWrapper:
             hook_in: The input hook point
             hook_out: The output hook point
         """
+        print(f'CALLED: {__file__}::HookPointWrapper.__init__')
         self.hook_in = hook_in
         self.hook_out = hook_out
