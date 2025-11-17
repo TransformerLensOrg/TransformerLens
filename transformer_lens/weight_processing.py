@@ -853,6 +853,8 @@ class ProcessWeights:
         Returns:
             Dict[str, torch.Tensor]: Modified state dict with LayerNorm folded into linear layers.
         """
+        # Make a copy to avoid modifying the original
+        state_dict = state_dict.copy()
         gqa = "" if getattr(cfg, "n_key_value_heads", None) is None else "_"
         for l in range(cfg.n_layers):
             ProcessWeights._fold_layer(
@@ -882,6 +884,8 @@ class ProcessWeights:
         Returns:
             Dict[str, torch.Tensor]: Modified state dict with centered writing weights.
         """
+        # Make a copy to avoid modifying the original
+        state_dict = state_dict.copy()
         embed_W_E_key = ProcessWeights._get_param_key("embed.W_E", adapter)
         try:
             pos_embed_W_pos_key = (
@@ -1002,6 +1006,8 @@ class ProcessWeights:
         Returns:
             Dict[str, torch.Tensor]: Modified state dict with centered unembedding weights.
         """
+        # Make a copy to avoid modifying the original
+        state_dict = state_dict.copy()
         uses_tl_format, uses_hf_format = ProcessWeights._detect_unembed_format(state_dict, adapter)
         unembed_W_U_key = ProcessWeights._get_param_key("unembed.W_U", adapter)
         unembed_b_U_key = ProcessWeights._get_param_key("unembed.b_U", adapter)
@@ -1042,6 +1048,8 @@ class ProcessWeights:
         Returns:
             Dict[str, torch.Tensor]: Modified state dict with value biases folded into output bias.
         """
+        # Make a copy to avoid modifying the original
+        state_dict = state_dict.copy()
         layer = 0
         uses_tl_format, uses_hf_format = ProcessWeights._detect_state_dict_format(
             state_dict, layer, adapter
@@ -1264,6 +1272,8 @@ class ProcessWeights:
         Returns:
             Dict[str, torch.Tensor]: Modified state dict with refactored attention matrices.
         """
+        # Make a copy to avoid modifying the original
+        state_dict = state_dict.copy()
         assert (
             getattr(cfg, "positional_embedding_type", "standard") != "rotary"
         ), "You can't refactor the QK circuit when using rotary embeddings (as the QK matrix depends on the position of the query and key)"

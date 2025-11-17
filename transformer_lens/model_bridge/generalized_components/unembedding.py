@@ -36,7 +36,7 @@ class UnembeddingBridge(GeneralizedComponent):
 
     @property
     def W_U(self) -> torch.Tensor:
-        """Return the unembedding weight matrix."""
+        """Return the unembedding weight matrix in TL format [d_model, d_vocab]."""
         if "_processed_W_U" in self._parameters:
             processed_W_U = self._parameters["_processed_W_U"]
             if processed_W_U is not None:
@@ -48,6 +48,7 @@ class UnembeddingBridge(GeneralizedComponent):
         ), f"Component {self.name} has no weight attribute"
         weight = self.original_component.weight
         assert isinstance(weight, torch.Tensor), f"Weight is not a tensor for {self.name}"
+        # HF format is [d_vocab, d_model], transpose to TL format [d_model, d_vocab]
         return weight.T
 
     def forward(self, hidden_states: torch.Tensor, **kwargs: Any) -> torch.Tensor:
@@ -60,6 +61,17 @@ class UnembeddingBridge(GeneralizedComponent):
         Returns:
             Unembedded output (logits)
         """
+        # If using processed weights, use custom forward to handle TL format
+        if "_processed_W_U" in self._parameters:
+            processed_W_U = self._parameters["_processed_W_U"]
+            if processed_W_U is not None:
+                hidden_states = self.hook_in(hidden_states)
+                # W_U is in TL format [d_model, d_vocab], transpose for linear
+                output = torch.nn.functional.linear(hidden_states, processed_W_U.T, self.b_U)
+                output = self.hook_out(output)
+                return output
+
+        # Otherwise delegate to original component
         if self.original_component is None:
             raise RuntimeError(
                 f"Original component not set for {self.name}. Call set_original_component() first."
