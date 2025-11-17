@@ -47,7 +47,6 @@ from transformer_lens.pretrained.weight_conversions import (
     convert_qwen3_weights,
     convert_qwen_weights,
     convert_t5_weights,
-    convert_w2v2_weights
 )
 
 OFFICIAL_MODEL_NAMES = [
@@ -1214,21 +1213,21 @@ def convert_hf_model_config(model_name: str, **kwargs: Any):
             "attention_dir": "bidirectional",
             "d_vocab": -1,  # no text vocabulary
         }
-    # elif architecture == "HubertForCTC":
-    #     # Basic transformer configuration
-    #     cfg_dict = {
-    #         "d_model": hf_config.hidden_size,
-    #         "d_head": hf_config.hidden_size // hf_config.num_attention_heads,
-    #         "n_heads": hf_config.num_attention_heads,
-    #         "d_mlp": hf_config.intermediate_size,
-    #         "n_layers": hf_config.num_hidden_layers,
-    #         "n_ctx": getattr(hf_config, "max_position_embeddings", 8192),
-    #         "eps": hf_config.layer_norm_eps,
-    #         "act_fn": "gelu",
-    #         "attention_dir": "bidirectional",
-    #         # For CTC models:
-    #         "d_vocab": hf_config.vocab_size,  # text vocab from tokenizer
-    #     }
+    elif architecture == "HubertForCTC":
+        # Basic transformer configuration
+        cfg_dict = {
+            "d_model": hf_config.hidden_size,
+            "d_head": hf_config.hidden_size // hf_config.num_attention_heads,
+            "n_heads": hf_config.num_attention_heads,
+            "d_mlp": hf_config.intermediate_size,
+            "n_layers": hf_config.num_hidden_layers,
+            "n_ctx": getattr(hf_config, "max_position_embeddings", 8192),
+            "eps": hf_config.layer_norm_eps,
+            "act_fn": "gelu",
+            "attention_dir": "bidirectional",
+            # For CTC models:
+            "d_vocab": hf_config.vocab_size,  # text vocab from tokenizer
+        }
     elif architecture == "BertForMaskedLM":
         # All supported Bert architectures have the same config,
         # so we can use the BertForMaskedLM config for all of them
@@ -2023,9 +2022,9 @@ def get_pretrained_state_dict(
         elif cfg.original_architecture == "HubertModel":
             state_dict = convert_hubert_weights(hf_model, cfg)
         elif cfg.original_architecture == "Wav2Vec2Model":
-            state_dict = convert_w2v2_weights(hf_model, cfg)
-        # elif cfg.original_architecture == "HubertForCTC":
-        #     state_dict = convert_hubert_weights(hf_model, cfg)
+            state_dict = convert_hubert_weights(hf_model, cfg)
+        elif cfg.original_architecture == "HubertForCTC":
+            state_dict = convert_hubert_weights(hf_model, cfg)
         elif cfg.original_architecture == "BertForMaskedLM":
             state_dict = convert_bert_weights(hf_model, cfg)
         elif cfg.original_architecture == "T5ForConditionalGeneration":
