@@ -324,12 +324,12 @@ class ProcessWeights:
         uses_tl_format, uses_hf_format = ProcessWeights._detect_state_dict_format(
             state_dict, layer, adapter
         )
-        wq_tensor = state_dict[W_Q_key]
-        wk_tensor = state_dict[W_K_key]
-        wv_tensor = state_dict[W_V_key]
-        bq_tensor = None
-        bk_tensor = None
-        bv_tensor = None
+        wq_tensor: Optional[torch.Tensor] = state_dict[W_Q_key]
+        wk_tensor: Optional[torch.Tensor] = state_dict[W_K_key]
+        wv_tensor: Optional[torch.Tensor] = state_dict[W_V_key]
+        bq_tensor: Optional[torch.Tensor] = None
+        bk_tensor: Optional[torch.Tensor] = None
+        bv_tensor: Optional[torch.Tensor] = None
         if adapter and uses_hf_format and (not uses_tl_format):
             wq_tensor = ProcessWeights.convert_tensor_to_tl_format(
                 f"blocks.{layer}.attn.W_Q", adapter, state_dict, cfg, layer
@@ -452,8 +452,12 @@ class ProcessWeights:
             assert isinstance(ln1_w, torch.Tensor)
             if fold_biases:
                 if all(
-                    (t is not None for t in [wk_tensor, wv_tensor, bq_tensor, bk_tensor, bv_tensor])
+                    (t is not None for t in [wq_tensor, wk_tensor, wv_tensor, bq_tensor, bk_tensor, bv_tensor])
                 ):
+                    # Type narrowing for mypy
+                    assert wq_tensor is not None
+                    assert wk_tensor is not None
+                    assert wv_tensor is not None
                     bq_tensor, bk_tensor, bv_tensor = ProcessWeights.fold_layer_norm_biases(
                         wq_tensor, wk_tensor, wv_tensor, bq_tensor, bk_tensor, bv_tensor, ln1_b
                     )
@@ -674,13 +678,19 @@ class ProcessWeights:
                 bk_tensor, f"blocks.{layer}.attn.b_K", adapter, cfg, layer
             )
             if converted_bk is not None:
+                assert isinstance(converted_bk, torch.Tensor)  # Type narrowing for mypy
                 state_dict[bk_key] = converted_bk
             converted_bv = ProcessWeights.convert_tensor_to_hf_format(
                 bv_tensor, f"blocks.{layer}.attn.b_V", adapter, cfg, layer
             )
             if converted_bv is not None:
+                assert isinstance(converted_bv, torch.Tensor)  # Type narrowing for mypy
                 state_dict[bv_key] = converted_bv
         else:
+            # Type narrowing for mypy
+            assert wq_tensor is not None
+            assert wk_tensor is not None
+            assert wv_tensor is not None
             state_dict[wq_key] = wq_tensor
             state_dict[wk_key] = wk_tensor
             state_dict[wv_key] = wv_tensor

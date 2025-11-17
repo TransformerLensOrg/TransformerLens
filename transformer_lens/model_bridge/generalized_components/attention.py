@@ -358,7 +358,9 @@ class AttentionBridge(GeneralizedComponent):
         if "W_Q" in weights.keys():
             # legacy call that will go away
             return
-        super().set_processed_weights(weights, verbose=verbose)
+        # Filter out None values for parent class
+        filtered_weights = {k: v for k, v in weights.items() if v is not None}
+        super().set_processed_weights(filtered_weights, verbose=verbose)
 
     @property
     def W_Q(self) -> torch.Tensor:

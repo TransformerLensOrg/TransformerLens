@@ -167,9 +167,15 @@ def filter_dict_by_prefix(dictionary: dict, prefix: str) -> dict:
         is automatically added/expected.
 
     Example:
-        >>> d = {"transformer.h.0.attn.W_Q": tensor1, "transformer.h.0.mlp.W_in": tensor2, "transformer.h.1.attn.W_K": tensor3}
-        >>> filter_dict_by_prefix(d, "transformer.h.0")
-        {"attn.W_Q": tensor1, "mlp.W_in": tensor2}
+        >>> import torch
+        >>> d = {"transformer.h.0.attn.W_Q": torch.tensor([1]), "transformer.h.0.mlp.W_in": torch.tensor([2]), "transformer.h.1.attn.W_K": torch.tensor([3])}
+        >>> result = filter_dict_by_prefix(d, "transformer.h.0")
+        >>> sorted(result.keys())
+        ['attn.W_Q', 'mlp.W_in']
+        >>> result["attn.W_Q"]
+        tensor([1])
+        >>> result["mlp.W_in"]
+        tensor([2])
     """
     # Ensure prefix ends with a dot for proper stripping
     search_prefix = prefix if prefix.endswith(".") else prefix + "."
