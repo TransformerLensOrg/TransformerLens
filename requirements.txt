@@ -3,7 +3,7 @@ torch==2.9.0
 transformers
 datasets
 jaxtyping
-datasets
+datasets<3.0.0
 einops
 better_abc
 typeguard
