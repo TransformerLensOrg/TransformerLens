@@ -452,7 +452,10 @@ class ProcessWeights:
             assert isinstance(ln1_w, torch.Tensor)
             if fold_biases:
                 if all(
-                    (t is not None for t in [wq_tensor, wk_tensor, wv_tensor, bq_tensor, bk_tensor, bv_tensor])
+                    (
+                        t is not None
+                        for t in [wq_tensor, wk_tensor, wv_tensor, bq_tensor, bk_tensor, bv_tensor]
+                    )
                 ):
                     # Type narrowing for mypy
                     assert wq_tensor is not None

@@ -13,7 +13,7 @@ from transformer_lens.model_bridge.generalized_components.base import (
 from transformer_lens.model_bridge.types import RemoteModel
 
 if TYPE_CHECKING:
-    from typing import Dict
+    pass
 
 
 def replace_remote_component(
