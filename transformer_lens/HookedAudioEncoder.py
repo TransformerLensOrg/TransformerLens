@@ -19,6 +19,7 @@ from transformers import (
     AutoProcessor,
     HubertForCTC,
     HubertModel,
+    Wav2Vec2Model
 )
 from typing_extensions import Literal
 
@@ -81,6 +82,8 @@ class HookedAudioEncoder(HookedRootModule):
 
         if model_name.endswith("-ft") and use_ctc:
             hubert_model = HubertForCTC.from_pretrained(model_name)
+        elif "wav2vec2" in model_name:
+            hubert_model = Wav2Vec2Model.from_pretrained(model_name)
         else:
             hubert_model = HubertModel.from_pretrained(model_name)
 
