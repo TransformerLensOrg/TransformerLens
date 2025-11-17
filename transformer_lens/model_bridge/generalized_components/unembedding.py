@@ -40,7 +40,9 @@ class UnembeddingBridge(GeneralizedComponent):
         if "_processed_W_U" in self._parameters:
             processed_W_U = self._parameters["_processed_W_U"]
             if processed_W_U is not None:
-                return processed_W_U
+                # Processed weights are in HF format [vocab, d_model]
+                # Transpose to TL format [d_model, d_vocab]
+                return processed_W_U.T
         if self.original_component is None:
             raise RuntimeError(f"Original component not set for {self.name}")
         assert hasattr(
@@ -61,13 +63,16 @@ class UnembeddingBridge(GeneralizedComponent):
         Returns:
             Unembedded output (logits)
         """
-        # If using processed weights, use custom forward to handle TL format
+        # If using processed weights, use custom forward to handle format
         if "_processed_W_U" in self._parameters:
             processed_W_U = self._parameters["_processed_W_U"]
             if processed_W_U is not None:
                 hidden_states = self.hook_in(hidden_states)
-                # W_U is in TL format [d_model, d_vocab], transpose for linear
-                output = torch.nn.functional.linear(hidden_states, processed_W_U.T, self.b_U)
+                # Note: processed weights are actually in HF format [vocab, d_model]
+                # despite being called "processed_tl_weights" in the bridge
+                # linear expects weight in [out_features, in_features] = [vocab, d_model]
+                # So we use the weight as-is without transpose
+                output = torch.nn.functional.linear(hidden_states, processed_W_U, self.b_U)
                 output = self.hook_out(output)
                 return output
 
