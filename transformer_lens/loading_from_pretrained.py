@@ -20,6 +20,7 @@ from transformers import (
     BertForPreTraining,
     HubertModel,
     T5ForConditionalGeneration,
+    Wav2Vec2Model,
 )
 
 import transformer_lens.utils as utils
@@ -46,6 +47,7 @@ from transformer_lens.pretrained.weight_conversions import (
     convert_qwen3_weights,
     convert_qwen_weights,
     convert_t5_weights,
+    convert_w2v2_weights
 )
 
 OFFICIAL_MODEL_NAMES = [
@@ -62,10 +64,7 @@ OFFICIAL_MODEL_NAMES = [
     "facebook/opt-30b",
     "facebook/opt-66b",
     "facebook/hubert-base-ls960",
-    "facebook/hubert-large-ll60k",
-    "facebook/hubert-large-ls960-ft",
-    "facebook/hubert-xlarge-ll60k",
-    "facebook/hubert-xlarge-ls960-ft",
+    "facebook/wav2vec2-base-960h",
     "EleutherAI/gpt-neo-125M",
     "EleutherAI/gpt-neo-1.3B",
     "EleutherAI/gpt-neo-2.7B",
@@ -618,10 +617,7 @@ MODEL_ALIASES = {
     "google-bert/bert-large-cased": ["bert-large-cased"],
     "google-bert/bert-large-uncased": ["bert-large-uncased"],
     "facebook/hubert-base-ls960": ["facebook/hubert-base-ls960", "hubert-base-ls960"],
-    "facebook/hubert-large-ll60k": ["facebook/hubert-large-ll60k", "hubert-large-ll60k"],
-    "facebook/hubert-large-ls960-ft": ["facebook/hubert-large-ls960-ft", "hubert-large-ls960-ft"],
-    "facebook/hubert-xlarge-ll60k": ["facebook/hubert-xlarge-ll60k", "hubert-xlarge-ll60k"],
-    "facebook/hubert-xlarge-ls960-ft": ["facebook/hubert-xlarge-ls960-ft", "hubert-xlarge-ls960-ft"],
+    "facebook/wav2vec2-base-960h": ["facebook/wav2vec2-base-960h", "wav2vec2-base-960h"],
     "roneneldan/TinyStories-1M": ["tiny-stories-1M"],
     "roneneldan/TinyStories-3M": ["tiny-stories-3M"],
     "roneneldan/TinyStories-8M": ["tiny-stories-8M"],
@@ -1203,7 +1199,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any):
             "attention_dir": "bidirectional",
             "d_vocab": -1,  # no text vocabulary
         }
-    elif architecture == "HubertForCTC":
+    elif architecture == "Wav2Vec2Model":
         # Basic transformer configuration
         cfg_dict = {
             "d_model": hf_config.hidden_size,
@@ -1211,13 +1207,28 @@ def convert_hf_model_config(model_name: str, **kwargs: Any):
             "n_heads": hf_config.num_attention_heads,
             "d_mlp": hf_config.intermediate_size,
             "n_layers": hf_config.num_hidden_layers,
+            # HuBERT operates on audio frames, not tokens — n_ctx is flexible
             "n_ctx": getattr(hf_config, "max_position_embeddings", 8192),
             "eps": hf_config.layer_norm_eps,
             "act_fn": "gelu",
             "attention_dir": "bidirectional",
-            # For CTC models:
-            "d_vocab": hf_config.vocab_size,  # text vocab from tokenizer
+            "d_vocab": -1,  # no text vocabulary
         }
+    # elif architecture == "HubertForCTC":
+    #     # Basic transformer configuration
+    #     cfg_dict = {
+    #         "d_model": hf_config.hidden_size,
+    #         "d_head": hf_config.hidden_size // hf_config.num_attention_heads,
+    #         "n_heads": hf_config.num_attention_heads,
+    #         "d_mlp": hf_config.intermediate_size,
+    #         "n_layers": hf_config.num_hidden_layers,
+    #         "n_ctx": getattr(hf_config, "max_position_embeddings", 8192),
+    #         "eps": hf_config.layer_norm_eps,
+    #         "act_fn": "gelu",
+    #         "attention_dir": "bidirectional",
+    #         # For CTC models:
+    #         "d_vocab": hf_config.vocab_size,  # text vocab from tokenizer
+    #     }
     elif architecture == "BertForMaskedLM":
         # All supported Bert architectures have the same config,
         # so we can use the BertForMaskedLM config for all of them
@@ -2011,8 +2022,10 @@ def get_pretrained_state_dict(
             state_dict = convert_llama_weights(hf_model, cfg)
         elif cfg.original_architecture == "HubertModel":
             state_dict = convert_hubert_weights(hf_model, cfg)
-        elif cfg.original_architecture == "HubertForCTC":
-            state_dict = convert_hubert_weights(hf_model, cfg)
+        elif cfg.original_architecture == "Wav2Vec2Model":
+            state_dict = convert_w2v2_weights(hf_model, cfg)
+        # elif cfg.original_architecture == "HubertForCTC":
+        #     state_dict = convert_hubert_weights(hf_model, cfg)
         elif cfg.original_architecture == "BertForMaskedLM":
             state_dict = convert_bert_weights(hf_model, cfg)
         elif cfg.original_architecture == "T5ForConditionalGeneration":
