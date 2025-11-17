@@ -1194,7 +1194,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any):
             # HuBERT operates on audio frames, not tokens — n_ctx is flexible
             "n_ctx": getattr(hf_config, "max_position_embeddings", 8192),
             "eps": hf_config.layer_norm_eps,
-            "act_fn": getattr(hf_cfg, "hidden_act", "gelu"),
+            "act_fn": getattr(hf_config, "hidden_act", "gelu"),
             "attention_dir": "bidirectional",
             "d_vocab": -1,  # no text vocabulary
         }
@@ -1209,7 +1209,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any):
             # HuBERT operates on audio frames, not tokens — n_ctx is flexible
             "n_ctx": getattr(hf_config, "max_position_embeddings", 8192),
             "eps": hf_config.layer_norm_eps,
-            "act_fn": getattr(hf_cfg, "hidden_act", "gelu"),
+            "act_fn": getattr(hf_config, "hidden_act", "gelu"),
             "attention_dir": "bidirectional",
             "d_vocab": -1,  # no text vocabulary
         }
@@ -1223,7 +1223,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any):
             "n_layers": hf_config.num_hidden_layers,
             "n_ctx": getattr(hf_config, "max_position_embeddings", 8192),
             "eps": hf_config.layer_norm_eps,
-            "act_fn": getattr(hf_cfg, "hidden_act", "gelu"),
+            "act_fn": getattr(hf_config, "hidden_act", "gelu"),
             "attention_dir": "bidirectional",
             # For CTC models:
             "d_vocab": hf_config.vocab_size,  # text vocab from tokenizer
