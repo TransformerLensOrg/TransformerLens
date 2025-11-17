@@ -110,7 +110,9 @@ class MLPBridge(GeneralizedComponent):
             output = self.out.hook_out(output)
         return output
 
-    def set_processed_weights(self, weights: Mapping[str, torch.Tensor | None], verbose: bool = False) -> None:
+    def set_processed_weights(
+        self, weights: Mapping[str, torch.Tensor | None], verbose: bool = False
+    ) -> None:
         """Set the processed weights for use in compatibility mode.
 
         This stores the processed weights as attributes on the MLP component so they can be

@@ -5,7 +5,7 @@ individually and in combination to isolate which processing steps cause issues.
 """
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Dict, List
 
 import torch
 
@@ -218,7 +218,9 @@ def run_granular_weight_processing_benchmarks(
             print(f"Model: {model_name}")
             print("=" * 80)
             print(f"⚠ HookedTransformer not available for {model_name}: {str(e)}")
-            print("⚠ Skipping granular weight processing tests (requires HookedTransformer reference)")
+            print(
+                "⚠ Skipping granular weight processing tests (requires HookedTransformer reference)"
+            )
             print("=" * 80 + "\n")
 
         # Return a single SKIPPED result for all tests
@@ -243,7 +245,9 @@ def run_granular_weight_processing_benchmarks(
         print(f"Model: {model_name}")
         print(f"Testing {len(configs_to_test)} configurations")
         if include_refactor_tests:
-            print(f"  ({len(WEIGHT_PROCESSING_CONFIGS)} standard + {len(REFACTOR_ATTN_CONFIGS)} refactor tests)")
+            print(
+                f"  ({len(WEIGHT_PROCESSING_CONFIGS)} standard + {len(REFACTOR_ATTN_CONFIGS)} refactor tests)"
+            )
         print("=" * 80)
 
     for config in configs_to_test:
@@ -306,7 +310,9 @@ def run_granular_weight_processing_benchmarks(
                         print(f"  {key}: {value}")
 
             # Hook functionality
-            hook_func_result = benchmark_hook_functionality(bridge, test_text, reference_model=ht_ref)
+            hook_func_result = benchmark_hook_functionality(
+                bridge, test_text, reference_model=ht_ref
+            )
             results.append(hook_func_result)
             if verbose:
                 status = "🟢 [PASS]" if hook_func_result.passed else "🔴 [FAIL]"
@@ -315,7 +321,9 @@ def run_granular_weight_processing_benchmarks(
                     for key, value in hook_func_result.details.items():
                         print(f"  {key}: {value}")
 
-            critical_hooks_result = benchmark_critical_forward_hooks(bridge, test_text, reference_model=ht_ref)
+            critical_hooks_result = benchmark_critical_forward_hooks(
+                bridge, test_text, reference_model=ht_ref
+            )
             results.append(critical_hooks_result)
             if verbose:
                 status = "🟢 [PASS]" if critical_hooks_result.passed else "🔴 [FAIL]"
@@ -324,7 +332,9 @@ def run_granular_weight_processing_benchmarks(
                     for key, value in critical_hooks_result.details.items():
                         print(f"  {key}: {value}")
 
-            forward_hooks_result = benchmark_forward_hooks(bridge, test_text, reference_model=ht_ref)
+            forward_hooks_result = benchmark_forward_hooks(
+                bridge, test_text, reference_model=ht_ref
+            )
             results.append(forward_hooks_result)
             if verbose:
                 status = "🟢 [PASS]" if forward_hooks_result.passed else "🔴 [FAIL]"

@@ -124,7 +124,9 @@ class GatedMLPBridge(MLPBridge):
         output = self.hook_out(output)
         return output
 
-    def set_processed_weights(self, weights: Mapping[str, torch.Tensor | None], verbose: bool = False) -> None:
+    def set_processed_weights(
+        self, weights: Mapping[str, torch.Tensor | None], verbose: bool = False
+    ) -> None:
         """Set the processed weights to use when layer norm is folded.
 
         Args:
@@ -137,7 +139,9 @@ class GatedMLPBridge(MLPBridge):
             verbose: If True, print detailed information about weight setting
         """
         if verbose:
-            print(f"\n  set_processed_weights: GatedMLPBridge (name={getattr(self, 'name', 'unknown')})")
+            print(
+                f"\n  set_processed_weights: GatedMLPBridge (name={getattr(self, 'name', 'unknown')})"
+            )
             print(f"    Received {len(weights)} weight keys")
 
         super().set_processed_weights(weights, verbose=verbose)

@@ -49,6 +49,7 @@ class NeoLinearTransposeConversion(BaseHookConversion):
         # Apply rearrangement if specified
         if self.rearrange_pattern:
             import einops
+
             return einops.rearrange(transposed, self.rearrange_pattern, **self.axes_lengths)
 
         return transposed
@@ -60,6 +61,7 @@ class NeoLinearTransposeConversion(BaseHookConversion):
         # Reverse rearrangement if specified
         if self.rearrange_pattern:
             import einops
+
             # Reverse the einops pattern
             left, right = self.rearrange_pattern.split("->")
             reversed_pattern = f"{right.strip()} -> {left.strip()}"
@@ -90,19 +92,27 @@ class NeoArchitectureAdapter(ArchitectureAdapter):
                 # Property access keys (used by component tree) - for attention
                 "blocks.{i}.attn.q.weight": (
                     "transformer.h.{i}.attn.attention.q_proj.weight",
-                    NeoLinearTransposeConversion("d_model (n h) -> n d_model h", n=self.cfg.n_heads),
+                    NeoLinearTransposeConversion(
+                        "d_model (n h) -> n d_model h", n=self.cfg.n_heads
+                    ),
                 ),
                 "blocks.{i}.attn.k.weight": (
                     "transformer.h.{i}.attn.attention.k_proj.weight",
-                    NeoLinearTransposeConversion("d_model (n h) -> n d_model h", n=self.cfg.n_heads),
+                    NeoLinearTransposeConversion(
+                        "d_model (n h) -> n d_model h", n=self.cfg.n_heads
+                    ),
                 ),
                 "blocks.{i}.attn.v.weight": (
                     "transformer.h.{i}.attn.attention.v_proj.weight",
-                    NeoLinearTransposeConversion("d_model (n h) -> n d_model h", n=self.cfg.n_heads),
+                    NeoLinearTransposeConversion(
+                        "d_model (n h) -> n d_model h", n=self.cfg.n_heads
+                    ),
                 ),
                 "blocks.{i}.attn.o.weight": (
                     "transformer.h.{i}.attn.attention.out_proj.weight",
-                    NeoLinearTransposeConversion("(n h) d_model -> n h d_model", n=self.cfg.n_heads),
+                    NeoLinearTransposeConversion(
+                        "(n h) d_model -> n h d_model", n=self.cfg.n_heads
+                    ),
                 ),
                 # Property access keys - for MLP
                 "blocks.{i}.mlp.in.weight": (
@@ -116,19 +126,27 @@ class NeoArchitectureAdapter(ArchitectureAdapter):
                 # Weight processing keys (W_Q, W_K, W_V, W_O style) - for weight processing
                 "blocks.{i}.attn.W_Q": (
                     "transformer.h.{i}.attn.attention.q_proj.weight",
-                    NeoLinearTransposeConversion("d_model (n h) -> n d_model h", n=self.cfg.n_heads),
+                    NeoLinearTransposeConversion(
+                        "d_model (n h) -> n d_model h", n=self.cfg.n_heads
+                    ),
                 ),
                 "blocks.{i}.attn.W_K": (
                     "transformer.h.{i}.attn.attention.k_proj.weight",
-                    NeoLinearTransposeConversion("d_model (n h) -> n d_model h", n=self.cfg.n_heads),
+                    NeoLinearTransposeConversion(
+                        "d_model (n h) -> n d_model h", n=self.cfg.n_heads
+                    ),
                 ),
                 "blocks.{i}.attn.W_V": (
                     "transformer.h.{i}.attn.attention.v_proj.weight",
-                    NeoLinearTransposeConversion("d_model (n h) -> n d_model h", n=self.cfg.n_heads),
+                    NeoLinearTransposeConversion(
+                        "d_model (n h) -> n d_model h", n=self.cfg.n_heads
+                    ),
                 ),
                 "blocks.{i}.attn.W_O": (
                     "transformer.h.{i}.attn.attention.out_proj.weight",
-                    NeoLinearTransposeConversion("(n h) d_model -> n h d_model", n=self.cfg.n_heads),
+                    NeoLinearTransposeConversion(
+                        "(n h) d_model -> n h d_model", n=self.cfg.n_heads
+                    ),
                 ),
                 "blocks.{i}.attn.b_Q": (
                     "transformer.h.{i}.attn.attention.q_proj.bias",

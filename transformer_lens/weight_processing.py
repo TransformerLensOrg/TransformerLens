@@ -659,7 +659,7 @@ class ProcessWeights:
             )
             converted_wv = ProcessWeights.convert_tensor_to_hf_format(
                 wv_tensor, f"blocks.{layer}.attn.W_V", adapter, cfg, layer
-                )
+            )
             if converted_wq is None or converted_wk is None or converted_wv is None:
                 raise ValueError(f"Required attention weights missing for layer {layer}")
             state_dict[wq_key] = converted_wq
@@ -784,7 +784,12 @@ class ProcessWeights:
         ln_final_b_key = ProcessWeights._get_param_key("ln_final.b", adapter)
         has_unembed_bias = unembed_b_U_key in state_dict
         has_ln_final_bias = ln_final_b_key in state_dict
-        if not getattr(cfg, "final_rms", False) and fold_biases and has_unembed_bias and has_ln_final_bias:
+        if (
+            not getattr(cfg, "final_rms", False)
+            and fold_biases
+            and has_unembed_bias
+            and has_ln_final_bias
+        ):
             unembed_weight = state_dict[unembed_W_U_key]
             ln_bias = state_dict[ln_final_b_key]
             if len(unembed_weight.shape) == 2 and len(ln_bias.shape) == 1:
@@ -1353,12 +1358,15 @@ class ProcessWeights:
             placeholder_param_name = param_name
             if "blocks." in param_name and ".attn." in param_name:
                 import re
+
                 placeholder_param_name = re.sub("blocks\\.\\d+\\.", "blocks.{i}.", param_name)
             elif "blocks." in param_name and ".mlp." in param_name:
                 import re
+
                 placeholder_param_name = re.sub("blocks\\.\\d+\\.", "blocks.{i}.", param_name)
             elif "blocks." in param_name and ".ln" in param_name:
                 import re
+
                 placeholder_param_name = re.sub("blocks\\.\\d+\\.", "blocks.{i}.", param_name)
 
             if placeholder_param_name in adapter.conversion_rules.fields:
@@ -1384,12 +1392,15 @@ class ProcessWeights:
             placeholder_param_name = param_name
             if "blocks." in param_name and ".attn." in param_name:
                 import re
+
                 placeholder_param_name = re.sub("blocks\\.\\d+\\.", "blocks.{i}.", param_name)
             elif "blocks." in param_name and ".mlp." in param_name:
                 import re
+
                 placeholder_param_name = re.sub("blocks\\.\\d+\\.", "blocks.{i}.", param_name)
             elif "blocks." in param_name and ".ln" in param_name:
                 import re
+
                 placeholder_param_name = re.sub("blocks\\.\\d+\\.", "blocks.{i}.", param_name)
             if placeholder_param_name in adapter.conversion_rules.fields:
                 conversion_action = adapter.conversion_rules.get_conversion_action(

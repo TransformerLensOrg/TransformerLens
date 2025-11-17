@@ -86,7 +86,9 @@ class PosEmbedBridge(GeneralizedComponent):
         output = self.hook_out(output)
         return output
 
-    def set_processed_weights(self, weights: Mapping[str, torch.Tensor | None], verbose: bool = False) -> None:
+    def set_processed_weights(
+        self, weights: Mapping[str, torch.Tensor | None], verbose: bool = False
+    ) -> None:
         """Set the processed weights by loading them into the original component.
 
         This loads the processed weights directly into the original_component's parameters,
@@ -97,7 +99,9 @@ class PosEmbedBridge(GeneralizedComponent):
             verbose: If True, print detailed information about weight setting
         """
         if verbose:
-            print(f"\n  set_processed_weights: PosEmbedBridge (name={getattr(self, 'name', 'unknown')})")
+            print(
+                f"\n  set_processed_weights: PosEmbedBridge (name={getattr(self, 'name', 'unknown')})"
+            )
             print(f"    Received {len(weights)} weight keys")
 
         if self.original_component is None:

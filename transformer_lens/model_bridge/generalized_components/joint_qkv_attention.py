@@ -2,11 +2,10 @@
 
 This module contains the bridge component for attention layers that use a fused qkv matrix.
 """
-from typing import Any, Callable, Dict, Mapping, Optional, cast
+from typing import Any, Callable, Dict, Optional
 
 import einops
 import torch
-import torch.nn as nn
 
 from transformer_lens.conversion_utils.conversion_steps.base_hook_conversion import (
     BaseHookConversion,

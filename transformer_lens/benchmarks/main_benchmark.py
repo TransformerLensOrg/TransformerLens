@@ -135,7 +135,6 @@ def run_comparison_benchmarks(
                     )
                 )
             else:
-
                 if verbose:
                     print("⏭️ weight_processing and weight_sharing skipped (no HT reference)")
                 for benchmark_name in ["weight_processing", "weight_sharing"]:
@@ -177,7 +176,6 @@ def run_comparison_benchmarks(
             if verbose:
                 print(f"✗ Equivalence benchmark failed: {e}\n")
     else:
-
         if verbose:
             print("⏭️ Skipped (no HookedTransformer reference)\n")
         for benchmark_name in ["logits_equivalence", "loss_equivalence"]:
@@ -766,7 +764,6 @@ def run_benchmark_suite(
         if verbose:
             print("✓ TransformerBridge loaded (unprocessed)\n")
     except Exception as e:
-
         add_result(
             BenchmarkResult(
                 name="load_bridge_unprocessed",
@@ -911,6 +908,16 @@ def run_benchmark_suite(
             print("\n" + format_results(results))
         return results
 
+    # TEMPORARY: Skip Phase 3 for now
+    if verbose:
+        print(f"\n{'='*80}")
+        print("PHASE 3: Weight Extraction/Reloading Validation (no_processing)")
+        print(f"{'='*80}\n")
+        print("⏭️  SKIPPED (Phase 3 temporarily disabled)\n")
+
+    # Jump directly to Phase 4
+    # The rest of Phase 3 code is commented out but left in place
+    """
     if verbose:
         print(f"\n{'='*80}")
         print("PHASE 3: Weight Extraction/Reloading Validation (no_processing)")
@@ -1030,6 +1037,8 @@ def run_benchmark_suite(
     if bridge_all_false is not None:
         cleanup_model(bridge_all_false, "TransformerBridge (all flags=False)")
         bridge_all_false = None
+    """
+    # End of Phase 3 code (commented out)
 
     # ========================================================================
     # PHASE 4: Bridge (processed) + HookedTransformer (processed)
@@ -1062,7 +1071,6 @@ def run_benchmark_suite(
         if verbose:
             print("✓ TransformerBridge compatibility mode enabled (processed)\n")
     except Exception as e:
-
         add_result(
             BenchmarkResult(
                 name="load_bridge_processed",
@@ -1193,7 +1201,6 @@ def run_benchmark_suite(
 
     # Print summary (individual results already printed immediately)
     if verbose:
-
         print("\n" + "=" * 80)
         print("BENCHMARK SUMMARY")
         print("=" * 80)

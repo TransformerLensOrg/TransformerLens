@@ -953,7 +953,6 @@ class TransformerBridge(nn.Module):
                         component = component._modules[part]
                     else:
                         raise AttributeError(f"Component {part} not found")
-                print("manual for", tb_key, component)
                 param_name = parts[-1]
                 if hasattr(component, "_original_component"):
                     target_component = component._original_component

@@ -172,7 +172,9 @@ class GeneralizedComponent(nn.Module):
                 f"Hook name '{hook_name}' not supported. Supported names are 'output' and 'input'."
             )
 
-    def set_processed_weights(self, weights: Dict[str, torch.Tensor], verbose: bool = False) -> None:
+    def set_processed_weights(
+        self, weights: Dict[str, torch.Tensor], verbose: bool = False
+    ) -> None:
         """Set the processed weights for use in compatibility mode.
 
         This method stores processed weights as attributes on the component so they can be
@@ -189,7 +191,9 @@ class GeneralizedComponent(nn.Module):
             verbose: If True, print detailed information about weight setting
         """
         if verbose:
-            print(f"\n  set_processed_weights: {self.__class__.__name__} (name={getattr(self, 'name', 'unknown')})")
+            print(
+                f"\n  set_processed_weights: {self.__class__.__name__} (name={getattr(self, 'name', 'unknown')})"
+            )
             print(f"    Received {len(weights)} weight keys")
 
         # First, handle single-part keys (keys without ".") by setting them as parameters

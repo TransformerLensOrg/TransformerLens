@@ -7,7 +7,6 @@ import torch
 from transformer_lens.conversion_utils.conversion_steps import (
     BaseHookConversion,
     HookConversionSet,
-    RearrangeHookConversion,
 )
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
@@ -140,15 +139,21 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
             {
                 "blocks.{i}.attn.W_Q": (
                     "transformer.h.{i}.attn.c_attn.weight",
-                    QKVSplitRearrangeConversion(0, "d_model (n h) -> n d_model h", n=self.cfg.n_heads),
+                    QKVSplitRearrangeConversion(
+                        0, "d_model (n h) -> n d_model h", n=self.cfg.n_heads
+                    ),
                 ),
                 "blocks.{i}.attn.W_K": (
                     "transformer.h.{i}.attn.c_attn.weight",
-                    QKVSplitRearrangeConversion(1, "d_model (n h) -> n d_model h", n=self.cfg.n_heads),
+                    QKVSplitRearrangeConversion(
+                        1, "d_model (n h) -> n d_model h", n=self.cfg.n_heads
+                    ),
                 ),
                 "blocks.{i}.attn.W_V": (
                     "transformer.h.{i}.attn.c_attn.weight",
-                    QKVSplitRearrangeConversion(2, "d_model (n h) -> n d_model h", n=self.cfg.n_heads),
+                    QKVSplitRearrangeConversion(
+                        2, "d_model (n h) -> n d_model h", n=self.cfg.n_heads
+                    ),
                 ),
                 "blocks.{i}.attn.b_Q": (
                     "transformer.h.{i}.attn.c_attn.bias",
