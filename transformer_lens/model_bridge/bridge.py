@@ -792,7 +792,7 @@ class TransformerBridge(nn.Module):
         compatibility mode or weight processing is enabled.
 
         Note: This method is idempotent - can be called multiple times safely.
-        """        
+        """
         if hasattr(self.adapter, "setup_hook_compatibility"):
             self.adapter.setup_hook_compatibility(self)
         elif hasattr(self.adapter, "setup_no_processing_hooks"):
