@@ -79,7 +79,10 @@ class BlockBridge(GeneralizedComponent):
             # Extract layer index from name (e.g., "blocks.0" -> 0)
             import re
 
-            match = re.search(r"blocks\.(\d+)", self.name)
+            if self.name is not None:
+                match = re.search(r"blocks\.(\d+)", self.name)
+            else:
+                match = None
             if match:
                 layer_idx = int(match.group(1))
                 if layer_idx == self._stop_at_layer_idx:
