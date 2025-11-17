@@ -1,5 +1,5 @@
 rich
-torch
+torch==2.9.0
 transformers
 datasets
 jaxtyping
