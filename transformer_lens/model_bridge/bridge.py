@@ -1022,7 +1022,10 @@ class TransformerBridge(nn.Module):
                         with torch.no_grad():
                             norm_module.bias.zero_()
             except (AttributeError, IndexError):
-                 pass
+                pass
+
+        # Mark that weights have been processed
+        self._weights_processed = True
 
     def _load_all_processed_weights(
         self, verbose: bool = False, processed_state_dict: Optional[Dict[str, torch.Tensor]] = None
@@ -1640,111 +1643,124 @@ class TransformerBridge(nn.Module):
         Returns:
             Model output based on return_type
         """
-        # If weights have been processed and we need stop_at_layer or start_at_layer,
-        # use the ported forward pass which properly implements those features
-        if (
-            hasattr(self, "_weights_processed")
-            and self._weights_processed
-            and (stop_at_layer is not None or start_at_layer is not None)
-        ):
+        # If weights have been processed, use the ported forward pass which has better stop_at_layer support
+        if hasattr(self, "_weights_processed") and self._weights_processed:
             return self._ported_forward_pass(
-                input,
+                input=input,
                 return_type=return_type,
-                loss_per_token=loss_per_token,
                 prepend_bos=prepend_bos,
+                loss_per_token=loss_per_token,
                 start_at_layer=start_at_layer,
                 stop_at_layer=stop_at_layer,
             )
 
-        if isinstance(input, (str, list)):
-            input_ids = self.to_tokens(input, prepend_bos=prepend_bos, padding_side=padding_side)
-        else:
-            input_ids = input
-        if attention_mask is not None:
-            kwargs["attention_mask"] = attention_mask
-        if past_kv_cache is not None:
-            backend_cache = []
-            for entry in past_kv_cache.entries:
-                if entry.past_keys.numel() > 0:
-                    cached_keys = entry.past_keys.transpose(1, 2)
-                    cached_values = entry.past_values.transpose(1, 2)
-                    backend_cache.append((cached_keys, cached_values))
-            kwargs["past_key_values"] = backend_cache
-            if hasattr(past_kv_cache, "previous_attention_mask"):
-                batch_size = input_ids.shape[0]
-                current_length = input_ids.shape[1]
-                past_length = past_kv_cache.previous_attention_mask.shape[1]
+        from transformer_lens.model_bridge.exceptions import StopAtLayerException
+
+        # Set stop_at_layer flag on all blocks if requested
+        if stop_at_layer is not None and hasattr(self, "blocks"):
+            for block in self.blocks:
+                block._stop_at_layer_idx = stop_at_layer
+
+        try:
+            if isinstance(input, (str, list)):
+                input_ids = self.to_tokens(
+                    input, prepend_bos=prepend_bos, padding_side=padding_side
+                )
+            else:
+                input_ids = input
+            if attention_mask is not None:
+                kwargs["attention_mask"] = attention_mask
+            if past_kv_cache is not None:
+                backend_cache = []
+                for entry in past_kv_cache.entries:
+                    if entry.past_keys.numel() > 0:
+                        cached_keys = entry.past_keys.transpose(1, 2)
+                        cached_values = entry.past_values.transpose(1, 2)
+                        backend_cache.append((cached_keys, cached_values))
+                kwargs["past_key_values"] = backend_cache
+                if hasattr(past_kv_cache, "previous_attention_mask"):
+                    batch_size = input_ids.shape[0]
+                    current_length = input_ids.shape[1]
+                    past_length = past_kv_cache.previous_attention_mask.shape[1]
+                    if attention_mask is not None:
+                        current_mask = attention_mask
+                    else:
+                        current_mask = torch.ones(
+                            batch_size, current_length, dtype=torch.long, device=input_ids.device
+                        )
+                    if past_length > 0:
+                        full_attention_mask = torch.cat(
+                            [past_kv_cache.previous_attention_mask, current_mask], dim=1
+                        )
+                    else:
+                        full_attention_mask = current_mask
+                    kwargs["attention_mask"] = full_attention_mask
+                kwargs["use_cache"] = True
+            elif "use_past_kv_cache" in kwargs and kwargs["use_past_kv_cache"]:
+                kwargs["use_cache"] = True
+            original_tl_cache = past_kv_cache
+            if return_type in ["loss", "both"]:
+                kwargs["labels"] = input_ids
+            output = self.original_model(input_ids, **kwargs)
+            if (
+                original_tl_cache is not None
+                and hasattr(output, "past_key_values")
+                and (output.past_key_values is not None)
+            ):
+                backend_cache = output.past_key_values
+                for i, (cached_keys, cached_values) in enumerate(backend_cache):
+                    if i < len(original_tl_cache.entries) and cached_keys is not None:
+                        tl_keys = cached_keys.transpose(1, 2)
+                        tl_values = cached_values.transpose(1, 2)
+                        original_tl_cache.entries[i].past_keys = tl_keys
+                        original_tl_cache.entries[i].past_values = tl_values
                 if attention_mask is not None:
-                    current_mask = attention_mask
-                else:
-                    current_mask = torch.ones(
+                    original_tl_cache.previous_attention_mask = kwargs.get(
+                        "attention_mask", attention_mask
+                    )
+                elif hasattr(original_tl_cache, "previous_attention_mask"):
+                    batch_size, current_length = input_ids.shape
+                    new_mask = torch.ones(
                         batch_size, current_length, dtype=torch.long, device=input_ids.device
                     )
-                if past_length > 0:
-                    full_attention_mask = torch.cat(
-                        [past_kv_cache.previous_attention_mask, current_mask], dim=1
-                    )
-                else:
-                    full_attention_mask = current_mask
-                kwargs["attention_mask"] = full_attention_mask
-            kwargs["use_cache"] = True
-        elif "use_past_kv_cache" in kwargs and kwargs["use_past_kv_cache"]:
-            kwargs["use_cache"] = True
-        original_tl_cache = past_kv_cache
-        if return_type in ["loss", "both"]:
-            kwargs["labels"] = input_ids
-        output = self.original_model(input_ids, **kwargs)
-        if (
-            original_tl_cache is not None
-            and hasattr(output, "past_key_values")
-            and (output.past_key_values is not None)
-        ):
-            backend_cache = output.past_key_values
-            for i, (cached_keys, cached_values) in enumerate(backend_cache):
-                if i < len(original_tl_cache.entries) and cached_keys is not None:
-                    tl_keys = cached_keys.transpose(1, 2)
-                    tl_values = cached_values.transpose(1, 2)
-                    original_tl_cache.entries[i].past_keys = tl_keys
-                    original_tl_cache.entries[i].past_values = tl_values
-            if attention_mask is not None:
-                original_tl_cache.previous_attention_mask = kwargs.get(
-                    "attention_mask", attention_mask
-                )
-            elif hasattr(original_tl_cache, "previous_attention_mask"):
-                batch_size, current_length = input_ids.shape
-                new_mask = torch.ones(
-                    batch_size, current_length, dtype=torch.long, device=input_ids.device
-                )
-                if original_tl_cache.previous_attention_mask is not None:
-                    original_tl_cache.previous_attention_mask = torch.cat(
-                        [original_tl_cache.previous_attention_mask, new_mask], dim=1
-                    )
-                else:
-                    original_tl_cache.previous_attention_mask = new_mask
-        if hasattr(output, "logits"):
-            logits = output.logits
-        elif isinstance(output, tuple) and len(output) > 0:
-            logits = output[0]
-        else:
-            logits = output
-        if return_type == "logits":
-            return logits
-        elif return_type == "loss":
-            if hasattr(output, "loss") and output.loss is not None:
-                return output.loss
+                    if original_tl_cache.previous_attention_mask is not None:
+                        original_tl_cache.previous_attention_mask = torch.cat(
+                            [original_tl_cache.previous_attention_mask, new_mask], dim=1
+                        )
+                    else:
+                        original_tl_cache.previous_attention_mask = new_mask
+            if hasattr(output, "logits"):
+                logits = output.logits
+            elif isinstance(output, tuple) and len(output) > 0:
+                logits = output[0]
             else:
-                return self.loss_fn(logits, input_ids, per_token=loss_per_token)
-        elif return_type == "both":
-            loss = None  # type: ignore[operator]
-            if hasattr(output, "loss") and output.loss is not None:
-                loss = output.loss
+                logits = output
+            if return_type == "logits":
+                return logits
+            elif return_type == "loss":
+                if hasattr(output, "loss") and output.loss is not None:
+                    return output.loss
+                else:
+                    return self.loss_fn(logits, input_ids, per_token=loss_per_token)
+            elif return_type == "both":
+                loss = None  # type: ignore[operator]
+                if hasattr(output, "loss") and output.loss is not None:
+                    loss = output.loss
+                else:
+                    loss = self.loss_fn(logits, input_ids, per_token=loss_per_token)
+                return (logits, loss)
+            elif return_type is None:
+                return None
             else:
-                loss = self.loss_fn(logits, input_ids, per_token=loss_per_token)
-            return (logits, loss)
-        elif return_type is None:
-            return None
-        else:
-            raise ValueError(f"Invalid return_type: {return_type}")
+                raise ValueError(f"Invalid return_type: {return_type}")
+        except StopAtLayerException as e:
+            # Execution stopped at the requested layer
+            return e.layer_output
+        finally:
+            # Clean up the stop_at_layer flag on all blocks
+            if stop_at_layer is not None and hasattr(self, "blocks"):
+                for block in self.blocks:
+                    block._stop_at_layer_idx = None
 
     def get_hook_point(self, hook_name: str) -> Optional[HookPoint]:
         """Get a hook point by name from the bridge's hook system."""

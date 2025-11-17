@@ -9,6 +9,7 @@ from typing import Any, Callable, Dict, Optional
 
 import torch
 
+from transformer_lens.model_bridge.exceptions import StopAtLayerException
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
@@ -63,11 +64,38 @@ class BlockBridge(GeneralizedComponent):
 
         Returns:
             The output from the original component
+
+        Raises:
+            StopAtLayerException: If stop_at_layer is set and this block should stop execution
         """
         if self.original_component is None:
             raise RuntimeError(
                 f"Original component not set for {self.name}. Call set_original_component() first."
             )
+
+        # Check if we should stop before executing this block
+        # The _stop_at_layer_idx attribute is set by the bridge's forward method
+        if hasattr(self, "_stop_at_layer_idx") and self._stop_at_layer_idx is not None:
+            # Extract layer index from name (e.g., "blocks.0" -> 0)
+            import re
+
+            match = re.search(r"blocks\.(\d+)", self.name)
+            if match:
+                layer_idx = int(match.group(1))
+                if layer_idx == self._stop_at_layer_idx:
+                    # Get the input tensor to return
+                    if len(args) > 0 and isinstance(args[0], torch.Tensor):
+                        input_tensor = args[0]
+                    elif "hidden_states" in kwargs and isinstance(
+                        kwargs["hidden_states"], torch.Tensor
+                    ):
+                        input_tensor = kwargs["hidden_states"]
+                    else:
+                        raise ValueError(f"Cannot find input tensor to stop at layer {layer_idx}")
+                    # Run hook_in on the input before stopping
+                    input_tensor = self.hook_in(input_tensor)
+                    raise StopAtLayerException(input_tensor)
+
         if len(args) > 0 and isinstance(args[0], torch.Tensor):
             hooked_input = self.hook_in(args[0])
             args = (hooked_input,) + args[1:]

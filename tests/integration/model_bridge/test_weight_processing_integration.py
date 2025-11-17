@@ -865,6 +865,51 @@ def test_tensor_conversion_compatibility():
         assert max_diff < 1e-6, f"Value mismatch for {param}: max_diff={max_diff:.2e}"
 
 
+def test_layer_norm_weights_removed():
+    """Test that layer norm weights are properly handled after processing."""
+    model_name = "gpt2"
+    device = "cpu"
+
+    # Load TransformerBridge without processing
+    bridge_unprocessed = TransformerBridge.boot_transformers(model_name, device=device)
+
+    # Get layer norm keys before processing
+    unprocessed_state = bridge_unprocessed.original_model.state_dict()
+    ln_keys_before = [k for k in unprocessed_state.keys() if ("ln_1" in k or "ln_f" in k)]
+    assert len(ln_keys_before) > 0, "Layer norm weights should exist in original state dict"
+
+    # Load TransformerBridge with processing
+    bridge_processed = TransformerBridge.boot_transformers(model_name, device=device)
+    bridge_processed.enable_compatibility_mode()  # This processes weights with fold_ln=True
+
+    # Get layer norm keys after processing
+    # The layer norm weights should still be present in the HF model's state dict
+    # (folding modifies other weights but keeps LN weights in place)
+    processed_state = bridge_processed.original_model.state_dict()
+    ln_keys_after = [k for k in processed_state.keys() if ("ln_1" in k or "ln_f" in k)]
+
+    # Layer norm weights should still exist (they are folded into other weights, not removed from state dict)
+    assert (
+        len(ln_keys_after) > 0
+    ), f"Layer norm weights should still exist after folding. Found: {len(ln_keys_after)} keys"
+
+    # Verify that the LN weights have been set to identity (weight=1, bias=0)
+    # This is the expected result of folding
+    for key in ln_keys_after:
+        if "weight" in key:
+            # After folding, LN weights should be all 1s
+            weight = processed_state[key]
+            assert torch.allclose(
+                weight, torch.ones_like(weight)
+            ), f"{key} should be all 1s after folding"
+        elif "bias" in key:
+            # After folding, LN biases should be all 0s
+            bias = processed_state[key]
+            assert torch.allclose(
+                bias, torch.zeros_like(bias)
+            ), f"{key} should be all 0s after folding"
+
+
 if __name__ == "__main__":
     success = test_integration_compatibility()
     if success:
