@@ -989,6 +989,40 @@ class TransformerBridge(nn.Module):
             "GemmaForCausalLM",
             "Gemma2ForCausalLM",
         ]
+        if fold_ln and (not is_gemma_model):
+            for layer_idx in range(self.cfg.n_layers):
+                for ln_name in ["ln1", "ln2"]:
+                    try:
+                        block = self.blocks[layer_idx]
+                        ln_component = getattr(block, ln_name, None)
+                        if ln_component is not None:
+                            if hasattr(ln_component, "_original_component"):
+                                norm_module = ln_component._original_component
+                            else:
+                                norm_module = ln_component
+                            if hasattr(norm_module, "weight") and norm_module.weight is not None:
+                                with torch.no_grad():
+                                    norm_module.weight.fill_(1.0)
+                            if hasattr(norm_module, "bias") and norm_module.bias is not None:
+                                with torch.no_grad():
+                                    norm_module.bias.zero_()
+                    except (AttributeError, IndexError):
+                        pass
+            try:
+                if hasattr(self, "ln_final"):
+                    ln_final = self.ln_final
+                    if hasattr(ln_final, "_original_component"):
+                        norm_module = ln_final._original_component
+                    else:
+                        norm_module = ln_final
+                    if hasattr(norm_module, "weight") and norm_module.weight is not None:
+                        with torch.no_grad():
+                            norm_module.weight.fill_(1.0)
+                    if hasattr(norm_module, "bias") and norm_module.bias is not None:
+                        with torch.no_grad():
+                            norm_module.bias.zero_()
+            except (AttributeError, IndexError):
+                 pass
 
     def _load_all_processed_weights(
         self, verbose: bool = False, processed_state_dict: Optional[Dict[str, torch.Tensor]] = None
