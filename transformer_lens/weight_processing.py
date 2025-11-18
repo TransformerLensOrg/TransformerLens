@@ -32,72 +32,92 @@ class ProcessWeights:
 
     @staticmethod
     def _get_param_key(tl_key: str, adapter=None) -> str:
-        """Convert legacy TL key format (W_Q, b_Q) to component-based format (q.weight, q.bias).
+        """Get the actual parameter key to use, translating via adapter if provided.
 
         Args:
-            tl_key: TransformerLens format parameter key (e.g., "blocks.0.attn.W_Q")
-            adapter: Architecture adapter for translating paths
+            tl_key: TransformerLens format parameter key
+            adapter: Optional architecture adapter for key translation
 
         Returns:
-            The component-based key (e.g., "blocks.0.attn.q.weight")
+            The key to use for accessing parameters in the state dict
         """
         if adapter is None:
             return tl_key
-        
-        return ProcessWeights._prepare_component_path(tl_key)
+        try:
+            return adapter.translate_transformer_lens_path(tl_key)
+        except Exception:
+            try:
+                component_path, param_attr = ProcessWeights._prepare_component_path(tl_key)
+                remote_path = adapter.translate_transformer_lens_path(component_path)
+                if param_attr:
+                    return f"{remote_path}.{param_attr}"
+                return remote_path
+            except Exception:
+                return tl_key
 
     @staticmethod
-    def _prepare_component_path(tl_key: str) -> str:
-        """Map a TransformerLens key to bridge-style component path.
+    def _prepare_component_path(tl_key: str) -> tuple[str, str]:
+        """Map a TransformerLens key to (component_path, parameter_attr).
 
-        Converts TransformerLens weight names (like "W_Q", "b_in") to bridge-style
-        paths (like "q.weight", "in.bias"). The full path is assembled before being
-        passed to the architecture adapter for translation.
-
-        Args:
-            tl_key: TransformerLens key like "blocks.0.attn.W_Q"
-
-        Returns:
-            Full path like "blocks.0.attn.q.weight"
+        The component path remains in TransformerLens format so it can be
+        translated by the architecture adapter. The parameter attribute
+        (weight/bias) is appended after translation.
         """
-        suffix_map: Dict[str, str] = {
-            "W_Q": "q.weight",
-            "_W_Q": "q.weight",
-            "b_Q": "q.bias",
-            "_b_Q": "q.bias",
-            "W_K": "k.weight",
-            "_W_K": "k.weight",
-            "b_K": "k.bias",
-            "_b_K": "k.bias",
-            "W_V": "v.weight",
-            "_W_V": "v.weight",
-            "b_V": "v.bias",
-            "_b_V": "v.bias",
-            "W_O": "o.weight",
-            "b_O": "o.bias",
-            "W_in": "in.weight",
-            "b_in": "in.bias",
-            "W_gate": "gate.weight",
-            "b_gate": "gate.bias",
-            "W_out": "out.weight",
-            "b_out": "out.bias",
-            "W_E": "weight",
-            "b_E": "bias",
-            "W_pos": "weight",
-            "b_pos": "bias",
-            "W_U": "weight",
-            "b_U": "bias",
-            "w": "weight",
-            "b": "bias",
-            "weight": "weight",
-            "bias": "bias",
+        suffix_map: Dict[str, tuple[str, str]] = {
+            "W_Q": ("q", "weight"),
+            "_W_Q": ("q", "weight"),
+            "b_Q": ("q", "bias"),
+            "_b_Q": ("q", "bias"),
+            "W_K": ("k", "weight"),
+            "_W_K": ("k", "weight"),
+            "b_K": ("k", "bias"),
+            "_b_K": ("k", "bias"),
+            "W_V": ("v", "weight"),
+            "_W_V": ("v", "weight"),
+            "b_V": ("v", "bias"),
+            "_b_V": ("v", "bias"),
+            "W_O": ("o", "weight"),
+            "b_O": ("o", "bias"),
+            "W_in": ("in", "weight"),
+            "b_in": ("in", "bias"),
+            "W_gate": ("gate", "weight"),
+            "b_gate": ("gate", "bias"),
+            "W_out": ("out", "weight"),
+            "b_out": ("out", "bias"),
+            "W_E": ("", "weight"),
+            "b_E": ("", "bias"),
+            "W_pos": ("", "weight"),
+            "b_pos": ("", "bias"),
+            "W_U": ("", "weight"),
+            "b_U": ("", "bias"),
+            "w": ("", "weight"),
+            "b": ("", "bias"),
+            "weight": ("", "weight"),
+            "bias": ("", "bias"),
         }
         if "." not in tl_key:
-            return tl_key
+            return (tl_key, "")
         base_path, suffix = tl_key.rsplit(".", 1)
         if suffix in suffix_map:
-            replacement = suffix_map[suffix]
-            return f"{base_path}.{replacement}"
+            component_suffix, param_attr = suffix_map[suffix]
+            if component_suffix:
+                base_path = f"{base_path}.{component_suffix}"
+            return (base_path, param_attr)
+        return (tl_key, suffix)
+
+    @staticmethod
+    def _resolve_tl_key(state_dict: Dict[str, torch.Tensor], tl_key: str) -> str:
+        """Resolve a TransformerLens key to whichever variant exists in the state dict.
+
+        Handles legacy aliases like W_Q/W_O by mapping them to the actual component
+        names (e.g., q.weight, o.weight) if the base key is missing.
+        """
+        if tl_key in state_dict:
+            return tl_key
+        component_path, param_attr = ProcessWeights._prepare_component_path(tl_key)
+        resolved_key = f"{component_path}.{param_attr}" if param_attr else component_path
+        if resolved_key in state_dict:
+            return resolved_key
         return tl_key
 
     @staticmethod
@@ -132,6 +152,8 @@ class ProcessWeights:
                 raise ValueError("Required weight W_Q not found")
         """
         actual_key = ProcessWeights._get_param_key(tl_key, adapter)
+        if adapter is None:
+            actual_key = ProcessWeights._resolve_tl_key(state_dict, actual_key)
         return state_dict.get(actual_key, default)
 
     @staticmethod
@@ -279,32 +301,32 @@ class ProcessWeights:
         ln1_b_key = ProcessWeights._get_param_key(f"blocks.{layer}.ln1.b", adapter)
         ln1_w_key = ProcessWeights._get_param_key(f"blocks.{layer}.ln1.w", adapter)
         
-        wq_tensor: Optional[torch.Tensor] = state_dict.get(W_Q_key)
-        wk_tensor: Optional[torch.Tensor] = state_dict.get(W_K_key)
-        wv_tensor: Optional[torch.Tensor] = state_dict.get(W_V_key)
-        bq_tensor: Optional[torch.Tensor] = state_dict.get(b_Q_key)
-        bk_tensor: Optional[torch.Tensor] = state_dict.get(b_K_key)
-        bv_tensor: Optional[torch.Tensor] = state_dict.get(b_V_key)
+        wq_tensor: Optional[torch.Tensor] = state_dict[W_Q_key]
+        wk_tensor: Optional[torch.Tensor] = state_dict[W_K_key]
+        wv_tensor: Optional[torch.Tensor] = state_dict[W_V_key]
+        bq_tensor: Optional[torch.Tensor] = state_dict[b_Q_key]
+        bk_tensor: Optional[torch.Tensor] = state_dict[b_K_key]
+        bv_tensor: Optional[torch.Tensor] = state_dict[b_V_key]
         ln1_b = state_dict.get(ln1_b_key, None)
         ln1_w = state_dict.get(ln1_w_key, None)
         if adapter:
             wq_tensor = ProcessWeights.convert_tensor_to_tl_format(
-                W_Q_key, adapter, state_dict, cfg, layer
+                f"blocks.{layer}.attn.W_Q", adapter, state_dict, cfg, layer
             )
             wk_tensor = ProcessWeights.convert_tensor_to_tl_format(
-                W_K_key, adapter, state_dict, cfg, layer
+                f"blocks.{layer}.attn.W_K", adapter, state_dict, cfg, layer
             )
             wv_tensor = ProcessWeights.convert_tensor_to_tl_format(
-                W_V_key, adapter, state_dict, cfg, layer
+                f"blocks.{layer}.attn.W_V", adapter, state_dict, cfg, layer
             )
             bq_tensor = ProcessWeights.convert_tensor_to_tl_format(
-                b_Q_key, adapter, state_dict, cfg, layer
+                f"blocks.{layer}.attn.b_Q", adapter, state_dict, cfg, layer
             )
             bk_tensor = ProcessWeights.convert_tensor_to_tl_format(
-                b_K_key, adapter, state_dict, cfg, layer
+                f"blocks.{layer}.attn.b_K", adapter, state_dict, cfg, layer
             )
             bv_tensor = ProcessWeights.convert_tensor_to_tl_format(
-                b_V_key, adapter, state_dict, cfg, layer
+                f"blocks.{layer}.attn.b_V", adapter, state_dict, cfg, layer
             )
 
         return {
@@ -840,7 +862,7 @@ class ProcessWeights:
                             f"blocks.{l}.mlp.experts.{e}.W_out.weight",
                         ]
                         for pattern in expert_W_out_patterns:
-                            resolved = ProcessWeights._safe_get_tensor(state_dict, pattern, adapter=adapter)
+                            resolved = ProcessWeights._resolve_tl_key(state_dict, pattern)
                             if resolved in state_dict:
                                 expert_W_out_key = resolved
                                 break
@@ -860,7 +882,7 @@ class ProcessWeights:
                             f"blocks.{l}.mlp.experts.{e}.b_out.bias",
                         ]
                         for pattern in expert_b_out_patterns:
-                            resolved = ProcessWeights._safe_get_tensor(state_dict, pattern, adapter=adapter)
+                            resolved = ProcessWeights._resolve_tl_key(state_dict, pattern)
                             if resolved in state_dict:
                                 expert_b_out_key = resolved
                                 break
@@ -947,9 +969,18 @@ class ProcessWeights:
         }
         layer = 0
         for layer in range(cfg.n_layers):
-            b_V_key = ProcessWeights._get_param_key(f"blocks.{layer}.attn._b_V", adapter)
-            W_O_key = ProcessWeights._get_param_key(f"blocks.{layer}.attn.W_O", adapter)
-            b_O_key = ProcessWeights._get_param_key(f"blocks.{layer}.attn.b_O", adapter)
+            split_v_bias_key = f"blocks.{layer}.attn.v.bias"
+            if split_v_bias_key in state_dict:
+                b_V_key = split_v_bias_key
+                W_O_key = ProcessWeights._get_param_key(f"blocks.{layer}.attn.W_O", adapter)
+                b_O_key = ProcessWeights._get_param_key(f"blocks.{layer}.attn.b_O", adapter)
+            else:
+                if getattr(cfg, "n_key_value_heads", None) is None:
+                    b_V_key = ProcessWeights._get_param_key(f"blocks.{layer}.attn.b_V", adapter)
+                else:
+                    b_V_key = ProcessWeights._get_param_key(f"blocks.{layer}.attn._b_V", adapter)
+                W_O_key = ProcessWeights._get_param_key(f"blocks.{layer}.attn.W_O", adapter)
+                b_O_key = ProcessWeights._get_param_key(f"blocks.{layer}.attn.b_O", adapter)
             if b_V_key in state_dict:
                 b_V = state_dict[b_V_key]
                 if b_V.numel() == 0:
@@ -1244,6 +1275,41 @@ class ProcessWeights:
         if adapter is None:
             raise ValueError("Adapter must be provided for tensor conversion")
 
+        # First check if there's a conversion rule that specifies the HF key
+        hf_key = None
+        if hasattr(adapter, "conversion_rules") and adapter.conversion_rules is not None:
+            placeholder_param_name = param_name
+            if "blocks." in param_name and ".attn." in param_name:
+                import re
+
+                placeholder_param_name = re.sub("blocks\\.\\d+\\.", "blocks.{i}.", param_name)
+            elif "blocks." in param_name and ".mlp." in param_name:
+                import re
+
+                placeholder_param_name = re.sub("blocks\\.\\d+\\.", "blocks.{i}.", param_name)
+            elif "blocks." in param_name and ".ln" in param_name:
+                import re
+
+                placeholder_param_name = re.sub("blocks\\.\\d+\\.", "blocks.{i}.", param_name)
+
+            if placeholder_param_name in adapter.conversion_rules.fields:
+                field_info = adapter.conversion_rules.fields[placeholder_param_name]
+                if isinstance(field_info, tuple):
+                    # Extract the HF key from the conversion rule
+                    hf_key_template = field_info[0]
+                    # Replace placeholders with actual layer index
+                    if layer_idx is not None and "{i}" in hf_key_template:
+                        hf_key = hf_key_template.replace("{i}", str(layer_idx))
+                    else:
+                        hf_key = hf_key_template
+
+        # Fall back to translate_transformer_lens_path if no conversion rule found
+        if hf_key is None:
+            hf_key = adapter.translate_transformer_lens_path(param_name)
+
+        if hf_key not in model_state_dict:
+            return None
+        tensor = model_state_dict[hf_key]
 
         if hasattr(adapter, "conversion_rules") and adapter.conversion_rules is not None:
             placeholder_param_name = param_name
@@ -1258,32 +1324,17 @@ class ProcessWeights:
             elif "blocks." in param_name and ".ln" in param_name:
                 import re
 
-                print("param_name", param_name)
                 placeholder_param_name = re.sub("blocks\\.\\d+\\.", "blocks.{i}.", param_name)
             if placeholder_param_name in adapter.conversion_rules.fields:
-                source_tensor = adapter.conversion_rules.get_conversion_remote_key(placeholder_param_name)
                 conversion_action = adapter.conversion_rules.get_conversion_action(
                     placeholder_param_name
                 )
-
-                # Extract layer index from param_name and replace {i} in source_tensor
-                if "{i}" in source_tensor and "blocks." in param_name:
-                    import re
-                    match = re.search(r"blocks\.(\d+)\.", param_name)
-                    if match:
-                        layer_idx = match.group(1)
-                        source_tensor = source_tensor.replace("{i}", layer_idx)
-
-                print("source_tensor", source_tensor)
-                tensor = model_state_dict.get(source_tensor)
-                if tensor is None:
-                    return None
                 converted_tensor = conversion_action.convert(tensor, model_state_dict)
                 return converted_tensor
             else:
-                return None
+                return tensor
         else:
-            return None
+            return tensor
 
     @staticmethod
     def convert_tensor_to_hf_format(
