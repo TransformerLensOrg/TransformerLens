@@ -1496,6 +1496,183 @@ class ProcessWeights:
             return tensor
 
     @staticmethod
+    def convert_hf_keys_to_modern_tl(
+        state_dict: Dict[str, torch.Tensor],
+        adapter
+    ) -> Dict[str, torch.Tensor]:
+        """Convert HuggingFace keys to modern TransformerLens format.
+
+        After weight processing, the state_dict contains HuggingFace keys like
+        'transformer.h.11.mlp.c_proj.weight'. This converts them to modern TL format
+        like 'blocks.11.mlp.out.weight' for distribution to components.
+
+        This is a two-step process:
+        1. HF -> legacy TL (using conversion rules: transformer.h.X.attn.c_proj.weight -> blocks.X.attn.W_O)
+        2. Legacy TL -> modern TL (W_O -> o.weight)
+
+        Args:
+            state_dict: Dictionary with HF keys
+            adapter: Architecture adapter with conversion rules
+
+        Returns:
+            New dictionary with modern TL keys
+        """
+        if not adapter or not hasattr(adapter, 'conversion_rules'):
+            return state_dict
+
+        # Step 1: Build reverse mapping from HF keys to legacy TL keys using conversion rules
+        hf_to_legacy_tl = {}
+        for tl_key_template, (hf_key_template, _) in adapter.conversion_rules.fields.items():
+            if '{i}' in hf_key_template:
+                for layer_idx in range(100):  # Assume max 100 layers
+                    hf_key = hf_key_template.replace('{i}', str(layer_idx))
+                    legacy_tl_key = tl_key_template.replace('{i}', str(layer_idx))
+                    hf_to_legacy_tl[hf_key] = legacy_tl_key
+            else:
+                hf_to_legacy_tl[hf_key_template] = tl_key_template
+
+        # Step 2: Legacy TL to modern TL suffix mapping
+        legacy_suffix_to_modern = {
+            "W_Q": ("q", "weight"),
+            "b_Q": ("q", "bias"),
+            "W_K": ("k", "weight"),
+            "b_K": ("k", "bias"),
+            "W_V": ("v", "weight"),
+            "b_V": ("v", "bias"),
+            "W_O": ("o", "weight"),
+            "b_O": ("o", "bias"),
+            "W_in": ("in", "weight"),
+            "b_in": ("in", "bias"),
+            "W_gate": ("gate", "weight"),
+            "b_gate": ("gate", "bias"),
+            "W_out": ("out", "weight"),
+            "b_out": ("out", "bias"),
+            "W_E": ("", "weight"),
+            "b_E": ("", "bias"),
+            "W_pos": ("", "weight"),
+            "b_pos": ("", "bias"),
+            "W_U": ("", "weight"),
+            "b_U": ("", "bias"),
+            "w": ("", "weight"),
+            "b": ("", "bias"),
+        }
+
+        # First pass: identify which layers have split keys (q, k, v, o)
+        # If split keys exist, we should skip the joint keys (c_attn, c_proj) because
+        # split keys are the PROCESSED weights that should be used
+        layers_with_split_attn = set()
+        layers_with_split_mlp = set()
+
+        for hf_key in state_dict.keys():
+            # Check for split attention keys (q, k, v, o) - these are processed weights
+            if any(pattern in hf_key for pattern in ['.attn.q.', '.attn.k.', '.attn.v.', '.attn.o.']):
+                if '.h.' in hf_key:
+                    parts = hf_key.split('.h.')
+                    if len(parts) > 1:
+                        layer_num = parts[1].split('.')[0]
+                        layers_with_split_attn.add(layer_num)
+            # Check for split MLP keys
+            elif any(pattern in hf_key for pattern in ['.mlp.in.', '.mlp.out.', '.mlp.gate.']):
+                if '.h.' in hf_key:
+                    parts = hf_key.split('.h.')
+                    if len(parts) > 1:
+                        layer_num = parts[1].split('.')[0]
+                        layers_with_split_mlp.add(layer_num)
+
+        converted_dict = {}
+        for hf_key, tensor in state_dict.items():
+            # Check if this key should be skipped
+            should_skip = False
+            if '.h.' in hf_key:
+                parts = hf_key.split('.h.')
+                if len(parts) > 1:
+                    layer_num = parts[1].split('.')[0]
+                    # For ATTENTION c_attn: Skip joint c_attn if split q/k/v exist
+                    # Split q/k/v keys are the PROCESSED weights we want
+                    if '.attn.c_attn.' in hf_key:
+                        if layer_num in layers_with_split_attn:
+                            should_skip = True
+                    # For ATTENTION o projection: Skip SPLIT o if joint c_proj exists
+                    # Joint c_proj is the PROCESSED/centered weight we want
+                    elif '.attn.o.' in hf_key:
+                        if layer_num in layers_with_split_attn:
+                            should_skip = True
+                    # For MLP: Skip SPLIT keys (in/out) if joint keys exist
+                    # Joint MLP keys (c_fc/c_proj) are the PROCESSED/centered weights we want
+                    elif any(pattern in hf_key for pattern in ['.mlp.in.', '.mlp.out.']):
+                        if layer_num in layers_with_split_mlp:
+                            should_skip = True
+
+            if should_skip:
+                continue  # Skip this key entirely
+
+            # Check if this is a split key (q, k, v, in, out, gate)
+            # These are processed weights that need legacy->modern conversion
+            # NOTE: 'o' is NOT a split key - it's the unprocessed weight we skip
+            is_split_key = any(pattern in hf_key for pattern in [
+                '.attn.q.', '.attn.k.', '.attn.v.',
+                '.mlp.in.', '.mlp.out.', '.mlp.gate.'
+            ])
+
+            if is_split_key:
+                # For split keys, just convert the prefix: transformer.h.0.attn.q.weight -> blocks.0.attn.q.weight
+                # Keep the q/k/v structure as-is (don't convert to W_Q format)
+                modern_key = hf_key
+                if modern_key.startswith('transformer.h.'):
+                    modern_key = modern_key.replace('transformer.h.', 'blocks.', 1)
+            # Check if this is an attention c_proj key that needs conversion to o
+            elif '.attn.c_proj.' in hf_key:
+                # Convert c_proj -> o (c_proj is the processed/centered weight)
+                modern_key = hf_key
+                if modern_key.startswith('transformer.h.'):
+                    modern_key = modern_key.replace('transformer.h.', 'blocks.', 1)
+                modern_key = modern_key.replace('.attn.c_proj.', '.attn.o.')
+            # Check if this is a joint MLP key (c_fc, c_proj) that needs conversion to in/out
+            elif any(pattern in hf_key for pattern in ['.mlp.c_fc.', '.mlp.c_proj.']):
+                # Convert c_fc -> in, c_proj -> out (these are the processed/centered weights)
+                modern_key = hf_key
+                if modern_key.startswith('transformer.h.'):
+                    modern_key = modern_key.replace('transformer.h.', 'blocks.', 1)
+                # Convert c_fc to in, c_proj to out
+                if '.mlp.c_fc.' in modern_key:
+                    modern_key = modern_key.replace('.mlp.c_fc.', '.mlp.in.')
+                elif '.mlp.c_proj.' in modern_key:
+                    modern_key = modern_key.replace('.mlp.c_proj.', '.mlp.out.')
+            else:
+                # For non-joint keys, use conversion rules
+                if hf_key in hf_to_legacy_tl:
+                    legacy_tl_key = hf_to_legacy_tl[hf_key]
+                else:
+                    # Apply standard transformations for keys not in conversion rules
+                    legacy_tl_key = hf_key
+                    if legacy_tl_key.startswith('transformer.h.'):
+                        legacy_tl_key = legacy_tl_key.replace('transformer.h.', 'blocks.', 1)
+                    if legacy_tl_key.startswith('transformer.wte'):
+                        legacy_tl_key = legacy_tl_key.replace('transformer.wte', 'embed', 1)
+                    if legacy_tl_key.startswith('transformer.wpe'):
+                        legacy_tl_key = legacy_tl_key.replace('transformer.wpe', 'pos_embed', 1)
+                    if legacy_tl_key.startswith('lm_head'):
+                        legacy_tl_key = legacy_tl_key.replace('lm_head', 'unembed', 1)
+
+                # Now convert legacy TL to modern TL
+                if "." in legacy_tl_key:
+                    base_path, suffix = legacy_tl_key.rsplit(".", 1)
+                    if suffix in legacy_suffix_to_modern:
+                        component_suffix, param_attr = legacy_suffix_to_modern[suffix]
+                        if component_suffix:
+                            modern_key = f"{base_path}.{component_suffix}.{param_attr}"
+                        else:
+                            modern_key = f"{base_path}.{param_attr}"
+                    else:
+                        modern_key = legacy_tl_key
+                else:
+                    modern_key = legacy_tl_key
+
+            converted_dict[modern_key] = tensor
+
+        return converted_dict
+
+    @staticmethod
     def distribute_weights_to_components(
         state_dict: Dict[str, torch.Tensor],
         component_mapping: Dict[str, Any],
@@ -1509,7 +1686,8 @@ class ProcessWeights:
         of items and distributes weights to each indexed component.
 
         Args:
-            state_dict: Dictionary of processed weights in TransformerLens format
+            state_dict: Dictionary of processed weights in MODERN TransformerLens format
+                (e.g., blocks.0.attn.q.weight, not transformer.h.0.attn.q.weight)
             component_mapping: Dictionary (real_components) mapping TL keys to tuples of
                 (remote_path, component_instance), where component_instance can be either
                 a single component or a list of components
@@ -1523,11 +1701,11 @@ class ProcessWeights:
                 "unembed": ("lm_head", <UnembeddingBridge instance>)
             }
 
-            This function will:
-            1. Extract weights starting with "transformer.wte" and pass to embed component
-            2. For blocks, extract all "transformer.h.*" weights, determine the number of blocks,
+            With modern TL keys in state_dict like "embed.weight", "blocks.0.attn.q.weight":
+            1. Extract weights starting with "embed" and pass to embed component
+            2. For blocks, extract all "blocks.*" weights, determine the number of blocks,
                then for each block index, extract weights for that specific block
-            3. Extract "lm_head" weights and pass to unembed component
+            3. Extract "unembed" weights and pass to unembed component
         """
         from transformer_lens.utilities import filter_dict_by_prefix
 
@@ -1548,16 +1726,21 @@ class ProcessWeights:
                 )
             remote_key, component = component_tuple
             is_list = isinstance(component, list)
+            
+            # Use the component_name (TL format) as prefix instead of remote_key (HF format)
+            # since state_dict now has modern TL keys
+            tl_prefix = component_name
 
             if verbose:
                 print(f"\nProcessing component: {component_name}")
-                print(f"  Remote key: {remote_key}")
+                print(f"  Remote key (HF): {remote_key}")
+                print(f"  TL prefix: {tl_prefix}")
                 print(f"  Is list: {is_list}")
 
             if is_list:
                 # This is a list component like "blocks"
                 # Extract all weights that start with this prefix
-                all_list_weights = filter_dict_by_prefix(state_dict, remote_key)
+                all_list_weights = filter_dict_by_prefix(state_dict, tl_prefix)
 
                 if verbose:
                     print(f"  Found {len(all_list_weights)} weights for list component")
@@ -1566,7 +1749,7 @@ class ProcessWeights:
                 # Component is a list of actual instances
                 for i, instance in enumerate(component):
                     # Extract weights for this specific index
-                    # This will get keys like "0.attn.W_Q" and strip the "0." to get "attn.W_Q"
+                    # This will get keys like "0.attn.q.weight" and strip the "0." to get "attn.q.weight"
                     indexed_weights = filter_dict_by_prefix(all_list_weights, str(i))
 
                     if verbose:
@@ -1574,14 +1757,27 @@ class ProcessWeights:
                         for key in indexed_weights.keys():
                             print(f"      - {key}")
 
+                    # Skip if no weights found for this component (e.g., Q/K/V Linear sub-components
+                    # that get their weights from parent JointQKVAttentionBridge)
+                    if len(indexed_weights) == 0:
+                        if verbose:
+                            print(f"    Skipping instance {i} - no weights found")
+                        continue
+
                     instance.set_processed_weights(indexed_weights, verbose=verbose)
             else:
                 # This is a single component (not a list)
-                component_weights = filter_dict_by_prefix(state_dict, remote_key)
+                component_weights = filter_dict_by_prefix(state_dict, tl_prefix)
 
                 if verbose:
                     print(f"  Found {len(component_weights)} weights for single component")
                     for key in component_weights.keys():
                         print(f"    - {key}")
+
+                # Skip if no weights found for this component
+                if len(component_weights) == 0:
+                    if verbose:
+                        print(f"  Skipping component - no weights found")
+                    continue
 
                 component.set_processed_weights(component_weights, verbose=verbose)

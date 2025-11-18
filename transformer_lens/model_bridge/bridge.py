@@ -884,6 +884,7 @@ class TransformerBridge(nn.Module):
             while "._original_component" in clean_key:
                 clean_key = clean_key.replace("._original_component", "")
             state_dict[clean_key] = value
+            
         adapter = self.adapter
         if adapter and hasattr(adapter, "preprocess_weights"):
             state_dict = adapter.preprocess_weights(state_dict)
@@ -913,7 +914,13 @@ class TransformerBridge(nn.Module):
             refactor_factored_attn_matrices=refactor_factored_attn_matrices,
             adapter=adapter,
         )
+        # Convert HF keys to modern TL format (transformer.h.11.mlp.c_proj.weight -> blocks.11.mlp.out.weight)
+        # This ensures components receive weights with modern key names
+        if verbose:
+            print("  Converting HF keys to modern TL format...")
+        state_dict = ProcessWeights.convert_hf_keys_to_modern_tl(state_dict, adapter)
 
+        print("state_dict", state_dict.keys())
         if verbose:
             print("  Distributing weights to generalized components...")
         ProcessWeights.distribute_weights_to_components(
@@ -921,9 +928,6 @@ class TransformerBridge(nn.Module):
             component_mapping=self.real_components,
         )
 
-        self._load_all_processed_weights(verbose=verbose, processed_state_dict=state_dict)
-        if verbose:
-            print("  Loading processed weights into Bridge components...")
         loaded_count = 0
         missing_count = 0
 
@@ -978,54 +982,6 @@ class TransformerBridge(nn.Module):
                 if verbose:
                     print(f"    Warning: Could not load {tb_key}: {e}")
                 missing_count += 1
-        if verbose:
-            print(f"    Loaded {loaded_count} weights into Bridge components")
-            print(f"    Skipped {missing_count} keys")
-            print(f"    Processed state_dict has {len(state_dict)} keys")
-        is_gemma_model = getattr(self.cfg, "architecture", None) in [
-            "GemmaForCausalLM",
-            "Gemma2ForCausalLM",
-        ] or getattr(self.cfg, "original_architecture", None) in [
-            "GemmaForCausalLM",
-            "Gemma2ForCausalLM",
-        ]
-        if fold_ln and (not is_gemma_model):
-            for layer_idx in range(self.cfg.n_layers):
-                for ln_name in ["ln1", "ln2"]:
-                    try:
-                        block = self.blocks[layer_idx]
-                        ln_component = getattr(block, ln_name, None)
-                        if ln_component is not None:
-                            if hasattr(ln_component, "_original_component"):
-                                norm_module = ln_component._original_component
-                            else:
-                                norm_module = ln_component
-                            if hasattr(norm_module, "weight") and norm_module.weight is not None:
-                                with torch.no_grad():
-                                    norm_module.weight.fill_(1.0)
-                            if hasattr(norm_module, "bias") and norm_module.bias is not None:
-                                with torch.no_grad():
-                                    norm_module.bias.zero_()
-                    except (AttributeError, IndexError):
-                        pass
-            try:
-                if hasattr(self, "ln_final"):
-                    ln_final = self.ln_final
-                    if hasattr(ln_final, "_original_component"):
-                        norm_module = ln_final._original_component
-                    else:
-                        norm_module = ln_final
-                    if hasattr(norm_module, "weight") and norm_module.weight is not None:
-                        with torch.no_grad():
-                            norm_module.weight.fill_(1.0)
-                    if hasattr(norm_module, "bias") and norm_module.bias is not None:
-                        with torch.no_grad():
-                            norm_module.bias.zero_()
-            except (AttributeError, IndexError):
-                pass
-
-        # Mark that weights have been processed
-        self._weights_processed = True
 
     def _load_all_processed_weights(
         self, verbose: bool = False, processed_state_dict: Optional[Dict[str, torch.Tensor]] = None
