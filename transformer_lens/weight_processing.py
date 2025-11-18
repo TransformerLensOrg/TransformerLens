@@ -277,27 +277,6 @@ class ProcessWeights:
         return (centered_wq, centered_wk, centered_wv)
 
     @staticmethod
-    def _detect_state_dict_format(
-        state_dict: Dict[str, torch.Tensor], layer: int, adapter
-    ) -> tuple[bool, bool]:
-        """Detect whether state_dict uses TransformerLens or HuggingFace format.
-
-        Args:
-            state_dict: The state dictionary to check
-            layer: Layer index to check
-            adapter: Optional adapter for key translation
-
-        Returns:
-            Tuple of (uses_tl_format, uses_hf_format)
-        """
-        tl_key_sample = "embed.W_E"
-        tl_key_alt = "embed.weight"
-        hf_key_sample = ProcessWeights._get_param_key(tl_key_sample, adapter) if adapter else None
-        uses_tl_format = tl_key_sample in state_dict or tl_key_alt in state_dict
-        uses_hf_format = bool(adapter and hf_key_sample and (hf_key_sample in state_dict))
-        return (uses_tl_format, uses_hf_format)
-
-    @staticmethod
     def extract_attention_tensors_for_folding(
         state_dict: Dict[str, torch.Tensor], cfg, layer: int, adapter
     ) -> Dict[str, Union[torch.Tensor, None, Dict[str, str]]]:
@@ -321,16 +300,16 @@ class ProcessWeights:
         W_V_key = ProcessWeights._get_param_key(f"blocks.{layer}.attn.W_V", adapter)
         ln1_b_key = ProcessWeights._get_param_key(f"blocks.{layer}.ln1.b", adapter)
         ln1_w_key = ProcessWeights._get_param_key(f"blocks.{layer}.ln1.w", adapter)
-        uses_tl_format, uses_hf_format = ProcessWeights._detect_state_dict_format(
-            state_dict, layer, adapter
-        )
+
         wq_tensor: Optional[torch.Tensor] = state_dict[W_Q_key]
         wk_tensor: Optional[torch.Tensor] = state_dict[W_K_key]
         wv_tensor: Optional[torch.Tensor] = state_dict[W_V_key]
-        bq_tensor: Optional[torch.Tensor] = None
-        bk_tensor: Optional[torch.Tensor] = None
-        bv_tensor: Optional[torch.Tensor] = None
-        if adapter and uses_hf_format and (not uses_tl_format):
+        bq_tensor: Optional[torch.Tensor] = state_dict[b_Q_key]
+        bk_tensor: Optional[torch.Tensor] = state_dict[b_K_key]
+        bv_tensor: Optional[torch.Tensor] = state_dict[b_V_key]
+        ln1_b = state_dict.get(ln1_b_key, None)
+        ln1_w = state_dict.get(ln1_w_key, None)
+        if adapter:
             wq_tensor = ProcessWeights.convert_tensor_to_tl_format(
                 f"blocks.{layer}.attn.W_Q", adapter, state_dict, cfg, layer
             )
@@ -349,35 +328,6 @@ class ProcessWeights:
             bv_tensor = ProcessWeights.convert_tensor_to_tl_format(
                 f"blocks.{layer}.attn.b_V", adapter, state_dict, cfg, layer
             )
-        else:
-            wq_tensor = ProcessWeights._safe_get_tensor(
-                state_dict, f"blocks.{layer}.attn.W_Q", adapter=None
-            )
-            wk_tensor = ProcessWeights._safe_get_tensor(
-                state_dict, f"blocks.{layer}.attn.W_K", adapter=None
-            )
-            wv_tensor = ProcessWeights._safe_get_tensor(
-                state_dict, f"blocks.{layer}.attn.W_V", adapter=None
-            )
-            bq_tensor = ProcessWeights._safe_get_tensor(
-                state_dict, f"blocks.{layer}.attn.b_Q", adapter=None
-            )
-            bk_tensor = ProcessWeights._safe_get_tensor(
-                state_dict, f"blocks.{layer}.attn.b_K", adapter=None
-            )
-            bv_tensor = ProcessWeights._safe_get_tensor(
-                state_dict, f"blocks.{layer}.attn.b_V", adapter=None
-            )
-        if uses_tl_format:
-            ln1_b = ProcessWeights._safe_get_tensor(
-                state_dict, f"blocks.{layer}.ln1.b", adapter=None
-            )
-            ln1_w = ProcessWeights._safe_get_tensor(
-                state_dict, f"blocks.{layer}.ln1.w", adapter=None
-            )
-        else:
-            ln1_b = state_dict.get(ln1_b_key, None)
-            ln1_w = state_dict.get(ln1_w_key, None)
         return {
             "wq": wq_tensor,
             "wk": wk_tensor,
@@ -528,30 +478,15 @@ class ProcessWeights:
         """
         if getattr(cfg, "attn_only", False):
             return
-        uses_tl_format, uses_hf_format = ProcessWeights._detect_state_dict_format(
-            state_dict, layer, adapter
+        mlp_b_in_key = ProcessWeights._get_param_key(f"blocks.{layer}.mlp.b_in", adapter)
+        mlp_W_in_key = ProcessWeights._get_param_key(f"blocks.{layer}.mlp.W_in", adapter)
+        mlp_W_gate_key = (
+            ProcessWeights._get_param_key(f"blocks.{layer}.mlp.W_gate", adapter)
+            if getattr(cfg, "gated_mlp", False)
+            else None
         )
-        try:
-            if uses_tl_format:
-                mlp_b_in_key = f"blocks.{layer}.mlp.b_in"
-                mlp_W_in_key = f"blocks.{layer}.mlp.W_in"
-                mlp_W_gate_key = (
-                    f"blocks.{layer}.mlp.W_gate" if getattr(cfg, "gated_mlp", False) else None
-                )
-                ln2_b_key = f"blocks.{layer}.ln2.b"
-                ln2_w_key = f"blocks.{layer}.ln2.w"
-            else:
-                mlp_b_in_key = ProcessWeights._get_param_key(f"blocks.{layer}.mlp.b_in", adapter)
-                mlp_W_in_key = ProcessWeights._get_param_key(f"blocks.{layer}.mlp.W_in", adapter)
-                mlp_W_gate_key = (
-                    ProcessWeights._get_param_key(f"blocks.{layer}.mlp.W_gate", adapter)
-                    if getattr(cfg, "gated_mlp", False)
-                    else None
-                )
-                ln2_b_key = ProcessWeights._get_param_key(f"blocks.{layer}.ln2.b", adapter)
-                ln2_w_key = ProcessWeights._get_param_key(f"blocks.{layer}.ln2.w", adapter)
-        except ValueError:
-            return
+        ln2_b_key = ProcessWeights._get_param_key(f"blocks.{layer}.ln2.b", adapter)
+        ln2_w_key = ProcessWeights._get_param_key(f"blocks.{layer}.ln2.w", adapter)
         if ln2_b_key in state_dict and ln2_w_key in state_dict:
             mlp_W_in = state_dict[mlp_W_in_key]
             ln2_w = state_dict[ln2_w_key]
@@ -735,7 +670,6 @@ class ProcessWeights:
             center_weights: Whether to center weights after folding
             adapter: Optional architecture adapter for parameter key translation
         """
-        uses_tl_format, uses_hf_format = ProcessWeights._detect_unembed_format(state_dict, adapter)
         unembed_b_U_key = ProcessWeights._get_param_key("unembed.b_U", adapter)
         unembed_W_U_key = ProcessWeights._get_param_key("unembed.W_U", adapter)
         ln_final_b_key = ProcessWeights._get_param_key("ln_final.b", adapter)
@@ -768,14 +702,9 @@ class ProcessWeights:
         if center_weights:
             unembed_weight = state_dict[unembed_W_U_key]
             if len(unembed_weight.shape) == 2:
-                if uses_hf_format and (not uses_tl_format):
-                    state_dict[unembed_W_U_key] -= einops.reduce(
-                        unembed_weight, "vocab_size d_model -> vocab_size 1", "mean"
-                    )
-                else:
-                    state_dict[unembed_W_U_key] -= einops.reduce(
-                        unembed_weight, "d_model d_vocab -> 1 d_vocab", "mean"
-                    )
+                state_dict[unembed_W_U_key] -= einops.reduce(
+                    unembed_weight, "d_model d_vocab -> 1 d_vocab", "mean"
+                )
             else:
                 raise ValueError(f"Unexpected unembedding weight shape: {unembed_weight.shape}")
 
@@ -1059,9 +988,6 @@ class ProcessWeights:
             k: v.clone() if isinstance(v, torch.Tensor) else v for k, v in state_dict.items()
         }
         layer = 0
-        uses_tl_format, uses_hf_format = ProcessWeights._detect_state_dict_format(
-            state_dict, layer, adapter
-        )
         for layer in range(cfg.n_layers):
             split_v_bias_key = f"blocks.{layer}.attn.v.bias"
             if split_v_bias_key in state_dict:
@@ -1210,19 +1136,10 @@ class ProcessWeights:
                 "LN",
                 "LNPre",
             ]:
-                uses_tl_format, uses_hf_format = ProcessWeights._detect_state_dict_format(
-                    state_dict, 0, adapter
-                )
                 for layer_idx in range(cfg.n_layers):
-                    if uses_hf_format and (not uses_tl_format) and adapter:
-                        try:
-                            b_O_key = ProcessWeights._get_param_key(
-                                f"blocks.{layer_idx}.attn.b_O", adapter
-                            )
-                        except (ValueError, KeyError):
-                            continue
-                    else:
-                        b_O_key = f"blocks.{layer_idx}.attn.b_O"
+                    b_O_key = ProcessWeights._get_param_key(
+                        f"blocks.{layer_idx}.attn.b_O", adapter
+                    )
                     if b_O_key in state_dict:
                         b_O = state_dict[b_O_key]
                         state_dict[b_O_key] = b_O - b_O.mean()
@@ -1287,12 +1204,6 @@ class ProcessWeights:
         assert (
             getattr(cfg, "positional_embedding_type", "standard") != "rotary"
         ), "You can't refactor the QK circuit when using rotary embeddings (as the QK matrix depends on the position of the query and key)"
-
-        # Determine the actual format of the state_dict to avoid key mismatch
-        layer = 0  # Use layer 0 for format detection
-        uses_tl_format, uses_hf_format = ProcessWeights._detect_state_dict_format(
-            state_dict, layer, adapter
-        )
 
         for l in range(cfg.n_layers):
             W_Q_key = ProcessWeights._get_param_key(f"blocks.{l}.attn.W_Q", adapter)
