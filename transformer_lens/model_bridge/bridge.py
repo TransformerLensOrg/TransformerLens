@@ -2362,15 +2362,142 @@ class TransformerBridge(nn.Module):
         """
         self.cfg.use_split_qkv_input = use_split_qkv_input
 
+    def _is_valid_bridge_path(self, hf_path: str) -> bool:
+        """Check if a HuggingFace path corresponds to a valid bridge component.
+
+        This validates that the path follows the bridge component structure and doesn't
+        contain nested HuggingFace components that should have been wrapped.
+
+        Args:
+            hf_path: HuggingFace path after removing _original_component
+
+        Returns:
+            True if the path is valid, False if it contains nested HF components
+        """
+        # Split the path into parts
+        parts = hf_path.split(".")
+
+        # Get the component mapping for validation
+        component_mapping = self.adapter.component_mapping
+        if not component_mapping:
+            return True  # If no mapping, accept all keys
+
+        # Walk through the path and check if each level is a registered bridge component
+        # For example, transformer.h.0.mlp.in.weight should be valid
+        # but transformer.h.0.mlp.c_fc.weight should be invalid (c_fc is nested HF component)
+
+        # Start from the root
+        current_component = None
+        idx = 0
+
+        # Find which top-level component this belongs to
+        for tl_name, component in component_mapping.items():
+            if component.name and hf_path.startswith(component.name + "."):
+                current_component = component
+                # Skip past the HF prefix
+                remaining_path = hf_path[len(component.name) + 1:]
+                parts = remaining_path.split(".")
+                idx = 0
+                break
+
+        if current_component is None:
+            return True  # Path doesn't match any component, let it through
+
+        # Special handling for blocks
+        if hasattr(current_component, 'is_list_item') and current_component.is_list_item:
+            # Skip the layer index
+            if idx < len(parts) and parts[idx].isdigit():
+                idx += 1
+
+        # Now validate the rest of the path against submodules
+        while idx < len(parts):
+            part = parts[idx]
+
+            # If we hit 'weight' or 'bias', we're at a parameter - this is valid
+            if part in ('weight', 'bias'):
+                return True
+
+            # Check if this part is a registered submodule
+            if hasattr(current_component, 'submodules') and current_component.submodules:
+                if part in current_component.submodules:
+                    current_component = current_component.submodules[part]
+                    idx += 1
+                    continue
+                else:
+                    # This part is not a registered bridge component
+                    # It's likely a nested HF component (like c_fc, c_proj, c_attn)
+                    return False
+            else:
+                # No submodules to check, but not at a parameter yet
+                # Check if next is weight/bias
+                if idx + 1 < len(parts) and parts[idx + 1] in ('weight', 'bias'):
+                    return True
+                # Otherwise this is likely a nested HF component
+                return False
+
+            idx += 1
+
+        return True
+
+    def _normalize_bridge_key_to_hf(self, key: str) -> str:
+        """Normalize a key that uses bridge attribute names to use HF module names.
+
+        PyTorch's state_dict uses the Python attribute names (e.g., 'ln1')
+        but the conversion logic expects HF module names (e.g., 'ln_1'). This
+        function only replaces non-nested component names, leaving bridge
+        subcomponents (like 'in', 'out', 'q', 'k', 'v') unchanged since they're
+        handled by the component structure.
+
+        Args:
+            key: Key that may use bridge attribute names
+
+        Returns:
+            Key with attribute names replaced by module names where needed
+        """
+        component_mapping = self.adapter.component_mapping
+        if not component_mapping:
+            return key
+
+        # Build a mapping of only the direct module attribute names to HF names
+        # We only care about top-level and block-level component names, NOT subcomponents
+        attr_to_hf = {}
+
+        # Map top-level components
+        for tl_name, component in component_mapping.items():
+            if component.name and tl_name != "blocks":
+                attr_to_hf[tl_name] = component.name
+
+        # Map block-level components (ln1, ln2, attn, mlp)
+        blocks_component = component_mapping.get("blocks")
+        if blocks_component and hasattr(blocks_component, 'submodules'):
+            for tl_subname, subcomponent in blocks_component.submodules.items():
+                if subcomponent.name:
+                    # Only map if the names differ (e.g., ln1 -> ln_1, but attn -> attn)
+                    if tl_subname != subcomponent.name:
+                        attr_to_hf[tl_subname] = subcomponent.name
+
+        # Replace only these specific attribute names in the key
+        # We need to be careful to only replace whole path components, not substrings
+        parts = key.split(".")
+        result_parts = []
+
+        for part in parts:
+            if part in attr_to_hf:
+                result_parts.append(attr_to_hf[part])
+            else:
+                result_parts.append(part)
+
+        return ".".join(result_parts)
+
     def state_dict(self, destination=None, prefix="", keep_vars=False):
         """Get state dict with TransformerLens format keys.
 
         Converts HuggingFace format keys to TransformerLens format and filters out
-        _original_component references and duplicate TL-style module aliases.
+        _original_component references and nested HuggingFace components.
 
-        This returns a clean state dict with only HF-style keys converted to TL format,
-        excluding the duplicate TL-style module names (ln1/ln2, q/k/v, mlp.in/out) that
-        are just property aliases pointing to the same underlying modules.
+        This returns a clean state dict with only bridge component paths converted to TL format,
+        excluding nested HF components (like c_fc, c_proj, c_attn) that exist inside
+        original_component modules.
 
         Args:
             destination: Optional dict to store state dict in
@@ -2388,9 +2515,8 @@ class TransformerBridge(nn.Module):
             raw_state_dict = self.original_model.state_dict(prefix=prefix, keep_vars=keep_vars)
 
         # Clean _original_component references and convert to TL format
-        # The adapter's convert_hf_key_to_tl_key knows which keys are valid based on component_mapping
-        # Keys that don't match any pattern will be returned unchanged, so we can detect and skip them
-        cleaned_keys_with_tl = {}  # Maps clean_key -> (tl_key, value)
+        # Also filter out nested HuggingFace components that are wrapped by bridge components
+        tl_state_dict = {}
 
         for key, value in raw_state_dict.items():
             # Skip _original_component keys
@@ -2400,23 +2526,20 @@ class TransformerBridge(nn.Module):
             # Remove all _original_component from the key
             clean_key = key.replace("._original_component", "")
 
+            # Check if this is a valid bridge path (not a nested HF component)
+            if not self._is_valid_bridge_path(clean_key):
+                continue
+
+            # Normalize bridge component names to HF names for conversion
+            # (e.g., 'ln1' -> 'ln_1', 'mlp.in' -> 'mlp.c_fc')
+            hf_key = self._normalize_bridge_key_to_hf(clean_key)
+
             # Convert to TL format - this uses the adapter's component_mapping
-            tl_key = self.adapter.convert_hf_key_to_tl_key(clean_key)
+            tl_key = self.adapter.convert_hf_key_to_tl_key(hf_key)
 
-            # Store the mapping for this clean key
-            if clean_key not in cleaned_keys_with_tl:
-                cleaned_keys_with_tl[clean_key] = (tl_key, value)
-
-        # Now filter: keep only keys where TL conversion was successful
-        # A successful conversion means the key changed from HF format to TL format
-        tl_state_dict = {}
-        for clean_key, (tl_key, value) in cleaned_keys_with_tl.items():
-            # If the TL key is different from clean key, conversion worked
-            # OR if it already starts with TL components (embed, blocks, etc.), keep it
-            if (tl_key != clean_key) or tl_key.startswith(("embed.", "pos_embed.", "blocks.", "ln_final.", "unembed.")):
-                # Only add if we haven't seen this TL key yet (handles duplicates like ln1/ln_1)
-                if tl_key not in tl_state_dict:
-                    tl_state_dict[tl_key] = value
+            # Only add if we haven't seen this TL key yet (handles duplicates)
+            if tl_key not in tl_state_dict:
+                tl_state_dict[tl_key] = value
 
         return tl_state_dict
 
