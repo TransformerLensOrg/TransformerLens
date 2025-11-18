@@ -107,16 +107,26 @@ class LinearBridge(GeneralizedComponent):
             bias = einops.rearrange(bias, "n_heads d_head -> (n_heads d_head)")
 
         # Load weights into Linear layer
-        # nn.Linear stores weights in [out, in] format (transpose of input [in, out])
+        # nn.Linear stores weights in [out, in] format
+        # Detect if we need to transpose based on what matches the parameter shape
         for name, param in self.original_component.named_parameters():
             if "weight" in name.lower():
-                new_weight = weight.T.contiguous()
-                if new_weight.shape != param.shape:
+                # Check if weight already matches (no transpose needed)
+                if weight.shape == param.shape:
+                    new_weight = weight.contiguous()
+                    if verbose:
+                        print(f"    Weight already in correct shape {weight.shape}, no transpose needed")
+                # Check if transposed weight matches
+                elif weight.T.shape == param.shape:
+                    new_weight = weight.T.contiguous()
+                    if verbose:
+                        print(f"    Transposing weight from {weight.shape} to {new_weight.shape}")
+                else:
                     raise ValueError(
                         f"Shape mismatch for {self.name}.{name}: "
-                        f"trying to set weight with shape {new_weight.shape} "
-                        f"but parameter has shape {param.shape}. "
-                        f"Original processed weight shape: {weights.get('weight').shape}"
+                        f"processed weight has shape {weight.shape}, "
+                        f"transposed shape is {weight.T.shape}, "
+                        f"but parameter expects shape {param.shape}"
                     )
                 if verbose:
                     print(f"    Setting param '{name}' with shape {new_weight.shape}")

@@ -908,11 +908,6 @@ class TransformerBridge(nn.Module):
             refactor_factored_attn_matrices=refactor_factored_attn_matrices,
             adapter=adapter,
         )
-        # Convert HF keys to modern TL format (transformer.h.11.mlp.c_proj.weight -> blocks.11.mlp.out.weight)
-        # This ensures components receive weights with modern key names
-        if verbose:
-            print("  Converting HF keys to modern TL format...")
-        state_dict = ProcessWeights.convert_hf_keys_to_modern_tl(state_dict, adapter)
 
         # print("new", state_dict.keys())
         if verbose:

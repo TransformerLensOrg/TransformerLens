@@ -109,13 +109,37 @@ class Conv1DBridge(GeneralizedComponent):
             bias = einops.rearrange(bias, "n_heads d_head -> (n_heads d_head)")
 
         # Load weights into Conv1D layer
-        # Conv1D stores weights in [in, out] format (no transpose needed)
+        # Conv1D stores weights in [in, out] format
+        # Detect if we need to transpose based on what matches the parameter shape
         for name, param in self.original_component.named_parameters():
             if "weight" in name.lower():
+                # Check if weight already matches (no transpose needed)
+                if weight.shape == param.shape:
+                    new_weight = weight.contiguous()
+                    if verbose:
+                        print(f"    Weight already in correct shape {weight.shape}, no transpose needed")
+                # Check if transposed weight matches
+                elif weight.T.shape == param.shape:
+                    new_weight = weight.T.contiguous()
+                    if verbose:
+                        print(f"    Transposing weight from {weight.shape} to {new_weight.shape}")
+                else:
+                    raise ValueError(
+                        f"Shape mismatch for {self.name}.{name}: "
+                        f"processed weight has shape {weight.shape}, "
+                        f"transposed shape is {weight.T.shape}, "
+                        f"but parameter expects shape {param.shape}"
+                    )
                 if verbose:
-                    print(f"    Setting param '{name}' with shape {weight.contiguous().shape}")
-                param.data = weight.contiguous()
+                    print(f"    Setting param '{name}' with shape {new_weight.shape}")
+                param.data = new_weight
             elif "bias" in name.lower() and bias is not None:
+                if bias.shape != param.shape:
+                    raise ValueError(
+                        f"Shape mismatch for {self.name}.{name}: "
+                        f"trying to set bias with shape {bias.shape} "
+                        f"but parameter has shape {param.shape}"
+                    )
                 if verbose:
                     print(f"    Setting param '{name}' with shape {bias.contiguous().shape}")
                 param.data = bias.contiguous()
