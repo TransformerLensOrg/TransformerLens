@@ -877,13 +877,7 @@ class TransformerBridge(nn.Module):
 
         if verbose:
             print("  Extracting state dict from existing model...")
-        raw_state_dict = self.original_model.state_dict()
-        state_dict = {}
-        for key, value in raw_state_dict.items():
-            clean_key = key
-            while "._original_component" in clean_key:
-                clean_key = clean_key.replace("._original_component", "")
-            state_dict[clean_key] = value
+        state_dict = self.state_dict()
             
         adapter = self.adapter
         if adapter and hasattr(adapter, "preprocess_weights"):
@@ -915,10 +909,6 @@ class TransformerBridge(nn.Module):
             adapter=adapter,
         )
         # Convert HF keys to modern TL format (transformer.h.11.mlp.c_proj.weight -> blocks.11.mlp.out.weight)
-        # This ensures components receive weights with modern key names
-        if verbose:
-            print("  Converting HF keys to modern TL format...")
-        state_dict = ProcessWeights.convert_hf_keys_to_modern_tl(state_dict, adapter)
 
         if verbose:
             print("  Distributing weights to generalized components...")

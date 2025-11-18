@@ -89,6 +89,14 @@ class HookConversionSet(BaseHookConversion):
         else:
             return conversion.convert(field, *[input_value, *full_context])
 
+    def get_conversion_remote_key(self, field: str) -> str:
+        conversion_details = self.fields[field]
+        if isinstance(conversion_details, tuple):
+            return conversion_details[0]
+        else:
+            # Return no op if not a specific conversion
+            return ""
+
     def get_conversion_action(self, field: str) -> BaseHookConversion:
         conversion_details = self.fields[field]
         if isinstance(conversion_details, tuple):

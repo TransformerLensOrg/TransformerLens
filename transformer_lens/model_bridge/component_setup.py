@@ -75,19 +75,25 @@ def setup_submodules(
             replace_remote_component(bridged_list, submodule.name, original_model)
             # Add to real_components mapping
             component.real_components[module_name] = (submodule.name, list(bridged_list))
-        if module_name not in component._modules:
-            if submodule.name is None:
-                original_subcomponent = original_model
-            else:
-                remote_path = submodule.name
-                original_subcomponent = architecture_adapter.get_remote_component(
-                    original_model, remote_path
-                )
-            submodule.set_original_component(original_subcomponent)
-            setup_submodules(submodule, architecture_adapter, original_subcomponent)
-            component.add_module(module_name, submodule)
-            if submodule.name is not None:
-                replace_remote_component(submodule, submodule.name, original_model)
+        else:
+            # Set up original_component if not already set
+            if submodule.original_component is None:
+                if submodule.name is None:
+                    original_subcomponent = original_model
+                else:
+                    remote_path = submodule.name
+                    original_subcomponent = architecture_adapter.get_remote_component(
+                        original_model, remote_path
+                    )
+                submodule.set_original_component(original_subcomponent)
+                setup_submodules(submodule, architecture_adapter, original_subcomponent)
+                if submodule.name is not None:
+                    replace_remote_component(submodule, submodule.name, original_model)
+
+            # Add to _modules if not already present
+            if module_name not in component._modules:
+                component.add_module(module_name, submodule)
+
             # Add to real_components mapping (for non-list components)
             if not submodule.is_list_item and submodule.name is not None:
                 component.real_components[module_name] = (submodule.name, submodule)

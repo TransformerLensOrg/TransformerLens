@@ -137,34 +137,34 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
 
         self.conversion_rules = HookConversionSet(
             {
-                "blocks.{i}.attn.W_Q": (
-                    "transformer.h.{i}.attn.c_attn.weight",
+                "blocks.{i}.attn.q.weight": (
+                    "transformer.h.{i}.attn.qkv.weight",
                     QKVSplitRearrangeConversion(
                         0, "d_model (n h) -> n d_model h", n=self.cfg.n_heads
                     ),
                 ),
-                "blocks.{i}.attn.W_K": (
-                    "transformer.h.{i}.attn.c_attn.weight",
+                "blocks.{i}.attn.k.weight": (
+                    "transformer.h.{i}.attn.qkv.weight",
                     QKVSplitRearrangeConversion(
                         1, "d_model (n h) -> n d_model h", n=self.cfg.n_heads
                     ),
                 ),
-                "blocks.{i}.attn.W_V": (
-                    "transformer.h.{i}.attn.c_attn.weight",
+                "blocks.{i}.attn.v.weight": (
+                    "transformer.h.{i}.attn.qkv.weight",
                     QKVSplitRearrangeConversion(
                         2, "d_model (n h) -> n d_model h", n=self.cfg.n_heads
                     ),
                 ),
-                "blocks.{i}.attn.b_Q": (
-                    "transformer.h.{i}.attn.c_attn.bias",
+                "blocks.{i}.attn.q.bias": (
+                    "transformer.h.{i}.attn.qkv.bias",
                     QKVBiasConversion(0, self.cfg.n_heads, self.cfg.d_head),
                 ),
-                "blocks.{i}.attn.b_K": (
-                    "transformer.h.{i}.attn.c_attn.bias",
+                "blocks.{i}.attn.k.bias": (
+                    "transformer.h.{i}.attn.qkv.bias",
                     QKVBiasConversion(1, self.cfg.n_heads, self.cfg.d_head),
                 ),
-                "blocks.{i}.attn.b_V": (
-                    "transformer.h.{i}.attn.c_attn.bias",
+                "blocks.{i}.attn.v.bias": (
+                    "transformer.h.{i}.attn.qkv.bias",
                     QKVBiasConversion(2, self.cfg.n_heads, self.cfg.d_head),
                 ),
             }
