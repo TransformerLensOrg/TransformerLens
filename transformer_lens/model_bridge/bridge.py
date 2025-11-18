@@ -767,7 +767,6 @@ class TransformerBridge(nn.Module):
         apply_fn_to_all_components(self, set_compatibility_mode)
         self.clear_hook_registry()
         self._initialize_hook_registry()
-        self._fix_backward_hook_gradients()
         self._setup_hook_compatibility()
         if not no_processing:
             self.process_weights(
@@ -877,14 +876,9 @@ class TransformerBridge(nn.Module):
 
         if verbose:
             print("  Extracting state dict from existing model...")
-        raw_state_dict = self.original_model.state_dict()
-        state_dict = {}
-        for key, value in raw_state_dict.items():
-            clean_key = key
-            while "._original_component" in clean_key:
-                clean_key = clean_key.replace("._original_component", "")
-            state_dict[clean_key] = value
+        state_dict = self.state_dict()
             
+        print("original", state_dict.keys())
         adapter = self.adapter
         if adapter and hasattr(adapter, "preprocess_weights"):
             state_dict = adapter.preprocess_weights(state_dict)
@@ -920,6 +914,7 @@ class TransformerBridge(nn.Module):
             print("  Converting HF keys to modern TL format...")
         state_dict = ProcessWeights.convert_hf_keys_to_modern_tl(state_dict, adapter)
 
+        # print("new", state_dict.keys())
         if verbose:
             print("  Distributing weights to generalized components...")
         ProcessWeights.distribute_weights_to_components(

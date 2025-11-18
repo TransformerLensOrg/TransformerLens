@@ -110,10 +110,24 @@ class LinearBridge(GeneralizedComponent):
         # nn.Linear stores weights in [out, in] format (transpose of input [in, out])
         for name, param in self.original_component.named_parameters():
             if "weight" in name.lower():
+                new_weight = weight.T.contiguous()
+                if new_weight.shape != param.shape:
+                    raise ValueError(
+                        f"Shape mismatch for {self.name}.{name}: "
+                        f"trying to set weight with shape {new_weight.shape} "
+                        f"but parameter has shape {param.shape}. "
+                        f"Original processed weight shape: {weights.get('weight').shape}"
+                    )
                 if verbose:
-                    print(f"    Setting param '{name}' with shape {weight.T.contiguous().shape}")
-                param.data = weight.T.contiguous()
+                    print(f"    Setting param '{name}' with shape {new_weight.shape}")
+                param.data = new_weight
             elif "bias" in name.lower() and bias is not None:
+                if bias.shape != param.shape:
+                    raise ValueError(
+                        f"Shape mismatch for {self.name}.{name}: "
+                        f"trying to set bias with shape {bias.shape} "
+                        f"but parameter has shape {param.shape}"
+                    )
                 if verbose:
                     print(f"    Setting param '{name}' with shape {bias.contiguous().shape}")
                 param.data = bias.contiguous()

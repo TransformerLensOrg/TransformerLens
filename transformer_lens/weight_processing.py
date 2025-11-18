@@ -32,92 +32,72 @@ class ProcessWeights:
 
     @staticmethod
     def _get_param_key(tl_key: str, adapter=None) -> str:
-        """Get the actual parameter key to use, translating via adapter if provided.
+        """Convert legacy TL key format (W_Q, b_Q) to component-based format (q.weight, q.bias).
 
         Args:
-            tl_key: TransformerLens format parameter key
-            adapter: Optional architecture adapter for key translation
+            tl_key: TransformerLens format parameter key (e.g., "blocks.0.attn.W_Q")
+            adapter: Architecture adapter for translating paths
 
         Returns:
-            The key to use for accessing parameters in the state dict
+            The component-based key (e.g., "blocks.0.attn.q.weight")
         """
         if adapter is None:
             return tl_key
-        try:
-            return adapter.translate_transformer_lens_path(tl_key)
-        except Exception:
-            try:
-                component_path, param_attr = ProcessWeights._prepare_component_path(tl_key)
-                remote_path = adapter.translate_transformer_lens_path(component_path)
-                if param_attr:
-                    return f"{remote_path}.{param_attr}"
-                return remote_path
-            except Exception:
-                return tl_key
+        
+        return ProcessWeights._prepare_component_path(tl_key)
 
     @staticmethod
-    def _prepare_component_path(tl_key: str) -> tuple[str, str]:
-        """Map a TransformerLens key to (component_path, parameter_attr).
+    def _prepare_component_path(tl_key: str) -> str:
+        """Map a TransformerLens key to bridge-style component path.
 
-        The component path remains in TransformerLens format so it can be
-        translated by the architecture adapter. The parameter attribute
-        (weight/bias) is appended after translation.
+        Converts TransformerLens weight names (like "W_Q", "b_in") to bridge-style
+        paths (like "q.weight", "in.bias"). The full path is assembled before being
+        passed to the architecture adapter for translation.
+
+        Args:
+            tl_key: TransformerLens key like "blocks.0.attn.W_Q"
+
+        Returns:
+            Full path like "blocks.0.attn.q.weight"
         """
-        suffix_map: Dict[str, tuple[str, str]] = {
-            "W_Q": ("q", "weight"),
-            "_W_Q": ("q", "weight"),
-            "b_Q": ("q", "bias"),
-            "_b_Q": ("q", "bias"),
-            "W_K": ("k", "weight"),
-            "_W_K": ("k", "weight"),
-            "b_K": ("k", "bias"),
-            "_b_K": ("k", "bias"),
-            "W_V": ("v", "weight"),
-            "_W_V": ("v", "weight"),
-            "b_V": ("v", "bias"),
-            "_b_V": ("v", "bias"),
-            "W_O": ("o", "weight"),
-            "b_O": ("o", "bias"),
-            "W_in": ("in", "weight"),
-            "b_in": ("in", "bias"),
-            "W_gate": ("gate", "weight"),
-            "b_gate": ("gate", "bias"),
-            "W_out": ("out", "weight"),
-            "b_out": ("out", "bias"),
-            "W_E": ("", "weight"),
-            "b_E": ("", "bias"),
-            "W_pos": ("", "weight"),
-            "b_pos": ("", "bias"),
-            "W_U": ("", "weight"),
-            "b_U": ("", "bias"),
-            "w": ("", "weight"),
-            "b": ("", "bias"),
-            "weight": ("", "weight"),
-            "bias": ("", "bias"),
+        suffix_map: Dict[str, str] = {
+            "W_Q": "q.weight",
+            "_W_Q": "q.weight",
+            "b_Q": "q.bias",
+            "_b_Q": "q.bias",
+            "W_K": "k.weight",
+            "_W_K": "k.weight",
+            "b_K": "k.bias",
+            "_b_K": "k.bias",
+            "W_V": "v.weight",
+            "_W_V": "v.weight",
+            "b_V": "v.bias",
+            "_b_V": "v.bias",
+            "W_O": "o.weight",
+            "b_O": "o.bias",
+            "W_in": "in.weight",
+            "b_in": "in.bias",
+            "W_gate": "gate.weight",
+            "b_gate": "gate.bias",
+            "W_out": "out.weight",
+            "b_out": "out.bias",
+            "W_E": "weight",
+            "b_E": "bias",
+            "W_pos": "weight",
+            "b_pos": "bias",
+            "W_U": "weight",
+            "b_U": "bias",
+            "w": "weight",
+            "b": "bias",
+            "weight": "weight",
+            "bias": "bias",
         }
         if "." not in tl_key:
-            return (tl_key, "")
+            return tl_key
         base_path, suffix = tl_key.rsplit(".", 1)
         if suffix in suffix_map:
-            component_suffix, param_attr = suffix_map[suffix]
-            if component_suffix:
-                base_path = f"{base_path}.{component_suffix}"
-            return (base_path, param_attr)
-        return (tl_key, suffix)
-
-    @staticmethod
-    def _resolve_tl_key(state_dict: Dict[str, torch.Tensor], tl_key: str) -> str:
-        """Resolve a TransformerLens key to whichever variant exists in the state dict.
-
-        Handles legacy aliases like W_Q/W_O by mapping them to the actual component
-        names (e.g., q.weight, o.weight) if the base key is missing.
-        """
-        if tl_key in state_dict:
-            return tl_key
-        component_path, param_attr = ProcessWeights._prepare_component_path(tl_key)
-        resolved_key = f"{component_path}.{param_attr}" if param_attr else component_path
-        if resolved_key in state_dict:
-            return resolved_key
+            replacement = suffix_map[suffix]
+            return f"{base_path}.{replacement}"
         return tl_key
 
     @staticmethod
@@ -152,8 +132,6 @@ class ProcessWeights:
                 raise ValueError("Required weight W_Q not found")
         """
         actual_key = ProcessWeights._get_param_key(tl_key, adapter)
-        if adapter is None:
-            actual_key = ProcessWeights._resolve_tl_key(state_dict, actual_key)
         return state_dict.get(actual_key, default)
 
     @staticmethod
@@ -301,12 +279,12 @@ class ProcessWeights:
         ln1_b_key = ProcessWeights._get_param_key(f"blocks.{layer}.ln1.b", adapter)
         ln1_w_key = ProcessWeights._get_param_key(f"blocks.{layer}.ln1.w", adapter)
         
-        wq_tensor: Optional[torch.Tensor] = state_dict[W_Q_key]
-        wk_tensor: Optional[torch.Tensor] = state_dict[W_K_key]
-        wv_tensor: Optional[torch.Tensor] = state_dict[W_V_key]
-        bq_tensor: Optional[torch.Tensor] = state_dict[b_Q_key]
-        bk_tensor: Optional[torch.Tensor] = state_dict[b_K_key]
-        bv_tensor: Optional[torch.Tensor] = state_dict[b_V_key]
+        wq_tensor: Optional[torch.Tensor] = state_dict.get(W_Q_key)
+        wk_tensor: Optional[torch.Tensor] = state_dict.get(W_K_key)
+        wv_tensor: Optional[torch.Tensor] = state_dict.get(W_V_key)
+        bq_tensor: Optional[torch.Tensor] = state_dict.get(b_Q_key)
+        bk_tensor: Optional[torch.Tensor] = state_dict.get(b_K_key)
+        bv_tensor: Optional[torch.Tensor] = state_dict.get(b_V_key)
         ln1_b = state_dict.get(ln1_b_key, None)
         ln1_w = state_dict.get(ln1_w_key, None)
         if adapter:
@@ -385,7 +363,7 @@ class ProcessWeights:
         ln1_w = tensors["ln1_w"]
         keys = tensors["keys"]
         if wq_tensor is None:
-            return
+            return state_dict
         assert isinstance(wq_tensor, torch.Tensor)
         assert isinstance(keys, dict)
         if wk_tensor is not None:
@@ -1298,8 +1276,18 @@ class ProcessWeights:
                     # Extract the HF key from the conversion rule
                     hf_key_template = field_info[0]
                     # Replace placeholders with actual layer index
+                    # First try using the layer_idx parameter if provided
                     if layer_idx is not None and "{i}" in hf_key_template:
                         hf_key = hf_key_template.replace("{i}", str(layer_idx))
+                    # Otherwise extract from param_name
+                    elif "{i}" in hf_key_template and "blocks." in param_name:
+                        import re
+                        match = re.search(r"blocks\.(\d+)\.", param_name)
+                        if match:
+                            extracted_layer_idx = match.group(1)
+                            hf_key = hf_key_template.replace("{i}", extracted_layer_idx)
+                        else:
+                            hf_key = hf_key_template
                     else:
                         hf_key = hf_key_template
 
@@ -1386,6 +1374,51 @@ class ProcessWeights:
             return tensor
 
     @staticmethod
+    def _build_hf_to_tl_prefix_mapping(adapter) -> Dict[str, str]:
+        """Build mapping from HF prefixes to TL prefixes using component_mapping.
+
+        Args:
+            adapter: Architecture adapter with component_mapping
+
+        Returns:
+            Dictionary mapping HF prefixes to TL prefixes
+        """
+        if not adapter or not hasattr(adapter, 'component_mapping'):
+            return {}
+
+        hf_to_tl = {}
+        component_mapping = adapter.component_mapping
+
+        # Map top-level components
+        for tl_name, component in component_mapping.items():
+            if hasattr(component, 'name') and component.name:
+                hf_to_tl[component.name] = tl_name
+
+        # Map block-level subcomponents
+        blocks_component = component_mapping.get("blocks")
+        if blocks_component and hasattr(blocks_component, 'submodules'):
+            for tl_subname, subcomponent in blocks_component.submodules.items():
+                # Map direct block subcomponents (ln1, ln2, attn, mlp)
+                if hasattr(subcomponent, 'name') and subcomponent.name:
+                    # Only map if names differ (e.g., ln1 -> ln_1)
+                    if tl_subname != subcomponent.name:
+                        # Store as block-level mapping for pattern replacement
+                        hf_to_tl[f".{subcomponent.name}."] = f".{tl_subname}."
+
+                # Map nested subcomponents (attn.qkv, attn.o, mlp.in, mlp.out)
+                if hasattr(subcomponent, 'submodules') and subcomponent.submodules:
+                    for nested_tl_name, nested_component in subcomponent.submodules.items():
+                        if hasattr(nested_component, 'name') and nested_component.name:
+                            # Map nested HF names to TL names (e.g., c_attn -> qkv, c_fc -> in)
+                            if nested_tl_name != nested_component.name:
+                                parent_name = subcomponent.name if subcomponent.name else tl_subname
+                                hf_to_tl[f".{parent_name}.{nested_component.name}."] = (
+                                    f".{tl_subname}.{nested_tl_name}."
+                                )
+
+        return hf_to_tl
+
+    @staticmethod
     def convert_hf_keys_to_modern_tl(
         state_dict: Dict[str, torch.Tensor],
         adapter
@@ -1402,13 +1435,22 @@ class ProcessWeights:
 
         Args:
             state_dict: Dictionary with HF keys
-            adapter: Architecture adapter with conversion rules
+            adapter: Architecture adapter with conversion rules and component_mapping
 
         Returns:
             New dictionary with modern TL keys
         """
         if not adapter or not hasattr(adapter, 'conversion_rules'):
             return state_dict
+
+        # Build HF to TL prefix mapping from component_mapping
+        hf_to_tl_prefix = ProcessWeights._build_hf_to_tl_prefix_mapping(adapter)
+
+        # Get blocks HF prefix from component_mapping
+        blocks_component = adapter.component_mapping.get("blocks")
+        blocks_hf_prefix = blocks_component.name if (blocks_component and hasattr(blocks_component, 'name') and blocks_component.name) else "transformer.h"
+        blocks_tl_prefix = "blocks"
+        blocks_split_pattern = f".{blocks_hf_prefix.split('.')[-1]}."  # Extract last part (e.g., '.h.')
 
         # Step 1: Build reverse mapping from HF keys to legacy TL keys using conversion rules
         hf_to_legacy_tl = {}
@@ -1456,15 +1498,15 @@ class ProcessWeights:
         for hf_key in state_dict.keys():
             # Check for split attention keys (q, k, v, o) - these are processed weights
             if any(pattern in hf_key for pattern in ['.attn.q.', '.attn.k.', '.attn.v.', '.attn.o.']):
-                if '.h.' in hf_key:
-                    parts = hf_key.split('.h.')
+                if blocks_split_pattern in hf_key:
+                    parts = hf_key.split(blocks_split_pattern)
                     if len(parts) > 1:
                         layer_num = parts[1].split('.')[0]
                         layers_with_split_attn.add(layer_num)
             # Check for split MLP keys
             elif any(pattern in hf_key for pattern in ['.mlp.in.', '.mlp.out.', '.mlp.gate.']):
-                if '.h.' in hf_key:
-                    parts = hf_key.split('.h.')
+                if blocks_split_pattern in hf_key:
+                    parts = hf_key.split(blocks_split_pattern)
                     if len(parts) > 1:
                         layer_num = parts[1].split('.')[0]
                         layers_with_split_mlp.add(layer_num)
@@ -1473,8 +1515,8 @@ class ProcessWeights:
         for hf_key, tensor in state_dict.items():
             # Check if this key should be skipped
             should_skip = False
-            if '.h.' in hf_key:
-                parts = hf_key.split('.h.')
+            if blocks_split_pattern in hf_key:
+                parts = hf_key.split(blocks_split_pattern)
                 if len(parts) > 1:
                     layer_num = parts[1].split('.')[0]
                     # For ATTENTION c_attn: Skip joint c_attn if split q/k/v exist
@@ -1508,26 +1550,33 @@ class ProcessWeights:
                 # For split keys, just convert the prefix: transformer.h.0.attn.q.weight -> blocks.0.attn.q.weight
                 # Keep the q/k/v structure as-is (don't convert to W_Q format)
                 modern_key = hf_key
-                if modern_key.startswith('transformer.h.'):
-                    modern_key = modern_key.replace('transformer.h.', 'blocks.', 1)
+                # Replace blocks prefix
+                if modern_key.startswith(blocks_hf_prefix + '.'):
+                    modern_key = modern_key.replace(blocks_hf_prefix + '.', blocks_tl_prefix + '.', 1)
             # Check if this is an attention c_proj key that needs conversion to o
             elif '.attn.c_proj.' in hf_key:
                 # Convert c_proj -> o (c_proj is the processed/centered weight)
                 modern_key = hf_key
-                if modern_key.startswith('transformer.h.'):
-                    modern_key = modern_key.replace('transformer.h.', 'blocks.', 1)
-                modern_key = modern_key.replace('.attn.c_proj.', '.attn.o.')
+                # Replace blocks prefix
+                if modern_key.startswith(blocks_hf_prefix + '.'):
+                    modern_key = modern_key.replace(blocks_hf_prefix + '.', blocks_tl_prefix + '.', 1)
+                # Use mapping for c_proj -> o
+                for hf_pattern, tl_pattern in hf_to_tl_prefix.items():
+                    if hf_pattern in modern_key:
+                        modern_key = modern_key.replace(hf_pattern, tl_pattern)
+                        break
             # Check if this is a joint MLP key (c_fc, c_proj) that needs conversion to in/out
             elif any(pattern in hf_key for pattern in ['.mlp.c_fc.', '.mlp.c_proj.']):
                 # Convert c_fc -> in, c_proj -> out (these are the processed/centered weights)
                 modern_key = hf_key
-                if modern_key.startswith('transformer.h.'):
-                    modern_key = modern_key.replace('transformer.h.', 'blocks.', 1)
-                # Convert c_fc to in, c_proj to out
-                if '.mlp.c_fc.' in modern_key:
-                    modern_key = modern_key.replace('.mlp.c_fc.', '.mlp.in.')
-                elif '.mlp.c_proj.' in modern_key:
-                    modern_key = modern_key.replace('.mlp.c_proj.', '.mlp.out.')
+                # Replace blocks prefix
+                if modern_key.startswith(blocks_hf_prefix + '.'):
+                    modern_key = modern_key.replace(blocks_hf_prefix + '.', blocks_tl_prefix + '.', 1)
+                # Use mapping for c_fc -> in, c_proj -> out
+                for hf_pattern, tl_pattern in hf_to_tl_prefix.items():
+                    if hf_pattern in modern_key:
+                        modern_key = modern_key.replace(hf_pattern, tl_pattern)
+                        break
             else:
                 # For non-joint keys, use conversion rules
                 if hf_key in hf_to_legacy_tl:
@@ -1535,14 +1584,19 @@ class ProcessWeights:
                 else:
                     # Apply standard transformations for keys not in conversion rules
                     legacy_tl_key = hf_key
-                    if legacy_tl_key.startswith('transformer.h.'):
-                        legacy_tl_key = legacy_tl_key.replace('transformer.h.', 'blocks.', 1)
-                    if legacy_tl_key.startswith('transformer.wte'):
-                        legacy_tl_key = legacy_tl_key.replace('transformer.wte', 'embed', 1)
-                    if legacy_tl_key.startswith('transformer.wpe'):
-                        legacy_tl_key = legacy_tl_key.replace('transformer.wpe', 'pos_embed', 1)
-                    if legacy_tl_key.startswith('lm_head'):
-                        legacy_tl_key = legacy_tl_key.replace('lm_head', 'unembed', 1)
+
+                    # Replace blocks prefix
+                    if legacy_tl_key.startswith(blocks_hf_prefix + '.'):
+                        legacy_tl_key = legacy_tl_key.replace(blocks_hf_prefix + '.', blocks_tl_prefix + '.', 1)
+
+                    # Replace top-level component prefixes using mapping
+                    # Top-level prefixes don't start with '.' (e.g., "transformer.wte", "lm_head")
+                    # Nested patterns start with '.' (e.g., ".ln_1.", ".attn.c_proj.")
+                    for hf_prefix, tl_prefix in hf_to_tl_prefix.items():
+                        if not hf_prefix.startswith('.'):  # Top-level prefixes
+                            if legacy_tl_key.startswith(hf_prefix):
+                                legacy_tl_key = legacy_tl_key.replace(hf_prefix, tl_prefix, 1)
+                                break
 
                 # Now convert legacy TL to modern TL
                 if "." in legacy_tl_key:
