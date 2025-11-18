@@ -920,7 +920,6 @@ class TransformerBridge(nn.Module):
             print("  Converting HF keys to modern TL format...")
         state_dict = ProcessWeights.convert_hf_keys_to_modern_tl(state_dict, adapter)
 
-        print("state_dict", state_dict.keys())
         if verbose:
             print("  Distributing weights to generalized components...")
         ProcessWeights.distribute_weights_to_components(
@@ -2367,7 +2366,11 @@ class TransformerBridge(nn.Module):
         """Get state dict with TransformerLens format keys.
 
         Converts HuggingFace format keys to TransformerLens format and filters out
-        _original_component references.
+        _original_component references and duplicate TL-style module aliases.
+
+        This returns a clean state dict with only HF-style keys converted to TL format,
+        excluding the duplicate TL-style module names (ln1/ln2, q/k/v, mlp.in/out) that
+        are just property aliases pointing to the same underlying modules.
 
         Args:
             destination: Optional dict to store state dict in
@@ -2383,13 +2386,38 @@ class TransformerBridge(nn.Module):
             )
         else:
             raw_state_dict = self.original_model.state_dict(prefix=prefix, keep_vars=keep_vars)
-        tl_state_dict = {}
+
+        # Clean _original_component references and convert to TL format
+        # The adapter's convert_hf_key_to_tl_key knows which keys are valid based on component_mapping
+        # Keys that don't match any pattern will be returned unchanged, so we can detect and skip them
+        cleaned_keys_with_tl = {}  # Maps clean_key -> (tl_key, value)
+
         for key, value in raw_state_dict.items():
+            # Skip _original_component keys
             if key == "_original_component" or key.startswith("_original_component."):
                 continue
+
+            # Remove all _original_component from the key
             clean_key = key.replace("._original_component", "")
+
+            # Convert to TL format - this uses the adapter's component_mapping
             tl_key = self.adapter.convert_hf_key_to_tl_key(clean_key)
-            tl_state_dict[tl_key] = value
+
+            # Store the mapping for this clean key
+            if clean_key not in cleaned_keys_with_tl:
+                cleaned_keys_with_tl[clean_key] = (tl_key, value)
+
+        # Now filter: keep only keys where TL conversion was successful
+        # A successful conversion means the key changed from HF format to TL format
+        tl_state_dict = {}
+        for clean_key, (tl_key, value) in cleaned_keys_with_tl.items():
+            # If the TL key is different from clean key, conversion worked
+            # OR if it already starts with TL components (embed, blocks, etc.), keep it
+            if (tl_key != clean_key) or tl_key.startswith(("embed.", "pos_embed.", "blocks.", "ln_final.", "unembed.")):
+                # Only add if we haven't seen this TL key yet (handles duplicates like ln1/ln_1)
+                if tl_key not in tl_state_dict:
+                    tl_state_dict[tl_key] = value
+
         return tl_state_dict
 
     def load_state_dict(self, state_dict, strict=True, assign=False):
