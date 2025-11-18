@@ -124,48 +124,48 @@ class NeoArchitectureAdapter(ArchitectureAdapter):
                     NeoLinearTransposeConversion(),  # Just transpose, no rearrange needed
                 ),
                 # Weight processing keys (W_Q, W_K, W_V, W_O style) - for weight processing
-                "blocks.{i}.attn.W_Q": (
+                "blocks.{i}.attn.q.weight": (
                     "transformer.h.{i}.attn.attention.q_proj.weight",
                     NeoLinearTransposeConversion(
                         "d_model (n h) -> n d_model h", n=self.cfg.n_heads
                     ),
                 ),
-                "blocks.{i}.attn.W_K": (
+                "blocks.{i}.attn.k.weight": (
                     "transformer.h.{i}.attn.attention.k_proj.weight",
                     NeoLinearTransposeConversion(
                         "d_model (n h) -> n d_model h", n=self.cfg.n_heads
                     ),
                 ),
-                "blocks.{i}.attn.W_V": (
+                "blocks.{i}.attn.v.weight": (
                     "transformer.h.{i}.attn.attention.v_proj.weight",
                     NeoLinearTransposeConversion(
                         "d_model (n h) -> n d_model h", n=self.cfg.n_heads
                     ),
                 ),
-                "blocks.{i}.attn.W_O": (
+                "blocks.{i}.attn.o.weight": (
                     "transformer.h.{i}.attn.attention.out_proj.weight",
                     NeoLinearTransposeConversion(
                         "(n h) d_model -> n h d_model", n=self.cfg.n_heads
                     ),
                 ),
-                "blocks.{i}.attn.b_Q": (
+                "blocks.{i}.attn.q.bias": (
                     "transformer.h.{i}.attn.attention.q_proj.bias",
                     RearrangeHookConversion("(n h) -> n h", n=self.cfg.n_heads),
                 ),
-                "blocks.{i}.attn.b_K": (
+                "blocks.{i}.attn.k.bias": (
                     "transformer.h.{i}.attn.attention.k_proj.bias",
                     RearrangeHookConversion("(n h) -> n h", n=self.cfg.n_heads),
                 ),
-                "blocks.{i}.attn.b_V": (
+                "blocks.{i}.attn.v.bias": (
                     "transformer.h.{i}.attn.attention.v_proj.bias",
                     RearrangeHookConversion("(n h) -> n h", n=self.cfg.n_heads),
                 ),
                 # MLP weight processing keys
-                "blocks.{i}.mlp.W_in": (
+                "blocks.{i}.mlp.in.weight": (
                     "transformer.h.{i}.mlp.c_fc.weight",
                     NeoLinearTransposeConversion(),  # Just transpose, no rearrange needed
                 ),
-                "blocks.{i}.mlp.W_out": (
+                "blocks.{i}.mlp.out.weight": (
                     "transformer.h.{i}.mlp.c_proj.weight",
                     NeoLinearTransposeConversion(),  # Just transpose, no rearrange needed
                 ),

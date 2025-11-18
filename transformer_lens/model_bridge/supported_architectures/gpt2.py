@@ -7,6 +7,7 @@ import torch
 from transformer_lens.conversion_utils.conversion_steps import (
     BaseHookConversion,
     HookConversionSet,
+    RearrangeHookConversion,
 )
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
@@ -137,35 +138,35 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
 
         self.conversion_rules = HookConversionSet(
             {
-                "blocks.{i}.attn.W_Q": (
+                "blocks.{i}.attn.q.weight": (
                     "transformer.h.{i}.attn.c_attn.weight",
-                    QKVSplitRearrangeConversion(
-                        0, "d_model (n h) -> n d_model h", n=self.cfg.n_heads
+                    RearrangeHookConversion(
+                        "d_model (n h) -> n d_model h", n=self.cfg.n_heads
                     ),
                 ),
-                "blocks.{i}.attn.W_K": (
+                "blocks.{i}.attn.k.weight": (
                     "transformer.h.{i}.attn.c_attn.weight",
-                    QKVSplitRearrangeConversion(
-                        1, "d_model (n h) -> n d_model h", n=self.cfg.n_heads
+                    RearrangeHookConversion(
+                        "d_model (n h) -> n d_model h", n=self.cfg.n_heads
                     ),
                 ),
-                "blocks.{i}.attn.W_V": (
+                "blocks.{i}.attn.v.weight": (
                     "transformer.h.{i}.attn.c_attn.weight",
-                    QKVSplitRearrangeConversion(
-                        2, "d_model (n h) -> n d_model h", n=self.cfg.n_heads
+                    RearrangeHookConversion(
+                        "d_model (n h) -> n d_model h", n=self.cfg.n_heads
                     ),
                 ),
-                "blocks.{i}.attn.b_Q": (
+                "blocks.{i}.attn.q.bias": (
                     "transformer.h.{i}.attn.c_attn.bias",
-                    QKVBiasConversion(0, self.cfg.n_heads, self.cfg.d_head),
+                    RearrangeHookConversion("(index head) -> index head", index=self.cfg.n_heads, head=self.cfg.d_head),
                 ),
-                "blocks.{i}.attn.b_K": (
+                "blocks.{i}.attn.k.bias": (
                     "transformer.h.{i}.attn.c_attn.bias",
-                    QKVBiasConversion(1, self.cfg.n_heads, self.cfg.d_head),
+                    RearrangeHookConversion("(index head) -> index head", index=self.cfg.n_heads, head=self.cfg.d_head),
                 ),
-                "blocks.{i}.attn.b_V": (
+                "blocks.{i}.attn.v.bias": (
                     "transformer.h.{i}.attn.c_attn.bias",
-                    QKVBiasConversion(2, self.cfg.n_heads, self.cfg.d_head),
+                    RearrangeHookConversion("(index head) -> index head", index=self.cfg.n_heads, head=self.cfg.d_head),
                 ),
             }
         )

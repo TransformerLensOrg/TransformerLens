@@ -88,23 +88,23 @@ class LinearBridge(GeneralizedComponent):
             if bias is not None:
                 print(f"    Found bias key with shape: {bias.shape}")
 
-        # Handle 3D weights by flattening to 2D
-        if weight.ndim == 3:
-            n_heads, dim1, dim2 = weight.shape
-            if dim1 > dim2:
-                # [n_heads, d_model, d_head] -> [d_model, n_heads * d_head]
-                weight = einops.rearrange(
-                    weight, "n_heads d_model d_head -> d_model (n_heads d_head)"
-                )
-            else:
-                # [n_heads, d_head, d_model] -> [n_heads * d_head, d_model]
-                weight = einops.rearrange(
-                    weight, "n_heads d_head d_model -> (n_heads d_head) d_model"
-                )
+        # # Handle 3D weights by flattening to 2D
+        # if weight.ndim == 3:
+        #     n_heads, dim1, dim2 = weight.shape
+        #     if dim1 > dim2:
+        #         # [n_heads, d_model, d_head] -> [d_model, n_heads * d_head]
+        #         weight = einops.rearrange(
+        #             weight, "n_heads d_model d_head -> d_model (n_heads d_head)"
+        #         )
+        #     else:
+        #         # [n_heads, d_head, d_model] -> [n_heads * d_head, d_model]
+        #         weight = einops.rearrange(
+        #             weight, "n_heads d_head d_model -> (n_heads d_head) d_model"
+        #         )
 
-        # Handle 2D bias by flattening to 1D
-        if bias is not None and bias.ndim == 2:
-            bias = einops.rearrange(bias, "n_heads d_head -> (n_heads d_head)")
+        # # Handle 2D bias by flattening to 1D
+        # if bias is not None and bias.ndim == 2:
+        #     bias = einops.rearrange(bias, "n_heads d_head -> (n_heads d_head)")
 
         # Load weights into Linear layer
         # nn.Linear stores weights in [out, in] format

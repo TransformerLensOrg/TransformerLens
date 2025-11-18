@@ -878,7 +878,6 @@ class TransformerBridge(nn.Module):
             print("  Extracting state dict from existing model...")
         state_dict = self.state_dict()
             
-        print("original", state_dict.keys())
         adapter = self.adapter
         if adapter and hasattr(adapter, "preprocess_weights"):
             state_dict = adapter.preprocess_weights(state_dict)
@@ -917,60 +916,60 @@ class TransformerBridge(nn.Module):
             component_mapping=self.real_components,
         )
 
-        loaded_count = 0
-        missing_count = 0
+        # loaded_count = 0
+        # missing_count = 0
 
-        for tb_key, weight_tensor in state_dict.items():
-            # Skip Q/K/V/O weights - they're handled by _load_attention_weights()
-            if any(
-                pattern in tb_key
-                for pattern in [
-                    ".attn.q.",
-                    ".attn.k.",
-                    ".attn.v.",
-                    ".q_proj.",
-                    ".k_proj.",
-                    ".v_proj.",
-                    ".out_proj.",
-                ]
-            ):
-                continue
-            try:
-                parts = tb_key.split(".")
-                component: Any = self
-                for i, part in enumerate(parts[:-1]):
-                    if part.isdigit():
-                        if hasattr(component, "__getitem__"):
-                            component = component[int(part)]
-                        else:
-                            raise TypeError(f"Component {component} is not indexable")
-                    elif hasattr(component, part):
-                        component = getattr(component, part)
-                    elif hasattr(component, "_modules") and part in component._modules:
-                        component = component._modules[part]
-                    else:
-                        raise AttributeError(f"Component {part} not found")
-                param_name = parts[-1]
-                if hasattr(component, "_original_component"):
-                    target_component = component._original_component
-                else:
-                    target_component = component
-                if hasattr(target_component, param_name):
-                    param = getattr(target_component, param_name)
-                    if param is not None and isinstance(param, torch.nn.Parameter):
-                        param.data = weight_tensor
-                        loaded_count += 1
-                    elif param is None:
-                        setattr(target_component, param_name, torch.nn.Parameter(weight_tensor))
-                        loaded_count += 1
-                else:
-                    if verbose:
-                        print(f"    Warning: Parameter {param_name} not found in {tb_key}")
-                    missing_count += 1
-            except (AttributeError, IndexError, KeyError, TypeError) as e:
-                if verbose:
-                    print(f"    Warning: Could not load {tb_key}: {e}")
-                missing_count += 1
+        # for tb_key, weight_tensor in state_dict.items():
+        #     # Skip Q/K/V/O weights - they're handled by _load_attention_weights()
+        #     if any(
+        #         pattern in tb_key
+        #         for pattern in [
+        #             ".attn.q.",
+        #             ".attn.k.",
+        #             ".attn.v.",
+        #             ".q_proj.",
+        #             ".k_proj.",
+        #             ".v_proj.",
+        #             ".out_proj.",
+        #         ]
+        #     ):
+        #         continue
+        #     try:
+        #         parts = tb_key.split(".")
+        #         component: Any = self
+        #         for i, part in enumerate(parts[:-1]):
+        #             if part.isdigit():
+        #                 if hasattr(component, "__getitem__"):
+        #                     component = component[int(part)]
+        #                 else:
+        #                     raise TypeError(f"Component {component} is not indexable")
+        #             elif hasattr(component, part):
+        #                 component = getattr(component, part)
+        #             elif hasattr(component, "_modules") and part in component._modules:
+        #                 component = component._modules[part]
+        #             else:
+        #                 raise AttributeError(f"Component {part} not found")
+        #         param_name = parts[-1]
+        #         if hasattr(component, "_original_component"):
+        #             target_component = component._original_component
+        #         else:
+        #             target_component = component
+        #         if hasattr(target_component, param_name):
+        #             param = getattr(target_component, param_name)
+        #             if param is not None and isinstance(param, torch.nn.Parameter):
+        #                 param.data = weight_tensor
+        #                 loaded_count += 1
+        #             elif param is None:
+        #                 setattr(target_component, param_name, torch.nn.Parameter(weight_tensor))
+        #                 loaded_count += 1
+        #         else:
+        #             if verbose:
+        #                 print(f"    Warning: Parameter {param_name} not found in {tb_key}")
+        #             missing_count += 1
+        #     except (AttributeError, IndexError, KeyError, TypeError) as e:
+        #         if verbose:
+        #             print(f"    Warning: Could not load {tb_key}: {e}")
+        #         missing_count += 1
 
     def _load_all_processed_weights(
         self, verbose: bool = False, processed_state_dict: Optional[Dict[str, torch.Tensor]] = None

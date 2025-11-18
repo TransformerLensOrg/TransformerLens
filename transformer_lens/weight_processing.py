@@ -289,22 +289,22 @@ class ProcessWeights:
         ln1_w = state_dict.get(ln1_w_key, None)
         if adapter:
             wq_tensor = ProcessWeights.convert_tensor_to_tl_format(
-                f"blocks.{layer}.attn.W_Q", adapter, state_dict, cfg, layer
+                W_Q_key, adapter, state_dict, wq_tensor, cfg, layer
             )
             wk_tensor = ProcessWeights.convert_tensor_to_tl_format(
-                f"blocks.{layer}.attn.W_K", adapter, state_dict, cfg, layer
+                W_K_key, adapter, state_dict, wk_tensor, cfg, layer
             )
             wv_tensor = ProcessWeights.convert_tensor_to_tl_format(
-                f"blocks.{layer}.attn.W_V", adapter, state_dict, cfg, layer
+                W_V_key, adapter, state_dict, wv_tensor, cfg, layer
             )
             bq_tensor = ProcessWeights.convert_tensor_to_tl_format(
-                f"blocks.{layer}.attn.b_Q", adapter, state_dict, cfg, layer
+                b_Q_key, adapter, state_dict, bq_tensor, cfg, layer
             )
             bk_tensor = ProcessWeights.convert_tensor_to_tl_format(
-                f"blocks.{layer}.attn.b_K", adapter, state_dict, cfg, layer
+                b_K_key, adapter, state_dict, bk_tensor, cfg, layer
             )
             bv_tensor = ProcessWeights.convert_tensor_to_tl_format(
-                f"blocks.{layer}.attn.b_V", adapter, state_dict, cfg, layer
+                b_V_key, adapter, state_dict, bv_tensor, cfg, layer
             )
 
         return {
@@ -572,13 +572,13 @@ class ProcessWeights:
         if adapter:
             # Pass TL-format keys to convert_tensor_to_hf_format, not HF-format keys
             converted_wq = ProcessWeights.convert_tensor_to_hf_format(
-                wq_tensor, f"blocks.{layer}.attn.W_Q", adapter, cfg, layer
+                wq_key, adapter, wq_tensor, cfg, layer
             )
             converted_wk = ProcessWeights.convert_tensor_to_hf_format(
-                wk_tensor, f"blocks.{layer}.attn.W_K", adapter, cfg, layer
+                wk_key, adapter, wk_tensor, cfg, layer
             )
             converted_wv = ProcessWeights.convert_tensor_to_hf_format(
-                wv_tensor, f"blocks.{layer}.attn.W_V", adapter, cfg, layer
+                wv_key, adapter, wv_tensor, cfg, layer
             )
             if converted_wq is None or converted_wk is None or converted_wv is None:
                 raise ValueError(f"Required attention weights missing for layer {layer}")
@@ -586,18 +586,18 @@ class ProcessWeights:
             state_dict[wk_key] = converted_wk
             state_dict[wv_key] = converted_wv
             converted_bq = ProcessWeights.convert_tensor_to_hf_format(
-                bq_tensor, f"blocks.{layer}.attn.b_Q", adapter, cfg, layer
+                bq_key, adapter, bq_tensor, cfg, layer
             )
             if converted_bq is not None:
                 state_dict[bq_key] = converted_bq
             converted_bk = ProcessWeights.convert_tensor_to_hf_format(
-                bk_tensor, f"blocks.{layer}.attn.b_K", adapter, cfg, layer
+                bk_key, adapter, bk_tensor, cfg, layer
             )
             if converted_bk is not None:
                 assert isinstance(converted_bk, torch.Tensor)  # Type narrowing for mypy
                 state_dict[bk_key] = converted_bk
             converted_bv = ProcessWeights.convert_tensor_to_hf_format(
-                bv_tensor, f"blocks.{layer}.attn.b_V", adapter, cfg, layer
+                bv_key, adapter, bv_tensor, cfg, layer
             )
             if converted_bv is not None:
                 assert isinstance(converted_bv, torch.Tensor)  # Type narrowing for mypy
@@ -1234,9 +1234,10 @@ class ProcessWeights:
         param_name: str,
         adapter: Any,
         model_state_dict: Dict[str, torch.Tensor],
+        tensor: torch.Tensor,
         cfg: Any,
         layer_idx: Optional[int] = None,
-    ) -> Optional[torch.Tensor]:
+    ) -> torch.Tensor:
         """Convert a tensor from its original format to TransformerLens format.
 
         Args:
@@ -1250,55 +1251,6 @@ class ProcessWeights:
             The tensor converted to TransformerLens format, or None if the parameter doesn't exist
             (which is valid for optional parameters like biases in models that don't use them)
         """
-        if adapter is None:
-            raise ValueError("Adapter must be provided for tensor conversion")
-
-        # First check if there's a conversion rule that specifies the HF key
-        hf_key = None
-        if hasattr(adapter, "conversion_rules") and adapter.conversion_rules is not None:
-            placeholder_param_name = param_name
-            if "blocks." in param_name and ".attn." in param_name:
-                import re
-
-                placeholder_param_name = re.sub("blocks\\.\\d+\\.", "blocks.{i}.", param_name)
-            elif "blocks." in param_name and ".mlp." in param_name:
-                import re
-
-                placeholder_param_name = re.sub("blocks\\.\\d+\\.", "blocks.{i}.", param_name)
-            elif "blocks." in param_name and ".ln" in param_name:
-                import re
-
-                placeholder_param_name = re.sub("blocks\\.\\d+\\.", "blocks.{i}.", param_name)
-
-            if placeholder_param_name in adapter.conversion_rules.fields:
-                field_info = adapter.conversion_rules.fields[placeholder_param_name]
-                if isinstance(field_info, tuple):
-                    # Extract the HF key from the conversion rule
-                    hf_key_template = field_info[0]
-                    # Replace placeholders with actual layer index
-                    # First try using the layer_idx parameter if provided
-                    if layer_idx is not None and "{i}" in hf_key_template:
-                        hf_key = hf_key_template.replace("{i}", str(layer_idx))
-                    # Otherwise extract from param_name
-                    elif "{i}" in hf_key_template and "blocks." in param_name:
-                        import re
-                        match = re.search(r"blocks\.(\d+)\.", param_name)
-                        if match:
-                            extracted_layer_idx = match.group(1)
-                            hf_key = hf_key_template.replace("{i}", extracted_layer_idx)
-                        else:
-                            hf_key = hf_key_template
-                    else:
-                        hf_key = hf_key_template
-
-        # Fall back to translate_transformer_lens_path if no conversion rule found
-        if hf_key is None:
-            hf_key = adapter.translate_transformer_lens_path(param_name)
-
-        if hf_key not in model_state_dict:
-            return None
-        tensor = model_state_dict[hf_key]
-
         if hasattr(adapter, "conversion_rules") and adapter.conversion_rules is not None:
             placeholder_param_name = param_name
             if "blocks." in param_name and ".attn." in param_name:
@@ -1326,9 +1278,9 @@ class ProcessWeights:
 
     @staticmethod
     def convert_tensor_to_hf_format(
-        tensor: Optional[torch.Tensor],
         param_name: str,
         adapter: Any,
+        tensor: torch.Tensor,
         cfg: Any,
         layer_idx: Optional[int] = None,
     ) -> Optional[torch.Tensor]:
@@ -1344,10 +1296,6 @@ class ProcessWeights:
         Returns:
             The tensor converted back to original format, or None if tensor was None
         """
-        if tensor is None:
-            return None
-        if adapter is None:
-            raise ValueError("Adapter must be provided for tensor conversion")
         if hasattr(adapter, "conversion_rules") and adapter.conversion_rules is not None:
             placeholder_param_name = param_name
             if "blocks." in param_name and ".attn." in param_name:
