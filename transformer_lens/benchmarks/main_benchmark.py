@@ -939,11 +939,35 @@ def run_benchmark_suite(
                 severity=BenchmarkSeverity.ERROR,
                 message=f"Failed to load processed TransformerBridge: {str(e)}",
                 passed=False,
+                details={"error": str(e), "traceback": error_trace},
             )
         )
         if verbose:
             print(f"✗ Failed to load processed TransformerBridge: {str(e)}")
             print(f"\nStack trace:\n{error_trace}")
+
+        # Add failure results for all Phase 3 tests that would have been run
+        phase3_tests = [
+            "no_nan_inf", "weight_magnitudes", "layer_norm_folding",
+            "attention_output_centering", "mlp_output_centering", "unembed_centering",
+            "value_bias_folding", "weight_processing", "weight_sharing", "weight_modification",
+            "logits_equivalence", "loss_equivalence",
+            "hook_registry", "hook_functionality", "critical_forward_hooks", "forward_hooks",
+            "run_with_cache", "activation_cache",
+            "gradient_computation", "critical_backward_hooks", "backward_hooks"
+        ]
+
+        for test_name in phase3_tests:
+            add_result(
+                BenchmarkResult(
+                    name=test_name,
+                    severity=BenchmarkSeverity.ERROR,
+                    message=f"Skipped due to model load failure",
+                    passed=False,
+                    details={"reason": "load_bridge_processed_failed"},
+                )
+            )
+
         if verbose:
             print("\n" + format_results(results))
         return results

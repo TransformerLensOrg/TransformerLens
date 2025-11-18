@@ -1081,6 +1081,13 @@ class ProcessWeights:
                 state_dict = ProcessWeights.fold_layer_norm(
                     state_dict, cfg, fold_biases=False, center_weights=False, adapter=adapter
                 )
+                # For RMS normalization, set all layer norm weights to 1.0 after folding
+                # since RMS folding doesn't result in identity weights like LayerNorm does
+                for layer_idx in range(cfg.n_layers):
+                    for ln_name in ["ln1", "ln2"]:
+                        ln_w_key = ProcessWeights._get_param_key(f"blocks.{layer_idx}.{ln_name}.w", adapter)
+                        if ln_w_key in state_dict:
+                            state_dict[ln_w_key] = torch.ones_like(state_dict[ln_w_key])
         if center_writing_weights:
             if getattr(cfg, "normalization_type", "LN") in ["LN", "LNPre"] and (
                 not getattr(cfg, "final_rms", False)
