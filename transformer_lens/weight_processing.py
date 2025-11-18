@@ -640,24 +640,6 @@ class ProcessWeights:
                 state_dict[bv_key] = bv_tensor
 
     @staticmethod
-    def _detect_unembed_format(state_dict: Dict[str, torch.Tensor], adapter) -> tuple[bool, bool]:
-        """Detect whether state_dict uses TransformerLens or HuggingFace format for unembed parameters.
-
-        Args:
-            state_dict: The state dictionary to check
-            adapter: Optional adapter for key translation
-
-        Returns:
-            Tuple of (uses_tl_format, uses_hf_format)
-        """
-        tl_key_sample = "unembed.W_U"
-        tl_key_alt = "unembed.weight"
-        hf_key_sample = ProcessWeights._get_param_key(tl_key_sample, adapter) if adapter else None
-        uses_tl_format = tl_key_sample in state_dict or tl_key_alt in state_dict
-        uses_hf_format = bool(adapter and hf_key_sample and (hf_key_sample in state_dict))
-        return (uses_tl_format, uses_hf_format)
-
-    @staticmethod
     def _fold_unembed_layer_norm(
         state_dict: Dict[str, torch.Tensor], cfg, fold_biases: bool, center_weights: bool, adapter
     ) -> None:
@@ -720,7 +702,6 @@ class ProcessWeights:
             fold_biases: Whether to fold LayerNorm biases
             adapter: Optional architecture adapter for parameter key translation
         """
-        uses_tl_format, uses_hf_format = ProcessWeights._detect_unembed_format(state_dict, adapter)
         unembed_b_U_key = ProcessWeights._get_param_key("unembed.b_U", adapter)
         unembed_W_U_key = ProcessWeights._get_param_key("unembed.W_U", adapter)
         ln_final_b_key = ProcessWeights._get_param_key("ln_final.b", adapter)
@@ -943,7 +924,6 @@ class ProcessWeights:
         state_dict = {
             k: v.clone() if isinstance(v, torch.Tensor) else v for k, v in state_dict.items()
         }
-        uses_tl_format, uses_hf_format = ProcessWeights._detect_unembed_format(state_dict, adapter)
         unembed_W_U_key = ProcessWeights._get_param_key("unembed.W_U", adapter)
         unembed_b_U_key = ProcessWeights._get_param_key("unembed.b_U", adapter)
         if unembed_W_U_key not in state_dict:
@@ -951,10 +931,7 @@ class ProcessWeights:
                 f"Expected unembedding weight key '{unembed_W_U_key}' not found in state_dict. Available keys: {list(state_dict.keys())[:10]}..."
             )
         W_U = state_dict[unembed_W_U_key]
-        if uses_hf_format:
-            state_dict[unembed_W_U_key] = W_U - W_U.mean(0, keepdim=True)
-        else:
-            state_dict[unembed_W_U_key] = W_U - W_U.mean(-1, keepdim=True)
+        state_dict[unembed_W_U_key] = W_U - W_U.mean(-1, keepdim=True)
         if unembed_b_U_key in state_dict:
             state_dict[unembed_b_U_key] = (
                 state_dict[unembed_b_U_key] - state_dict[unembed_b_U_key].mean()
