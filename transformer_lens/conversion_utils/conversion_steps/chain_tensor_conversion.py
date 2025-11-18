@@ -3,17 +3,17 @@ from typing import List
 
 from torch import Tensor
 
-from .base_hook_conversion import BaseHookConversion
+from .base_tensor_conversion import BaseTensorConversion
 
 
-class ChainHookConversion(BaseHookConversion):
+class ChainTensorConversion(BaseTensorConversion):
     """Chain multiple weight conversion steps together."""
 
-    def __init__(self, conversions: List[BaseHookConversion]):
-        """Initialize the ChainHookConversion.
+    def __init__(self, conversions: List[BaseTensorConversion]):
+        """Initialize the ChainTensorConversion.
 
         Args:
-            conversions (List[BaseHookConversion]): A list of conversions to apply in order.
+            conversions (List[BaseTensorConversion]): A list of conversions to apply in order.
         """
         super().__init__()
         self.conversions = conversions

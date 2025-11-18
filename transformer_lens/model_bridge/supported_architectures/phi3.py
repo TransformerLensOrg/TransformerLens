@@ -3,10 +3,10 @@
 from typing import Any
 
 from transformer_lens.conversion_utils.conversion_steps import (
-    HookConversionSet,
-    RearrangeHookConversion,
-    SplitHookConversion,
+    RearrangeTensorConversion,
+    SplitTensorConversion,
 )
+from transformer_lens.conversion_utils.param_processing_conversion import ParamProcessingConversion
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
@@ -32,49 +32,47 @@ class Phi3ArchitectureAdapter(ArchitectureAdapter):
         self.cfg.gated_mlp = True
         self.cfg.attn_only = False
 
-        self.conversion_rules = HookConversionSet(
-            {
+        self.weight_processing_conversions = {
                 "embed.e": "model.embed_tokens.weight",
                 "blocks.{i}.ln1.w": "model.layers.{i}.input_layernorm.weight",
-                "blocks.{i}.attn.q": (
-                    "model.layers.{i}.self_attn.qkv_proj.weight",
-                    SplitHookConversion(
+                "blocks.{i}.attn.q": ParamProcessingConversion(
+                    tensor_conversion=SplitTensorConversion(
                         0,
                         3,
-                    ),
+                        ),
+                    source_key="model.layers.{i}.self_attn.qkv_proj.weight",
                 ),
-                "blocks.{i}.attn.k": (
-                    "model.layers.{i}.self_attn.qkv_proj.weight",
-                    SplitHookConversion(
+                "blocks.{i}.attn.k": ParamProcessingConversion(
+                    tensor_conversion=SplitTensorConversion(
                         1,
                         3,
-                    ),
+                        ),
+                    source_key="model.layers.{i}.self_attn.qkv_proj.weight",
                 ),
-                "blocks.{i}.attn.v": (
-                    "model.layers.{i}.self_attn.qkv_proj.weight",
-                    SplitHookConversion(
+                "blocks.{i}.attn.v": ParamProcessingConversion(
+                    tensor_conversion=SplitTensorConversion(
                         2,
                         3,
-                    ),
+                        ),
+                    source_key="model.layers.{i}.self_attn.qkv_proj.weight",
                 ),
-                "blocks.{i}.attn.o": (
-                    "model.layers.{i}.self_attn.o_proj.weight",
-                    RearrangeHookConversion("m (n h) -> n h m", n=self.cfg.n_heads),
+                "blocks.{i}.attn.o": ParamProcessingConversion(
+                    tensor_conversion=RearrangeTensorConversion("m (n h) -> n h m", n=self.cfg.n_heads),
+                    source_key="model.layers.{i}.self_attn.o_proj.weight",
                 ),
                 "blocks.{i}.ln2.w": "model.layers.{i}.post_attention_layernorm.weight",
-                "blocks.{i}.mlp.in": (
-                    "model.layers.{i}.mlp.gate_up_proj.weight",
-                    SplitHookConversion(1, 2, dim=1),
+                "blocks.{i}.mlp.in": ParamProcessingConversion(
+                    tensor_conversion=SplitTensorConversion(1, 2, dim=1),
+                    source_key="model.layers.{i}.mlp.gate_up_proj.weight",
                 ),
-                "blocks.{i}.mlp.gate": (
-                    "model.layers.{i}.mlp.gate_up_proj.weight",
-                    SplitHookConversion(0, 2, dim=1),
+                "blocks.{i}.mlp.gate": ParamProcessingConversion(
+                    tensor_conversion=SplitTensorConversion(0, 2, dim=1),
+                    source_key="model.layers.{i}.mlp.gate_up_proj.weight",
                 ),
                 "blocks.{i}.mlp.out": "model.layers.{i}.mlp.down_proj.weight",
                 "ln_final.w": "model.norm.weight",
                 "unembed.u": "lm_head.weight",
             }
-        )
         self.component_mapping = {
             "embed": EmbeddingBridge(name="model.embed_tokens"),
             "blocks": BlockBridge(

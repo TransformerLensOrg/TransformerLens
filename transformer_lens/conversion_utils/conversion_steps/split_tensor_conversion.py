@@ -2,14 +2,14 @@
 import torch
 from torch import Tensor
 
-from .base_hook_conversion import BaseHookConversion
+from .base_tensor_conversion import BaseTensorConversion
 
 
-class SplitHookConversion(BaseHookConversion):
+class SplitTensorConversion(BaseTensorConversion):
     """Split a weight tensor along a specified dimension."""
 
     def __init__(self, index: int, num_splits: int, dim: int = 0):
-        """Initialize the SplitHookConversion.
+        """Initialize the SplitTensorConversion.
 
         Args:
             index (int): The index of the split to select.

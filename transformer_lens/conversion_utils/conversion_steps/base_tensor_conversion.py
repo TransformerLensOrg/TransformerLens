@@ -2,8 +2,8 @@ from collections.abc import Callable
 from typing import Optional
 
 
-class BaseHookConversion:
-    """Base class for weight conversions."""
+class BaseTensorConversion:
+    """Base class for tensor conversions."""
 
     def __init__(
         self, input_filter: Optional[Callable] = None, output_filter: Optional[Callable] = None

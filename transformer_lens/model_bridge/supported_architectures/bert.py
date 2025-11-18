@@ -6,9 +6,9 @@ This module provides the architecture adapter for BERT models.
 from typing import Any
 
 from transformer_lens.conversion_utils.conversion_steps import (
-    HookConversionSet,
-    RearrangeHookConversion,
+    RearrangeTensorConversion,
 )
+from transformer_lens.conversion_utils.param_processing_conversion import ParamProcessingConversion
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
@@ -39,8 +39,7 @@ class BertArchitectureAdapter(ArchitectureAdapter):
         self.cfg.gated_mlp = False
         self.cfg.attn_only = False
 
-        self.conversion_rules = HookConversionSet(
-            {
+        self.weight_processing_conversions = {
                 "embed.e": "bert.embeddings.word_embeddings.weight",
                 "pos_embed.pos": "bert.embeddings.position_embeddings.weight",
                 "embed.token_type_embeddings": "bert.embeddings.token_type_embeddings.weight",
@@ -50,33 +49,33 @@ class BertArchitectureAdapter(ArchitectureAdapter):
                 "blocks.{i}.ln1.b": "bert.encoder.layer.{i}.attention.output.LayerNorm.bias",
                 "blocks.{i}.ln2.w": "bert.encoder.layer.{i}.output.LayerNorm.weight",
                 "blocks.{i}.ln2.b": "bert.encoder.layer.{i}.output.LayerNorm.bias",
-                "blocks.{i}.attn.q": (
-                    "bert.encoder.layer.{i}.attention.self.query.weight",
-                    RearrangeHookConversion("(h d_head) d_model -> h d_head d_model"),
+                "blocks.{i}.attn.q": ParamProcessingConversion(
+                    tensor_conversion=RearrangeTensorConversion("(h d_head) d_model -> h d_head d_model"),
+                    source_key="bert.encoder.layer.{i}.attention.self.query.weight",
                 ),
-                "blocks.{i}.attn.k": (
-                    "bert.encoder.layer.{i}.attention.self.key.weight",
-                    RearrangeHookConversion("(h d_head) d_model -> h d_head d_model"),
+                "blocks.{i}.attn.k": ParamProcessingConversion(
+                    tensor_conversion=RearrangeTensorConversion("(h d_head) d_model -> h d_head d_model"),
+                    source_key="bert.encoder.layer.{i}.attention.self.key.weight",
                 ),
-                "blocks.{i}.attn.v": (
-                    "bert.encoder.layer.{i}.attention.self.value.weight",
-                    RearrangeHookConversion("(h d_head) d_model -> h d_head d_model"),
+                "blocks.{i}.attn.v": ParamProcessingConversion(
+                    tensor_conversion=RearrangeTensorConversion("(h d_head) d_model -> h d_head d_model"),
+                    source_key="bert.encoder.layer.{i}.attention.self.value.weight",
                 ),
-                "blocks.{i}.attn.b_Q": (
-                    "bert.encoder.layer.{i}.attention.self.query.bias",
-                    RearrangeHookConversion("(h d_head) -> h d_head"),
+                "blocks.{i}.attn.b_Q": ParamProcessingConversion(
+                    tensor_conversion=RearrangeTensorConversion("(h d_head) -> h d_head"),
+                    source_key="bert.encoder.layer.{i}.attention.self.query.bias",
                 ),
-                "blocks.{i}.attn.b_K": (
-                    "bert.encoder.layer.{i}.attention.self.key.bias",
-                    RearrangeHookConversion("(h d_head) -> h d_head"),
+                "blocks.{i}.attn.b_K": ParamProcessingConversion(
+                    tensor_conversion=RearrangeTensorConversion("(h d_head) -> h d_head"),
+                    source_key="bert.encoder.layer.{i}.attention.self.key.bias",
                 ),
-                "blocks.{i}.attn.b_V": (
-                    "bert.encoder.layer.{i}.attention.self.value.bias",
-                    RearrangeHookConversion("(h d_head) -> h d_head"),
+                "blocks.{i}.attn.b_V": ParamProcessingConversion(
+                    tensor_conversion=RearrangeTensorConversion("(h d_head) -> h d_head"),
+                    source_key="bert.encoder.layer.{i}.attention.self.value.bias",
                 ),
-                "blocks.{i}.attn.o": (
-                    "bert.encoder.layer.{i}.attention.output.dense.weight",
-                    RearrangeHookConversion("d_model (h d_head) -> h d_head d_model"),
+                "blocks.{i}.attn.o": ParamProcessingConversion(
+                    tensor_conversion=RearrangeTensorConversion("d_model (h d_head) -> h d_head d_model"),
+                    source_key="bert.encoder.layer.{i}.attention.output.dense.weight",
                 ),
                 "blocks.{i}.attn.b_O": "bert.encoder.layer.{i}.attention.output.dense.bias",
                 "blocks.{i}.mlp.in": "bert.encoder.layer.{i}.intermediate.dense.weight",
@@ -92,7 +91,6 @@ class BertArchitectureAdapter(ArchitectureAdapter):
                 "unembed.decoder.weight": "cls.predictions.decoder.weight",
                 "unembed.decoder.bias": "cls.predictions.bias",
             }
-        )
 
         # Set up component mapping
         self.component_mapping = {

@@ -5,9 +5,9 @@ from typing import Any
 import torch
 
 from transformer_lens.conversion_utils.conversion_steps import (
-    HookConversionSet,
-    RearrangeHookConversion,
+    RearrangeTensorConversion,
 )
+from transformer_lens.conversion_utils.param_processing_conversion import ParamProcessingConversion
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
@@ -34,26 +34,25 @@ class QwenArchitectureAdapter(ArchitectureAdapter):
         self.cfg.gated_mlp = True
         self.cfg.attn_only = False
 
-        self.conversion_rules = HookConversionSet(
-            {
+        self.weight_processing_conversions = {
                 "embed.e": "transformer.wte.weight",
                 "blocks.{i}.ln1.w": "transformer.h.{i}.ln_1.weight",
                 "blocks.{i}.ln2.w": "transformer.h.{i}.ln_2.weight",
-                "blocks.{i}.attn.q": (
-                    "transformer.h.{i}.attn.c_attn.weight",
-                    RearrangeHookConversion("(n h) m -> n m h", n=self.cfg.n_heads),
+                "blocks.{i}.attn.q": ParamProcessingConversion(
+                    tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
+                    source_key="transformer.h.{i}.attn.c_attn.weight",
                 ),
-                "blocks.{i}.attn.k": (
-                    "transformer.h.{i}.attn.c_attn.weight",
-                    RearrangeHookConversion("(n h) m -> n m h", n=self.cfg.n_heads),
+                "blocks.{i}.attn.k": ParamProcessingConversion(
+                    tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
+                    source_key="transformer.h.{i}.attn.c_attn.weight",
                 ),
-                "blocks.{i}.attn.v": (
-                    "transformer.h.{i}.attn.c_attn.weight",
-                    RearrangeHookConversion("(n h) m -> n m h", n=self.cfg.n_heads),
+                "blocks.{i}.attn.v": ParamProcessingConversion(
+                    tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
+                    source_key="transformer.h.{i}.attn.c_attn.weight",
                 ),
-                "blocks.{i}.attn.o": (
-                    "transformer.h.{i}.attn.c_proj.weight",
-                    RearrangeHookConversion("m (n h) -> n h m", n=self.cfg.n_heads),
+                "blocks.{i}.attn.o": ParamProcessingConversion(
+                    tensor_conversion=RearrangeTensorConversion("m (n h) -> n h m", n=self.cfg.n_heads),
+                    source_key="transformer.h.{i}.attn.c_proj.weight",
                 ),
                 "blocks.{i}.mlp.in": "transformer.h.{i}.mlp.w2.weight.T",
                 "blocks.{i}.mlp.gate": "transformer.h.{i}.mlp.w1.weight.T",
@@ -61,7 +60,6 @@ class QwenArchitectureAdapter(ArchitectureAdapter):
                 "ln_final.w": "transformer.ln_f.weight",
                 "unembed.u": "lm_head.weight.T",
             }
-        )
 
         self.component_mapping = {
             "embed": EmbeddingBridge(name="transformer.wte"),

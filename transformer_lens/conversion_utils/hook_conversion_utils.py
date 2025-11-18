@@ -10,7 +10,7 @@ def get_weight_conversion_field_set(weights: dict) -> str:
         weights: Dictionary containing weight mappings where:
             - keys are TransformerLens weight names
             - values can be:
-                * tuple[str, "BaseHookConversion"]
+                * tuple[str, "BaseTensorConversion"]
                 * torch.Tensor
                 * strings
 

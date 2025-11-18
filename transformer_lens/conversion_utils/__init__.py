@@ -4,7 +4,7 @@ This module contains utilities for converting between different model architectu
 """
 
 from transformer_lens.conversion_utils.conversion_steps import (
-    HookConversionSet,
+    TensorConversionSet,
 )
 
-__all__ = ["HookConversionSet"]
+__all__ = ["TensorConversionSet"]

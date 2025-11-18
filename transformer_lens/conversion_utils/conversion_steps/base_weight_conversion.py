@@ -2,7 +2,7 @@ from collections.abc import Callable
 from typing import Optional
 
 
-class BaseHookConversion:
+class BaseTensorConversion:
     """Base class for weight conversions."""
 
     def __init__(

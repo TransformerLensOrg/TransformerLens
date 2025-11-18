@@ -569,53 +569,19 @@ class ProcessWeights:
         bq_key = keys["b_Q"]
         bk_key = keys["b_K"]
         bv_key = keys["b_V"]
-        if adapter:
-            # Pass TL-format keys to convert_tensor_to_hf_format, not HF-format keys
-            converted_wq = ProcessWeights.convert_tensor_to_hf_format(
-                wq_key, adapter, wq_tensor, cfg, layer
-            )
-            converted_wk = ProcessWeights.convert_tensor_to_hf_format(
-                wk_key, adapter, wk_tensor, cfg, layer
-            )
-            converted_wv = ProcessWeights.convert_tensor_to_hf_format(
-                wv_key, adapter, wv_tensor, cfg, layer
-            )
-            if converted_wq is None or converted_wk is None or converted_wv is None:
-                raise ValueError(f"Required attention weights missing for layer {layer}")
-            state_dict[wq_key] = converted_wq
-            state_dict[wk_key] = converted_wk
-            state_dict[wv_key] = converted_wv
-            converted_bq = ProcessWeights.convert_tensor_to_hf_format(
-                bq_key, adapter, bq_tensor, cfg, layer
-            )
-            if converted_bq is not None:
-                state_dict[bq_key] = converted_bq
-            converted_bk = ProcessWeights.convert_tensor_to_hf_format(
-                bk_key, adapter, bk_tensor, cfg, layer
-            )
-            if converted_bk is not None:
-                assert isinstance(converted_bk, torch.Tensor)  # Type narrowing for mypy
-                state_dict[bk_key] = converted_bk
-            converted_bv = ProcessWeights.convert_tensor_to_hf_format(
-                bv_key, adapter, bv_tensor, cfg, layer
-            )
-            if converted_bv is not None:
-                assert isinstance(converted_bv, torch.Tensor)  # Type narrowing for mypy
-                state_dict[bv_key] = converted_bv
-        else:
-            # Type narrowing for mypy
-            assert wq_tensor is not None
-            assert wk_tensor is not None
-            assert wv_tensor is not None
-            state_dict[wq_key] = wq_tensor
-            state_dict[wk_key] = wk_tensor
-            state_dict[wv_key] = wv_tensor
-            if bq_tensor is not None:
-                state_dict[bq_key] = bq_tensor
-            if bk_tensor is not None:
-                state_dict[bk_key] = bk_tensor
-            if bv_tensor is not None:
-                state_dict[bv_key] = bv_tensor
+
+        # Store processed tensors directly in 3D format (set_processed_weights will flatten to 2D)
+        if wq_tensor is None or wk_tensor is None or wv_tensor is None:
+            raise ValueError(f"Required attention weights missing for layer {layer}")
+        state_dict[wq_key] = wq_tensor
+        state_dict[wk_key] = wk_tensor
+        state_dict[wv_key] = wv_tensor
+        if bq_tensor is not None:
+            state_dict[bq_key] = bq_tensor
+        if bk_tensor is not None:
+            state_dict[bk_key] = bk_tensor
+        if bv_tensor is not None:
+            state_dict[bv_key] = bv_tensor
                 
         return state_dict
 
@@ -1241,16 +1207,17 @@ class ProcessWeights:
         param_name: str,
         adapter: Any,
         model_state_dict: Dict[str, torch.Tensor],
-        tensor: torch.Tensor,
+        tensor: Optional[torch.Tensor],
         cfg: Any,
         layer_idx: Optional[int] = None,
-    ) -> torch.Tensor:
+    ) -> Optional[torch.Tensor]:
         """Convert a tensor from its original format to TransformerLens format.
 
         Args:
             param_name: The parameter name in TransformerLens format (e.g., "blocks.0.attn.W_Q")
             adapter: The architecture adapter for component retrieval and key translation
             model_state_dict: The model's state dictionary containing the actual tensors
+            tensor: The tensor to convert, or None for optional parameters
             cfg: Model configuration
             layer_idx: Layer index (required for layer-specific parameters)
 
@@ -1258,26 +1225,32 @@ class ProcessWeights:
             The tensor converted to TransformerLens format, or None if the parameter doesn't exist
             (which is valid for optional parameters like biases in models that don't use them)
         """
-        if hasattr(adapter, "conversion_rules") and adapter.conversion_rules is not None:
+        # Handle None tensors (optional parameters like biases in models without them)
+        if tensor is None:
+            return None
+
+        if hasattr(adapter, "weight_processing_conversions") and adapter.weight_processing_conversions is not None:
+            import re
+
+            # Create placeholder param name by replacing layer index with {i}
             placeholder_param_name = param_name
-            if "blocks." in param_name and ".attn." in param_name:
-                import re
+            if "blocks." in param_name:
+                placeholder_param_name = re.sub(r"blocks\.(\d+)\.", "blocks.{i}.", param_name)
 
-                placeholder_param_name = re.sub("blocks\\.\\d+\\.", "blocks.{i}.", param_name)
-            elif "blocks." in param_name and ".mlp." in param_name:
-                import re
+            # Check if we have a conversion for this parameter
+            if placeholder_param_name in adapter.weight_processing_conversions:
+                param_conversion = adapter.weight_processing_conversions[placeholder_param_name]
 
-                placeholder_param_name = re.sub("blocks\\.\\d+\\.", "blocks.{i}.", param_name)
-            elif "blocks." in param_name and ".ln" in param_name:
-                import re
+                # ParamProcessingConversion will fetch from source_key in model_state_dict
+                # and store the result at param_name
+                # We create a shallow copy to avoid modifying the original
+                temp_state_dict = model_state_dict.copy()
 
-                placeholder_param_name = re.sub("blocks\\.\\d+\\.", "blocks.{i}.", param_name)
-            if placeholder_param_name in adapter.conversion_rules.fields:
-                conversion_action = adapter.conversion_rules.get_conversion_action(
-                    placeholder_param_name
-                )
-                converted_tensor = conversion_action.convert(tensor, model_state_dict)
-                return converted_tensor
+                # Let ParamProcessingConversion handle the fetching and conversion
+                param_conversion.convert(temp_state_dict, param_name)
+
+                # Return the converted tensor from the temp state dict
+                return temp_state_dict.get(param_name, tensor)
             else:
                 return tensor
         else:
@@ -1287,42 +1260,46 @@ class ProcessWeights:
     def convert_tensor_to_hf_format(
         param_name: str,
         adapter: Any,
-        tensor: torch.Tensor,
+        tensor: Optional[torch.Tensor],
         cfg: Any,
         layer_idx: Optional[int] = None,
     ) -> Optional[torch.Tensor]:
         """Convert a tensor from TransformerLens format back to its original format.
 
         Args:
-            tensor: The tensor to convert (in TransformerLens format), or None if parameter is optional
             param_name: The parameter name in TransformerLens format (e.g., "blocks.0.attn.W_Q")
             adapter: The architecture adapter for component retrieval and key translation
+            tensor: The tensor to convert (in TransformerLens format), or None if parameter is optional
             cfg: Model configuration
             layer_idx: Layer index (required for layer-specific parameters)
 
         Returns:
             The tensor converted back to original format, or None if tensor was None
         """
-        if hasattr(adapter, "conversion_rules") and adapter.conversion_rules is not None:
+        # Handle None tensors (optional parameters)
+        if tensor is None:
+            return None
+
+        if hasattr(adapter, "weight_processing_conversions") and adapter.weight_processing_conversions is not None:
+            import re
+
+            # Create placeholder param name by replacing layer index with {i}
             placeholder_param_name = param_name
-            if "blocks." in param_name and ".attn." in param_name:
-                import re
+            if "blocks." in param_name:
+                placeholder_param_name = re.sub(r"blocks\.(\d+)\.", "blocks.{i}.", param_name)
 
-                placeholder_param_name = re.sub("blocks\\.\\d+\\.", "blocks.{i}.", param_name)
-            elif "blocks." in param_name and ".mlp." in param_name:
-                import re
+            # Check if we have a conversion for this parameter
+            if placeholder_param_name in adapter.weight_processing_conversions:
+                param_conversion = adapter.weight_processing_conversions[placeholder_param_name]
 
-                placeholder_param_name = re.sub("blocks\\.\\d+\\.", "blocks.{i}.", param_name)
-            elif "blocks." in param_name and ".ln" in param_name:
-                import re
+                # Create a temporary state dict with the tensor at the actual key
+                temp_state_dict = {param_name: tensor}
 
-                placeholder_param_name = re.sub("blocks\\.\\d+\\.", "blocks.{i}.", param_name)
-            if placeholder_param_name in adapter.conversion_rules.fields:
-                conversion_action = adapter.conversion_rules.get_conversion_action(
-                    placeholder_param_name
-                )
-                converted_tensor = conversion_action.revert(tensor)
-                return converted_tensor
+                # Use ParamProcessingConversion to handle reverting
+                param_conversion.revert(temp_state_dict, param_name)
+
+                # Return the reverted tensor from the temp state dict
+                return temp_state_dict.get(param_name, tensor)
             else:
                 return tensor
         else:

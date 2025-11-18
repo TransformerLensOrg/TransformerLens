@@ -4,9 +4,9 @@
 from typing import Any
 
 from transformer_lens.conversion_utils.conversion_steps import (
-    HookConversionSet,
-    RearrangeHookConversion,
+    RearrangeTensorConversion,
 )
+from transformer_lens.conversion_utils.param_processing_conversion import ParamProcessingConversion
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
@@ -41,48 +41,46 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
         # SDPA doesn't support output_attentions, which is required for HookedTransformer compatibility
         self.cfg.attn_implementation = "eager"
 
-        self.conversion_rules = HookConversionSet(
-            {
+        self.weight_processing_conversions = {
                 # Gemma3 scales embeddings by sqrt(d_model)
-                "embed.e": (
-                    "model.embed_tokens.weight",
-                    RearrangeHookConversion(
+                "embed.e": ParamProcessingConversion(
+                    tensor_conversion=RearrangeTensorConversion(
                         "d_vocab d_model -> d_vocab d_model",
                         scale=self.cfg.d_model**0.5,
-                    ),
+                        ),
+                    source_key="model.embed_tokens.weight",
                 ),
-                "blocks.{i}.attn.q": (
-                    "model.layers.{i}.self_attn.q_proj.weight",
-                    RearrangeHookConversion("(n h) m -> n m h", n=self.cfg.n_heads),
+                "blocks.{i}.attn.q": ParamProcessingConversion(
+                    tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
+                    source_key="model.layers.{i}.self_attn.q_proj.weight",
                 ),
-                "blocks.{i}.attn.k": (
-                    "model.layers.{i}.self_attn.k_proj.weight",
-                    RearrangeHookConversion(
+                "blocks.{i}.attn.k": ParamProcessingConversion(
+                    tensor_conversion=RearrangeTensorConversion(
                         "(n h) m -> n m h",
                         n=getattr(
-                            self.cfg,
-                            "n_key_value_heads",
-                            self.cfg.n_heads,
+                        self.cfg,
+                        "n_key_value_heads",
+                        self.cfg.n_heads,
                         ),
-                    ),
+                        ),
+                    source_key="model.layers.{i}.self_attn.k_proj.weight",
                 ),
-                "blocks.{i}.attn.v": (
-                    "model.layers.{i}.self_attn.v_proj.weight",
-                    RearrangeHookConversion(
+                "blocks.{i}.attn.v": ParamProcessingConversion(
+                    tensor_conversion=RearrangeTensorConversion(
                         "(n h) m -> n m h",
                         n=getattr(
-                            self.cfg,
-                            "n_key_value_heads",
-                            self.cfg.n_heads,
+                        self.cfg,
+                        "n_key_value_heads",
+                        self.cfg.n_heads,
                         ),
-                    ),
+                        ),
+                    source_key="model.layers.{i}.self_attn.v_proj.weight",
                 ),
-                "blocks.{i}.attn.o": (
-                    "model.layers.{i}.self_attn.o_proj.weight",
-                    RearrangeHookConversion("m (n h) -> n h m", n=self.cfg.n_heads),
+                "blocks.{i}.attn.o": ParamProcessingConversion(
+                    tensor_conversion=RearrangeTensorConversion("m (n h) -> n h m", n=self.cfg.n_heads),
+                    source_key="model.layers.{i}.self_attn.o_proj.weight",
                 ),
             }
-        )
 
         # Set up component mapping with actual bridge instances
         self.component_mapping = {

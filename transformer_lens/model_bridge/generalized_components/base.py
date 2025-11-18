@@ -8,8 +8,8 @@ from typing import Any, Dict, List, Optional, Union
 import torch
 import torch.nn as nn
 
-from transformer_lens.conversion_utils.conversion_steps.base_hook_conversion import (
-    BaseHookConversion,
+from transformer_lens.conversion_utils.conversion_steps.base_tensor_conversion import (
+    BaseTensorConversion,
 )
 from transformer_lens.hook_points import HookPoint
 
@@ -32,7 +32,7 @@ class GeneralizedComponent(nn.Module):
         name: Optional[str],
         config: Optional[Any] = None,
         submodules: Optional[Dict[str, "GeneralizedComponent"]] = None,
-        conversion_rule: Optional[BaseHookConversion] = None,
+        conversion_rule: Optional[BaseTensorConversion] = None,
     ):
         """Initialize the generalized component.
 

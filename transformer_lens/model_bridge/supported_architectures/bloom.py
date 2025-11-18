@@ -5,9 +5,9 @@ from typing import Any
 import torch
 
 from transformer_lens.conversion_utils.conversion_steps import (
-    HookConversionSet,
-    RearrangeHookConversion,
+    RearrangeTensorConversion,
 )
+from transformer_lens.conversion_utils.param_processing_conversion import ParamProcessingConversion
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
@@ -35,38 +35,37 @@ class BloomArchitectureAdapter(ArchitectureAdapter):
         self.cfg.attn_only = False
 
         self.cfg.default_prepend_bos = False
-        self.conversion_rules = HookConversionSet(
-            {
+        self.weight_processing_conversions = {
                 "embed.e": "transformer.word_embeddings.weight",
                 "blocks.{i}.ln1.w": "transformer.h.{i}.input_layernorm.weight",
                 "blocks.{i}.ln1.b": "transformer.h.{i}.input_layernorm.bias",
-                "blocks.{i}.attn.q": (
-                    "transformer.h.{i}.self_attention.query_key_value.weight",
-                    RearrangeHookConversion(
+                "blocks.{i}.attn.q": ParamProcessingConversion(
+                    tensor_conversion=RearrangeTensorConversion(
                         "(three n h) m -> three n m h",
                         three=3,
                         n=self.cfg.n_heads,
-                    ),
+                        ),
+                    source_key="transformer.h.{i}.self_attention.query_key_value.weight",
                 ),
-                "blocks.{i}.attn.k": (
-                    "transformer.h.{i}.self_attention.query_key_value.weight",
-                    RearrangeHookConversion(
+                "blocks.{i}.attn.k": ParamProcessingConversion(
+                    tensor_conversion=RearrangeTensorConversion(
                         "(three n h) m -> three n m h",
                         three=3,
                         n=self.cfg.n_heads,
-                    ),
+                        ),
+                    source_key="transformer.h.{i}.self_attention.query_key_value.weight",
                 ),
-                "blocks.{i}.attn.v": (
-                    "transformer.h.{i}.self_attention.query_key_value.weight",
-                    RearrangeHookConversion(
+                "blocks.{i}.attn.v": ParamProcessingConversion(
+                    tensor_conversion=RearrangeTensorConversion(
                         "(three n h) m -> three n m h",
                         three=3,
                         n=self.cfg.n_heads,
-                    ),
+                        ),
+                    source_key="transformer.h.{i}.self_attention.query_key_value.weight",
                 ),
-                "blocks.{i}.attn.o": (
-                    "transformer.h.{i}.self_attention.dense.weight",
-                    RearrangeHookConversion("m (n h) -> n h m", n=self.cfg.n_heads),
+                "blocks.{i}.attn.o": ParamProcessingConversion(
+                    tensor_conversion=RearrangeTensorConversion("m (n h) -> n h m", n=self.cfg.n_heads),
+                    source_key="transformer.h.{i}.self_attention.dense.weight",
                 ),
                 "blocks.{i}.attn.b_Q": "transformer.h.{i}.self_attention.query_key_value.bias",
                 "blocks.{i}.attn.b_K": "transformer.h.{i}.self_attention.query_key_value.bias",
@@ -82,7 +81,6 @@ class BloomArchitectureAdapter(ArchitectureAdapter):
                 "ln_final.b": "transformer.ln_f.bias",
                 "unembed.u": "lm_head.weight",
             }
-        )
 
         self.component_mapping = {
             "embed": EmbeddingBridge(name="transformer.word_embeddings"),

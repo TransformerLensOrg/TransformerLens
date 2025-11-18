@@ -3,9 +3,9 @@
 from typing import Any
 
 from transformer_lens.conversion_utils.conversion_steps import (
-    HookConversionSet,
-    RearrangeHookConversion,
+    RearrangeTensorConversion,
 )
+from transformer_lens.conversion_utils.param_processing_conversion import ParamProcessingConversion
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
@@ -35,27 +35,26 @@ class OptArchitectureAdapter(ArchitectureAdapter):
 
         # OPT models were trained with BOS tokens (inherits default_prepend_bos = True)
 
-        self.conversion_rules = HookConversionSet(
-            {
+        self.weight_processing_conversions = {
                 "embed.e": "model.decoder.embed_tokens.weight",
                 "pos_embed.pos": "model.decoder.embed_positions.weight",
                 "blocks.{i}.ln1.w": "model.decoder.layers.{i}.self_attn_layer_norm.weight",
                 "blocks.{i}.ln1.b": "model.decoder.layers.{i}.self_attn_layer_norm.bias",
-                "blocks.{i}.attn.q": (
-                    "model.decoder.layers.{i}.self_attn.q_proj.weight",
-                    RearrangeHookConversion("(n h) m -> n m h", n=self.cfg.n_heads),
+                "blocks.{i}.attn.q": ParamProcessingConversion(
+                    tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
+                    source_key="model.decoder.layers.{i}.self_attn.q_proj.weight",
                 ),
-                "blocks.{i}.attn.k": (
-                    "model.decoder.layers.{i}.self_attn.k_proj.weight",
-                    RearrangeHookConversion("(n h) m -> n m h", n=self.cfg.n_heads),
+                "blocks.{i}.attn.k": ParamProcessingConversion(
+                    tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
+                    source_key="model.decoder.layers.{i}.self_attn.k_proj.weight",
                 ),
-                "blocks.{i}.attn.v": (
-                    "model.decoder.layers.{i}.self_attn.v_proj.weight",
-                    RearrangeHookConversion("(n h) m -> n m h", n=self.cfg.n_heads),
+                "blocks.{i}.attn.v": ParamProcessingConversion(
+                    tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
+                    source_key="model.decoder.layers.{i}.self_attn.v_proj.weight",
                 ),
-                "blocks.{i}.attn.o": (
-                    "model.decoder.layers.{i}.self_attn.out_proj.weight",
-                    RearrangeHookConversion("m (n h) -> n h m", n=self.cfg.n_heads),
+                "blocks.{i}.attn.o": ParamProcessingConversion(
+                    tensor_conversion=RearrangeTensorConversion("m (n h) -> n h m", n=self.cfg.n_heads),
+                    source_key="model.decoder.layers.{i}.self_attn.out_proj.weight",
                 ),
                 "blocks.{i}.attn.b_Q": "model.decoder.layers.{i}.self_attn.q_proj.bias",
                 "blocks.{i}.attn.b_K": "model.decoder.layers.{i}.self_attn.k_proj.bias",
@@ -71,7 +70,6 @@ class OptArchitectureAdapter(ArchitectureAdapter):
                 "ln_final.b": "model.decoder.final_layer_norm.bias",
                 "unembed.u": "lm_head.weight",
             }
-        )
 
         self.component_mapping = {
             "embed": EmbeddingBridge(name="model.decoder.embed_tokens"),

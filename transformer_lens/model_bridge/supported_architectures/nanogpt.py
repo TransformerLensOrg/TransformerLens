@@ -3,9 +3,9 @@ from typing import Any
 import torch
 
 from transformer_lens.conversion_utils.conversion_steps import (
-    HookConversionSet,
-    RearrangeHookConversion,
+    RearrangeTensorConversion,
 )
+from transformer_lens.conversion_utils.param_processing_conversion import ParamProcessingConversion
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
@@ -29,41 +29,40 @@ class NanogptArchitectureAdapter(ArchitectureAdapter):
         """
         super().__init__(cfg)
 
-        self.conversion_rules = HookConversionSet(
-            {
+        self.weight_processing_conversions = {
                 "pos_embed.pos": "transformer.wpe.weight",
                 "embed.e": "transformer.wte.weight",
                 "blocks.{i}.ln1.w": "transformer.h.{i}.ln_1.weight",
                 "blocks.{i}.ln1.b": "transformer.h.{i}.ln_1.bias",
                 "blocks.{i}.ln2.w": "transformer.h.{i}.ln_2.weight",
                 "blocks.{i}.ln2.b": "transformer.h.{i}.ln_2.bias",
-                "blocks.{i}.attn.q": (
-                    "transformer.h.{i}.attn.c_attn.weight",
-                    RearrangeHookConversion("d_model (3 n_head d_head) -> 3 n_head d_head d_model"),
+                "blocks.{i}.attn.q": ParamProcessingConversion(
+                    tensor_conversion=RearrangeTensorConversion("d_model (3 n_head d_head) -> 3 n_head d_head d_model"),
+                    source_key="transformer.h.{i}.attn.c_attn.weight",
                 ),
-                "blocks.{i}.attn.k": (
-                    "transformer.h.{i}.attn.c_attn.weight",
-                    RearrangeHookConversion("d_model (3 n_head d_head) -> 3 n_head d_head d_model"),
+                "blocks.{i}.attn.k": ParamProcessingConversion(
+                    tensor_conversion=RearrangeTensorConversion("d_model (3 n_head d_head) -> 3 n_head d_head d_model"),
+                    source_key="transformer.h.{i}.attn.c_attn.weight",
                 ),
-                "blocks.{i}.attn.v": (
-                    "transformer.h.{i}.attn.c_attn.weight",
-                    RearrangeHookConversion("d_model (3 n_head d_head) -> 3 n_head d_head d_model"),
+                "blocks.{i}.attn.v": ParamProcessingConversion(
+                    tensor_conversion=RearrangeTensorConversion("d_model (3 n_head d_head) -> 3 n_head d_head d_model"),
+                    source_key="transformer.h.{i}.attn.c_attn.weight",
                 ),
-                "blocks.{i}.attn.b_Q": (
-                    "transformer.h.{i}.attn.c_attn.bias",
-                    RearrangeHookConversion("(3 n_head d_head) -> 3 n_head d_head"),
+                "blocks.{i}.attn.b_Q": ParamProcessingConversion(
+                    tensor_conversion=RearrangeTensorConversion("(3 n_head d_head) -> 3 n_head d_head"),
+                    source_key="transformer.h.{i}.attn.c_attn.bias",
                 ),
-                "blocks.{i}.attn.b_K": (
-                    "transformer.h.{i}.attn.c_attn.bias",
-                    RearrangeHookConversion("(3 n_head d_head) -> 3 n_head d_head"),
+                "blocks.{i}.attn.b_K": ParamProcessingConversion(
+                    tensor_conversion=RearrangeTensorConversion("(3 n_head d_head) -> 3 n_head d_head"),
+                    source_key="transformer.h.{i}.attn.c_attn.bias",
                 ),
-                "blocks.{i}.attn.b_V": (
-                    "transformer.h.{i}.attn.c_attn.bias",
-                    RearrangeHookConversion("(3 n_head d_head) -> 3 n_head d_head"),
+                "blocks.{i}.attn.b_V": ParamProcessingConversion(
+                    tensor_conversion=RearrangeTensorConversion("(3 n_head d_head) -> 3 n_head d_head"),
+                    source_key="transformer.h.{i}.attn.c_attn.bias",
                 ),
-                "blocks.{i}.attn.o": (
-                    "transformer.h.{i}.attn.c_proj.weight",
-                    RearrangeHookConversion("d_model (n_head d_head) -> n_head d_head d_model"),
+                "blocks.{i}.attn.o": ParamProcessingConversion(
+                    tensor_conversion=RearrangeTensorConversion("d_model (n_head d_head) -> n_head d_head d_model"),
+                    source_key="transformer.h.{i}.attn.c_proj.weight",
                 ),
                 "blocks.{i}.attn.b_O": "transformer.h.{i}.attn.c_proj.bias",
                 "blocks.{i}.mlp.in": "transformer.h.{i}.mlp.c_fc.weight",
@@ -75,7 +74,6 @@ class NanogptArchitectureAdapter(ArchitectureAdapter):
                 "ln_final.w": "transformer.ln_f.weight",
                 "ln_final.b": "transformer.ln_f.bias",
             }
-        )
 
         # Set up component mapping
         self.component_mapping = {

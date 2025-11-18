@@ -3,9 +3,9 @@
 from typing import Any
 
 from transformer_lens.conversion_utils.conversion_steps import (
-    HookConversionSet,
-    RearrangeHookConversion,
+    RearrangeTensorConversion,
 )
+from transformer_lens.conversion_utils.param_processing_conversion import ParamProcessingConversion
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
@@ -32,26 +32,25 @@ class GptjArchitectureAdapter(ArchitectureAdapter):
         self.cfg.gated_mlp = False
         self.cfg.attn_only = False
 
-        self.conversion_rules = HookConversionSet(
-            {
+        self.weight_processing_conversions = {
                 "embed.e": "transformer.wte.weight",
                 "blocks.{i}.ln1.w": "transformer.h.{i}.ln_1.weight",
                 "blocks.{i}.ln1.b": "transformer.h.{i}.ln_1.bias",
-                "blocks.{i}.attn.q": (
-                    "transformer.h.{i}.attn.q_proj.weight",
-                    RearrangeHookConversion("(n h) m -> n m h", n=self.cfg.n_heads),
+                "blocks.{i}.attn.q": ParamProcessingConversion(
+                    tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
+                    source_key="transformer.h.{i}.attn.q_proj.weight",
                 ),
-                "blocks.{i}.attn.k": (
-                    "transformer.h.{i}.attn.k_proj.weight",
-                    RearrangeHookConversion("(n h) m -> n m h", n=self.cfg.n_heads),
+                "blocks.{i}.attn.k": ParamProcessingConversion(
+                    tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
+                    source_key="transformer.h.{i}.attn.k_proj.weight",
                 ),
-                "blocks.{i}.attn.v": (
-                    "transformer.h.{i}.attn.v_proj.weight",
-                    RearrangeHookConversion("(n h) m -> n m h", n=self.cfg.n_heads),
+                "blocks.{i}.attn.v": ParamProcessingConversion(
+                    tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
+                    source_key="transformer.h.{i}.attn.v_proj.weight",
                 ),
-                "blocks.{i}.attn.o": (
-                    "transformer.h.{i}.attn.out_proj.weight",
-                    RearrangeHookConversion("m (n h) -> n h m", n=self.cfg.n_heads),
+                "blocks.{i}.attn.o": ParamProcessingConversion(
+                    tensor_conversion=RearrangeTensorConversion("m (n h) -> n h m", n=self.cfg.n_heads),
+                    source_key="transformer.h.{i}.attn.out_proj.weight",
                 ),
                 "blocks.{i}.mlp.in": "transformer.h.{i}.mlp.fc_in.weight",
                 "blocks.{i}.mlp.b_in": "transformer.h.{i}.mlp.fc_in.bias",
@@ -62,7 +61,6 @@ class GptjArchitectureAdapter(ArchitectureAdapter):
                 "unembed.u": "lm_head.weight",
                 "unembed.b_U": "lm_head.bias",
             }
-        )
 
         self.component_mapping = {
             "embed": EmbeddingBridge(name="transformer.wte"),

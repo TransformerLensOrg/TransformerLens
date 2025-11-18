@@ -2,7 +2,6 @@
 
 from typing import Any
 
-from transformer_lens.conversion_utils.conversion_steps import HookConversionSet
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
@@ -41,8 +40,7 @@ class T5ArchitectureAdapter(ArchitectureAdapter):
         self.cfg.gated_mlp = False
         self.cfg.attn_only = False
 
-        self.conversion_rules = HookConversionSet(
-            {
+        self.weight_processing_conversions = {
                 # Shared embeddings
                 "embed.e": "shared.weight",
                 # Encoder components
@@ -75,7 +73,6 @@ class T5ArchitectureAdapter(ArchitectureAdapter):
                 # Language modeling head
                 "unembed.u": "lm_head.weight",
             }
-        )
 
         self.component_mapping = {
             # Shared embeddings

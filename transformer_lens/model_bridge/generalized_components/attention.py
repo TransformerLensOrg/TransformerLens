@@ -9,8 +9,8 @@ import torch
 from transformer_lens.conversion_utils.conversion_steps.attention_auto_conversion import (
     AttentionAutoConversion,
 )
-from transformer_lens.conversion_utils.conversion_steps.base_hook_conversion import (
-    BaseHookConversion,
+from transformer_lens.conversion_utils.conversion_steps.base_tensor_conversion import (
+    BaseTensorConversion,
 )
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.generalized_components.base import (
@@ -48,8 +48,8 @@ class AttentionBridge(GeneralizedComponent):
         name: str,
         config: Any,
         submodules: Optional[Dict[str, GeneralizedComponent]] = None,
-        conversion_rule: Optional[BaseHookConversion] = None,
-        pattern_conversion_rule: Optional[BaseHookConversion] = None,
+        conversion_rule: Optional[BaseTensorConversion] = None,
+        pattern_conversion_rule: Optional[BaseTensorConversion] = None,
         maintain_native_attention: bool = False,
         requires_position_embeddings: bool = False,
         requires_attention_mask: bool = False,
@@ -171,11 +171,11 @@ class AttentionBridge(GeneralizedComponent):
         - v.hook_out (aliased as hook_v) - uses n_kv_heads if GQA
         - o.hook_in (aliased as hook_z)
         """
-        from transformer_lens.conversion_utils.conversion_steps.base_hook_conversion import (
-            BaseHookConversion,
+        from transformer_lens.conversion_utils.conversion_steps.base_tensor_conversion import (
+            BaseTensorConversion,
         )
 
-        class ReshapeForAttentionHeads(BaseHookConversion):
+        class ReshapeForAttentionHeads(BaseTensorConversion):
             """Reshape tensors to split attention heads for Q/K/V/Z compatibility."""
 
             def __init__(self, n_heads: int, d_head: int):
@@ -237,7 +237,7 @@ class AttentionBridge(GeneralizedComponent):
             z_reshape = ReshapeForAttentionHeads(n_heads, d_head)
             self.o.hook_in.hook_conversion = z_reshape
 
-        class TransposeRotaryHeads(BaseHookConversion):
+        class TransposeRotaryHeads(BaseTensorConversion):
             """Transpose rotary hook tensors from HF format to HookedTransformer format."""
 
             def handle_conversion(self, input_value, *full_context):

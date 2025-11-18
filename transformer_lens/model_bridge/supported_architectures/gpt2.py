@@ -5,10 +5,10 @@ from typing import Any
 import torch
 
 from transformer_lens.conversion_utils.conversion_steps import (
-    BaseHookConversion,
-    HookConversionSet,
-    RearrangeHookConversion,
+    BaseTensorConversion,
+    RearrangeTensorConversion,
 )
+from transformer_lens.conversion_utils.param_processing_conversion import ParamProcessingConversion
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
@@ -22,7 +22,7 @@ from transformer_lens.model_bridge.generalized_components import (
 )
 
 
-class QKVSplitRearrangeConversion(BaseHookConversion):
+class QKVSplitRearrangeConversion(BaseTensorConversion):
     """Custom conversion that splits QKV tensor and then rearranges."""
 
     def __init__(self, qkv_index: int, rearrange_pattern: str, **axes_lengths):
@@ -60,7 +60,7 @@ class QKVSplitRearrangeConversion(BaseHookConversion):
         return einops.rearrange(selected_part, self.rearrange_pattern, **self.axes_lengths)
 
 
-class QKVBiasConversion(BaseHookConversion):
+class QKVBiasConversion(BaseTensorConversion):
     """Custom conversion for QKV biases that matches the original GPT-2 logic."""
 
     def __init__(self, qkv_index: int, n_heads: int, d_head: int):
@@ -136,40 +136,46 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
         # Set config variable to indicate that attention weights are split (use TransformerLens format processing)
         self.cfg.split_attention_weights = True
 
-        self.conversion_rules = HookConversionSet(
-            {
-                "blocks.{i}.attn.q.weight": (
-                    "transformer.h.{i}.attn.c_attn.weight",
-                    RearrangeHookConversion(
-                        "d_model (n h) -> n d_model h", n=self.cfg.n_heads
-                    ),
+        from transformer_lens.conversion_utils.param_processing_conversion import ParamProcessingConversion
+
+        self.weight_processing_conversions = {
+            "blocks.{i}.attn.W_Q": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion(
+                    "d_model (n h) -> n d_model h", n=self.cfg.n_heads
                 ),
-                "blocks.{i}.attn.k.weight": (
-                    "transformer.h.{i}.attn.c_attn.weight",
-                    RearrangeHookConversion(
-                        "d_model (n h) -> n d_model h", n=self.cfg.n_heads
-                    ),
+                source_key="transformer.h.{i}.attn.c_attn.weight",
+            ),
+            "blocks.{i}.attn.W_K": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion(
+                    "d_model (n h) -> n d_model h", n=self.cfg.n_heads
                 ),
-                "blocks.{i}.attn.v.weight": (
-                    "transformer.h.{i}.attn.c_attn.weight",
-                    RearrangeHookConversion(
-                        "d_model (n h) -> n d_model h", n=self.cfg.n_heads
-                    ),
+                source_key="transformer.h.{i}.attn.c_attn.weight",
+            ),
+            "blocks.{i}.attn.W_V": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion(
+                    "d_model (n h) -> n d_model h", n=self.cfg.n_heads
                 ),
-                "blocks.{i}.attn.q.bias": (
-                    "transformer.h.{i}.attn.c_attn.bias",
-                    RearrangeHookConversion("(index head) -> index head", index=self.cfg.n_heads, head=self.cfg.d_head),
+                source_key="transformer.h.{i}.attn.c_attn.weight",
+            ),
+            "blocks.{i}.attn.b_Q": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion(
+                    "(index head) -> index head", index=self.cfg.n_heads, head=self.cfg.d_head
                 ),
-                "blocks.{i}.attn.k.bias": (
-                    "transformer.h.{i}.attn.c_attn.bias",
-                    RearrangeHookConversion("(index head) -> index head", index=self.cfg.n_heads, head=self.cfg.d_head),
+                source_key="transformer.h.{i}.attn.c_attn.bias",
+            ),
+            "blocks.{i}.attn.b_K": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion(
+                    "(index head) -> index head", index=self.cfg.n_heads, head=self.cfg.d_head
                 ),
-                "blocks.{i}.attn.v.bias": (
-                    "transformer.h.{i}.attn.c_attn.bias",
-                    RearrangeHookConversion("(index head) -> index head", index=self.cfg.n_heads, head=self.cfg.d_head),
+                source_key="transformer.h.{i}.attn.c_attn.bias",
+            ),
+            "blocks.{i}.attn.b_V": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion(
+                    "(index head) -> index head", index=self.cfg.n_heads, head=self.cfg.d_head
                 ),
-            }
-        )
+                source_key="transformer.h.{i}.attn.c_attn.bias",
+            ),
+        }
 
         self.component_mapping = {
             "embed": EmbeddingBridge(name="transformer.wte"),

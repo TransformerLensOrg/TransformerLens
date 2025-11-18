@@ -2,12 +2,12 @@
 
 This module contains the base class for architecture adapters that map between different model architectures.
 """
-from typing import Any, cast
+from typing import Any, Dict, cast
 
 import torch
 
 from transformer_lens.config import TransformerBridgeConfig
-from transformer_lens.conversion_utils.conversion_steps import HookConversionSet
+from transformer_lens.conversion_utils.param_processing_conversion import ParamProcessingConversion
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
@@ -38,7 +38,7 @@ class ArchitectureAdapter:
         """
         self.cfg = cfg
         self.component_mapping: ComponentMapping | None = None
-        self.conversion_rules: HookConversionSet | None = None
+        self.weight_processing_conversions: Dict[str, ParamProcessingConversion] | None = None
         self.uses_split_attention: bool = getattr(cfg, "uses_split_attention", False)
         self._merge_default_config()
 
