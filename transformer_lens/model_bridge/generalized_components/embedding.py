@@ -6,6 +6,7 @@ import inspect
 from typing import Any, Dict, Mapping, Optional
 
 import torch
+from torch import nn
 
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
@@ -69,14 +70,6 @@ class EmbeddingBridge(GeneralizedComponent):
         Returns:
             Embedded output
         """
-        if hasattr(self, "_use_processed_weights") and self._use_processed_weights:
-            input_ids = self.hook_in(input_ids)
-            if hasattr(self, "_processed_weight"):
-                output = torch.nn.functional.embedding(input_ids, self._processed_weight)
-            else:
-                output = torch.nn.functional.embedding(input_ids, self.W_E)
-            output = self.hook_out(output)
-            return output
         if self.original_component is None:
             raise RuntimeError(
                 f"Original component not set for {self.name}. Call set_original_component() first."
@@ -100,41 +93,3 @@ class EmbeddingBridge(GeneralizedComponent):
             output = output.to(dtype=target_dtype)
         output = self.hook_out(output)
         return output
-
-    def set_processed_weights(
-        self, weights: Mapping[str, torch.Tensor | None], verbose: bool = False
-    ) -> None:
-        """Set the processed weights by loading them into the original component.
-
-        This loads the processed weights directly into the original_component's parameters,
-        so when forward() delegates to original_component, it uses the processed weights.
-
-        Args:
-            weights: Dictionary containing the processed weight tensor with key "weight"
-            verbose: If True, print detailed information about weight setting
-        """
-        if verbose:
-            print(
-                f"\n  set_processed_weights: EmbeddingBridge (name={getattr(self, 'name', 'unknown')})"
-            )
-            print(f"    Received {len(weights)} weight keys")
-
-        if self.original_component is None:
-            raise RuntimeError(f"Original component not set for {self.name}")
-
-        weight = weights.get("weight")
-        if weight is None:
-            raise ValueError("Processed weights for EmbeddingBridge must include 'weight'.")
-
-        if verbose:
-            print(f"    Found weight key with shape: {weight.shape}")
-
-        self._use_processed_weights = True
-        self._processed_weight = weight
-
-        # Set the weight directly into the original component's parameters
-        for name, param in self.original_component.named_parameters():
-            if "weight" in name.lower():
-                if verbose:
-                    print(f"    Setting param '{name}' with shape {weight.contiguous().shape}")
-                param.data = weight.contiguous()

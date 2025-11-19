@@ -206,10 +206,11 @@ class GeneralizedComponent(nn.Module):
                     if hasattr(self.original_component, key):
                         param = getattr(self.original_component, key)
                         if param is not None and isinstance(param, torch.nn.Parameter):
-                            # Update existing parameter's data
                             if verbose:
                                 print(f"    Setting weight: {key} (shape: {weight_tensor.shape})")
-                            param.data = weight_tensor
+                            # break tying by creating a new param
+                            new_param = nn.Parameter(weight_tensor)
+                            setattr(self.original_component, key, new_param)
 
         # If this component has submodules, distribute weights to them
         if self.real_components:
