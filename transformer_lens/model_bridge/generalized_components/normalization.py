@@ -123,38 +123,3 @@ class NormalizationBridge(GeneralizedComponent):
             result = result.to(input_dtype)
         return result
 
-    def process_weights(
-        self,
-        fold_ln: bool = False,
-        center_writing_weights: bool = False,
-        center_unembed: bool = False,
-        fold_value_biases: bool = False,
-        refactor_factored_attn_matrices: bool = False,
-    ) -> None:
-        """Process normalization weights according to GPT2 pretrained logic.
-
-        For layer norm, this is a direct mapping without transformation.
-        """
-        if self.original_component is None:
-            return
-        component_name = self.name or ""
-        if "ln_f" in component_name or "final" in component_name:
-            weight_key = "w"
-            bias_key = "b"
-        elif "ln_1" in component_name:
-            weight_key = "w"
-            bias_key = "b"
-        elif "ln_2" in component_name:
-            weight_key = "w"
-            bias_key = "b"
-        else:
-            weight_key = "w"
-            bias_key = "b"
-        weight_tensor = getattr(self.original_component, "weight", None)
-        bias_tensor = getattr(self.original_component, "bias", None)
-        processed_weights = {}
-        if weight_tensor is not None:
-            processed_weights[weight_key] = weight_tensor.clone()
-        if bias_tensor is not None:
-            processed_weights[bias_key] = bias_tensor.clone()
-        self._processed_weights = processed_weights

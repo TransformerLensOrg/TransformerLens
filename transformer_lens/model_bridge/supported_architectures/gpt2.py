@@ -139,41 +139,62 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
         from transformer_lens.conversion_utils.param_processing_conversion import ParamProcessingConversion
 
         self.weight_processing_conversions = {
-            "blocks.{i}.attn.W_Q": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion(
-                    "d_model (n h) -> n d_model h", n=self.cfg.n_heads
+            # Q/K/V weights - split from joint qkv.weight and rearrange
+            "blocks.{i}.attn.q.weight": ParamProcessingConversion(
+                tensor_conversion=QKVSplitRearrangeConversion(
+                    qkv_index=0,
+                    rearrange_pattern="d_model (n h) -> n d_model h",
+                    n=self.cfg.n_heads
                 ),
-                source_key="transformer.h.{i}.attn.c_attn.weight",
+                source_key="blocks.{i}.attn.qkv.weight",
             ),
-            "blocks.{i}.attn.W_K": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion(
-                    "d_model (n h) -> n d_model h", n=self.cfg.n_heads
+            "blocks.{i}.attn.k.weight": ParamProcessingConversion(
+                tensor_conversion=QKVSplitRearrangeConversion(
+                    qkv_index=1,
+                    rearrange_pattern="d_model (n h) -> n d_model h",
+                    n=self.cfg.n_heads
                 ),
-                source_key="transformer.h.{i}.attn.c_attn.weight",
+                source_key="blocks.{i}.attn.qkv.weight",
             ),
-            "blocks.{i}.attn.W_V": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion(
-                    "d_model (n h) -> n d_model h", n=self.cfg.n_heads
+            "blocks.{i}.attn.v.weight": ParamProcessingConversion(
+                tensor_conversion=QKVSplitRearrangeConversion(
+                    qkv_index=2,
+                    rearrange_pattern="d_model (n h) -> n d_model h",
+                    n=self.cfg.n_heads
                 ),
-                source_key="transformer.h.{i}.attn.c_attn.weight",
+                source_key="blocks.{i}.attn.qkv.weight",
             ),
-            "blocks.{i}.attn.b_Q": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion(
-                    "(index head) -> index head", index=self.cfg.n_heads, head=self.cfg.d_head
+            # Q/K/V biases - split from joint qkv.bias and reshape
+            "blocks.{i}.attn.q.bias": ParamProcessingConversion(
+                tensor_conversion=QKVBiasConversion(
+                    qkv_index=0,
+                    n_heads=self.cfg.n_heads,
+                    d_head=self.cfg.d_head
                 ),
-                source_key="transformer.h.{i}.attn.c_attn.bias",
+                source_key="blocks.{i}.attn.qkv.bias",
             ),
-            "blocks.{i}.attn.b_K": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion(
-                    "(index head) -> index head", index=self.cfg.n_heads, head=self.cfg.d_head
+            "blocks.{i}.attn.k.bias": ParamProcessingConversion(
+                tensor_conversion=QKVBiasConversion(
+                    qkv_index=1,
+                    n_heads=self.cfg.n_heads,
+                    d_head=self.cfg.d_head
                 ),
-                source_key="transformer.h.{i}.attn.c_attn.bias",
+                source_key="blocks.{i}.attn.qkv.bias",
             ),
-            "blocks.{i}.attn.b_V": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion(
-                    "(index head) -> index head", index=self.cfg.n_heads, head=self.cfg.d_head
+            "blocks.{i}.attn.v.bias": ParamProcessingConversion(
+                tensor_conversion=QKVBiasConversion(
+                    qkv_index=2,
+                    n_heads=self.cfg.n_heads,
+                    d_head=self.cfg.d_head
                 ),
-                source_key="transformer.h.{i}.attn.c_attn.bias",
+                source_key="blocks.{i}.attn.qkv.bias",
+            ),
+            # O weight - rearrange from 2D to 3D
+            "blocks.{i}.attn.o.weight": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion(
+                    pattern="(n h) m -> n h m",
+                    n=self.cfg.n_heads
+                ),
             ),
         }
 

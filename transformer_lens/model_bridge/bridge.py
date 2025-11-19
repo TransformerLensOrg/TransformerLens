@@ -874,23 +874,44 @@ class TransformerBridge(nn.Module):
             print(f"Processing weights for {self.cfg.model_name}...")
         import torch
 
+        # Break weight tying between embed and unembed BEFORE extracting state dict
+        # This is necessary for models like GPT-2 that share weights between lm_head and wte
+        # We need to untie them so that center_unembed only affects unembed, not embed
+        if hasattr(self, 'unembed') and hasattr(self, 'embed'):
+            if hasattr(self.unembed, 'original_component') and hasattr(self.embed, 'original_component'):
+                unembed_module = self.unembed.original_component
+                embed_module = self.embed.original_component
+                # Check if weights are tied (same underlying tensor)
+                if hasattr(unembed_module, 'weight') and hasattr(embed_module, 'weight'):
+                    if unembed_module.weight.data_ptr() == embed_module.weight.data_ptr():
+                        if verbose:
+                            print("  Breaking weight tying between embed and unembed...")
+                        # Create independent copy for unembed
+                        unembed_module.weight = torch.nn.Parameter(unembed_module.weight.clone())
+
         if verbose:
             print("  Extracting state dict from existing model...")
         state_dict = self.state_dict()
-            
+
         adapter = self.adapter
+
         if adapter and hasattr(adapter, "preprocess_weights"):
             state_dict = adapter.preprocess_weights(state_dict)
         if adapter:
             try:
                 unembed_b_U_key = ProcessWeights._get_param_key("unembed.b_U", adapter)
                 if unembed_b_U_key not in state_dict:
-                    state_dict[unembed_b_U_key] = torch.zeros(
-                        self.cfg.d_vocab_out
-                        if hasattr(self.cfg, "d_vocab_out")
-                        else self.cfg.d_vocab,
-                        dtype=self.cfg.dtype if hasattr(self.cfg, "dtype") else torch.float32,
-                    )
+                    # Determine dtype
+                    if hasattr(self.cfg, "dtype"):
+                        dtype = self.cfg.dtype
+                        # Handle string dtypes
+                        if isinstance(dtype, str):
+                            dtype = getattr(torch, dtype, torch.float32)
+                    else:
+                        dtype = torch.float32
+
+                    vocab_size = self.cfg.d_vocab_out if hasattr(self.cfg, "d_vocab_out") else self.cfg.d_vocab
+                    state_dict[unembed_b_U_key] = torch.zeros(vocab_size, dtype=dtype)
             except (ValueError, KeyError):
                 pass
 
