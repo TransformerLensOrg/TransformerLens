@@ -33,6 +33,9 @@ from transformer_lens.conversion_utils.conversion_steps.split_tensor_conversion 
 from transformer_lens.conversion_utils.conversion_steps.ternary_tensor_conversion import (
     TernaryTensorConversion,
 )
+from transformer_lens.conversion_utils.conversion_steps.transpose_tensor_conversion import (
+    TransposeTensorConversion,
+)
 from transformer_lens.conversion_utils.conversion_steps.zeros_like_conversion import (
     ZerosLikeConversion,
 )
@@ -48,5 +51,6 @@ __all__ = [
     "SplitTensorConversion",
     "TernaryTensorConversion",
     "TensorConversionSet",
+    "TransposeTensorConversion",
     "ZerosLikeConversion",
 ]

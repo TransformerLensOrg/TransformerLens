@@ -1095,20 +1095,20 @@ class ProcessWeights:
                 state_dict = ProcessWeights.center_writing_weights(state_dict, cfg, adapter=adapter)
         if center_unembed:
             state_dict = ProcessWeights.center_unembed(state_dict, adapter=adapter)
-        # if fold_value_biases:
-        #     state_dict = ProcessWeights.fold_value_biases(state_dict, cfg, adapter=adapter)
-        #     if center_writing_weights and getattr(cfg, "normalization_type", "LN") in [
-        #         "LN",
-        #         "LNPre",
-        #     ]:
-        #         for layer_idx in range(cfg.n_layers):
-        #             b_O_key = ProcessWeights._get_param_key(
-        #                 f"blocks.{layer_idx}.attn.b_O", adapter
-        #             )
-        #             if b_O_key in state_dict:
-        #                 b_O = ProcessWeights.convert_tensor_to_tl_format(b_O_key, state_dict, state_dict.get(b_O_key), cfg, adapter, layer_idx)
-        #                 b_O = b_O - b_O.mean()
-        #                 state_dict[b_O_key] = ProcessWeights.convert_tensor_to_hf_format(b_O_key, b_O, cfg, adapter, layer_idx)
+        if fold_value_biases:
+            state_dict = ProcessWeights.fold_value_biases(state_dict, cfg, adapter=adapter)
+            if center_writing_weights and getattr(cfg, "normalization_type", "LN") in [
+                "LN",
+                "LNPre",
+            ]:
+                for layer_idx in range(cfg.n_layers):
+                    b_O_key = ProcessWeights._get_param_key(
+                        f"blocks.{layer_idx}.attn.b_O", adapter
+                    )
+                    if b_O_key in state_dict:
+                        b_O = ProcessWeights.convert_tensor_to_tl_format(b_O_key, state_dict, state_dict.get(b_O_key), cfg, adapter, layer_idx)
+                        b_O = b_O - b_O.mean()
+                        state_dict[b_O_key] = ProcessWeights.convert_tensor_to_hf_format(b_O_key, b_O, cfg, adapter, layer_idx)
         if refactor_factored_attn_matrices:
             state_dict = ProcessWeights.refactor_factored_attn_matrices(
                 state_dict, cfg, adapter=adapter

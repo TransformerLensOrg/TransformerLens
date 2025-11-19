@@ -7,6 +7,7 @@ import torch
 from transformer_lens.conversion_utils.conversion_steps import (
     BaseTensorConversion,
     RearrangeTensorConversion,
+    TransposeTensorConversion,
 )
 from transformer_lens.conversion_utils.param_processing_conversion import ParamProcessingConversion
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
@@ -19,6 +20,7 @@ from transformer_lens.model_bridge.generalized_components import (
     NormalizationBridge,
     PosEmbedBridge,
     UnembeddingBridge,
+    LinearBridge,
 )
 
 
@@ -197,6 +199,10 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
                     n=self.cfg.n_heads
                 ),
             ),
+            # Unembed weight - transpose from [d_model, d_vocab] to [d_vocab, d_model]
+            "unembed.weight": ParamProcessingConversion(
+                tensor_conversion=TransposeTensorConversion(),
+            ),
         }
 
         self.component_mapping = {
@@ -212,16 +218,16 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
                         config=self.cfg,
                         split_qkv_matrix=self.split_qkv_matrix,
                         submodules={
-                            "qkv": Conv1DBridge(name="c_attn"),
-                            "o": Conv1DBridge(name="c_proj"),
+                            "qkv": LinearBridge(name="c_attn"),
+                            "o": LinearBridge(name="c_proj"),
                         },
                     ),
                     "ln2": NormalizationBridge(name="ln_2", config=self.cfg),
                     "mlp": MLPBridge(
                         name="mlp",
                         submodules={
-                            "in": Conv1DBridge(name="c_fc"),
-                            "out": Conv1DBridge(name="c_proj"),
+                            "in": LinearBridge(name="c_fc"),
+                            "out": LinearBridge(name="c_proj"),
                         },
                     ),
                 },

@@ -845,6 +845,66 @@ class TransformerBridge(nn.Module):
                         block.attn._ln1 = ln1
                         block.attn._expects_pre_ln1_input = True
 
+    def fill_missing_keys(self, state_dict: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+        """Fill missing bias keys with zeros.
+
+        This method fills in missing bias keys that are expected by weight processing
+        but may not exist in some model architectures. Specifically:
+        - unembed.bias
+        - attention q/k/v/o biases for all layers
+
+        Args:
+            state_dict: State dict from the model
+
+        Returns:
+            State dict with missing keys filled in with zeros
+        """
+        import torch
+
+        # Determine dtype
+        if hasattr(self.cfg, "dtype"):
+            dtype = self.cfg.dtype
+            # Handle string dtypes
+            if isinstance(dtype, str):
+                dtype = getattr(torch, dtype, torch.float32)
+        else:
+            dtype = torch.float32
+
+        # Fill unembed bias if missing
+        if "unembed.bias" not in state_dict:
+            vocab_size = (
+                self.cfg.d_vocab_out if hasattr(self.cfg, "d_vocab_out") else self.cfg.d_vocab
+            )
+            state_dict["unembed.bias"] = torch.zeros(vocab_size, dtype=dtype)
+
+        # Fill attention biases if missing (Q, K, V, O for all layers)
+        for layer in range(self.cfg.n_layers):
+            # Q/K/V biases
+            for component in ["q", "k", "v"]:
+                bias_key = f"blocks.{layer}.attn.{component}.bias"
+                if bias_key not in state_dict:
+                    # Try to infer size from weight if it exists
+                    weight_key = f"blocks.{layer}.attn.{component}.weight"
+                    if weight_key in state_dict:
+                        weight_shape = state_dict[weight_key].shape
+                        # Weight is [out_features, in_features] for nn.Linear
+                        # or [in_features, out_features] for Conv1D
+                        # We want bias size = out_features
+                        bias_size = weight_shape[0]  # Assuming Linear format
+                        state_dict[bias_key] = torch.zeros(bias_size, dtype=dtype)
+                    else:
+                        # Default: n_heads * d_head
+                        bias_size = self.cfg.n_heads * self.cfg.d_head
+                        state_dict[bias_key] = torch.zeros(bias_size, dtype=dtype)
+
+            # O bias
+            bias_key = f"blocks.{layer}.attn.o.bias"
+            if bias_key not in state_dict:
+                # O bias size is d_model
+                state_dict[bias_key] = torch.zeros(self.cfg.d_model, dtype=dtype)
+
+        return state_dict
+
     def process_weights(
         self,
         verbose: bool = False,
@@ -878,6 +938,9 @@ class TransformerBridge(nn.Module):
             print("  Extracting state dict from existing model...")
         state_dict = self.state_dict()
 
+        # Fill missing keys with zeros (unembed bias, attention biases)
+        state_dict = self.fill_missing_keys(state_dict)
+
         adapter = self.adapter
 
         # Break weight tying between embed and unembed in the state dict
@@ -896,23 +959,6 @@ class TransformerBridge(nn.Module):
 
         if adapter and hasattr(adapter, "preprocess_weights"):
             state_dict = adapter.preprocess_weights(state_dict)
-        if adapter:
-            try:
-                unembed_b_U_key = ProcessWeights._get_param_key("unembed.b_U", adapter)
-                if unembed_b_U_key not in state_dict:
-                    # Determine dtype
-                    if hasattr(self.cfg, "dtype"):
-                        dtype = self.cfg.dtype
-                        # Handle string dtypes
-                        if isinstance(dtype, str):
-                            dtype = getattr(torch, dtype, torch.float32)
-                    else:
-                        dtype = torch.float32
-
-                    vocab_size = self.cfg.d_vocab_out if hasattr(self.cfg, "d_vocab_out") else self.cfg.d_vocab
-                    state_dict[unembed_b_U_key] = torch.zeros(vocab_size, dtype=dtype)
-            except (ValueError, KeyError):
-                pass
 
         # Use unified ProcessWeights.process_weights() like HookedTransformer does
         if verbose:

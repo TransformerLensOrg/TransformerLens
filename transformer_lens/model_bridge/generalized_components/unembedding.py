@@ -34,6 +34,26 @@ class UnembeddingBridge(GeneralizedComponent):
         """
         super().__init__(name, config, submodules=submodules)
 
+    def set_original_component(self, original_component: torch.nn.Module) -> None:
+        """Set the original component and ensure it has bias enabled.
+
+        Args:
+            original_component: The original transformer component to wrap
+        """
+        # If this is a Linear layer without bias, enable it
+        if isinstance(original_component, torch.nn.Linear) and original_component.bias is None:
+            # Get the output features (vocab size)
+            vocab_size = original_component.weight.shape[0]
+            device = original_component.weight.device
+            dtype = original_component.weight.dtype
+
+            # Create a zero bias parameter
+            original_component.bias = torch.nn.Parameter(
+                torch.zeros(vocab_size, device=device, dtype=dtype)
+            )
+
+        super().set_original_component(original_component)
+
     @property
     def W_U(self) -> torch.Tensor:
         """Return the unembedding weight matrix in TL format [d_model, d_vocab]."""
