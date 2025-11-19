@@ -99,16 +99,6 @@ class JointQKVAttentionBridge(AttentionBridge):
         if hasattr(self, "o"):
             self.real_components["o"] = ("o", self.o)
 
-        self._processed_weights: Optional[Dict[str, torch.Tensor]] = None
-        self._hooked_weights_extracted = False
-        self._W_Q: Optional[torch.Tensor] = None
-        self._W_K: Optional[torch.Tensor] = None
-        self._W_V: Optional[torch.Tensor] = None
-        self._W_O: Optional[torch.Tensor] = None
-        self._b_Q: Optional[torch.Tensor] = None
-        self._b_K: Optional[torch.Tensor] = None
-        self._b_V: Optional[torch.Tensor] = None
-        self._b_O: Optional[torch.Tensor] = None
         self._reference_model: Optional[Any] = None
         self._layer_idx: Optional[int] = None
 

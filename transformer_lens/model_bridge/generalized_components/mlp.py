@@ -53,46 +53,6 @@ class MLPBridge(GeneralizedComponent):
         Returns:
             Output hidden states
         """
-        if hasattr(self, "_use_processed_weights") and self._use_processed_weights:
-            from transformer_lens.utilities.addmm import batch_addmm
-
-            hidden_states = args[0]
-            hidden_states = self.hook_in(hidden_states)
-            in_module = getattr(self, "in", None) or getattr(self, "input", None)
-            if in_module is not None and hasattr(in_module, "hook_in"):
-                hidden_states = in_module.hook_in(hidden_states)  # type: ignore[misc]
-            if hasattr(self, "_processed_W_in") and hasattr(self, "_processed_W_out"):
-                b_in = (
-                    self._processed_b_in
-                    if self._processed_b_in is not None
-                    else torch.zeros(
-                        self._processed_W_in.shape[-1],
-                        device=hidden_states.device,
-                        dtype=hidden_states.dtype,
-                    )
-                )
-                hidden = batch_addmm(b_in, self._processed_W_in, hidden_states)
-                in_module = getattr(self, "in", None) or getattr(self, "input", None)
-                if in_module and hasattr(in_module, "hook_out"):
-                    hidden = in_module.hook_out(hidden)
-                hidden = torch.nn.functional.gelu(hidden)
-                if hasattr(self, "out") and hasattr(self.out, "hook_in"):
-                    hidden = self.out.hook_in(hidden)
-                b_out = (
-                    self._processed_b_out
-                    if self._processed_b_out is not None
-                    else torch.zeros(
-                        self._processed_W_out.shape[-1], device=hidden.device, dtype=hidden.dtype
-                    )
-                )
-                output = batch_addmm(b_out, self._processed_W_out, hidden)
-            else:
-                new_args = (hidden_states,) + args[1:]
-                output = self.original_component(*new_args, **kwargs)  # type: ignore[misc]
-            output = self.hook_out(output)
-            if hasattr(self, "out") and hasattr(self.out, "hook_out"):
-                output = self.out.hook_out(output)
-            return output
         hidden_states = args[0]
         hidden_states = self.hook_in(hidden_states)
         in_module = getattr(self, "in", None) or getattr(self, "input", None)
@@ -109,53 +69,3 @@ class MLPBridge(GeneralizedComponent):
         if hasattr(self, "out") and hasattr(self.out, "hook_out"):
             output = self.out.hook_out(output)
         return output
-
-    def set_processed_weights(
-        self, weights: Mapping[str, torch.Tensor | None], verbose: bool = False
-    ) -> None:
-        """Set the processed weights for use in compatibility mode.
-
-        This stores the processed weights as attributes on the MLP component so they can be
-        used directly in the forward pass without modifying the original component.
-
-        Args:
-            W_in: The processed MLP input weight tensor [d_model, d_mlp]
-            W_out: The processed MLP output weight tensor [d_mlp, d_model]
-            b_in: The processed MLP input bias tensor (optional)
-            b_out: The processed MLP output bias tensor (optional)
-            W_gate: The processed MLP gate weight tensor [d_model, d_mlp] (for gated MLPs)
-            b_gate: The processed MLP gate bias tensor (optional, for gated MLPs)
-            verbose: If True, print detailed information about weight setting
-        """
-        if verbose:
-            print(f"\n  set_processed_weights: MLPBridge (name={getattr(self, 'name', 'unknown')})")
-            print(f"    Received {len(weights)} weight keys")
-
-        if self.original_component is None:
-            raise RuntimeError(f"Original component not set for {self.name}")
-        W_in = weights.get("in.weight")
-        W_out = weights.get("out.weight")
-        if W_in is None or W_out is None:
-            return
-        b_in = weights.get("in.bias")
-        b_out = weights.get("out.bias")
-
-        if verbose:
-            print(f"    Setting W_in with shape: {W_in.shape}")
-            print(f"    Setting W_out with shape: {W_out.shape}")
-            if b_in is not None:
-                print(f"    Setting b_in with shape: {b_in.shape}")
-            if b_out is not None:
-                print(f"    Setting b_out with shape: {b_out.shape}")
-
-        self._use_processed_weights = True
-        self._processed_W_in = W_in
-        self._processed_b_in = b_in
-        self._processed_W_out = W_out
-        self._processed_b_out = b_out
-        in_module = getattr(self, "in", None)
-        out_module = getattr(self, "out", None)
-        if in_module and hasattr(in_module, "set_processed_weights"):
-            in_module.set_processed_weights({"weight": W_in, "bias": b_in}, verbose=verbose)
-        if out_module and hasattr(out_module, "set_processed_weights"):
-            out_module.set_processed_weights({"weight": W_out, "bias": b_out}, verbose=verbose)

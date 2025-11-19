@@ -61,20 +61,6 @@ class PosEmbedBridge(GeneralizedComponent):
         Returns:
             Positional embeddings
         """
-        if hasattr(self, "_use_processed_weights") and self._use_processed_weights:
-            input_ids = args[0] if args else kwargs.get("input_ids")
-            position_ids = args[1] if len(args) > 1 else kwargs.get("position_ids")
-            input_ids = self.hook_in(input_ids)
-            if position_ids is None:
-                batch_size, seq_len = input_ids.shape[:2]
-                position_ids = torch.arange(seq_len, device=input_ids.device, dtype=torch.long)
-                position_ids = position_ids.unsqueeze(0).expand(batch_size, -1)
-            if hasattr(self, "_processed_weight"):
-                output = torch.nn.functional.embedding(position_ids, self._processed_weight)
-            else:
-                output = torch.nn.functional.embedding(position_ids, self.W_pos)
-            output = self.hook_out(output)
-            return output
         if self.original_component is None:
             raise RuntimeError(
                 f"Original component not set for {self.name}. Call set_original_component() first."
@@ -85,41 +71,3 @@ class PosEmbedBridge(GeneralizedComponent):
         output = self.original_component(*args, **kwargs)
         output = self.hook_out(output)
         return output
-
-    def set_processed_weights(
-        self, weights: Mapping[str, torch.Tensor | None], verbose: bool = False
-    ) -> None:
-        """Set the processed weights by loading them into the original component.
-
-        This loads the processed weights directly into the original_component's parameters,
-        so when forward() delegates to original_component, it uses the processed weights.
-
-        Args:
-            weights: Dictionary containing the processed weight tensor with key "weight"
-            verbose: If True, print detailed information about weight setting
-        """
-        if verbose:
-            print(
-                f"\n  set_processed_weights: PosEmbedBridge (name={getattr(self, 'name', 'unknown')})"
-            )
-            print(f"    Received {len(weights)} weight keys")
-
-        if self.original_component is None:
-            raise RuntimeError(f"Original component not set for {self.name}")
-
-        weight = weights.get("weight")
-        if weight is None:
-            raise ValueError("Processed weights for PosEmbedBridge must include 'weight'.")
-
-        if verbose:
-            print(f"    Found weight key with shape: {weight.shape}")
-
-        self._use_processed_weights = True
-        self._processed_weight = weight
-
-        # Set the weight directly into the original component's parameters
-        for name, param in self.original_component.named_parameters():
-            if "weight" in name.lower():
-                if verbose:
-                    print(f"    Setting param '{name}' with shape {weight.contiguous().shape}")
-                param.data = weight.contiguous()

@@ -63,19 +63,6 @@ class UnembeddingBridge(GeneralizedComponent):
         Returns:
             Unembedded output (logits)
         """
-        # If using processed weights, use custom forward to handle format
-        if "_processed_W_U" in self._parameters:
-            processed_W_U = self._parameters["_processed_W_U"]
-            if processed_W_U is not None:
-                hidden_states = self.hook_in(hidden_states)
-                # Note: processed weights are actually in HF format [vocab, d_model]
-                # despite being called "processed_tl_weights" in the bridge
-                # linear expects weight in [out_features, in_features] = [vocab, d_model]
-                # So we use the weight as-is without transpose
-                output = torch.nn.functional.linear(hidden_states, processed_W_U, self.b_U)
-                output = self.hook_out(output)
-                return output
-
         # Otherwise delegate to original component
         if self.original_component is None:
             raise RuntimeError(
@@ -121,68 +108,3 @@ class UnembeddingBridge(GeneralizedComponent):
             vocab_size: int = int(weight.shape[0])
             return torch.zeros(vocab_size, device=device, dtype=dtype)
 
-    def set_processed_weights(
-        self, weights: Mapping[str, torch.Tensor | None], verbose: bool = False
-    ) -> None:
-        """Set the processed weights by loading them into the original component.
-
-        This loads the processed weights directly into the original_component's parameters,
-        so when forward() delegates to original_component, it uses the processed weights.
-
-        Note: W_U is expected in TL format [d_model, d_vocab] and will be transposed
-        to HF format [d_vocab, d_model] before being stored in the original component.
-
-        Args:
-            weights: Dictionary containing:
-                - "weight": The processed W_U tensor in TL format [d_model, d_vocab]
-                - "bias": The processed b_U tensor (optional) [d_vocab]
-            verbose: If True, print detailed information about weight setting
-        """
-        if verbose:
-            print(
-                f"\n  set_processed_weights: UnembeddingBridge (name={getattr(self, 'name', 'unknown')})"
-            )
-            print(f"    Received {len(weights)} weight keys")
-
-        if self.original_component is None:
-            raise RuntimeError(f"Original component not set for {self.name}")
-
-        weight = weights.get("weight")
-        if weight is None:
-            raise ValueError("Processed weights for UnembeddingBridge must include 'weight'.")
-
-        bias = weights.get("bias")
-
-        if verbose:
-            print(f"    Found weight key with shape: {weight.shape}")
-            if bias is not None:
-                print(f"    Found bias key with shape: {bias.shape}")
-
-        # Register processed weights as parameters (for backward compatibility)
-        self.register_parameter("_processed_W_U", torch.nn.Parameter(weight))
-        if bias is not None:
-            self.register_parameter("_b_U", torch.nn.Parameter(bias))
-        else:
-            vocab_size = weight.shape[1]
-            self.register_parameter(
-                "_b_U",
-                torch.nn.Parameter(
-                    torch.zeros(vocab_size, device=weight.device, dtype=weight.dtype)
-                ),
-            )
-
-    def named_parameters(
-        self, prefix: str = "", recurse: bool = True, remove_duplicate: bool = True
-    ) -> Iterator[Tuple[str, torch.nn.Parameter]]:
-        """Override named_parameters to expose _b_U as b_U.
-
-        This ensures that the parameter shows up as 'unembed.b_U' instead of 'unembed._b_U'
-        in the output, matching HookedTransformer's naming convention.
-        """
-        for name, param in super().named_parameters(prefix, recurse, remove_duplicate):
-            if name.endswith("._b_U"):
-                yield (name[:-5] + ".b_U", param)
-            elif name == "_b_U":
-                yield ("b_U", param)
-            else:
-                yield (name, param)
