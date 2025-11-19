@@ -1279,22 +1279,8 @@ class ProcessWeights:
             if placeholder_param_name in adapter.weight_processing_conversions:
                 param_conversion = adapter.weight_processing_conversions[placeholder_param_name]
 
-                # If the key already exists in the state dict with a non-None value,
-                # it has already been converted - return it as-is
-                if param_name in model_state_dict and model_state_dict[param_name] is not None:
-                    return model_state_dict[param_name]
-
-                # ParamProcessingConversion will fetch from source_key in model_state_dict
-                # and store the result at param_name
-                # We create a shallow copy to avoid modifying the original
-                temp_state_dict = model_state_dict.copy()
-
                 # Let ParamProcessingConversion handle the fetching and conversion
-                param_conversion.convert(temp_state_dict, param_name)
-
-                # Return the converted tensor from the temp state dict
-                # May be None if the source key doesn't exist (optional parameter)
-                return temp_state_dict.get(param_name)
+                return param_conversion.convert(model_state_dict, param_name)
             else:
                 # No conversion defined, return tensor as-is (may be None for optional params)
                 return tensor
@@ -1344,14 +1330,8 @@ class ProcessWeights:
             if placeholder_param_name in adapter.weight_processing_conversions:
                 param_conversion = adapter.weight_processing_conversions[placeholder_param_name]
 
-                # Create a temporary state dict with the tensor at the actual key
-                temp_state_dict = {param_name: tensor}
-
                 # Use ParamProcessingConversion to handle reverting
-                param_conversion.revert(temp_state_dict, param_name)
-
-                # Return the reverted tensor from the temp state dict
-                return temp_state_dict.get(param_name, tensor)
+                return param_conversion.revert(tensor)
             else:
                 return tensor
         else:

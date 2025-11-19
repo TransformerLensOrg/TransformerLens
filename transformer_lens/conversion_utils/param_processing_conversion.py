@@ -50,7 +50,7 @@ class ParamProcessingConversion:
 
     def convert(
         self, state_dict: Dict[str, torch.Tensor], current_key: str
-    ) -> Dict[str, torch.Tensor]:
+    ) -> torch.Tensor:
         """Convert a parameter in the state dict.
 
         Fetches tensor from source_key (or current_key if not specified),
@@ -72,20 +72,12 @@ class ParamProcessingConversion:
         tensor = state_dict.get(fetch_key)
 
         # Apply conversion (handles None gracefully)
-        converted_tensor = self.tensor_conversion.convert(tensor, state_dict)
+        return self.tensor_conversion.convert(tensor, state_dict)
 
-        # Store result at current_key
-        if converted_tensor is not None:
-            state_dict[current_key] = converted_tensor
-        elif current_key in state_dict:
-            # Remove key if conversion resulted in None
-            del state_dict[current_key]
-
-        return state_dict
 
     def revert(
-        self, state_dict: Dict[str, torch.Tensor], current_key: str
-    ) -> Dict[str, torch.Tensor]:
+        self, tensor: torch.Tensor, current_key: str
+    ) -> torch.Tensor:
         """Revert a parameter conversion in the state dict.
 
         Fetches tensor from current_key, applies reversion,
@@ -98,17 +90,5 @@ class ParamProcessingConversion:
         Returns:
             Modified state dictionary
         """
-        # Fetch tensor from current key
-        tensor = state_dict.get(current_key)
-
         # Apply reversion (handles None gracefully)
-        reverted_tensor = self.tensor_conversion.revert(tensor, state_dict)
-
-        # Store result back at current_key
-        if reverted_tensor is not None:
-            state_dict[current_key] = reverted_tensor
-        elif current_key in state_dict:
-            # Remove key if reversion resulted in None
-            del state_dict[current_key]
-
-        return state_dict
+        return self.tensor_conversion.revert(tensor)
