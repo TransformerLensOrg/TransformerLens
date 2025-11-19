@@ -1147,95 +1147,7 @@ class TransformerBridge(nn.Module):
         else:
             return loss
 
-    def _run_with_hooks_ported(
-        self,
-        input: Union[str, List[str], torch.Tensor],
-        fwd_hooks: List[Tuple[Union[str, Callable], Callable]] = [],
-        bwd_hooks: List[Tuple[Union[str, Callable], Callable]] = [],
-        reset_hooks_end: bool = True,
-        clear_contexts: bool = False,
-        return_type: Optional[str] = "logits",
-        stop_at_layer: Optional[int] = None,
-        **kwargs,
-    ) -> Any:
-        """Run with hooks using ported components."""
-        if isinstance(input, (str, list)):
-            tokens = self.to_tokens(input, prepend_bos=kwargs.get("prepend_bos", None))
-        else:
-            tokens = input
-        added_hooks: List[Tuple[HookPoint, str]] = []
 
-        def add_hook_to_point(
-            hook_point: HookPoint,
-            hook_fn: Callable,
-            name: str,
-            dir: str = "fwd",
-            use_alias_only: bool = False,
-        ):
-            if self.compatibility_mode and name != hook_point.name and (not use_alias_only):
-                alias_names_list: list[str] = []
-                if hook_point.name is not None:
-                    alias_names_list.append(hook_point.name)
-                alias_names_list.append(name)
-                hook_point.add_hook(hook_fn, dir=dir, alias_names=alias_names_list)  # type: ignore[arg-type]
-            elif use_alias_only and name != hook_point.name:
-                hook_point.add_hook(hook_fn, dir=dir, alias_names=[name])  # type: ignore[arg-type]
-            else:
-                hook_point.add_hook(hook_fn, dir=dir)  # type: ignore[arg-type]
-            added_hooks.append((hook_point, name))
-
-        try:
-            for hook_name_or_filter, hook_fn in fwd_hooks:
-                if isinstance(hook_name_or_filter, str):
-                    hook_point = self.get_hook_point(hook_name_or_filter)
-                    if hook_point is not None:
-                        add_hook_to_point(
-                            hook_point, hook_fn, hook_name_or_filter, "fwd", use_alias_only=True
-                        )
-                elif callable(hook_name_or_filter):
-                    hook_dict = self.hook_dict
-                    hook_point_to_names: dict[int, list[str]] = {}
-                    for name, hook_point in hook_dict.items():
-                        if hook_name_or_filter(name):
-                            hp_id = id(hook_point)
-                            if hp_id not in hook_point_to_names:
-                                hook_point_to_names[hp_id] = []
-                            hook_point_to_names[hp_id].append(name)
-                    for hp_id, matching_names in hook_point_to_names.items():
-                        hook_point = hook_dict[matching_names[0]]
-                        name_to_use = hook_point.name if hook_point.name else matching_names[0]
-                        add_hook_to_point(
-                            hook_point, hook_fn, name_to_use, "fwd", use_alias_only=True
-                        )
-            for hook_name_or_filter, hook_fn in bwd_hooks:
-                if isinstance(hook_name_or_filter, str):
-                    hook_point = self.get_hook_point(hook_name_or_filter)
-                    if hook_point is not None:
-                        add_hook_to_point(
-                            hook_point, hook_fn, hook_name_or_filter, "bwd", use_alias_only=True
-                        )
-                elif callable(hook_name_or_filter):
-                    hook_dict = self.hook_dict
-                    bwd_hook_point_to_names: dict[int, list[str]] = {}
-                    for name, hook_point in hook_dict.items():
-                        if hook_name_or_filter(name):
-                            hp_id = id(hook_point)
-                            if hp_id not in bwd_hook_point_to_names:
-                                bwd_hook_point_to_names[hp_id] = []
-                            bwd_hook_point_to_names[hp_id].append(name)
-                    for hp_id, matching_names in bwd_hook_point_to_names.items():
-                        hook_point = hook_dict[matching_names[0]]
-                        name_to_use = hook_point.name if hook_point.name else matching_names[0]
-                        add_hook_to_point(
-                            hook_point, hook_fn, name_to_use, "bwd", use_alias_only=True
-                        )
-            return self._ported_forward_pass(
-                tokens, return_type=return_type, stop_at_layer=stop_at_layer, **kwargs
-            )
-        finally:
-            if reset_hooks_end:
-                for hook_point, name in added_hooks:
-                    hook_point.remove_hooks()
 
     def _extract_hf_weights(self):
         """Extract weights from the original HuggingFace model."""
@@ -1607,17 +1519,6 @@ class TransformerBridge(nn.Module):
         Returns:
             Model output based on return_type
         """
-        # If weights have been processed, use the ported forward pass which has better stop_at_layer support
-        if hasattr(self, "_weights_processed") and self._weights_processed:
-            return self._ported_forward_pass(
-                input=input,
-                return_type=return_type,
-                prepend_bos=prepend_bos,
-                loss_per_token=loss_per_token,
-                start_at_layer=start_at_layer,
-                stop_at_layer=stop_at_layer,
-            )
-
         from transformer_lens.model_bridge.exceptions import StopAtLayerException
 
         # Set stop_at_layer flag on all blocks if requested
@@ -2013,17 +1914,6 @@ class TransformerBridge(nn.Module):
         Returns:
             Model output
         """
-        if hasattr(self, "_weights_processed") and self._weights_processed:
-            return self._run_with_hooks_ported(
-                input,
-                fwd_hooks=fwd_hooks,
-                bwd_hooks=bwd_hooks,
-                reset_hooks_end=reset_hooks_end,
-                clear_contexts=clear_contexts,
-                return_type=return_type,
-                stop_at_layer=stop_at_layer,
-                **kwargs,
-            )
         added_hooks: List[Tuple[HookPoint, str]] = []
         effective_stop_layer = None
         if stop_at_layer is not None and hasattr(self, "blocks"):
