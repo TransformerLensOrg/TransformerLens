@@ -144,7 +144,7 @@ class GatedMLPBridge(MLPBridge):
             )
             print(f"    Received {len(weights)} weight keys")
 
-        super().set_processed_weights(weights, verbose=verbose)
+        super().set_processed_weights(weights, verbose=verbose)  # type: ignore[arg-type]
         W_gate = weights.get("gate.weight")
         if W_gate is None:
             return
@@ -160,4 +160,7 @@ class GatedMLPBridge(MLPBridge):
         self._processed_W_gate = W_gate
         self._processed_b_gate = b_gate
         if gate_module and hasattr(gate_module, "set_processed_weights"):
-            gate_module.set_processed_weights({"weight": W_gate, "bias": b_gate}, verbose=verbose)
+            gate_weights: Dict[str, torch.Tensor] = {"weight": W_gate}
+            if b_gate is not None:
+                gate_weights["bias"] = b_gate
+            gate_module.set_processed_weights(gate_weights, verbose=verbose)

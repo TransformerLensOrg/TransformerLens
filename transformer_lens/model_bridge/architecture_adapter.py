@@ -40,7 +40,7 @@ class ArchitectureAdapter:
         """
         self.cfg = cfg
         self.component_mapping: ComponentMapping | None = None
-        self.weight_processing_conversions: Dict[str, ParamProcessingConversion] | None = None
+        self.weight_processing_conversions: Dict[str, ParamProcessingConversion | str] | None = None
         self.uses_split_attention: bool = getattr(cfg, "uses_split_attention", False)
         self._merge_default_config()
 

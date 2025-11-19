@@ -1,11 +1,11 @@
 import torch
 
-from transformer_lens.conversion_utils.conversion_steps.callable_hook_conversion import (
-    CallableHookConversion,
+from transformer_lens.conversion_utils.conversion_steps.callable_tensor_conversion import (
+    CallableTensorConversion,
 )
 
 
-def test_callable_hook_conversion_basic():
+def test_callable_tensor_conversion_basic():
     """
     Verifies that the given callable is invoked on a dict of tensors
     and the result is returned as expected.
@@ -18,7 +18,7 @@ def test_callable_hook_conversion_basic():
             new_dict[k] = v + 1
         return new_dict
 
-    conversion = CallableHookConversion(my_callable)
+    conversion = CallableTensorConversion(my_callable)
 
     input_data = {
         "a": torch.tensor([1.0, 2.0]),
@@ -39,9 +39,9 @@ def test_callable_hook_conversion_basic():
     assert torch.allclose(input_data["b"], original_b), "Input data 'b' was modified in place!"
 
 
-def test_callable_hook_conversion_input_filter():
+def test_callable_tensor_conversion_input_filter():
     """
-    Ensures BaseHookConversion's input_filter is applied
+    Ensures BaseTensorConversion's input_filter is applied
     to the dict of tensors before the main callable runs.
     """
 
@@ -58,7 +58,7 @@ def test_callable_hook_conversion_input_filter():
             filtered_dict[k] = v * 2
         return filtered_dict
 
-    conversion = CallableHookConversion(my_callable)
+    conversion = CallableTensorConversion(my_callable)
     conversion.input_filter = my_input_filter
 
     input_data = {
@@ -73,9 +73,9 @@ def test_callable_hook_conversion_input_filter():
     assert torch.allclose(output_data["y"], torch.tensor([18.0]))
 
 
-def test_callable_hook_conversion_output_filter():
+def test_callable_tensor_conversion_output_filter():
     """
-    Ensures BaseHookConversion's output_filter is applied
+    Ensures BaseTensorConversion's output_filter is applied
     to the dict of tensors after the main callable runs.
     """
 
@@ -92,7 +92,7 @@ def test_callable_hook_conversion_output_filter():
             filtered_dict[k] = v - 5
         return filtered_dict
 
-    conversion = CallableHookConversion(my_callable)
+    conversion = CallableTensorConversion(my_callable)
     conversion.output_filter = my_output_filter
 
     input_data = {
@@ -106,7 +106,7 @@ def test_callable_hook_conversion_output_filter():
     assert torch.allclose(output_data["second"], torch.tensor([11.0]))
 
 
-def test_callable_hook_conversion_input_and_output_filters():
+def test_callable_tensor_conversion_input_and_output_filters():
     """
     Tests that input_filter and output_filter both run in the correct order
     around the callable, for a dict of tensors.
@@ -130,7 +130,7 @@ def test_callable_hook_conversion_input_and_output_filters():
             new_dict[k] = v - 3
         return new_dict
 
-    conversion = CallableHookConversion(my_callable)
+    conversion = CallableTensorConversion(my_callable)
     conversion.input_filter = my_input_filter
     conversion.output_filter = my_output_filter
 
@@ -149,7 +149,7 @@ def test_callable_hook_conversion_input_and_output_filters():
     assert torch.allclose(output_data["things"], expected_things)
 
 
-def test_callable_hook_conversion_repr():
+def test_callable_tensor_conversion_repr():
     """
     Simple test confirming __repr__ returns the expected info
     about the callable operation.
@@ -158,7 +158,7 @@ def test_callable_hook_conversion_repr():
     def my_callable(tensor_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
         return tensor_dict
 
-    conversion = CallableHookConversion(my_callable)
+    conversion = CallableTensorConversion(my_callable)
     rep = repr(conversion).lower()
     assert (
         "callable operation" in rep

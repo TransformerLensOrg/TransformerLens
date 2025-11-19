@@ -1,5 +1,5 @@
 """Linear bridge component for wrapping linear layers with hook points."""
-from typing import Any, Mapping
+from typing import Any, Dict, Mapping
 
 import einops
 import torch
@@ -106,11 +106,11 @@ class LinearBridge(GeneralizedComponent):
         if bias is not None and bias.ndim == 2:
             bias = einops.rearrange(bias, "n_heads d_head -> (n_heads d_head)")
 
-        weights = {
+        processed_weights: Dict[str, torch.Tensor] = {
             "weight": weight,
         }
 
         if bias is not None:
-            weights["bias"] = bias
+            processed_weights["bias"] = bias
 
-        super().set_processed_weights(weights, verbose=verbose)
+        super().set_processed_weights(processed_weights, verbose=verbose)

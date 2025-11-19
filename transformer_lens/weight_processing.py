@@ -5,13 +5,17 @@ This module contains all the weight processing functions extracted from HookedTr
 organized into a single ProcessWeights class with static methods. These functions are used
 to modify transformer model weights for better interpretability and analysis.
 """
-from typing import Any, Dict, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, Optional, Union, overload
 
 import einops
 import torch
 
 import transformer_lens.utils as utils
 from transformer_lens.FactoredMatrix import FactoredMatrix
+
+if TYPE_CHECKING:
+    from transformer_lens.config.TransformerBridgeConfig import TransformerBridgeConfig
+    from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 
 
 class ProcessWeights:
@@ -458,7 +462,7 @@ class ProcessWeights:
             adapter: Optional architecture adapter for parameter key translation
         """
         if getattr(cfg, "attn_only", False):
-            return
+            return state_dict
 
         mlp_b_in_key = ProcessWeights._get_param_key(f"blocks.{layer}.mlp.b_in", adapter)
         mlp_W_in_key = ProcessWeights._get_param_key(f"blocks.{layer}.mlp.W_in", adapter)
@@ -475,6 +479,7 @@ class ProcessWeights:
             )
             ln2_w = state_dict[ln2_w_key]
             ln2_b = state_dict[ln2_b_key]
+            assert mlp_W_in is not None, f"MLP W_in not found at key {mlp_W_in_key}"
             if mlp_W_in.shape[1] == ln2_w.shape[0]:
                 ln2_w_broadcast = ln2_w[None, :]
                 ln2_b_broadcast = ln2_b[None, :]
@@ -491,6 +496,7 @@ class ProcessWeights:
                 mlp_b_in = ProcessWeights.convert_tensor_to_tl_format(
                     mlp_b_in_key, state_dict, state_dict.get(mlp_b_in_key), cfg, adapter, layer
                 )
+                assert mlp_b_in is not None, f"MLP b_in not found at key {mlp_b_in_key}"
                 new_mlp_b_in = mlp_b_in + (mlp_W_in * ln2_b_broadcast).sum(sum_dim)
                 state_dict[mlp_b_in_key] = ProcessWeights.convert_tensor_to_hf_format(
                     mlp_b_in_key, new_mlp_b_in, cfg, adapter, layer
@@ -511,6 +517,7 @@ class ProcessWeights:
                 mlp_W_gate = ProcessWeights.convert_tensor_to_tl_format(
                     mlp_W_gate_key, state_dict, state_dict.get(mlp_W_gate_key), cfg, adapter, layer
                 )
+                assert mlp_W_gate is not None, f"MLP W_gate not found at key {mlp_W_gate_key}"
                 new_mlp_W_gate = mlp_W_gate * ln2_w_broadcast
                 state_dict[mlp_W_gate_key] = ProcessWeights.convert_tensor_to_hf_format(
                     mlp_W_gate_key, new_mlp_W_gate, cfg, adapter, layer
@@ -527,6 +534,7 @@ class ProcessWeights:
             mlp_W_in_centered = ProcessWeights.convert_tensor_to_tl_format(
                 mlp_W_in_key, state_dict, state_dict.get(mlp_W_in_key), cfg, adapter, layer
             )
+            assert mlp_W_in_centered is not None, f"MLP W_in not found at key {mlp_W_in_key}"
             mlp_W_in_centered = mlp_W_in_centered - einops.reduce(
                 mlp_W_in_centered, "d_model d_mlp -> 1 d_mlp", "mean"
             )
@@ -547,6 +555,10 @@ class ProcessWeights:
             )
             mlp_ln_b = state_dict.get(mlp_ln_b_key)
             mlp_ln_w = state_dict.get(mlp_ln_w_key)
+            assert mlp_b_out is not None, f"MLP b_out not found at key {mlp_b_out_key}"
+            assert mlp_W_out is not None, f"MLP W_out not found at key {mlp_W_out_key}"
+            assert mlp_ln_b is not None, f"MLP ln.b not found at key {mlp_ln_b_key}"
+            assert mlp_ln_w is not None, f"MLP ln.w not found at key {mlp_ln_w_key}"
 
             if fold_biases:
                 new_mlp_b_out = mlp_b_out + (mlp_W_out * mlp_ln_b[:, None]).sum(-2)
@@ -598,7 +610,7 @@ class ProcessWeights:
             layer: The layer index
         """
         if wq_tensor is None:
-            return
+            return state_dict
         wq_key = keys["W_Q"]
         wk_key = keys["W_K"]
         wv_key = keys["W_V"]
@@ -655,6 +667,7 @@ class ProcessWeights:
             unembed_W_U_key, state_dict, state_dict.get(unembed_W_U_key), cfg, adapter, None
         )
         ln_weight = state_dict[ln_final_w_key]
+        assert unembed_weight is not None, f"Unembed weight not found at key {unembed_W_U_key}"
         if len(unembed_weight.shape) == 2 and len(ln_weight.shape) == 1:
             if unembed_weight.shape[1] == ln_weight.shape[0]:
                 new_unembed_weight = unembed_weight * ln_weight[None, :]
@@ -684,6 +697,9 @@ class ProcessWeights:
             unembed_weight_centered = ProcessWeights.convert_tensor_to_tl_format(
                 unembed_W_U_key, state_dict, state_dict.get(unembed_W_U_key), cfg, adapter, None
             )
+            assert (
+                unembed_weight_centered is not None
+            ), f"Unembed weight not found at key {unembed_W_U_key}"
             if len(unembed_weight_centered.shape) == 2:
                 unembed_weight_centered = unembed_weight_centered - einops.reduce(
                     unembed_weight_centered, "d_model d_vocab -> 1 d_vocab", "mean"
@@ -725,6 +741,7 @@ class ProcessWeights:
                 unembed_W_U_key, state_dict, state_dict.get(unembed_W_U_key), cfg, adapter, None
             )
             ln_bias = state_dict[ln_final_b_key]
+            assert unembed_weight is not None, f"Unembed weight not found at key {unembed_W_U_key}"
             if len(unembed_weight.shape) == 2 and len(ln_bias.shape) == 1:
                 if unembed_weight.shape[1] == ln_bias.shape[0]:
                     bias_contribution = (unembed_weight * ln_bias[None, :]).sum(dim=-1)
@@ -741,6 +758,7 @@ class ProcessWeights:
             unembed_b_U = ProcessWeights.convert_tensor_to_tl_format(
                 unembed_b_U_key, state_dict, state_dict.get(unembed_b_U_key), cfg, adapter, None
             )
+            assert unembed_b_U is not None, f"Unembed bias not found at key {unembed_b_U_key}"
             new_unembed_b_U = unembed_b_U + bias_contribution
             state_dict[unembed_b_U_key] = ProcessWeights.convert_tensor_to_hf_format(
                 unembed_b_U_key, new_unembed_b_U, cfg, adapter, None
@@ -831,6 +849,7 @@ class ProcessWeights:
         embed_W_E = ProcessWeights.convert_tensor_to_tl_format(
             embed_W_E_key, state_dict, state_dict.get(embed_W_E_key), cfg, adapter, None
         )
+        assert embed_W_E is not None, f"Embedding not found at key {embed_W_E_key}"
         embed_W_E = embed_W_E - embed_W_E.mean(-1, keepdim=True)
         state_dict[embed_W_E_key] = ProcessWeights.convert_tensor_to_hf_format(
             embed_W_E_key, embed_W_E, cfg, adapter, None
@@ -852,6 +871,9 @@ class ProcessWeights:
                 adapter,
                 None,
             )
+            assert (
+                pos_embed_W_pos is not None
+            ), f"Positional embedding not found at key {pos_embed_W_pos_key}"
             pos_embed_W_pos = pos_embed_W_pos - pos_embed_W_pos.mean(-1, keepdim=True)
             state_dict[pos_embed_W_pos_key] = ProcessWeights.convert_tensor_to_hf_format(
                 pos_embed_W_pos_key, pos_embed_W_pos, cfg, adapter, None
@@ -872,6 +894,7 @@ class ProcessWeights:
             attn_W_O = ProcessWeights.convert_tensor_to_tl_format(
                 attn_W_O_key, state_dict, state_dict.get(attn_W_O_key), cfg, adapter, l
             )
+            assert attn_W_O is not None, f"Attention W_O not found at key {attn_W_O_key}"
             attn_W_O = attn_W_O - attn_W_O.mean(-1, keepdim=True)
             state_dict[attn_W_O_key] = ProcessWeights.convert_tensor_to_hf_format(
                 attn_W_O_key, attn_W_O, cfg, adapter, l
@@ -880,6 +903,7 @@ class ProcessWeights:
                 attn_b_O = ProcessWeights.convert_tensor_to_tl_format(
                     attn_b_O_key, state_dict, state_dict.get(attn_b_O_key), cfg, adapter, l
                 )
+                assert attn_b_O is not None, f"Attention b_O not found at key {attn_b_O_key}"
                 attn_b_O = attn_b_O - attn_b_O.mean()
                 state_dict[attn_b_O_key] = ProcessWeights.convert_tensor_to_hf_format(
                     attn_b_O_key, attn_b_O, cfg, adapter, l
@@ -896,9 +920,8 @@ class ProcessWeights:
                             f"blocks.{l}.mlp.experts.{e}.W_out.weight",
                         ]
                         for pattern in expert_W_out_patterns:
-                            resolved = ProcessWeights._resolve_tl_key(state_dict, pattern)
-                            if resolved in state_dict:
-                                expert_W_out_key = resolved
+                            if pattern in state_dict:
+                                expert_W_out_key = pattern
                                 break
                         if expert_W_out_key is None and adapter:
                             try:
@@ -916,6 +939,9 @@ class ProcessWeights:
                                 adapter,
                                 l,
                             )
+                            assert (
+                                expert_W_out is not None
+                            ), f"Expert W_out not found at key {expert_W_out_key}"
                             expert_W_out = expert_W_out - expert_W_out.mean(-1, keepdim=True)
                             state_dict[
                                 expert_W_out_key
@@ -927,9 +953,8 @@ class ProcessWeights:
                             f"blocks.{l}.mlp.experts.{e}.b_out.bias",
                         ]
                         for pattern in expert_b_out_patterns:
-                            resolved = ProcessWeights._resolve_tl_key(state_dict, pattern)
-                            if resolved in state_dict:
-                                expert_b_out_key = resolved
+                            if pattern in state_dict:
+                                expert_b_out_key = pattern
                                 break
                         if expert_b_out_key and expert_b_out_key in state_dict:
                             expert_b_out = ProcessWeights.convert_tensor_to_tl_format(
@@ -940,6 +965,9 @@ class ProcessWeights:
                                 adapter,
                                 l,
                             )
+                            assert (
+                                expert_b_out is not None
+                            ), f"Expert b_out not found at key {expert_b_out_key}"
                             expert_b_out = expert_b_out - expert_b_out.mean()
                             state_dict[
                                 expert_b_out_key
@@ -954,6 +982,7 @@ class ProcessWeights:
                     mlp_W_out = ProcessWeights.convert_tensor_to_tl_format(
                         mlp_W_out_key, state_dict, state_dict.get(mlp_W_out_key), cfg, adapter, l
                     )
+                    assert mlp_W_out is not None, f"MLP W_out not found at key {mlp_W_out_key}"
                     mlp_W_out = mlp_W_out - mlp_W_out.mean(-1, keepdim=True)
                     state_dict[mlp_W_out_key] = ProcessWeights.convert_tensor_to_hf_format(
                         mlp_W_out_key, mlp_W_out, cfg, adapter, l
@@ -967,6 +996,7 @@ class ProcessWeights:
                             adapter,
                             l,
                         )
+                        assert mlp_b_out is not None, f"MLP b_out not found at key {mlp_b_out_key}"
                         mlp_b_out = mlp_b_out - mlp_b_out.mean()
                         state_dict[mlp_b_out_key] = ProcessWeights.convert_tensor_to_hf_format(
                             mlp_b_out_key, mlp_b_out, cfg, adapter, l
@@ -1005,6 +1035,7 @@ class ProcessWeights:
         W_U = ProcessWeights.convert_tensor_to_tl_format(
             unembed_W_U_key, state_dict, state_dict.get(unembed_W_U_key), None, adapter, None
         )
+        assert W_U is not None, f"Unembed weight not found at key {unembed_W_U_key}"
         W_U = W_U - W_U.mean(-1, keepdim=True)
         state_dict[unembed_W_U_key] = ProcessWeights.convert_tensor_to_hf_format(
             unembed_W_U_key, W_U, None, adapter, None
@@ -1013,6 +1044,7 @@ class ProcessWeights:
             unembed_b_U = ProcessWeights.convert_tensor_to_tl_format(
                 unembed_b_U_key, state_dict, state_dict.get(unembed_b_U_key), None, adapter, None
             )
+            assert unembed_b_U is not None, f"Unembed bias not found at key {unembed_b_U_key}"
             unembed_b_U = unembed_b_U - unembed_b_U.mean()
             state_dict[unembed_b_U_key] = ProcessWeights.convert_tensor_to_hf_format(
                 unembed_b_U_key, unembed_b_U, None, adapter, None
@@ -1063,6 +1095,7 @@ class ProcessWeights:
                 b_V = ProcessWeights.convert_tensor_to_tl_format(
                     b_V_key, state_dict, state_dict.get(b_V_key), cfg, adapter, layer
                 )
+                assert b_V is not None, f"Value bias not found at key {b_V_key}"
                 if b_V.numel() == 0:
                     continue
                 if b_O_key not in state_dict:
@@ -1073,6 +1106,8 @@ class ProcessWeights:
                 b_O_original = ProcessWeights.convert_tensor_to_tl_format(
                     b_O_key, state_dict, state_dict.get(b_O_key), cfg, adapter, layer
                 )
+                assert W_O is not None, f"Attention W_O not found at key {W_O_key}"
+                assert b_O_original is not None, f"Attention b_O not found at key {b_O_key}"
                 is_split_format = ".attn.v.bias" in b_V_key or ".attn.k.bias" in b_V_key
                 if is_split_format and len(b_V.shape) == 1 and (len(W_O.shape) == 2):
                     n_heads = cfg.n_heads
@@ -1233,6 +1268,7 @@ class ProcessWeights:
                         b_O = ProcessWeights.convert_tensor_to_tl_format(
                             b_O_key, state_dict, state_dict.get(b_O_key), cfg, adapter, layer_idx
                         )
+                        assert b_O is not None, f"Attention b_O not found at key {b_O_key}"
                         b_O = b_O - b_O.mean()
                         state_dict[b_O_key] = ProcessWeights.convert_tensor_to_hf_format(
                             b_O_key, b_O, cfg, adapter, layer_idx
@@ -1323,6 +1359,10 @@ class ProcessWeights:
             b_K = ProcessWeights.convert_tensor_to_tl_format(
                 b_K_key, state_dict, state_dict.get(b_K_key), cfg, adapter, l
             )
+            assert W_Q is not None, f"W_Q not found at key {W_Q_key}"
+            assert b_Q is not None, f"b_Q not found at key {b_Q_key}"
+            assert W_K is not None, f"W_K not found at key {W_K_key}"
+            assert b_K is not None, f"b_K not found at key {b_K_key}"
 
             W_Q_eff = torch.cat([W_Q, b_Q[:, None, :]], dim=1)
             W_K_eff = torch.cat([W_K, b_K[:, None, :]], dim=1)
@@ -1333,16 +1373,16 @@ class ProcessWeights:
             W_K_eff_even = W_K_eff_even_T.transpose(-1, -2)
 
             state_dict[W_Q_key] = ProcessWeights.convert_tensor_to_hf_format(
-                W_Q_key, adapter, W_Q_eff_even[:, :-1, :], cfg, l
+                W_Q_key, W_Q_eff_even[:, :-1, :], cfg, adapter, l
             )
             state_dict[b_Q_key] = ProcessWeights.convert_tensor_to_hf_format(
-                b_Q_key, adapter, W_Q_eff_even[:, -1, :], cfg, l
+                b_Q_key, W_Q_eff_even[:, -1, :], cfg, adapter, l
             )
             state_dict[W_K_key] = ProcessWeights.convert_tensor_to_hf_format(
-                W_K_key, adapter, W_K_eff_even[:, :-1, :], cfg, l
+                W_K_key, W_K_eff_even[:, :-1, :], cfg, adapter, l
             )
             state_dict[b_K_key] = ProcessWeights.convert_tensor_to_hf_format(
-                b_K_key, adapter, W_K_eff_even[:, -1, :], cfg, l
+                b_K_key, W_K_eff_even[:, -1, :], cfg, adapter, l
             )
 
             # W_OV = W_V @ W_O
@@ -1360,6 +1400,10 @@ class ProcessWeights:
             b_O = ProcessWeights.convert_tensor_to_tl_format(
                 b_O_key, state_dict, state_dict.get(b_O_key), cfg, adapter, l
             )
+            assert W_V is not None, f"W_V not found at key {W_V_key}"
+            assert W_O is not None, f"W_O not found at key {W_O_key}"
+            assert b_V is not None, f"b_V not found at key {b_V_key}"
+            assert b_O is not None, f"b_O not found at key {b_O_key}"
 
             # Add singleton dimension for broadcasting
             b_V_expanded = einops.rearrange(b_V, "head_index d_head -> head_index d_head 1")
@@ -1390,13 +1434,37 @@ class ProcessWeights:
 
         return state_dict
 
+    @overload
+    @staticmethod
+    def convert_tensor_to_tl_format(
+        param_name: str,
+        model_state_dict: Dict[str, torch.Tensor],
+        tensor: torch.Tensor,
+        cfg: Optional["TransformerBridgeConfig"],
+        adapter: Optional["ArchitectureAdapter"] = None,
+        layer_idx: Optional[int] = None,
+    ) -> torch.Tensor:
+        ...
+
+    @overload
+    @staticmethod
+    def convert_tensor_to_tl_format(
+        param_name: str,
+        model_state_dict: Dict[str, torch.Tensor],
+        tensor: None,
+        cfg: Optional["TransformerBridgeConfig"],
+        adapter: Optional["ArchitectureAdapter"] = None,
+        layer_idx: Optional[int] = None,
+    ) -> None:
+        ...
+
     @staticmethod
     def convert_tensor_to_tl_format(
         param_name: str,
         model_state_dict: Dict[str, torch.Tensor],
         tensor: Optional[torch.Tensor],
-        cfg: Any,
-        adapter: Optional[Any] = None,
+        cfg: Optional["TransformerBridgeConfig"],
+        adapter: Optional["ArchitectureAdapter"] = None,
         layer_idx: Optional[int] = None,
     ) -> Optional[torch.Tensor]:
         """Convert a tensor from its original format to TransformerLens format.
@@ -1434,8 +1502,14 @@ class ProcessWeights:
             if placeholder_param_name in adapter.weight_processing_conversions:
                 param_conversion = adapter.weight_processing_conversions[placeholder_param_name]
 
-                # Let ParamProcessingConversion handle the fetching and conversion
-                return param_conversion.convert(model_state_dict, param_name)
+                # Handle both ParamProcessingConversion objects and legacy string mappings
+                if isinstance(param_conversion, str):
+                    # Legacy string mapping - just return the tensor as-is
+                    # (string mappings are handled elsewhere in the architecture adapter)
+                    return tensor
+                else:
+                    # Let ParamProcessingConversion handle the fetching and conversion
+                    return param_conversion.convert(model_state_dict, param_name)
             else:
                 # No conversion defined, return tensor as-is (may be None for optional params)
                 return tensor
@@ -1443,12 +1517,34 @@ class ProcessWeights:
             # No conversions defined, return tensor as-is (may be None for optional params)
             return tensor
 
+    @overload
+    @staticmethod
+    def convert_tensor_to_hf_format(
+        param_name: str,
+        tensor: torch.Tensor,
+        cfg: Optional["TransformerBridgeConfig"],
+        adapter: Optional["ArchitectureAdapter"] = None,
+        layer_idx: Optional[int] = None,
+    ) -> torch.Tensor:
+        ...
+
+    @overload
+    @staticmethod
+    def convert_tensor_to_hf_format(
+        param_name: str,
+        tensor: None,
+        cfg: Optional["TransformerBridgeConfig"],
+        adapter: Optional["ArchitectureAdapter"] = None,
+        layer_idx: Optional[int] = None,
+    ) -> None:
+        ...
+
     @staticmethod
     def convert_tensor_to_hf_format(
         param_name: str,
         tensor: Optional[torch.Tensor],
-        cfg: Any,
-        adapter: Optional[Any] = None,
+        cfg: Optional["TransformerBridgeConfig"],
+        adapter: Optional["ArchitectureAdapter"] = None,
         layer_idx: Optional[int] = None,
     ) -> Optional[torch.Tensor]:
         """Convert a tensor from TransformerLens format back to its original format.
@@ -1488,8 +1584,13 @@ class ProcessWeights:
             if placeholder_param_name in adapter.weight_processing_conversions:
                 param_conversion = adapter.weight_processing_conversions[placeholder_param_name]
 
-                # Use ParamProcessingConversion to handle reverting
-                return param_conversion.revert(tensor)
+                # Handle both ParamProcessingConversion objects and legacy string mappings
+                if isinstance(param_conversion, str):
+                    # Legacy string mapping - just return the tensor as-is
+                    return tensor
+                else:
+                    # Use ParamProcessingConversion to handle reverting
+                    return param_conversion.revert(tensor)
             else:
                 return tensor
         else:
