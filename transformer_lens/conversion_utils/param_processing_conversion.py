@@ -76,7 +76,7 @@ class ParamProcessingConversion:
 
 
     def revert(
-        self, tensor: torch.Tensor, current_key: str
+        self, tensor: torch.Tensor
     ) -> torch.Tensor:
         """Revert a parameter conversion in the state dict.
 
