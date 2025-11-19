@@ -43,18 +43,19 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
 
         self.weight_processing_conversions = {
             # Gemma3 scales embeddings by sqrt(d_model)
-            "embed.e": ParamProcessingConversion(
+            "embed": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
                     "d_vocab d_model -> d_vocab d_model",
                     scale=self.cfg.d_model**0.5,
                 ),
                 source_key="model.embed_tokens.weight",
             ),
-            "blocks.{i}.attn.q": ParamProcessingConversion(
+            # Q/K/V weight conversions (using canonical W_Q/W_K/W_V naming)
+            "blocks.{i}.attn.W_Q": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
                 source_key="model.layers.{i}.self_attn.q_proj.weight",
             ),
-            "blocks.{i}.attn.k": ParamProcessingConversion(
+            "blocks.{i}.attn.W_K": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
                     "(n h) m -> n m h",
                     n=getattr(
@@ -65,7 +66,7 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
                 ),
                 source_key="model.layers.{i}.self_attn.k_proj.weight",
             ),
-            "blocks.{i}.attn.v": ParamProcessingConversion(
+            "blocks.{i}.attn.W_V": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
                     "(n h) m -> n m h",
                     n=getattr(
@@ -76,10 +77,12 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
                 ),
                 source_key="model.layers.{i}.self_attn.v_proj.weight",
             ),
-            "blocks.{i}.attn.o": ParamProcessingConversion(
+            "blocks.{i}.attn.W_O": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("m (n h) -> n h m", n=self.cfg.n_heads),
                 source_key="model.layers.{i}.self_attn.o_proj.weight",
             ),
+            # Note: Gemma-3 does NOT have biases on attention projections (q/k/v/o_proj.bias are all None)
+            # No bias conversions needed
         }
 
         # Set up component mapping with actual bridge instances
