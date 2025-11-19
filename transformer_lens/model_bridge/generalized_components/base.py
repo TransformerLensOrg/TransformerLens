@@ -206,6 +206,12 @@ class GeneralizedComponent(nn.Module):
                     if hasattr(self.original_component, key):
                         param = getattr(self.original_component, key)
                         if param is not None and isinstance(param, torch.nn.Parameter):
+                            # Check that shapes match
+                            if param.shape != weight_tensor.shape:
+                                raise ValueError(
+                                    f"Shape mismatch when setting weight '{key}' in {type(self.original_component).__name__}: "
+                                    f"existing param shape {param.shape} != new tensor shape {weight_tensor.shape}"
+                                )
                             if verbose:
                                 print(f"    Setting weight: {key} (shape: {weight_tensor.shape})")
                             # break tying by creating a new param
