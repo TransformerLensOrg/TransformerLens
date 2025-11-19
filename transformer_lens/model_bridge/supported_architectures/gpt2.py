@@ -169,28 +169,25 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
             ),
             # Q/K/V biases - split from joint qkv.bias and reshape
             "blocks.{i}.attn.q.bias": ParamProcessingConversion(
-                tensor_conversion=QKVBiasConversion(
-                    qkv_index=0,
-                    n_heads=self.cfg.n_heads,
-                    d_head=self.cfg.d_head
+                tensor_conversion=RearrangeTensorConversion(
+                    pattern="(index head) -> index head",
+                    index=self.cfg.n_heads,
+                    head=self.cfg.d_head,
                 ),
-                source_key="blocks.{i}.attn.qkv.bias",
             ),
             "blocks.{i}.attn.k.bias": ParamProcessingConversion(
-                tensor_conversion=QKVBiasConversion(
-                    qkv_index=1,
-                    n_heads=self.cfg.n_heads,
-                    d_head=self.cfg.d_head
+                tensor_conversion=RearrangeTensorConversion(
+                    pattern="(index head) -> index head",
+                    index=self.cfg.n_heads,
+                    head=self.cfg.d_head,
                 ),
-                source_key="blocks.{i}.attn.qkv.bias",
             ),
             "blocks.{i}.attn.v.bias": ParamProcessingConversion(
-                tensor_conversion=QKVBiasConversion(
-                    qkv_index=2,
-                    n_heads=self.cfg.n_heads,
-                    d_head=self.cfg.d_head
+                tensor_conversion=RearrangeTensorConversion(
+                    pattern="(index head) -> index head",
+                    index=self.cfg.n_heads,
+                    head=self.cfg.d_head,
                 ),
-                source_key="blocks.{i}.attn.qkv.bias",
             ),
             # O weight - rearrange from 2D to 3D
             "blocks.{i}.attn.o.weight": ParamProcessingConversion(
