@@ -51,9 +51,8 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
                 source_key="model.embed_tokens.weight",
             ),
             # Q/K/V weight conversions (using canonical W_Q/W_K/W_V naming)
-            "blocks.{i}.attn.W_Q": ParamProcessingConversion(
+            "blocks.{i}.attn.q.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
-                source_key="model.layers.{i}.self_attn.q_proj.weight",
             ),
             "blocks.{i}.attn.W_K": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
@@ -64,9 +63,8 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
                         self.cfg.n_heads,
                     ),
                 ),
-                source_key="model.layers.{i}.self_attn.k_proj.weight",
             ),
-            "blocks.{i}.attn.W_V": ParamProcessingConversion(
+            "blocks.{i}.attn.v.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
                     "(n h) m -> n m h",
                     n=getattr(
@@ -75,11 +73,9 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
                         self.cfg.n_heads,
                     ),
                 ),
-                source_key="model.layers.{i}.self_attn.v_proj.weight",
             ),
-            "blocks.{i}.attn.W_O": ParamProcessingConversion(
+            "blocks.{i}.attn.o.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("m (n h) -> n h m", n=self.cfg.n_heads),
-                source_key="model.layers.{i}.self_attn.o_proj.weight",
             ),
             # Note: Gemma-3 does NOT have biases on attention projections (q/k/v/o_proj.bias are all None)
             # No bias conversions needed
