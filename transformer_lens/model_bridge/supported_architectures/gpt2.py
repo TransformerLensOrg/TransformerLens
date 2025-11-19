@@ -62,40 +62,6 @@ class QKVSplitRearrangeConversion(BaseTensorConversion):
 
         return einops.rearrange(selected_part, self.rearrange_pattern, **self.axes_lengths)
 
-
-class QKVBiasConversion(BaseTensorConversion):
-    """Custom conversion for QKV biases that matches the original GPT-2 logic."""
-
-    def __init__(self, qkv_index: int, n_heads: int, d_head: int):
-        """Initialize the conversion.
-
-        Args:
-            qkv_index: Index of Q (0), K (1), or V (2) in the QKV tensor
-            n_heads: Number of attention heads
-            d_head: Dimension of each head
-        """
-        super().__init__()
-        self.qkv_index = qkv_index
-        self.n_heads = n_heads
-        self.d_head = d_head
-
-    def handle_conversion(self, input_value: torch.Tensor, *full_context) -> torch.Tensor:
-        """Convert QKV bias following the original GPT-2 logic."""
-        import einops
-
-        d_model = self.n_heads * self.d_head
-        assert input_value.shape[-1] == 3 * d_model
-
-        # First: reshape into [3, d_model] => [Q, K, V] blocks
-        qkv_bias = input_value.view(3, d_model)  # NO permutation, just reshape
-
-        # Select Q/K/V block: still flat [d_model]
-        selected = qkv_bias[self.qkv_index]  # 0 = Q, 1 = K, 2 = V
-
-        # Reshape to [n_heads, d_head]:
-        return selected.view(self.n_heads, self.d_head)
-
-
 class GPT2ArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for GPT2 models.
 
