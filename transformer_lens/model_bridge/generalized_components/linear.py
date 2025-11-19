@@ -115,7 +115,9 @@ class LinearBridge(GeneralizedComponent):
                 if weight.shape == param.shape:
                     new_weight = weight.contiguous()
                     if verbose:
-                        print(f"    Weight already in correct shape {weight.shape}, no transpose needed")
+                        print(
+                            f"    Weight already in correct shape {weight.shape}, no transpose needed"
+                        )
                 # Check if transposed weight matches
                 elif weight.T.shape == param.shape:
                     new_weight = weight.T.contiguous()

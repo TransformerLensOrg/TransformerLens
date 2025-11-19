@@ -2,10 +2,10 @@
 
 from typing import Any
 
-from transformer_lens.conversion_utils.conversion_steps import (
-    RearrangeTensorConversion,
+from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorConversion
+from transformer_lens.conversion_utils.param_processing_conversion import (
+    ParamProcessingConversion,
 )
-from transformer_lens.conversion_utils.param_processing_conversion import ParamProcessingConversion
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
@@ -55,37 +55,37 @@ class Qwen2ArchitectureAdapter(ArchitectureAdapter):
         self.cfg.uses_rms_norm = True
 
         self.weight_processing_conversions = {
-                "embed.e": "model.embed_tokens.weight",
-                "blocks.{i}.ln1.w": "model.layers.{i}.input_layernorm.weight",
-                "blocks.{i}.ln2.w": "model.layers.{i}.post_attention_layernorm.weight",
-                "blocks.{i}.attn.q": ParamProcessingConversion(
-                    tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
-                    source_key="model.layers.{i}.self_attn.q_proj.weight",
+            "embed.e": "model.embed_tokens.weight",
+            "blocks.{i}.ln1.w": "model.layers.{i}.input_layernorm.weight",
+            "blocks.{i}.ln2.w": "model.layers.{i}.post_attention_layernorm.weight",
+            "blocks.{i}.attn.q": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
+                source_key="model.layers.{i}.self_attn.q_proj.weight",
+            ),
+            "blocks.{i}.attn.k": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion(
+                    "(n h) m -> n m h",
+                    n=getattr(self.cfg, "num_key_value_heads", self.cfg.n_heads),
                 ),
-                "blocks.{i}.attn.k": ParamProcessingConversion(
-                    tensor_conversion=RearrangeTensorConversion(
-                        "(n h) m -> n m h",
-                        n=getattr(self.cfg, "num_key_value_heads", self.cfg.n_heads),
-                        ),
-                    source_key="model.layers.{i}.self_attn.k_proj.weight",
+                source_key="model.layers.{i}.self_attn.k_proj.weight",
+            ),
+            "blocks.{i}.attn.v": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion(
+                    "(n h) m -> n m h",
+                    n=getattr(self.cfg, "num_key_value_heads", self.cfg.n_heads),
                 ),
-                "blocks.{i}.attn.v": ParamProcessingConversion(
-                    tensor_conversion=RearrangeTensorConversion(
-                        "(n h) m -> n m h",
-                        n=getattr(self.cfg, "num_key_value_heads", self.cfg.n_heads),
-                        ),
-                    source_key="model.layers.{i}.self_attn.v_proj.weight",
-                ),
-                "blocks.{i}.attn.o": ParamProcessingConversion(
-                    tensor_conversion=RearrangeTensorConversion("m (n h) -> n h m", n=self.cfg.n_heads),
-                    source_key="model.layers.{i}.self_attn.o_proj.weight",
-                ),
-                "blocks.{i}.mlp.in": "model.layers.{i}.mlp.up_proj.weight.T",
-                "blocks.{i}.mlp.gate": "model.layers.{i}.mlp.gate_proj.weight",
-                "blocks.{i}.mlp.out": "model.layers.{i}.mlp.down_proj.weight",
-                "ln_final.w": "model.norm.weight",
-                "unembed.u": "lm_head.weight",
-            }
+                source_key="model.layers.{i}.self_attn.v_proj.weight",
+            ),
+            "blocks.{i}.attn.o": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion("m (n h) -> n h m", n=self.cfg.n_heads),
+                source_key="model.layers.{i}.self_attn.o_proj.weight",
+            ),
+            "blocks.{i}.mlp.in": "model.layers.{i}.mlp.up_proj.weight.T",
+            "blocks.{i}.mlp.gate": "model.layers.{i}.mlp.gate_proj.weight",
+            "blocks.{i}.mlp.out": "model.layers.{i}.mlp.down_proj.weight",
+            "ln_final.w": "model.norm.weight",
+            "unembed.u": "lm_head.weight",
+        }
         self.component_mapping = {
             "embed": EmbeddingBridge(name="model.embed_tokens"),
             "blocks": BlockBridge(

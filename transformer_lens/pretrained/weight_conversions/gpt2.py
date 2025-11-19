@@ -27,8 +27,8 @@ def convert_gpt2_weights(gpt2, cfg: HookedTransformerConfig):
         state_dict[f"blocks.{l}.attn.W_V"] = W_V
 
         qkv_bias = gpt2.transformer.h[l].attn.c_attn.bias
-        qkv_bias = qkv_bias.view(3, cfg.d_model) 
-        qkv_bias = qkv_bias.view(3, cfg.n_heads, cfg.d_head) 
+        qkv_bias = qkv_bias.view(3, cfg.d_model)
+        qkv_bias = qkv_bias.view(3, cfg.n_heads, cfg.d_head)
         state_dict[f"blocks.{l}.attn.b_Q"] = qkv_bias[0]
         state_dict[f"blocks.{l}.attn.b_K"] = qkv_bias[1]
         state_dict[f"blocks.{l}.attn.b_V"] = qkv_bias[2]

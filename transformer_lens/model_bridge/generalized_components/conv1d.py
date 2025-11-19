@@ -1,7 +1,6 @@
 """Conv1D bridge component for wrapping Conv1D layers with hook points."""
-from typing import Any, Mapping
+from typing import Any
 
-import einops
 import torch
 
 from transformer_lens.model_bridge.generalized_components.base import (
@@ -52,4 +51,3 @@ class Conv1DBridge(GeneralizedComponent):
                 return f"Conv1DBridge(name={self.name}, original_component={type(self.original_component).__name__})"
         else:
             return f"Conv1DBridge(name={self.name}, original_component=None)"
-

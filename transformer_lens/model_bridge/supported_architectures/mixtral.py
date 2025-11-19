@@ -2,10 +2,10 @@
 
 from typing import Any
 
-from transformer_lens.conversion_utils.conversion_steps import (
-    RearrangeTensorConversion,
+from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorConversion
+from transformer_lens.conversion_utils.param_processing_conversion import (
+    ParamProcessingConversion,
 )
-from transformer_lens.conversion_utils.param_processing_conversion import ParamProcessingConversion
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
@@ -35,49 +35,57 @@ class MixtralArchitectureAdapter(ArchitectureAdapter):
         self.cfg.uses_rms_norm = True
 
         self.weight_processing_conversions = {
-                "embed.e": "model.embed_tokens.weight",
-                "blocks.{i}.ln1.w": "model.layers.{i}.input_layernorm.weight",
-                "blocks.{i}.ln1.b": "model.layers.{i}.input_layernorm.bias",
-                "blocks.{i}.ln2.w": "model.layers.{i}.post_attention_layernorm.weight",
-                "blocks.{i}.ln2.b": "model.layers.{i}.post_attention_layernorm.bias",
-                "blocks.{i}.attn.q": ParamProcessingConversion(
-                    tensor_conversion=RearrangeTensorConversion("(h d_head) d_model -> h d_head d_model"),
-                    source_key="model.layers.{i}.self_attn.q_proj.weight",
+            "embed.e": "model.embed_tokens.weight",
+            "blocks.{i}.ln1.w": "model.layers.{i}.input_layernorm.weight",
+            "blocks.{i}.ln1.b": "model.layers.{i}.input_layernorm.bias",
+            "blocks.{i}.ln2.w": "model.layers.{i}.post_attention_layernorm.weight",
+            "blocks.{i}.ln2.b": "model.layers.{i}.post_attention_layernorm.bias",
+            "blocks.{i}.attn.q": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion(
+                    "(h d_head) d_model -> h d_head d_model"
                 ),
-                "blocks.{i}.attn.k": ParamProcessingConversion(
-                    tensor_conversion=RearrangeTensorConversion("(h d_head) d_model -> h d_head d_model"),
-                    source_key="model.layers.{i}.self_attn.k_proj.weight",
+                source_key="model.layers.{i}.self_attn.q_proj.weight",
+            ),
+            "blocks.{i}.attn.k": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion(
+                    "(h d_head) d_model -> h d_head d_model"
                 ),
-                "blocks.{i}.attn.v": ParamProcessingConversion(
-                    tensor_conversion=RearrangeTensorConversion("(h d_head) d_model -> h d_head d_model"),
-                    source_key="model.layers.{i}.self_attn.v_proj.weight",
+                source_key="model.layers.{i}.self_attn.k_proj.weight",
+            ),
+            "blocks.{i}.attn.v": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion(
+                    "(h d_head) d_model -> h d_head d_model"
                 ),
-                "blocks.{i}.attn.b_Q": ParamProcessingConversion(
-                    tensor_conversion=RearrangeTensorConversion("(h d_head) -> h d_head"),
-                    source_key="model.layers.{i}.self_attn.q_proj.bias",
+                source_key="model.layers.{i}.self_attn.v_proj.weight",
+            ),
+            "blocks.{i}.attn.b_Q": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion("(h d_head) -> h d_head"),
+                source_key="model.layers.{i}.self_attn.q_proj.bias",
+            ),
+            "blocks.{i}.attn.b_K": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion("(h d_head) -> h d_head"),
+                source_key="model.layers.{i}.self_attn.k_proj.bias",
+            ),
+            "blocks.{i}.attn.b_V": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion("(h d_head) -> h d_head"),
+                source_key="model.layers.{i}.self_attn.v_proj.bias",
+            ),
+            "blocks.{i}.attn.o": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion(
+                    "d_model (h d_head) -> h d_head d_model"
                 ),
-                "blocks.{i}.attn.b_K": ParamProcessingConversion(
-                    tensor_conversion=RearrangeTensorConversion("(h d_head) -> h d_head"),
-                    source_key="model.layers.{i}.self_attn.k_proj.bias",
-                ),
-                "blocks.{i}.attn.b_V": ParamProcessingConversion(
-                    tensor_conversion=RearrangeTensorConversion("(h d_head) -> h d_head"),
-                    source_key="model.layers.{i}.self_attn.v_proj.bias",
-                ),
-                "blocks.{i}.attn.o": ParamProcessingConversion(
-                    tensor_conversion=RearrangeTensorConversion("d_model (h d_head) -> h d_head d_model"),
-                    source_key="model.layers.{i}.self_attn.o_proj.weight",
-                ),
-                "blocks.{i}.attn.b_O": "model.layers.{i}.self_attn.o_proj.bias",
-                "blocks.{i}.mlp.in": "model.layers.{i}.mlp.gate_proj.weight",
-                "blocks.{i}.mlp.b_in": "model.layers.{i}.mlp.gate_proj.bias",
-                "blocks.{i}.mlp.out": "model.layers.{i}.mlp.down_proj.weight",
-                "blocks.{i}.mlp.b_out": "model.layers.{i}.mlp.down_proj.bias",
-                "unembed.u": "lm_head.weight",
-                "unembed.b_U": "lm_head.bias",
-                "ln_final.w": "model.norm.weight",
-                "ln_final.b": "model.norm.bias",
-            }
+                source_key="model.layers.{i}.self_attn.o_proj.weight",
+            ),
+            "blocks.{i}.attn.b_O": "model.layers.{i}.self_attn.o_proj.bias",
+            "blocks.{i}.mlp.in": "model.layers.{i}.mlp.gate_proj.weight",
+            "blocks.{i}.mlp.b_in": "model.layers.{i}.mlp.gate_proj.bias",
+            "blocks.{i}.mlp.out": "model.layers.{i}.mlp.down_proj.weight",
+            "blocks.{i}.mlp.b_out": "model.layers.{i}.mlp.down_proj.bias",
+            "unembed.u": "lm_head.weight",
+            "unembed.b_U": "lm_head.bias",
+            "ln_final.w": "model.norm.weight",
+            "ln_final.b": "model.norm.bias",
+        }
 
         # Set up component mapping
         self.component_mapping = {

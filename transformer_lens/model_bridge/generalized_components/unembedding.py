@@ -2,7 +2,7 @@
 
 This module contains the bridge component for unembedding layers.
 """
-from typing import Any, Dict, Iterator, Mapping, Optional, Tuple
+from typing import Any, Dict, Optional
 
 import torch
 
@@ -127,4 +127,3 @@ class UnembeddingBridge(GeneralizedComponent):
             dtype = weight.dtype
             vocab_size: int = int(weight.shape[0])
             return torch.zeros(vocab_size, device=device, dtype=dtype)
-

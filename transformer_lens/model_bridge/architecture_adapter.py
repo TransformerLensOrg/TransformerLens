@@ -7,7 +7,9 @@ from typing import Any, Dict, cast
 import torch
 
 from transformer_lens.config import TransformerBridgeConfig
-from transformer_lens.conversion_utils.param_processing_conversion import ParamProcessingConversion
+from transformer_lens.conversion_utils.param_processing_conversion import (
+    ParamProcessingConversion,
+)
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )

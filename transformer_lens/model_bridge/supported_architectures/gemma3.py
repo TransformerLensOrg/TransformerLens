@@ -3,10 +3,10 @@
 
 from typing import Any
 
-from transformer_lens.conversion_utils.conversion_steps import (
-    RearrangeTensorConversion,
+from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorConversion
+from transformer_lens.conversion_utils.param_processing_conversion import (
+    ParamProcessingConversion,
 )
-from transformer_lens.conversion_utils.param_processing_conversion import ParamProcessingConversion
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
@@ -42,45 +42,45 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
         self.cfg.attn_implementation = "eager"
 
         self.weight_processing_conversions = {
-                # Gemma3 scales embeddings by sqrt(d_model)
-                "embed.e": ParamProcessingConversion(
-                    tensor_conversion=RearrangeTensorConversion(
-                        "d_vocab d_model -> d_vocab d_model",
-                        scale=self.cfg.d_model**0.5,
-                        ),
-                    source_key="model.embed_tokens.weight",
+            # Gemma3 scales embeddings by sqrt(d_model)
+            "embed.e": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion(
+                    "d_vocab d_model -> d_vocab d_model",
+                    scale=self.cfg.d_model**0.5,
                 ),
-                "blocks.{i}.attn.q": ParamProcessingConversion(
-                    tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
-                    source_key="model.layers.{i}.self_attn.q_proj.weight",
-                ),
-                "blocks.{i}.attn.k": ParamProcessingConversion(
-                    tensor_conversion=RearrangeTensorConversion(
-                        "(n h) m -> n m h",
-                        n=getattr(
+                source_key="model.embed_tokens.weight",
+            ),
+            "blocks.{i}.attn.q": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
+                source_key="model.layers.{i}.self_attn.q_proj.weight",
+            ),
+            "blocks.{i}.attn.k": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion(
+                    "(n h) m -> n m h",
+                    n=getattr(
                         self.cfg,
                         "n_key_value_heads",
                         self.cfg.n_heads,
-                        ),
-                        ),
-                    source_key="model.layers.{i}.self_attn.k_proj.weight",
+                    ),
                 ),
-                "blocks.{i}.attn.v": ParamProcessingConversion(
-                    tensor_conversion=RearrangeTensorConversion(
-                        "(n h) m -> n m h",
-                        n=getattr(
+                source_key="model.layers.{i}.self_attn.k_proj.weight",
+            ),
+            "blocks.{i}.attn.v": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion(
+                    "(n h) m -> n m h",
+                    n=getattr(
                         self.cfg,
                         "n_key_value_heads",
                         self.cfg.n_heads,
-                        ),
-                        ),
-                    source_key="model.layers.{i}.self_attn.v_proj.weight",
+                    ),
                 ),
-                "blocks.{i}.attn.o": ParamProcessingConversion(
-                    tensor_conversion=RearrangeTensorConversion("m (n h) -> n h m", n=self.cfg.n_heads),
-                    source_key="model.layers.{i}.self_attn.o_proj.weight",
-                ),
-            }
+                source_key="model.layers.{i}.self_attn.v_proj.weight",
+            ),
+            "blocks.{i}.attn.o": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion("m (n h) -> n h m", n=self.cfg.n_heads),
+                source_key="model.layers.{i}.self_attn.o_proj.weight",
+            ),
+        }
 
         # Set up component mapping with actual bridge instances
         self.component_mapping = {

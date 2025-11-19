@@ -221,7 +221,9 @@ class GeneralizedComponent(nn.Module):
                             # Parameter exists but is None (e.g., bias=False in nn.Linear)
                             # Create a new parameter from the weight tensor
                             if verbose:
-                                print(f"    Creating weight: {key} (shape: {weight_tensor.shape}) - was None")
+                                print(
+                                    f"    Creating weight: {key} (shape: {weight_tensor.shape}) - was None"
+                                )
                             new_param = nn.Parameter(weight_tensor)
                             setattr(self.original_component, key, new_param)
 

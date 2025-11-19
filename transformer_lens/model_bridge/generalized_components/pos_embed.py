@@ -2,7 +2,7 @@
 
 This module contains the bridge component for positional embedding layers.
 """
-from typing import Any, Dict, Mapping, Optional
+from typing import Any, Dict, Optional
 
 import torch
 

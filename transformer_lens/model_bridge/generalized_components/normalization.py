@@ -122,4 +122,3 @@ class NormalizationBridge(GeneralizedComponent):
         if result.dtype != input_dtype:
             result = result.to(input_dtype)
         return result
-

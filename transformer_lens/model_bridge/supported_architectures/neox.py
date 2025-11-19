@@ -8,9 +8,11 @@ from transformer_lens.conversion_utils.conversion_steps import (
     RearrangeTensorConversion,
     SplitTensorConversion,
 )
-from transformer_lens.conversion_utils.param_processing_conversion import ParamProcessingConversion
 from transformer_lens.conversion_utils.conversion_steps.chain_tensor_conversion import (
     ChainTensorConversion,
+)
+from transformer_lens.conversion_utils.param_processing_conversion import (
+    ParamProcessingConversion,
 )
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
@@ -46,99 +48,101 @@ class NeoxArchitectureAdapter(ArchitectureAdapter):
         self.cfg.default_prepend_bos = False
 
         self.weight_processing_conversions = {
-                "embed.e": "gpt_neox.embed_in.weight",
-                "blocks.{i}.ln1.w": "gpt_neox.layers.{i}.input_layernorm.weight",
-                "blocks.{i}.ln1.b": "gpt_neox.layers.{i}.input_layernorm.bias",
-                "blocks.{i}.ln2.w": "gpt_neox.layers.{i}.post_attention_layernorm.weight",
-                "blocks.{i}.ln2.b": "gpt_neox.layers.{i}.post_attention_layernorm.bias",
-                "blocks.{i}.attn.q": ParamProcessingConversion(
-                    tensor_conversion=ChainTensorConversion(
-                        [
+            "embed.e": "gpt_neox.embed_in.weight",
+            "blocks.{i}.ln1.w": "gpt_neox.layers.{i}.input_layernorm.weight",
+            "blocks.{i}.ln1.b": "gpt_neox.layers.{i}.input_layernorm.bias",
+            "blocks.{i}.ln2.w": "gpt_neox.layers.{i}.post_attention_layernorm.weight",
+            "blocks.{i}.ln2.b": "gpt_neox.layers.{i}.post_attention_layernorm.bias",
+            "blocks.{i}.attn.q": ParamProcessingConversion(
+                tensor_conversion=ChainTensorConversion(
+                    [
                         SplitTensorConversion(0, 3),
                         RearrangeTensorConversion(
-                        "(head d_head) d_model -> head d_model d_head",
-                        head=self.cfg.n_heads,
-                        d_head=self.cfg.d_model // self.cfg.n_heads,
+                            "(head d_head) d_model -> head d_model d_head",
+                            head=self.cfg.n_heads,
+                            d_head=self.cfg.d_model // self.cfg.n_heads,
                         ),
-                        ]
-                        ),
-                    source_key="gpt_neox.layers.{i}.attention.query_key_value.weight",
+                    ]
                 ),
-                "blocks.{i}.attn.k": ParamProcessingConversion(
-                    tensor_conversion=ChainTensorConversion(
-                        [
+                source_key="gpt_neox.layers.{i}.attention.query_key_value.weight",
+            ),
+            "blocks.{i}.attn.k": ParamProcessingConversion(
+                tensor_conversion=ChainTensorConversion(
+                    [
                         SplitTensorConversion(1, 3),
                         RearrangeTensorConversion(
-                        "(head d_head) d_model -> head d_model d_head",
-                        head=self.cfg.n_heads,
-                        d_head=self.cfg.d_model // self.cfg.n_heads,
+                            "(head d_head) d_model -> head d_model d_head",
+                            head=self.cfg.n_heads,
+                            d_head=self.cfg.d_model // self.cfg.n_heads,
                         ),
-                        ]
-                        ),
-                    source_key="gpt_neox.layers.{i}.attention.query_key_value.weight",
+                    ]
                 ),
-                "blocks.{i}.attn.v": ParamProcessingConversion(
-                    tensor_conversion=ChainTensorConversion(
-                        [
+                source_key="gpt_neox.layers.{i}.attention.query_key_value.weight",
+            ),
+            "blocks.{i}.attn.v": ParamProcessingConversion(
+                tensor_conversion=ChainTensorConversion(
+                    [
                         SplitTensorConversion(2, 3),
                         RearrangeTensorConversion(
-                        "(head d_head) d_model -> head d_model d_head",
-                        head=self.cfg.n_heads,
-                        d_head=self.cfg.d_model // self.cfg.n_heads,
+                            "(head d_head) d_model -> head d_model d_head",
+                            head=self.cfg.n_heads,
+                            d_head=self.cfg.d_model // self.cfg.n_heads,
                         ),
-                        ]
-                        ),
-                    source_key="gpt_neox.layers.{i}.attention.query_key_value.weight",
+                    ]
                 ),
-                "blocks.{i}.attn.b_Q": ParamProcessingConversion(
-                    tensor_conversion=ChainTensorConversion(
-                        [
+                source_key="gpt_neox.layers.{i}.attention.query_key_value.weight",
+            ),
+            "blocks.{i}.attn.b_Q": ParamProcessingConversion(
+                tensor_conversion=ChainTensorConversion(
+                    [
                         SplitTensorConversion(0, 3),
                         RearrangeTensorConversion(
-                        "(head d_head) -> head d_head",
-                        head=self.cfg.n_heads,
+                            "(head d_head) -> head d_head",
+                            head=self.cfg.n_heads,
                         ),
-                        ]
-                        ),
-                    source_key="gpt_neox.layers.{i}.attention.query_key_value.bias",
+                    ]
                 ),
-                "blocks.{i}.attn.b_K": ParamProcessingConversion(
-                    tensor_conversion=ChainTensorConversion(
-                        [
+                source_key="gpt_neox.layers.{i}.attention.query_key_value.bias",
+            ),
+            "blocks.{i}.attn.b_K": ParamProcessingConversion(
+                tensor_conversion=ChainTensorConversion(
+                    [
                         SplitTensorConversion(1, 3),
                         RearrangeTensorConversion(
-                        "(head d_head) -> head d_head",
-                        head=self.cfg.n_heads,
+                            "(head d_head) -> head d_head",
+                            head=self.cfg.n_heads,
                         ),
-                        ]
-                        ),
-                    source_key="gpt_neox.layers.{i}.attention.query_key_value.bias",
+                    ]
                 ),
-                "blocks.{i}.attn.b_V": ParamProcessingConversion(
-                    tensor_conversion=ChainTensorConversion(
-                        [
+                source_key="gpt_neox.layers.{i}.attention.query_key_value.bias",
+            ),
+            "blocks.{i}.attn.b_V": ParamProcessingConversion(
+                tensor_conversion=ChainTensorConversion(
+                    [
                         SplitTensorConversion(2, 3),
                         RearrangeTensorConversion(
-                        "(head d_head) -> head d_head",
-                        head=self.cfg.n_heads,
+                            "(head d_head) -> head d_head",
+                            head=self.cfg.n_heads,
                         ),
-                        ]
-                        ),
-                    source_key="gpt_neox.layers.{i}.attention.query_key_value.bias",
+                    ]
                 ),
-                "blocks.{i}.attn.o": ParamProcessingConversion(
-                    tensor_conversion=RearrangeTensorConversion("d_model (head d_head) -> head d_head d_model"),
-                    source_key="gpt_neox.layers.{i}.attention.dense.weight",
+                source_key="gpt_neox.layers.{i}.attention.query_key_value.bias",
+            ),
+            "blocks.{i}.attn.o": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion(
+                    "d_model (head d_head) -> head d_head d_model"
                 ),
-                "blocks.{i}.attn.b_O": "gpt_neox.layers.{i}.attention.dense.bias",
-                "blocks.{i}.mlp.in": "gpt_neox.layers.{i}.mlp.dense_h_to_4h.weight",
-                "blocks.{i}.mlp.b_in": "gpt_neox.layers.{i}.mlp.dense_h_to_4h.bias",
-                "blocks.{i}.mlp.out": "gpt_neox.layers.{i}.mlp.dense_4h_to_h.weight",
-                "blocks.{i}.mlp.b_out": "gpt_neox.layers.{i}.mlp.dense_4h_to_h.bias",
-                "ln_final.w": "gpt_neox.final_layer_norm.weight",
-                "ln_final.b": "gpt_neox.final_layer_norm.bias",
-                "unembed.u": "embed_out.weight",
-            }
+                source_key="gpt_neox.layers.{i}.attention.dense.weight",
+            ),
+            "blocks.{i}.attn.b_O": "gpt_neox.layers.{i}.attention.dense.bias",
+            "blocks.{i}.mlp.in": "gpt_neox.layers.{i}.mlp.dense_h_to_4h.weight",
+            "blocks.{i}.mlp.b_in": "gpt_neox.layers.{i}.mlp.dense_h_to_4h.bias",
+            "blocks.{i}.mlp.out": "gpt_neox.layers.{i}.mlp.dense_4h_to_h.weight",
+            "blocks.{i}.mlp.b_out": "gpt_neox.layers.{i}.mlp.dense_4h_to_h.bias",
+            "ln_final.w": "gpt_neox.final_layer_norm.weight",
+            "ln_final.b": "gpt_neox.final_layer_norm.bias",
+            "unembed.u": "embed_out.weight",
+        }
 
         self.component_mapping = {
             "embed": EmbeddingBridge(name="gpt_neox.embed_in"),

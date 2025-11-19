@@ -146,7 +146,6 @@ class JointQKVAttentionBridge(AttentionBridge):
 
         return ConditionalRearrangeConversion(self.config.n_heads)
 
-
     def set_original_component(self, original_component: torch.nn.Module) -> None:
         """Set the original component that this bridge wraps and initialize LinearBridges for q, k, v, and o transformations.
 

@@ -9,18 +9,19 @@ from transformer_lens.conversion_utils.conversion_steps import (
     RearrangeTensorConversion,
     TransposeTensorConversion,
 )
-from transformer_lens.conversion_utils.param_processing_conversion import ParamProcessingConversion
+from transformer_lens.conversion_utils.param_processing_conversion import (
+    ParamProcessingConversion,
+)
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
-    Conv1DBridge,
     EmbeddingBridge,
     JointQKVAttentionBridge,
+    LinearBridge,
     MLPBridge,
     NormalizationBridge,
     PosEmbedBridge,
     UnembeddingBridge,
-    LinearBridge,
 )
 
 
@@ -139,7 +140,9 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
         # Set config variable to indicate that attention weights are split (use TransformerLens format processing)
         self.cfg.split_attention_weights = True
 
-        from transformer_lens.conversion_utils.param_processing_conversion import ParamProcessingConversion
+        from transformer_lens.conversion_utils.param_processing_conversion import (
+            ParamProcessingConversion,
+        )
 
         self.weight_processing_conversions = {
             # Q/K/V weights - split from joint qkv.weight and rearrange
@@ -147,7 +150,7 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
                 tensor_conversion=QKVSplitRearrangeConversion(
                     qkv_index=0,
                     rearrange_pattern="d_model (n h) -> n d_model h",
-                    n=self.cfg.n_heads
+                    n=self.cfg.n_heads,
                 ),
                 source_key="blocks.{i}.attn.qkv.weight",
             ),
@@ -155,7 +158,7 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
                 tensor_conversion=QKVSplitRearrangeConversion(
                     qkv_index=1,
                     rearrange_pattern="d_model (n h) -> n d_model h",
-                    n=self.cfg.n_heads
+                    n=self.cfg.n_heads,
                 ),
                 source_key="blocks.{i}.attn.qkv.weight",
             ),
@@ -163,7 +166,7 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
                 tensor_conversion=QKVSplitRearrangeConversion(
                     qkv_index=2,
                     rearrange_pattern="d_model (n h) -> n d_model h",
-                    n=self.cfg.n_heads
+                    n=self.cfg.n_heads,
                 ),
                 source_key="blocks.{i}.attn.qkv.weight",
             ),
@@ -192,8 +195,7 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
             # O weight - rearrange from 2D to 3D
             "blocks.{i}.attn.o.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
-                    pattern="(n h) m -> n h m",
-                    n=self.cfg.n_heads
+                    pattern="(n h) m -> n h m", n=self.cfg.n_heads
                 ),
             ),
             # Unembed weight - transpose from [d_model, d_vocab] to [d_vocab, d_model]

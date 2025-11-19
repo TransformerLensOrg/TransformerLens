@@ -982,11 +982,12 @@ class TransformerBridge(nn.Module):
             component_mapping=self.real_components,
         )
         state_dict = self.state_dict()
-         
+
         # Debug utility import (optional)
         try:
             import sys
             from pathlib import Path
+
             # Add parent directory to path to import from PR Review
             pr_review_path = Path(__file__).parent.parent.parent.parent
             if pr_review_path not in sys.path:
@@ -996,7 +997,7 @@ class TransformerBridge(nn.Module):
             # Fallback if dump_current_state_dict is not available
             def dump_state_dict(*args, **kwargs):
                 pass
-         
+
         dump_state_dict(state_dict)
 
         # loaded_count = 0
@@ -1209,8 +1210,6 @@ class TransformerBridge(nn.Module):
             return loss.view(shift_labels.shape)
         else:
             return loss
-
-
 
     def _extract_hf_weights(self):
         """Extract weights from the original HuggingFace model."""
@@ -2357,7 +2356,7 @@ class TransformerBridge(nn.Module):
             if component.name and hf_path.startswith(component.name + "."):
                 current_component = component
                 # Skip past the HF prefix
-                remaining_path = hf_path[len(component.name) + 1:]
+                remaining_path = hf_path[len(component.name) + 1 :]
                 parts = remaining_path.split(".")
                 idx = 0
                 break
@@ -2366,7 +2365,7 @@ class TransformerBridge(nn.Module):
             return True  # Path doesn't match any component, let it through
 
         # Special handling for blocks
-        if hasattr(current_component, 'is_list_item') and current_component.is_list_item:
+        if hasattr(current_component, "is_list_item") and current_component.is_list_item:
             # Skip the layer index
             if idx < len(parts) and parts[idx].isdigit():
                 idx += 1
@@ -2376,11 +2375,11 @@ class TransformerBridge(nn.Module):
             part = parts[idx]
 
             # If we hit 'weight' or 'bias', we're at a parameter - this is valid
-            if part in ('weight', 'bias'):
+            if part in ("weight", "bias"):
                 return True
 
             # Check if this part is a registered submodule
-            if hasattr(current_component, 'submodules') and current_component.submodules:
+            if hasattr(current_component, "submodules") and current_component.submodules:
                 if part in current_component.submodules:
                     current_component = current_component.submodules[part]
                     idx += 1
@@ -2392,7 +2391,7 @@ class TransformerBridge(nn.Module):
             else:
                 # No submodules to check, but not at a parameter yet
                 # Check if next is weight/bias
-                if idx + 1 < len(parts) and parts[idx + 1] in ('weight', 'bias'):
+                if idx + 1 < len(parts) and parts[idx + 1] in ("weight", "bias"):
                     return True
                 # Otherwise this is likely a nested HF component
                 return False
@@ -2431,7 +2430,7 @@ class TransformerBridge(nn.Module):
 
         # Map block-level components (ln1, ln2, attn, mlp)
         blocks_component = component_mapping.get("blocks")
-        if blocks_component and hasattr(blocks_component, 'submodules'):
+        if blocks_component and hasattr(blocks_component, "submodules"):
             for tl_subname, subcomponent in blocks_component.submodules.items():
                 if subcomponent.name:
                     # Only map if the names differ (e.g., ln1 -> ln_1, but attn -> attn)

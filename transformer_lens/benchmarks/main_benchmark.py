@@ -763,6 +763,7 @@ def run_benchmark_suite(
             print("✓ TransformerBridge loaded (unprocessed)\n")
     except Exception as e:
         import traceback
+
         error_trace = traceback.format_exc()
         add_result(
             BenchmarkResult(
@@ -899,7 +900,6 @@ def run_benchmark_suite(
         cleanup_model(bridge_unprocessed, "TransformerBridge (unprocessed)")
         bridge_unprocessed = None
 
-
     # ========================================================================
     # PHASE 3: Bridge (processed) + HookedTransformer (processed)
     # ========================================================================
@@ -932,6 +932,7 @@ def run_benchmark_suite(
             print("✓ TransformerBridge compatibility mode enabled (processed)\n")
     except Exception as e:
         import traceback
+
         error_trace = traceback.format_exc()
         add_result(
             BenchmarkResult(
@@ -948,13 +949,27 @@ def run_benchmark_suite(
 
         # Add failure results for all Phase 3 tests that would have been run
         phase3_tests = [
-            "no_nan_inf", "weight_magnitudes", "layer_norm_folding",
-            "attention_output_centering", "mlp_output_centering", "unembed_centering",
-            "value_bias_folding", "weight_processing", "weight_sharing", "weight_modification",
-            "logits_equivalence", "loss_equivalence",
-            "hook_registry", "hook_functionality", "critical_forward_hooks", "forward_hooks",
-            "run_with_cache", "activation_cache",
-            "gradient_computation", "critical_backward_hooks", "backward_hooks"
+            "no_nan_inf",
+            "weight_magnitudes",
+            "layer_norm_folding",
+            "attention_output_centering",
+            "mlp_output_centering",
+            "unembed_centering",
+            "value_bias_folding",
+            "weight_processing",
+            "weight_sharing",
+            "weight_modification",
+            "logits_equivalence",
+            "loss_equivalence",
+            "hook_registry",
+            "hook_functionality",
+            "critical_forward_hooks",
+            "forward_hooks",
+            "run_with_cache",
+            "activation_cache",
+            "gradient_computation",
+            "critical_backward_hooks",
+            "backward_hooks",
         ]
 
         for test_name in phase3_tests:

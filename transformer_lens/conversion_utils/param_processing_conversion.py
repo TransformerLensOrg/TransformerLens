@@ -48,9 +48,7 @@ class ParamProcessingConversion:
             return template_key.replace("{i}", layer_idx)
         return template_key
 
-    def convert(
-        self, state_dict: Dict[str, torch.Tensor], current_key: str
-    ) -> torch.Tensor:
+    def convert(self, state_dict: Dict[str, torch.Tensor], current_key: str) -> torch.Tensor:
         """Convert a parameter in the state dict.
 
         Fetches tensor from source_key (or current_key if not specified),
@@ -74,10 +72,7 @@ class ParamProcessingConversion:
         # Apply conversion (handles None gracefully)
         return self.tensor_conversion.convert(tensor, state_dict)
 
-
-    def revert(
-        self, tensor: torch.Tensor
-    ) -> torch.Tensor:
+    def revert(self, tensor: torch.Tensor) -> torch.Tensor:
         """Revert a parameter conversion in the state dict.
 
         Fetches tensor from current_key, applies reversion,

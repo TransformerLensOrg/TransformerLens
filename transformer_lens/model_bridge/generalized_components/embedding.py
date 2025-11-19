@@ -3,10 +3,9 @@
 This module contains the bridge component for embedding layers.
 """
 import inspect
-from typing import Any, Dict, Mapping, Optional
+from typing import Any, Dict, Optional
 
 import torch
-from torch import nn
 
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
