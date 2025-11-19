@@ -874,26 +874,25 @@ class TransformerBridge(nn.Module):
             print(f"Processing weights for {self.cfg.model_name}...")
         import torch
 
-        # Break weight tying between embed and unembed BEFORE extracting state dict
-        # This is necessary for models like GPT-2 that share weights between lm_head and wte
-        # We need to untie them so that center_unembed only affects unembed, not embed
-        if hasattr(self, 'unembed') and hasattr(self, 'embed'):
-            if hasattr(self.unembed, 'original_component') and hasattr(self.embed, 'original_component'):
-                unembed_module = self.unembed.original_component
-                embed_module = self.embed.original_component
-                # Check if weights are tied (same underlying tensor)
-                if hasattr(unembed_module, 'weight') and hasattr(embed_module, 'weight'):
-                    if unembed_module.weight.data_ptr() == embed_module.weight.data_ptr():
-                        if verbose:
-                            print("  Breaking weight tying between embed and unembed...")
-                        # Create independent copy for unembed
-                        unembed_module.weight = torch.nn.Parameter(unembed_module.weight.clone())
-
         if verbose:
             print("  Extracting state dict from existing model...")
         state_dict = self.state_dict()
 
         adapter = self.adapter
+
+        # Break weight tying between embed and unembed in the state dict
+        # This is necessary for models like GPT-2 that share weights between lm_head and wte
+        # We need to untie them so that center_unembed only affects unembed, not embed
+        embed_key = "embed.weight"
+        unembed_key = "unembed.weight"
+
+        if embed_key in state_dict and unembed_key in state_dict:
+            # Check if they point to the same tensor (weight tying)
+            if state_dict[embed_key].data_ptr() == state_dict[unembed_key].data_ptr():
+                if verbose:
+                    print("  Breaking weight tying between embed and unembed in state dict...")
+                # Clone the unembed weight to break the tie
+                state_dict[unembed_key] = state_dict[unembed_key].clone()
 
         if adapter and hasattr(adapter, "preprocess_weights"):
             state_dict = adapter.preprocess_weights(state_dict)
