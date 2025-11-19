@@ -62,6 +62,7 @@ class QKVSplitRearrangeConversion(BaseTensorConversion):
 
         return einops.rearrange(selected_part, self.rearrange_pattern, **self.axes_lengths)
 
+
 class GPT2ArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for GPT2 models.
 

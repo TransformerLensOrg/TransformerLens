@@ -106,40 +106,11 @@ class LinearBridge(GeneralizedComponent):
         if bias is not None and bias.ndim == 2:
             bias = einops.rearrange(bias, "n_heads d_head -> (n_heads d_head)")
 
-        # Load weights into Linear layer
-        # nn.Linear stores weights in [out, in] format
-        # Detect if we need to transpose based on what matches the parameter shape
-        for name, param in self.original_component.named_parameters():
-            if "weight" in name.lower():
-                # Check if weight already matches (no transpose needed)
-                if weight.shape == param.shape:
-                    new_weight = weight.contiguous()
-                    if verbose:
-                        print(
-                            f"    Weight already in correct shape {weight.shape}, no transpose needed"
-                        )
-                # Check if transposed weight matches
-                elif weight.T.shape == param.shape:
-                    new_weight = weight.T.contiguous()
-                    if verbose:
-                        print(f"    Transposing weight from {weight.shape} to {new_weight.shape}")
-                else:
-                    raise ValueError(
-                        f"Shape mismatch for {self.name}.{name}: "
-                        f"processed weight has shape {weight.shape}, "
-                        f"transposed shape is {weight.T.shape}, "
-                        f"but parameter expects shape {param.shape}"
-                    )
-                if verbose:
-                    print(f"    Setting param '{name}' with shape {new_weight.shape}")
-                param.data = new_weight
-            elif "bias" in name.lower() and bias is not None:
-                if bias.shape != param.shape:
-                    raise ValueError(
-                        f"Shape mismatch for {self.name}.{name}: "
-                        f"trying to set bias with shape {bias.shape} "
-                        f"but parameter has shape {param.shape}"
-                    )
-                if verbose:
-                    print(f"    Setting param '{name}' with shape {bias.contiguous().shape}")
-                param.data = bias.contiguous()
+        weights = {
+            "weight": weight,
+        }
+
+        if bias is not None:
+            weights["bias"] = bias
+
+        super().set_processed_weights(weights, verbose=verbose)
