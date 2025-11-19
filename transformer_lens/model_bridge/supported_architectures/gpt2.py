@@ -51,7 +51,7 @@ class QKVSplitRearrangeConversion(BaseTensorConversion):
             raise ValueError(f"Unexpected tensor shape: {input_value.shape}")
 
         # Split the QKV tensor
-        qkv_parts = torch.chunk(input_value, 3, dim=split_dim)
+        qkv_parts = torch.tensor_split(input_value, 3, dim=split_dim)
         selected_part = qkv_parts[self.qkv_index]
 
         # Apply rearrangement
@@ -80,16 +80,17 @@ class QKVBiasConversion(BaseTensorConversion):
         """Convert QKV bias following the original GPT-2 logic."""
         import einops
 
-        # Original logic: rearrange the entire bias tensor first, then split by QKV
-        qkv_bias = einops.rearrange(
-            input_value,
-            "(qkv index head)->qkv index head",
-            qkv=3,
-            index=self.n_heads,
-            head=self.d_head,
-        )
-        # Return the selected QKV part
-        return qkv_bias[self.qkv_index]
+        d_model = self.n_heads * self.d_head
+        assert input_value.shape[-1] == 3 * d_model
+
+        # First: reshape into [3, d_model] => [Q, K, V] blocks
+        qkv_bias = input_value.view(3, d_model)  # NO permutation, just reshape
+
+        # Select Q/K/V block: still flat [d_model]
+        selected = qkv_bias[self.qkv_index]  # 0 = Q, 1 = K, 2 = V
+
+        # Reshape to [n_heads, d_head]:
+        return selected.view(self.n_heads, self.d_head)
 
 
 class GPT2ArchitectureAdapter(ArchitectureAdapter):

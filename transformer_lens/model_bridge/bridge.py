@@ -935,6 +935,23 @@ class TransformerBridge(nn.Module):
             state_dict=state_dict,
             component_mapping=self.real_components,
         )
+        state_dict = self.state_dict()
+         
+        # Debug utility import (optional)
+        try:
+            import sys
+            from pathlib import Path
+            # Add parent directory to path to import from PR Review
+            pr_review_path = Path(__file__).parent.parent.parent.parent
+            if pr_review_path not in sys.path:
+                sys.path.insert(0, str(pr_review_path))
+            from dump_current_state_dict import dump_state_dict
+        except ImportError:
+            # Fallback if dump_current_state_dict is not available
+            def dump_state_dict(*args, **kwargs):
+                pass
+         
+        dump_state_dict(state_dict)
 
         # loaded_count = 0
         # missing_count = 0
