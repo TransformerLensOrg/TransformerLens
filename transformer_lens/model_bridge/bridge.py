@@ -1977,21 +1977,6 @@ class TransformerBridge(nn.Module):
 
         return _hooks_context()
 
-    def get_processed_hf_weights(self) -> Dict[str, torch.Tensor]:
-        """Get the processed HuggingFace format weights.
-
-        Returns:
-            Dictionary of processed weights in HuggingFace format with folding applied
-        """
-        if not hasattr(self, "_processed_tl_weights"):
-            raise ValueError(
-                "No processed weights available. Call enable_compatibility_mode() first."
-            )
-
-        # The _processed_tl_weights is actually in HF format (despite the name)
-        # because process_compatibility_weights() processes HF format weights in-place
-        return self._processed_tl_weights
-
     def set_use_attn_result(self, use_attn_result: bool):
         """Toggle whether to explicitly calculate and expose the result for each attention head.
 

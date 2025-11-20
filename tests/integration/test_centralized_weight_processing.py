@@ -243,19 +243,14 @@ class TestCentralizedWeightProcessing:
         bridge = TransformerBridge.boot_transformers(model_name, device=device)
         bridge.enable_compatibility_mode()
 
+        # Verify that processing maintains computational correctness
         with torch.no_grad():
             bridge_loss = bridge(test_tokens, return_type="loss")
 
-        # Get HF weights from bridge
-        hf_weights = bridge.get_processed_hf_weights()
+        assert bridge_loss.item() > 0, "Should produce valid loss after processing"
 
-        # Verify that processing maintains computational correctness
-        assert len(hf_weights) > 0, "Should export HF weights"
-        assert bridge_loss.item() > 0, "Should produce valid loss"
-
-        # Check for expected HF format keys
-        expected_patterns = ["transformer.", "lm_head."]
-        has_expected_keys = any(
-            any(pattern in key for pattern in expected_patterns) for key in hf_weights.keys()
-        )
-        assert has_expected_keys, "Should have HF format keys in exported weights"
+        # Verify the bridge has expected components after processing
+        assert hasattr(bridge, "blocks"), "Should have transformer blocks"
+        assert len(bridge.blocks) > 0, "Should have at least one block"
+        assert hasattr(bridge, "embed"), "Should have embedding component"
+        assert hasattr(bridge, "unembed"), "Should have unembedding component"
