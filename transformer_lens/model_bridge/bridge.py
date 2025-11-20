@@ -1637,54 +1637,136 @@ class TransformerBridge(nn.Module):
         return_type: Optional[str] = "input",
         verbose: bool = True,
     ) -> Union[str, List[str], torch.Tensor]:
-        """Generate text from the model using the underlying HuggingFace model."""
+        """Sample tokens from the model.
+
+        Sample tokens from the model until the model outputs eos_token or max_new_tokens is reached.
+        This implementation is based on HookedTransformer.generate() to ensure consistent behavior.
+
+        Args:
+            input: Text string, list of strings, or tensor of tokens
+            max_new_tokens: Maximum number of tokens to generate
+            stop_at_eos: If True, stop generating tokens when the model outputs eos_token
+            eos_token_id: The token ID to use for end of sentence
+            do_sample: If True, sample from the model's output distribution. Otherwise, use greedy search
+            top_k: Number of tokens to sample from. If None, sample from all tokens
+            top_p: Probability mass to sample from. If 1.0, sample from all tokens
+            temperature: Temperature for sampling. Higher values will make the model more random
+            freq_penalty: Frequency penalty for sampling - how much to penalise previous tokens
+            use_past_kv_cache: Not used in Bridge (kept for API compatibility)
+            prepend_bos: Not used in Bridge (kept for API compatibility)
+            padding_side: Not used in Bridge (kept for API compatibility)
+            return_type: The type of output to return - 'input', 'str', or 'tokens'
+            verbose: Not used in Bridge (kept for API compatibility)
+
+        Returns:
+            Generated sequence as string, list of strings, or tensor depending on input type and return_type
+        """
+        # Convert input to tokens
         if isinstance(input, str):
-            inputs = self.tokenizer(input, return_tensors="pt", padding=False, truncation=False).to(
-                self.cfg.device
-            )
-            input_ids = inputs["input_ids"]
+            input_tokens = self.tokenizer(
+                input, return_tensors="pt", padding=False, truncation=False
+            )["input_ids"].to(self.cfg.device)
+            input_type = "str"
         elif isinstance(input, list):
-            inputs = self.tokenizer(input, return_tensors="pt", padding=True, truncation=False).to(
-                self.cfg.device
-            )
-            input_ids = inputs["input_ids"]
+            input_tokens = self.tokenizer(
+                input, return_tensors="pt", padding=True, truncation=False
+            )["input_ids"].to(self.cfg.device)
+            input_type = "list"
         else:
-            input_ids = input
-            if input_ids.device != self.cfg.device:
-                input_ids = input_ids.to(self.cfg.device)
-        generation_kwargs = {
-            "max_new_tokens": max_new_tokens,
-            "do_sample": do_sample,
-            "temperature": temperature,
-            "pad_token_id": self.tokenizer.eos_token_id,
-        }
-        if top_k is not None:
-            generation_kwargs["top_k"] = top_k
-        if top_p is not None:
-            generation_kwargs["top_p"] = top_p
-        if eos_token_id is not None:
-            generation_kwargs["eos_token_id"] = eos_token_id
-        elif stop_at_eos and self.tokenizer.eos_token_id is not None:
-            generation_kwargs["eos_token_id"] = self.tokenizer.eos_token_id
-        if use_past_kv_cache:
-            generation_kwargs["use_cache"] = True
-        with torch.no_grad():
-            outputs = self.original_model.generate(input_ids, **generation_kwargs)  # type: ignore[operator]
-        if return_type == "input" or return_type is None:
-            if isinstance(input, str):
-                return self.tokenizer.decode(outputs[0], skip_special_tokens=True)
-            elif isinstance(input, list):
-                return [self.tokenizer.decode(seq, skip_special_tokens=True) for seq in outputs]
+            input_tokens = input.to(self.cfg.device)
+            input_type = "tokens"
+
+        # Determine return type
+        if return_type == "input":
+            if input_type in ["str", "list"]:
+                return_type = "str"
             else:
-                return outputs
-        elif return_type == "tokens":
-            return outputs
-        elif isinstance(input, str):
-            return self.tokenizer.decode(outputs[0], skip_special_tokens=True)
-        elif isinstance(input, list):
-            return [self.tokenizer.decode(seq, skip_special_tokens=True) for seq in outputs]
-        else:
-            return outputs
+                return_type = "tokens"
+
+        batch_size = input_tokens.shape[0]
+
+        # Setup EOS token handling
+        stop_tokens = []
+        eos_token_for_padding = 0
+        if stop_at_eos:
+            if eos_token_id is None:
+                assert (
+                    self.tokenizer.eos_token_id is not None
+                ), "Must pass eos_token_id if stop_at_eos is True and tokenizer has no eos_token_id"
+                eos_token_id = self.tokenizer.eos_token_id
+
+            if isinstance(eos_token_id, int):
+                stop_tokens = [eos_token_id]
+                eos_token_for_padding = eos_token_id
+            else:
+                stop_tokens = list(eos_token_id)
+                eos_token_for_padding = (
+                    self.tokenizer.eos_token_id
+                    if self.tokenizer.eos_token_id is not None
+                    else eos_token_id[0]
+                )
+
+        # Track which sequences have finished
+        finished_sequences = torch.zeros(batch_size, dtype=torch.bool, device=self.cfg.device)
+
+        # Generate tokens
+        current_tokens = input_tokens.clone()
+        sampled_tokens_list = []
+
+        for _ in range(max_new_tokens):
+            # Get logits for next token
+            with torch.no_grad():
+                logits = self(current_tokens, return_type="logits")
+                final_logits = logits[:, -1, :]
+
+                # Sample next token
+                if do_sample:
+                    sampled_tokens = utils.sample_logits(
+                        final_logits,
+                        top_k=top_k,
+                        top_p=top_p,
+                        temperature=temperature,
+                        freq_penalty=freq_penalty,
+                        tokens=current_tokens,
+                    ).to(self.cfg.device)
+                else:
+                    sampled_tokens = final_logits.argmax(-1).to(self.cfg.device)
+
+                sampled_tokens_list.append(sampled_tokens.unsqueeze(1))
+
+                # Handle EOS tokens for finished sequences
+                if stop_at_eos:
+                    sampled_tokens[finished_sequences] = eos_token_for_padding
+                    finished_sequences.logical_or_(
+                        torch.isin(
+                            sampled_tokens.to(self.cfg.device),
+                            torch.tensor(stop_tokens).to(self.cfg.device),
+                        )
+                    )
+
+                # Append sampled token to current sequence
+                current_tokens = torch.cat([current_tokens, sampled_tokens.unsqueeze(1)], dim=1)
+
+                # Early stopping if all sequences finished
+                if stop_at_eos and finished_sequences.all():
+                    break
+
+        # Concatenate all sampled tokens
+        sampled_tokens = torch.cat(sampled_tokens_list, dim=1)
+        output_tokens = torch.cat([input_tokens, sampled_tokens], dim=1)
+
+        # Format output
+        if return_type == "str":
+            if input_type == "str":
+                return self.tokenizer.decode(output_tokens[0], skip_special_tokens=True)
+            else:
+                decoded_texts = [
+                    self.tokenizer.decode(tokens, skip_special_tokens=True)
+                    for tokens in output_tokens
+                ]
+                return decoded_texts[0] if len(decoded_texts) == 1 else decoded_texts
+        else:  # return_type == "tokens"
+            return output_tokens
 
     def to(self, *args, **kwargs) -> "TransformerBridge":
         """Move model to device or change dtype.
