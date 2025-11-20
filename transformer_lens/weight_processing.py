@@ -5,17 +5,15 @@ This module contains all the weight processing functions extracted from HookedTr
 organized into a single ProcessWeights class with static methods. These functions are used
 to modify transformer model weights for better interpretability and analysis.
 """
-from typing import TYPE_CHECKING, Any, Dict, Optional, Union, overload
+from typing import Any, Dict, Optional, Union, overload
 
 import einops
 import torch
 
 import transformer_lens.utils as utils
+from transformer_lens.config.TransformerLensConfig import TransformerLensConfig
 from transformer_lens.FactoredMatrix import FactoredMatrix
-
-if TYPE_CHECKING:
-    from transformer_lens.config.TransformerBridgeConfig import TransformerBridgeConfig
-    from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
+from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 
 
 class ProcessWeights:
@@ -1440,7 +1438,7 @@ class ProcessWeights:
         param_name: str,
         model_state_dict: Dict[str, torch.Tensor],
         tensor: torch.Tensor,
-        cfg: Optional["TransformerBridgeConfig"],
+        cfg: Optional["TransformerLensConfig"],
         adapter: Optional["ArchitectureAdapter"] = None,
         layer_idx: Optional[int] = None,
     ) -> torch.Tensor:
@@ -1452,7 +1450,7 @@ class ProcessWeights:
         param_name: str,
         model_state_dict: Dict[str, torch.Tensor],
         tensor: None,
-        cfg: Optional["TransformerBridgeConfig"],
+        cfg: Optional["TransformerLensConfig"],
         adapter: Optional["ArchitectureAdapter"] = None,
         layer_idx: Optional[int] = None,
     ) -> None:
@@ -1463,7 +1461,7 @@ class ProcessWeights:
         param_name: str,
         model_state_dict: Dict[str, torch.Tensor],
         tensor: Optional[torch.Tensor],
-        cfg: Optional["TransformerBridgeConfig"],
+        cfg: Optional["TransformerLensConfig"],
         adapter: Optional["ArchitectureAdapter"] = None,
         layer_idx: Optional[int] = None,
     ) -> Optional[torch.Tensor]:
@@ -1522,7 +1520,7 @@ class ProcessWeights:
     def convert_tensor_to_hf_format(
         param_name: str,
         tensor: torch.Tensor,
-        cfg: Optional["TransformerBridgeConfig"],
+        cfg: Optional["TransformerLensConfig"],
         adapter: Optional["ArchitectureAdapter"] = None,
         layer_idx: Optional[int] = None,
     ) -> torch.Tensor:
@@ -1533,7 +1531,7 @@ class ProcessWeights:
     def convert_tensor_to_hf_format(
         param_name: str,
         tensor: None,
-        cfg: Optional["TransformerBridgeConfig"],
+        cfg: Optional["TransformerLensConfig"],
         adapter: Optional["ArchitectureAdapter"] = None,
         layer_idx: Optional[int] = None,
     ) -> None:
@@ -1543,7 +1541,7 @@ class ProcessWeights:
     def convert_tensor_to_hf_format(
         param_name: str,
         tensor: Optional[torch.Tensor],
-        cfg: Optional["TransformerBridgeConfig"],
+        cfg: Optional["TransformerLensConfig"],
         adapter: Optional["ArchitectureAdapter"] = None,
         layer_idx: Optional[int] = None,
     ) -> Optional[torch.Tensor]:

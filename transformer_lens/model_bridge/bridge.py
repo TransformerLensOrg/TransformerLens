@@ -1559,14 +1559,9 @@ class TransformerBridge(nn.Module):
             def stop_hook(tensor: torch.Tensor, *, hook: Any) -> torch.Tensor:
                 raise StopAtLayerException(tensor, stop_at_layer)
 
-            if stop_at_layer == 0:
-                hook_dict = self.hook_dict
-                block_0_hook_name = "blocks.0.hook_in"
-                if block_0_hook_name in hook_dict:
-                    hook_dict[block_0_hook_name].add_hook(stop_hook)
-                    hooks.append((hook_dict[block_0_hook_name], block_0_hook_name))
-            elif last_layer_to_process >= 0 and last_layer_to_process < len(self.blocks):
-                block_hook_name = f"blocks.{last_layer_to_process}.hook_out"
+            if stop_at_layer >= 0 and stop_at_layer < len(self.blocks):
+                # Stop at the beginning of the specified block, not at the end of the previous block
+                block_hook_name = f"blocks.{stop_at_layer}.hook_in"
                 hook_dict = self.hook_dict
                 if block_hook_name in hook_dict:
                     hook_dict[block_hook_name].add_hook(stop_hook)
@@ -1705,15 +1700,9 @@ class TransformerBridge(nn.Module):
             def stop_hook(tensor: torch.Tensor, *, hook: Any) -> torch.Tensor:
                 raise StopAtLayerException(tensor, stop_at_layer)
 
-            if stop_at_layer == 0:
-                hook_dict = self.hook_dict
-                block_0_hook_name = "blocks.0.hook_in"
-                if block_0_hook_name in hook_dict:
-                    add_hook_to_point(
-                        hook_dict[block_0_hook_name], stop_hook, block_0_hook_name, "fwd"
-                    )
-            elif last_layer_to_process >= 0 and last_layer_to_process < len(self.blocks):
-                block_hook_name = f"blocks.{last_layer_to_process}.hook_out"
+            if stop_at_layer >= 0 and stop_at_layer < len(self.blocks):
+                # Stop at the beginning of the specified block, not at the end of the previous block
+                block_hook_name = f"blocks.{stop_at_layer}.hook_in"
                 hook_dict = self.hook_dict
                 if block_hook_name in hook_dict:
                     add_hook_to_point(hook_dict[block_hook_name], stop_hook, block_hook_name, "fwd")

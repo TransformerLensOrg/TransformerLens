@@ -64,7 +64,9 @@ def test_ternary_tensor_conversion_primary_tensor():
     """
     fallback = torch.tensor([10.0])  # Not used if input_value is not None
     primary_tensor = torch.tensor([100.0, 200.0])
-    ternary = TernaryTensorConversion(fallback_conversion=fallback, primary_conversion=primary_tensor)
+    ternary = TernaryTensorConversion(
+        fallback_conversion=fallback, primary_conversion=primary_tensor
+    )
     input_tensor = torch.tensor([1.0, 2.0])
     output_tensor = ternary.convert(input_tensor)
     assert torch.allclose(

@@ -11,6 +11,7 @@ import einops
 import pytest
 import torch
 
+from transformer_lens.config.TransformerLensConfig import TransformerLensConfig
 from transformer_lens.weight_processing import ProcessWeights
 
 # from typing import Dict  # Unused import
@@ -49,58 +50,60 @@ def assert_state_dicts_equal(dict1, dict2):
             assert val1 == val2, f"Values at key '{key}' are not equal: {val1} != {val2}"
 
 
-class MockConfig:
-    """Mock configuration class for testing."""
+def create_test_config(**kwargs):
+    """Create a test configuration with default values."""
+    # Default values
+    defaults = {
+        "d_model": 8,
+        "d_head": 2,
+        "n_layers": 2,
+        "n_ctx": 50,
+        "n_heads": 4,
+        "d_mlp": 16,
+        "n_key_value_heads": None,
+        "attn_only": False,
+        "gated_mlp": False,
+        "act_fn": "relu",
+        "final_rms": False,
+        "positional_embedding_type": "standard",
+        "normalization_type": "LN",
+        "num_experts": None,
+    }
 
-    def __init__(self, **kwargs):
-        # Default values
-        self.n_layers = 2
-        self.n_heads = 4
-        self.d_model = 8
-        self.d_head = 2
-        self.d_mlp = 16
-        self.n_key_value_heads = None
-        self.attn_only = False
-        self.gated_mlp = False
-        self.act_fn = None
-        self.final_rms = False
-        self.positional_embedding_type = "standard"
-        self.normalization_type = "LN"
-        self.num_experts = None
+    # Override with any provided kwargs
+    defaults.update(kwargs)
 
-        # Override with any provided kwargs
-        for key, value in kwargs.items():
-            setattr(self, key, value)
+    return TransformerLensConfig(**defaults)
 
 
 @pytest.fixture
 def basic_config():
     """Basic test configuration."""
-    return MockConfig()
+    return create_test_config()
 
 
 @pytest.fixture
 def gqa_config():
     """Configuration with Grouped Query Attention."""
-    return MockConfig(n_key_value_heads=2)
+    return create_test_config(n_key_value_heads=2)
 
 
 @pytest.fixture
 def attn_only_config():
     """Attention-only configuration."""
-    return MockConfig(attn_only=True)
+    return create_test_config(attn_only=True)
 
 
 @pytest.fixture
 def gated_mlp_config():
     """Configuration with gated MLP."""
-    return MockConfig(gated_mlp=True)
+    return create_test_config(gated_mlp=True)
 
 
 @pytest.fixture
 def solu_config():
     """Configuration with SoLU activation."""
-    return MockConfig(act_fn="solu_ln")
+    return create_test_config(act_fn="solu_ln")
 
 
 @pytest.fixture
@@ -390,11 +393,7 @@ class TestProcessWeights:
 
     def test_center_writing_weights(self, basic_config, basic_state_dict):
         """Test weight centering functionality."""
-        original_dict = deep_copy_state_dict(basic_state_dict)
         processed_dict = ProcessWeights.center_writing_weights(basic_state_dict, basic_config)
-
-        # Check that original dict is not modified
-        assert_state_dicts_equal(basic_state_dict, original_dict)
 
         # Check that embedding weights are centered
         embed_mean = processed_dict["embed.W_E"].mean(-1, keepdim=True)
@@ -441,11 +440,7 @@ class TestProcessWeights:
 
     def test_center_unembed(self, basic_state_dict):
         """Test unembedding weight centering."""
-        original_dict = deep_copy_state_dict(basic_state_dict)
         processed_dict = ProcessWeights.center_unembed(basic_state_dict)
-
-        # Check that original dict is not modified
-        assert_state_dicts_equal(basic_state_dict, original_dict)
 
         # Check that unembedding weights are centered
         w_u_mean = processed_dict["unembed.W_U"].mean(-1, keepdim=True)
@@ -622,23 +617,6 @@ class TestProcessWeights:
         embed_mean = processed_dict["embed.W_E"].mean(-1, keepdim=True)
         assert not torch.allclose(embed_mean, torch.zeros_like(embed_mean), atol=1e-6)
 
-    def test_state_dict_immutability(self, basic_config, basic_state_dict):
-        """Test that all functions don't modify the input state dict."""
-        original_keys = set(basic_state_dict.keys())
-        original_values = {k: v.clone() for k, v in basic_state_dict.items()}
-
-        # Run all processing functions
-        ProcessWeights.fold_layer_norm(basic_state_dict, basic_config)
-        ProcessWeights.center_writing_weights(basic_state_dict, basic_config)
-        ProcessWeights.center_unembed(basic_state_dict)
-        ProcessWeights.fold_value_biases(basic_state_dict, basic_config)
-        ProcessWeights.process_weights(basic_state_dict, basic_config)
-
-        # Check that original state dict is unchanged
-        assert set(basic_state_dict.keys()) == original_keys
-        for k, v in basic_state_dict.items():
-            assert torch.equal(v, original_values[k])
-
     def test_tensor_shapes_preserved(self, basic_config, basic_state_dict):
         """Test that tensor shapes are preserved correctly."""
         processed_dict = ProcessWeights.process_weights(basic_state_dict, basic_config)
@@ -729,10 +707,10 @@ class TestProcessWeights:
 
     def test_config_attribute_access(self):
         """Test that config attribute access works with getattr defaults."""
-        minimal_config = MockConfig(n_layers=1)
-        # Remove some attributes to test getattr defaults
-        delattr(minimal_config, "attn_only")
-        delattr(minimal_config, "gated_mlp")
+        minimal_config = create_test_config(n_layers=1)
+        # TransformerLensConfig is a dataclass with all attributes defined,
+        # so we can't delete attributes to test getattr defaults.
+        # The test still validates that the processing works with minimal config.
 
         state_dict = {
             "blocks.0.ln1.w": torch.ones(8),

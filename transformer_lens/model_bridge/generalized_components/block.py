@@ -76,11 +76,20 @@ class BlockBridge(GeneralizedComponent):
         # Check if we should stop before executing this block
         # The _stop_at_layer_idx attribute is set by the bridge's forward method
         if hasattr(self, "_stop_at_layer_idx") and self._stop_at_layer_idx is not None:
-            # Extract layer index from name (e.g., "blocks.0" -> 0)
+            # Extract layer index from name
+            # Supports multiple naming patterns:
+            # - "blocks.0" (TransformerLens style)
+            # - "transformer.h.0" (HuggingFace GPT-2 style)
+            # - "model.layers.0" (HuggingFace LLaMA style)
             import re
 
             if self.name is not None:
-                match = re.search(r"blocks\.(\d+)", self.name)
+                # Try multiple patterns to extract layer index
+                match = (
+                    re.search(r"blocks\.(\d+)", self.name)
+                    or re.search(r"\.h\.(\d+)", self.name)
+                    or re.search(r"\.layers\.(\d+)", self.name)
+                )
             else:
                 match = None
             if match:
