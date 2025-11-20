@@ -629,8 +629,6 @@ class TransformerBridge(nn.Module):
 
         apply_fn_to_all_components(self, set_compatibility_mode)
         self.clear_hook_registry()
-        self._initialize_hook_registry()
-        self._setup_hook_compatibility()
         if not no_processing:
             self.process_weights(
                 fold_ln=fold_ln,
@@ -639,6 +637,8 @@ class TransformerBridge(nn.Module):
                 fold_value_biases=fold_value_biases,
                 refactor_factored_attn_matrices=refactor_factored_attn_matrices,
             )
+        self._initialize_hook_registry()
+        self._setup_hook_compatibility()
         self._register_all_aliases_recursive()
 
     def _setup_hook_compatibility(self) -> None:
