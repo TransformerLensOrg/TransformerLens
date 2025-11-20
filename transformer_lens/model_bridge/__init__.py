@@ -2,14 +2,8 @@
 
 This module provides functionality to bridge between different model architectures.
 """
-
-from transformer_lens.model_bridge.architecture_adapter import (
-    ArchitectureAdapter,
-)
-
-from transformer_lens.model_bridge.bridge import (
-    TransformerBridge,
-)
+from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
+from transformer_lens.model_bridge.bridge import TransformerBridge
 from transformer_lens.model_bridge.component_setup import (
     replace_remote_component,
     set_original_components,
@@ -38,9 +32,7 @@ from transformer_lens.model_bridge.types import (
     RemotePath,
     TransformerLensPath,
 )
-
 import transformer_lens.model_bridge.sources.transformers
-
 
 __all__ = [
     "ArchitectureAdapter",
@@ -60,7 +52,6 @@ __all__ = [
     "setup_blocks_bridge",
     "setup_components",
     "setup_submodules",
-    # Type definitions
     "ComponentMapping",
     "HookFunction",
     "HookRegistry",

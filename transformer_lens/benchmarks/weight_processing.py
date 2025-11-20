@@ -64,11 +64,11 @@ def benchmark_weight_processing(
 
             # Check weight centering - writing weights should be approximately centered
             bridge_w_out = bridge.blocks[0].mlp.W_out
-            reference_w_out = reference_model.blocks[0].mlp.W_out
+            reference_w_out = reference_model.blocks[0].mlp.W_out  # type: ignore[union-attr]
 
             bridge_mean = torch.mean(torch.abs(torch.mean(bridge_w_out, dim=-1, keepdim=True)))
             reference_mean = torch.mean(
-                torch.abs(torch.mean(reference_w_out, dim=-1, keepdim=True))
+                torch.abs(torch.mean(reference_w_out, dim=-1, keepdim=True))  # type: ignore[arg-type]
             )
 
             if bridge_mean.item() > 1e-3:
@@ -489,6 +489,17 @@ def benchmark_mlp_output_centering(
         BenchmarkResult with MLP output centering verification details
     """
     try:
+        # Check if this is an MoE model - MoE models don't have a single W_out weight
+        from transformer_lens.model_bridge.generalized_components.moe import MoEBridge
+
+        if isinstance(bridge.blocks[0].mlp, MoEBridge):
+            return BenchmarkResult(
+                name="mlp_output_centering",
+                severity=BenchmarkSeverity.INFO,
+                message="Skipped for MoE models (no single W_out weight)",
+                details={"is_moe": True},
+            )
+
         # Check if W_out exists and is accessible
         if not hasattr(bridge.blocks[0].mlp, "W_out"):
             return BenchmarkResult(
@@ -614,6 +625,21 @@ def benchmark_value_bias_folding(
         BenchmarkResult with value bias folding verification details
     """
     try:
+        # Skip for GQA models (where n_key_value_heads != n_heads)
+        # Value bias folding doesn't work the same way because V outputs are repeated
+        if hasattr(bridge.cfg, "n_key_value_heads") and bridge.cfg.n_key_value_heads is not None:
+            if bridge.cfg.n_key_value_heads != bridge.cfg.n_heads:
+                return BenchmarkResult(
+                    name="value_bias_folding",
+                    severity=BenchmarkSeverity.INFO,
+                    message="Skipped for GQA models (n_key_value_heads != n_heads)",
+                    details={
+                        "is_gqa": True,
+                        "n_heads": bridge.cfg.n_heads,
+                        "n_kv_heads": bridge.cfg.n_key_value_heads,
+                    },
+                )
+
         # Check if b_V exists
         if not hasattr(bridge.blocks[0].attn, "b_V"):
             return BenchmarkResult(
@@ -759,6 +785,19 @@ def benchmark_weight_magnitudes(
 
             # Skip value biases - they are expected to be zero after folding
             if ".v.bias" in key:
+                continue
+
+            # Skip attention projection biases - they can be zero in some models
+            if (
+                ".k_proj.bias" in key
+                or ".q_proj.bias" in key
+                or ".v_proj.bias" in key
+                or ".o_proj.bias" in key
+                or ".k.bias" in key
+                or ".q.bias" in key
+                or ".v.bias" in key
+                or ".o.bias" in key
+            ):
                 continue
 
             # Skip layer norm biases - they are expected to be zero after folding

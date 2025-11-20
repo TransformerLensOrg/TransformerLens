@@ -2,9 +2,9 @@
 
 from typing import Any
 
-from transformer_lens.conversion_utils.conversion_steps import (
-    HookConversionSet,
-    RearrangeHookConversion,
+from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorConversion
+from transformer_lens.conversion_utils.param_processing_conversion import (
+    ParamProcessingConversion,
 )
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
@@ -30,44 +30,50 @@ class NeelSoluOldArchitectureAdapter(ArchitectureAdapter):
         self.default_config: dict[str, Any] = {}
         super().__init__(cfg)
 
-        self.conversion_rules = HookConversionSet(
-            {
-                "pos_embed.pos": "wpe.weight",
-                "embed.e": "wte.weight",
-                "blocks.{i}.ln1.w": "blocks.{i}.ln1.w",
-                "blocks.{i}.ln1.b": "blocks.{i}.ln1.b",
-                "blocks.{i}.ln2.w": "blocks.{i}.ln2.w",
-                "blocks.{i}.ln2.b": "blocks.{i}.ln2.b",
-                "blocks.{i}.attn.q": (
-                    "blocks.{i}.attn.W_Q",
-                    RearrangeHookConversion("d_model n_head d_head -> n_head d_model d_head"),
+        self.weight_processing_conversions = {
+            "pos_embed.pos": "wpe.weight",
+            "embed.e": "wte.weight",
+            "blocks.{i}.ln1.w": "blocks.{i}.ln1.w",
+            "blocks.{i}.ln1.b": "blocks.{i}.ln1.b",
+            "blocks.{i}.ln2.w": "blocks.{i}.ln2.w",
+            "blocks.{i}.ln2.b": "blocks.{i}.ln2.b",
+            "blocks.{i}.attn.q": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion(
+                    "d_model n_head d_head -> n_head d_model d_head"
                 ),
-                "blocks.{i}.attn.k": (
-                    "blocks.{i}.attn.W_K",
-                    RearrangeHookConversion("d_model n_head d_head -> n_head d_model d_head"),
+                source_key="blocks.{i}.attn.W_Q",
+            ),
+            "blocks.{i}.attn.k": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion(
+                    "d_model n_head d_head -> n_head d_model d_head"
                 ),
-                "blocks.{i}.attn.v": (
-                    "blocks.{i}.attn.W_V",
-                    RearrangeHookConversion("d_model n_head d_head -> n_head d_model d_head"),
+                source_key="blocks.{i}.attn.W_K",
+            ),
+            "blocks.{i}.attn.v": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion(
+                    "d_model n_head d_head -> n_head d_model d_head"
                 ),
-                "blocks.{i}.attn.o": (
-                    "blocks.{i}.attn.W_O",
-                    RearrangeHookConversion("n_head d_head d_model -> n_head d_head d_model"),
+                source_key="blocks.{i}.attn.W_V",
+            ),
+            "blocks.{i}.attn.o": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion(
+                    "n_head d_head d_model -> n_head d_head d_model"
                 ),
-                "blocks.{i}.attn.b_Q": "blocks.{i}.attn.b_Q",
-                "blocks.{i}.attn.b_K": "blocks.{i}.attn.b_K",
-                "blocks.{i}.attn.b_V": "blocks.{i}.attn.b_V",
-                "blocks.{i}.attn.b_O": "blocks.{i}.attn.b_O",
-                "blocks.{i}.mlp.in": "blocks.{i}.mlp.W_in",
-                "blocks.{i}.mlp.b_in": "blocks.{i}.mlp.b_in",
-                "blocks.{i}.mlp.out": "blocks.{i}.mlp.W_out",
-                "blocks.{i}.mlp.b_out": "blocks.{i}.mlp.b_out",
-                "ln_final.w": "ln_f.w",
-                "ln_final.b": "ln_f.b",
-                "unembed.u": "unembed.W_U",
-                "unembed.b_U": "unembed.b_U",
-            }
-        )
+                source_key="blocks.{i}.attn.W_O",
+            ),
+            "blocks.{i}.attn.b_Q": "blocks.{i}.attn.b_Q",
+            "blocks.{i}.attn.b_K": "blocks.{i}.attn.b_K",
+            "blocks.{i}.attn.b_V": "blocks.{i}.attn.b_V",
+            "blocks.{i}.attn.b_O": "blocks.{i}.attn.b_O",
+            "blocks.{i}.mlp.in": "blocks.{i}.mlp.W_in",
+            "blocks.{i}.mlp.b_in": "blocks.{i}.mlp.b_in",
+            "blocks.{i}.mlp.out": "blocks.{i}.mlp.W_out",
+            "blocks.{i}.mlp.b_out": "blocks.{i}.mlp.b_out",
+            "ln_final.w": "ln_f.w",
+            "ln_final.b": "ln_f.b",
+            "unembed.u": "unembed.W_U",
+            "unembed.b_U": "unembed.b_U",
+        }
         self.component_mapping = {
             "embed": EmbeddingBridge(name="wte"),
             "pos_embed": PosEmbedBridge(name="wpe"),

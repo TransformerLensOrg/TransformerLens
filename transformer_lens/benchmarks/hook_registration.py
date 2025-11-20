@@ -33,8 +33,36 @@ def validate_hook_shape_compatibility(
         - is_compatible: True if shapes are structurally compatible
         - error_message: None if compatible, otherwise description of incompatibility
     """
-    # Same rank (number of dimensions) is required
+    # For GQA (Grouped Query Attention) models, k/v hooks may have different ranks
+    # GPT-2: (batch, seq, n_heads, d_head) = 4D
+    # Gemma/Llama with GQA: (batch, seq, d_head) = 3D (heads are already collapsed)
+    # This is expected and fine - both are valid attention representations
+    gqa_attention_hooks = ["hook_q", "hook_k", "hook_v", "hook_z"]
+    is_gqa_hook = any(pattern in hook_name for pattern in gqa_attention_hooks)
+
+    # Attention pattern hooks have shape [batch, n_heads, seq_q, seq_k]
+    # Different models can have different numbers of heads
+    is_attention_pattern_hook = "hook_pattern" in hook_name or "hook_attn_scores" in hook_name
+
+    # Same rank (number of dimensions) is required, except for GQA attention hooks
     if len(target_shape) != len(reference_shape):
+        if is_gqa_hook:
+            # For GQA hooks, different ranks are okay - just verify batch and sequence dims match
+            if len(target_shape) >= 2 and len(reference_shape) >= 2:
+                if target_shape[0] != reference_shape[0]:
+                    return (
+                        False,
+                        f"Batch dimension mismatch: {target_shape[0]} vs {reference_shape[0]}",
+                    )
+                if target_shape[1] != reference_shape[1]:
+                    return (
+                        False,
+                        f"Sequence dimension mismatch: {target_shape[1]} vs {reference_shape[1]}",
+                    )
+                # Rank mismatch is fine for GQA - different attention implementations
+                return True, None
+            else:
+                return False, f"Invalid tensor rank: {len(target_shape)} or {len(reference_shape)}"
         return False, f"Rank mismatch: {len(target_shape)} vs {len(reference_shape)}"
 
     # For each dimension, check compatibility
@@ -43,7 +71,19 @@ def validate_hook_shape_compatibility(
             # Should be same (both use same test input)
             if target_dim != ref_dim:
                 return False, f"Batch dimension mismatch: {target_dim} vs {ref_dim}"
-        elif i == 1:  # Sequence dimension
+        elif i == 1:  # Usually sequence dimension, but n_heads for attention patterns
+            if is_attention_pattern_hook:
+                # For attention patterns: [batch, n_heads, seq_q, seq_k]
+                # Dimension 1 is n_heads, which can differ between models
+                # Just verify it's valid
+                if target_dim <= 0 or ref_dim <= 0:
+                    return False, f"Invalid n_heads dimension: {target_dim} vs {ref_dim}"
+            else:
+                # For other hooks, dimension 1 is sequence - should be same
+                if target_dim != ref_dim:
+                    return False, f"Sequence dimension mismatch: {target_dim} vs {ref_dim}"
+        elif i >= 2 and is_attention_pattern_hook:
+            # For attention patterns, dimensions 2 and 3 are seq_q and seq_k
             # Should be same (both use same test input)
             if target_dim != ref_dim:
                 return False, f"Sequence dimension mismatch: {target_dim} vs {ref_dim}"
@@ -504,6 +544,7 @@ def benchmark_forward_hooks(
     reference_model: Optional[HookedTransformer] = None,
     tolerance: float = 0.5,
     prepend_bos: Optional[bool] = None,
+    cross_model: bool = False,
 ) -> BenchmarkResult:
     """Benchmark all forward hooks for activation matching.
 
@@ -513,6 +554,7 @@ def benchmark_forward_hooks(
         reference_model: Optional HookedTransformer for comparison
         tolerance: Tolerance for activation matching (fraction of mismatches allowed)
         prepend_bos: Whether to prepend BOS token. If None, uses model default.
+        cross_model: If True, uses relaxed dimensional matching instead of exact shape matching
 
     Returns:
         BenchmarkResult with hook activation comparison details
@@ -632,6 +674,18 @@ def benchmark_forward_hooks(
             )
 
         # CRITICAL CHECK: All registered hooks must fire
+        # Filter out expected missing hooks in cross-model mode
+        if cross_model and hooks_that_didnt_fire:
+            # In cross-model mode, some hooks are expected to not fire due to architectural differences
+            # For example, rotary embedding models (Gemma, LLaMA) don't have hook_pos_embed
+            expected_missing_patterns = ["hook_pos_embed"]
+            actual_didnt_fire = [
+                h
+                for h in hooks_that_didnt_fire
+                if not any(pattern in h for pattern in expected_missing_patterns)
+            ]
+            hooks_that_didnt_fire = set(actual_didnt_fire)
+
         if hooks_that_didnt_fire:
             return BenchmarkResult(
                 name="forward_hooks",
@@ -654,13 +708,26 @@ def benchmark_forward_hooks(
             reference_tensor = reference_activations[hook_name]
 
             # Check shapes
-            if bridge_tensor.shape != reference_tensor.shape:
-                mismatches.append(
-                    f"{hook_name}: Shape mismatch - Bridge{bridge_tensor.shape} vs Ref{reference_tensor.shape}"
+            if cross_model:
+                # Use relaxed dimensional matching for cross-model comparison
+                is_compatible, error_msg = validate_hook_shape_compatibility(
+                    bridge_tensor.shape, reference_tensor.shape, hook_name
                 )
+                if not is_compatible:
+                    mismatches.append(f"{hook_name}: {error_msg}")
+                    continue
+                # Skip value comparison for cross-model (different architectures have different values)
+                # We only check that hooks exist, fire, and have compatible structure
                 continue
+            else:
+                # Use exact shape matching for same-model comparison
+                if bridge_tensor.shape != reference_tensor.shape:
+                    mismatches.append(
+                        f"{hook_name}: Shape mismatch - Bridge{bridge_tensor.shape} vs Ref{reference_tensor.shape}"
+                    )
+                    continue
 
-            # Check values
+            # Check values (only for same-model comparison)
             if not torch.allclose(bridge_tensor, reference_tensor, atol=tolerance, rtol=0):
                 max_diff = torch.max(torch.abs(bridge_tensor - reference_tensor)).item()
                 mean_diff = torch.mean(torch.abs(bridge_tensor - reference_tensor)).item()
@@ -717,6 +784,7 @@ def benchmark_critical_forward_hooks(
     test_text: str,
     reference_model: Optional[HookedTransformer] = None,
     tolerance: float = 2e-2,
+    cross_model: bool = False,
 ) -> BenchmarkResult:
     """Benchmark critical forward hooks commonly used in interpretability research.
 
@@ -725,6 +793,7 @@ def benchmark_critical_forward_hooks(
         test_text: Input text for testing
         reference_model: Optional HookedTransformer reference model
         tolerance: Tolerance for activation comparison
+        cross_model: If True, uses relaxed dimensional matching instead of exact shape matching
 
     Returns:
         BenchmarkResult with critical hook comparison details
@@ -838,17 +907,43 @@ def benchmark_critical_forward_hooks(
             bridge_tensor = bridge_activations[hook_name]
             reference_tensor = reference_activations[hook_name]
 
-            if bridge_tensor.shape != reference_tensor.shape:
-                mismatches.append(
-                    f"{hook_name}: Shape mismatch - Bridge{bridge_tensor.shape} vs Ref{reference_tensor.shape}"
+            # Check shapes
+            if cross_model:
+                # Use relaxed dimensional matching for cross-model comparison
+                is_compatible, error_msg = validate_hook_shape_compatibility(
+                    bridge_tensor.shape, reference_tensor.shape, hook_name
                 )
-                continue
+                if not is_compatible:
+                    mismatches.append(f"{hook_name}: {error_msg}")
+                    continue
+                # Skip value comparison for cross-model (different architectures have different values)
+                # We only check that hooks exist, fire, and have compatible structure
+            else:
+                # Use exact shape matching for same-model comparison
+                if bridge_tensor.shape != reference_tensor.shape:
+                    mismatches.append(
+                        f"{hook_name}: Shape mismatch - Bridge{bridge_tensor.shape} vs Ref{reference_tensor.shape}"
+                    )
+                    continue
 
-            if not torch.allclose(bridge_tensor, reference_tensor, atol=tolerance, rtol=0):
-                max_diff = torch.max(torch.abs(bridge_tensor - reference_tensor)).item()
-                mismatches.append(f"{hook_name}: max_diff={max_diff:.6f}")
+                # Only compare values for same-model comparison
+                if not torch.allclose(bridge_tensor, reference_tensor, atol=tolerance, rtol=0):
+                    max_diff = torch.max(torch.abs(bridge_tensor - reference_tensor)).item()
+                    mismatches.append(f"{hook_name}: max_diff={max_diff:.6f}")
 
         # Check if bridge is missing critical hooks (BAD)
+        # Filter out expected missing hooks in cross-model mode
+        if cross_model and bridge_missing:
+            # In cross-model mode, some hooks are expected to be missing due to architectural differences
+            # For example, rotary embedding models (Gemma, LLaMA) don't have hook_pos_embed
+            expected_missing_patterns = ["hook_pos_embed"]
+            actual_missing = [
+                h
+                for h in bridge_missing
+                if not any(pattern in h for pattern in expected_missing_patterns)
+            ]
+            bridge_missing = actual_missing
+
         if bridge_missing:
             return BenchmarkResult(
                 name="critical_forward_hooks",
@@ -909,10 +1004,17 @@ def benchmark_critical_forward_hooks(
         )
 
     except Exception as e:
+        import traceback
+
         return BenchmarkResult(
             name="critical_forward_hooks",
             severity=BenchmarkSeverity.ERROR,
             message=f"Critical hooks check failed: {str(e)}",
+            details={
+                "error_type": type(e).__name__,
+                "error_message": str(e),
+                "traceback": traceback.format_exc(),
+            },
             passed=False,
         )
 
@@ -922,6 +1024,7 @@ def benchmark_hook_functionality(
     test_text: str,
     reference_model: Optional[HookedTransformer] = None,
     atol: float = 2e-3,
+    cross_model: bool = False,
 ) -> BenchmarkResult:
     """Benchmark hook system functionality through ablation effects.
 
@@ -930,10 +1033,20 @@ def benchmark_hook_functionality(
         test_text: Input text for testing
         reference_model: Optional HookedTransformer reference model
         atol: Absolute tolerance for effect comparison
+        cross_model: If True, skips this test as ablation effects require same architecture
 
     Returns:
         BenchmarkResult with hook functionality comparison details
     """
+    # Skip ablation tests for cross-model comparison (requires same architecture)
+    if cross_model and reference_model is not None:
+        return BenchmarkResult(
+            name="hook_functionality",
+            severity=BenchmarkSeverity.INFO,
+            message="Skipped - ablation tests require same model architecture",
+            details={"reason": "cross_model_skip"},
+        )
+
     try:
         # For GQA models, V/K tensors have fewer heads than Q
         # Use head 0 which always exists, or last head if we want to test a later one
@@ -988,9 +1101,16 @@ def benchmark_hook_functionality(
         )
 
     except Exception as e:
+        import traceback
+
         return BenchmarkResult(
             name="hook_functionality",
             severity=BenchmarkSeverity.ERROR,
             message=f"Hook functionality check failed: {str(e)}",
+            details={
+                "error_type": type(e).__name__,
+                "error_message": str(e),
+                "traceback": traceback.format_exc(),
+            },
             passed=False,
         )

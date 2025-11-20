@@ -1,16 +1,16 @@
 import torch
 
-from transformer_lens.conversion_utils.conversion_steps.base_hook_conversion import (
-    BaseHookConversion,
+from transformer_lens.conversion_utils.conversion_steps.base_tensor_conversion import (
+    BaseTensorConversion,
 )
 
 # These imports reflect your code structure
-from transformer_lens.conversion_utils.conversion_steps.hook_conversion_set import (
-    HookConversionSet,
+from transformer_lens.conversion_utils.conversion_steps.tensor_conversion_set import (
+    TensorConversionSet,
 )
 
 
-class MockSubConversion(BaseHookConversion):
+class MockSubConversion(BaseTensorConversion):
     """
     A mock sub-conversion that emulates deeper logic.
     For demonstration, it just adds 10 to each element if given a tensor,
@@ -29,7 +29,7 @@ class MockSubConversion(BaseHookConversion):
             return torch.tensor([999.0])
 
 
-def test_hook_conversion_set_basic_tensor_and_str():
+def test_tensor_conversion_set_basic_tensor_and_str():
     """
     Tests a field set that includes a direct Tensor and a str (property).
     Ensures handle_conversion returns a dict with the correct resolved values.
@@ -40,7 +40,7 @@ def test_hook_conversion_set_basic_tensor_and_str():
         "pos_embed": "pos_embed.weight",  # property to look up in input_value
     }
 
-    conversion_set = HookConversionSet(fields=field_set)
+    conversion_set = TensorConversionSet(fields=field_set)
 
     # Suppose the input_value is a dictionary or object that find_property can parse
     input_value = {
@@ -58,14 +58,14 @@ def test_hook_conversion_set_basic_tensor_and_str():
     assert torch.allclose(output["pos_embed"], torch.tensor([3.0, 4.0]))
 
 
-def test_hook_conversion_set_tuple_subconversion():
+def test_tensor_conversion_set_tuple_subconversion():
     """
     Tests a field set containing a tuple (remote_field, conversion).
     The sub-conversion is a mock that we ensure gets called with the correct input.
     """
     mock_sub = MockSubConversion()
     field_set = {"layer_0_attn": ("attn_proj.weight", mock_sub)}
-    conversion_set = HookConversionSet(fields=field_set)
+    conversion_set = TensorConversionSet(fields=field_set)
 
     # We'll store "attn_proj.weight" in our input_value so find_property can retrieve it
     input_value = {"attn_proj": {"weight": torch.tensor([1.0, 2.0])}}
@@ -81,12 +81,12 @@ def test_hook_conversion_set_tuple_subconversion():
     assert torch.allclose(result_tensor, expected_tensor), f"Expected [11, 12], got {result_tensor}"
 
 
-def test_hook_conversion_set_process_conversion_action_tensor():
+def test_tensor_conversion_set_process_conversion_action_tensor():
     """
     Tests process_conversion_action for a direct tensor.
     """
     field_set = {"some_weight": torch.tensor([5.0])}
-    conversion_set = HookConversionSet(fields=field_set)
+    conversion_set = TensorConversionSet(fields=field_set)
 
     input_value = {}  # not used for direct tensor
     output = conversion_set.convert(input_value)
@@ -94,27 +94,27 @@ def test_hook_conversion_set_process_conversion_action_tensor():
     assert torch.allclose(output["some_weight"], torch.tensor([5.0]))
 
 
-def test_hook_conversion_set_process_conversion_action_str_property():
+def test_tensor_conversion_set_process_conversion_action_str_property():
     """
     Tests process_conversion_action for a str property lookup
     with a nested dict.
     """
     field_set = {"some_str_key": "my_field.data"}
-    conversion_set = HookConversionSet(fields=field_set)
+    conversion_set = TensorConversionSet(fields=field_set)
 
     input_value = {"my_field": {"data": torch.tensor([42.0])}}
     output = conversion_set.convert(input_value)
     assert torch.allclose(output["some_str_key"], torch.tensor([42.0]))
 
 
-def test_hook_conversion_set_process_conversion_action_tuple():
+def test_tensor_conversion_set_process_conversion_action_tuple():
     """
     Tests process_conversion_action for a tuple (remote_field, sub_conversion).
     We'll reuse MockSubConversion for demonstration.
     """
     mock_sub = MockSubConversion()
     field_set = {"my_tuple_key": ("fieldA", mock_sub)}
-    conversion_set = HookConversionSet(fields=field_set)
+    conversion_set = TensorConversionSet(fields=field_set)
 
     input_value = {"fieldA": torch.tensor([0.0])}
     output = conversion_set.convert(input_value)
@@ -123,7 +123,7 @@ def test_hook_conversion_set_process_conversion_action_tuple():
     assert torch.allclose(output["my_tuple_key"], torch.tensor([10.0]))
 
 
-def test_hook_conversion_set_repr():
+def test_tensor_conversion_set_repr():
     """
     Checks that __repr__ includes a string of the nested conversions,
     based on WeightConversionUtils.create_conversion_string output.
@@ -136,7 +136,7 @@ def test_hook_conversion_set_repr():
         "layer_0_attn": ("attn_proj.weight", mock_sub),
     }
 
-    conversion_set = HookConversionSet(fields=field_set)
+    conversion_set = TensorConversionSet(fields=field_set)
     rep_str = repr(conversion_set).lower()
 
     assert (

@@ -13,8 +13,8 @@ import torch
 
 from transformer_lens import HookedTransformer
 from transformer_lens.ActivationCache import ActivationCache
-from transformer_lens.conversion_utils.conversion_steps.rearrange_hook_conversion import (
-    RearrangeHookConversion,
+from transformer_lens.conversion_utils.conversion_steps.rearrange_tensor_conversion import (
+    RearrangeTensorConversion,
 )
 from transformer_lens.model_bridge import TransformerBridge
 from transformer_lens.model_bridge.generalized_components.attention import (
@@ -213,7 +213,7 @@ def test_component_access(gpt2_bridge):
 def test_joint_qkv_custom_conversion_rule(gpt2_bridge):
     """Test that custom QKV conversion rules can be passed to QKVBridge."""
     # Create a custom QKV conversion rule
-    custom_qkv_conversion_rule = RearrangeHookConversion(
+    custom_qkv_conversion_rule = RearrangeTensorConversion(
         "batch seq (num_attention_heads d_head) -> batch seq num_attention_heads d_head",
         num_attention_heads=12,  # GPT-2 small has 12 heads
     )
@@ -257,7 +257,7 @@ def test_joint_qkv_custom_conversion_rule(gpt2_bridge):
 def test_attention_pattern_hook_shape_custom_conversion(gpt2_bridge):
     """Test that custom pattern conversion rules can be passed to attention components."""
     # Create a custom conversion rule (this is just for testing the parameter passing)
-    custom_conversion = RearrangeHookConversion(
+    custom_conversion = RearrangeTensorConversion(
         "batch n_heads pos_q pos_k -> batch n_heads pos_q pos_k"  # Same as default but explicitly set
     )
 

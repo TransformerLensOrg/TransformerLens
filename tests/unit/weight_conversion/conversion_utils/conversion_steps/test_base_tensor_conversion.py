@@ -1,18 +1,18 @@
 import pytest
 import torch
 
-from transformer_lens.conversion_utils.conversion_steps.base_hook_conversion import (
-    BaseHookConversion,
+from transformer_lens.conversion_utils.conversion_steps.base_tensor_conversion import (
+    BaseTensorConversion,
 )
 
 
-class MockWeightConversion(BaseHookConversion):
+class MockWeightConversion(BaseTensorConversion):
     def handle_conversion(self, weight):
         return weight + 5
 
 
-def test_base_hook_conversion_convert_throws_error():
-    weight_conversion = BaseHookConversion()
+def test_base_tensor_conversion_convert_throws_error():
+    weight_conversion = BaseTensorConversion()
     with pytest.raises(NotImplementedError):
         weight_conversion.convert(torch.zeros(1, 4))
 

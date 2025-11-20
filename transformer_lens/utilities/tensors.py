@@ -152,3 +152,34 @@ def repeat_along_head_dimension(
         return repeated_tensor.clone()
     else:
         return repeated_tensor
+
+
+def filter_dict_by_prefix(dictionary: dict, prefix: str) -> dict:
+    """Filter a dictionary to only include keys that start with the given prefix and strip the prefix.
+
+    Args:
+        dictionary: Dictionary to filter
+        prefix: Key prefix to match (will be stripped from returned keys)
+
+    Returns:
+        Dictionary containing only entries where keys start with the prefix, with the prefix removed from keys.
+        If the prefix ends with a dot, the dot is included in what gets stripped. If not, a dot separator
+        is automatically added/expected.
+
+    Example:
+        >>> import torch
+        >>> d = {"transformer.h.0.attn.W_Q": torch.tensor([1]), "transformer.h.0.mlp.W_in": torch.tensor([2]), "transformer.h.1.attn.W_K": torch.tensor([3])}
+        >>> result = filter_dict_by_prefix(d, "transformer.h.0")
+        >>> sorted(result.keys())
+        ['attn.W_Q', 'mlp.W_in']
+        >>> result["attn.W_Q"]
+        tensor([1])
+        >>> result["mlp.W_in"]
+        tensor([2])
+    """
+    # Ensure prefix ends with a dot for proper stripping
+    search_prefix = prefix if prefix.endswith(".") else prefix + "."
+
+    return {
+        k[len(search_prefix) :]: v for k, v in dictionary.items() if k.startswith(search_prefix)
+    }

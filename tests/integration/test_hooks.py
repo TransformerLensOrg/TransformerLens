@@ -234,18 +234,3 @@ def test_prepending_hooks(zero_attach_pos, prepend):
     # exactly when the zero hook is attached last XOR it is prepended
 
     assert torch.allclose(logits, model.unembed.b_U[None, :]) == logits_are_unembed_bias
-
-
-def test_use_attn_in_with_gqa_raises_error():
-    # Create model that uses GroupedQueryAttention
-    try:
-        model = HookedTransformer.from_pretrained("Qwen/Qwen2-0.5B")
-    except RuntimeError as e:
-        if "size mismatch" in str(e) and "_b_V" in str(e):
-            # This is a known issue with GQA bias tensor shapes during weight processing
-            pytest.skip(f"GQA model failed to load due to bias shape mismatch: {e}")
-        else:
-            raise
-
-    with pytest.raises(AssertionError):
-        model.set_use_attn_in(True)

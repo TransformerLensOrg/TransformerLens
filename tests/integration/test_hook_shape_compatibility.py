@@ -85,12 +85,11 @@ def _expected_shape_for_name(
         return (batch, n_heads, pos, pos)
 
     # Attention subprojections: q/k/v/o
-    # Note: q/k/v hooks can be either:
+    # Note: q/k/v/o input hooks can be either:
     # - (batch, pos, n_heads, d_head) for models with split heads (GPT-2, Pythia, etc.)
     # - (batch, pos, d_model) for models without split heads (GPT-Neo, etc.)
     # Both are valid depending on the architecture
-    if name.endswith("attn.o.hook_in"):
-        return (batch, pos, d_model)
+    # The o.hook_out is always (batch, pos, d_model) since it's after the projection
     if name.endswith("attn.o.hook_out"):
         return (batch, pos, d_model)
 
@@ -167,13 +166,14 @@ def test_transformer_bridge_hook_shapes(model_name: str):
     mismatches: list[tuple[str, Tuple[int, ...], Tuple[int, ...]]] = []
     checked = 0
     for name in keys:
-        # Special handling for q/k/v hooks which can have two valid shapes
+        # Special handling for q/k/v/o input hooks which can have two valid shapes
         is_qkv_hook = any(
             name.endswith(suf)
             for suf in (
                 "attn.q.hook_in",
                 "attn.k.hook_in",
                 "attn.v.hook_in",
+                "attn.o.hook_in",
                 "attn.q.hook_out",
                 "attn.k.hook_out",
                 "attn.v.hook_out",

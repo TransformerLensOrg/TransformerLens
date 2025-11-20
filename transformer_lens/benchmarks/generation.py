@@ -35,22 +35,37 @@ def benchmark_generation(
                 passed=False,
             )
 
-        if len(output) <= len(test_text):
+        # Check token count instead of character count to handle whitespace-only generation
+        input_tokens = bridge.to_tokens(test_text)
+        output_tokens = bridge.to_tokens(output)
+
+        # Strip leading BOS token if present for fair comparison
+        input_len = input_tokens.shape[-1]
+        output_len = output_tokens.shape[-1]
+
+        if output_len <= input_len:
             return BenchmarkResult(
                 name="generation",
                 severity=BenchmarkSeverity.DANGER,
-                message="Generated text is not longer than input",
-                details={"input_len": len(test_text), "output_len": len(output)},
+                message="Generated text has no new tokens",
+                details={
+                    "input_tokens": input_len,
+                    "output_tokens": output_len,
+                    "input_chars": len(test_text),
+                    "output_chars": len(output),
+                },
                 passed=False,
             )
 
         return BenchmarkResult(
             name="generation",
             severity=BenchmarkSeverity.INFO,
-            message=f"Generation successful: {len(test_text)} -> {len(output)} chars",
+            message=f"Generation successful: {input_len} -> {output_len} tokens ({len(test_text)} -> {len(output)} chars)",
             details={
-                "input_len": len(test_text),
-                "output_len": len(output),
+                "input_tokens": input_len,
+                "output_tokens": output_len,
+                "input_chars": len(test_text),
+                "output_chars": len(output),
                 "max_new_tokens": max_new_tokens,
             },
         )

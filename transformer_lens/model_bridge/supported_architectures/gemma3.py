@@ -3,16 +3,16 @@
 
 from typing import Any
 
-from transformer_lens.conversion_utils.conversion_steps import (
-    HookConversionSet,
-    RearrangeHookConversion,
+from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorConversion
+from transformer_lens.conversion_utils.param_processing_conversion import (
+    ParamProcessingConversion,
 )
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
+    GatedMLPBridge,
     LinearBridge,
-    MLPBridge,
     RMSNormalizationBridge,
     RotaryEmbeddingBridge,
     UnembeddingBridge,
@@ -32,69 +32,54 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
         self.cfg.gated_mlp = True
 
         self.cfg.uses_rms_norm = True
-        # Gemma models use (1.0 + weight) in RMSNorm instead of just weight
-        # See: https://github.com/huggingface/transformers/pull/29402
-        self.cfg.rmsnorm_uses_offset = True
+        self.cfg.normalization_type = "RMS"
 
         # Gemma 3 uses rotary positional embeddings (dual RoPE)
         self.cfg.positional_embedding_type = "rotary"
 
-        # Use SDPA for numerical consistency with HuggingFace
-        # Only set if not already configured
-        if self.cfg.attn_implementation is None:
-            self.cfg.attn_implementation = "sdpa"
+        # Use eager attention to support output_attentions for hook_attn_scores and hook_pattern
+        # SDPA doesn't support output_attentions, which is required for HookedTransformer compatibility
+        self.cfg.attn_implementation = "eager"
 
-        self.conversion_rules = HookConversionSet(
-            {
-                # Gemma3 scales embeddings by sqrt(d_model)
-                "embed.e": (
-                    "model.embed_tokens.weight",
-                    RearrangeHookConversion(
-                        "d_vocab d_model -> d_vocab d_model",
-                        scale=self.cfg.d_model**0.5,
+        self.weight_processing_conversions = {
+            # Gemma3 scales embeddings by sqrt(d_model)
+            "embed": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion(
+                    "d_vocab d_model -> d_vocab d_model",
+                    scale=self.cfg.d_model**0.5,
+                ),
+                source_key="model.embed_tokens.weight",
+            ),
+            # Q/K/V weight conversions (using canonical W_Q/W_K/W_V naming)
+            "blocks.{i}.attn.q.weight": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
+            ),
+            "blocks.{i}.attn.W_K": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion(
+                    "(n h) m -> n m h",
+                    n=getattr(
+                        self.cfg,
+                        "n_key_value_heads",
+                        self.cfg.n_heads,
                     ),
                 ),
-                "blocks.{i}.ln1.w": "model.layers.{i}.input_layernorm.weight",
-                "blocks.{i}.ln1_post.w": "model.layers.{i}.post_attention_layernorm.weight",
-                "blocks.{i}.ln2.w": "model.layers.{i}.pre_feedforward_layernorm.weight",
-                "blocks.{i}.ln2_post.w": "model.layers.{i}.post_feedforward_layernorm.weight",
-                "blocks.{i}.attn.q": (
-                    "model.layers.{i}.self_attn.q_proj.weight",
-                    RearrangeHookConversion("(n h) m -> n m h", n=self.cfg.n_heads),
-                ),
-                "blocks.{i}.attn.k": (
-                    "model.layers.{i}.self_attn.k_proj.weight",
-                    RearrangeHookConversion(
-                        "(n h) m -> n m h",
-                        n=getattr(
-                            self.cfg,
-                            "n_key_value_heads",
-                            self.cfg.n_heads,
-                        ),
+            ),
+            "blocks.{i}.attn.v.weight": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion(
+                    "(n h) m -> n m h",
+                    n=getattr(
+                        self.cfg,
+                        "n_key_value_heads",
+                        self.cfg.n_heads,
                     ),
                 ),
-                "blocks.{i}.attn.v": (
-                    "model.layers.{i}.self_attn.v_proj.weight",
-                    RearrangeHookConversion(
-                        "(n h) m -> n m h",
-                        n=getattr(
-                            self.cfg,
-                            "n_key_value_heads",
-                            self.cfg.n_heads,
-                        ),
-                    ),
-                ),
-                "blocks.{i}.attn.o": (
-                    "model.layers.{i}.self_attn.o_proj.weight",
-                    RearrangeHookConversion("m (n h) -> n h m", n=self.cfg.n_heads),
-                ),
-                "blocks.{i}.mlp.in": "model.layers.{i}.mlp.up_proj.weight.T",
-                "blocks.{i}.mlp.gate": "model.layers.{i}.mlp.gate_proj.weight.T",
-                "blocks.{i}.mlp.out": "model.layers.{i}.mlp.down_proj.weight.T",
-                "ln_final.w": "model.norm.weight",
-                "unembed.u": "lm_head.weight.T",  # Not shared with embedding
-            }
-        )
+            ),
+            "blocks.{i}.attn.o.weight": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion("m (n h) -> n h m", n=self.cfg.n_heads),
+            ),
+            # Note: Gemma-3 does NOT have biases on attention projections (q/k/v/o_proj.bias are all None)
+            # No bias conversions needed
+        }
 
         # Set up component mapping with actual bridge instances
         self.component_mapping = {
@@ -127,8 +112,9 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
                             "k_norm": RMSNormalizationBridge(name="k_norm", config=self.cfg),
                         },
                     ),
-                    "mlp": MLPBridge(
+                    "mlp": GatedMLPBridge(
                         name="mlp",
+                        config=self.cfg,
                         submodules={
                             "gate": LinearBridge(name="gate_proj"),
                             "in": LinearBridge(name="up_proj"),
@@ -150,6 +136,11 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
         We also enable use_native_layernorm_autograd on all normalization bridges to ensure
         they delegate to HuggingFace's exact implementation instead of using manual computation.
 
+        Additionally, we force the HF model to use "eager" attention to match the bridge's
+        implementation. The bridge uses "eager" to support output_attentions for hooks, while
+        HF defaults to "sdpa". These produce mathematically equivalent results but with small
+        numerical differences due to different implementations.
+
         Note: Layers 5, 11, 17, 23 use global RoPE but will use local in component tests.
         This is an acceptable tradeoff given the shared-instance constraint.
 
@@ -159,6 +150,18 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
         """
         # Get rotary embedding instances from the model
         rotary_emb_local = hf_model.model.rotary_emb_local  # Used by 22/26 layers
+
+        # Force HF model to use "eager" attention to match bridge implementation
+        # Bridge uses "eager" to support output_attentions for hook compatibility
+        # SDPA and eager are mathematically equivalent but have numerical differences
+        if hasattr(hf_model, "config") and hasattr(hf_model.config, "_attn_implementation"):
+            hf_model.config._attn_implementation = "eager"
+
+        # Also set on all attention layers
+        if hasattr(hf_model, "model") and hasattr(hf_model.model, "layers"):
+            for layer in hf_model.model.layers:
+                if hasattr(layer, "self_attn") and hasattr(layer.self_attn, "config"):
+                    layer.self_attn.config._attn_implementation = "eager"
 
         # Set rotary_emb on actual bridge instances in bridge_model if available
         if bridge_model is not None and hasattr(bridge_model, "blocks"):

@@ -1,17 +1,17 @@
 import pytest
 import torch
 
-from transformer_lens.conversion_utils.conversion_steps.rearrange_hook_conversion import (
-    RearrangeHookConversion,
+from transformer_lens.conversion_utils.conversion_steps.rearrange_tensor_conversion import (
+    RearrangeTensorConversion,
 )
 
 
-def test_rearrange_hook_conversion_basic():
+def test_rearrange_tensor_conversion_basic():
     """
     Basic test: rearranging (n h) m->n m h with n=8.
     Verifies shape, element count, and correctness of mapping.
     """
-    conversion = RearrangeHookConversion("(n h) m->n m h", n=8)
+    conversion = RearrangeTensorConversion("(n h) m->n m h", n=8)
     starting = torch.arange(80 * 5, dtype=torch.float32).reshape(80, 5)
 
     result = conversion.convert(starting)
@@ -35,7 +35,7 @@ def test_rearrange_hook_conversion_basic():
             )
 
 
-def test_rearrange_hook_conversion_input_filter():
+def test_rearrange_tensor_conversion_input_filter():
     """
     Tests that the input_filter is applied correctly before rearrange.
     """
@@ -44,7 +44,7 @@ def test_rearrange_hook_conversion_input_filter():
         # E.g., multiply by 2
         return tensor * 2
 
-    conversion = RearrangeHookConversion("(n h) m->n m h", input_filter=input_filter, n=8)
+    conversion = RearrangeTensorConversion("(n h) m->n m h", input_filter=input_filter, n=8)
     starting = torch.arange(80 * 5, dtype=torch.float32).reshape(80, 5)
     result = conversion.convert(starting)
 
@@ -61,7 +61,7 @@ def test_rearrange_hook_conversion_input_filter():
             )
 
 
-def test_rearrange_hook_conversion_output_filter():
+def test_rearrange_tensor_conversion_output_filter():
     """
     Tests that the output_filter is applied to the rearranged output.
     """
@@ -70,7 +70,7 @@ def test_rearrange_hook_conversion_output_filter():
         # E.g., add 10
         return tensor + 10
 
-    conversion = RearrangeHookConversion("(n h) m->n m h", output_filter=output_filter, n=8)
+    conversion = RearrangeTensorConversion("(n h) m->n m h", output_filter=output_filter, n=8)
     starting = torch.arange(80 * 5, dtype=torch.float32).reshape(80, 5)
     result = conversion.convert(starting)
 
@@ -90,7 +90,7 @@ def test_rearrange_hook_conversion_output_filter():
             )
 
 
-def test_rearrange_hook_conversion_input_output_filters():
+def test_rearrange_tensor_conversion_input_output_filters():
     """
     Tests that both input_filter and output_filter are applied in sequence.
     """
@@ -101,7 +101,7 @@ def test_rearrange_hook_conversion_input_output_filters():
     def output_filter(tensor):
         return tensor + 3  # Then add 3
 
-    conversion = RearrangeHookConversion(
+    conversion = RearrangeTensorConversion(
         "(n h) m->n m h", input_filter=input_filter, output_filter=output_filter, n=8
     )
     starting = torch.arange(80 * 5, dtype=torch.float32).reshape(80, 5)

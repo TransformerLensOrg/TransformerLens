@@ -2,7 +2,6 @@
 
 This module contains the bridge component for Mixture of Experts layers.
 """
-
 from __future__ import annotations
 
 from typing import Any, Dict, Optional
@@ -25,11 +24,7 @@ class MoEBridge(GeneralizedComponent):
     and provides a hook for capturing router scores.
     """
 
-    # Hook aliases for compatibility with HookedTransformer naming
-    hook_aliases = {
-        "hook_pre": "hook_in",  # Pre-MoE activation
-        "hook_post": "hook_out",  # Post-MoE activation (same as mlp.hook_out)
-    }
+    hook_aliases = {"hook_pre": "hook_in", "hook_post": "hook_out"}
 
     def __init__(
         self,
@@ -45,8 +40,6 @@ class MoEBridge(GeneralizedComponent):
             submodules: Dictionary of GeneralizedComponent submodules to register
         """
         super().__init__(name, config, submodules=submodules)
-
-        # Add hook for router scores (expert selection probabilities)
         self.hook_router_scores = HookPoint()
 
     def get_random_inputs(
@@ -71,11 +64,7 @@ class MoEBridge(GeneralizedComponent):
             device = torch.device("cpu")
         if dtype is None:
             dtype = torch.float32
-
-        # MoE layers typically just need hidden_states as input
-        # Use config.d_model if available, otherwise use a default
         d_model = self.config.d_model if self.config and hasattr(self.config, "d_model") else 768
-
         return {
             "hidden_states": torch.randn(batch_size, seq_len, d_model, device=device, dtype=dtype)
         }
@@ -96,19 +85,13 @@ class MoEBridge(GeneralizedComponent):
             raise RuntimeError(
                 f"Original component not set for {self.name}. Call set_original_component() first."
             )
-
-        # Get the target dtype from the original component's parameters
         target_dtype = None
         try:
             target_dtype = next(self.original_component.parameters()).dtype
         except StopIteration:
-            # Component has no parameters, keep inputs as-is
             pass
-
-        # Apply input hook and dtype conversion
         if len(args) > 0:
             hooked = self.hook_in(args[0])
-            # Cast to target dtype if needed and input is a float tensor
             if (
                 target_dtype is not None
                 and isinstance(hooked, torch.Tensor)
@@ -116,28 +99,14 @@ class MoEBridge(GeneralizedComponent):
             ):
                 hooked = hooked.to(dtype=target_dtype)
             args = (hooked,) + args[1:]
-
-        # Call the original MoE component
         output = self.original_component(*args, **kwargs)
-
-        # Handle MoE models that return (hidden_states, router_scores) tuples
-        # Most MoE implementations return tuples for diagnostic purposes
         if isinstance(output, tuple):
             hidden_states = output[0]
-
-            # If router scores are present, capture them via hook
             if len(output) > 1:
                 router_scores = output[1]
-                # Apply router scores hook to allow inspection of expert routing
                 self.hook_router_scores(router_scores)
-
-            # Apply output hook to hidden states
             hidden_states = self.hook_out(hidden_states)
-
-            # Preserve original return signature (tuple) to maintain compatibility
-            # with HuggingFace model code that expects tuple unpacking
             return (hidden_states,) + output[1:]
         else:
-            # Non-tuple output (fallback for non-MoE or different MLP types)
             hidden_states = self.hook_out(output)
             return hidden_states

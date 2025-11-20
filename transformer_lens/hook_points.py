@@ -28,9 +28,9 @@ import torch.nn as nn
 import torch.utils.hooks as hooks
 from torch import Tensor
 
-# Import BaseHookConversion from the new location
-from transformer_lens.conversion_utils.conversion_steps.base_hook_conversion import (
-    BaseHookConversion,
+# Import BaseTensorConversion from the new location
+from transformer_lens.conversion_utils.conversion_steps.base_tensor_conversion import (
+    BaseTensorConversion,
 )
 from transformer_lens.utils import Slice, SliceInput
 
@@ -161,7 +161,7 @@ class HookPoint(nn.Module):
         self.name: Optional[str] = None
 
         # Hook conversion for input and output transformations
-        self.hook_conversion: Optional[BaseHookConversion] = None
+        self.hook_conversion: Optional[BaseTensorConversion] = None
 
         # Backward gradient scale factor (for compatibility between architectures)
         # This scales the SUM of gradients, not element-wise (to avoid PyTorch bugs)
@@ -325,13 +325,13 @@ class HookPoint(nn.Module):
 
     def enable_reshape(
         self,
-        hook_conversion: Optional[BaseHookConversion] = None,
+        hook_conversion: Optional[BaseTensorConversion] = None,
     ) -> None:
         """
-        Enable reshape functionality for this hook point using a BaseHookConversion.
+        Enable reshape functionality for this hook point using a BaseTensorConversion.
 
         Args:
-            hook_conversion: BaseHookConversion instance to handle input/output transformations.
+            hook_conversion: BaseTensorConversion instance to handle input/output transformations.
                            The convert() method will be used for input transformation,
                            and the revert() method will be used for output transformation.
         """

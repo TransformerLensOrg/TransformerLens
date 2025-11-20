@@ -4,10 +4,10 @@ from typing import Optional
 import einops
 import torch
 
-from .base_hook_conversion import BaseHookConversion
+from .base_tensor_conversion import BaseTensorConversion
 
 
-class RearrangeHookConversion(BaseHookConversion):
+class RepeatTensorConversion(BaseTensorConversion):
     def __init__(
         self,
         pattern: str,
@@ -20,12 +20,7 @@ class RearrangeHookConversion(BaseHookConversion):
         self.axes_lengths = axes_lengths
 
     def handle_conversion(self, input_value: torch.Tensor, *full_context) -> torch.Tensor:
-        return einops.rearrange(input_value, self.pattern, **self.axes_lengths)
-
-    def revert(self, input_value: torch.Tensor, *full_context) -> torch.Tensor:
-        left, right = self.pattern.split("->")
-        pattern = f"{right.strip()} -> {left.strip()}"
-        return einops.rearrange(input_value, pattern, **self.axes_lengths)
+        return einops.repeat(input_value, self.pattern, **self.axes_lengths)
 
     def __repr__(self):
-        return f'Is a rearrange operation with the pattern "{self.pattern}"'
+        return f'Is a repeat operation with the pattern "{self.pattern}"'

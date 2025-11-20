@@ -2,7 +2,6 @@
 
 This module contains the bridge component for embedding layers.
 """
-
 import inspect
 from typing import Any, Dict, Optional
 
@@ -19,10 +18,7 @@ class EmbeddingBridge(GeneralizedComponent):
     This component provides standardized input/output hooks.
     """
 
-    property_aliases = {
-        "W_E": "e.weight",
-        "W_pos": "pos.weight",
-    }
+    property_aliases = {"W_E": "e.weight", "W_pos": "pos.weight"}
 
     def __init__(
         self,
@@ -38,28 +34,21 @@ class EmbeddingBridge(GeneralizedComponent):
             submodules: Dictionary of GeneralizedComponent submodules to register
         """
         super().__init__(name, config, submodules=submodules)
-        # No extra hooks; use only hook_in and hook_out
 
     @property
     def W_E(self) -> torch.Tensor:
         """Return the embedding weight matrix."""
-        # If using processed weights from compatibility mode, return those
         if hasattr(self, "_use_processed_weights") and self._use_processed_weights:
             if hasattr(self, "_processed_weight"):
                 return self._processed_weight
-
         if self.original_component is None:
             raise RuntimeError(f"Original component not set for {self.name}")
-
-        # Handle rotary embeddings (have inv_freq instead of weight)
-        if hasattr(self.original_component, "inv_freq") and not hasattr(
-            self.original_component, "weight"
+        if hasattr(self.original_component, "inv_freq") and (
+            not hasattr(self.original_component, "weight")
         ):
             inv_freq = self.original_component.inv_freq
             assert isinstance(inv_freq, torch.Tensor), f"inv_freq is not a tensor for {self.name}"
             return inv_freq
-
-        # Handle regular embeddings (have weight)
         assert hasattr(
             self.original_component, "weight"
         ), f"Component {self.name} has neither weight nor inv_freq attribute"
@@ -68,10 +57,7 @@ class EmbeddingBridge(GeneralizedComponent):
         return weight
 
     def forward(
-        self,
-        input_ids: torch.Tensor,
-        position_ids: torch.Tensor | None = None,
-        **kwargs: Any,
+        self, input_ids: torch.Tensor, position_ids: torch.Tensor | None = None, **kwargs: Any
     ) -> torch.Tensor:
         """Forward pass through the embedding bridge.
 
@@ -83,113 +69,26 @@ class EmbeddingBridge(GeneralizedComponent):
         Returns:
             Embedded output
         """
-
-        # Check if we're using processed weights from a reference model (layer norm folding case)
-        # This happens when _port_embedding_components has been called
-        if hasattr(self, "_use_processed_weights") and self._use_processed_weights:
-            # Apply input hook
-            input_ids = self.hook_in(input_ids)
-
-            # Use the processed weight directly with F.embedding
-            if hasattr(self, "_processed_weight"):
-                output = torch.nn.functional.embedding(input_ids, self._processed_weight)
-            else:
-                # Fallback to original component's weight
-                output = torch.nn.functional.embedding(input_ids, self.W_E)
-
-            # Apply output hook
-            output = self.hook_out(output)
-
-            return output
-
         if self.original_component is None:
             raise RuntimeError(
                 f"Original component not set for {self.name}. Call set_original_component() first."
             )
-
-        # Get the target dtype from the original component's weight
         target_dtype = None
         try:
             target_dtype = next(self.original_component.parameters()).dtype
         except StopIteration:
-            # Component has no parameters, keep inputs as-is
             pass
-
-        # Apply input hook
         input_ids = self.hook_in(input_ids)
-
-        # Check if the original component supports position_ids using inspect.signature
         sig = inspect.signature(self.original_component.forward)
         supports_position_ids = "position_ids" in sig.parameters
-
         if not hasattr(self.original_component, "forward") or not supports_position_ids:
             kwargs.pop("position_ids", None)
             output = self.original_component(input_ids, **kwargs)
         else:
             output = self.original_component(input_ids, position_ids=position_ids, **kwargs)
-
-        # Some models return tuples; extract embeddings
-        if isinstance(output, tuple) and len(output) == 1:
+        if isinstance(output, tuple):
             output = output[0]
-
-        # Ensure output dtype matches original component's dtype
         if target_dtype is not None and output.dtype != target_dtype:
             output = output.to(dtype=target_dtype)
-
-        # Apply output hook
         output = self.hook_out(output)
-
         return output
-
-    def set_processed_weight(self, weight: torch.Tensor, enable_ht_mode: bool = False) -> None:
-        """Set the processed weight to use when layer norm is folded.
-
-        Args:
-            weight: The processed embedding weight tensor
-            enable_ht_mode: If True, enable HT-style forward. Default: False.
-        """
-        self._processed_weight = weight
-        if enable_ht_mode:
-            self._use_processed_weights = True
-
-    def get_dummy_inputs(
-        self, test_input: torch.Tensor, **kwargs: Any
-    ) -> tuple[tuple[Any, ...], dict[str, Any]]:
-        """Generate dummy inputs for embedding forward method.
-
-        Embeddings expect integer token indices, not float tensors.
-
-        Args:
-            test_input: Base test input tensor [batch, seq, d_model] - used for shape only
-            **kwargs: Additional context including shared_token_indices
-
-        Returns:
-            Tuple of (args, kwargs) for the embedding forward method
-        """
-        # Check if shared_token_indices were provided (to ensure consistency across components)
-        shared_indices = kwargs.get("shared_token_indices")
-        if shared_indices is not None:
-            return (shared_indices,), {}
-
-        # Generate random token indices
-        batch, seq_len, _ = test_input.shape
-
-        # Get vocab size from config or original component
-        vocab_size = None
-        if self.config is not None and hasattr(self.config, "d_vocab"):
-            vocab_size = self.config.d_vocab
-        elif self.original_component is not None and hasattr(
-            self.original_component, "num_embeddings"
-        ):
-            vocab_size = self.original_component.num_embeddings
-
-        if vocab_size is None:
-            # Default vocab size if we can't determine it
-            vocab_size = 50257  # GPT-2 default
-
-        # Generate random token indices
-        token_indices = torch.randint(
-            0, vocab_size, (batch, seq_len), device=test_input.device, dtype=torch.long
-        )
-
-        return (token_indices,), {}
