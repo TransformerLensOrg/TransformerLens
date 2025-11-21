@@ -11,13 +11,12 @@ import torch
 from jaxtyping import Int
 
 from transformer_lens.config.TransformerLensConfig import TransformerLensConfig
-
-if TYPE_CHECKING:
-    from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
-
 from transformer_lens.utilities.multi_gpu import get_device_for_block_index
 
 from .key_value_cache_entry import TransformerLensKeyValueCacheEntry
+
+if TYPE_CHECKING:
+    from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 
 
 @dataclass

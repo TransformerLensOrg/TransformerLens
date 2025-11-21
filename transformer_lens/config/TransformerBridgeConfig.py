@@ -23,7 +23,6 @@ class TransformerBridgeConfig(TransformerLensConfig):
         n_layers: int,
         n_ctx: int,
         d_vocab: int = -1,
-        n_heads: int = -1,
         architecture: Optional[str] = None,
         tokenizer_prepends_bos: bool = True,
         default_padding_side: Optional[str] = None,

@@ -2,6 +2,7 @@
 
 from typing import Any
 
+import einops
 import torch
 
 from transformer_lens.conversion_utils.conversion_steps import (
@@ -50,8 +51,6 @@ class NeoLinearTransposeConversion(BaseTensorConversion):
 
         # Apply rearrangement if specified
         if self.rearrange_pattern:
-            import einops
-
             return einops.rearrange(transposed, self.rearrange_pattern, **self.axes_lengths)
 
         return transposed
@@ -62,8 +61,6 @@ class NeoLinearTransposeConversion(BaseTensorConversion):
 
         # Reverse rearrangement if specified
         if self.rearrange_pattern:
-            import einops
-
             # Reverse the einops pattern
             left, right = self.rearrange_pattern.split("->")
             reversed_pattern = f"{right.strip()} -> {left.strip()}"

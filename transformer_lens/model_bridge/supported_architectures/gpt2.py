@@ -2,6 +2,7 @@
 
 from typing import Any
 
+import einops
 import torch
 
 from transformer_lens.conversion_utils.conversion_steps import (
@@ -58,8 +59,6 @@ class QKVSplitRearrangeConversion(BaseTensorConversion):
         selected_part = qkv_parts[self.qkv_index]
 
         # Apply rearrangement
-        import einops
-
         return einops.rearrange(selected_part, self.rearrange_pattern, **self.axes_lengths)
 
 

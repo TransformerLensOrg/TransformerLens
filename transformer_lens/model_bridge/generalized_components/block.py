@@ -5,6 +5,7 @@ This module contains the bridge component for transformer blocks.
 from __future__ import annotations
 
 import inspect
+import re
 from typing import Any, Callable, Dict, Optional
 
 import torch
@@ -81,8 +82,6 @@ class BlockBridge(GeneralizedComponent):
             # - "blocks.0" (TransformerLens style)
             # - "transformer.h.0" (HuggingFace GPT-2 style)
             # - "model.layers.0" (HuggingFace LLaMA style)
-            import re
-
             if self.name is not None:
                 # Try multiple patterns to extract layer index
                 match = (

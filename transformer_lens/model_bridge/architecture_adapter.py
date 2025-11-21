@@ -4,6 +4,7 @@ This module contains the base class for architecture adapters that map between d
 """
 from typing import Any, Dict, cast
 
+import einops
 import torch
 
 from transformer_lens.config import TransformerBridgeConfig
@@ -700,8 +701,6 @@ class ArchitectureAdapter:
         GPT-2 uses Conv1D which stores weights as [in_features, out_features] = [d_model, 3*d_model].
         We need to split and reshape to [n_heads, d_model, d_head] format for HookedTransformer.
         """
-        import einops
-
         W = c_attn.weight.data
         W_Q, W_K, W_V = torch.tensor_split(W, 3, dim=1)
         W_Q = einops.rearrange(W_Q, "m (i h)->i m h", i=n_heads)
