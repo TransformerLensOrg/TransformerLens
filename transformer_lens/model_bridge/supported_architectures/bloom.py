@@ -36,9 +36,6 @@ class BloomArchitectureAdapter(ArchitectureAdapter):
 
         self.cfg.default_prepend_bos = False
         self.weight_processing_conversions = {
-            "embed.e": "transformer.word_embeddings.weight",
-            "blocks.{i}.ln1.w": "transformer.h.{i}.input_layernorm.weight",
-            "blocks.{i}.ln1.b": "transformer.h.{i}.input_layernorm.bias",
             "blocks.{i}.attn.q": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
                     "(three n h) m -> three n m h",
@@ -67,19 +64,6 @@ class BloomArchitectureAdapter(ArchitectureAdapter):
                 tensor_conversion=RearrangeTensorConversion("m (n h) -> n h m", n=self.cfg.n_heads),
                 source_key="transformer.h.{i}.self_attention.dense.weight",
             ),
-            "blocks.{i}.attn.b_Q": "transformer.h.{i}.self_attention.query_key_value.bias",
-            "blocks.{i}.attn.b_K": "transformer.h.{i}.self_attention.query_key_value.bias",
-            "blocks.{i}.attn.b_V": "transformer.h.{i}.self_attention.query_key_value.bias",
-            "blocks.{i}.attn.b_O": "transformer.h.{i}.self_attention.dense.bias",
-            "blocks.{i}.ln2.w": "transformer.h.{i}.post_attention_layernorm.weight",
-            "blocks.{i}.ln2.b": "transformer.h.{i}.post_attention_layernorm.bias",
-            "blocks.{i}.mlp.in": "transformer.h.{i}.mlp.dense_h_to_4h.weight",
-            "blocks.{i}.mlp.b_in": "transformer.h.{i}.mlp.dense_h_to_4h.bias",
-            "blocks.{i}.mlp.out": "transformer.h.{i}.mlp.dense_4h_to_h.weight",
-            "blocks.{i}.mlp.b_out": "transformer.h.{i}.mlp.dense_4h_to_h.bias",
-            "ln_final.w": "transformer.ln_f.weight",
-            "ln_final.b": "transformer.ln_f.bias",
-            "unembed.u": "lm_head.weight",
         }
 
         self.component_mapping = {

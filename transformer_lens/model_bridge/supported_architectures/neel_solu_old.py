@@ -31,12 +31,6 @@ class NeelSoluOldArchitectureAdapter(ArchitectureAdapter):
         super().__init__(cfg)
 
         self.weight_processing_conversions = {
-            "pos_embed.pos": "wpe.weight",
-            "embed.e": "wte.weight",
-            "blocks.{i}.ln1.w": "blocks.{i}.ln1.w",
-            "blocks.{i}.ln1.b": "blocks.{i}.ln1.b",
-            "blocks.{i}.ln2.w": "blocks.{i}.ln2.w",
-            "blocks.{i}.ln2.b": "blocks.{i}.ln2.b",
             "blocks.{i}.attn.q": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
                     "d_model n_head d_head -> n_head d_model d_head"
@@ -61,18 +55,6 @@ class NeelSoluOldArchitectureAdapter(ArchitectureAdapter):
                 ),
                 source_key="blocks.{i}.attn.W_O",
             ),
-            "blocks.{i}.attn.b_Q": "blocks.{i}.attn.b_Q",
-            "blocks.{i}.attn.b_K": "blocks.{i}.attn.b_K",
-            "blocks.{i}.attn.b_V": "blocks.{i}.attn.b_V",
-            "blocks.{i}.attn.b_O": "blocks.{i}.attn.b_O",
-            "blocks.{i}.mlp.in": "blocks.{i}.mlp.W_in",
-            "blocks.{i}.mlp.b_in": "blocks.{i}.mlp.b_in",
-            "blocks.{i}.mlp.out": "blocks.{i}.mlp.W_out",
-            "blocks.{i}.mlp.b_out": "blocks.{i}.mlp.b_out",
-            "ln_final.w": "ln_f.w",
-            "ln_final.b": "ln_f.b",
-            "unembed.u": "unembed.W_U",
-            "unembed.b_U": "unembed.b_U",
         }
         self.component_mapping = {
             "embed": EmbeddingBridge(name="wte"),

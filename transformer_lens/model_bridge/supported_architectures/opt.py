@@ -36,10 +36,6 @@ class OptArchitectureAdapter(ArchitectureAdapter):
         # OPT models were trained with BOS tokens (inherits default_prepend_bos = True)
 
         self.weight_processing_conversions = {
-            "embed.e": "model.decoder.embed_tokens.weight",
-            "pos_embed.pos": "model.decoder.embed_positions.weight",
-            "blocks.{i}.ln1.w": "model.decoder.layers.{i}.self_attn_layer_norm.weight",
-            "blocks.{i}.ln1.b": "model.decoder.layers.{i}.self_attn_layer_norm.bias",
             "blocks.{i}.attn.q": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
                 source_key="model.decoder.layers.{i}.self_attn.q_proj.weight",
@@ -56,19 +52,6 @@ class OptArchitectureAdapter(ArchitectureAdapter):
                 tensor_conversion=RearrangeTensorConversion("m (n h) -> n h m", n=self.cfg.n_heads),
                 source_key="model.decoder.layers.{i}.self_attn.out_proj.weight",
             ),
-            "blocks.{i}.attn.b_Q": "model.decoder.layers.{i}.self_attn.q_proj.bias",
-            "blocks.{i}.attn.b_K": "model.decoder.layers.{i}.self_attn.k_proj.bias",
-            "blocks.{i}.attn.b_V": "model.decoder.layers.{i}.self_attn.v_proj.bias",
-            "blocks.{i}.attn.b_O": "model.decoder.layers.{i}.self_attn.out_proj.bias",
-            "blocks.{i}.ln2.w": "model.decoder.layers.{i}.final_layer_norm.weight",
-            "blocks.{i}.ln2.b": "model.decoder.layers.{i}.final_layer_norm.bias",
-            "blocks.{i}.mlp.in": "model.decoder.layers.{i}.fc1.weight",
-            "blocks.{i}.mlp.b_in": "model.decoder.layers.{i}.fc1.bias",
-            "blocks.{i}.mlp.out": "model.decoder.layers.{i}.fc2.weight",
-            "blocks.{i}.mlp.b_out": "model.decoder.layers.{i}.fc2.bias",
-            "ln_final.w": "model.decoder.final_layer_norm.weight",
-            "ln_final.b": "model.decoder.final_layer_norm.bias",
-            "unembed.u": "lm_head.weight",
         }
 
         self.component_mapping = {

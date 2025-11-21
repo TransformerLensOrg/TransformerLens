@@ -42,8 +42,6 @@ class Phi3ArchitectureAdapter(ArchitectureAdapter):
         self.cfg.uses_rms_norm = True
 
         self.weight_processing_conversions = {
-            "embed.e": "model.embed_tokens.weight",
-            "blocks.{i}.ln1.w": "model.layers.{i}.input_layernorm.weight",
             "blocks.{i}.attn.q": ParamProcessingConversion(
                 tensor_conversion=SplitTensorConversion(
                     0,
@@ -78,10 +76,9 @@ class Phi3ArchitectureAdapter(ArchitectureAdapter):
                 tensor_conversion=SplitTensorConversion(0, 2, dim=1),
                 source_key="model.layers.{i}.mlp.gate_up_proj.weight",
             ),
-            "blocks.{i}.mlp.out": "model.layers.{i}.mlp.down_proj.weight",
-            "ln_final.w": "model.norm.weight",
-            "unembed.u": "lm_head.weight",
         }
+
+        # Set up component mapping
         self.component_mapping = {
             "embed": EmbeddingBridge(name="model.embed_tokens"),
             "blocks": BlockBridge(

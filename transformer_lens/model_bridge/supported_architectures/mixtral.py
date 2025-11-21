@@ -36,11 +36,6 @@ class MixtralArchitectureAdapter(ArchitectureAdapter):
         self.cfg.uses_rms_norm = True
 
         self.weight_processing_conversions = {
-            "embed.e": "model.embed_tokens.weight",
-            "blocks.{i}.ln1.w": "model.layers.{i}.input_layernorm.weight",
-            "blocks.{i}.ln1.b": "model.layers.{i}.input_layernorm.bias",
-            "blocks.{i}.ln2.w": "model.layers.{i}.post_attention_layernorm.weight",
-            "blocks.{i}.ln2.b": "model.layers.{i}.post_attention_layernorm.bias",
             "blocks.{i}.attn.q.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
                     "(h d_head) d_model -> h d_head d_model"
@@ -77,15 +72,6 @@ class MixtralArchitectureAdapter(ArchitectureAdapter):
                 ),
                 source_key="model.layers.{i}.self_attn.o_proj.weight",
             ),
-            "blocks.{i}.attn.o.bias": "model.layers.{i}.self_attn.o_proj.bias",
-            "blocks.{i}.mlp.in": "model.layers.{i}.mlp.gate_proj.weight",
-            "blocks.{i}.mlp.b_in": "model.layers.{i}.mlp.gate_proj.bias",
-            "blocks.{i}.mlp.out": "model.layers.{i}.mlp.down_proj.weight",
-            "blocks.{i}.mlp.b_out": "model.layers.{i}.mlp.down_proj.bias",
-            "unembed.u": "lm_head.weight",
-            "unembed.b_U": "lm_head.bias",
-            "ln_final.w": "model.norm.weight",
-            "ln_final.b": "model.norm.bias",
         }
 
         # Set up component mapping

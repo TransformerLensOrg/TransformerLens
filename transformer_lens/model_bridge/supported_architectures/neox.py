@@ -48,11 +48,6 @@ class NeoxArchitectureAdapter(ArchitectureAdapter):
         self.cfg.default_prepend_bos = False
 
         self.weight_processing_conversions = {
-            "embed.e": "gpt_neox.embed_in.weight",
-            "blocks.{i}.ln1.w": "gpt_neox.layers.{i}.input_layernorm.weight",
-            "blocks.{i}.ln1.b": "gpt_neox.layers.{i}.input_layernorm.bias",
-            "blocks.{i}.ln2.w": "gpt_neox.layers.{i}.post_attention_layernorm.weight",
-            "blocks.{i}.ln2.b": "gpt_neox.layers.{i}.post_attention_layernorm.bias",
             "blocks.{i}.attn.q": ParamProcessingConversion(
                 tensor_conversion=ChainTensorConversion(
                     [
@@ -134,14 +129,6 @@ class NeoxArchitectureAdapter(ArchitectureAdapter):
                 ),
                 source_key="gpt_neox.layers.{i}.attention.dense.weight",
             ),
-            "blocks.{i}.attn.b_O": "gpt_neox.layers.{i}.attention.dense.bias",
-            "blocks.{i}.mlp.in": "gpt_neox.layers.{i}.mlp.dense_h_to_4h.weight",
-            "blocks.{i}.mlp.b_in": "gpt_neox.layers.{i}.mlp.dense_h_to_4h.bias",
-            "blocks.{i}.mlp.out": "gpt_neox.layers.{i}.mlp.dense_4h_to_h.weight",
-            "blocks.{i}.mlp.b_out": "gpt_neox.layers.{i}.mlp.dense_4h_to_h.bias",
-            "ln_final.w": "gpt_neox.final_layer_norm.weight",
-            "ln_final.b": "gpt_neox.final_layer_norm.bias",
-            "unembed.u": "embed_out.weight",
         }
 
         self.component_mapping = {

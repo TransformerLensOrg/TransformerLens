@@ -30,12 +30,6 @@ class NanogptArchitectureAdapter(ArchitectureAdapter):
         super().__init__(cfg)
 
         self.weight_processing_conversions = {
-            "pos_embed.pos": "transformer.wpe.weight",
-            "embed.e": "transformer.wte.weight",
-            "blocks.{i}.ln1.w": "transformer.h.{i}.ln_1.weight",
-            "blocks.{i}.ln1.b": "transformer.h.{i}.ln_1.bias",
-            "blocks.{i}.ln2.w": "transformer.h.{i}.ln_2.weight",
-            "blocks.{i}.ln2.b": "transformer.h.{i}.ln_2.bias",
             "blocks.{i}.attn.q": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
                     "d_model (3 n_head d_head) -> 3 n_head d_head d_model"
@@ -72,15 +66,6 @@ class NanogptArchitectureAdapter(ArchitectureAdapter):
                 ),
                 source_key="transformer.h.{i}.attn.c_proj.weight",
             ),
-            "blocks.{i}.attn.b_O": "transformer.h.{i}.attn.c_proj.bias",
-            "blocks.{i}.mlp.in": "transformer.h.{i}.mlp.c_fc.weight",
-            "blocks.{i}.mlp.b_in": "transformer.h.{i}.mlp.c_fc.bias",
-            "blocks.{i}.mlp.out": "transformer.h.{i}.mlp.c_proj.weight",
-            "blocks.{i}.mlp.b_out": "transformer.h.{i}.mlp.c_proj.bias",
-            "unembed.u": "lm_head.weight",
-            "unembed.b_U": "lm_head.bias",
-            "ln_final.w": "transformer.ln_f.weight",
-            "ln_final.b": "transformer.ln_f.bias",
         }
 
         # Set up component mapping

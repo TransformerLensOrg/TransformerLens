@@ -55,9 +55,6 @@ class Qwen2ArchitectureAdapter(ArchitectureAdapter):
         self.cfg.uses_rms_norm = True
 
         self.weight_processing_conversions = {
-            "embed.e": "model.embed_tokens.weight",
-            "blocks.{i}.ln1.w": "model.layers.{i}.input_layernorm.weight",
-            "blocks.{i}.ln2.w": "model.layers.{i}.post_attention_layernorm.weight",
             "blocks.{i}.attn.q.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
                 source_key="model.layers.{i}.self_attn.q_proj.weight",
@@ -80,11 +77,6 @@ class Qwen2ArchitectureAdapter(ArchitectureAdapter):
                 tensor_conversion=RearrangeTensorConversion("m (n h) -> n h m", n=self.cfg.n_heads),
                 source_key="model.layers.{i}.self_attn.o_proj.weight",
             ),
-            "blocks.{i}.mlp.in": "model.layers.{i}.mlp.up_proj.weight.T",
-            "blocks.{i}.mlp.gate": "model.layers.{i}.mlp.gate_proj.weight",
-            "blocks.{i}.mlp.out": "model.layers.{i}.mlp.down_proj.weight",
-            "ln_final.w": "model.norm.weight",
-            "unembed.u": "lm_head.weight",
         }
         self.component_mapping = {
             "embed": EmbeddingBridge(name="model.embed_tokens"),

@@ -41,15 +41,6 @@ class BertArchitectureAdapter(ArchitectureAdapter):
         self.cfg.attn_only = False
 
         self.weight_processing_conversions = {
-            "embed.e": "bert.embeddings.word_embeddings.weight",
-            "pos_embed.pos": "bert.embeddings.position_embeddings.weight",
-            "embed.token_type_embeddings": "bert.embeddings.token_type_embeddings.weight",
-            "embed.LayerNorm.weight": "bert.embeddings.LayerNorm.weight",
-            "embed.LayerNorm.bias": "bert.embeddings.LayerNorm.bias",
-            "blocks.{i}.ln1.w": "bert.encoder.layer.{i}.attention.output.LayerNorm.weight",
-            "blocks.{i}.ln1.b": "bert.encoder.layer.{i}.attention.output.LayerNorm.bias",
-            "blocks.{i}.ln2.w": "bert.encoder.layer.{i}.output.LayerNorm.weight",
-            "blocks.{i}.ln2.b": "bert.encoder.layer.{i}.output.LayerNorm.bias",
             "blocks.{i}.attn.q.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
                     "(h d_head) d_model -> h d_head d_model"
@@ -86,19 +77,6 @@ class BertArchitectureAdapter(ArchitectureAdapter):
                 ),
                 source_key="bert.encoder.layer.{i}.attention.output.dense.weight",
             ),
-            "blocks.{i}.attn.o.bias": "bert.encoder.layer.{i}.attention.output.dense.bias",
-            "blocks.{i}.mlp.in": "bert.encoder.layer.{i}.intermediate.dense.weight",
-            "blocks.{i}.mlp.b_in": "bert.encoder.layer.{i}.intermediate.dense.bias",
-            "blocks.{i}.mlp.out": "bert.encoder.layer.{i}.output.dense.weight",
-            "blocks.{i}.mlp.b_out": "bert.encoder.layer.{i}.output.dense.bias",
-            "ln_final.w": "bert.pooler.dense.weight",
-            "ln_final.b": "bert.pooler.dense.bias",
-            "unembed.u": "cls.predictions.transform.dense.weight",
-            "unembed.b_U": "cls.predictions.transform.dense.bias",
-            "unembed.LayerNorm.weight": "cls.predictions.transform.LayerNorm.weight",
-            "unembed.LayerNorm.bias": "cls.predictions.transform.LayerNorm.bias",
-            "unembed.decoder.weight": "cls.predictions.decoder.weight",
-            "unembed.decoder.bias": "cls.predictions.bias",
         }
 
         # Set up component mapping
