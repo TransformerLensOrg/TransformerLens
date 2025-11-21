@@ -109,7 +109,6 @@ def clear_huggingface_cache():
         # Directory was deleted by another process - that's fine
         pass
     except OSError as e:
-
         # Only ignore "directory not empty" and "no such file" errors (race conditions)
         if e.errno not in (errno.ENOTEMPTY, errno.ENOENT):
             print(f"Warning: Could not fully clear cache: {e}")

@@ -172,6 +172,7 @@ class AttentionBridge(GeneralizedComponent):
         - v.hook_out (aliased as hook_v) - uses n_kv_heads if GQA
         - o.hook_in (aliased as hook_z)
         """
+
         class ReshapeForAttentionHeads(BaseTensorConversion):
             """Reshape tensors to split attention heads for Q/K/V/Z compatibility."""
 

@@ -20,8 +20,8 @@ from transformers import (
 
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.factories.architecture_adapter_factory import (
-    ArchitectureAdapterFactory,
     SUPPORTED_ARCHITECTURES,
+    ArchitectureAdapterFactory,
 )
 from transformer_lens.model_bridge.bridge import TransformerBridge
 from transformer_lens.supported_models import MODEL_ALIASES

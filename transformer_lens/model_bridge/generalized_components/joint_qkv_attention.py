@@ -74,7 +74,9 @@ class JointQKVAttentionBridge(AttentionBridge):
             requires_position_embeddings=requires_position_embeddings,
             requires_attention_mask=requires_attention_mask,
         )
-        self.split_qkv_matrix = split_qkv_matrix if split_qkv_matrix is not None else self._default_split_qkv_matrix
+        self.split_qkv_matrix = (
+            split_qkv_matrix if split_qkv_matrix is not None else self._default_split_qkv_matrix
+        )
         if qkv_conversion_rule is not None:
             self.qkv_conversion_rule = qkv_conversion_rule
         else:
@@ -165,14 +167,14 @@ class JointQKVAttentionBridge(AttentionBridge):
         assert original_attention_component is not None
 
         # Get the combined QKV component using the 'qkv' submodule name
-        if 'qkv' not in self.submodules:
+        if "qkv" not in self.submodules:
             raise ValueError(
                 f"No 'qkv' submodule found in JointQKVAttentionBridge. "
                 f"Please define a 'qkv' submodule or provide a custom split_qkv_matrix function."
             )
 
         # Get the actual qkv component name from the bridge
-        qkv_bridge = self.submodules['qkv']
+        qkv_bridge = self.submodules["qkv"]
         qkv_name = qkv_bridge.name
 
         # Navigate to the component using the name
@@ -193,7 +195,7 @@ class JointQKVAttentionBridge(AttentionBridge):
         q_weight, k_weight, v_weight = torch.tensor_split(qkv_weights, 3, dim=1)
 
         # Handle bias if it exists
-        has_bias = hasattr(qkv_component, 'bias') and qkv_component.bias is not None
+        has_bias = hasattr(qkv_component, "bias") and qkv_component.bias is not None
         if has_bias:
             qkv_bias = qkv_component.bias
             assert isinstance(qkv_bias, torch.Tensor)
