@@ -40,8 +40,7 @@ class T5ArchitectureAdapter(ArchitectureAdapter):
         self.cfg.gated_mlp = False
         self.cfg.attn_only = False
 
-        self.weight_processing_conversions = {
-        }
+        self.weight_processing_conversions = {}
 
         self.component_mapping = {
             # Shared embeddings
