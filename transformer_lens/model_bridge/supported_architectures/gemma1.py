@@ -14,6 +14,7 @@ from transformer_lens.model_bridge.generalized_components import (
     GatedMLPBridge,
     LinearBridge,
     RMSNormalizationBridge,
+    RotaryEmbeddingBridge,
     UnembeddingBridge,
 )
 
@@ -72,7 +73,7 @@ class Gemma1ArchitectureAdapter(ArchitectureAdapter):
 
         self.component_mapping = {
             "embed": EmbeddingBridge(name="model.embed_tokens"),
-            "rotary_emb": EmbeddingBridge(name="model.rotary_emb"),
+            "rotary_emb": RotaryEmbeddingBridge(name="model.rotary_emb", config=self.cfg),
             "blocks": BlockBridge(
                 name="model.layers",
                 submodules={

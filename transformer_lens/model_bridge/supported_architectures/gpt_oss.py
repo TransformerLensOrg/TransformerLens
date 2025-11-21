@@ -68,7 +68,7 @@ class GPTOSSArchitectureAdapter(ArchitectureAdapter):
 
         self.component_mapping = {
             "embed": EmbeddingBridge(name="model.embed_tokens"),
-            "rotary_emb": RotaryEmbeddingBridge(name="model.rotary_emb"),
+            "rotary_emb": RotaryEmbeddingBridge(name="model.rotary_emb", config=self.cfg),
             "blocks": BlockBridge(
                 name="model.layers",
                 submodules={
@@ -89,7 +89,7 @@ class GPTOSSArchitectureAdapter(ArchitectureAdapter):
                             "o": LinearBridge(name="o_proj"),
                         },
                     ),
-                    "ln2": NormalizationBridge(
+                    "ln2": RMSNormalizationBridge(
                         name="post_attention_layernorm",
                         config=self.cfg,
                         use_native_layernorm_autograd=True,  # Use HF's RMSNorm for correct dtype handling
@@ -99,7 +99,7 @@ class GPTOSSArchitectureAdapter(ArchitectureAdapter):
                     "mlp": MoEBridge(name="mlp", config=self.cfg),
                 },
             ),
-            "ln_final": NormalizationBridge(
+            "ln_final": RMSNormalizationBridge(
                 name="model.norm",
                 config=self.cfg,
                 use_native_layernorm_autograd=True,  # Use HF's RMSNorm for correct dtype handling

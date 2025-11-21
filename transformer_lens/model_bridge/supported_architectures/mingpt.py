@@ -8,9 +8,10 @@ from transformer_lens.conversion_utils.param_processing_conversion import (
 )
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
-    AttentionBridge,
     BlockBridge,
     EmbeddingBridge,
+    JointQKVAttentionBridge,
+    LinearBridge,
     MLPBridge,
     NormalizationBridge,
     PosEmbedBridge,
@@ -28,6 +29,13 @@ class MingptArchitectureAdapter(ArchitectureAdapter):
             cfg: The configuration object.
         """
         super().__init__(cfg)
+
+        # Set config variables for weight processing
+        self.cfg.normalization_type = "LN"
+        self.cfg.positional_embedding_type = "standard"
+        self.cfg.final_rms = False
+        self.cfg.gated_mlp = False
+        self.cfg.attn_only = False
 
         self.weight_processing_conversions = {
             "pos_embed.pos": "transformer.wpe.weight",
@@ -90,20 +98,24 @@ class MingptArchitectureAdapter(ArchitectureAdapter):
             "blocks": BlockBridge(
                 name="transformer.h",  # Base path for blocks
                 submodules={
-                    "ln1": NormalizationBridge(
-                        name="ln_1", config=self.cfg
-                    ),  # Pre-attention layer norm
-                    "ln2": NormalizationBridge(name="ln_2", config=self.cfg),  # Pre-MLP layer norm
-                    "attn": AttentionBridge(
+                    "ln1": NormalizationBridge(name="ln_1", config=self.cfg),
+                    "ln2": NormalizationBridge(name="ln_2", config=self.cfg),
+                    "attn": JointQKVAttentionBridge(
                         name="attn",
                         config=self.cfg,
                         submodules={
-                            "c_attn": AttentionBridge(
-                                name="c_attn", config=self.cfg
-                            ),  # QKV projection
+                            "qkv": LinearBridge(name="c_attn"),
+                            "o": LinearBridge(name="c_proj"),
                         },
-                    ),  # Full attention module
-                    "mlp": MLPBridge(name="mlp"),  # Full MLP module
+                    ),
+                    "mlp": MLPBridge(
+                        name="mlp",
+                        config=self.cfg,
+                        submodules={
+                            "in": LinearBridge(name="c_fc"),
+                            "out": LinearBridge(name="c_proj"),
+                        },
+                    ),
                 },
             ),
             "ln_final": NormalizationBridge(
