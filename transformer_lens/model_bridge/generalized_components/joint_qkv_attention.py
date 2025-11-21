@@ -177,6 +177,12 @@ class JointQKVAttentionBridge(AttentionBridge):
         qkv_bridge = self.submodules["qkv"]
         qkv_name = qkv_bridge.name
 
+        # Ensure qkv_name is not None
+        if qkv_name is None:
+            raise ValueError(
+                "qkv bridge name is None. " "Please provide a custom split_qkv_matrix function."
+            )
+
         # Navigate to the component using the name
         if not hasattr(original_attention_component, qkv_name):
             raise ValueError(
@@ -196,6 +202,9 @@ class JointQKVAttentionBridge(AttentionBridge):
 
         # Handle bias if it exists
         has_bias = hasattr(qkv_component, "bias") and qkv_component.bias is not None
+        q_bias: torch.Tensor | None
+        k_bias: torch.Tensor | None
+        v_bias: torch.Tensor | None
         if has_bias:
             qkv_bias = qkv_component.bias
             assert isinstance(qkv_bias, torch.Tensor)
@@ -210,17 +219,17 @@ class JointQKVAttentionBridge(AttentionBridge):
         # Create plain nn.Linear modules that output 3D tensors [batch, seq, d_model]
         q_linear = torch.nn.Linear(q_weight.shape[0], q_weight.shape[1], bias=has_bias)
         q_linear.weight = torch.nn.Parameter(q_weight.T)
-        if has_bias:
+        if has_bias and q_bias is not None:
             q_linear.bias = torch.nn.Parameter(q_bias)
 
         k_linear = torch.nn.Linear(k_weight.shape[0], k_weight.shape[1], bias=has_bias)
         k_linear.weight = torch.nn.Parameter(k_weight.T)
-        if has_bias:
+        if has_bias and k_bias is not None:
             k_linear.bias = torch.nn.Parameter(k_bias)
 
         v_linear = torch.nn.Linear(v_weight.shape[0], v_weight.shape[1], bias=has_bias)
         v_linear.weight = torch.nn.Parameter(v_weight.T)
-        if has_bias:
+        if has_bias and v_bias is not None:
             v_linear.bias = torch.nn.Parameter(v_bias)
 
         return q_linear, k_linear, v_linear

@@ -46,16 +46,6 @@ if TYPE_CHECKING:
 _BLOCK_PATTERN = re.compile("blocks\\.(\\d+)")
 
 
-class StopAtLayerException(Exception):
-    """Exception to stop forward pass at a specific layer."""
-
-    def __init__(self, tensor, layer_idx):
-        self.tensor = tensor
-        self.layer_idx = layer_idx
-        self.layer_output = tensor
-        super().__init__(f"Stopped at layer {layer_idx}")
-
-
 def build_alias_to_canonical_map(hook_dict, prefix=""):
     """Build a mapping from alias hook names to their canonical names.
 
@@ -1411,7 +1401,7 @@ class TransformerBridge(nn.Module):
             last_layer_to_process = stop_at_layer - 1
 
             def stop_hook(tensor: torch.Tensor, *, hook: Any) -> torch.Tensor:
-                raise StopAtLayerException(tensor, stop_at_layer)
+                raise StopAtLayerException(tensor)
 
             if stop_at_layer >= 0 and stop_at_layer < len(self.blocks):
                 # Stop at the beginning of the specified block, not at the end of the previous block
@@ -1550,7 +1540,7 @@ class TransformerBridge(nn.Module):
             last_layer_to_process = stop_at_layer - 1
 
             def stop_hook(tensor: torch.Tensor, *, hook: Any) -> torch.Tensor:
-                raise StopAtLayerException(tensor, stop_at_layer)
+                raise StopAtLayerException(tensor)
 
             if stop_at_layer >= 0 and stop_at_layer < len(self.blocks):
                 # Stop at the beginning of the specified block, not at the end of the previous block

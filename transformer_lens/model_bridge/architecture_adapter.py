@@ -114,7 +114,7 @@ class ArchitectureAdapter:
             >>> # <LayerNorm>
         """
         current = model
-        parent_stack = []  # Track parent components for .. navigation
+        parent_stack: list[RemoteComponent] = []  # Track parent components for .. navigation
 
         # Handle ../ pattern by replacing with a marker before splitting
         # This is needed because "../output.dense".split(".") gives ['', '', '/output', 'dense']
