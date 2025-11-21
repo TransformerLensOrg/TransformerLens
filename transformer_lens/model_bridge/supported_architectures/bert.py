@@ -49,43 +49,43 @@ class BertArchitectureAdapter(ArchitectureAdapter):
             "blocks.{i}.ln1.b": "bert.encoder.layer.{i}.attention.output.LayerNorm.bias",
             "blocks.{i}.ln2.w": "bert.encoder.layer.{i}.output.LayerNorm.weight",
             "blocks.{i}.ln2.b": "bert.encoder.layer.{i}.output.LayerNorm.bias",
-            "blocks.{i}.attn.q": ParamProcessingConversion(
+            "blocks.{i}.attn.q.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
                     "(h d_head) d_model -> h d_head d_model"
                 ),
                 source_key="bert.encoder.layer.{i}.attention.self.query.weight",
             ),
-            "blocks.{i}.attn.k": ParamProcessingConversion(
+            "blocks.{i}.attn.k.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
                     "(h d_head) d_model -> h d_head d_model"
                 ),
                 source_key="bert.encoder.layer.{i}.attention.self.key.weight",
             ),
-            "blocks.{i}.attn.v": ParamProcessingConversion(
+            "blocks.{i}.attn.v.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
                     "(h d_head) d_model -> h d_head d_model"
                 ),
                 source_key="bert.encoder.layer.{i}.attention.self.value.weight",
             ),
-            "blocks.{i}.attn.b_Q": ParamProcessingConversion(
+            "blocks.{i}.attn.q.bias": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("(h d_head) -> h d_head"),
                 source_key="bert.encoder.layer.{i}.attention.self.query.bias",
             ),
-            "blocks.{i}.attn.b_K": ParamProcessingConversion(
+            "blocks.{i}.attn.k.bias": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("(h d_head) -> h d_head"),
                 source_key="bert.encoder.layer.{i}.attention.self.key.bias",
             ),
-            "blocks.{i}.attn.b_V": ParamProcessingConversion(
+            "blocks.{i}.attn.v.bias": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("(h d_head) -> h d_head"),
                 source_key="bert.encoder.layer.{i}.attention.self.value.bias",
             ),
-            "blocks.{i}.attn.o": ParamProcessingConversion(
+            "blocks.{i}.attn.o.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
                     "d_model (h d_head) -> h d_head d_model"
                 ),
                 source_key="bert.encoder.layer.{i}.attention.output.dense.weight",
             ),
-            "blocks.{i}.attn.b_O": "bert.encoder.layer.{i}.attention.output.dense.bias",
+            "blocks.{i}.attn.o.bias": "bert.encoder.layer.{i}.attention.output.dense.bias",
             "blocks.{i}.mlp.in": "bert.encoder.layer.{i}.intermediate.dense.weight",
             "blocks.{i}.mlp.b_in": "bert.encoder.layer.{i}.intermediate.dense.bias",
             "blocks.{i}.mlp.out": "bert.encoder.layer.{i}.output.dense.weight",
@@ -109,8 +109,24 @@ class BertArchitectureAdapter(ArchitectureAdapter):
                 submodules={
                     "ln1": NormalizationBridge(name="attention.output.LayerNorm", config=self.cfg),
                     "ln2": NormalizationBridge(name="output.LayerNorm", config=self.cfg),
-                    "attn": AttentionBridge(name="attention", config=self.cfg),
-                    "mlp": MLPBridge(name="intermediate"),
+                    "attn": AttentionBridge(
+                        name="attention",
+                        config=self.cfg,
+                        submodules={
+                            "q": LinearBridge(name="self.query"),
+                            "k": LinearBridge(name="self.key"),
+                            "v": LinearBridge(name="self.value"),
+                            "o": LinearBridge(name="output.dense"),
+                        },
+                    ),
+                    "mlp": MLPBridge(
+                        name="intermediate",
+                        config=self.cfg,
+                        submodules={
+                            "in": LinearBridge(name="dense"),
+                            "out": LinearBridge(name="../output.dense"),
+                        },
+                    ),
                 },
             ),
             "unembed": UnembeddingBridge(name="cls.predictions"),

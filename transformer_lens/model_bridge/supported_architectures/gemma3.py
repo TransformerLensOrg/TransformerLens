@@ -50,11 +50,11 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
                 ),
                 source_key="model.embed_tokens.weight",
             ),
-            # Q/K/V weight conversions (using canonical W_Q/W_K/W_V naming)
+            # Q/K/V weight conversions
             "blocks.{i}.attn.q.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
             ),
-            "blocks.{i}.attn.W_K": ParamProcessingConversion(
+            "blocks.{i}.attn.k.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
                     "(n h) m -> n m h",
                     n=getattr(
