@@ -79,6 +79,7 @@ class QwenArchitectureAdapter(ArchitectureAdapter):
                     "ln2": NormalizationBridge(name="ln_2", config=self.cfg),
                     "mlp": GatedMLPBridge(
                         name="mlp",
+                        config=self.cfg,
                         submodules={
                             "gate": LinearBridge(name="w1"),
                             "in": LinearBridge(name="w2"),

@@ -46,43 +46,43 @@ class PhiArchitectureAdapter(ArchitectureAdapter):
             "blocks.{i}.ln1.b": "transformer.h.{i}.ln_1.bias",
             "blocks.{i}.ln2.w": "transformer.h.{i}.ln_2.weight",
             "blocks.{i}.ln2.b": "transformer.h.{i}.ln_2.bias",
-            "blocks.{i}.attn.q": ParamProcessingConversion(
+            "blocks.{i}.attn.q.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
                     "d_model (3 n_head d_head) -> 3 n_head d_head d_model"
                 ),
                 source_key="transformer.h.{i}.attn.c_attn.weight",
             ),
-            "blocks.{i}.attn.k": ParamProcessingConversion(
+            "blocks.{i}.attn.k.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
                     "d_model (3 n_head d_head) -> 3 n_head d_head d_model"
                 ),
                 source_key="transformer.h.{i}.attn.c_attn.weight",
             ),
-            "blocks.{i}.attn.v": ParamProcessingConversion(
+            "blocks.{i}.attn.v.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
                     "d_model (3 n_head d_head) -> 3 n_head d_head d_model"
                 ),
                 source_key="transformer.h.{i}.attn.c_attn.weight",
             ),
-            "blocks.{i}.attn.b_Q": ParamProcessingConversion(
+            "blocks.{i}.attn.q.bias": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("(3 n_head d_head) -> 3 n_head d_head"),
                 source_key="transformer.h.{i}.attn.c_attn.bias",
             ),
-            "blocks.{i}.attn.b_K": ParamProcessingConversion(
+            "blocks.{i}.attn.k.bias": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("(3 n_head d_head) -> 3 n_head d_head"),
                 source_key="transformer.h.{i}.attn.c_attn.bias",
             ),
-            "blocks.{i}.attn.b_V": ParamProcessingConversion(
+            "blocks.{i}.attn.v.bias": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("(3 n_head d_head) -> 3 n_head d_head"),
                 source_key="transformer.h.{i}.attn.c_attn.bias",
             ),
-            "blocks.{i}.attn.o": ParamProcessingConversion(
+            "blocks.{i}.attn.o.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
                     "(n_head d_head) d_model -> n_head d_head d_model"
                 ),
                 source_key="transformer.h.{i}.attn.c_proj.weight",
             ),
-            "blocks.{i}.attn.b_O": "transformer.h.{i}.attn.c_proj.bias",
+            "blocks.{i}.attn.o.bias": "transformer.h.{i}.attn.c_proj.bias",
             "blocks.{i}.mlp.in": "transformer.h.{i}.mlp.c_fc.weight",
             "blocks.{i}.mlp.b_in": "transformer.h.{i}.mlp.c_fc.bias",
             "blocks.{i}.mlp.out": "transformer.h.{i}.mlp.c_proj.weight",

@@ -41,43 +41,43 @@ class MixtralArchitectureAdapter(ArchitectureAdapter):
             "blocks.{i}.ln1.b": "model.layers.{i}.input_layernorm.bias",
             "blocks.{i}.ln2.w": "model.layers.{i}.post_attention_layernorm.weight",
             "blocks.{i}.ln2.b": "model.layers.{i}.post_attention_layernorm.bias",
-            "blocks.{i}.attn.q": ParamProcessingConversion(
+            "blocks.{i}.attn.q.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
                     "(h d_head) d_model -> h d_head d_model"
                 ),
                 source_key="model.layers.{i}.self_attn.q_proj.weight",
             ),
-            "blocks.{i}.attn.k": ParamProcessingConversion(
+            "blocks.{i}.attn.k.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
                     "(h d_head) d_model -> h d_head d_model"
                 ),
                 source_key="model.layers.{i}.self_attn.k_proj.weight",
             ),
-            "blocks.{i}.attn.v": ParamProcessingConversion(
+            "blocks.{i}.attn.v.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
                     "(h d_head) d_model -> h d_head d_model"
                 ),
                 source_key="model.layers.{i}.self_attn.v_proj.weight",
             ),
-            "blocks.{i}.attn.b_Q": ParamProcessingConversion(
+            "blocks.{i}.attn.q.bias": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("(h d_head) -> h d_head"),
                 source_key="model.layers.{i}.self_attn.q_proj.bias",
             ),
-            "blocks.{i}.attn.b_K": ParamProcessingConversion(
+            "blocks.{i}.attn.k.bias": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("(h d_head) -> h d_head"),
                 source_key="model.layers.{i}.self_attn.k_proj.bias",
             ),
-            "blocks.{i}.attn.b_V": ParamProcessingConversion(
+            "blocks.{i}.attn.v.bias": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("(h d_head) -> h d_head"),
                 source_key="model.layers.{i}.self_attn.v_proj.bias",
             ),
-            "blocks.{i}.attn.o": ParamProcessingConversion(
+            "blocks.{i}.attn.o.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
                     "d_model (h d_head) -> h d_head d_model"
                 ),
                 source_key="model.layers.{i}.self_attn.o_proj.weight",
             ),
-            "blocks.{i}.attn.b_O": "model.layers.{i}.self_attn.o_proj.bias",
+            "blocks.{i}.attn.o.bias": "model.layers.{i}.self_attn.o_proj.bias",
             "blocks.{i}.mlp.in": "model.layers.{i}.mlp.gate_proj.weight",
             "blocks.{i}.mlp.b_in": "model.layers.{i}.mlp.gate_proj.bias",
             "blocks.{i}.mlp.out": "model.layers.{i}.mlp.down_proj.weight",

@@ -16,7 +16,7 @@ from transformer_lens.model_bridge.generalized_components import (
     EmbeddingBridge,
     GatedMLPBridge,
     LinearBridge,
-    NormalizationBridge,
+    RMSNormalizationBridge,
     UnembeddingBridge,
 )
 
@@ -25,6 +25,11 @@ class Phi3ArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for Phi-3 models."""
 
     def __init__(self, cfg: Any) -> None:
+        """Initialize the Phi-3 architecture adapter.
+
+        Args:
+            cfg: The configuration object.
+        """
         super().__init__(cfg)
 
         # Set config variables for weight processing
@@ -33,6 +38,8 @@ class Phi3ArchitectureAdapter(ArchitectureAdapter):
         self.cfg.final_rms = False
         self.cfg.gated_mlp = True
         self.cfg.attn_only = False
+
+        self.cfg.uses_rms_norm = True
 
         self.weight_processing_conversions = {
             "embed.e": "model.embed_tokens.weight",
@@ -80,8 +87,8 @@ class Phi3ArchitectureAdapter(ArchitectureAdapter):
             "blocks": BlockBridge(
                 name="model.layers",
                 submodules={
-                    "ln1": NormalizationBridge(name="input_layernorm", config=self.cfg),
-                    "ln2": NormalizationBridge(name="post_attention_layernorm", config=self.cfg),
+                    "ln1": RMSNormalizationBridge(name="input_layernorm", config=self.cfg),
+                    "ln2": RMSNormalizationBridge(name="post_attention_layernorm", config=self.cfg),
                     "attn": AttentionBridge(
                         name="self_attn",
                         config=self.cfg,
@@ -105,6 +112,6 @@ class Phi3ArchitectureAdapter(ArchitectureAdapter):
                     ),
                 },
             ),
-            "ln_final": NormalizationBridge(name="model.norm", config=self.cfg),
+            "ln_final": RMSNormalizationBridge(name="model.norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head"),
         }
