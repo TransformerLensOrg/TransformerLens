@@ -30,13 +30,6 @@ class MingptArchitectureAdapter(ArchitectureAdapter):
         """
         super().__init__(cfg)
 
-        # Set config variables for weight processing
-        self.cfg.normalization_type = "LN"
-        self.cfg.positional_embedding_type = "standard"
-        self.cfg.final_rms = False
-        self.cfg.gated_mlp = False
-        self.cfg.attn_only = False
-
         self.weight_processing_conversions = {
             "pos_embed.pos": "transformer.wpe.weight",
             "embed.e": "transformer.wte.weight",
@@ -44,43 +37,43 @@ class MingptArchitectureAdapter(ArchitectureAdapter):
             "blocks.{i}.ln1.b": "transformer.h.{i}.ln_1.bias",
             "blocks.{i}.ln2.w": "transformer.h.{i}.ln_2.weight",
             "blocks.{i}.ln2.b": "transformer.h.{i}.ln_2.bias",
-            "blocks.{i}.attn.q": ParamProcessingConversion(
+            "blocks.{i}.attn.q.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
                     "d_model (3 n_head d_head) -> 3 n_head d_head d_model"
                 ),
                 source_key="transformer.h.{i}.attn.c_attn.weight",
             ),
-            "blocks.{i}.attn.k": ParamProcessingConversion(
+            "blocks.{i}.attn.k.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
                     "d_model (3 n_head d_head) -> 3 n_head d_head d_model"
                 ),
                 source_key="transformer.h.{i}.attn.c_attn.weight",
             ),
-            "blocks.{i}.attn.v": ParamProcessingConversion(
+            "blocks.{i}.attn.v.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
                     "d_model (3 n_head d_head) -> 3 n_head d_head d_model"
                 ),
                 source_key="transformer.h.{i}.attn.c_attn.weight",
             ),
-            "blocks.{i}.attn.b_Q": ParamProcessingConversion(
+            "blocks.{i}.attn.q.bias": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("(3 n_head d_head) -> 3 n_head d_head"),
                 source_key="transformer.h.{i}.attn.c_attn.bias",
             ),
-            "blocks.{i}.attn.b_K": ParamProcessingConversion(
+            "blocks.{i}.attn.k.bias": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("(3 n_head d_head) -> 3 n_head d_head"),
                 source_key="transformer.h.{i}.attn.c_attn.bias",
             ),
-            "blocks.{i}.attn.b_V": ParamProcessingConversion(
+            "blocks.{i}.attn.v.bias": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("(3 n_head d_head) -> 3 n_head d_head"),
                 source_key="transformer.h.{i}.attn.c_attn.bias",
             ),
-            "blocks.{i}.attn.o": ParamProcessingConversion(
+            "blocks.{i}.attn.o.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
                     "d_model (n_head d_head) -> n_head d_head d_model"
                 ),
                 source_key="transformer.h.{i}.attn.c_proj.weight",
             ),
-            "blocks.{i}.attn.b_O": "transformer.h.{i}.attn.c_proj.bias",
+            "blocks.{i}.attn.o.bias": "transformer.h.{i}.attn.c_proj.bias",
             "blocks.{i}.mlp.in": "transformer.h.{i}.mlp.c_fc.weight",
             "blocks.{i}.mlp.b_in": "transformer.h.{i}.mlp.c_fc.bias",
             "blocks.{i}.mlp.out": "transformer.h.{i}.mlp.c_proj.weight",
@@ -98,24 +91,25 @@ class MingptArchitectureAdapter(ArchitectureAdapter):
             "blocks": BlockBridge(
                 name="transformer.h",  # Base path for blocks
                 submodules={
-                    "ln1": NormalizationBridge(name="ln_1", config=self.cfg),
-                    "ln2": NormalizationBridge(name="ln_2", config=self.cfg),
+                    "ln1": NormalizationBridge(
+                        name="ln_1", config=self.cfg
+                    ),  # Pre-attention layer norm
+                    "ln2": NormalizationBridge(name="ln_2", config=self.cfg),  # Pre-MLP layer norm
                     "attn": JointQKVAttentionBridge(
                         name="attn",
                         config=self.cfg,
                         submodules={
-                            "qkv": LinearBridge(name="c_attn"),
-                            "o": LinearBridge(name="c_proj"),
+                            "qkv": LinearBridge(name="c_attn"),  # Combined QKV projection
+                            "o": LinearBridge(name="c_proj"),  # Output projection
                         },
-                    ),
+                    ),  # Full attention module
                     "mlp": MLPBridge(
                         name="mlp",
-                        config=self.cfg,
                         submodules={
                             "in": LinearBridge(name="c_fc"),
                             "out": LinearBridge(name="c_proj"),
                         },
-                    ),
+                    ),  # Full MLP module
                 },
             ),
             "ln_final": NormalizationBridge(
