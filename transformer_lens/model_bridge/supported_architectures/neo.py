@@ -92,46 +92,38 @@ class NeoArchitectureAdapter(ArchitectureAdapter):
                 tensor_conversion=NeoLinearTransposeConversion(
                     "d_model (n h) -> n d_model h", n=self.cfg.n_heads
                 ),
-                source_key="transformer.h.{i}.attn.attention.q_proj.weight",
             ),
             "blocks.{i}.attn.k.weight": ParamProcessingConversion(
                 tensor_conversion=NeoLinearTransposeConversion(
                     "d_model (n h) -> n d_model h", n=self.cfg.n_heads
                 ),
-                source_key="transformer.h.{i}.attn.attention.k_proj.weight",
             ),
             "blocks.{i}.attn.v.weight": ParamProcessingConversion(
                 tensor_conversion=NeoLinearTransposeConversion(
                     "d_model (n h) -> n d_model h", n=self.cfg.n_heads
                 ),
-                source_key="transformer.h.{i}.attn.attention.v_proj.weight",
             ),
             "blocks.{i}.attn.o.weight": ParamProcessingConversion(
                 tensor_conversion=NeoLinearTransposeConversion(
                     "(n h) d_model -> n h d_model", n=self.cfg.n_heads
                 ),
-                source_key="transformer.h.{i}.attn.attention.out_proj.weight",
             ),
             # Property access keys - for MLP
-            "blocks.{i}.mlp.W_in": ParamProcessingConversion(
+            "blocks.{i}.mlp.in.weight": ParamProcessingConversion(
                 tensor_conversion=NeoLinearTransposeConversion(),  # Just transpose, no rearrange needed,
                 source_key="transformer.h.{i}.mlp.c_fc.weight",
             ),
-            "blocks.{i}.mlp.W_out": ParamProcessingConversion(
+            "blocks.{i}.mlp.out.weight": ParamProcessingConversion(
                 tensor_conversion=NeoLinearTransposeConversion(),  # Just transpose, no rearrange needed,
-                source_key="transformer.h.{i}.mlp.c_proj.weight",
             ),
             "blocks.{i}.attn.q.bias": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("(n h) -> n h", n=self.cfg.n_heads),
-                source_key="transformer.h.{i}.attn.attention.q_proj.bias",
             ),
             "blocks.{i}.attn.k.bias": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("(n h) -> n h", n=self.cfg.n_heads),
-                source_key="transformer.h.{i}.attn.attention.k_proj.bias",
             ),
             "blocks.{i}.attn.v.bias": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("(n h) -> n h", n=self.cfg.n_heads),
-                source_key="transformer.h.{i}.attn.attention.v_proj.bias",
             ),
         }
 
