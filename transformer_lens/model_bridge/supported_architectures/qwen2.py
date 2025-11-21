@@ -57,25 +57,21 @@ class Qwen2ArchitectureAdapter(ArchitectureAdapter):
         self.weight_processing_conversions = {
             "blocks.{i}.attn.q.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
-                source_key="model.layers.{i}.self_attn.q_proj.weight",
             ),
             "blocks.{i}.attn.k.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
                     "(n h) m -> n m h",
                     n=getattr(self.cfg, "num_key_value_heads", self.cfg.n_heads),
                 ),
-                source_key="model.layers.{i}.self_attn.k_proj.weight",
             ),
             "blocks.{i}.attn.v.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
                     "(n h) m -> n m h",
                     n=getattr(self.cfg, "num_key_value_heads", self.cfg.n_heads),
                 ),
-                source_key="model.layers.{i}.self_attn.v_proj.weight",
             ),
             "blocks.{i}.attn.o.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("m (n h) -> n h m", n=self.cfg.n_heads),
-                source_key="model.layers.{i}.self_attn.o_proj.weight",
             ),
         }
         self.component_mapping = {

@@ -40,37 +40,30 @@ class MixtralArchitectureAdapter(ArchitectureAdapter):
                 tensor_conversion=RearrangeTensorConversion(
                     "(h d_head) d_model -> h d_head d_model"
                 ),
-                source_key="model.layers.{i}.self_attn.q_proj.weight",
             ),
             "blocks.{i}.attn.k.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
                     "(h d_head) d_model -> h d_head d_model"
                 ),
-                source_key="model.layers.{i}.self_attn.k_proj.weight",
             ),
             "blocks.{i}.attn.v.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
                     "(h d_head) d_model -> h d_head d_model"
                 ),
-                source_key="model.layers.{i}.self_attn.v_proj.weight",
             ),
             "blocks.{i}.attn.q.bias": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("(h d_head) -> h d_head"),
-                source_key="model.layers.{i}.self_attn.q_proj.bias",
             ),
             "blocks.{i}.attn.k.bias": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("(h d_head) -> h d_head"),
-                source_key="model.layers.{i}.self_attn.k_proj.bias",
             ),
             "blocks.{i}.attn.v.bias": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("(h d_head) -> h d_head"),
-                source_key="model.layers.{i}.self_attn.v_proj.bias",
             ),
             "blocks.{i}.attn.o.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
                     "d_model (h d_head) -> h d_head d_model"
                 ),
-                source_key="model.layers.{i}.self_attn.o_proj.weight",
             ),
         }
 

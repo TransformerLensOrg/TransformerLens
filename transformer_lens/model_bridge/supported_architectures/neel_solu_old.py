@@ -31,29 +31,25 @@ class NeelSoluOldArchitectureAdapter(ArchitectureAdapter):
         super().__init__(cfg)
 
         self.weight_processing_conversions = {
-            "blocks.{i}.attn.q": ParamProcessingConversion(
+            "blocks.{i}.attn.q.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
                     "d_model n_head d_head -> n_head d_model d_head"
                 ),
-                source_key="blocks.{i}.attn.W_Q",
             ),
-            "blocks.{i}.attn.k": ParamProcessingConversion(
+            "blocks.{i}.attn.k.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
                     "d_model n_head d_head -> n_head d_model d_head"
                 ),
-                source_key="blocks.{i}.attn.W_K",
             ),
-            "blocks.{i}.attn.v": ParamProcessingConversion(
+            "blocks.{i}.attn.v.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
                     "d_model n_head d_head -> n_head d_model d_head"
                 ),
-                source_key="blocks.{i}.attn.W_V",
             ),
-            "blocks.{i}.attn.o": ParamProcessingConversion(
+            "blocks.{i}.attn.o.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
                     "n_head d_head d_model -> n_head d_head d_model"
                 ),
-                source_key="blocks.{i}.attn.W_O",
             ),
         }
         self.component_mapping = {

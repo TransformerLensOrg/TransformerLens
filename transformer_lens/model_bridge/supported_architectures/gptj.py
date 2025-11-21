@@ -33,21 +33,17 @@ class GptjArchitectureAdapter(ArchitectureAdapter):
         self.cfg.attn_only = False
 
         self.weight_processing_conversions = {
-            "blocks.{i}.attn.q": ParamProcessingConversion(
+            "blocks.{i}.attn.q.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
-                source_key="transformer.h.{i}.attn.q_proj.weight",
             ),
-            "blocks.{i}.attn.k": ParamProcessingConversion(
+            "blocks.{i}.attn.k.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
-                source_key="transformer.h.{i}.attn.k_proj.weight",
             ),
-            "blocks.{i}.attn.v": ParamProcessingConversion(
+            "blocks.{i}.attn.v.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
-                source_key="transformer.h.{i}.attn.v_proj.weight",
             ),
-            "blocks.{i}.attn.o": ParamProcessingConversion(
+            "blocks.{i}.attn.o.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("m (n h) -> n h m", n=self.cfg.n_heads),
-                source_key="transformer.h.{i}.attn.out_proj.weight",
             ),
         }
 
