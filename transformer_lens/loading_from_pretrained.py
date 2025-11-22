@@ -1200,7 +1200,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any):
             "attention_dir": "bidirectional",
             "d_vocab": -1,  # no text vocabulary
         }
-    elif architecture == "Wav2Vec2Model":
+    elif "wav2vec2-base" in official_model_name or "wav2vec2-large" in official_model_name:
         # Basic transformer configuration
         cfg_dict = {
             "d_model": hf_config.hidden_size,
