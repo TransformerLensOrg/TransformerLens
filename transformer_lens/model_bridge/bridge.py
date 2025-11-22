@@ -105,6 +105,8 @@ class TransformerBridge(nn.Module):
         "hook_pos_embed": ["pos_embed.hook_out", "rotary_emb.hook_out"],
         "hook_unembed": "unembed.hook_out",
     }
+    # HF-style flags that commonly request a dict/ModelOutput from HF `generate`
+    hf_dict_flags = ("output_scores", "output_logits", "output_attentions", "output_hidden_states")
 
     def __init__(
         self,
@@ -6003,7 +6005,10 @@ class TransformerBridge(nn.Module):
         padding_side: Optional[str] = None,
         return_type: Optional[str] = "input",
         verbose: bool = True,
-    ) -> Union[str, List[str], torch.Tensor]:
+        **generation_kwargs,
+    ) -> Union[str, List[str], torch.Tensor, Any]:  # Any to support transformers.utils.ModelOutput
+        # Using Any due to beartype's forward reference resolution limitations.
+        # See: https://github.com/beartype/beartype/issues/546
         """Generate text from the model using the underlying HuggingFace model."""
         # Handle string input by tokenizing it
         if isinstance(input, str):
@@ -6024,13 +6029,16 @@ class TransformerBridge(nn.Module):
             if input_ids.device != self.cfg.device:
                 input_ids = input_ids.to(self.cfg.device)
 
-        # Set up generation parameters for HuggingFace
-        generation_kwargs = {
-            "max_new_tokens": max_new_tokens,
-            "do_sample": do_sample,
-            "temperature": temperature,
-            "pad_token_id": self.tokenizer.eos_token_id,
-        }
+        # explicit args supplied will override values in generation_kwargs.
+        generation_kwargs = dict(generation_kwargs) if generation_kwargs is not None else {}
+        generation_kwargs.update(
+            {
+                "max_new_tokens": max_new_tokens,
+                "do_sample": do_sample,
+                "temperature": temperature,
+                "pad_token_id": self.tokenizer.eos_token_id,
+            }
+        )
 
         if top_k is not None:
             generation_kwargs["top_k"] = top_k
@@ -6044,17 +6052,45 @@ class TransformerBridge(nn.Module):
         if use_past_kv_cache:
             generation_kwargs["use_cache"] = True
 
+        # If callers provide HF-style output flags, pass them through.
+        any_flag_set = False
+        for f in type(self).hf_dict_flags:
+            if f in generation_kwargs and generation_kwargs.get(f) is not None:
+                # coerce value to bool if appropriate and pass through to HF generate
+                generation_kwargs[f] = bool(generation_kwargs[f])
+                any_flag_set = True
+        if any_flag_set:
+            # Ensure HF returns a ModelOutput for these flags by default
+            generation_kwargs.setdefault("return_dict_in_generate", True)
+
         # Generate using the original HuggingFace model
         with torch.no_grad():
             outputs = self.original_model.generate(input_ids, **generation_kwargs)  # type: ignore[operator]
+
+        try:
+            # We import ModelOutput lazily to avoid import cycles; this is a duck-typing check
+            from transformers.utils import ModelOutput  # type: ignore
+
+            is_model_output = isinstance(outputs, ModelOutput)
+        except Exception:
+            is_model_output = False
 
         # Return based on return_type and input format
         if return_type == "input" or return_type is None:
             if isinstance(input, str):
                 # Decode the full output back to string
+                # If we have a ModelOutput with sequences, decode those
+                if is_model_output and hasattr(outputs, "sequences"):
+                    seqs = outputs.sequences
+                    return self.tokenizer.decode(seqs[0], skip_special_tokens=True)
                 return self.tokenizer.decode(outputs[0], skip_special_tokens=True)
             elif isinstance(input, list):
                 # Decode each sequence in the batch
+                if is_model_output and hasattr(outputs, "sequences"):
+                    return [
+                        self.tokenizer.decode(seq, skip_special_tokens=True)
+                        for seq in outputs.sequences
+                    ]
                 return [self.tokenizer.decode(seq, skip_special_tokens=True) for seq in outputs]
             else:
                 # Return the full token sequence including input
@@ -6064,8 +6100,15 @@ class TransformerBridge(nn.Module):
         else:
             # For other return types, default to the decoded text
             if isinstance(input, str):
+                if is_model_output and hasattr(outputs, "sequences"):
+                    return self.tokenizer.decode(outputs.sequences[0], skip_special_tokens=True)
                 return self.tokenizer.decode(outputs[0], skip_special_tokens=True)
             elif isinstance(input, list):
+                if is_model_output and hasattr(outputs, "sequences"):
+                    return [
+                        self.tokenizer.decode(seq, skip_special_tokens=True)
+                        for seq in outputs.sequences
+                    ]
                 return [self.tokenizer.decode(seq, skip_special_tokens=True) for seq in outputs]
             else:
                 return outputs
@@ -6263,10 +6306,18 @@ class TransformerBridge(nn.Module):
             cache = {}
 
         if names_filter is None:
-            names_filter = lambda name: True
+
+            def _names_filter_all(name: str) -> bool:
+                return True
+
+            names_filter = _names_filter_all
         elif isinstance(names_filter, str):
             filter_str = names_filter
-            names_filter = lambda name: filter_str in name
+
+            def _names_filter_contains(name: str) -> bool:
+                return filter_str in name
+
+            names_filter = _names_filter_contains
         elif callable(names_filter):
             pass  # Already a function
         else:
