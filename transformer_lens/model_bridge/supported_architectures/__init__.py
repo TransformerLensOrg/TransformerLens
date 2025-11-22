@@ -70,6 +70,9 @@ from transformer_lens.model_bridge.supported_architectures.qwen import (
 from transformer_lens.model_bridge.supported_architectures.qwen2 import (
     Qwen2ArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.qwen3 import (
+    Qwen3ArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.t5 import (
     T5ArchitectureAdapter,
 )
@@ -97,5 +100,6 @@ __all__ = [
     "PythiaArchitectureAdapter",
     "QwenArchitectureAdapter",
     "Qwen2ArchitectureAdapter",
+    "Qwen3ArchitectureAdapter",
     "T5ArchitectureAdapter",
 ]
