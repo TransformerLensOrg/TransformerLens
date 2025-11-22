@@ -67,7 +67,6 @@ class Phi3ArchitectureAdapter(ArchitectureAdapter):
                 tensor_conversion=RearrangeTensorConversion("m (n h) -> n h m", n=self.cfg.n_heads),
                 source_key="model.layers.{i}.self_attn.o_proj.weight",
             ),
-            "blocks.{i}.ln2.w": "model.layers.{i}.post_attention_layernorm.weight",
             "blocks.{i}.mlp.in": ParamProcessingConversion(
                 tensor_conversion=SplitTensorConversion(1, 2, dim=1),
                 source_key="model.layers.{i}.mlp.gate_up_proj.weight",
