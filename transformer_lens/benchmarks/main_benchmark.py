@@ -540,8 +540,14 @@ def run_benchmark_suite(
         print(f"Device: {device}")
         print(f"{'='*80}\n")
 
+    # Track current phase for result tagging
+    current_phase = [None]  # Use list to allow modification in nested function
+
     def add_result(result: BenchmarkResult) -> None:
         """Add a result and optionally print it immediately."""
+        # Tag result with current phase
+        if current_phase[0] is not None and result.phase is None:
+            result.phase = current_phase[0]
         results.append(result)
         if verbose:
             result.print_immediate()
@@ -701,6 +707,7 @@ def run_benchmark_suite(
     # ========================================================================
     # PHASE 1: HuggingFace + Bridge (unprocessed)
     # ========================================================================
+    current_phase[0] = 1
     if verbose:
         print(f"\n{'='*80}")
         print("PHASE 1: HuggingFace + TransformerBridge (unprocessed)")
@@ -818,6 +825,7 @@ def run_benchmark_suite(
     # ========================================================================
     # PHASE 2: Bridge (unprocessed) + HookedTransformer (unprocessed)
     # ========================================================================
+    current_phase[0] = 2
     if verbose:
         print(f"\n{'='*80}")
         print("PHASE 2: TransformerBridge (unprocessed) + HookedTransformer (unprocessed)")
@@ -888,6 +896,10 @@ def run_benchmark_suite(
             verbose=verbose,
             gpt2_reference=None,  # No cross-model ref for Phase 2
         )
+        # Tag all phase 2 results with phase number
+        for result in phase2_results:
+            if result.phase is None:
+                result.phase = 2
         results.extend(phase2_results)
 
         # Generation benchmarks already run above (before loading HT)
@@ -903,6 +915,7 @@ def run_benchmark_suite(
     # ========================================================================
     # PHASE 3: Bridge (processed) + HookedTransformer (processed)
     # ========================================================================
+    current_phase[0] = 3
     if not enable_compatibility_mode:
         if verbose:
             print("\n⚠ Compatibility mode disabled - skipping Phase 3\n")
@@ -1042,6 +1055,10 @@ def run_benchmark_suite(
             verbose=verbose,
             gpt2_reference=gpt2_reference,  # Use GPT-2 cross-model ref if no same-arch HT
         )
+        # Tag all phase 3 results with phase number
+        for result in phase3_results:
+            if result.phase is None:
+                result.phase = 3
         results.extend(phase3_results)
 
     # Clean up Phase 3 models before reporting memory
@@ -1107,12 +1124,40 @@ def run_benchmark_suite(
         print("BENCHMARK SUMMARY")
         print("=" * 80)
 
+        # Group results by phase
+        results_by_phase = {}
+        for r in results:
+            phase = r.phase if r.phase is not None else "Other"
+            if phase not in results_by_phase:
+                results_by_phase[phase] = []
+            results_by_phase[phase].append(r)
+
+        # Print phase-by-phase summary
+        for phase in sorted(results_by_phase.keys(), key=lambda x: x if isinstance(x, int) else 999):
+            phase_results = results_by_phase[phase]
+            phase_name = f"Phase {phase}" if isinstance(phase, int) else phase
+
+            phase_passed = sum(1 for r in phase_results if r.passed and r.severity != BenchmarkSeverity.SKIPPED)
+            phase_failed = sum(1 for r in phase_results if not r.passed and r.severity != BenchmarkSeverity.SKIPPED)
+            phase_skipped = sum(1 for r in phase_results if r.severity == BenchmarkSeverity.SKIPPED)
+            phase_total = len(phase_results)
+            phase_run = phase_total - phase_skipped
+
+            print(f"\n{phase_name}: {phase_run} tests run")
+            if phase_run > 0:
+                print(f"  Passed: {phase_passed}/{phase_run} ({phase_passed/phase_run*100:.1f}%)")
+                print(f"  Failed: {phase_failed}/{phase_run} ({phase_failed/phase_run*100:.1f}%)")
+            if phase_skipped > 0:
+                print(f"  Skipped: {phase_skipped}")
+
+        # Overall summary
         passed = sum(1 for r in results if r.passed and r.severity != BenchmarkSeverity.SKIPPED)
         failed = sum(1 for r in results if not r.passed and r.severity != BenchmarkSeverity.SKIPPED)
         skipped = sum(1 for r in results if r.severity == BenchmarkSeverity.SKIPPED)
         total = len(results)
         run_tests = total - skipped
 
+        print(f"\nOverall:")
         print(f"Total: {total} tests")
         if skipped > 0:
             print(f"Run: {run_tests} tests")

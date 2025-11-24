@@ -26,6 +26,7 @@ class BenchmarkResult:
     message: str
     details: Optional[Dict[str, Any]] = None
     passed: bool = True
+    phase: Optional[int] = None  # Phase number (1, 2, 3, etc.)
 
     def __str__(self) -> str:
         """Format result for console output."""
