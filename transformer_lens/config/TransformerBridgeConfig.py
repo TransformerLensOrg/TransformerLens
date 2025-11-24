@@ -24,7 +24,6 @@ class TransformerBridgeConfig(TransformerLensConfig):
         n_ctx: int,
         n_heads: int = -1,  # Add n_heads to signature so it's not filtered out by from_dict
         d_vocab: int = -1,
-        n_heads: int = -1,
         architecture: Optional[str] = None,
         tokenizer_prepends_bos: bool = True,
         default_padding_side: Optional[str] = None,
