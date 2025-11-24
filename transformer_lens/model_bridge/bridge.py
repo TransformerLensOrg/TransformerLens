@@ -4,6 +4,7 @@ This module provides the bridge components that wrap remote model components and
 a consistent interface for accessing their weights and performing operations.
 """
 import re
+from contextlib import contextmanager
 from functools import lru_cache
 from typing import (
     TYPE_CHECKING,
@@ -20,6 +21,7 @@ from typing import (
     overload,
 )
 
+import einops
 import numpy as np
 import torch
 from torch import nn
@@ -29,18 +31,19 @@ from transformer_lens.ActivationCache import ActivationCache
 from transformer_lens.cache.key_value_cache import TransformerLensKeyValueCache
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookPoint
+from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
+from transformer_lens.model_bridge.component_setup import set_original_components
+from transformer_lens.model_bridge.exceptions import StopAtLayerException
+from transformer_lens.model_bridge.generalized_components.base import (
+    GeneralizedComponent,
+)
+from transformer_lens.model_bridge.get_params_util import get_bridge_params
+from transformer_lens.utilities.aliases import resolve_alias
+
+if TYPE_CHECKING:
+    from transformer_lens.ActivationCache import ActivationCache
 
 _BLOCK_PATTERN = re.compile("blocks\\.(\\d+)")
-
-
-class StopAtLayerException(Exception):
-    """Exception to stop forward pass at a specific layer."""
-
-    def __init__(self, tensor, layer_idx):
-        self.tensor = tensor
-        self.layer_idx = layer_idx
-        self.layer_output = tensor
-        super().__init__(f"Stopped at layer {layer_idx}")
 
 
 def build_alias_to_canonical_map(hook_dict, prefix=""):
@@ -69,18 +72,6 @@ def build_alias_to_canonical_map(hook_dict, prefix=""):
             if key != value.name:
                 aliases[full_key] = value.name
     return aliases
-
-
-from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
-from transformer_lens.model_bridge.component_setup import set_original_components
-from transformer_lens.model_bridge.generalized_components.base import (
-    GeneralizedComponent,
-)
-from transformer_lens.model_bridge.get_params_util import get_bridge_params
-from transformer_lens.utilities.aliases import resolve_alias
-
-if TYPE_CHECKING:
-    from transformer_lens.ActivationCache import ActivationCache
 
 
 class TransformerBridge(nn.Module):
@@ -238,8 +229,6 @@ class TransformerBridge(nn.Module):
         This allows property aliases (W_Q, W_K, W_V) to return 3D format for
         HookedTransformer compatibility while keeping 2D format for calculations.
         """
-        import einops
-        import torch
 
         n_heads = self.cfg.n_heads
         d_head = self.cfg.d_head
@@ -702,7 +691,6 @@ class TransformerBridge(nn.Module):
 
         if verbose:
             print(f"Processing weights for {self.cfg.model_name}...")
-        import torch
 
         if verbose:
             print("  Extracting state dict from existing model...")
@@ -1131,7 +1119,6 @@ class TransformerBridge(nn.Module):
         Returns:
             Model output based on return_type
         """
-        from transformer_lens.model_bridge.exceptions import StopAtLayerException
 
         # Set stop_at_layer flag on all blocks if requested
         if stop_at_layer is not None and hasattr(self, "blocks"):
@@ -1414,7 +1401,7 @@ class TransformerBridge(nn.Module):
             last_layer_to_process = stop_at_layer - 1
 
             def stop_hook(tensor: torch.Tensor, *, hook: Any) -> torch.Tensor:
-                raise StopAtLayerException(tensor, stop_at_layer)
+                raise StopAtLayerException(tensor)
 
             if stop_at_layer >= 0 and stop_at_layer < len(self.blocks):
                 # Stop at the beginning of the specified block, not at the end of the previous block
@@ -1477,8 +1464,6 @@ class TransformerBridge(nn.Module):
                 elif target_name in cache and alias_name not in cache:
                     cache[alias_name] = cache[target_name]
         if return_cache_object:
-            from transformer_lens.ActivationCache import ActivationCache
-
             activation_cache = ActivationCache(cache, self, has_batch_dim=True)
             if remove_batch_dim:
                 activation_cache.remove_batch_dim()
@@ -1555,7 +1540,7 @@ class TransformerBridge(nn.Module):
             last_layer_to_process = stop_at_layer - 1
 
             def stop_hook(tensor: torch.Tensor, *, hook: Any) -> torch.Tensor:
-                raise StopAtLayerException(tensor, stop_at_layer)
+                raise StopAtLayerException(tensor)
 
             if stop_at_layer >= 0 and stop_at_layer < len(self.blocks):
                 # Stop at the beginning of the specified block, not at the end of the previous block
@@ -1858,7 +1843,6 @@ class TransformerBridge(nn.Module):
             with model.hooks(fwd_hooks=[("hook_embed", my_hook)]):
                 output = model("Hello world")
         """
-        from contextlib import contextmanager
 
         @contextmanager
         def _hooks_context():

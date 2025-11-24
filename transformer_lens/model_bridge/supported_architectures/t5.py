@@ -40,39 +40,7 @@ class T5ArchitectureAdapter(ArchitectureAdapter):
         self.cfg.gated_mlp = False
         self.cfg.attn_only = False
 
-        self.weight_processing_conversions = {
-            # Shared embeddings
-            "embed.e": "shared.weight",
-            # Encoder components
-            "pos_embed.pos": "encoder.block.0.layer.0.SelfAttention.relative_attention_bias.weight",
-            "encoder_blocks.{i}.ln1.w": "encoder.block.{i}.layer.0.layer_norm.weight",
-            "encoder_blocks.{i}.attn.q": "encoder.block.{i}.layer.0.SelfAttention.q.weight",
-            "encoder_blocks.{i}.attn.k": "encoder.block.{i}.layer.0.SelfAttention.k.weight",
-            "encoder_blocks.{i}.attn.v": "encoder.block.{i}.layer.0.SelfAttention.v.weight",
-            "encoder_blocks.{i}.attn.o": "encoder.block.{i}.layer.0.SelfAttention.o.weight",
-            "encoder_blocks.{i}.ln2.w": "encoder.block.{i}.layer.1.layer_norm.weight",
-            "encoder_blocks.{i}.mlp.in": "encoder.block.{i}.layer.1.DenseReluDense.wi.weight",
-            "encoder_blocks.{i}.mlp.out": "encoder.block.{i}.layer.1.DenseReluDense.wo.weight",
-            "encoder_ln_final.w": "encoder.final_layer_norm.weight",
-            # Decoder components
-            "decoder_pos_embed.pos": "decoder.block.0.layer.0.SelfAttention.relative_attention_bias.weight",
-            "decoder_blocks.{i}.ln1.w": "decoder.block.{i}.layer.0.layer_norm.weight",
-            "decoder_blocks.{i}.self_attn.q": "decoder.block.{i}.layer.0.SelfAttention.q.weight",
-            "decoder_blocks.{i}.self_attn.k": "decoder.block.{i}.layer.0.SelfAttention.k.weight",
-            "decoder_blocks.{i}.self_attn.v": "decoder.block.{i}.layer.0.SelfAttention.v.weight",
-            "decoder_blocks.{i}.self_attn.o": "decoder.block.{i}.layer.0.SelfAttention.o.weight",
-            "decoder_blocks.{i}.ln2.w": "decoder.block.{i}.layer.1.layer_norm.weight",
-            "decoder_blocks.{i}.cross_attn.q": "decoder.block.{i}.layer.1.EncDecAttention.q.weight",
-            "decoder_blocks.{i}.cross_attn.k": "decoder.block.{i}.layer.1.EncDecAttention.k.weight",
-            "decoder_blocks.{i}.cross_attn.v": "decoder.block.{i}.layer.1.EncDecAttention.v.weight",
-            "decoder_blocks.{i}.cross_attn.o": "decoder.block.{i}.layer.1.EncDecAttention.o.weight",
-            "decoder_blocks.{i}.ln3.w": "decoder.block.{i}.layer.2.layer_norm.weight",
-            "decoder_blocks.{i}.mlp.in": "decoder.block.{i}.layer.2.DenseReluDense.wi.weight",
-            "decoder_blocks.{i}.mlp.out": "decoder.block.{i}.layer.2.DenseReluDense.wo.weight",
-            "decoder_ln_final.w": "decoder.final_layer_norm.weight",
-            # Language modeling head
-            "unembed.u": "lm_head.weight",
-        }
+        self.weight_processing_conversions = {}
 
         self.component_mapping = {
             # Shared embeddings

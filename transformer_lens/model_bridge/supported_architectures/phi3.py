@@ -16,7 +16,7 @@ from transformer_lens.model_bridge.generalized_components import (
     EmbeddingBridge,
     GatedMLPBridge,
     LinearBridge,
-    NormalizationBridge,
+    RMSNormalizationBridge,
     UnembeddingBridge,
 )
 
@@ -25,6 +25,11 @@ class Phi3ArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for Phi-3 models."""
 
     def __init__(self, cfg: Any) -> None:
+        """Initialize the Phi-3 architecture adapter.
+
+        Args:
+            cfg: The configuration object.
+        """
         super().__init__(cfg)
 
         # Set config variables for weight processing
@@ -34,9 +39,9 @@ class Phi3ArchitectureAdapter(ArchitectureAdapter):
         self.cfg.gated_mlp = True
         self.cfg.attn_only = False
 
+        self.cfg.uses_rms_norm = True
+
         self.weight_processing_conversions = {
-            "embed.e": "model.embed_tokens.weight",
-            "blocks.{i}.ln1.w": "model.layers.{i}.input_layernorm.weight",
             "blocks.{i}.attn.q": ParamProcessingConversion(
                 tensor_conversion=SplitTensorConversion(
                     0,
@@ -62,7 +67,6 @@ class Phi3ArchitectureAdapter(ArchitectureAdapter):
                 tensor_conversion=RearrangeTensorConversion("m (n h) -> n h m", n=self.cfg.n_heads),
                 source_key="model.layers.{i}.self_attn.o_proj.weight",
             ),
-            "blocks.{i}.ln2.w": "model.layers.{i}.post_attention_layernorm.weight",
             "blocks.{i}.mlp.in": ParamProcessingConversion(
                 tensor_conversion=SplitTensorConversion(1, 2, dim=1),
                 source_key="model.layers.{i}.mlp.gate_up_proj.weight",
@@ -71,17 +75,16 @@ class Phi3ArchitectureAdapter(ArchitectureAdapter):
                 tensor_conversion=SplitTensorConversion(0, 2, dim=1),
                 source_key="model.layers.{i}.mlp.gate_up_proj.weight",
             ),
-            "blocks.{i}.mlp.out": "model.layers.{i}.mlp.down_proj.weight",
-            "ln_final.w": "model.norm.weight",
-            "unembed.u": "lm_head.weight",
         }
+
+        # Set up component mapping
         self.component_mapping = {
             "embed": EmbeddingBridge(name="model.embed_tokens"),
             "blocks": BlockBridge(
                 name="model.layers",
                 submodules={
-                    "ln1": NormalizationBridge(name="input_layernorm", config=self.cfg),
-                    "ln2": NormalizationBridge(name="post_attention_layernorm", config=self.cfg),
+                    "ln1": RMSNormalizationBridge(name="input_layernorm", config=self.cfg),
+                    "ln2": RMSNormalizationBridge(name="post_attention_layernorm", config=self.cfg),
                     "attn": AttentionBridge(
                         name="self_attn",
                         config=self.cfg,
@@ -105,6 +108,6 @@ class Phi3ArchitectureAdapter(ArchitectureAdapter):
                     ),
                 },
             ),
-            "ln_final": NormalizationBridge(name="model.norm", config=self.cfg),
+            "ln_final": RMSNormalizationBridge(name="model.norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head"),
         }

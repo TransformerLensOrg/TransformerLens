@@ -2,6 +2,7 @@
 
 This module provides functionality to load and convert models from HuggingFace to TransformerLens format.
 """
+import contextlib
 import copy
 import logging
 import os
@@ -17,15 +18,19 @@ from transformers import (
     PreTrainedTokenizerBase,
 )
 
+from transformer_lens.config import TransformerBridgeConfig
+from transformer_lens.factories.architecture_adapter_factory import (
+    SUPPORTED_ARCHITECTURES,
+    ArchitectureAdapterFactory,
+)
+from transformer_lens.model_bridge.bridge import TransformerBridge
+from transformer_lens.supported_models import MODEL_ALIASES
+from transformer_lens.utils import get_device, get_tokenizer_with_bos
+
 # Suppress transformers warnings that go to stderr
 # This prevents notebook tests from failing due to unexpected stderr output
 warnings.filterwarnings("ignore", message=".*generation flags.*not valid.*")
 logging.getLogger("transformers").setLevel(logging.ERROR)
-
-from transformer_lens.config import TransformerBridgeConfig
-from transformer_lens.model_bridge.bridge import TransformerBridge
-from transformer_lens.supported_models import MODEL_ALIASES
-from transformer_lens.utils import get_device, get_tokenizer_with_bos
 
 
 def map_default_transformer_lens_config(hf_config):
@@ -144,9 +149,6 @@ def determine_architecture_from_hf_config(hf_config):
         }
         if model_type in model_type_mappings:
             architectures.append(model_type_mappings[model_type])
-    from transformer_lens.factories.architecture_adapter_factory import (
-        SUPPORTED_ARCHITECTURES,
-    )
 
     for arch in architectures:
         if arch in SUPPORTED_ARCHITECTURES:
@@ -213,10 +215,6 @@ def boot(
     Returns:
         The bridge to the loaded model.
     """
-    from transformer_lens.factories.architecture_adapter_factory import (
-        ArchitectureAdapterFactory,
-    )
-
     for official_name, aliases in MODEL_ALIASES.items():
         if model_name in aliases:
             logging.warning(
@@ -242,8 +240,6 @@ def boot(
     if hasattr(adapter.cfg, "attn_implementation") and adapter.cfg.attn_implementation is not None:
         model_kwargs["attn_implementation"] = adapter.cfg.attn_implementation
     if not load_weights:
-        import contextlib
-
         with contextlib.redirect_stdout(None):
             hf_model = model_class.from_config(hf_config)
     else:

@@ -58,8 +58,6 @@ class Gemma2ArchitectureAdapter(ArchitectureAdapter):
                 ),
                 source_key="model.embed_tokens.weight",
             ),
-            "blocks.{i}.ln1.weight": "model.layers.{i}.input_layernorm.weight",
-            "blocks.{i}.ln2. weight": "model.layers.{i}.post_attention_layernorm.weight",
             "blocks.{i}.attn.q": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
                 source_key="model.layers.{i}.self_attn.q_proj.weight",
@@ -82,11 +80,6 @@ class Gemma2ArchitectureAdapter(ArchitectureAdapter):
                 tensor_conversion=RearrangeTensorConversion("m (n h) -> n h m", n=self.cfg.n_heads),
                 source_key="model.layers.{i}.self_attn.o_proj.weight",
             ),
-            "blocks.{i}.mlp.in": "model.layers.{i}.mlp.up_proj.weight.T",
-            "blocks.{i}.mlp.gate": "model.layers.{i}.mlp.gate_proj.weight.T",
-            "blocks.{i}.mlp.out": "model.layers.{i}.mlp.down_proj.weight.T",
-            "ln_final.weight": "model.norm.weight",
-            "unembed": "lm_head.weight.T",  # Not shared with embedding
         }
 
         self.component_mapping = {

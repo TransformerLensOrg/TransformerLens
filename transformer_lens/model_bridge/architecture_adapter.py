@@ -4,6 +4,7 @@ This module contains the base class for architecture adapters that map between d
 """
 from typing import Any, Dict, cast
 
+import einops
 import torch
 
 from transformer_lens.config import TransformerBridgeConfig
@@ -113,7 +114,13 @@ class ArchitectureAdapter:
             >>> # <LayerNorm>
         """
         current = model
-        for part in path.split("."):
+        parent_stack: list[RemoteComponent] = []  # Track parent components for .. navigation
+
+        # Handle ../ pattern by replacing with a marker before splitting
+        # This is needed because "../output.dense".split(".") gives ['', '', '/output', 'dense']
+        path_with_markers = path.replace("../", "##PARENT##.")
+
+        for part in path_with_markers.split("."):
             # If current is a GeneralizedComponent bridge, unwrap to get the original HF component
             if (
                 isinstance(current, GeneralizedComponent)
@@ -122,9 +129,21 @@ class ArchitectureAdapter:
             ):
                 current = current.original_component
 
-            if part.isdigit():
+            if part == "##PARENT##":
+                # Navigate to parent component (from ../ syntax)
+                if not parent_stack:
+                    raise ValueError(f"Cannot navigate above root in path: {path}")
+                current = parent_stack.pop()
+            elif part == "..":
+                # Navigate to parent component (from plain .. syntax)
+                if not parent_stack:
+                    raise ValueError(f"Cannot navigate above root in path: {path}")
+                current = parent_stack.pop()
+            elif part.isdigit():
+                parent_stack.append(current)
                 current = current[int(part)]  # type: ignore[index]
             else:
+                parent_stack.append(current)
                 current = getattr(current, part)
         return current
 
@@ -700,8 +719,6 @@ class ArchitectureAdapter:
         GPT-2 uses Conv1D which stores weights as [in_features, out_features] = [d_model, 3*d_model].
         We need to split and reshape to [n_heads, d_model, d_head] format for HookedTransformer.
         """
-        import einops
-
         W = c_attn.weight.data
         W_Q, W_K, W_V = torch.tensor_split(W, 3, dim=1)
         W_Q = einops.rearrange(W_Q, "m (i h)->i m h", i=n_heads)

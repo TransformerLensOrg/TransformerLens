@@ -4,6 +4,7 @@ This module contains the bridge component for attention layers.
 """
 from typing import Any, Dict, Optional
 
+import einops
 import torch
 
 from transformer_lens.conversion_utils.conversion_steps.attention_auto_conversion import (
@@ -171,9 +172,6 @@ class AttentionBridge(GeneralizedComponent):
         - v.hook_out (aliased as hook_v) - uses n_kv_heads if GQA
         - o.hook_in (aliased as hook_z)
         """
-        from transformer_lens.conversion_utils.conversion_steps.base_tensor_conversion import (
-            BaseTensorConversion,
-        )
 
         class ReshapeForAttentionHeads(BaseTensorConversion):
             """Reshape tensors to split attention heads for Q/K/V/Z compatibility."""
@@ -335,7 +333,6 @@ class AttentionBridge(GeneralizedComponent):
     @property
     def W_Q(self) -> torch.Tensor:
         """Get W_Q in 3D format [n_heads, d_model, d_head] from 2D linear bridge weight."""
-        import einops
 
         weight = (
             self.q.weight
@@ -351,7 +348,6 @@ class AttentionBridge(GeneralizedComponent):
     @property
     def W_K(self) -> torch.Tensor:
         """Get W_K in 3D format [n_heads, d_model, d_head] from 2D linear bridge weight."""
-        import einops
 
         weight = self.k.weight
         if weight.ndim == 2 and self.config is not None:
@@ -371,7 +367,6 @@ class AttentionBridge(GeneralizedComponent):
     @property
     def W_V(self) -> torch.Tensor:
         """Get W_V in 3D format [n_heads, d_model, d_head] from 2D linear bridge weight."""
-        import einops
 
         weight = self.v.weight
         if weight.ndim == 2 and self.config is not None:
@@ -391,7 +386,6 @@ class AttentionBridge(GeneralizedComponent):
     @property
     def W_O(self) -> torch.Tensor:
         """Get W_O in 3D format [n_heads, d_head, d_model] from 2D linear bridge weight."""
-        import einops
 
         weight = self.o.weight
         if weight.ndim == 2 and self.config is not None:
@@ -413,7 +407,6 @@ class AttentionBridge(GeneralizedComponent):
     @property
     def b_Q(self) -> Optional[torch.Tensor]:
         """Get b_Q in 2D format [n_heads, d_head] from 1D linear bridge bias."""
-        import einops
 
         bias = self.q.bias
         if bias is not None and bias.ndim == 1 and self.config is not None:
@@ -424,7 +417,6 @@ class AttentionBridge(GeneralizedComponent):
     @property
     def b_K(self) -> Optional[torch.Tensor]:
         """Get b_K in 2D format [n_heads, d_head] from 1D linear bridge bias."""
-        import einops
 
         bias = self.k.bias
         if bias is not None and bias.ndim == 1 and self.config is not None:
@@ -441,7 +433,6 @@ class AttentionBridge(GeneralizedComponent):
     @property
     def b_V(self) -> Optional[torch.Tensor]:
         """Get b_V in 2D format [n_heads, d_head] from 1D linear bridge bias."""
-        import einops
 
         bias = self.v.bias
         if bias is not None and bias.ndim == 1 and self.config is not None:

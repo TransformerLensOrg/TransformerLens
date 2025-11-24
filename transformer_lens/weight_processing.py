@@ -5,6 +5,7 @@ This module contains all the weight processing functions extracted from HookedTr
 organized into a single ProcessWeights class with static methods. These functions are used
 to modify transformer model weights for better interpretability and analysis.
 """
+import re
 from typing import Any, Dict, Optional, Union, overload
 
 import einops
@@ -14,6 +15,7 @@ import transformer_lens.utils as utils
 from transformer_lens.config.TransformerLensConfig import TransformerLensConfig
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
+from transformer_lens.utilities import filter_dict_by_prefix
 
 
 class ProcessWeights:
@@ -1489,8 +1491,6 @@ class ProcessWeights:
             hasattr(adapter, "weight_processing_conversions")
             and adapter.weight_processing_conversions is not None
         ):
-            import re
-
             # Create placeholder param name by replacing layer index with {i}
             placeholder_param_name = param_name
             if "blocks." in param_name:
@@ -1571,8 +1571,6 @@ class ProcessWeights:
             hasattr(adapter, "weight_processing_conversions")
             and adapter.weight_processing_conversions is not None
         ):
-            import re
-
             # Create placeholder param name by replacing layer index with {i}
             placeholder_param_name = param_name
             if "blocks." in param_name:
@@ -1629,8 +1627,6 @@ class ProcessWeights:
                then for each block index, extract weights for that specific block
             3. Extract "unembed" weights and pass to unembed component
         """
-        from transformer_lens.utilities import filter_dict_by_prefix
-
         if verbose:
             print(f"\n{'='*80}")
             print(f"distribute_weights_to_components: Starting weight distribution")

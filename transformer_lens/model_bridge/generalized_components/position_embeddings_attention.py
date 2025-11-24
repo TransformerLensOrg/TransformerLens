@@ -6,9 +6,11 @@ than using the standard (cos, sin) tuple format.
 """
 from __future__ import annotations
 
+import warnings
 from typing import Any, Dict, Optional
 
 import torch
+import transformers.models.gemma2.modeling_gemma2 as gemma2_module
 
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.generalized_components.attention import (
@@ -177,8 +179,6 @@ class PositionEmbeddingsAttentionBridge(AttentionBridge):
                                 position_embeddings
                             )
                         except Exception as e:
-                            import warnings
-
                             warnings.warn(f"Rotary embedding call failed: {e}, using fallback")
                             cos = torch.ones(1, seq_len, head_dim, device=device, dtype=dtype)
                             sin = torch.zeros(1, seq_len, head_dim, device=device, dtype=dtype)
@@ -200,8 +200,6 @@ class PositionEmbeddingsAttentionBridge(AttentionBridge):
                         )
             if "attention_mask" not in kwargs:
                 kwargs["attention_mask"] = None
-            import transformers.models.gemma2.modeling_gemma2 as gemma2_module
-
             original_apply_rotary = gemma2_module.apply_rotary_pos_emb
 
             def hooked_apply_rotary(q, k, cos, sin, position_ids=None, unsqueeze_dim=1):

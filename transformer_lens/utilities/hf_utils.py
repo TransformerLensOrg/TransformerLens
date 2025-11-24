@@ -5,9 +5,12 @@ This module contains utility functions related to HuggingFace
 
 from __future__ import annotations
 
+import errno
 import inspect
 import json
+import os
 import shutil
+import stat
 from typing import Any, Callable, Dict
 
 import torch
@@ -69,7 +72,6 @@ def clear_huggingface_cache():
     Returns:
     None
     """
-    import os
 
     print("Deleting Hugging Face cache directory and all its contents.")
 
@@ -81,8 +83,6 @@ def clear_huggingface_cache():
         # Use a custom error handler that only ignores specific race condition errors
         def handle_remove_readonly(func, path, exc_info):
             """Error handler for Windows readonly files and race conditions."""
-            import errno
-            import stat
 
             excvalue = exc_info[1]
             # Ignore "directory not empty" errors (race condition - another process deleted contents)
@@ -109,8 +109,6 @@ def clear_huggingface_cache():
         # Directory was deleted by another process - that's fine
         pass
     except OSError as e:
-        import errno
-
         # Only ignore "directory not empty" and "no such file" errors (race conditions)
         if e.errno not in (errno.ENOTEMPTY, errno.ENOENT):
             print(f"Warning: Could not fully clear cache: {e}")
