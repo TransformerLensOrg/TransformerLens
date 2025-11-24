@@ -2030,7 +2030,7 @@ def get_pretrained_state_dict(
             state_dict = convert_llama_weights(hf_model, cfg)
         elif cfg.original_architecture == "HubertModel":
             state_dict = convert_hubert_weights(hf_model, cfg)
-        elif cfg.original_architecture == "Wav2Vec2Model":
+        elif cfg.original_architecture == "Wav2Vec2Model" or cfg.original_architecture == "Wav2Vec2ForPreTraining":
             state_dict = convert_hubert_weights(hf_model, cfg)
         elif cfg.original_architecture == "HubertForCTC":
             state_dict = convert_hubert_weights(hf_model, cfg)
