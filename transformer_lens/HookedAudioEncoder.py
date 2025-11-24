@@ -299,6 +299,8 @@ class HookedAudioEncoder(HookedRootModule):
             # allow single 1D tensor or numpy array or list of tensors/arrays
             frames, frame_mask = self.to_frames(inputs)
             # to_frames should already place tensors on device if move_to_device=True
+        if isinstance(frames, tuple):
+            frames = frames[0]
         frame_mask = frame_mask if one_zero_attention_mask is None else one_zero_attention_mask
         # ---------- 2) Ensure device & dtype consistency ----------
         device = self.cfg.device
