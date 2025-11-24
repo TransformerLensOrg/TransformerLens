@@ -24,7 +24,7 @@ class BertPooler(nn.Module):
         self.cfg = HookedTransformerConfig.unwrap(cfg)
         self.W = nn.Parameter(torch.empty(self.cfg.d_model, self.cfg.d_model, dtype=self.cfg.dtype))
         self.b = nn.Parameter(torch.zeros(self.cfg.d_model, dtype=self.cfg.dtype))
-        # self.activation = nn.Tanh()
+        self.activation = nn.Tanh()
         self.hook_pooler_out = HookPoint()
 
     def forward(
@@ -32,6 +32,6 @@ class BertPooler(nn.Module):
     ) -> Float[torch.Tensor, "batch d_model"]:
         first_token_tensor = resid[:, 0]
         pooled_output = torch.matmul(first_token_tensor, self.W) + self.b
-        # pooled_output = self.hook_pooler_out(self.activation(pooled_output))
-        pooled_output = self.hook_pooler_out(pooled_output)
+        pooled_output = self.hook_pooler_out(self.activation(pooled_output))
+        # pooled_output = self.hook_pooler_out(pooled_output)
         return pooled_output
