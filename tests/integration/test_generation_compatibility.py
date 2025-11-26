@@ -1,7 +1,7 @@
-"""Integration tests for generation API with ModelOutput support.
+"""Integration tests for generation API compatibility.
 
-This module tests the new generation API features that support HuggingFace-style
-ModelOutput return.
+This module tests generation API features including HuggingFace-style ModelOutput
+support and TransformerBridge batch dimension compatibility.
 """
 
 import warnings
@@ -369,6 +369,81 @@ class TestGenerationBackwardCompatibility:
         )
         assert isinstance(result_embeds, torch.Tensor), "return_type='embeds' should return tensor"
         assert result_embeds.ndim == 3, "Embeddings should be 3D"
+
+
+class TestBlockBridgeBatchCompatibility:
+    """Tests for BlockBridge tuple return format and batch dimension preservation."""
+
+    def test_block_bridge_batched_generation_compatibility(self, gpt2_bridge):
+        """Test BlockBridge maintains tuple format and batch dimensions during generation.
+
+        This test exercises two critical aspects of improved HF compatibility:
+        1. BlockBridge.forward() always returns tuples (not bare tensors)
+        2. Batch dimensions are preserved through multi-block generation pipeline
+        """
+        # Test 1: Direct block forward returns tuple with preserved batch dimension
+        batch_size = 2
+        seq_len = 8
+        hidden_dim = gpt2_bridge.cfg.d_model
+        hidden_states = torch.randn(batch_size, seq_len, hidden_dim)
+
+        # Get first transformer block (BlockBridge component)
+        first_block = gpt2_bridge.original_model.transformer.h[0]
+
+        # Call forward - this is what HF's GPT2Model does in its loop
+        block_output = first_block(hidden_states)
+
+        # BlockBridge must return tuple
+        assert isinstance(
+            block_output, tuple
+        ), f"BlockBridge must return tuple for HF compatibility, got {type(block_output)}"
+
+        # Verify first element is a tensor
+        assert isinstance(
+            block_output[0], torch.Tensor
+        ), "First element of BlockBridge output must be a tensor"
+
+        # Batch dimension must be preserved
+        # Without tuple wrapping, outputs[0] idx op would turn [batch, seq, dim] -> [seq, dim]
+        assert block_output[0].shape == (
+            batch_size,
+            seq_len,
+            hidden_dim,
+        ), f"Expected shape [{batch_size}, {seq_len}, {hidden_dim}], got {block_output[0].shape}"
+
+        assert (
+            block_output[0].shape[0] == batch_size
+        ), f"Batch dimension lost! Expected {batch_size}, got {block_output[0].shape[0]}"
+
+        # Test 2: Batched generation works end-to-end through multiple blocks
+        prompts = ["Hello world", "Goodbye world"]
+
+        # Tokenize with left padding
+        tokens = gpt2_bridge.to_tokens(prompts, prepend_bos=False, padding_side="left")
+
+        # Generate tokens - this exercises the full HF generation loop with multiple blocks
+        output = gpt2_bridge.generate(
+            tokens,
+            max_new_tokens=4,
+            do_sample=False,  # Deterministic for testing
+            use_past_kv_cache=True,
+            verbose=False,
+        )
+
+        # Verify output preserves batch dimension
+        assert output.shape[0] == len(
+            prompts
+        ), f"Batch size must be preserved through generation. Expected {len(prompts)}, got {output.shape[0]}"
+
+        # Verify we actually generated new tokens
+        assert (
+            output.shape[1] > tokens.shape[1]
+        ), "Generation should produce longer sequences than input"
+
+        # Verify batch items remain independent (not collapsed into single item)
+        assert not torch.equal(
+            output[0], output[1]
+        ), "Batch items should be independent - different prompts should produce different outputs"
 
 
 if __name__ == "__main__":
