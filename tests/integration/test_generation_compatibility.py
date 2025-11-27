@@ -196,10 +196,48 @@ class TestHookedTransformerGenerationModelOutput:
 
 
 class TestTransformerBridgeGenerationModelOutput:
-    """Tests for TransformerBridge generation with HF-style flags."""
+    """Tests for TransformerBridge generation with ModelOutput returns."""
 
-    def test_generate_with_output_logits_forwards_to_hf(self, gpt2_bridge):
-        """Test that output_logits is forwarded to HF and returns ModelOutput."""
+    def test_generate_with_output_logits_returns_modeloutput(self, gpt2_bridge):
+        """Test that output_logits=True returns a ModelOutput with sequences and logits."""
+        prompt = "The quick brown"
+        max_new_tokens = 5
+
+        result = gpt2_bridge.generate(
+            prompt,
+            max_new_tokens=max_new_tokens,
+            do_sample=False,
+            verbose=False,
+            output_logits=True,
+        )
+
+        # Check that we got a ModelOutput-like object
+        assert hasattr(result, "sequences"), "Result should have sequences attribute"
+        assert hasattr(result, "logits"), "Result should have logits attribute"
+
+        # Check sequences shape and type
+        assert isinstance(result.sequences, torch.Tensor), "sequences should be a tensor"
+        assert result.sequences.ndim == 2, "sequences should be 2D [batch, pos]"
+
+        # Check logits structure and shape
+        assert isinstance(result.logits, tuple), "logits should be a tuple"
+        assert (
+            len(result.logits) == max_new_tokens
+        ), f"logits tuple should have {max_new_tokens} elements"
+
+        # Each logit tensor should be [batch, vocab]
+        for i, logit in enumerate(result.logits):
+            assert isinstance(logit, torch.Tensor), f"logits[{i}] should be a tensor"
+            assert logit.ndim == 2, f"logits[{i}] should be 2D [batch, vocab]"
+            assert (
+                logit.shape[0] == result.sequences.shape[0]
+            ), f"logits[{i}] batch size should match sequences"
+            assert (
+                logit.shape[1] == gpt2_bridge.cfg.d_vocab
+            ), f"logits[{i}] vocab size should match model config"
+
+    def test_generate_without_output_logits_returns_normal(self, gpt2_bridge):
+        """Test that without output_logits flag, generation returns normal format."""
         prompt = "The quick brown"
 
         result = gpt2_bridge.generate(
@@ -207,56 +245,81 @@ class TestTransformerBridgeGenerationModelOutput:
             max_new_tokens=5,
             do_sample=False,
             verbose=False,
+        )
+
+        # Should return a string (default return_type="input" with string input)
+        assert isinstance(result, str), "Result should be a string"
+        assert len(result) > len(prompt), "Generated text should be longer than prompt"
+
+    def test_generate_output_logits_batch(self, gpt2_bridge):
+        """Test output_logits works with batch inputs."""
+        prompts = ["Hello", "World"]
+        max_new_tokens = 3
+
+        result = gpt2_bridge.generate(
+            prompts,
+            max_new_tokens=max_new_tokens,
+            do_sample=False,
+            verbose=False,
             output_logits=True,
         )
 
-        # When using HF ModelOutput, result should either be a string (decoded) or ModelOutput
-        # depending on return_type. With return_type="input" and string input, we get string back
-        # But the underlying HF call should have received output_logits=True
-        assert isinstance(result, str), "Result should be decoded string with return_type='input'"
+        # Check ModelOutput structure
+        assert hasattr(result, "sequences"), "Result should have sequences"
+        assert hasattr(result, "logits"), "Result should have logits"
 
-    def test_generate_with_output_scores_forwards_to_hf(self, gpt2_bridge):
+        # Check batch dimension
+        assert result.sequences.shape[0] == len(
+            prompts
+        ), "Batch dimension should match number of prompts"
+
+        # Check logits batch dimension
+        for logit in result.logits:
+            assert logit.shape[0] == len(prompts), "Logits batch dimension should match prompts"
+
+
+class TestTransformerBridgeHFGenerate:
+    """Tests for TransformerBridge.hf_generate() with full HF API support."""
+
+    def test_hf_generate_with_output_scores(self, gpt2_bridge):
         """Test that output_scores is forwarded to HF model."""
         prompt = "Test"
 
         # output_scores should be forwarded without error
-        result = gpt2_bridge.generate(
+        result = gpt2_bridge.hf_generate(
             prompt,
             max_new_tokens=3,
             do_sample=False,
-            verbose=False,
             output_scores=True,
         )
 
         # Should return a string (default behavior with string input)
         assert isinstance(result, str), "Result should be a string"
 
-    def test_hf_dict_flags_set_return_dict_in_generate(self, gpt2_bridge):
+    def test_hf_generate_sets_return_dict_in_generate(self, gpt2_bridge):
         """Test that hf_dict_flags automatically set return_dict_in_generate=True."""
         prompt = "Hello"
 
         # When we pass output_logits, return_dict_in_generate should be auto-set
         # We can't directly inspect the HF call, but we can verify it doesn't error
-        result = gpt2_bridge.generate(
+        result = gpt2_bridge.hf_generate(
             prompt,
             max_new_tokens=2,
             do_sample=False,
-            verbose=False,
             output_logits=True,
         )
 
         # Should work without error
         assert isinstance(result, str), "Result should be generated successfully"
 
-    def test_multiple_hf_flags_simultaneously(self, gpt2_bridge):
+    def test_hf_generate_multiple_flags_simultaneously(self, gpt2_bridge):
         """Test that multiple HF-style flags can be passed simultaneously."""
         prompt = "Test"
 
-        result = gpt2_bridge.generate(
+        result = gpt2_bridge.hf_generate(
             prompt,
             max_new_tokens=2,
             do_sample=False,
-            verbose=False,
             output_logits=True,
             output_attentions=True,
             output_hidden_states=True,
@@ -265,16 +328,15 @@ class TestTransformerBridgeGenerationModelOutput:
         # Should work and return a result
         assert isinstance(result, str), "Result should be generated with multiple flags"
 
-    def test_return_type_tokens_with_hf_flags(self, gpt2_bridge):
+    def test_hf_generate_return_type_tokens(self, gpt2_bridge):
         """Test return_type='tokens' works with HF flags."""
         prompt = "Hello"
 
-        result = gpt2_bridge.generate(
+        result = gpt2_bridge.hf_generate(
             prompt,
             max_new_tokens=2,
             return_type="tokens",
             do_sample=False,
-            verbose=False,
             output_logits=True,
         )
 
@@ -282,32 +344,30 @@ class TestTransformerBridgeGenerationModelOutput:
         # The implementation returns the raw HF output for tokens
         assert result is not None, "Result should not be None"
 
-    def test_hf_flags_coerced_to_bool(self, gpt2_bridge):
+    def test_hf_generate_flags_coerced_to_bool(self, gpt2_bridge):
         """Test that HF flags are properly coerced to boolean values."""
         prompt = "Test"
 
         # Pass non-boolean values that should be coerced to bool
-        result = gpt2_bridge.generate(
+        result = gpt2_bridge.hf_generate(
             prompt,
             max_new_tokens=2,
             do_sample=False,
-            verbose=False,
             output_logits=1,  # Should be coerced to True
-            output_scores=0,  # Should be coerced to False (but we pass explicitly so it's truthy)
+            output_scores=0,  # Should be coerced to False but still triggers flag
         )
 
         # Should work without error
         assert isinstance(result, str) or result is not None, "Result should be generated"
 
-    def test_batch_generation_with_hf_flags(self, gpt2_bridge):
+    def test_hf_generate_batch_generation(self, gpt2_bridge):
         """Test batch generation works with HF-style flags."""
         prompts = ["Hello", "World"]
 
-        result = gpt2_bridge.generate(
+        result = gpt2_bridge.hf_generate(
             prompts,
             max_new_tokens=2,
             do_sample=False,
-            verbose=False,
             output_logits=True,
         )
 

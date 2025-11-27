@@ -1622,7 +1622,10 @@ class TransformerBridge(nn.Module):
         padding_side: Optional[str] = None,
         return_type: Optional[str] = "input",
         verbose: bool = True,
-    ) -> Union[str, List[str], torch.Tensor]:
+        output_logits: bool = False,
+    ) -> str | list[str] | torch.Tensor | Any:  # Any for transformers.utils.ModelOutput
+        # Using Any due to beartype's forward reference resolution limitations.
+        # See: https://github.com/beartype/beartype/issues/546
         """Sample tokens from the model.
 
         Sample tokens from the model until the model outputs eos_token or max_new_tokens is reached.
@@ -1643,9 +1646,11 @@ class TransformerBridge(nn.Module):
             padding_side: Not used in Bridge (kept for API compatibility)
             return_type: The type of output to return - 'input', 'str', or 'tokens'
             verbose: Not used in Bridge (kept for API compatibility)
+            output_logits: If True, return a ModelOutput with sequences and logits tuple
 
         Returns:
-            Generated sequence as string, list of strings, or tensor depending on input type and return_type
+            Generated sequence as string, list of strings, or tensor depending on input type and return_type.
+            If output_logits=True, returns a ModelOutput-like object with 'sequences' and 'logits' attributes.
         """
         # Convert input to tokens
         if isinstance(input, str):
@@ -1695,6 +1700,9 @@ class TransformerBridge(nn.Module):
         # Track which sequences have finished
         finished_sequences = torch.zeros(batch_size, dtype=torch.bool, device=self.cfg.device)
 
+        # Optionally collect logits at each generation step for downstream tooling/tests
+        logits_seq_list: list[torch.Tensor] | None = [] if output_logits else None
+
         # Generate tokens
         current_tokens = input_tokens.clone()
         sampled_tokens_list = []
@@ -1704,6 +1712,10 @@ class TransformerBridge(nn.Module):
             with torch.no_grad():
                 logits = self(current_tokens, return_type="logits")
                 final_logits = logits[:, -1, :]
+
+                # Collect logits if requested
+                if logits_seq_list is not None:
+                    logits_seq_list.append(final_logits.clone())
 
                 # Sample next token
                 if do_sample:
@@ -1741,6 +1753,27 @@ class TransformerBridge(nn.Module):
         sampled_tokens = torch.cat(sampled_tokens_list, dim=1)
         output_tokens = torch.cat([input_tokens, sampled_tokens], dim=1)
 
+        # Return ModelOutput if output_logits was requested
+        if output_logits and logits_seq_list is not None:
+            try:
+                from transformers.generation.utils import GenerateDecoderOnlyOutput
+                from transformers.utils import ModelOutput  # type: ignore
+
+                # Return a HF-compatible ModelOutput structure
+                # GenerateDecoderOnlyOutput expects: sequences, scores (optional), logits (optional)
+                return GenerateDecoderOnlyOutput(
+                    sequences=output_tokens,
+                    logits=tuple(logits_seq_list),
+                )
+            except ImportError:
+                # Fallback if HF not available or old version
+                from transformers.utils import ModelOutput
+
+                return ModelOutput(
+                    sequences=output_tokens,
+                    logits=tuple(logits_seq_list),
+                )
+
         # Format output
         if return_type == "str":
             if input_type == "str":
@@ -1754,6 +1787,175 @@ class TransformerBridge(nn.Module):
         else:  # return_type == "tokens"
             return output_tokens
 
+    def hf_generate(
+        self,
+        input: str | list[str] | torch.Tensor = "",
+        max_new_tokens: int = 10,
+        stop_at_eos: bool = True,
+        eos_token_id: int | None = None,
+        do_sample: bool = True,
+        top_k: int | None = None,
+        top_p: float | None = None,
+        temperature: float = 1.0,
+        use_past_kv_cache: bool = True,
+        return_type: str | None = "input",
+        **generation_kwargs,
+    ) -> str | list[str] | torch.Tensor | Any:  # Any for HF ModelOutput types
+        # Using Any due to beartype's forward reference resolution limitations.
+        # See: https://github.com/beartype/beartype/issues/546
+        """Generate text using the underlying HuggingFace model with full HF API support.
+
+        This method provides direct access to HuggingFace's generation API, forwarding all
+        generation parameters (including output_scores, output_logits, output_attentions,
+        output_hidden_states) directly to the underlying HF model. Use this when you need
+        full HuggingFace generation features not supported by the standard generate() method.
+
+        For standard generation compatible with HookedTransformer, use generate() instead.
+
+        Args:
+            input: Text string, list of strings, or tensor of tokens
+            max_new_tokens: Maximum number of tokens to generate
+            stop_at_eos: If True, stop generating tokens when the model outputs eos_token
+            eos_token_id: The token ID to use for end of sentence
+            do_sample: If True, sample from the model's output distribution
+            top_k: Number of tokens to sample from
+            top_p: Probability mass to sample from
+            temperature: Temperature for sampling
+            use_past_kv_cache: If True, use KV caching for faster generation
+            return_type: The type of output to return - 'input', 'str', or 'tokens'
+            **generation_kwargs: Additional HuggingFace generation parameters including:
+                - output_scores: Return generation scores
+                - output_logits: Return generation logits
+                - output_attentions: Return attention weights
+                - output_hidden_states: Return hidden states
+                - return_dict_in_generate: Return ModelOutput object
+                - And any other HF generation parameters
+
+        Returns:
+            Generated sequence as string, list of strings, tensor, or HF ModelOutput
+            depending on input type, return_type, and generation_kwargs.
+
+        Example:
+            >>> # Get full HF ModelOutput with logits and attentions
+            >>> result = model.hf_generate(
+            ...     "Hello world",
+            ...     max_new_tokens=5,
+            ...     output_logits=True,
+            ...     output_attentions=True,
+            ...     return_dict_in_generate=True
+            ... )
+            >>> print(result.sequences)  # Generated tokens
+            >>> print(result.logits)  # Logits for each generation step
+            >>> print(result.attentions)  # Attention weights
+        """
+        # Handle string input by tokenizing it
+        if isinstance(input, str):
+            inputs = self.tokenizer(input, return_tensors="pt", padding=False, truncation=False).to(
+                self.cfg.device
+            )
+            input_ids = inputs["input_ids"]
+            input_type = "str"
+        elif isinstance(input, list):
+            inputs = self.tokenizer(input, return_tensors="pt", padding=True, truncation=False).to(
+                self.cfg.device
+            )
+            input_ids = inputs["input_ids"]
+            input_type = "list"
+        else:
+            input_ids = input
+            if input_ids.device != self.cfg.device:
+                input_ids = input_ids.to(self.cfg.device)
+            input_type = "tokens"
+
+        # Build generation_kwargs from explicit args and kwargs
+        generation_kwargs = dict(generation_kwargs) if generation_kwargs is not None else {}
+        generation_kwargs.update(
+            {
+                "max_new_tokens": max_new_tokens,
+                "do_sample": do_sample,
+                "temperature": temperature,
+                "pad_token_id": self.tokenizer.eos_token_id,
+            }
+        )
+
+        if top_k is not None:
+            generation_kwargs["top_k"] = top_k
+        if top_p is not None:
+            generation_kwargs["top_p"] = top_p
+        if eos_token_id is not None:
+            generation_kwargs["eos_token_id"] = eos_token_id
+        elif stop_at_eos and self.tokenizer.eos_token_id is not None:
+            generation_kwargs["eos_token_id"] = self.tokenizer.eos_token_id
+
+        if use_past_kv_cache:
+            generation_kwargs["use_cache"] = True
+
+        # HF dict flags that trigger ModelOutput returns
+        hf_dict_flags = (
+            "output_scores",
+            "output_logits",
+            "output_attentions",
+            "output_hidden_states",
+        )
+
+        # If any HF-style output flags are provided, ensure return_dict_in_generate is set
+        any_flag_set = False
+        for f in hf_dict_flags:
+            if f in generation_kwargs and generation_kwargs.get(f) is not None:
+                generation_kwargs[f] = bool(generation_kwargs[f])
+                any_flag_set = True
+
+        if any_flag_set:
+            generation_kwargs.setdefault("return_dict_in_generate", True)
+
+        # Generate using the original HuggingFace model
+        with torch.no_grad():
+            outputs = self.original_model.generate(input_ids, **generation_kwargs)  # type: ignore[operator]
+
+        # Check if output is a ModelOutput
+        try:
+            from transformers.utils import ModelOutput  # type: ignore
+
+            is_model_output = isinstance(outputs, ModelOutput)
+        except Exception:
+            is_model_output = False
+
+        # Return based on return_type and input format
+        if return_type == "input" or return_type is None:
+            if input_type == "str":
+                # Decode the full output back to string
+                if is_model_output and hasattr(outputs, "sequences"):
+                    return self.tokenizer.decode(outputs.sequences[0], skip_special_tokens=True)
+                return self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+            elif input_type == "list":
+                # Decode each sequence in the batch
+                if is_model_output and hasattr(outputs, "sequences"):
+                    return [
+                        self.tokenizer.decode(seq, skip_special_tokens=True)
+                        for seq in outputs.sequences
+                    ]
+                return [self.tokenizer.decode(seq, skip_special_tokens=True) for seq in outputs]
+            else:
+                # Return the full token sequence including input
+                return outputs
+        elif return_type == "tokens":
+            return outputs
+        else:
+            # For other return types, default to the decoded text
+            if input_type == "str":
+                if is_model_output and hasattr(outputs, "sequences"):
+                    return self.tokenizer.decode(outputs.sequences[0], skip_special_tokens=True)
+                return self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+            elif input_type == "list":
+                if is_model_output and hasattr(outputs, "sequences"):
+                    return [
+                        self.tokenizer.decode(seq, skip_special_tokens=True)
+                        for seq in outputs.sequences
+                    ]
+                return [self.tokenizer.decode(seq, skip_special_tokens=True) for seq in outputs]
+            else:
+                return outputs
+
     def to(self, *args, **kwargs) -> "TransformerBridge":
         """Move model to device and/or change dtype.
 
@@ -1766,12 +1968,12 @@ class TransformerBridge(nn.Module):
         """
         # Extract print_details if provided
         print_details = kwargs.pop("print_details", True)
-        
+
         # Handle both device and dtype changes
-        # torch.nn.Module.to() supports: to(device), to(dtype), to(device, dtype), 
+        # torch.nn.Module.to() supports: to(device), to(dtype), to(device, dtype),
         # to(device=...), to(dtype=...), to(device=..., dtype=...)
         target_device, target_dtype = None, None
-        
+
         if len(args) >= 1:
             first_arg = args[0]
             if isinstance(first_arg, (torch.device, str)):
@@ -1782,18 +1984,18 @@ class TransformerBridge(nn.Module):
             second_arg = args[1]
             if isinstance(second_arg, torch.dtype):
                 target_dtype = second_arg
-        
+
         # these override positional args
         if "device" in kwargs:
             target_device = kwargs["device"]
         if "dtype" in kwargs:
             target_dtype = kwargs["dtype"]
-        
+
         if target_device is not None:
             move_to_and_update_config(self, target_device, print_details)
         if target_dtype is not None:
             move_to_and_update_config(self, target_dtype, print_details)
-        
+
         # Move the original model with all original args/kwargs (with print_details removed)
         self.original_model = self.original_model.to(*args, **kwargs)
         return self
