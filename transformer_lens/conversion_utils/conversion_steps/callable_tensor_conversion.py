@@ -1,9 +1,9 @@
 from collections.abc import Callable
 
-from .base_hook_conversion import BaseHookConversion
+from .base_tensor_conversion import BaseTensorConversion
 
 
-class CallableHookConversion(BaseHookConversion):
+class CallableTensorConversion(BaseTensorConversion):
     def __init__(self, convert_callable: Callable):
         super().__init__()
         self.convert_callable = convert_callable

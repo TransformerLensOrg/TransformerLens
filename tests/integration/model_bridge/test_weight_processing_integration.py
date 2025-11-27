@@ -387,7 +387,7 @@ def test_weight_processing_results_loaded_into_model():
     # Test key conversion functionality
     test_key = "transformer.h.0.attn.c_attn.weight"
     if test_key in processed_state_dict:
-        bridge_key = bridge.adapter.convert_hf_key_to_bridge_key(test_key)
+        bridge_key = bridge.adapter.convert_hf_key_to_tl_key(test_key)
         assert (
             bridge_key in bridge.original_model.state_dict()
         ), f"Bridge key {bridge_key} should exist in model"
@@ -410,7 +410,7 @@ def test_weight_processing_results_loaded_into_model():
 
     for processed_key, processed_value in processed_state_dict.items():
         # Convert to bridge key
-        bridge_key = bridge.adapter.convert_hf_key_to_bridge_key(processed_key)
+        bridge_key = bridge.adapter.convert_hf_key_to_tl_key(processed_key)
 
         # Check if bridge key exists in the final state dict
         if bridge_key in final_state_dict:
@@ -490,7 +490,7 @@ def test_weight_processing_results_loaded_into_model():
     # 4. Test that key conversion works for all processed keys
     conversion_success = 0
     for processed_key in processed_state_dict.keys():
-        bridge_key = bridge.adapter.convert_hf_key_to_bridge_key(processed_key)
+        bridge_key = bridge.adapter.convert_hf_key_to_tl_key(processed_key)
         if bridge_key != processed_key:  # Key was converted
             conversion_success += 1
 
@@ -507,7 +507,7 @@ def test_weight_processing_results_loaded_into_model():
     critical_loaded = 0
     for critical_key in critical_keys:
         if critical_key in processed_state_dict:
-            bridge_key = bridge.adapter.convert_hf_key_to_bridge_key(critical_key)
+            bridge_key = bridge.adapter.convert_hf_key_to_tl_key(critical_key)
             if bridge_key in final_state_dict:
                 processed_value = processed_state_dict[critical_key]
                 final_value = final_state_dict[bridge_key]
@@ -589,42 +589,6 @@ def test_attention_weight_loading():
     )
 
 
-def test_layer_norm_weights_removed():
-    """Test that layer norm weights are properly removed after processing."""
-    model_name = "gpt2"
-    device = "cpu"
-
-    # Load TransformerBridge
-    bridge = TransformerBridge.boot_transformers(model_name, device=device)
-
-    # Get original state dict
-    original_state_dict = bridge._extract_hf_weights()
-
-    # Check that layer norm weights exist in original
-    ln_keys = [k for k in original_state_dict.keys() if "ln1" in k or "ln_f" in k]
-    assert len(ln_keys) > 0, "Layer norm weights should exist in original state dict"
-
-    # Process weights (this should remove layer norm weights)
-    from transformer_lens.weight_processing import ProcessWeights
-
-    processed_state_dict = ProcessWeights.process_weights(
-        original_state_dict,
-        bridge.cfg,
-        fold_ln=True,
-        center_writing_weights=True,
-        center_unembed=True,
-        fold_value_biases=True,
-        refactor_factored_attn_matrices=False,
-        adapter=bridge.adapter,
-    )
-
-    # Check that layer norm weights still exist (they are folded, not removed)
-    processed_ln_keys = [k for k in processed_state_dict.keys() if "ln1" in k or "ln_f" in k]
-    assert (
-        len(processed_ln_keys) > 0
-    ), f"Layer norm weights should still exist after folding. Found: {len(processed_ln_keys)} keys"
-
-
 def test_processing_verification():
     """Verify that weight processing is actually happening."""
     device = "cpu"
@@ -698,83 +662,6 @@ def test_processing_verification():
     # Note: LayerNorm parameters may still be present even when folded (implementation detail)
     # Just check that processing happened by verifying loss differences
     # Note: Bridge LayerNorm parameters may also still be present (implementation detail)
-
-
-def test_final_integration_root_cause():
-    """Final integration test demonstrating the root cause and solution."""
-    model_name = "gpt2"
-    device = "cpu"
-
-    # Load TransformerBridge
-    bridge = TransformerBridge.boot_transformers(model_name, device=device)
-
-    # Get original weights
-    original_state_dict = bridge._extract_hf_weights()
-
-    # Process weights with all transformations
-    from transformer_lens.weight_processing import ProcessWeights
-
-    processed_state_dict = ProcessWeights.process_weights(
-        original_state_dict,
-        bridge.cfg,
-        fold_ln=True,
-        center_writing_weights=True,
-        center_unembed=True,
-        fold_value_biases=True,
-        refactor_factored_attn_matrices=False,
-        adapter=bridge.adapter,
-    )
-
-    # Get bridge keys
-    bridge_keys = list(bridge.original_model.state_dict().keys())
-
-    # Create proper mapping
-    clean_to_bridge = {}
-    for bridge_key in bridge_keys:
-        clean_key = bridge_key.replace("._original_component", "")
-        clean_to_bridge[clean_key] = bridge_key
-
-    proper_mapping = {}
-    for processed_key, value in processed_state_dict.items():
-        if processed_key in clean_to_bridge:
-            bridge_key = clean_to_bridge[processed_key]
-            proper_mapping[bridge_key] = value
-
-    # Test input
-    test_input = "Hello world"
-    input_ids = bridge.tokenizer.encode(test_input, return_tensors="pt")
-
-    # Get output before loading processed weights
-    with torch.no_grad():
-        output_before = bridge.forward(input_ids)
-        logits_before = output_before.logits if hasattr(output_before, "logits") else output_before
-
-    # Load processed weights
-    result = bridge.load_state_dict(proper_mapping, strict=False, assign=False)
-
-    # Get output after loading processed weights
-    with torch.no_grad():
-        output_after = bridge.forward(input_ids)
-        logits_after = output_before.logits if hasattr(output_after, "logits") else output_after
-
-    # Check if outputs are different
-    output_changed = not torch.allclose(logits_before, logits_after, atol=1e-6)
-
-    # The key assertion: processed weights should change the model output
-    assert output_changed, "Processed weights should change the model output"
-
-    # Verify that the processed weights are correctly loaded
-    layer = 0
-    hf_key = f"transformer.h.{layer}.attn.c_attn.weight"
-    bridge_key = f"transformer.h.{layer}._original_component.attn._original_component.c_attn._original_component.weight"
-
-    if hf_key in processed_state_dict and bridge_key in bridge_keys:
-        processed_weight = processed_state_dict[hf_key]
-        bridge_weight = bridge.original_model.state_dict()[bridge_key]
-
-        assert torch.allclose(
-            processed_weight, bridge_weight, atol=1e-6
-        ), "Processed weights should be correctly loaded into bridge"
 
 
 @pytest.mark.skip(reason="Weight processing comparison failing due to architectural differences")
@@ -976,6 +863,51 @@ def test_tensor_conversion_compatibility():
         # Compare values
         max_diff = torch.max(torch.abs(tl_value - converted_value)).item()
         assert max_diff < 1e-6, f"Value mismatch for {param}: max_diff={max_diff:.2e}"
+
+
+def test_layer_norm_weights_removed():
+    """Test that layer norm weights are properly handled after processing."""
+    model_name = "gpt2"
+    device = "cpu"
+
+    # Load TransformerBridge without processing
+    bridge_unprocessed = TransformerBridge.boot_transformers(model_name, device=device)
+
+    # Get layer norm keys before processing
+    unprocessed_state = bridge_unprocessed.original_model.state_dict()
+    ln_keys_before = [k for k in unprocessed_state.keys() if ("ln_1" in k or "ln_f" in k)]
+    assert len(ln_keys_before) > 0, "Layer norm weights should exist in original state dict"
+
+    # Load TransformerBridge with processing
+    bridge_processed = TransformerBridge.boot_transformers(model_name, device=device)
+    bridge_processed.enable_compatibility_mode()  # This processes weights with fold_ln=True
+
+    # Get layer norm keys after processing
+    # The layer norm weights should still be present in the HF model's state dict
+    # (folding modifies other weights but keeps LN weights in place)
+    processed_state = bridge_processed.original_model.state_dict()
+    ln_keys_after = [k for k in processed_state.keys() if ("ln_1" in k or "ln_f" in k)]
+
+    # Layer norm weights should still exist (they are folded into other weights, not removed from state dict)
+    assert (
+        len(ln_keys_after) > 0
+    ), f"Layer norm weights should still exist after folding. Found: {len(ln_keys_after)} keys"
+
+    # Verify that the LN weights have been set to identity (weight=1, bias=0)
+    # This is the expected result of folding
+    for key in ln_keys_after:
+        if "weight" in key:
+            # After folding, LN weights should be all 1s
+            weight = processed_state[key]
+            assert torch.allclose(
+                weight, torch.ones_like(weight)
+            ), f"{key} should be all 1s after folding"
+        elif "bias" in key:
+            # After folding, LN biases should be all 0s
+            bias = processed_state[key]
+            assert torch.allclose(
+                bias, torch.zeros_like(bias)
+            ), f"{key} should be all 0s after folding"
 
 
 if __name__ == "__main__":

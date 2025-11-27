@@ -31,6 +31,7 @@ __all__ = [
     "get_offset_position_ids",
     "get_cumsum_along_dim",
     "repeat_along_head_dimension",
+    "filter_dict_by_prefix",
     "lm_cross_entropy_loss",
     "lm_accuracy",
     "gelu_new",

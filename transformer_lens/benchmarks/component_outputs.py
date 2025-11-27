@@ -278,21 +278,18 @@ class ComponentBenchmarker:
             if result is not None:
                 results.append(result)
 
-        # Test block components
+        # Test block components recursively
         if "blocks" in component_mapping and "blocks" not in skip_components:
             blocks_component = component_mapping["blocks"]
             n_layers = self.cfg.n_layers
 
             for layer_idx in range(n_layers):
-                # Test each subcomponent in the block
+                # Recursively test each subcomponent and its nested subcomponents
                 for subcomp_name, subcomponent in blocks_component.submodules.items():
                     comp_path = f"blocks.{layer_idx}.{subcomp_name}"
-                    if comp_path in skip_components:
-                        continue
-
-                    result = self._test_component(comp_path, subcomponent, test_inputs)
-                    if result is not None:
-                        results.append(result)
+                    self._test_component_recursive(
+                        comp_path, subcomponent, test_inputs, results, skip_components
+                    )
 
         # Create report
         passed = sum(1 for r in results if r.passed)
@@ -305,6 +302,87 @@ class ComponentBenchmarker:
             failed_components=failed,
             component_results=results,
         )
+
+    def _test_component_recursive(
+        self,
+        component_path: str,
+        component: GeneralizedComponent,
+        test_inputs: Dict[str, torch.Tensor],
+        results: List[ComponentTestResult],
+        skip_components: Optional[List[str]] = None,
+    ) -> None:
+        """Recursively test a component and all its subcomponents.
+
+        This method tests the given component and then recursively tests all its
+        nested subcomponents (e.g., attn.q, attn.k, mlp.gate, etc.).
+
+        Note: We skip testing q/k/v subcomponents when the parent attention module
+        uses joint QKV projection (JointQKVAttentionBridge), as these are virtual
+        components that don't exist as separate modules in HuggingFace.
+
+        Args:
+            component_path: Path to the component (e.g., "blocks.0.attn")
+            component: The generalized component bridge
+            test_inputs: Dictionary of test inputs
+            results: List to append results to
+            skip_components: Optional list of component paths to skip
+        """
+        skip_components = skip_components or []
+
+        # Skip if in skip list
+        if component_path in skip_components:
+            return
+
+        # Skip components that require specific shaped inputs from their parent modules
+        # These components expect intermediate outputs from their parent attention/MLP
+        # modules and can't be tested with generic hidden state inputs
+        path_parts = component_path.split(".")
+        if len(path_parts) >= 3:  # e.g., "blocks.0.attn.o" or "blocks.0.mlp.out"
+            last_part = path_parts[-1]
+
+            # Skip attention output projection (expects concatenated attn output)
+            # Skip MLP output projection (expects MLP intermediate activations)
+            # Note: q_norm/k_norm are handled specially in _run_component
+            if last_part in ["o", "out"]:
+                return
+
+            # Check if this is a q/k/v subcomponent and parent is joint QKV
+            if last_part in ["q", "k", "v"]:
+                # Check if parent component is JointQKVAttentionBridge
+                parent_type = type(component).__name__
+                # The component passed in is actually the q/k/v component itself
+                # We need to check if we should skip based on parent context
+                # For now, we'll check if the parent path exists and is a joint module
+                # This is a heuristic - skip q/k/v that are children of attention
+                # if the attention module has "qkv" or "c_attn" in its submodules
+                # (indicating joint QKV projection)
+                parent_path = ".".join(path_parts[:-1])
+                try:
+                    parent_component = self.adapter.get_component(self.bridge_model, parent_path)
+                    # Check if parent has a joint qkv module
+                    if hasattr(parent_component, "submodules"):
+                        if (
+                            "qkv" in parent_component.submodules  # type: ignore[operator]
+                            or "c_attn" in parent_component.submodules  # type: ignore[operator]
+                        ):
+                            # Skip - this is a virtual q/k/v split from joint projection
+                            return
+                except Exception:
+                    # If we can't get parent, proceed with testing
+                    pass
+
+        # Test this component
+        result = self._test_component(component_path, component, test_inputs)
+        if result is not None:
+            results.append(result)
+
+        # Recursively test subcomponents
+        if hasattr(component, "submodules") and component.submodules:
+            for subcomp_name, subcomponent in component.submodules.items():
+                sub_path = f"{component_path}.{subcomp_name}"
+                self._test_component_recursive(
+                    sub_path, subcomponent, test_inputs, results, skip_components
+                )
 
     def _test_component(
         self,
@@ -453,6 +531,15 @@ class ComponentBenchmarker:
         Returns:
             The component output
         """
+        # Special handling for q_norm/k_norm: they expect (batch, seq, d_head) not (batch, seq, d_model)
+        if component_path.endswith(".q_norm") or component_path.endswith(".k_norm"):
+            # Reshape test_input from (batch, seq, d_model) to (batch, seq, d_head)
+            batch, seq, d_model = test_input.shape
+            d_head = self.cfg.d_head
+            # Use just d_head dimensions as test input
+            test_input_reshaped = test_input[..., :d_head]
+            return component(test_input_reshaped)
+
         # Use shared inputs if provided (generated from bridge component's get_random_inputs())
         if shared_inputs is not None:
             # Check if shared_inputs contains positional args

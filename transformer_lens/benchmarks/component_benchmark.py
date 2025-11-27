@@ -317,6 +317,10 @@ def benchmark_all_components(
         BenchmarkResult summarizing all component tests
     """
     try:
+        # Set up component testing (e.g., sync rotary_emb references for Gemma models, eager attention)
+        # This must be called before creating the ComponentBenchmarker
+        bridge.adapter.setup_component_testing(hf_model, bridge_model=bridge)
+
         # Create benchmarker
         benchmarker = ComponentBenchmarker(
             bridge_model=bridge,

@@ -2,9 +2,9 @@
 
 from typing import Any
 
-from transformer_lens.conversion_utils.conversion_steps import (
-    HookConversionSet,
-    RearrangeHookConversion,
+from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorConversion
+from transformer_lens.conversion_utils.param_processing_conversion import (
+    ParamProcessingConversion,
 )
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
@@ -14,6 +14,7 @@ from transformer_lens.model_bridge.generalized_components import (
     GatedMLPBridge,
     LinearBridge,
     RMSNormalizationBridge,
+    RotaryEmbeddingBridge,
     UnembeddingBridge,
 )
 
@@ -25,54 +26,43 @@ class Gemma1ArchitectureAdapter(ArchitectureAdapter):
         """Initialize the Gemma1 architecture adapter."""
         super().__init__(cfg)
 
+        # Set config variables for weight processing
+        self.cfg.normalization_type = "RMS"
+        self.cfg.positional_embedding_type = "rotary"
+        self.cfg.final_rms = True
+        self.cfg.gated_mlp = True
+        self.cfg.attn_only = False
+
         # Gemma models were not trained with BOS tokens
         self.cfg.default_prepend_bos = False
-        self.cfg.gated_mlp = True
-
         self.cfg.uses_rms_norm = True
 
-        # Gemma1 uses rotary position embeddings
-        self.cfg.positional_embedding_type = "rotary"
-
-        self.conversion_rules = HookConversionSet(
-            {
-                # Gemma1 scales embeddings by sqrt(d_model)
-                "embed.e": (
-                    "model.embed_tokens.weight",
-                    RearrangeHookConversion(
-                        "d_vocab d_model -> d_vocab d_model",
-                        scale=self.cfg.d_model**0.5,
-                    ),
+        self.weight_processing_conversions = {
+            # Gemma1 scales embeddings by sqrt(d_model)
+            "embed.e": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion(
+                    "d_vocab d_model -> d_vocab d_model",
+                    scale=self.cfg.d_model**0.5,
                 ),
-                "blocks.{i}.ln1.w": "model.layers.{i}.input_layernorm.weight",
-                "blocks.{i}.ln2.w": "model.layers.{i}.post_attention_layernorm.weight",
-                "blocks.{i}.attn.q": (
-                    "model.layers.{i}.self_attn.q_proj.weight",
-                    RearrangeHookConversion("(n h) m -> n m h", n=self.cfg.n_heads),
-                ),
-                "blocks.{i}.attn.k": (
-                    "model.layers.{i}.self_attn.k_proj.weight",
-                    RearrangeHookConversion("(n h) m -> n m h", n=self.cfg.n_heads),
-                ),
-                "blocks.{i}.attn.v": (
-                    "model.layers.{i}.self_attn.v_proj.weight",
-                    RearrangeHookConversion("(n h) m -> n m h", n=self.cfg.n_heads),
-                ),
-                "blocks.{i}.attn.o": (
-                    "model.layers.{i}.self_attn.o_proj.weight",
-                    RearrangeHookConversion("m (n h) -> n h m", n=self.cfg.n_heads),
-                ),
-                "blocks.{i}.mlp.in": "model.layers.{i}.mlp.up_proj.weight.T",
-                "blocks.{i}.mlp.gate": "model.layers.{i}.mlp.gate_proj.weight.T",
-                "blocks.{i}.mlp.out": "model.layers.{i}.mlp.down_proj.weight.T",
-                "ln_final.w": "model.norm.weight",
-                "unembed.u": "lm_head.weight.T",  # Not shared with embedding
-            }
-        )
+                source_key="model.embed_tokens.weight",
+            ),
+            "blocks.{i}.attn.q.weight": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
+            ),
+            "blocks.{i}.attn.k.weight": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
+            ),
+            "blocks.{i}.attn.v.weight": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
+            ),
+            "blocks.{i}.attn.o.weight": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion("m (n h) -> n h m", n=self.cfg.n_heads),
+            ),
+        }
 
         self.component_mapping = {
             "embed": EmbeddingBridge(name="model.embed_tokens"),
-            "rotary_emb": EmbeddingBridge(name="model.rotary_emb"),
+            "rotary_emb": RotaryEmbeddingBridge(name="model.rotary_emb", config=self.cfg),
             "blocks": BlockBridge(
                 name="model.layers",
                 submodules={

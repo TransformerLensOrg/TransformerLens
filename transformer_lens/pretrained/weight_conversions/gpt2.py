@@ -17,23 +17,18 @@ def convert_gpt2_weights(gpt2, cfg: HookedTransformerConfig):
         # In GPT-2, q,k,v are produced by one big linear map, whose output is
         # concat([q, k, v])
         W = gpt2.transformer.h[l].attn.c_attn.weight
-        W_Q, W_K, W_V = torch.tensor_split(W, 3, dim=1)
-        W_Q = einops.rearrange(W_Q, "m (i h)->i m h", i=cfg.n_heads)
-        W_K = einops.rearrange(W_K, "m (i h)->i m h", i=cfg.n_heads)
-        W_V = einops.rearrange(W_V, "m (i h)->i m h", i=cfg.n_heads)
+        W_Q_flat, W_K_flat, W_V_flat = torch.split(W, cfg.d_model, dim=1)
+        W_Q = einops.rearrange(W_Q_flat, "m (i h)->i m h", i=cfg.n_heads)
+        W_K = einops.rearrange(W_K_flat, "m (i h)->i m h", i=cfg.n_heads)
+        W_V = einops.rearrange(W_V_flat, "m (i h)->i m h", i=cfg.n_heads)
 
         state_dict[f"blocks.{l}.attn.W_Q"] = W_Q
         state_dict[f"blocks.{l}.attn.W_K"] = W_K
         state_dict[f"blocks.{l}.attn.W_V"] = W_V
 
         qkv_bias = gpt2.transformer.h[l].attn.c_attn.bias
-        qkv_bias = einops.rearrange(
-            qkv_bias,
-            "(qkv index head)->qkv index head",
-            qkv=3,
-            index=cfg.n_heads,
-            head=cfg.d_head,
-        )
+        qkv_bias = qkv_bias.view(3, cfg.d_model)
+        qkv_bias = qkv_bias.view(3, cfg.n_heads, cfg.d_head)
         state_dict[f"blocks.{l}.attn.b_Q"] = qkv_bias[0]
         state_dict[f"blocks.{l}.attn.b_K"] = qkv_bias[1]
         state_dict[f"blocks.{l}.attn.b_V"] = qkv_bias[2]

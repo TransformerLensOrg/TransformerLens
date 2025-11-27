@@ -1,4 +1,4 @@
-"""Weight conversion set."""
+"""Tensor conversion set."""
 
 from typing import Any
 
@@ -9,11 +9,11 @@ from transformer_lens.conversion_utils.hook_conversion_utils import (
     get_weight_conversion_field_set,
 )
 
-from .base_hook_conversion import BaseHookConversion
-from .rearrange_hook_conversion import RearrangeHookConversion
+from .base_tensor_conversion import BaseTensorConversion
+from .rearrange_tensor_conversion import RearrangeTensorConversion
 
 
-class HookConversionSet(BaseHookConversion):
+class TensorConversionSet(BaseTensorConversion):
     def __init__(
         self,
         fields: dict[str, Any],
@@ -76,11 +76,11 @@ class HookConversionSet(BaseHookConversion):
         self,
         input_value: Any,
         remote_field: str,
-        conversion: BaseHookConversion,
+        conversion: BaseTensorConversion,
         *full_context: Any,
     ) -> Any:
         field = find_property(remote_field, input_value)
-        if isinstance(conversion, HookConversionSet):
+        if isinstance(conversion, TensorConversionSet):
             result = []
             for layer in field:
                 result.append(conversion.convert(layer, input_value, *full_context))
@@ -89,13 +89,13 @@ class HookConversionSet(BaseHookConversion):
         else:
             return conversion.convert(field, *[input_value, *full_context])
 
-    def get_conversion_action(self, field: str) -> BaseHookConversion:
+    def get_conversion_action(self, field: str) -> BaseTensorConversion:
         conversion_details = self.fields[field]
         if isinstance(conversion_details, tuple):
             return conversion_details[1]
         else:
             # Return no op if not a specific conversion
-            return RearrangeHookConversion("... -> ...")
+            return RearrangeTensorConversion("... -> ...")
 
     def __repr__(self) -> str:
         conversion_string = (

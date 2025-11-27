@@ -7,12 +7,12 @@ import torch
 
 from transformer_lens.conversion_utils.helpers.find_property import find_property
 
-from .base_hook_conversion import BaseHookConversion
+from .base_tensor_conversion import BaseTensorConversion
 
-PRIMARY_CONVERSION = torch.Tensor | BaseHookConversion | None
+PRIMARY_CONVERSION = torch.Tensor | BaseTensorConversion | None
 
 
-class TernaryHookConversion(BaseHookConversion):
+class TernaryTensorConversion(BaseTensorConversion):
     def __init__(
         self,
         fallback_conversion: Any,

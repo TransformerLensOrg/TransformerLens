@@ -6,7 +6,7 @@ from typing import Optional
 
 import torch
 
-from .base_hook_conversion import BaseHookConversion
+from .base_tensor_conversion import BaseTensorConversion
 
 
 class OperationTypes(Enum):
@@ -16,7 +16,7 @@ class OperationTypes(Enum):
     DIVISION = 3
 
 
-class ArithmeticHookConversion(BaseHookConversion):
+class ArithmeticTensorConversion(BaseTensorConversion):
     def __init__(
         self,
         operation: OperationTypes,

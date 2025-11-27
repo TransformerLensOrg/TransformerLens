@@ -2,9 +2,9 @@
 
 from typing import Any
 
-from transformer_lens.conversion_utils.conversion_steps import (
-    HookConversionSet,
-    RearrangeHookConversion,
+from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorConversion
+from transformer_lens.conversion_utils.param_processing_conversion import (
+    ParamProcessingConversion,
 )
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
@@ -12,7 +12,6 @@ from transformer_lens.model_bridge.generalized_components import (
     EmbeddingBridge,
     LinearBridge,
     MoEBridge,
-    NormalizationBridge,
     PositionEmbeddingsAttentionBridge,
     RMSNormalizationBridge,
     RotaryEmbeddingBridge,
@@ -39,38 +38,24 @@ class GPTOSSArchitectureAdapter(ArchitectureAdapter):
 
         # Conversion rules for weight processing/folding
         # GPT-OSS uses MoE with batched experts, so we need special handling
-        self.conversion_rules = HookConversionSet(
-            {
-                "embed.e": "model.embed_tokens.weight",
-                "blocks.{i}.ln1.w": "model.layers.{i}.input_layernorm.weight",
-                "blocks.{i}.ln2.w": "model.layers.{i}.post_attention_layernorm.weight",
-                "blocks.{i}.attn.q": (
-                    "model.layers.{i}.self_attn.q_proj.weight",
-                    RearrangeHookConversion("(n h) m -> n m h", n=self.cfg.n_heads),
-                ),
-                "blocks.{i}.attn.k": (
-                    "model.layers.{i}.self_attn.k_proj.weight",
-                    RearrangeHookConversion("(n h) m -> n m h", n=self.cfg.n_heads),
-                ),
-                "blocks.{i}.attn.v": (
-                    "model.layers.{i}.self_attn.v_proj.weight",
-                    RearrangeHookConversion("(n h) m -> n m h", n=self.cfg.n_heads),
-                ),
-                "blocks.{i}.attn.o": (
-                    "model.layers.{i}.self_attn.o_proj.weight",
-                    RearrangeHookConversion("m (n h) -> n h m", n=self.cfg.n_heads),
-                ),
-                # Note: MLP weights for MoE models with batched experts are not directly mappable
-                # The experts use batched tensors [num_experts, ...] which need special handling
-                # These mappings are for the router only
-                "ln_final.w": "model.norm.weight",
-                "unembed.u": "lm_head.weight.T",
-            }
-        )
+        self.weight_processing_conversions = {
+            "blocks.{i}.attn.q.weight": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
+            ),
+            "blocks.{i}.attn.k.weight": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
+            ),
+            "blocks.{i}.attn.v.weight": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
+            ),
+            "blocks.{i}.attn.o.weight": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion("m (n h) -> n h m", n=self.cfg.n_heads),
+            ),
+        }
 
         self.component_mapping = {
             "embed": EmbeddingBridge(name="model.embed_tokens"),
-            "rotary_emb": RotaryEmbeddingBridge(name="model.rotary_emb"),
+            "rotary_emb": RotaryEmbeddingBridge(name="model.rotary_emb", config=self.cfg),
             "blocks": BlockBridge(
                 name="model.layers",
                 submodules={
@@ -91,7 +76,7 @@ class GPTOSSArchitectureAdapter(ArchitectureAdapter):
                             "o": LinearBridge(name="o_proj"),
                         },
                     ),
-                    "ln2": NormalizationBridge(
+                    "ln2": RMSNormalizationBridge(
                         name="post_attention_layernorm",
                         config=self.cfg,
                         use_native_layernorm_autograd=True,  # Use HF's RMSNorm for correct dtype handling
@@ -101,7 +86,7 @@ class GPTOSSArchitectureAdapter(ArchitectureAdapter):
                     "mlp": MoEBridge(name="mlp", config=self.cfg),
                 },
             ),
-            "ln_final": NormalizationBridge(
+            "ln_final": RMSNormalizationBridge(
                 name="model.norm",
                 config=self.cfg,
                 use_native_layernorm_autograd=True,  # Use HF's RMSNorm for correct dtype handling
@@ -109,10 +94,13 @@ class GPTOSSArchitectureAdapter(ArchitectureAdapter):
             "unembed": UnembeddingBridge(name="lm_head"),
         }
 
-    def setup_no_processing_hooks(self, bridge_model: Any) -> None:
-        """Set up hooks for GPT-OSS when not using weight processing.
+    def setup_hook_compatibility(self, bridge_model: Any) -> None:
+        """Setup hook compatibility transformations for GPT-OSS models.
 
-        This configures rotary embedding references for attention layers.
+        This configures rotary embedding references for attention layers, which is
+        needed for models using RoPE (Rotary Position Embeddings).
+
+        This is called during Bridge.__init__ and should always be run.
 
         Args:
             bridge_model: The TransformerBridge instance
@@ -129,3 +117,7 @@ class GPTOSSArchitectureAdapter(ArchitectureAdapter):
             for block in bridge_model.blocks:
                 if hasattr(block, "attn"):
                     block.attn.set_rotary_emb(rotary_emb)
+
+    def setup_no_processing_hooks(self, bridge_model: Any) -> None:
+        """Backward compatibility alias for setup_hook_compatibility."""
+        self.setup_hook_compatibility(bridge_model)

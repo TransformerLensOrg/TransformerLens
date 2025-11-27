@@ -1,10 +1,10 @@
 import torch
 
-from transformer_lens.conversion_utils.conversion_steps.base_hook_conversion import (
-    BaseHookConversion,
+from transformer_lens.conversion_utils.conversion_steps.base_tensor_conversion import (
+    BaseTensorConversion,
 )
-from transformer_lens.conversion_utils.conversion_steps.ternary_hook_conversion import (
-    TernaryHookConversion,
+from transformer_lens.conversion_utils.conversion_steps.ternary_tensor_conversion import (
+    TernaryTensorConversion,
 )
 
 ###################################
@@ -12,7 +12,7 @@ from transformer_lens.conversion_utils.conversion_steps.ternary_hook_conversion 
 ###################################
 
 
-class MockPrimaryConversion(BaseHookConversion):
+class MockPrimaryConversion(BaseTensorConversion):
     """
     A primary conversion class that modifies the input tensor
     (e.g., adds 42) to show it's been called.
@@ -22,7 +22,7 @@ class MockPrimaryConversion(BaseHookConversion):
         return input_value + 42
 
 
-class MockFallbackConversion(BaseHookConversion):
+class MockFallbackConversion(BaseTensorConversion):
     """
     A fallback conversion that returns a known tensor if input_value is None,
     or modifies the existing tensor if not None.
@@ -45,12 +45,12 @@ class MockFallbackConversion(BaseHookConversion):
 ###################################
 
 
-def test_ternary_hook_conversion_primary_none():
+def test_ternary_tensor_conversion_primary_none():
     """
     If primary_conversion is None, it should just return the input_value unmodified.
     """
     fallback = torch.tensor([10.0])  # Not used if input_value is not None
-    ternary = TernaryHookConversion(fallback_conversion=fallback, primary_conversion=None)
+    ternary = TernaryTensorConversion(fallback_conversion=fallback, primary_conversion=None)
     input_tensor = torch.tensor([1.0, 2.0])
     output_tensor = ternary.convert(input_tensor)
     assert torch.allclose(
@@ -58,13 +58,15 @@ def test_ternary_hook_conversion_primary_none():
     ), "Expected primary=None to return input_value as is."
 
 
-def test_ternary_hook_conversion_primary_tensor():
+def test_ternary_tensor_conversion_primary_tensor():
     """
     If primary_conversion is a torch.Tensor, ignore input_value and return that tensor.
     """
     fallback = torch.tensor([10.0])  # Not used if input_value is not None
     primary_tensor = torch.tensor([100.0, 200.0])
-    ternary = TernaryHookConversion(fallback_conversion=fallback, primary_conversion=primary_tensor)
+    ternary = TernaryTensorConversion(
+        fallback_conversion=fallback, primary_conversion=primary_tensor
+    )
     input_tensor = torch.tensor([1.0, 2.0])
     output_tensor = ternary.convert(input_tensor)
     assert torch.allclose(
@@ -72,13 +74,13 @@ def test_ternary_hook_conversion_primary_tensor():
     ), "Expected to return primary tensor, ignoring input_value."
 
 
-def test_ternary_hook_conversion_primary_conversion_class():
+def test_ternary_tensor_conversion_primary_conversion_class():
     """
-    If primary_conversion is a BaseHookConversion, .convert() should be called.
+    If primary_conversion is a BaseTensorConversion, .convert() should be called.
     """
     fallback = torch.tensor([10.0])
     mock_primary = MockPrimaryConversion()
-    ternary = TernaryHookConversion(fallback_conversion=fallback, primary_conversion=mock_primary)
+    ternary = TernaryTensorConversion(fallback_conversion=fallback, primary_conversion=mock_primary)
     input_tensor = torch.tensor([1.0, 2.0])
     output_tensor = ternary.convert(input_tensor)
 
@@ -87,24 +89,24 @@ def test_ternary_hook_conversion_primary_conversion_class():
     assert torch.allclose(output_tensor, expected)
 
 
-def test_ternary_hook_conversion_fallback_tensor():
+def test_ternary_tensor_conversion_fallback_tensor():
     """
     If input_value is None and fallback is a Tensor, return that tensor directly.
     """
     fallback_tensor = torch.tensor([999.0])
-    ternary = TernaryHookConversion(fallback_conversion=fallback_tensor, primary_conversion=None)
+    ternary = TernaryTensorConversion(fallback_conversion=fallback_tensor, primary_conversion=None)
     # Trigger fallback by passing input_value=None
     output = ternary.convert(None)
     assert torch.allclose(output, fallback_tensor), "Expected fallback tensor to be returned."
 
 
-def test_ternary_hook_conversion_fallback_str():
+def test_ternary_tensor_conversion_fallback_str():
     """
     If input_value is None and fallback is a str, we do a context lookup
     with find_context_field().
     """
     # Suppose the context dict has "my_remote_field" -> [123.0, 456.0]
-    ternary = TernaryHookConversion(
+    ternary = TernaryTensorConversion(
         fallback_conversion="my_remote_field",  # str fallback
     )
 
@@ -118,14 +120,14 @@ def test_ternary_hook_conversion_fallback_str():
     ), "Expected fallback str to be found in context dictionary."
 
 
-def test_ternary_hook_conversion_fallback_tuple():
+def test_ternary_tensor_conversion_fallback_tuple():
     """
-    If fallback is a tuple (REMOTE_FIELD, BaseHookConversion),
+    If fallback is a tuple (REMOTE_FIELD, BaseTensorConversion),
     we do a context lookup for the REMOTE_FIELD,
     then pass that to the second item, which is a conversion class.
     """
 
-    class MockTupleConversion(BaseHookConversion):
+    class MockTupleConversion(BaseTensorConversion):
         def __init__(self):
             super().__init__()
             self.was_called = False
@@ -137,7 +139,7 @@ def test_ternary_hook_conversion_fallback_tuple():
     mock_fallback_conv = MockTupleConversion()
     fallback_tuple = ("my_backup_field", mock_fallback_conv)  # type: ignore
 
-    ternary = TernaryHookConversion(fallback_conversion=fallback_tuple, primary_conversion=None)
+    ternary = TernaryTensorConversion(fallback_conversion=fallback_tuple, primary_conversion=None)
 
     # Suppose the context dictionary has "my_backup_field" => [5,6,7]
     context = {"my_backup_field": torch.tensor([5.0, 6.0, 7.0])}
@@ -149,14 +151,14 @@ def test_ternary_hook_conversion_fallback_tuple():
     assert torch.allclose(output, torch.tensor([1005.0, 1006.0, 1007.0]))
 
 
-def test_ternary_hook_conversion_find_context_field_failure():
+def test_ternary_tensor_conversion_find_context_field_failure():
     """
     If fallback is a str, but the context doesn't contain that key,
     find_context_field returns None, and so fallback is effectively None =>
     This might cause an error or we accept returning None.
     We'll see how your code handles that scenario.
     """
-    ternary = TernaryHookConversion(fallback_conversion="missing_key", primary_conversion=None)
+    ternary = TernaryTensorConversion(fallback_conversion="missing_key", primary_conversion=None)
     # No context => won't find 'missing_key'
     output = ternary.convert(None, *{})
     # According to your code, if nothing is found, we return None from find_context_field.
@@ -180,7 +182,7 @@ def test_ternary_input_filter():
         return x * 10
 
     mock_primary = MockPrimaryConversion()  # adds 42
-    ternary = TernaryHookConversion(
+    ternary = TernaryTensorConversion(
         fallback_conversion=torch.tensor([999.0]),
         primary_conversion=mock_primary,
         input_filter=input_filter,
@@ -202,7 +204,7 @@ def test_ternary_output_filter():
         return x - 100
 
     mock_primary = MockPrimaryConversion()  # adds 42
-    ternary = TernaryHookConversion(
+    ternary = TernaryTensorConversion(
         fallback_conversion=torch.tensor([999.0]),
         primary_conversion=mock_primary,
         output_filter=output_filter,
@@ -226,7 +228,7 @@ def test_ternary_both_filters():
         return x + 5
 
     mock_primary = MockPrimaryConversion()  # +42
-    ternary = TernaryHookConversion(
+    ternary = TernaryTensorConversion(
         fallback_conversion=("backup_field", MockFallbackConversion()),
         primary_conversion=mock_primary,
         input_filter=input_filter,
@@ -248,7 +250,7 @@ def test_ternary_repr():
     """
     mock_primary = MockPrimaryConversion()
     fallback_tuple = ("my_field", MockFallbackConversion())  # type: ignore
-    ternary = TernaryHookConversion(
+    ternary = TernaryTensorConversion(
         fallback_conversion=fallback_tuple, primary_conversion=mock_primary
     )
     rep = repr(ternary).lower()

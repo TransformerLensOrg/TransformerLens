@@ -2,9 +2,9 @@
 
 from typing import Any
 
-from transformer_lens.conversion_utils.conversion_steps import (
-    HookConversionSet,
-    RearrangeHookConversion,
+from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorConversion
+from transformer_lens.conversion_utils.param_processing_conversion import (
+    ParamProcessingConversion,
 )
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
@@ -14,6 +14,7 @@ from transformer_lens.model_bridge.generalized_components import (
     LinearBridge,
     MLPBridge,
     RMSNormalizationBridge,
+    RotaryEmbeddingBridge,
     UnembeddingBridge,
 )
 
@@ -24,6 +25,14 @@ class MistralArchitectureAdapter(ArchitectureAdapter):
     def __init__(self, cfg: Any) -> None:
         """Initialize the Mistral architecture adapter."""
         super().__init__(cfg)
+
+        # Set config variables for weight processing
+        self.cfg.normalization_type = "RMS"
+        self.cfg.positional_embedding_type = "rotary"
+        self.cfg.final_rms = False
+        self.cfg.gated_mlp = True
+        self.cfg.attn_only = False
+
         self.default_config = {
             "d_model": cfg.d_model,
             "d_head": cfg.d_model // cfg.n_heads,
@@ -33,42 +42,30 @@ class MistralArchitectureAdapter(ArchitectureAdapter):
             "n_key_value_heads": cfg.n_key_value_heads,
         }
 
-        self.cfg.gated_mlp = True
-
         self.cfg.uses_rms_norm = True
 
-        self.conversion_rules = HookConversionSet(
-            {
-                "embed.e": "model.embed_tokens.weight",
-                "blocks.{i}.ln1.w": "model.layers.{i}.input_layernorm.weight",
-                "blocks.{i}.ln2.w": "model.layers.{i}.post_attention_layernorm.weight",
-                "blocks.{i}.attn.q": (
-                    "model.layers.{i}.self_attn.q_proj.weight",
-                    RearrangeHookConversion("(n h) m -> n m h", n=self.cfg.n_heads),
+        self.weight_processing_conversions = {
+            "blocks.{i}.attn.q.weight": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
+            ),
+            "blocks.{i}.attn.k.weight": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion(
+                    "(n h) m -> n m h", n=self.cfg.n_key_value_heads
                 ),
-                "blocks.{i}.attn.k": (
-                    "model.layers.{i}.self_attn.k_proj.weight",
-                    RearrangeHookConversion("(n h) m -> n m h", n=self.cfg.n_key_value_heads),
+            ),
+            "blocks.{i}.attn.v.weight": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion(
+                    "(n h) m -> n m h", n=self.cfg.n_key_value_heads
                 ),
-                "blocks.{i}.attn.v": (
-                    "model.layers.{i}.self_attn.v_proj.weight",
-                    RearrangeHookConversion("(n h) m -> n m h", n=self.cfg.n_key_value_heads),
-                ),
-                "blocks.{i}.attn.o": (
-                    "model.layers.{i}.self_attn.o_proj.weight",
-                    RearrangeHookConversion("m (n h) -> n h m", n=self.cfg.n_heads),
-                ),
-                "blocks.{i}.mlp.in": "model.layers.{i}.mlp.up_proj.weight.T",
-                "blocks.{i}.mlp.gate": "model.layers.{i}.mlp.gate_proj.weight.T",
-                "blocks.{i}.mlp.out": "model.layers.{i}.mlp.down_proj.weight.T",
-                "ln_final.w": "model.norm.weight",
-                "unembed.u": "lm_head.weight.T",  # Not shared with embedding
-            }
-        )
+            ),
+            "blocks.{i}.attn.o.weight": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion("m (n h) -> n h m", n=self.cfg.n_heads),
+            ),
+        }
 
         self.component_mapping = {
             "embed": EmbeddingBridge(name="model.embed_tokens"),
-            "rotary_emb": EmbeddingBridge(name="model.rotary_emb"),
+            "rotary_emb": RotaryEmbeddingBridge(name="model.rotary_emb", config=self.cfg),
             "blocks": BlockBridge(
                 name="model.layers",
                 submodules={

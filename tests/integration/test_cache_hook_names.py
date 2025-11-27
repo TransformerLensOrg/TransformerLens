@@ -30,6 +30,8 @@ act_names_in_cache = [
     "blocks.0.hook_resid_post",
     "ln_final.hook_scale",
     "ln_final.hook_normalized",
+    "unembed.hook_in",
+    "unembed.hook_out",
 ]
 
 

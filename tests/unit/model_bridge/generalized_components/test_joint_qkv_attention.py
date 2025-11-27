@@ -2,11 +2,9 @@
 
 import torch
 
-from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.generalized_components.joint_qkv_attention import (
     JointQKVAttentionBridge,
 )
-from transformer_lens.model_bridge.hook_point_wrapper import HookPointWrapper
 
 
 class TestJointQKVAttention:
@@ -269,21 +267,3 @@ class TestJointQKVAttention:
         assert not torch.allclose(
             baseline_output, hooked_output
         ), "Output with v_hook_out mutation should be different from baseline"
-
-    def test_hook_point_wrapper_properties(self):
-        """Test that HookPointWrapper properly exposes hook_in and hook_out."""
-
-        # Create test hook points
-        hook_in = HookPoint()
-        hook_out = HookPoint()
-
-        # Create wrapper
-        wrapper = HookPointWrapper(hook_in=hook_in, hook_out=hook_out)
-
-        # Test that properties are accessible
-        assert wrapper.hook_in is hook_in
-        assert wrapper.hook_out is hook_out
-
-        # Test that they are the correct types
-        assert isinstance(wrapper.hook_in, HookPoint)
-        assert isinstance(wrapper.hook_out, HookPoint)
