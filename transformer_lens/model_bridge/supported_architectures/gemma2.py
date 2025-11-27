@@ -2,7 +2,14 @@
 
 from typing import Any
 
-from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorConversion
+from transformer_lens.conversion_utils.conversion_steps import (
+    ArithmeticTensorConversion,
+    RearrangeTensorConversion,
+    TransposeTensorConversion,
+)
+from transformer_lens.conversion_utils.conversion_steps.arithmetic_tensor_conversion import (
+    OperationTypes,
+)
 from transformer_lens.conversion_utils.param_processing_conversion import (
     ParamProcessingConversion,
 )
@@ -50,14 +57,13 @@ class Gemma2ArchitectureAdapter(ArchitectureAdapter):
         # by map_default_transformer_lens_config() in sources/transformers.py
 
         self.weight_processing_conversions = {
-            # Gemma2 scales embeddings by sqrt(d_model)
-            "embed.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion(
-                    "d_vocab d_model -> d_vocab d_model",
-                    scale=self.cfg.d_model**0.5,
-                ),
-            ),
-            "blocks.{i}.attn.q": ParamProcessingConversion(
+            # Note: Gemma2 scales embeddings by sqrt(d_model) in the forward pass.
+            # This is handled in setup_hook_compatibility() which applies the scaling
+            # to hook_embed output at runtime, matching HuggingFace's behavior.
+            # We do NOT scale the stored weights here.
+            #
+            # Attention weight conversions
+            "blocks.{i}.attn.q.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
             ),
             "blocks.{i}.attn.k.weight": ParamProcessingConversion(
@@ -74,6 +80,37 @@ class Gemma2ArchitectureAdapter(ArchitectureAdapter):
             ),
             "blocks.{i}.attn.o.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("m (n h) -> n h m", n=self.cfg.n_heads),
+            ),
+            # RMSNorm weight conversions - Gemma adds 1.0 to weights before applying
+            # See: https://github.com/huggingface/transformers/pull/29402
+            "blocks.{i}.ln1.weight": ParamProcessingConversion(
+                tensor_conversion=ArithmeticTensorConversion(OperationTypes.ADDITION, 1.0),
+            ),
+            "blocks.{i}.ln1_post.weight": ParamProcessingConversion(
+                tensor_conversion=ArithmeticTensorConversion(OperationTypes.ADDITION, 1.0),
+            ),
+            "blocks.{i}.ln2.weight": ParamProcessingConversion(
+                tensor_conversion=ArithmeticTensorConversion(OperationTypes.ADDITION, 1.0),
+            ),
+            "blocks.{i}.ln2_post.weight": ParamProcessingConversion(
+                tensor_conversion=ArithmeticTensorConversion(OperationTypes.ADDITION, 1.0),
+            ),
+            "ln_final.weight": ParamProcessingConversion(
+                tensor_conversion=ArithmeticTensorConversion(OperationTypes.ADDITION, 1.0),
+            ),
+            # MLP weight conversions - transpose from [out, in] to [in, out]
+            "blocks.{i}.mlp.gate.weight": ParamProcessingConversion(
+                tensor_conversion=TransposeTensorConversion(),
+            ),
+            "blocks.{i}.mlp.in.weight": ParamProcessingConversion(
+                tensor_conversion=TransposeTensorConversion(),
+            ),
+            "blocks.{i}.mlp.out.weight": ParamProcessingConversion(
+                tensor_conversion=TransposeTensorConversion(),
+            ),
+            # Unembed weight conversion - transpose from [vocab, d_model] to [d_model, vocab]
+            "unembed.weight": ParamProcessingConversion(
+                tensor_conversion=TransposeTensorConversion(),
             ),
         }
 
@@ -138,43 +175,24 @@ class Gemma2ArchitectureAdapter(ArchitectureAdapter):
         )
 
         class EmbeddingScaleConversion(BaseTensorConversion):
-            """Scale embeddings by sqrt(d_model) for Gemma models.
+            """Scale embeddings by sqrt(d_model) for Gemma models."""
 
-            This only applies when NOT using processed weights, since processed
-            weights have the scaling baked into the embedding matrix itself.
-            """
-
-            def __init__(self, scale: float, embed_component):
+            def __init__(self, scale: float):
                 super().__init__()
                 self.scale = scale
-                self.embed_component = embed_component
 
-            def handle_conversion(self, input_value, *full_context):
-                """Scale the embedding output if not using processed weights."""
-                # Skip scaling if using processed weights (they're already scaled)
-                if (
-                    hasattr(self.embed_component, "_use_processed_weights")
-                    and self.embed_component._use_processed_weights
-                ):
-                    return input_value
+            def handle_conversion(self, input_value: Any, *full_context: Any) -> Any:
+                """Scale the embedding output."""
                 return input_value * self.scale
 
-            def revert(self, input_value, *full_context):
+            def revert(self, input_value: Any, *full_context: Any) -> Any:
                 """Unscale the embedding output (for user modifications)."""
-                # Skip unscaling if using processed weights
-                if (
-                    hasattr(self.embed_component, "_use_processed_weights")
-                    and self.embed_component._use_processed_weights
-                ):
-                    return input_value
                 return input_value / self.scale
 
         # Apply scaling to embed.hook_out
         if hasattr(bridge, "embed") and hasattr(bridge.embed, "hook_out"):
             scale_factor = self.cfg.d_model**0.5
-            bridge.embed.hook_out.hook_conversion = EmbeddingScaleConversion(
-                scale_factor, bridge.embed
-            )
+            bridge.embed.hook_out.hook_conversion = EmbeddingScaleConversion(scale_factor)
 
     def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
         """Set up rotary embedding references and attention implementation for Gemma-2 component testing.
@@ -217,26 +235,3 @@ class Gemma2ArchitectureAdapter(ArchitectureAdapter):
         attn_bridge = self.get_generalized_component("blocks.0.attn")
         attn_bridge.set_rotary_emb(rotary_emb)
 
-    def preprocess_weights(self, state_dict: dict[str, Any]) -> dict[str, Any]:
-        """Apply Gemma2-specific weight transformations before ProcessWeights.
-
-        Gemma2 models scale embeddings by sqrt(d_model) in their forward pass.
-        We bake this scaling into the embedding weights to avoid applying it every forward pass.
-
-        Args:
-            state_dict: The state dictionary with HuggingFace format keys
-
-        Returns:
-            The modified state dictionary with scaled embedding weights
-        """
-        from transformer_lens.weight_processing import ProcessWeights
-
-        # Get the HF key for the embedding weight
-        embed_key = ProcessWeights._get_param_key("embed.W_E", self)
-
-        if embed_key in state_dict:
-            # Scale embeddings by sqrt(d_model) to match Gemma2's forward pass behavior
-            scale_factor = self.cfg.d_model**0.5
-            state_dict[embed_key] = state_dict[embed_key] * scale_factor
-
-        return state_dict

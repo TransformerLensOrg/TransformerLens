@@ -2,7 +2,14 @@
 
 from typing import Any
 
-from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorConversion
+from transformer_lens.conversion_utils.conversion_steps import (
+    ArithmeticTensorConversion,
+    RearrangeTensorConversion,
+    TransposeTensorConversion,
+)
+from transformer_lens.conversion_utils.conversion_steps.arithmetic_tensor_conversion import (
+    OperationTypes,
+)
 from transformer_lens.conversion_utils.param_processing_conversion import (
     ParamProcessingConversion,
 )
@@ -41,29 +48,48 @@ class Gemma1ArchitectureAdapter(ArchitectureAdapter):
         self.cfg.rmsnorm_uses_offset = True
 
         self.weight_processing_conversions = {
-            # Gemma1 scales embeddings by sqrt(d_model)
-            "embed.e": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion(
-                    "d_vocab d_model -> d_vocab d_model",
-                    scale=self.cfg.d_model**0.5,
-                ),
-                source_key="model.embed_tokens.weight",
-            ),
-            "blocks.{i}.attn.q": ParamProcessingConversion(
+            # Note: Gemma1 scales embeddings by sqrt(d_model) in the forward pass.
+            # This is handled in setup_hook_compatibility() which applies the scaling
+            # to hook_embed output at runtime, matching HuggingFace's behavior.
+            # We do NOT scale the stored weights here.
+            #
+            # Attention weight conversions
+            "blocks.{i}.attn.q.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
-                source_key="model.layers.{i}.self_attn.q_proj.weight",
             ),
-            "blocks.{i}.attn.k": ParamProcessingConversion(
+            "blocks.{i}.attn.k.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
-                source_key="model.layers.{i}.self_attn.k_proj.weight",
             ),
-            "blocks.{i}.attn.v": ParamProcessingConversion(
+            "blocks.{i}.attn.v.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
-                source_key="model.layers.{i}.self_attn.v_proj.weight",
             ),
-            "blocks.{i}.attn.o": ParamProcessingConversion(
+            "blocks.{i}.attn.o.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("m (n h) -> n h m", n=self.cfg.n_heads),
-                source_key="model.layers.{i}.self_attn.o_proj.weight",
+            ),
+            # RMSNorm weight conversions - Gemma adds 1.0 to weights before applying
+            # See: https://github.com/huggingface/transformers/pull/29402
+            "blocks.{i}.ln1.weight": ParamProcessingConversion(
+                tensor_conversion=ArithmeticTensorConversion(OperationTypes.ADDITION, 1.0),
+            ),
+            "blocks.{i}.ln2.weight": ParamProcessingConversion(
+                tensor_conversion=ArithmeticTensorConversion(OperationTypes.ADDITION, 1.0),
+            ),
+            "ln_final.weight": ParamProcessingConversion(
+                tensor_conversion=ArithmeticTensorConversion(OperationTypes.ADDITION, 1.0),
+            ),
+            # MLP weight conversions - transpose from [out, in] to [in, out]
+            "blocks.{i}.mlp.gate.weight": ParamProcessingConversion(
+                tensor_conversion=TransposeTensorConversion(),
+            ),
+            "blocks.{i}.mlp.in.weight": ParamProcessingConversion(
+                tensor_conversion=TransposeTensorConversion(),
+            ),
+            "blocks.{i}.mlp.out.weight": ParamProcessingConversion(
+                tensor_conversion=TransposeTensorConversion(),
+            ),
+            # Unembed weight conversion - transpose from [vocab, d_model] to [d_model, vocab]
+            "unembed.weight": ParamProcessingConversion(
+                tensor_conversion=TransposeTensorConversion(),
             ),
         }
 
@@ -99,3 +125,37 @@ class Gemma1ArchitectureAdapter(ArchitectureAdapter):
             "ln_final": RMSNormalizationBridge(name="model.norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head"),
         }
+
+    def setup_hook_compatibility(self, bridge: Any) -> None:
+        """Setup hook compatibility for Gemma1 models.
+
+        Gemma1 scales embeddings by sqrt(d_model) in its forward pass,
+        but the HuggingFace embed_tokens layer doesn't include this scaling.
+        We need to apply it to hook_embed to match HookedTransformer behavior.
+
+        Args:
+            bridge: The TransformerBridge instance
+        """
+        from transformer_lens.conversion_utils.conversion_steps.base_tensor_conversion import (
+            BaseTensorConversion,
+        )
+
+        class EmbeddingScaleConversion(BaseTensorConversion):
+            """Scale embeddings by sqrt(d_model) for Gemma models."""
+
+            def __init__(self, scale: float):
+                super().__init__()
+                self.scale = scale
+
+            def handle_conversion(self, input_value: Any, *full_context: Any) -> Any:
+                """Scale the embedding output."""
+                return input_value * self.scale
+
+            def revert(self, input_value: Any, *full_context: Any) -> Any:
+                """Unscale the embedding output (for user modifications)."""
+                return input_value / self.scale
+
+        # Apply scaling to embed.hook_out
+        if hasattr(bridge, "embed") and hasattr(bridge.embed, "hook_out"):
+            scale_factor = self.cfg.d_model**0.5
+            bridge.embed.hook_out.hook_conversion = EmbeddingScaleConversion(scale_factor)
