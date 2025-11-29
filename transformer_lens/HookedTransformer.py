@@ -2068,7 +2068,7 @@ class HookedTransformer(HookedRootModule):
 
                 if output_logits_flag:
                     assert logits_seq_list is not None
-                    logits_seq_list.append(final_logits.unsqueeze(1))
+                    logits_seq_list.append(final_logits.clone())
 
                 if do_sample:
                     if input_type in [
@@ -2134,31 +2134,16 @@ class HookedTransformer(HookedRootModule):
 
             if output_logits_flag:
                 # Adhere to HF ModelOutput format with sequences (tokens) and logits (per-step)
+                from transformers.utils import ModelOutput  # type: ignore
+
                 try:
                     from transformers.generation.utils import (
                         GenerateDecoderOnlyOutput,  # type: ignore
                     )
-                except Exception:
-                    from transformers.utils import ModelOutput  # type: ignore
 
-                    # Use a ModelOutput-like object
-                    logits_tensor = (
-                        torch.cat(logits_seq_list, dim=1) if logits_seq_list is not None else None
-                    )
-                    logits_tuple = (
-                        tuple(logits_tensor[:, i, :] for i in range(logits_tensor.shape[1]))
-                        if logits_tensor is not None
-                        else None
-                    )
-                    # `sequences` expects a tensor of token ids
-                    return ModelOutput(sequences=output_tokens, logits=logits_tuple)  # type: ignore[arg-type]
-                else:
                     assert logits_seq_list is not None
-                    logits_tensor = torch.cat(logits_seq_list, dim=1)
-                    # Convert to HF's expected output shape: a tuple of [batch, vocab] per step
-                    logits_tuple = tuple(
-                        logits_tensor[:, i, :] for i in range(logits_tensor.shape[1])
-                    )
+                    # Convert list of [batch, vocab] tensors to tuple
+                    logits_tuple = tuple(logits_seq_list)
                     sequences = (
                         output_tokens if isinstance(output_tokens, torch.Tensor) else output_tokens
                     )
@@ -2167,6 +2152,12 @@ class HookedTransformer(HookedRootModule):
                         # HF's type hint tuple[FloatTensor] is really tuple[FloatTensor, ...]
                         logits=logits_tuple,  # type: ignore[arg-type]
                     )
+                except (ImportError, AttributeError):
+                    # Fallback if GenerateDecoderOnlyOutput not available in this transformers version
+                    assert logits_seq_list is not None
+                    logits_tuple = tuple(logits_seq_list)
+                    # `sequences` expects a tensor of token ids
+                    return ModelOutput(sequences=output_tokens, logits=logits_tuple)  # type: ignore[arg-type]
             else:
                 return result
 

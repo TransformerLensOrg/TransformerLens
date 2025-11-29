@@ -152,7 +152,6 @@ class TestHookedTransformerGenerationModelOutput:
     def test_logits_consistency_with_forward_pass(self, gpt2_ht):
         """Test that logits from generate match those from forward pass."""
         prompt = "Hello"
-        tokens = gpt2_ht.to_tokens(prompt)
 
         # Generate with output_logits
         result = gpt2_ht.generate(
@@ -354,7 +353,7 @@ class TestTransformerBridgeHFGenerate:
             max_new_tokens=2,
             do_sample=False,
             output_logits=1,  # Should be coerced to True
-            output_scores=0,  # Should be coerced to False but still triggers flag
+            output_scores=0,  # 0 is not None, so flag is set (coerces to False)
         )
 
         # Should work without error
