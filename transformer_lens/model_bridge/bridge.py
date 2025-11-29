@@ -1762,8 +1762,10 @@ class TransformerBridge(nn.Module):
                 # Return a HF-compatible ModelOutput structure
                 # GenerateDecoderOnlyOutput expects: sequences, scores (optional), logits (optional)
                 return GenerateDecoderOnlyOutput(
-                    sequences=output_tokens,
-                    logits=tuple(logits_seq_list),
+                    sequences=cast(torch.LongTensor, output_tokens),
+                    # HF's type hint says tuple[FloatTensor] but should be tuple[FloatTensor, ...]
+                    # (variable-length tuple with one element per generated token)
+                    logits=tuple(logits_seq_list),  # type: ignore[arg-type]
                 )
             except ImportError:
                 # Fallback if HF not available or old version
@@ -1835,18 +1837,21 @@ class TransformerBridge(nn.Module):
             Generated sequence as string, list of strings, tensor, or HF ModelOutput
             depending on input type, return_type, and generation_kwargs.
 
-        Example:
-            >>> # Get full HF ModelOutput with logits and attentions
-            >>> result = model.hf_generate(
-            ...     "Hello world",
-            ...     max_new_tokens=5,
-            ...     output_logits=True,
-            ...     output_attentions=True,
-            ...     return_dict_in_generate=True
-            ... )
-            >>> print(result.sequences)  # Generated tokens
-            >>> print(result.logits)  # Logits for each generation step
-            >>> print(result.attentions)  # Attention weights
+        Example::
+
+            # Get full HF ModelOutput with logits and attentions
+            from transformer_lens import HookedTransformer
+            model = HookedTransformer.from_pretrained("tiny-stories-1M")
+            result = model.hf_generate(
+                "Hello world",
+                max_new_tokens=5,
+                output_logits=True,
+                output_attentions=True,
+                return_dict_in_generate=True
+            )
+            print(result.sequences)  # Generated tokens
+            print(result.logits)  # Logits for each generation step
+            print(result.attentions)  # Attention weights
         """
         # Handle string input by tokenizing it
         if isinstance(input, str):

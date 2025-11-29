@@ -2126,11 +2126,11 @@ class HookedTransformer(HookedRootModule):
                     self.tokenizer.decode(tokens, skip_special_tokens=True)
                     for tokens in output_tokens
                 ]
-                result = decoded_texts[0] if len(decoded_texts) == 1 else decoded_texts
+                result: Any = decoded_texts[0] if len(decoded_texts) == 1 else decoded_texts
             elif return_type == "tokens":
-                result = output_tokens
+                result = cast(Any, output_tokens)
             else:
-                result = embeds
+                result = cast(Any, embeds)
 
             if output_logits_flag:
                 # Adhere to HF ModelOutput format with sequences (tokens) and logits (per-step)
@@ -2162,7 +2162,11 @@ class HookedTransformer(HookedRootModule):
                     sequences = (
                         output_tokens if isinstance(output_tokens, torch.Tensor) else output_tokens
                     )
-                    return GenerateDecoderOnlyOutput(sequences=sequences, logits=logits_tuple)
+                    return GenerateDecoderOnlyOutput(
+                        sequences=cast(torch.LongTensor, sequences),
+                        # HF's type hint tuple[FloatTensor] is really tuple[FloatTensor, ...]
+                        logits=logits_tuple,  # type: ignore[arg-type]
+                    )
             else:
                 return result
 
