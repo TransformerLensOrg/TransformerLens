@@ -337,6 +337,9 @@ class AbstractAttention(ABC, nn.Module):
                 )
                 if w.device != z.device:
                     w = w.to(z.device)
+                # Ensure z has the same dtype as w before multiplication
+                if z.dtype != w.dtype:
+                    z = z.to(w.dtype)
                 z = einops.rearrange(
                     z, "batch pos head_index d_head -> batch pos head_index d_head 1"
                 )
