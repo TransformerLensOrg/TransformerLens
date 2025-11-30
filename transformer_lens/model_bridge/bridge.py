@@ -1757,6 +1757,11 @@ class TransformerBridge(nn.Module):
         if output_logits and logits_seq_list is not None:
             from transformers.utils import ModelOutput  # type: ignore
 
+            def _logits_to_tuple(logits_list: list[torch.Tensor]) -> tuple[torch.Tensor, ...]:
+                assert logits_list is not None
+                # Convert list of [batch, vocab] tensors to tuple
+                return tuple(logits_list)
+
             try:
                 from transformers.generation.utils import GenerateDecoderOnlyOutput
 
@@ -1766,13 +1771,13 @@ class TransformerBridge(nn.Module):
                     sequences=cast(torch.LongTensor, output_tokens),
                     # HF's type hint says tuple[FloatTensor] but should be tuple[FloatTensor, ...]
                     # (variable-length tuple with one element per generated token)
-                    logits=tuple(logits_seq_list),  # type: ignore[arg-type]
+                    logits=_logits_to_tuple(logits_seq_list),  # type: ignore[arg-type]
                 )
             except (ImportError, AttributeError):
                 # Fallback if GenerateDecoderOnlyOutput not available in this transformers version
                 return ModelOutput(
                     sequences=output_tokens,
-                    logits=tuple(logits_seq_list),
+                    logits=_logits_to_tuple(logits_seq_list),
                 )
 
         # Format output

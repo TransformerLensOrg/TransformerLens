@@ -2136,28 +2136,23 @@ class HookedTransformer(HookedRootModule):
                 # Adhere to HF ModelOutput format with sequences (tokens) and logits (per-step)
                 from transformers.utils import ModelOutput  # type: ignore
 
-                try:
-                    from transformers.generation.utils import (
-                        GenerateDecoderOnlyOutput,  # type: ignore
-                    )
-
-                    assert logits_seq_list is not None
+                def _logits_to_tuple(logits_list: list[torch.Tensor]) -> tuple[torch.Tensor, ...]:
+                    assert logits_list is not None
                     # Convert list of [batch, vocab] tensors to tuple
-                    logits_tuple = tuple(logits_seq_list)
-                    sequences = (
-                        output_tokens if isinstance(output_tokens, torch.Tensor) else output_tokens
-                    )
+                    return tuple(logits_list)
+
+                try:
+                    from transformers.generation.utils import GenerateDecoderOnlyOutput
+
                     return GenerateDecoderOnlyOutput(
-                        sequences=cast(torch.LongTensor, sequences),
+                        sequences=cast(torch.LongTensor, output_tokens),
                         # HF's type hint tuple[FloatTensor] is really tuple[FloatTensor, ...]
-                        logits=logits_tuple,  # type: ignore[arg-type]
+                        logits=_logits_to_tuple(logits_seq_list),  # type: ignore[arg-type]
                     )
                 except (ImportError, AttributeError):
                     # Fallback if GenerateDecoderOnlyOutput not available in this transformers version
-                    assert logits_seq_list is not None
-                    logits_tuple = tuple(logits_seq_list)
                     # `sequences` expects a tensor of token ids
-                    return ModelOutput(sequences=output_tokens, logits=logits_tuple)  # type: ignore[arg-type]
+                    return ModelOutput(sequences=output_tokens, logits=_logits_to_tuple(logits_seq_list))  # type: ignore[arg-type]
             else:
                 return result
 
