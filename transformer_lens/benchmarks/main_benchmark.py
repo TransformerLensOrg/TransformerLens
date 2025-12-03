@@ -477,16 +477,18 @@ def run_benchmark_suite(
     verbose: bool = True,
     track_memory: bool = False,
     test_weight_processing_individually: bool = False,
+    phases: list[int] | None = None,
 ) -> List[BenchmarkResult]:
     """Run comprehensive benchmark suite for TransformerBridge.
 
-    This function implements an optimized 4-phase approach to minimize model reloading:
+    This function implements an optimized 5-phase approach to minimize model reloading:
     Phase 1: HF + Bridge (unprocessed) - Compare against raw HuggingFace model
     Phase 2: Bridge (unprocessed) + HT (unprocessed) - Compare unprocessed models
     Phase 3: Bridge (processed) + HT (processed) - Full compatibility mode testing
-    Phase 4: Granular Weight Processing Tests (optional)
+    Phase 4: Individual Weight Processing Flags (optional)
+    Phase 5: Combined Weight Processing Flags (optional)
 
-    When test_weight_processing_individually=True, an additional Phase 4 runs after
+    When test_weight_processing_individually=True, Phases 4 & 5 run after
     Phase 3, testing each weight processing flag individually and in combinations.
 
     Args:
@@ -500,6 +502,7 @@ def run_benchmark_suite(
         track_memory: Whether to track and report memory usage (requires psutil)
         test_weight_processing_individually: Whether to run granular weight processing
             tests that check each processing flag individually (default: False)
+        phases: Optional list of phase numbers to run (e.g., [1, 2, 3]). If None, runs all phases.
 
     Returns:
         List of BenchmarkResult objects
@@ -540,8 +543,65 @@ def run_benchmark_suite(
         print(f"Device: {device}")
         print(f"{'='*80}\n")
 
+    # Early exit if only running Phase 4/5 (they load their own models independently)
+    if phases is not None and all(p in [4, 5] for p in phases):
+        if verbose:
+            print(f"Skipping Phase 1-3 (only running Phase {', '.join(map(str, sorted(phases)))})")
+            print("Phase 4/5 load their own models independently\n")
+
+        # Jump directly to Phase 4/5
+        results: List[BenchmarkResult] = []
+        current_phase = [None]
+
+        # Still need helper functions
+        def add_result(result: BenchmarkResult) -> None:
+            if current_phase[0] is not None and result.phase is None:
+                result.phase = current_phase[0]
+            results.append(result)
+            if verbose:
+                result.print_immediate()
+
+        # Jump to granular testing
+        from transformer_lens.benchmarks.granular_weight_processing import (
+            run_granular_weight_processing_benchmarks,
+        )
+
+        if 4 in phases and test_weight_processing_individually and enable_compatibility_mode:
+            current_phase[0] = 4
+            phase4_results = run_granular_weight_processing_benchmarks(
+                model_name=model_name,
+                device=device,
+                test_text=test_text,
+                verbose=verbose,
+                phase=4,
+            )
+            for config_name, config_results in phase4_results.items():
+                for result in config_results:
+                    result.phase = 4
+                    add_result(result)
+
+        if 5 in phases and test_weight_processing_individually and enable_compatibility_mode:
+            current_phase[0] = 5
+            phase5_results = run_granular_weight_processing_benchmarks(
+                model_name=model_name,
+                device=device,
+                test_text=test_text,
+                verbose=verbose,
+                phase=5,
+            )
+            for config_name, config_results in phase5_results.items():
+                for result in config_results:
+                    result.phase = 5
+                    add_result(result)
+
+        return results
+
     # Track current phase for result tagging
     current_phase = [None]  # Use list to allow modification in nested function
+
+    def should_run_phase(phase_num: int) -> bool:
+        """Check if a phase should run based on the phases filter."""
+        return phases is None or phase_num in phases
 
     def add_result(result: BenchmarkResult) -> None:
         """Add a result and optionally print it immediately."""
@@ -786,7 +846,7 @@ def run_benchmark_suite(
         return results
 
     # Run Phase 1 benchmarks
-    if hf_model and bridge_unprocessed:
+    if should_run_phase(1) and hf_model and bridge_unprocessed:
         if verbose:
             print("Running Phase 1 benchmarks...\n")
 
@@ -833,7 +893,7 @@ def run_benchmark_suite(
 
     # OPTIMIZATION: Run generation benchmarks first (only bridge in memory)
     # Then cleanup bridge before loading HT to reduce peak memory
-    if bridge_unprocessed:
+    if should_run_phase(2) and bridge_unprocessed:
         if verbose:
             print("Running Phase 2 benchmarks...\n")
 
@@ -863,7 +923,7 @@ def run_benchmark_suite(
 
     # Load HookedTransformer for comparison (after generation benchmarks)
     ht_model_unprocessed = None
-    if use_ht_reference:
+    if should_run_phase(2) and use_ht_reference:
         try:
             if verbose:
                 print("Loading HookedTransformer (unprocessed) for comparison...")
@@ -883,7 +943,7 @@ def run_benchmark_suite(
                 print(f"✗ Could not load unprocessed HookedTransformer: {str(e)}\n")
 
     # Run Phase 2 comparison benchmarks using unified function
-    if bridge_unprocessed:
+    if should_run_phase(2) and bridge_unprocessed:
         if verbose:
             print("2. Running Unprocessed Model Comparison Benchmarks\n")
 
@@ -921,6 +981,11 @@ def run_benchmark_suite(
             print("\n⚠ Compatibility mode disabled - skipping Phase 3\n")
         if verbose:
             print("\n" + format_results(results))
+        return results
+
+    if not should_run_phase(3):
+        if verbose:
+            print("\n⚠ Phase 3 skipped (not in phases list)\n")
         return results
 
     if verbose:
