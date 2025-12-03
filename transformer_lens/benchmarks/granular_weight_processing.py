@@ -55,7 +55,7 @@ WEIGHT_PROCESSING_CONFIGS = [
     ),
     WeightProcessingConfig(
         name="only_center_weights",
-        fold_ln=True,
+        fold_ln=False,
         center_writing_weights=True,
         center_unembed=False,
         fold_value_biases=False,
@@ -63,7 +63,7 @@ WEIGHT_PROCESSING_CONFIGS = [
     ),
     WeightProcessingConfig(
         name="only_center_unembed",
-        fold_ln=True,
+        fold_ln=False,
         center_writing_weights=False,
         center_unembed=True,
         fold_value_biases=False,
@@ -71,7 +71,7 @@ WEIGHT_PROCESSING_CONFIGS = [
     ),
     WeightProcessingConfig(
         name="only_fold_value_biases",
-        fold_ln=True,
+        fold_ln=False,
         center_writing_weights=False,
         center_unembed=False,
         fold_value_biases=True,
