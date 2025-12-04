@@ -789,8 +789,9 @@ def run_benchmark_suite(
             attn_implementation = bridge_config_only.adapter.cfg.attn_implementation
         if verbose and attn_implementation:
             print(f"✓ Detected attn_implementation={attn_implementation}")
-        # Clean up config-only bridge
+        # Clean up config-only bridge immediately to free memory
         del bridge_config_only
+        gc.collect()  # Force garbage collection immediately
     except Exception as e:
         if verbose:
             print(f"⚠ Could not detect config (will use defaults): {str(e)}")
@@ -801,7 +802,10 @@ def run_benchmark_suite(
             if verbose:
                 print("Loading HuggingFace reference model...")
             # Match attn_implementation from bridge to ensure numerical consistency
-            hf_kwargs = {"device_map": device}
+            hf_kwargs = {
+                "device_map": device,
+                "low_cpu_mem_usage": True,  # Reduce memory spikes during loading
+            }
             if attn_implementation is not None:
                 hf_kwargs["attn_implementation"] = attn_implementation
                 if verbose:

@@ -342,6 +342,55 @@ class ComponentBenchmarker:
         if component_path in skip_components:
             return
 
+        # Skip MLP components that don't exist as separate modules in HF (name=None)
+        # These are virtual components where fc1/fc2 are directly on the layer
+        # Component testing doesn't work for these because get_component returns the parent layer
+        if "mlp" in component_path and hasattr(component, "name") and component.name is None:
+            return
+
+        # Skip MLP components with custom forward signatures (e.g., BLOOM requires residual)
+        # These can't be tested in isolation without full model context
+        if "mlp" in component_path and hasattr(component, "hf_component"):
+            import inspect
+            try:
+                sig = inspect.signature(component.hf_component.forward)
+                params = list(sig.parameters.keys())
+                # Standard MLP only needs hidden_states (or self + hidden_states)
+                # If there are more required params, skip testing
+                if len(params) > 2:  # self + hidden_states + other required params
+                    return
+            except Exception:
+                # If we can't inspect, proceed with testing
+                pass
+
+        # Skip attention components that require position embeddings in Phase 3
+        # These can't be tested in isolation without full model context for position embeddings
+        if (
+            "attn" in component_path
+            and hasattr(component, "requires_position_embeddings")
+            and component.requires_position_embeddings
+        ):
+            return
+
+        # Skip attention components that use native HF attention (maintain_native_attention=True)
+        # These have custom forward signatures (e.g., BLOOM requires residual, alibi, attention_mask)
+        # and can't be tested in isolation without full model context
+        if (
+            "attn" in component_path
+            and hasattr(component, "maintain_native_attention")
+            and component.maintain_native_attention
+        ):
+            return
+
+        # Skip BLOOM attention and MLP components - they have custom signatures that require
+        # residual connections and alibi bias from the full model context
+        if "attn" in component_path or "mlp" in component_path:
+            # Check if this is a BLOOM model by looking at the HF model config
+            hf_model_config = getattr(self.hf_model, "config", None)
+            if hf_model_config and hasattr(hf_model_config, "model_type"):
+                if hf_model_config.model_type == "bloom":
+                    return
+
         # Skip components that require specific shaped inputs from their parent modules
         # These components expect intermediate outputs from their parent attention/MLP
         # modules and can't be tested with generic hidden state inputs

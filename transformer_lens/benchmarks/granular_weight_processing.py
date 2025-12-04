@@ -372,7 +372,12 @@ def run_granular_weight_processing_benchmarks(
             # Clean up
             del bridge
             del ht_ref
-            torch.cuda.empty_cache() if torch.cuda.is_available() else None
+            # Force garbage collection (multiple passes to break circular references)
+            import gc
+            for _ in range(3):
+                gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
         except Exception as e:
             # Record failure
