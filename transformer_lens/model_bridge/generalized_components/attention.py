@@ -339,10 +339,19 @@ class AttentionBridge(GeneralizedComponent):
         )  # 2D: [d_model, n_heads*d_head] for Conv1D or [n_heads*d_head, d_model] for Linear
         if weight.ndim == 2 and self.config is not None:
             n_heads = self.config.n_heads if hasattr(self.config, "n_heads") else self.config.n_head
-            # Assume Conv1D format [d_model, n_heads*d_head] since postprocess_weights should have handled Linear models
-            return einops.rearrange(
-                weight, "d_model (n_heads d_head) -> n_heads d_model d_head", n_heads=n_heads
-            )
+            # Detect format based on weight shape
+            # Linear format: [(n_heads*d_head), d_model]
+            # Conv1D format: [d_model, (n_heads*d_head)]
+            if weight.shape[0] % n_heads == 0:
+                # Linear format - first dimension is (n_heads*d_head)
+                return einops.rearrange(
+                    weight, "(n_heads d_head) d_model -> n_heads d_model d_head", n_heads=n_heads
+                )
+            else:
+                # Conv1D format - second dimension is (n_heads*d_head)
+                return einops.rearrange(
+                    weight, "d_model (n_heads d_head) -> n_heads d_model d_head", n_heads=n_heads
+                )
         return weight
 
     @property
@@ -358,10 +367,19 @@ class AttentionBridge(GeneralizedComponent):
                     self.config.n_heads if hasattr(self.config, "n_heads") else self.config.n_head
                 )
             )
-            # Assume Conv1D format [d_model, n_heads*d_head] since postprocess_weights should have handled Linear models
-            return einops.rearrange(
-                weight, "d_model (n_heads d_head) -> n_heads d_model d_head", n_heads=n_heads
-            )
+            # Detect format based on weight shape
+            # Linear format: [(n_heads*d_head), d_model]
+            # Conv1D format: [d_model, (n_heads*d_head)]
+            if weight.shape[0] % n_heads == 0:
+                # Linear format - first dimension is (n_heads*d_head)
+                return einops.rearrange(
+                    weight, "(n_heads d_head) d_model -> n_heads d_model d_head", n_heads=n_heads
+                )
+            else:
+                # Conv1D format - second dimension is (n_heads*d_head)
+                return einops.rearrange(
+                    weight, "d_model (n_heads d_head) -> n_heads d_model d_head", n_heads=n_heads
+                )
         return weight
 
     @property
@@ -377,10 +395,19 @@ class AttentionBridge(GeneralizedComponent):
                     self.config.n_heads if hasattr(self.config, "n_heads") else self.config.n_head
                 )
             )
-            # Assume Conv1D format [d_model, n_heads*d_head] since postprocess_weights should have handled Linear models
-            return einops.rearrange(
-                weight, "d_model (n_heads d_head) -> n_heads d_model d_head", n_heads=n_heads
-            )
+            # Detect format based on weight shape
+            # Linear format: [(n_heads*d_head), d_model]
+            # Conv1D format: [d_model, (n_heads*d_head)]
+            if weight.shape[0] % n_heads == 0:
+                # Linear format - first dimension is (n_heads*d_head)
+                return einops.rearrange(
+                    weight, "(n_heads d_head) d_model -> n_heads d_model d_head", n_heads=n_heads
+                )
+            else:
+                # Conv1D format - second dimension is (n_heads*d_head)
+                return einops.rearrange(
+                    weight, "d_model (n_heads d_head) -> n_heads d_model d_head", n_heads=n_heads
+                )
         return weight
 
     @property

@@ -1,6 +1,9 @@
 """Gemma2 architecture adapter."""
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    import torch
 
 from transformer_lens.conversion_utils.conversion_steps import (
     ArithmeticTensorConversion,
@@ -57,11 +60,12 @@ class Gemma2ArchitectureAdapter(ArchitectureAdapter):
         # by map_default_transformer_lens_config() in sources/transformers.py
 
         self.weight_processing_conversions = {
-            # Note: Gemma2 scales embeddings by sqrt(d_model) in the forward pass.
-            # This is handled in setup_hook_compatibility() which applies the scaling
-            # to hook_embed output at runtime, matching HuggingFace's behavior.
-            # We do NOT scale the stored weights here.
-            #
+            # Embedding weight scaling - Gemma models scale embeddings by sqrt(d_model)
+            "embed.weight": ParamProcessingConversion(
+                tensor_conversion=ArithmeticTensorConversion(
+                    OperationTypes.MULTIPLICATION, self.cfg.d_model**0.5
+                ),
+            ),
             # Attention weight conversions
             "blocks.{i}.attn.q.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
@@ -108,7 +112,7 @@ class Gemma2ArchitectureAdapter(ArchitectureAdapter):
             "blocks.{i}.mlp.out.weight": ParamProcessingConversion(
                 tensor_conversion=TransposeTensorConversion(),
             ),
-            # Unembed weight conversion - transpose from [vocab, d_model] to [d_model, vocab]
+            # # Unembed weight conversion - transpose from [vocab, d_model] to [d_model, vocab]
             "unembed.weight": ParamProcessingConversion(
                 tensor_conversion=TransposeTensorConversion(),
             ),
@@ -163,36 +167,20 @@ class Gemma2ArchitectureAdapter(ArchitectureAdapter):
     def setup_hook_compatibility(self, bridge: Any) -> None:
         """Setup hook compatibility for Gemma2 models.
 
-        Gemma2 scales embeddings by sqrt(d_model) in its forward pass,
-        but the HuggingFace embed_tokens layer doesn't include this scaling.
-        We need to apply it to hook_embed to match HookedTransformer behavior.
+        Gemma2 scales embeddings by sqrt(d_model). The weights are pre-scaled via
+        preprocess_weights(), but we still need to apply the scaling conversion to
+        the hook output for proper hook functionality (so user modifications are
+        correctly scaled/unscaled).
 
         Args:
             bridge: The TransformerBridge instance
         """
-        from transformer_lens.conversion_utils.conversion_steps.base_tensor_conversion import (
-            BaseTensorConversion,
-        )
-
-        class EmbeddingScaleConversion(BaseTensorConversion):
-            """Scale embeddings by sqrt(d_model) for Gemma models."""
-
-            def __init__(self, scale: float):
-                super().__init__()
-                self.scale = scale
-
-            def handle_conversion(self, input_value: Any, *full_context: Any) -> Any:
-                """Scale the embedding output."""
-                return input_value * self.scale
-
-            def revert(self, input_value: Any, *full_context: Any) -> Any:
-                """Unscale the embedding output (for user modifications)."""
-                return input_value / self.scale
-
-        # Apply scaling to embed.hook_out
+        # Apply embedding scaling conversion to hook output
         if hasattr(bridge, "embed") and hasattr(bridge.embed, "hook_out"):
             scale_factor = self.cfg.d_model**0.5
-            bridge.embed.hook_out.hook_conversion = EmbeddingScaleConversion(scale_factor)
+            bridge.embed.hook_out.hook_conversion = ArithmeticTensorConversion(
+                OperationTypes.MULTIPLICATION, scale_factor
+            )
 
     def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
         """Set up rotary embedding references and attention implementation for Gemma-2 component testing.
