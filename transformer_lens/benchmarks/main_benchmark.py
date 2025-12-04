@@ -859,6 +859,10 @@ def run_benchmark_suite(
             if verbose:
                 status = "✓" if component_result.passed else "✗"
                 print(f"{status} {component_result.message}\n")
+            # Clean up after component testing
+            gc.collect()
+            if device != "cpu" and torch.cuda.is_available():
+                torch.cuda.empty_cache()
         except Exception as e:
             if verbose:
                 print(f"✗ Component benchmark failed: {e}\n")

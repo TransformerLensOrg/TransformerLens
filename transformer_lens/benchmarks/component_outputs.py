@@ -291,6 +291,15 @@ class ComponentBenchmarker:
                         comp_path, subcomponent, test_inputs, results, skip_components
                     )
 
+        # Clean up test inputs to free memory
+        if test_inputs is not None:
+            for key in list(test_inputs.keys()):
+                tensor = test_inputs[key]
+                if tensor is not None and isinstance(tensor, torch.Tensor):
+                    del tensor
+                test_inputs[key] = None
+            test_inputs.clear()
+
         # Create report
         passed = sum(1 for r in results if r.passed)
         failed = sum(1 for r in results if not r.passed)
@@ -500,13 +509,28 @@ class ComponentBenchmarker:
                 bridge_tensor, hf_tensor
             )
 
+            # Get output shape before deleting tensors
+            output_shape = tuple(bridge_tensor.shape)
+
+            # Clean up output tensors immediately to free memory
+            del bridge_output, hf_output, bridge_tensor, hf_tensor
+            if shared_inputs is not None:
+                # Clean up shared inputs
+                for key in list(shared_inputs.keys()):
+                    val = shared_inputs[key]
+                    if val is not None and isinstance(val, torch.Tensor):
+                        del val
+                    shared_inputs[key] = None
+            if shared_token_indices is not None:
+                del shared_token_indices
+
             return ComponentTestResult(
                 component_path=component_path,
                 component_type=type(component).__name__,
                 passed=passed,
                 max_diff=max_diff,
                 mean_diff=mean_diff,
-                output_shape=tuple(bridge_tensor.shape),
+                output_shape=output_shape,
                 percentile_diffs=percentile_diffs,
             )
 
