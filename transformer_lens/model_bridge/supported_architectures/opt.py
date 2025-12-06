@@ -64,6 +64,8 @@ class OptArchitectureAdapter(ArchitectureAdapter):
                     "attn": AttentionBridge(
                         name="self_attn",
                         config=self.cfg,
+                        requires_attention_mask=True,  # OPT requires attention_mask
+                        attention_mask_4d=True,  # OPT expects 4D mask [batch, 1, tgt_len, src_len]
                         submodules={
                             "q": LinearBridge(name="q_proj"),
                             "k": LinearBridge(name="k_proj"),

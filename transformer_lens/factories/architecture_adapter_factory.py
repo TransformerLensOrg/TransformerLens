@@ -54,6 +54,7 @@ SUPPORTED_ARCHITECTURES = {
     "Phi3ForCausalLM": Phi3ArchitectureAdapter,
     "QwenForCausalLM": QwenArchitectureAdapter,
     "Qwen2ForCausalLM": Qwen2ArchitectureAdapter,
+    "Qwen3ForCausalLM": Qwen2ArchitectureAdapter,  # Qwen3 uses same architecture as Qwen2
     "T5ForConditionalGeneration": T5ArchitectureAdapter,
     "NanoGPTForCausalLM": NanogptArchitectureAdapter,
     "MinGPTForCausalLM": MingptArchitectureAdapter,
