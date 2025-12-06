@@ -22,6 +22,7 @@ from transformer_lens.model_bridge.generalized_components import (
     LinearBridge,
     MLPBridge,
     NormalizationBridge,
+    RotaryEmbeddingBridge,
     UnembeddingBridge,
 )
 
@@ -133,7 +134,7 @@ class NeoxArchitectureAdapter(ArchitectureAdapter):
 
         self.component_mapping = {
             "embed": EmbeddingBridge(name="gpt_neox.embed_in"),
-            "rotary_emb": EmbeddingBridge(name="gpt_neox.rotary_emb"),
+            "rotary_emb": RotaryEmbeddingBridge(name="gpt_neox.rotary_emb"),
             "blocks": BlockBridge(
                 name="gpt_neox.layers",
                 submodules={
