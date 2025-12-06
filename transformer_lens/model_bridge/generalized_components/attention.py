@@ -54,6 +54,7 @@ class AttentionBridge(GeneralizedComponent):
         maintain_native_attention: bool = False,
         requires_position_embeddings: bool = False,
         requires_attention_mask: bool = False,
+        attention_mask_4d: bool = False,
     ):
         """Initialize the attention bridge.
 
@@ -71,6 +72,8 @@ class AttentionBridge(GeneralizedComponent):
                                         (e.g., Gemma-3 with dual RoPE). Defaults to False.
             requires_attention_mask: If True, this attention requires attention_mask argument
                                     (e.g., GPTNeoX/Pythia). Defaults to False.
+            attention_mask_4d: If True, generate 4D attention_mask [batch, 1, tgt_len, src_len]
+                             instead of 2D [batch, seq_len]. Required for OPT. Defaults to False.
         """
         if conversion_rule is None:
             conversion_rule = AttentionAutoConversion(config)
@@ -95,6 +98,7 @@ class AttentionBridge(GeneralizedComponent):
         self.maintain_native_attention = maintain_native_attention
         self.requires_position_embeddings = requires_position_embeddings
         self.requires_attention_mask = requires_attention_mask
+        self.attention_mask_4d = attention_mask_4d
 
     def setup_hook_compatibility(self) -> None:
         """Setup hook compatibility transformations to match HookedTransformer behavior.
@@ -157,7 +161,12 @@ class AttentionBridge(GeneralizedComponent):
             sin = torch.zeros(1, seq_len, rotary_ndims, device=device, dtype=dtype)
             inputs["position_embeddings"] = (cos, sin)
         if self.requires_attention_mask:
-            inputs["attention_mask"] = torch.ones(batch_size, seq_len, device=device)
+            if self.attention_mask_4d:
+                # Generate 4D attention mask [batch, 1, tgt_len, src_len] for models like OPT
+                inputs["attention_mask"] = torch.ones(batch_size, 1, seq_len, seq_len, device=device)
+            else:
+                # Generate 2D attention mask [batch, seq_len] for most models
+                inputs["attention_mask"] = torch.ones(batch_size, seq_len, device=device)
         return inputs
 
     def _setup_qkv_hook_reshaping(self) -> None:
