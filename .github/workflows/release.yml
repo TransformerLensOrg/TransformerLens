@@ -8,7 +8,7 @@ on:
 jobs:
   checks:
     name: Run checks workflow
-    uses: TransformerLensOrg/TransformerLens/.github/workflows/checks.yml@main
+    uses: ./.github/workflows/checks.yml
     secrets:
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
 
