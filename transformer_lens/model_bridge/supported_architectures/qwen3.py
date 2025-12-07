@@ -1,4 +1,4 @@
-"""Llama architecture adapter."""
+"""Qwen3 architecture adapter."""
 
 from typing import Any
 
@@ -12,37 +12,34 @@ from transformer_lens.model_bridge.generalized_components import (
     EmbeddingBridge,
     GatedMLPBridge,
     LinearBridge,
-    PositionEmbeddingsAttentionBridge,
     RMSNormalizationBridge,
     RotaryEmbeddingBridge,
     UnembeddingBridge,
 )
+from transformer_lens.model_bridge.generalized_components.position_embeddings_attention import (
+    PositionEmbeddingsAttentionBridge,
+)
 
 
-class LlamaArchitectureAdapter(ArchitectureAdapter):
-    """Architecture adapter for Llama models.
+class Qwen3ArchitectureAdapter(ArchitectureAdapter):
+    """Architecture adapter for Qwen3 models.
 
-    Optional Parameters (may not exist in state_dict):
-    -------------------------------------------------
-    LLaMA models do NOT have biases on attention and MLP projections:
+    Qwen3 is architecturally similar to Gemma3:
+    - Uses RMSNorm for all normalizations
+    - Has Q/K normalization within attention (RMSNorm on head dimension)
+    - Uses rotary position embeddings (RoPE)
+    - Requires position_embeddings and attention_mask in forward pass
+    - Uses gated MLP (gate_proj + up_proj -> down_proj)
+    - No biases on any linear layers
 
-    - blocks.{i}.attn.b_Q - No bias on query projection
-    - blocks.{i}.attn.b_K - No bias on key projection
-    - blocks.{i}.attn.b_V - No bias on value projection
-    - blocks.{i}.attn.b_O - No bias on output projection
-    - blocks.{i}.mlp.b_in - No bias on MLP input (up_proj)
-    - blocks.{i}.mlp.b_gate - No bias on MLP gate projection
-    - blocks.{i}.mlp.b_out - No bias on MLP output (down_proj)
-    - blocks.{i}.ln1.b - RMSNorm has no bias
-    - blocks.{i}.ln2.b - RMSNorm has no bias
-    - ln_final.b - RMSNorm has no bias
-
-    Weight processing must handle these missing biases gracefully using
-    ProcessWeights._safe_get_tensor() or by checking for None values.
+    Key differences from Qwen2:
+    - Qwen3 has q_norm and k_norm layers in attention (Qwen2 doesn't)
+    - Qwen3 requires position_embeddings parameter (like Gemma3)
+    - Uses PositionEmbeddingsAttentionBridge instead of AttentionBridge
     """
 
     def __init__(self, cfg: Any) -> None:
-        """Initialize the Llama architecture adapter."""
+        """Initialize the Qwen3 architecture adapter."""
         super().__init__(cfg)
 
         # Set config variables for weight processing
@@ -51,26 +48,15 @@ class LlamaArchitectureAdapter(ArchitectureAdapter):
         self.cfg.final_rms = True
         self.cfg.gated_mlp = True
         self.cfg.attn_only = False
-
-        self.default_config = {
-            "d_model": cfg.d_model,
-            "d_head": cfg.d_model // cfg.n_heads,
-            "n_heads": cfg.n_heads,
-            "n_layers": cfg.n_layers,
-            "d_vocab": cfg.d_vocab,
-        }
-
-        # Add GQA support for Llama 3.1, 3.2, and later models
-        # Must set directly on cfg, not just in default_config
-        if hasattr(cfg, "n_key_value_heads") and cfg.n_key_value_heads is not None:
-            self.default_config["n_key_value_heads"] = cfg.n_key_value_heads
-            self.cfg.n_key_value_heads = cfg.n_key_value_heads
-
         self.cfg.uses_rms_norm = True
-        # Llama uses 'variance_epsilon' instead of 'eps' for RMSNorm
-        self.cfg.eps_attr = "variance_epsilon"
+        self.cfg.default_prepend_bos = False
+
+        # Use eager attention to support output_attentions for hook_attn_scores and hook_pattern
+        # SDPA doesn't support output_attentions, which is required for HookedTransformer compatibility
+        self.cfg.attn_implementation = "eager"
 
         self.weight_processing_conversions = {
+            # Q/K/V weight conversions - handle GQA (Grouped Query Attention)
             "blocks.{i}.attn.q.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
             ),
@@ -89,11 +75,14 @@ class LlamaArchitectureAdapter(ArchitectureAdapter):
             "blocks.{i}.attn.o.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("m (n h) -> n h m", n=self.cfg.n_heads),
             ),
+            # Note: Qwen3 does NOT have biases on any projections
+            # No bias conversions needed
         }
 
+        # Set up component mapping
         self.component_mapping = {
             "embed": EmbeddingBridge(name="model.embed_tokens"),
-            "rotary_emb": RotaryEmbeddingBridge(name="model.rotary_emb"),
+            "rotary_emb": RotaryEmbeddingBridge(name="model.rotary_emb", config=self.cfg),
             "blocks": BlockBridge(
                 name="model.layers",
                 submodules={
@@ -107,9 +96,9 @@ class LlamaArchitectureAdapter(ArchitectureAdapter):
                             "k": LinearBridge(name="k_proj"),
                             "v": LinearBridge(name="v_proj"),
                             "o": LinearBridge(name="o_proj"),
+                            "q_norm": RMSNormalizationBridge(name="q_norm", config=self.cfg),
+                            "k_norm": RMSNormalizationBridge(name="k_norm", config=self.cfg),
                         },
-                        requires_attention_mask=True,
-                        requires_position_embeddings=True,
                     ),
                     "mlp": GatedMLPBridge(
                         name="mlp",
@@ -123,21 +112,35 @@ class LlamaArchitectureAdapter(ArchitectureAdapter):
                 },
             ),
             "ln_final": RMSNormalizationBridge(name="model.norm", config=self.cfg),
-            "unembed": UnembeddingBridge(name="lm_head", config=self.cfg),
+            "unembed": UnembeddingBridge(name="lm_head"),
         }
 
     def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
-        """Set up rotary embedding references for Llama component testing.
+        """Set up rotary embedding references for Qwen3 component testing.
 
-        Llama uses RoPE (Rotary Position Embeddings). We set the rotary_emb reference
-        on all attention bridge instances for component testing.
+        Qwen3 uses RoPE (Rotary Position Embeddings). We set the rotary_emb on
+        all attention bridge instances for component testing.
+
+        We also force the HF model to use "eager" attention to match the bridge's
+        implementation. The bridge uses "eager" to support output_attentions for hooks.
 
         Args:
-            hf_model: The HuggingFace Llama model instance
+            hf_model: The HuggingFace Qwen3 model instance
             bridge_model: The TransformerBridge model (if available, set rotary_emb on actual instances)
         """
         # Get rotary embedding instance from the model
         rotary_emb = hf_model.model.rotary_emb
+
+        # Force HF model to use "eager" attention to match bridge implementation
+        # Bridge uses "eager" to support output_attentions for hook compatibility
+        if hasattr(hf_model, "config") and hasattr(hf_model.config, "_attn_implementation"):
+            hf_model.config._attn_implementation = "eager"
+
+        # Also set on all attention layers
+        if hasattr(hf_model, "model") and hasattr(hf_model.model, "layers"):
+            for layer in hf_model.model.layers:
+                if hasattr(layer, "self_attn") and hasattr(layer.self_attn, "config"):
+                    layer.self_attn.config._attn_implementation = "eager"
 
         # Set rotary_emb on actual bridge instances in bridge_model if available
         if bridge_model is not None and hasattr(bridge_model, "blocks"):

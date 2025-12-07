@@ -66,7 +66,6 @@ class Gemma2ArchitectureAdapter(ArchitectureAdapter):
                     OperationTypes.MULTIPLICATION, self.cfg.d_model**0.5
                 ),
             ),
-            # Attention weight conversions
             "blocks.{i}.attn.q.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
             ),
