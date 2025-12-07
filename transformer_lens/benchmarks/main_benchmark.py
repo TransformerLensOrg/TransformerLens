@@ -12,7 +12,7 @@ import gc
 from typing import List, Optional
 
 import torch
-from transformers import AutoModelForCausalLM
+from transformers import AutoConfig, AutoModelForCausalLM, AutoModelForSeq2SeqLM
 
 from transformer_lens import HookedTransformer
 from transformer_lens.benchmarks.activation_cache import (
@@ -62,6 +62,45 @@ from transformer_lens.benchmarks.weight_processing import (
     benchmark_weight_sharing,
 )
 from transformer_lens.model_bridge import TransformerBridge
+
+# Architecture names that indicate encoder-decoder models
+ENCODER_DECODER_ARCHITECTURES = [
+    "T5ForConditionalGeneration",
+    "BartForConditionalGeneration",
+    "MBartForConditionalGeneration",
+    "MT5ForConditionalGeneration",
+    "PegasusForConditionalGeneration",
+    "BlenderbotForConditionalGeneration",
+    "MarianMTModel",
+]
+
+
+def get_auto_model_class(model_name: str):
+    """Determine the correct AutoModel class for a given model.
+
+    Some models (like T5) are encoder-decoder and need AutoModelForSeq2SeqLM
+    instead of AutoModelForCausalLM.
+
+    Args:
+        model_name: The HuggingFace model name or path
+
+    Returns:
+        The appropriate AutoModel class (AutoModelForCausalLM or AutoModelForSeq2SeqLM)
+    """
+    try:
+        config = AutoConfig.from_pretrained(model_name)
+        architectures = getattr(config, "architectures", []) or []
+
+        # Check if any architecture matches encoder-decoder pattern
+        for arch in architectures:
+            if arch in ENCODER_DECODER_ARCHITECTURES:
+                return AutoModelForSeq2SeqLM
+
+        # Default to causal LM for decoder-only models
+        return AutoModelForCausalLM
+    except Exception:
+        # If we can't determine, default to causal LM
+        return AutoModelForCausalLM
 
 
 def run_comparison_benchmarks(
@@ -810,7 +849,11 @@ def run_benchmark_suite(
                 hf_kwargs["attn_implementation"] = attn_implementation
                 if verbose:
                     print(f"Using attn_implementation={attn_implementation}")
-            hf_model = AutoModelForCausalLM.from_pretrained(model_name, **hf_kwargs)  # type: ignore[arg-type]
+            # Use appropriate AutoModel class (e.g., AutoModelForSeq2SeqLM for T5)
+            auto_model_class = get_auto_model_class(model_name)
+            if verbose and auto_model_class != AutoModelForCausalLM:
+                print(f"Using {auto_model_class.__name__} for encoder-decoder model")
+            hf_model = auto_model_class.from_pretrained(model_name, **hf_kwargs)  # type: ignore[arg-type]
             hf_model.eval()
             # Detect dtype from HF model
             try:

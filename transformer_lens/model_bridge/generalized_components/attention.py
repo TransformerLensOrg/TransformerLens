@@ -323,18 +323,23 @@ class AttentionBridge(GeneralizedComponent):
             args = args[1:]
         output = self.original_component(*args, **kwargs)
         if isinstance(output, tuple) and len(output) >= 2:
-            # output[0] is attention output, output[1] is attention weights (pattern)
+            # output[0] is attention output
+            # output[1] may be attention weights (pattern) or position_bias (T5)
+            # Additional elements may include position_bias, attention weights, etc.
             attn_output = self.hook_out(output[0])
-            attn_weights = output[1]
+            second_element = output[1]
 
-            # Fire hook_pattern if attention weights are present
-            if isinstance(attn_weights, torch.Tensor):
-                attn_weights = self.hook_pattern(attn_weights)
+            # Fire hook_pattern if the second element is attention weights (4D tensor)
+            # For T5, second element is position_bias which should be passed through
+            if isinstance(second_element, torch.Tensor) and second_element.dim() == 4:
+                # This looks like attention weights [batch, heads, seq, seq]
+                second_element = self.hook_pattern(second_element)
                 # Also store for potential hook_attn_scores (before softmax)
-                # Note: Most HF implementations return post-softmax weights, so pattern == attn_scores for them
-                self.hook_attn_scores(attn_weights)
+                # Note: Most HF implementations return post-softmax weights
+                self.hook_attn_scores(second_element)
 
-            output = (attn_output, attn_weights)
+            # Preserve all output elements (important for T5 position_bias and other models)
+            output = (attn_output, second_element) + output[2:]
         elif isinstance(output, tuple) and len(output) == 1:
             output = (self.hook_out(output[0]),)
         else:
