@@ -139,7 +139,11 @@ class T5BlockBridge(GeneralizedComponent):
                 attention_outputs = attention_outputs + cross_attention_outputs[1:]
             ff_layer_idx = 2 if is_decoder_block else 1
             feed_forward_outputs = layers[ff_layer_idx](hidden_states)
-            hidden_states = feed_forward_outputs[0]
+            # T5LayerFF returns a tensor, not a tuple
+            if isinstance(feed_forward_outputs, tuple):
+                hidden_states = feed_forward_outputs[0]
+            else:
+                hidden_states = feed_forward_outputs
             hidden_states = self.hook_out(hidden_states)
             outputs: tuple[Any, ...] = (hidden_states,)
             # Return: hidden-states, (self-attention position bias), (self-attention weights),

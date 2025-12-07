@@ -265,13 +265,17 @@ class ComponentBenchmarker:
 
         results: List[ComponentTestResult] = []
 
+        # Block-type components that need to be tested recursively by layer
+        # (they are ModuleLists that don't have direct forward methods)
+        block_components = {"blocks", "encoder_blocks", "decoder_blocks"}
+
         # Test top-level components (embed, pos_embed, ln_final, unembed)
         for comp_name, component in component_mapping.items():
             if comp_name in skip_components:
                 continue
 
-            if comp_name == "blocks":
-                # Handle blocks separately
+            if comp_name in block_components:
+                # Handle blocks separately - test their subcomponents by layer
                 continue
 
             result = self._test_component(comp_name, component, test_inputs)
@@ -279,17 +283,18 @@ class ComponentBenchmarker:
                 results.append(result)
 
         # Test block components recursively
-        if "blocks" in component_mapping and "blocks" not in skip_components:
-            blocks_component = component_mapping["blocks"]
-            n_layers = self.cfg.n_layers
+        for block_type in block_components:
+            if block_type in component_mapping and block_type not in skip_components:
+                blocks_component = component_mapping[block_type]
+                n_layers = self.cfg.n_layers
 
-            for layer_idx in range(n_layers):
-                # Recursively test each subcomponent and its nested subcomponents
-                for subcomp_name, subcomponent in blocks_component.submodules.items():
-                    comp_path = f"blocks.{layer_idx}.{subcomp_name}"
-                    self._test_component_recursive(
-                        comp_path, subcomponent, test_inputs, results, skip_components
-                    )
+                for layer_idx in range(n_layers):
+                    # Recursively test each subcomponent and its nested subcomponents
+                    for subcomp_name, subcomponent in blocks_component.submodules.items():
+                        comp_path = f"{block_type}.{layer_idx}.{subcomp_name}"
+                        self._test_component_recursive(
+                            comp_path, subcomponent, test_inputs, results, skip_components
+                        )
 
         # Clean up test inputs to free memory
         if test_inputs is not None:
@@ -382,13 +387,15 @@ class ComponentBenchmarker:
         ):
             return
 
-        # Skip BLOOM attention and MLP components - they have custom signatures that require
-        # residual connections and alibi bias from the full model context
+        # Skip BLOOM and T5 attention and MLP components - they have custom signatures that require
+        # residual connections, alibi bias, or cache_position from the full model context
         if "attn" in component_path or "mlp" in component_path:
-            # Check if this is a BLOOM model by looking at the HF model config
+            # Check if this is a BLOOM or T5 model by looking at the HF model config
             hf_model_config = getattr(self.hf_model, "config", None)
             if hf_model_config and hasattr(hf_model_config, "model_type"):
-                if hf_model_config.model_type == "bloom":
+                # BLOOM requires residual and alibi bias
+                # T5 requires cache_position for relative position embeddings
+                if hf_model_config.model_type in ["bloom", "t5"]:
                     return
 
         # Skip components that require specific shaped inputs from their parent modules

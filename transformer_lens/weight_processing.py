@@ -677,6 +677,12 @@ class ProcessWeights:
         unembed_W_U_key = ProcessWeights._get_param_key("unembed.W_U", adapter)
         ln_final_b_key = ProcessWeights._get_param_key("ln_final.b", adapter)
         ln_final_w_key = ProcessWeights._get_param_key("ln_final.w", adapter)
+
+        # Skip layer norm folding if ln_final doesn't exist
+        # (e.g., encoder-decoder models like T5 have encoder_ln_final/decoder_ln_final instead)
+        if ln_final_w_key not in state_dict:
+            return state_dict
+
         has_unembed_bias = unembed_b_U_key in state_dict
         unembed_weight = ProcessWeights.convert_tensor_to_tl_format(
             unembed_W_U_key, state_dict, state_dict.get(unembed_W_U_key), cfg, adapter, None

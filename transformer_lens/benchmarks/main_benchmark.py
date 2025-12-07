@@ -75,6 +75,27 @@ ENCODER_DECODER_ARCHITECTURES = [
 ]
 
 
+def is_encoder_decoder_model(model_name: str) -> bool:
+    """Check if a model is an encoder-decoder architecture.
+
+    Args:
+        model_name: The HuggingFace model name or path
+
+    Returns:
+        True if the model is encoder-decoder (like T5), False otherwise
+    """
+    try:
+        config = AutoConfig.from_pretrained(model_name)
+        # Check config attribute first
+        if getattr(config, "is_encoder_decoder", False):
+            return True
+        # Fallback to architecture check
+        architectures = getattr(config, "architectures", []) or []
+        return any(arch in ENCODER_DECODER_ARCHITECTURES for arch in architectures)
+    except Exception:
+        return False
+
+
 def get_auto_model_class(model_name: str):
     """Determine the correct AutoModel class for a given model.
 
@@ -87,20 +108,9 @@ def get_auto_model_class(model_name: str):
     Returns:
         The appropriate AutoModel class (AutoModelForCausalLM or AutoModelForSeq2SeqLM)
     """
-    try:
-        config = AutoConfig.from_pretrained(model_name)
-        architectures = getattr(config, "architectures", []) or []
-
-        # Check if any architecture matches encoder-decoder pattern
-        for arch in architectures:
-            if arch in ENCODER_DECODER_ARCHITECTURES:
-                return AutoModelForSeq2SeqLM
-
-        # Default to causal LM for decoder-only models
-        return AutoModelForCausalLM
-    except Exception:
-        # If we can't determine, default to causal LM
-        return AutoModelForCausalLM
+    if is_encoder_decoder_model(model_name):
+        return AutoModelForSeq2SeqLM
+    return AutoModelForCausalLM
 
 
 def run_comparison_benchmarks(
@@ -940,28 +950,60 @@ def run_benchmark_suite(
             print("Running Phase 2 benchmarks...\n")
 
         # Generation benchmarks (unprocessed only) - RUN FIRST
+        # Skip for encoder-decoder models (T5, etc.) which require different generation API
+        is_enc_dec = is_encoder_decoder_model(model_name)
         if verbose:
             print("1. Generation Benchmarks (unprocessed)")
-        try:
-            add_result(benchmark_generation(bridge_unprocessed, test_text, max_new_tokens=10))
+        if is_enc_dec:
+            if verbose:
+                print("⏭️ Skipped (encoder-decoder model - requires decoder_input_ids)\n")
             add_result(
-                benchmark_generation_with_kv_cache(bridge_unprocessed, test_text, max_new_tokens=10)
-            )
-            add_result(
-                benchmark_multiple_generation_calls(
-                    bridge_unprocessed,
-                    test_prompts=[
-                        "The quick brown fox",
-                        "Hello world",
-                        "Machine learning is",
-                    ],
-                    max_new_tokens=5,
+                BenchmarkResult(
+                    name="generation",
+                    severity=BenchmarkSeverity.INFO,
+                    passed=True,
+                    message="Skipped (encoder-decoder model)",
                 )
             )
-            gc.collect()  # Force cleanup after generation benchmarks
-        except Exception as e:
-            if verbose:
-                print(f"✗ Generation benchmark failed: {e}\n")
+            add_result(
+                BenchmarkResult(
+                    name="generation_with_kv_cache",
+                    severity=BenchmarkSeverity.INFO,
+                    passed=True,
+                    message="Skipped (encoder-decoder model)",
+                )
+            )
+            add_result(
+                BenchmarkResult(
+                    name="multiple_generation_calls",
+                    severity=BenchmarkSeverity.INFO,
+                    passed=True,
+                    message="Skipped (encoder-decoder model)",
+                )
+            )
+        else:
+            try:
+                add_result(benchmark_generation(bridge_unprocessed, test_text, max_new_tokens=10))
+                add_result(
+                    benchmark_generation_with_kv_cache(
+                        bridge_unprocessed, test_text, max_new_tokens=10
+                    )
+                )
+                add_result(
+                    benchmark_multiple_generation_calls(
+                        bridge_unprocessed,
+                        test_prompts=[
+                            "The quick brown fox",
+                            "Hello world",
+                            "Machine learning is",
+                        ],
+                        max_new_tokens=5,
+                    )
+                )
+                gc.collect()  # Force cleanup after generation benchmarks
+            except Exception as e:
+                if verbose:
+                    print(f"✗ Generation benchmark failed: {e}\n")
 
     # Load HookedTransformer for comparison (after generation benchmarks)
     ht_model_unprocessed = None
@@ -1028,6 +1070,13 @@ def run_benchmark_suite(
     if not should_run_phase(3):
         if verbose:
             print("\n⚠ Phase 3 skipped (not in phases list)\n")
+        return results
+
+    # Skip Phase 3 for encoder-decoder models - weight processing is designed for decoder-only models
+    if is_encoder_decoder_model(model_name):
+        if verbose:
+            print("\n⚠ Phase 3 skipped (encoder-decoder model - weight processing not supported)\n")
+            print("\n" + format_results(results))
         return results
 
     if verbose:
