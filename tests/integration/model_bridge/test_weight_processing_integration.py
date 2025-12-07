@@ -89,7 +89,7 @@ def test_integration_compatibility():
     print("\n3. Loading TransformerBridge without processing...")
     try:
         bridge_unprocessed = TransformerBridge.boot_transformers(
-            model_name, device=device, apply_weight_processing=False
+            model_name, device=device
         )
 
         print("\n   Testing baseline performance...")
@@ -123,8 +123,10 @@ def test_integration_compatibility():
     print("\n4. Loading TransformerBridge with processing...")
     try:
         bridge_processed = TransformerBridge.boot_transformers(
-            model_name, device=device, apply_weight_processing=True
+            model_name, device=device
         )
+        
+        bridge_processed.process_weights()
 
         print("\n   Testing baseline performance...")
         bridge_processed_baseline = bridge_processed(tokens, return_type="loss")
