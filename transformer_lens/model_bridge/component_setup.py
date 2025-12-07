@@ -10,9 +10,7 @@ from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapt
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
-from transformer_lens.model_bridge.generalized_components.symbolic import (
-    SymbolicBridge,
-)
+from transformer_lens.model_bridge.generalized_components.symbolic import SymbolicBridge
 from transformer_lens.model_bridge.types import RemoteModel
 
 if TYPE_CHECKING:

@@ -31,7 +31,9 @@ from transformer_lens.model_bridge.generalized_components.symbolic import Symbol
 from transformer_lens.model_bridge.generalized_components.unembedding import UnembeddingBridge
 from transformer_lens.model_bridge.generalized_components.t5_block import T5BlockBridge
 from transformer_lens.model_bridge.generalized_components.bloom_block import BloomBlockBridge
-from transformer_lens.model_bridge.generalized_components.bloom_attention import BloomAttentionBridge
+from transformer_lens.model_bridge.generalized_components.bloom_attention import (
+    BloomAttentionBridge,
+)
 from transformer_lens.model_bridge.generalized_components.bloom_mlp import BloomMLPBridge
 
 __all__ = [

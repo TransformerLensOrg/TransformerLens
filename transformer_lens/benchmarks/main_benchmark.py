@@ -1206,12 +1206,18 @@ def run_benchmark_suite(
             results_by_phase[phase].append(r)
 
         # Print phase-by-phase summary
-        for phase in sorted(results_by_phase.keys(), key=lambda x: x if isinstance(x, int) else 999):
+        for phase in sorted(
+            results_by_phase.keys(), key=lambda x: x if isinstance(x, int) else 999
+        ):
             phase_results = results_by_phase[phase]
             phase_name = f"Phase {phase}" if isinstance(phase, int) else phase
 
-            phase_passed = sum(1 for r in phase_results if r.passed and r.severity != BenchmarkSeverity.SKIPPED)
-            phase_failed = sum(1 for r in phase_results if not r.passed and r.severity != BenchmarkSeverity.SKIPPED)
+            phase_passed = sum(
+                1 for r in phase_results if r.passed and r.severity != BenchmarkSeverity.SKIPPED
+            )
+            phase_failed = sum(
+                1 for r in phase_results if not r.passed and r.severity != BenchmarkSeverity.SKIPPED
+            )
             phase_skipped = sum(1 for r in phase_results if r.severity == BenchmarkSeverity.SKIPPED)
             phase_total = len(phase_results)
             phase_run = phase_total - phase_skipped

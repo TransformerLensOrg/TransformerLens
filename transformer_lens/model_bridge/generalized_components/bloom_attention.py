@@ -10,11 +10,11 @@ import torch
 from transformer_lens.conversion_utils.conversion_steps.base_tensor_conversion import (
     BaseTensorConversion,
 )
-from transformer_lens.model_bridge.generalized_components.joint_qkv_attention import (
-    JointQKVAttentionBridge,
-)
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
+)
+from transformer_lens.model_bridge.generalized_components.joint_qkv_attention import (
+    JointQKVAttentionBridge,
 )
 
 

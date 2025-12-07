@@ -7,8 +7,10 @@ from typing import Any, Dict, Optional
 
 import torch
 
+from transformer_lens.model_bridge.generalized_components.base import (
+    GeneralizedComponent,
+)
 from transformer_lens.model_bridge.generalized_components.mlp import MLPBridge
-from transformer_lens.model_bridge.generalized_components.base import GeneralizedComponent
 
 
 class BloomMLPBridge(MLPBridge):

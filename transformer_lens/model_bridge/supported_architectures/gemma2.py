@@ -3,7 +3,7 @@
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    import torch
+    pass
 
 from transformer_lens.conversion_utils.conversion_steps import (
     ArithmeticTensorConversion,
@@ -222,4 +222,3 @@ class Gemma2ArchitectureAdapter(ArchitectureAdapter):
         # Also set on the template for get_generalized_component() calls
         attn_bridge = self.get_generalized_component("blocks.0.attn")
         attn_bridge.set_rotary_emb(rotary_emb)
-

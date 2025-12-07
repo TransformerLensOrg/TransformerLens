@@ -352,6 +352,7 @@ class ComponentBenchmarker:
         # These can't be tested in isolation without full model context
         if "mlp" in component_path and hasattr(component, "hf_component"):
             import inspect
+
             try:
                 sig = inspect.signature(component.hf_component.forward)
                 params = list(sig.parameters.keys())

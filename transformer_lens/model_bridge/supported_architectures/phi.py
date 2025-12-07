@@ -132,7 +132,9 @@ class PhiArchitectureAdapter(ArchitectureAdapter):
             if hasattr(hf_model, "model") and hasattr(hf_model.model, "layers"):
                 if len(hf_model.model.layers) > 0:
                     first_layer = hf_model.model.layers[0]
-                    if hasattr(first_layer, "self_attn") and hasattr(first_layer.self_attn, "rotary_emb"):
+                    if hasattr(first_layer, "self_attn") and hasattr(
+                        first_layer.self_attn, "rotary_emb"
+                    ):
                         rotary_emb = first_layer.self_attn.rotary_emb
                     else:
                         return  # Can't find rotary_emb

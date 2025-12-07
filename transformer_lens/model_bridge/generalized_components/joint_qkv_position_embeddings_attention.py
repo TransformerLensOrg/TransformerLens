@@ -32,7 +32,7 @@ class JointQKVPositionEmbeddingsAttentionBridge(JointQKVAttentionBridge):
         config: Any,
         split_qkv_matrix: Optional[Callable] = None,
         submodules: Optional[Dict[str, Any]] = None,
-        **kwargs
+        **kwargs,
     ):
         """Initialize Joint QKV Position Embeddings attention bridge.
 
@@ -50,7 +50,7 @@ class JointQKVPositionEmbeddingsAttentionBridge(JointQKVAttentionBridge):
             config=config,
             split_qkv_matrix=split_qkv_matrix,
             submodules=submodules,
-            **kwargs
+            **kwargs,
         )
         self._rotary_emb = None
         # Add hooks for cos and sin to match HookedTransformer pattern
@@ -119,10 +119,15 @@ class JointQKVPositionEmbeddingsAttentionBridge(JointQKVAttentionBridge):
         num_heads = (
             self.config.num_attention_heads
             if self.config and hasattr(self.config, "num_attention_heads")
-            else self.config.n_heads if self.config and hasattr(self.config, "n_heads")
+            else self.config.n_heads
+            if self.config and hasattr(self.config, "n_heads")
             else 8
         )
-        head_dim = self.config.head_dim if self.config and hasattr(self.config, "head_dim") else (d_model // num_heads)
+        head_dim = (
+            self.config.head_dim
+            if self.config and hasattr(self.config, "head_dim")
+            else (d_model // num_heads)
+        )
 
         # Generate position_embeddings using rotary_emb if available
         if self._rotary_emb is not None:
@@ -146,11 +151,7 @@ class JointQKVPositionEmbeddingsAttentionBridge(JointQKVAttentionBridge):
         return inputs
 
     def _apply_rotary_pos_emb(
-        self,
-        q: torch.Tensor,
-        k: torch.Tensor,
-        cos: torch.Tensor,
-        sin: torch.Tensor
+        self, q: torch.Tensor, k: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """Apply rotary position embeddings to query and key tensors.
 

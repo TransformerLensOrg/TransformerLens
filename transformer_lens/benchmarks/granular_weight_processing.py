@@ -374,6 +374,7 @@ def run_granular_weight_processing_benchmarks(
             del ht_ref
             # Force garbage collection (multiple passes to break circular references)
             import gc
+
             for _ in range(3):
                 gc.collect()
             if torch.cuda.is_available():

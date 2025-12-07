@@ -163,7 +163,9 @@ class AttentionBridge(GeneralizedComponent):
         if self.requires_attention_mask:
             if self.attention_mask_4d:
                 # Generate 4D attention mask [batch, 1, tgt_len, src_len] for models like OPT
-                inputs["attention_mask"] = torch.ones(batch_size, 1, seq_len, seq_len, device=device)
+                inputs["attention_mask"] = torch.ones(
+                    batch_size, 1, seq_len, seq_len, device=device
+                )
             else:
                 # Generate 2D attention mask [batch, seq_len] for most models
                 inputs["attention_mask"] = torch.ones(batch_size, seq_len, device=device)

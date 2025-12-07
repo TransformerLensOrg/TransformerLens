@@ -7,8 +7,10 @@ from typing import Any, Dict, Optional
 
 import torch
 
+from transformer_lens.model_bridge.generalized_components.base import (
+    GeneralizedComponent,
+)
 from transformer_lens.model_bridge.generalized_components.block import BlockBridge
-from transformer_lens.model_bridge.generalized_components.base import GeneralizedComponent
 
 
 class BloomBlockBridge(BlockBridge):
@@ -40,9 +42,7 @@ class BloomBlockBridge(BlockBridge):
 
     @staticmethod
     def build_alibi_tensor(
-        attention_mask: torch.Tensor,
-        num_heads: int,
-        dtype: torch.dtype
+        attention_mask: torch.Tensor, num_heads: int, dtype: torch.dtype
     ) -> torch.Tensor:
         """Build ALiBi tensor for attention biasing.
 
@@ -57,7 +57,9 @@ class BloomBlockBridge(BlockBridge):
             ALiBi tensor of shape [num_heads, 1, seq_length]
         """
         batch_size, seq_length = attention_mask.shape
-        closest_power_of_2 = 2 ** torch.floor(torch.log2(torch.tensor(num_heads, dtype=torch.float32)))
+        closest_power_of_2 = 2 ** torch.floor(
+            torch.log2(torch.tensor(num_heads, dtype=torch.float32))
+        )
         base = torch.tensor(
             2 ** (-(2 ** -(torch.log2(closest_power_of_2) - 3))), dtype=torch.float32
         )
@@ -66,7 +68,16 @@ class BloomBlockBridge(BlockBridge):
 
         if closest_power_of_2 != num_heads:
             extra_base = torch.tensor(
-                2 ** (-(2 ** -(torch.log2(torch.tensor(2 * closest_power_of_2, dtype=torch.float32)) - 3))),
+                2
+                ** (
+                    -(
+                        2
+                        ** -(
+                            torch.log2(torch.tensor(2 * closest_power_of_2, dtype=torch.float32))
+                            - 3
+                        )
+                    )
+                ),
                 dtype=torch.float32,
             )
             num_remaining_heads = min(closest_power_of_2, num_heads - closest_power_of_2)
@@ -103,6 +114,7 @@ class BloomBlockBridge(BlockBridge):
         # Check if we should stop before executing this block
         if hasattr(self, "_stop_at_layer_idx") and self._stop_at_layer_idx is not None:
             import re
+
             if self.name is not None:
                 match = (
                     re.search(r"blocks\.(\d+)", self.name)
@@ -116,12 +128,17 @@ class BloomBlockBridge(BlockBridge):
                 if layer_idx == self._stop_at_layer_idx:
                     if len(args) > 0 and isinstance(args[0], torch.Tensor):
                         input_tensor = args[0]
-                    elif "hidden_states" in kwargs and isinstance(kwargs["hidden_states"], torch.Tensor):
+                    elif "hidden_states" in kwargs and isinstance(
+                        kwargs["hidden_states"], torch.Tensor
+                    ):
                         input_tensor = kwargs["hidden_states"]
                     else:
                         raise ValueError(f"Cannot find input tensor to stop at layer {layer_idx}")
                     input_tensor = self.hook_in(input_tensor)
-                    from transformer_lens.model_bridge.exceptions import StopAtLayerException
+                    from transformer_lens.model_bridge.exceptions import (
+                        StopAtLayerException,
+                    )
+
                     raise StopAtLayerException(input_tensor)
 
         # Apply hook_in to hidden_states
@@ -161,7 +178,9 @@ class BloomBlockBridge(BlockBridge):
                 elif attention_mask.dim() == 2:
                     attention_mask_2d = attention_mask
                 else:
-                    raise ValueError(f"Unexpected attention_mask dimensions: {attention_mask.dim()}")
+                    raise ValueError(
+                        f"Unexpected attention_mask dimensions: {attention_mask.dim()}"
+                    )
 
             # Generate ALiBi bias
             if self.config and hasattr(self.config, "n_heads"):
