@@ -9,7 +9,7 @@ Phase 4: Granular Weight Processing Tests (optional)
 """
 
 import gc
-from typing import List, Optional
+from typing import Dict, List, Optional, Union
 
 import torch
 from transformers import AutoConfig, AutoModelForCausalLM, AutoModelForSeq2SeqLM
@@ -589,24 +589,12 @@ def run_benchmark_suite(
             print("Phase 4/5 load their own models independently\n")
 
         # Jump directly to Phase 4/5
-        results: List[BenchmarkResult] = []
-        current_phase = [None]
-
-        # Still need helper functions
-        def add_result(result: BenchmarkResult) -> None:
-            if current_phase[0] is not None and result.phase is None:
-                result.phase = current_phase[0]
-            results.append(result)
-            if verbose:
-                result.print_immediate()
-
         # Jump to granular testing
         from transformer_lens.benchmarks.granular_weight_processing import (
             run_granular_weight_processing_benchmarks,
         )
 
         if 4 in phases and test_weight_processing_individually and enable_compatibility_mode:
-            current_phase[0] = 4
             phase4_results = run_granular_weight_processing_benchmarks(
                 model_name=model_name,
                 device=device,
@@ -617,10 +605,11 @@ def run_benchmark_suite(
             for config_name, config_results in phase4_results.items():
                 for result in config_results:
                     result.phase = 4
-                    add_result(result)
+                    results.append(result)
+                    if verbose:
+                        result.print_immediate()
 
         if 5 in phases and test_weight_processing_individually and enable_compatibility_mode:
-            current_phase[0] = 5
             phase5_results = run_granular_weight_processing_benchmarks(
                 model_name=model_name,
                 device=device,
@@ -631,12 +620,14 @@ def run_benchmark_suite(
             for config_name, config_results in phase5_results.items():
                 for result in config_results:
                     result.phase = 5
-                    add_result(result)
+                    results.append(result)
+                    if verbose:
+                        result.print_immediate()
 
         return results
 
     # Track current phase for result tagging
-    current_phase = [None]  # Use list to allow modification in nested function
+    current_phase: List[Optional[int]] = [None]  # Use list to allow modification in nested function
 
     def should_run_phase(phase_num: int) -> bool:
         """Check if a phase should run based on the phases filter."""
@@ -1241,7 +1232,7 @@ def run_benchmark_suite(
         print("=" * 80)
 
         # Group results by phase
-        results_by_phase = {}
+        results_by_phase: Dict[Union[int, str], List[BenchmarkResult]] = {}
         for r in results:
             phase = r.phase if r.phase is not None else "Other"
             if phase not in results_by_phase:

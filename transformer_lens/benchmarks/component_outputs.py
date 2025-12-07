@@ -297,7 +297,6 @@ class ComponentBenchmarker:
                 tensor = test_inputs[key]
                 if tensor is not None and isinstance(tensor, torch.Tensor):
                     del tensor
-                test_inputs[key] = None
             test_inputs.clear()
 
         # Create report

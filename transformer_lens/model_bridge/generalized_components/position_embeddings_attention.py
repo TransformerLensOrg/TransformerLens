@@ -84,7 +84,7 @@ def _setup_eager_attention_hook_wrapper() -> None:
         )
 
     # Replace the module-level function
-    gemma2_module.eager_attention_forward = hooked_eager_attention_forward
+    gemma2_module.eager_attention_forward = hooked_eager_attention_forward  # type: ignore[assignment]
     _EAGER_ATTENTION_WRAPPED = True
 
 
