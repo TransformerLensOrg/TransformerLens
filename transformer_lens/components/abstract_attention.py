@@ -502,6 +502,10 @@ class AbstractAttention(ABC, nn.Module):
                 f"query_ctx_length {query_ctx_length} + past_kv_pos_offset {past_kv_pos_offset} != key_ctx_length {key_ctx_length} - you likely have a bug."
             )
 
+        # Dynamically extend mask if needed for long context
+        if key_ctx_length > self.mask.shape[0]:
+            self._extend_mask(key_ctx_length)
+
         # Index back to front to ensure local attention works
         final_mask = self.mask[None, None, -query_ctx_length:, -key_ctx_length:]  # [1, 1, pos, pos]
         if attention_mask is not None:
@@ -609,6 +613,11 @@ class AbstractAttention(ABC, nn.Module):
         x_pass = x[..., self.cfg.rotary_dim :]
         x_flip = self.rotate_every_two(x_rot)
 
+        # Dynamically extend rotary embeddings if needed for long context
+        max_pos_needed = past_kv_pos_offset + x_pos
+        if max_pos_needed > self.rotary_cos.shape[0]:
+            self._extend_rotary_embeddings(max_pos_needed)
+
         if attention_mask is None:
             rotary_cos = self.rotary_cos[
                 None, past_kv_pos_offset : past_kv_pos_offset + x_pos, None, :
@@ -625,6 +634,35 @@ class AbstractAttention(ABC, nn.Module):
             x_rotated = x_rot * mask_rotary_cos + x_flip * mask_rotary_sin
 
         return torch.cat([x_rotated, x_pass], dim=-1)
+    
+    def _extend_rotary_embeddings(self, new_size: int):
+        """Extend rotary embeddings to support longer contexts dynamically."""
+        # Get the RoPE base from config or use default
+        rope_base = getattr(self.cfg, 'rotary_base', 10000)
+        
+        # Calculate new embeddings
+        sin, cos = self.calculate_sin_cos_rotary(
+            self.cfg.rotary_dim,
+            new_size,
+            base=rope_base,
+            dtype=self.cfg.dtype,
+        )
+        
+        # Update the registered buffers
+        self.rotary_sin = sin.to(self.rotary_sin.device)
+        self.rotary_cos = cos.to(self.rotary_cos.device)
+    
+    def _extend_mask(self, new_size: int):
+        """Extend causal mask to support longer contexts dynamically."""
+        causal_mask = torch.tril(torch.ones((new_size, new_size), device=self.mask.device).bool())
+        if self.attn_type == "global":
+            self.mask = causal_mask
+        elif self.attn_type == "local":
+            if not isinstance(self.cfg.window_size, int):
+                raise ValueError("Window size must be an integer for local attention")
+            self.mask = torch.triu(causal_mask, 1 - self.cfg.window_size)
+        else:
+            raise ValueError(f"Invalid attention type: {self.attn_type}")
 
     @staticmethod
     def create_alibi_slope(

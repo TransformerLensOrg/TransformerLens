@@ -62,9 +62,14 @@ def convert_gemma_weights(gemma, cfg: HookedTransformerConfig):
         state_dict[f"blocks.{l}.attn._W_V"] = W_V
 
         # Load q_norm and k_norm if they exist (Gemma 3)
+        # Gemma3RMSNorm adds 1 to weights in forward(), so we pre-add it here
         if cfg.use_qk_norm:
-            state_dict[f"blocks.{l}.attn.q_norm.w"] = base_model.layers[l].self_attn.q_norm.weight
-            state_dict[f"blocks.{l}.attn.k_norm.w"] = base_model.layers[l].self_attn.k_norm.weight
+            state_dict[f"blocks.{l}.attn.q_norm.w"] = base_model.layers[l].self_attn.q_norm.weight.float() + torch.ones_like(
+                base_model.layers[l].self_attn.q_norm.weight, dtype=torch.float32
+            )
+            state_dict[f"blocks.{l}.attn.k_norm.w"] = base_model.layers[l].self_attn.k_norm.weight.float() + torch.ones_like(
+                base_model.layers[l].self_attn.k_norm.weight, dtype=torch.float32
+            )
 
         state_dict[f"blocks.{l}.attn.b_Q"] = torch.zeros(
             cfg.n_heads, cfg.d_head, dtype=cfg.dtype, device=W_Q.device
