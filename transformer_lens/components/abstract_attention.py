@@ -640,6 +640,9 @@ class AbstractAttention(ABC, nn.Module):
         # Get the RoPE base from config or use default
         rope_base = getattr(self.cfg, "rotary_base", 10000)
 
+        # Ensure rotary_dim is set
+        assert self.cfg.rotary_dim is not None, "rotary_dim must be set for rotary embeddings"
+
         # Calculate new embeddings
         sin, cos = self.calculate_sin_cos_rotary(
             self.cfg.rotary_dim,
