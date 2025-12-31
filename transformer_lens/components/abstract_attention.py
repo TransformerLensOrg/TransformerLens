@@ -634,12 +634,12 @@ class AbstractAttention(ABC, nn.Module):
             x_rotated = x_rot * mask_rotary_cos + x_flip * mask_rotary_sin
 
         return torch.cat([x_rotated, x_pass], dim=-1)
-    
+
     def _extend_rotary_embeddings(self, new_size: int):
         """Extend rotary embeddings to support longer contexts dynamically."""
         # Get the RoPE base from config or use default
-        rope_base = getattr(self.cfg, 'rotary_base', 10000)
-        
+        rope_base = getattr(self.cfg, "rotary_base", 10000)
+
         # Calculate new embeddings
         sin, cos = self.calculate_sin_cos_rotary(
             self.cfg.rotary_dim,
@@ -647,11 +647,11 @@ class AbstractAttention(ABC, nn.Module):
             base=rope_base,
             dtype=self.cfg.dtype,
         )
-        
+
         # Update the registered buffers
         self.rotary_sin = sin.to(self.rotary_sin.device)
         self.rotary_cos = cos.to(self.rotary_cos.device)
-    
+
     def _extend_mask(self, new_size: int):
         """Extend causal mask to support longer contexts dynamically."""
         causal_mask = torch.tril(torch.ones((new_size, new_size), device=self.mask.device).bool())
