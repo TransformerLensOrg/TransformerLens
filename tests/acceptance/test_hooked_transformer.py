@@ -342,7 +342,7 @@ def benchmark_model_options(
 
     if hf_model is None:
         hf_model = AutoModelForCausalLM.from_pretrained(
-            model_name, torch_dtype=dtype, device_map="auto"
+            model_name, dtype=dtype, device_map="auto"
         )
     if tokenizer is None:
         tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -492,13 +492,13 @@ def check_dtype(dtype, margin, no_processing=False):
     for model_path in ["gpt2", "roneneldan/TinyStories-33M", "EleutherAI/pythia-70m"]:
         if no_processing:
             # For low precision, the processing is not advised.
-            model = HookedTransformer.from_pretrained_no_processing(model_path, torch_dtype=dtype)
+            model = HookedTransformer.from_pretrained_no_processing(model_path, dtype=dtype)
         else:
-            model = HookedTransformer.from_pretrained(model_path, torch_dtype=dtype)
+            model = HookedTransformer.from_pretrained(model_path, dtype=dtype)
 
         hf_model = AutoModelForCausalLM.from_pretrained(
             model_path,
-            torch_dtype=dtype,
+            dtype=dtype,
         ).to("cuda" if torch.cuda.is_available() else "cpu")
 
         for layer_name, layer in model.state_dict().items():
