@@ -75,7 +75,6 @@ def train(
         The trained model
     """
 
-
     torch.manual_seed(config.seed)
     model.train()
 

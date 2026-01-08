@@ -36,6 +36,7 @@
         typeguard="^4.2"
         typing-extensions="*"
         wandb=">=0.13.5"
+    huggingface-hub = "<1.0"
 
     [tool.poetry.group]
         [tool.poetry.group.dev.dependencies]
