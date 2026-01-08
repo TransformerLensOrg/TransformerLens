@@ -11,6 +11,7 @@ import json
 import os
 import re
 import shutil
+import sys
 from copy import deepcopy
 from typing import Any, List, Optional, Tuple, Union, cast
 
@@ -20,6 +21,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import transformers
+import importlib.util
+
 from datasets.arrow_dataset import Dataset
 from datasets.load import load_dataset
 from huggingface_hub import constants, hf_hub_download
@@ -32,6 +35,15 @@ from transformer_lens.FactoredMatrix import FactoredMatrix
 
 CACHE_DIR = constants.HUGGINGFACE_HUB_CACHE
 USE_DEFAULT_VALUE = None
+
+
+def is_library_available(name: str) -> bool:
+    """
+    Checks if a library is installed in the current environment without importing it.
+    Prevents crash or segmentation fault.
+    """
+
+    return name in sys.modules or importlib.util.find_spec(name) is not None
 
 
 def select_compatible_kwargs(
