@@ -6,6 +6,7 @@ This module contains varied utility functions used throughout the library.
 from __future__ import annotations
 
 import collections.abc
+import importlib.util
 import inspect
 import json
 import os
@@ -21,8 +22,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import transformers
-import importlib.util
-
 from datasets.arrow_dataset import Dataset
 from datasets.load import load_dataset
 from huggingface_hub import constants, hf_hub_download
