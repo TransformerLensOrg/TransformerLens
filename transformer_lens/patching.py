@@ -22,10 +22,10 @@ measure how much the output has updated towards the correct answer.
 - We can then iterate over many
     possible activations and look at how much they affect the corrupted run. If patching in an
     activation significantly increases the probability of the correct answer, this allows us to
-    localise which activations matter. 
+    localise which activations matter.
 - A key detail is that we move a single activation __from__ the clean run __to __the corrupted run.
     So if this changes the answer from incorrect to correct, we can be confident that the activation
-    moved was important. 
+    moved was important.
 
 Intuition:
 

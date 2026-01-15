@@ -50,9 +50,20 @@ jobs:
           - "3.9"
           - "3.10"
     steps:
+      - name: Free Disk Space
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force
+          df -h
       - uses: actions/checkout@v3
       - name: Install Poetry
         uses: snok/install-poetry@v1
+        with:
+          virtualenvs-create: true
+          virtualenvs-in-project: true
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
@@ -69,7 +80,7 @@ jobs:
       - name: Install dependencies
         run: |
           poetry check --lock
-          poetry install --with dev
+          poetry install --sync --with dev
       - name: Authenticate HuggingFace CLI
         if: env.HF_TOKEN != ''
         run: |
@@ -90,9 +101,20 @@ jobs:
     name: Code Checks
     runs-on: ubuntu-latest
     steps:
+      - name: Free Disk Space
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force
+          df -h
       - uses: actions/checkout@v3
       - name: Install Poetry
         uses: snok/install-poetry@v1
+        with:
+          virtualenvs-create: true
+          virtualenvs-in-project: true
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
@@ -109,7 +131,7 @@ jobs:
       - name: Install dependencies
         run: |
           poetry check --lock
-          poetry install --with dev
+          poetry install --sync --with dev
       - name: Check format
         run: make check-format
       - name: Docstring test
@@ -139,6 +161,7 @@ jobs:
     name: Notebook Checks
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         notebook:
           # - "Activation_Patching_in_TL_Demo"
@@ -158,28 +181,60 @@ jobs:
           - "Patchscopes_Generation_Demo"
           # - "T5"
     steps:
+      - name: Free Disk Space
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force
+          df -h
       - uses: actions/checkout@v3
       - name: Install Poetry
         uses: snok/install-poetry@v1
+        with:
+          virtualenvs-create: true
+          virtualenvs-in-project: true
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: "3.11"
-          cache: "poetry"
-      - name: Re-use HuggingFace models cache
-        uses: actions/cache/restore@v3
-        with:
-          path: ~/.cache/huggingface/hub
-          key: ${{ runner.os }}-huggingface-models
+          # NOTE: Poetry cache disabled - causes huggingface-hub version conflicts
       - name: Install dependencies
         run: |
           poetry check --lock
-          poetry install --with dev,jupyter
+          poetry install --sync --with dev,jupyter
+      - name: Verify huggingface-hub version after install
+        run: |
+          VERSION=$(poetry run python -c "import huggingface_hub; print(huggingface_hub.__version__)")
+          echo "huggingface-hub version after poetry install: $VERSION"
       - name: Install pandoc
         uses: awalsh128/cache-apt-pkgs-action@latest
         with:
           packages: pandoc
           version: 1.0
+      - name: Register Poetry venv as Jupyter kernel
+        run: |
+          poetry run python -m ipykernel install --user --name=poetry-env
+      - name: Ensure correct huggingface-hub version
+        run: |
+          # Force install the exact version from poetry.lock (0.33.0)
+          # transformers 4.46.3 requires huggingface-hub>=0.23.2,<1.0
+          poetry run pip install --force-reinstall --no-deps huggingface-hub==0.33.0
+      - name: Verify huggingface-hub version
+        run: |
+          VERSION=$(poetry run python -c "import huggingface_hub; print(huggingface_hub.__version__)")
+          echo "huggingface-hub version: $VERSION"
+          if [[ "$VERSION" == 1.* ]]; then
+            echo "ERROR: huggingface-hub version 1.x detected, but <1.0 is required!"
+            exit 1
+          fi
+      - name: Final version check before pytest
+        run: |
+          echo "=== Environment check ==="
+          poetry run which python
+          poetry run pip show huggingface-hub | grep Version
+          poetry run python -c "import transformers; print('transformers OK')"
       - name: Check Notebook Output Consistency
         # Note: currently only checks notebooks we have specifically setup for this
         run: poetry run pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/${{ matrix.notebook }}.ipynb
@@ -188,9 +243,10 @@ jobs:
   build-docs:
     # When running on a PR, this just checks we can build the docs without errors
     # When running on merge to main, it builds the docs and then another job deploys them
+    # Only runs on the original repo, not forks
     name: 'Build Docs'
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev') || contains(github.head_ref, 'docs')
+    if: github.repository == 'TransformerLensOrg/TransformerLens' && (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev') || contains(github.head_ref, 'docs'))
     needs: code-checks
     steps:
       - uses: actions/checkout@v4
@@ -233,8 +289,8 @@ jobs:
   deploy-docs:
     name: Deploy Docs
     runs-on: ubuntu-latest
-    # Only run if merging a PR into main
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # Only run if merging a PR into main on the original repo, not forks
+    if: github.repository == 'TransformerLensOrg/TransformerLens' && github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: build-docs
     steps:
       - uses: actions/checkout@v4

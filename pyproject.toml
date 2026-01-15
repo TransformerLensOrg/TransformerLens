@@ -19,6 +19,7 @@
         datasets=">=2.7.1"
         einops=">=0.6.0"
         fancy-einsum=">=0.0.3"
+        huggingface-hub=">=0.23.2,<1.0"
         jaxtyping=">=0.2.11"
         numpy=[
             {version=">=1.20,<1.25", python=">=3.8,<3.9"},
@@ -26,6 +27,7 @@
             {version=">=1.26,<2", python=">=3.12,<3.13"},
         ]
         pandas=">=1.1.5"
+        protobuf=">=3.20.0"
         python=">=3.8,<4.0"
         rich=">=12.6.0"
         sentencepiece="*"
@@ -41,6 +43,7 @@
         [tool.poetry.group.dev.dependencies]
             black="^23.3.0"
             circuitsvis=">=1.38.1"
+            gradio=">=4.0.0"
             isort="5.8.0"
             jupyter=">=1.0.0"
             mypy=">=1.10.0"

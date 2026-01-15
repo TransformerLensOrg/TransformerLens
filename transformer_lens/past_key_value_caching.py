@@ -4,6 +4,7 @@ This module contains the HookedTransformerKeyValueCache and HookedTransformerKey
 classes, which are used to store past keys and values for the Transformer. This is important for
 generating text - we can cache a lot of past computation and avoid repeating ourselves!
 """
+
 from dataclasses import dataclass
 from typing import List, Union
 
