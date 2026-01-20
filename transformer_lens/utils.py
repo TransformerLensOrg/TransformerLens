@@ -170,7 +170,7 @@ def lm_accuracy(
 
 
 def gelu_new(
-    input: Float[torch.Tensor, "batch pos d_mlp"]
+    input: Float[torch.Tensor, "batch pos d_mlp"],
 ) -> Float[torch.Tensor, "batch pos d_mlp"]:
     # Implementation of GeLU used by GPT2 - subtly different from PyTorch's
     return (
@@ -181,7 +181,7 @@ def gelu_new(
 
 
 def gelu_fast(
-    input: Float[torch.Tensor, "batch pos d_mlp"]
+    input: Float[torch.Tensor, "batch pos d_mlp"],
 ) -> Float[torch.Tensor, "batch pos d_mlp"]:
     return 0.5 * input * (1.0 + torch.tanh(input * 0.7978845608 * (1.0 + 0.044715 * input * input)))
 

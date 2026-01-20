@@ -192,6 +192,12 @@ class HookedTransformerConfig:
         NTK_by_parts_factor (float): The overall factor used in the "NTK-by-parts" method that
             affects the rate of change between low and high-frequency interpolation strategies.
             Defaults to 8.0.
+        use_qk_norm (bool): Whether to apply RMSNorm to the query and key projections before
+            computing attention scores. Used by Gemma 3 models. Defaults to False.
+        rotary_base_local (int, *optional*): The base for rotary positional embeddings in local
+            attention layers. Used by models with hybrid local/global attention (e.g., Gemma 3)
+            which use different RoPE bases for local (10k) and global (1M) attention. Defaults
+            to None, which means the standard rotary_base is used for all layers.
 
 
     """
@@ -247,6 +253,9 @@ class HookedTransformerConfig:
     n_key_value_heads: Optional[int] = None
     post_embedding_ln: bool = False
     rotary_base: int = 10000
+    rotary_base_local: Optional[
+        int
+    ] = None  # For models with different RoPE bases per attention type (e.g., Gemma 3)
     trust_remote_code: bool = False
     rotary_adjacent_pairs: bool = False
     load_in_4bit: bool = False
