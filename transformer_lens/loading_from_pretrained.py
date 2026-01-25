@@ -1970,6 +1970,15 @@ def convert_hf_model_config(model_name: str, **kwargs: Any):
     cfg_dict["tokenizer_name"] = official_model_name
     if kwargs.get("trust_remote_code", False):
         cfg_dict["trust_remote_code"] = True
+    # Warn about TinyStories n_ctx mismatch (trained with seq_len=512, but HF config has 2048)
+    # The weights have pos_embed for 2048, so we can't change n_ctx without breaking loading
+    # See: https://github.com/TransformerLensOrg/TransformerLens/issues/492
+    if official_model_name.startswith("roneneldan/TinyStories"):
+        logging.warning(
+            f"TinyStories models were trained with max sequence length 512, but the HuggingFace "
+            f"config reports n_ctx=2048. Performance degrades significantly for sequences longer "
+            f"than 512 tokens. See https://github.com/TransformerLensOrg/TransformerLens/issues/492"
+        )
     return cfg_dict
 
 
