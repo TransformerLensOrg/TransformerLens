@@ -20,9 +20,17 @@ from . import loading_from_pretrained as loading
 from . import patching
 from . import train
 
+# LIT integration (optional, requires lit-nlp package)
+try:
+    from . import lit
+except ImportError:
+    # LIT is an optional dependency
+    lit = None  # type: ignore
+
 from .past_key_value_caching import (
     HookedTransformerKeyValueCache as EasyTransformerKeyValueCache,
     HookedTransformerKeyValueCacheEntry as EasyTransformerKeyValueCacheEntry,
 )
 from .HookedTransformer import HookedTransformer as EasyTransformer
 from .HookedTransformerConfig import HookedTransformerConfig as EasyTransformerConfig
+
