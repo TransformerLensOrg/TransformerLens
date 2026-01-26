@@ -543,9 +543,7 @@ class TestIntegration:
         """Test full prediction flow with mock model."""
         from transformer_lens.lit.model import HookedTransformerLIT
 
-        with patch(
-            "transformer_lens.HookedTransformer", type(mock_hooked_transformer)
-        ):
+        with patch("transformer_lens.HookedTransformer", type(mock_hooked_transformer)):
             wrapper = HookedTransformerLIT(mock_hooked_transformer)
 
             # This would fail with the mock, but we can at least check the structure
