@@ -55,7 +55,7 @@ Note:
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any, Dict, Optional, Union
+from typing import Any, Dict, Union
 
 # Check if LIT is available
 from .utils import check_lit_installed
@@ -86,8 +86,7 @@ __all__ = [
 logger = logging.getLogger(__name__)
 
 # Import constants (always available)
-from .constants import (
-    DEFAULTS,
+from .constants import (  # noqa: E402
     ERRORS,
     INPUT_FIELDS,
     OUTPUT_FIELDS,
@@ -95,13 +94,13 @@ from .constants import (
 )
 
 # Import model wrapper (handles LIT availability internally)
-from .model import (
+from .model import (  # noqa: E402
     HookedTransformerLIT,
     HookedTransformerLITConfig,
 )
 
 # Import datasets (handles LIT availability internally)
-from .dataset import (
+from .dataset import (  # noqa: E402
     IOIDataset,
     InductionDataset,
     PromptCompletionDataset,
@@ -113,9 +112,9 @@ from .dataset import (
 _LIT_AVAILABLE = check_lit_installed()
 
 if _LIT_AVAILABLE:
-    from .model import HookedTransformerLITBatched
+    from .model import HookedTransformerLITBatched  # noqa: E402
 else:
-    HookedTransformerLITBatched = None
+    HookedTransformerLITBatched = None  # type: ignore[misc, assignment]
 
 
 def serve(

@@ -11,14 +11,13 @@ References:
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
-from jaxtyping import Float, Int
 
 if TYPE_CHECKING:
-    from transformer_lens import HookedTransformer
+    from transformer_lens.HookedTransformer import HookedTransformer
     from transformer_lens.ActivationCache import ActivationCache
 
 logger = logging.getLogger(__name__)
@@ -38,7 +37,9 @@ def check_lit_installed() -> bool:
         return False
 
 
-def tensor_to_numpy(tensor: Union[torch.Tensor, np.ndarray, None]) -> Optional[np.ndarray]:
+def tensor_to_numpy(
+    tensor: Union[torch.Tensor, np.ndarray, None],
+) -> Optional[np.ndarray]:
     """Convert a PyTorch tensor to a NumPy array.
 
     LIT expects all data to be in NumPy format, so this helper ensures
@@ -94,7 +95,7 @@ def get_tokens_from_model(
     prepend_bos: bool = True,
     truncate: bool = True,
     max_length: Optional[int] = None,
-) -> Tuple[List[str], Int[torch.Tensor, "pos"]]:
+) -> Tuple[List[str], torch.Tensor]:
     """Get tokens and token IDs from a HookedTransformer model.
 
     Args:
@@ -168,7 +169,7 @@ def extract_attention_from_cache(
     layer: int,
     head: Optional[int] = None,
     batch_idx: int = 0,
-) -> np.ndarray:
+) -> Optional[np.ndarray]:
     """Extract attention patterns from an activation cache.
 
     Args:
@@ -201,7 +202,7 @@ def extract_embeddings_from_cache(
     layer: int,
     position: str = "all",
     batch_idx: int = 0,
-) -> np.ndarray:
+) -> Optional[np.ndarray]:
     """Extract embeddings from a specific layer in the activation cache.
 
     Args:
@@ -238,7 +239,7 @@ def compute_token_gradients(
     text: str,
     target_idx: Optional[int] = None,
     prepend_bos: bool = True,
-) -> Tuple[np.ndarray, np.ndarray, List[str]]:
+) -> Tuple[Optional[np.ndarray], Optional[np.ndarray], List[str]]:
     """Compute token-level gradients for salience.
 
     Uses gradient of the loss with respect to token embeddings to compute
@@ -293,8 +294,8 @@ def compute_token_gradients(
 
 
 def get_top_k_predictions(
-    logits: Float[torch.Tensor, "batch pos d_vocab"],
-    tokenizer,
+    logits: torch.Tensor,
+    tokenizer: Any,
     k: int = 10,
     position: int = -1,
     batch_idx: int = 0,
