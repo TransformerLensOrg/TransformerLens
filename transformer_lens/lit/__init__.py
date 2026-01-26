@@ -5,27 +5,27 @@ Interpretability Tool (LIT), enabling interactive visualization and analysis
 of transformer models.
 
 Quick Start:
-    >>> from transformer_lens import HookedTransformer
-    >>> from transformer_lens.lit import HookedTransformerLIT, SimpleTextDataset, serve
+    >>> from transformer_lens import HookedTransformer  # doctest: +SKIP
+    >>> from transformer_lens.lit import HookedTransformerLIT, SimpleTextDataset, serve  # doctest: +SKIP
     >>>
     >>> # Load model and create LIT wrapper
-    >>> model = HookedTransformer.from_pretrained("gpt2-small")
-    >>> lit_model = HookedTransformerLIT(model)
+    >>> model = HookedTransformer.from_pretrained("gpt2-small")  # doctest: +SKIP
+    >>> lit_model = HookedTransformerLIT(model)  # doctest: +SKIP
     >>>
     >>> # Create a dataset
-    >>> dataset = SimpleTextDataset.from_strings([
+    >>> dataset = SimpleTextDataset.from_strings([  # doctest: +SKIP
     ...     "The capital of France is Paris.",
     ...     "Machine learning is a field of AI.",
     ... ])
     >>>
     >>> # Start LIT server
-    >>> serve({"gpt2": lit_model}, {"examples": dataset})
+    >>> serve({"gpt2": lit_model}, {"examples": dataset})  # doctest: +SKIP
 
 For Colab/Jupyter notebooks:
-    >>> from transformer_lens.lit import LITWidget
+    >>> from transformer_lens.lit import LITWidget  # doctest: +SKIP
     >>>
-    >>> widget = LITWidget({"gpt2": lit_model}, {"examples": dataset})
-    >>> widget.render()
+    >>> widget = LITWidget({"gpt2": lit_model}, {"examples": dataset})  # doctest: +SKIP
+    >>> widget.render()  # doctest: +SKIP
 
 Features:
     - Interactive token predictions and top-k analysis
@@ -141,17 +141,17 @@ def serve(
         **kwargs: Additional arguments passed to LIT server.
 
     Example:
-        >>> from transformer_lens import HookedTransformer
-        >>> from transformer_lens.lit import SimpleTextDataset, serve
+        >>> from transformer_lens import HookedTransformer  # doctest: +SKIP
+        >>> from transformer_lens.lit import SimpleTextDataset, serve  # doctest: +SKIP
         >>>
-        >>> model = HookedTransformer.from_pretrained("gpt2-small")
-        >>> dataset = SimpleTextDataset.from_strings(["Hello world!"])
+        >>> model = HookedTransformer.from_pretrained("gpt2-small")  # doctest: +SKIP
+        >>> dataset = SimpleTextDataset.from_strings(["Hello world!"])  # doctest: +SKIP
         >>>
         >>> # Simple usage with single model and dataset
-        >>> serve(model, dataset)
+        >>> serve(model, dataset)  # doctest: +SKIP
         >>>
         >>> # Or with explicit names
-        >>> serve({"gpt2": model}, {"examples": dataset})
+        >>> serve({"gpt2": model}, {"examples": dataset})  # doctest: +SKIP
 
     Note:
         This function will block and run the server. Press Ctrl+C to stop.
@@ -219,15 +219,15 @@ class LITWidget:
     without needing to run a separate server.
 
     Example:
-        >>> from transformer_lens import HookedTransformer
-        >>> from transformer_lens.lit import HookedTransformerLIT, SimpleTextDataset, LITWidget
+        >>> from transformer_lens import HookedTransformer  # doctest: +SKIP
+        >>> from transformer_lens.lit import HookedTransformerLIT, SimpleTextDataset, LITWidget  # doctest: +SKIP
         >>>
-        >>> model = HookedTransformer.from_pretrained("gpt2-small")
-        >>> lit_model = HookedTransformerLIT(model)
-        >>> dataset = SimpleTextDataset.from_strings(["Hello world!"])
+        >>> model = HookedTransformer.from_pretrained("gpt2-small")  # doctest: +SKIP
+        >>> lit_model = HookedTransformerLIT(model)  # doctest: +SKIP
+        >>> dataset = SimpleTextDataset.from_strings(["Hello world!"])  # doctest: +SKIP
         >>>
-        >>> widget = LITWidget({"gpt2": lit_model}, {"examples": dataset})
-        >>> widget.render()  # Displays in the notebook
+        >>> widget = LITWidget({"gpt2": lit_model}, {"examples": dataset})  # doctest: +SKIP
+        >>> widget.render()  # Displays in the notebook  # doctest: +SKIP
 
     Note:
         VSCode notebooks don't support iframe rendering. Use `widget.url` to

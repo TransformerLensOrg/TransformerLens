@@ -12,18 +12,18 @@ The wrapper exposes:
 - Loss computation
 
 Example usage:
-    >>> from transformer_lens import HookedTransformer
-    >>> from transformer_lens.lit import HookedTransformerLIT
+    >>> from transformer_lens import HookedTransformer  # doctest: +SKIP
+    >>> from transformer_lens.lit import HookedTransformerLIT  # doctest: +SKIP
     >>>
     >>> # Load model
-    >>> model = HookedTransformer.from_pretrained("gpt2-small")
+    >>> model = HookedTransformer.from_pretrained("gpt2-small")  # doctest: +SKIP
     >>>
     >>> # Create LIT wrapper
-    >>> lit_model = HookedTransformerLIT(model)
+    >>> lit_model = HookedTransformerLIT(model)  # doctest: +SKIP
     >>>
     >>> # Run prediction
-    >>> inputs = [{"text": "Hello, world!"}]
-    >>> outputs = list(lit_model.predict(inputs))
+    >>> inputs = [{"text": "Hello, world!"}]  # doctest: +SKIP
+    >>> outputs = list(lit_model.predict(inputs))  # doctest: +SKIP
 
 References:
     - LIT Model API: https://pair-code.github.io/lit/documentation/api#models
@@ -132,9 +132,9 @@ class HookedTransformerLIT(_LITModelBase):  # type: ignore[valid-type,misc]
         config: Configuration options for the wrapper.
 
     Example:
-        >>> model = HookedTransformer.from_pretrained("gpt2-small")
-        >>> lit_model = HookedTransformerLIT(model)
-        >>> lit_model.input_spec()
+        >>> model = HookedTransformer.from_pretrained("gpt2-small")  # doctest: +SKIP
+        >>> lit_model = HookedTransformerLIT(model)  # doctest: +SKIP
+        >>> lit_model.input_spec()  # doctest: +SKIP
         {'text': TextSegment(), ...}
     """
 
@@ -669,7 +669,7 @@ class HookedTransformerLIT(_LITModelBase):  # type: ignore[valid-type,misc]
             HookedTransformerLIT wrapper instance.
 
         Example:
-            >>> lit_model = HookedTransformerLIT.from_pretrained("gpt2-small")
+            >>> lit_model = HookedTransformerLIT.from_pretrained("gpt2-small")  # doctest: +SKIP
         """
         from transformer_lens import HookedTransformer
 

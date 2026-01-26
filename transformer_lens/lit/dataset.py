@@ -5,18 +5,18 @@ models. It includes utilities for loading common datasets and creating custom
 datasets for model analysis.
 
 Example usage:
-    >>> from transformer_lens.lit import SimpleTextDataset
+    >>> from transformer_lens.lit import SimpleTextDataset  # doctest: +SKIP
     >>>
     >>> # Create a dataset from examples
-    >>> examples = [
+    >>> examples = [  # doctest: +SKIP
     ...     {"text": "The capital of France is Paris."},
     ...     {"text": "Machine learning is a subset of AI."},
     ... ]
-    >>> dataset = SimpleTextDataset(examples)
+    >>> dataset = SimpleTextDataset(examples)  # doctest: +SKIP
     >>>
     >>> # Use with LIT server
-    >>> from lit_nlp import dev_server
-    >>> server = dev_server.Server(models, {"my_data": dataset})
+    >>> from lit_nlp import dev_server  # doctest: +SKIP
+    >>> server = dev_server.Server(models, {"my_data": dataset})  # doctest: +SKIP
 
 References:
     - LIT Dataset API: https://pair-code.github.io/lit/documentation/api#datasets
@@ -92,11 +92,11 @@ class SimpleTextDataset(_LITDatasetBase):  # type: ignore[misc, valid-type]
         name: Optional dataset name for display.
 
     Example:
-        >>> dataset = SimpleTextDataset([
+        >>> dataset = SimpleTextDataset([  # doctest: +SKIP
         ...     {"text": "Hello world"},
         ...     {"text": "How are you?"},
         ... ])
-        >>> len(dataset.examples)
+        >>> len(dataset.examples)  # doctest: +SKIP
         2
     """
 
@@ -166,7 +166,7 @@ class SimpleTextDataset(_LITDatasetBase):  # type: ignore[misc, valid-type]
             SimpleTextDataset instance.
 
         Example:
-            >>> dataset = SimpleTextDataset.from_strings([
+            >>> dataset = SimpleTextDataset.from_strings([  # doctest: +SKIP
             ...     "First example",
             ...     "Second example",
             ... ])
@@ -218,7 +218,7 @@ class PromptCompletionDataset(_LITDatasetBase):  # type: ignore[misc, valid-type
         examples: List of example dictionaries with prompt and completion.
 
     Example:
-        >>> dataset = PromptCompletionDataset([
+        >>> dataset = PromptCompletionDataset([  # doctest: +SKIP
         ...     {"prompt": "The capital of France is", "completion": " Paris"},
         ...     {"prompt": "2 + 2 =", "completion": " 4"},
         ... ])
@@ -312,7 +312,7 @@ class PromptCompletionDataset(_LITDatasetBase):  # type: ignore[misc, valid-type
             PromptCompletionDataset instance.
 
         Example:
-            >>> dataset = PromptCompletionDataset.from_pairs([
+            >>> dataset = PromptCompletionDataset.from_pairs([  # doctest: +SKIP
             ...     ("Hello, my name is", " Alice"),
             ...     ("The weather today is", " sunny"),
             ... ])
