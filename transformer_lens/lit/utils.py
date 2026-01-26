@@ -11,14 +11,10 @@ References:
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
-
-if TYPE_CHECKING:
-    from transformer_lens.HookedTransformer import HookedTransformer
-    from transformer_lens.ActivationCache import ActivationCache
 
 logger = logging.getLogger(__name__)
 
@@ -90,7 +86,7 @@ def numpy_to_tensor(
 
 
 def get_tokens_from_model(
-    model: "HookedTransformer",
+    model: Any,
     text: str,
     prepend_bos: bool = True,
     truncate: bool = True,
@@ -165,7 +161,7 @@ def clean_token_strings(tokens: List[str]) -> List[str]:
 
 
 def extract_attention_from_cache(
-    cache: "ActivationCache",
+    cache: Any,
     layer: int,
     head: Optional[int] = None,
     batch_idx: int = 0,
@@ -198,7 +194,7 @@ def extract_attention_from_cache(
 
 
 def extract_embeddings_from_cache(
-    cache: "ActivationCache",
+    cache: Any,
     layer: int,
     position: str = "all",
     batch_idx: int = 0,
@@ -235,7 +231,7 @@ def extract_embeddings_from_cache(
 
 
 def compute_token_gradients(
-    model: "HookedTransformer",
+    model: Any,
     text: str,
     target_idx: Optional[int] = None,
     prepend_bos: bool = True,
@@ -418,7 +414,7 @@ def get_hook_name_for_layer(template: str, layer: int, **kwargs) -> str:
 
 
 def filter_cache_by_pattern(
-    cache: "ActivationCache",
+    cache: Any,
     pattern: str,
 ) -> Dict[str, torch.Tensor]:
     """Filter activation cache entries by hook name pattern.
@@ -434,7 +430,7 @@ def filter_cache_by_pattern(
     return {name: value for name, value in cache.items() if pattern in name}
 
 
-def get_model_info(model: "HookedTransformer") -> Dict[str, Any]:
+def get_model_info(model: Any) -> Dict[str, Any]:
     """Extract relevant model information for LIT display.
 
     Args:

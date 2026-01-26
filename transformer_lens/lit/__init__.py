@@ -189,9 +189,7 @@ def serve(
     import lit_nlp
     from lit_nlp.api import layout as lit_layout
 
-    client_root = os.path.join(
-        os.path.dirname(lit_nlp.__file__), "client", "build", "default"
-    )
+    client_root = os.path.join(os.path.dirname(lit_nlp.__file__), "client", "build", "default")
 
     # Use default layouts if not provided
     if "layouts" not in kwargs:

@@ -34,15 +34,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Dict,
-    Iterable,
-    Iterator,
-    List,
-    Optional,
-)
+from typing import TYPE_CHECKING, Any, Dict, Iterable, Iterator, List, Optional
 
 import torch
 
@@ -60,13 +52,14 @@ if TYPE_CHECKING:
     from lit_nlp.api import model as lit_model_types  # noqa: F401
     from lit_nlp.api import types as lit_types_module  # noqa: F401
 
-    from transformer_lens.HookedTransformer import HookedTransformer
-    from transformer_lens.ActivationCache import ActivationCache
-
 # Check for LIT installation and import conditionally
 if check_lit_installed():
-    from lit_nlp.api import model as lit_model  # type: ignore[import-not-found]  # noqa: F401
-    from lit_nlp.api import types as lit_types  # type: ignore[import-not-found]  # noqa: F401
+    from lit_nlp.api import (  # type: ignore[import-not-found]  # noqa: F401
+        model as lit_model,
+    )
+    from lit_nlp.api import (  # type: ignore[import-not-found]  # noqa: F401
+        types as lit_types,
+    )
     from lit_nlp.lib import utils as lit_utils  # type: ignore[import-not-found]
 
     _LIT_AVAILABLE = True
@@ -147,7 +140,7 @@ class HookedTransformerLIT(_LITModelBase):  # type: ignore[valid-type,misc]
 
     def __init__(
         self,
-        model: "HookedTransformer",
+        model: Any,
         config: Optional[HookedTransformerLITConfig] = None,
     ):
         """Initialize the LIT wrapper.
@@ -183,9 +176,7 @@ class HookedTransformerLIT(_LITModelBase):  # type: ignore[valid-type,misc]
         # Cache model info
         self._model_info = get_model_info(model)
 
-        logger.info(
-            f"Created HookedTransformerLIT wrapper for {self._model_info['model_name']}"
-        )
+        logger.info(f"Created HookedTransformerLIT wrapper for {self._model_info['model_name']}")
 
     @property
     def supports_concurrent_predictions(self) -> bool:
@@ -435,9 +426,7 @@ class HookedTransformerLIT(_LITModelBase):  # type: ignore[valid-type,misc]
             )
 
         # Top-K predictions
-        output[OUTPUT_FIELDS.TOP_K_TOKENS] = self._get_top_k_per_position(
-            logits, len(tokens)
-        )
+        output[OUTPUT_FIELDS.TOP_K_TOKENS] = self._get_top_k_per_position(logits, len(tokens))
 
         # Embeddings
         if self.config.output_embeddings:
@@ -488,7 +477,7 @@ class HookedTransformerLIT(_LITModelBase):  # type: ignore[valid-type,misc]
 
     def _extract_embeddings(
         self,
-        cache: "ActivationCache",
+        cache: Any,
         seq_len: int,
     ) -> Dict[str, Any]:
         """Extract embeddings from the activation cache.
@@ -527,7 +516,7 @@ class HookedTransformerLIT(_LITModelBase):  # type: ignore[valid-type,misc]
 
     def _extract_attention(
         self,
-        cache: "ActivationCache",
+        cache: Any,
     ) -> Dict[str, Any]:
         """Extract attention patterns from the activation cache.
 
@@ -700,7 +689,7 @@ if _LIT_AVAILABLE:
 
         def __init__(
             self,
-            model: "HookedTransformer",
+            model: Any,
             config: Optional[HookedTransformerLITConfig] = None,
         ):
             """Initialize the batched LIT wrapper.

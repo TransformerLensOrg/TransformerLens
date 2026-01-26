@@ -14,8 +14,6 @@ To run with LIT installed:
 
 from __future__ import annotations
 
-import sys
-from typing import TYPE_CHECKING, Any, Dict, List
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -24,7 +22,6 @@ import torch
 
 # Checking if LIT is installed
 try:
-    import lit_nlp
     from lit_nlp.api import types as lit_types
 
     LIT_AVAILABLE = True
@@ -546,11 +543,10 @@ class TestIntegration:
         """Test full prediction flow with mock model."""
         from transformer_lens.lit.model import HookedTransformerLIT
 
-        with patch("transformer_lens.HookedTransformer", type(mock_hooked_transformer)):
+        with patch(
+            "transformer_lens.HookedTransformer", type(mock_hooked_transformer)
+        ):
             wrapper = HookedTransformerLIT(mock_hooked_transformer)
-
-            # Create input
-            inputs = [{"text": "Hello world"}]
 
             # This would fail with the mock, but we can at least check the structure
             # In a real test with a real model, this would work

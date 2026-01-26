@@ -39,8 +39,12 @@ if TYPE_CHECKING:
 
 # Check for LIT installation
 if check_lit_installed():
-    from lit_nlp.api import dataset as lit_dataset  # type: ignore[import-not-found]  # noqa: F401
-    from lit_nlp.api import types as lit_types  # type: ignore[import-not-found]  # noqa: F401
+    from lit_nlp.api import (  # type: ignore[import-not-found]  # noqa: F401
+        dataset as lit_dataset,
+    )
+    from lit_nlp.api import (  # type: ignore[import-not-found]  # noqa: F401
+        types as lit_types,
+    )
 
     _LIT_AVAILABLE = True
     # Dynamic base class for proper LIT Dataset inheritance
@@ -58,8 +62,7 @@ def _ensure_lit_available():
     """Raise ImportError if LIT is not available."""
     if not _LIT_AVAILABLE:
         raise ImportError(
-            "LIT (lit-nlp) is not installed. "
-            "Please install it with: pip install lit-nlp"
+            "LIT (lit-nlp) is not installed. " "Please install it with: pip install lit-nlp"
         )
 
 
@@ -116,9 +119,7 @@ class SimpleTextDataset(_LITDatasetBase):  # type: ignore[misc, valid-type]
         # Validate examples
         for i, ex in enumerate(self._examples):
             if INPUT_FIELDS.TEXT not in ex:
-                raise ValueError(
-                    f"Example {i} missing required field '{INPUT_FIELDS.TEXT}'"
-                )
+                raise ValueError(f"Example {i} missing required field '{INPUT_FIELDS.TEXT}'")
 
     @property
     def examples(self) -> List[Dict[str, Any]]:
@@ -262,9 +263,7 @@ class PromptCompletionDataset(_LITDatasetBase):  # type: ignore[misc, valid-type
             example[self.COMPLETION_FIELD] = ""
 
         # Create full text field
-        example[self.FULL_TEXT_FIELD] = (
-            example[self.PROMPT_FIELD] + example[self.COMPLETION_FIELD]
-        )
+        example[self.FULL_TEXT_FIELD] = example[self.PROMPT_FIELD] + example[self.COMPLETION_FIELD]
 
         # Also set as "text" for compatibility with model wrapper
         example[INPUT_FIELDS.TEXT] = example[self.FULL_TEXT_FIELD]
@@ -386,9 +385,7 @@ class IOIDataset(_LITDatasetBase):  # type: ignore[misc, valid-type]
         "bag",
     ]
 
-    TEMPLATE = (
-        "When {name1} and {name2} went to the {place}, {name1} gave a {object} to"
-    )
+    TEMPLATE = "When {name1} and {name2} went to the {place}, {name1} gave a {object} to"
 
     def __init__(
         self,
@@ -642,9 +639,7 @@ if _LIT_AVAILABLE:
         compatible with LIT's Dataset interface.
         """
 
-        def __init__(
-            self, examples: List[Dict[str, Any]], spec_dict: Dict[str, Any], name: str
-        ):
+        def __init__(self, examples: List[Dict[str, Any]], spec_dict: Dict[str, Any], name: str):
             """Create a LIT-compatible dataset.
 
             Args:
@@ -702,6 +697,5 @@ else:
     def wrap_for_lit(dataset: Any) -> Any:  # type: ignore[misc]
         """Placeholder when LIT is not available."""
         raise ImportError(
-            "LIT (lit-nlp) is not installed. "
-            "Please install it with: pip install lit-nlp"
+            "LIT (lit-nlp) is not installed. " "Please install it with: pip install lit-nlp"
         )

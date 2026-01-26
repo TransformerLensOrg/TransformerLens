@@ -190,9 +190,7 @@ class ErrorMessages:
         "HookedTransformer has no tokenizer. "
         "Please load a model with a tokenizer or set one manually."
     )
-    INVALID_MODEL: str = (
-        "Model must be an instance of HookedTransformer. " "Got: {model_type}"
-    )
+    INVALID_MODEL: str = "Model must be an instance of HookedTransformer. " "Got: {model_type}"
     LIT_NOT_INSTALLED: str = (
         "LIT (lit-nlp) is not installed. " "Please install it with: pip install lit-nlp"
     )
