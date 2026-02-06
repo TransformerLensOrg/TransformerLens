@@ -42,6 +42,7 @@ class BlockBridge(GeneralizedComponent):
         name: str,
         config: Optional[Any] = None,
         submodules: Optional[Dict[str, GeneralizedComponent]] = None,
+        hook_alias_overrides: Optional[Dict[str, str]] = None,
     ):
         """Initialize the block bridge.
 
@@ -49,12 +50,33 @@ class BlockBridge(GeneralizedComponent):
             name: The name of the component in the model
             config: Optional configuration (unused for BlockBridge)
             submodules: Dictionary of submodules to register
+            hook_alias_overrides: Optional dictionary to override default hook aliases.
+                For example, {"hook_attn_out": "ln1_post.hook_out"} will make hook_attn_out
+                point to ln1_post.hook_out instead of the default attn.hook_out.
         """
-        super().__init__(name, config, submodules=submodules if submodules is not None else {})
+        # Apply automatic aliases based on submodules before calling parent
+        # This allows submodule-based aliases to be combined with explicit overrides
+        auto_overrides = {}
+        if submodules is not None:
+            # If ln1_post exists, hook_attn_out should point to it instead of attn.hook_out
+            # This matches HookedTransformer behavior where ln1_post is applied before hook_attn_out
+            if "ln1_post" in submodules:
+                auto_overrides["hook_attn_out"] = "ln1_post.hook_out"
+            # If ln2_post exists, hook_mlp_out should point to it instead of mlp.hook_out
+            if "ln2_post" in submodules:
+                auto_overrides["hook_mlp_out"] = "ln2_post.hook_out"
+
+        # Merge automatic and explicit overrides (explicit takes precedence)
+        merged_overrides = {**auto_overrides, **(hook_alias_overrides or {})}
+
+        # Call parent with merged overrides
+        super().__init__(
+            name,
+            config,
+            submodules=submodules if submodules is not None else {},
+            hook_alias_overrides=merged_overrides if merged_overrides else None,
+        )
         self._original_block_forward: Optional[Callable[..., Any]] = None
-        if submodules is not None and "ln2_post" in submodules:
-            self.hook_aliases = self.__class__.hook_aliases.copy()
-            self.hook_aliases["hook_mlp_out"] = "ln2_post.hook_out"
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         """Forward pass through the block bridge.

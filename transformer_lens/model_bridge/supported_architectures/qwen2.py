@@ -8,12 +8,13 @@ from transformer_lens.conversion_utils.param_processing_conversion import (
 )
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
-    AttentionBridge,
     BlockBridge,
     EmbeddingBridge,
     LinearBridge,
     MLPBridge,
+    PositionEmbeddingsAttentionBridge,
     RMSNormalizationBridge,
+    RotaryEmbeddingBridge,
     UnembeddingBridge,
 )
 
@@ -76,12 +77,14 @@ class Qwen2ArchitectureAdapter(ArchitectureAdapter):
         }
         self.component_mapping = {
             "embed": EmbeddingBridge(name="model.embed_tokens"),
+            "rotary_emb": RotaryEmbeddingBridge(name="model.rotary_emb"),
             "blocks": BlockBridge(
                 name="model.layers",
+                config=self.cfg,
                 submodules={
                     "ln1": RMSNormalizationBridge(name="input_layernorm", config=self.cfg),
                     "ln2": RMSNormalizationBridge(name="post_attention_layernorm", config=self.cfg),
-                    "attn": AttentionBridge(
+                    "attn": PositionEmbeddingsAttentionBridge(
                         name="self_attn",
                         config=self.cfg,
                         submodules={
@@ -90,6 +93,8 @@ class Qwen2ArchitectureAdapter(ArchitectureAdapter):
                             "v": LinearBridge(name="v_proj"),
                             "o": LinearBridge(name="o_proj"),
                         },
+                        requires_attention_mask=True,
+                        requires_position_embeddings=True,
                     ),
                     "mlp": MLPBridge(
                         name="mlp",
@@ -103,5 +108,29 @@ class Qwen2ArchitectureAdapter(ArchitectureAdapter):
                 },
             ),
             "ln_final": RMSNormalizationBridge(name="model.norm", config=self.cfg),
-            "unembed": UnembeddingBridge(name="lm_head"),
+            "unembed": UnembeddingBridge(name="lm_head", config=self.cfg),
         }
+
+    def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
+        """Set up rotary embedding references for Qwen2 component testing.
+
+        Qwen2 uses RoPE (Rotary Position Embeddings). We set the rotary_emb reference
+        on all attention bridge instances for component testing.
+
+        Args:
+            hf_model: The HuggingFace Qwen2 model instance
+            bridge_model: The TransformerBridge model (if available, set rotary_emb on actual instances)
+        """
+        # Get rotary embedding instance from the model
+        rotary_emb = hf_model.model.rotary_emb
+
+        # Set rotary_emb on actual bridge instances in bridge_model if available
+        if bridge_model is not None and hasattr(bridge_model, "blocks"):
+            # Set on each layer's actual attention bridge instance
+            for block in bridge_model.blocks:
+                if hasattr(block, "attn"):
+                    block.attn.set_rotary_emb(rotary_emb)
+
+        # Also set on the template for get_generalized_component() calls
+        attn_bridge = self.get_generalized_component("blocks.0.attn")
+        attn_bridge.set_rotary_emb(rotary_emb)

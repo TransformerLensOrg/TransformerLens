@@ -39,12 +39,12 @@ class WeightProcessingConfig:
         return "+".join(flags) if flags else "none"
 
 
-# Define all weight processing configurations to test
-# NOTE: Centering operations (center_writing_weights, center_unembed) are only valid
-# when fold_ln=True, as they rely on LayerNorm ignoring the mean. Testing them without
-# fold_ln produces invalid/misleading results.
-WEIGHT_PROCESSING_CONFIGS = [
-    # Test each operation in complete isolation with fold_ln
+# Phase 4: Individual weight processing operations (test each flag in isolation)
+# NOTE: Centering operations (center_writing_weights, center_unembed) require fold_ln=True
+# as they rely on LayerNorm ignoring the mean. Testing them without fold_ln produces
+# invalid/misleading results, so we test them with fold_ln enabled.
+INDIVIDUAL_CONFIGS = [
+    # Test fold_ln alone
     WeightProcessingConfig(
         name="only_fold_ln",
         fold_ln=True,
@@ -53,30 +53,37 @@ WEIGHT_PROCESSING_CONFIGS = [
         fold_value_biases=False,
         refactor_factored_attn_matrices=False,
     ),
+    # Test center_writing_weights (requires fold_ln)
     WeightProcessingConfig(
         name="only_center_weights",
-        fold_ln=True,
+        fold_ln=False,
         center_writing_weights=True,
         center_unembed=False,
         fold_value_biases=False,
         refactor_factored_attn_matrices=False,
     ),
+    # Test center_unembed (requires fold_ln)
     WeightProcessingConfig(
         name="only_center_unembed",
-        fold_ln=True,
+        fold_ln=False,
         center_writing_weights=False,
         center_unembed=True,
         fold_value_biases=False,
         refactor_factored_attn_matrices=False,
     ),
+    # Test fold_value_biases alone
     WeightProcessingConfig(
         name="only_fold_value_biases",
-        fold_ln=True,
+        fold_ln=False,
         center_writing_weights=False,
         center_unembed=False,
         fold_value_biases=True,
         refactor_factored_attn_matrices=False,
     ),
+]
+
+# Phase 5: Combinations of weight processing operations
+COMBINATION_CONFIGS = [
     # Two-way combinations (fold_ln + one other)
     WeightProcessingConfig(
         name="fold_ln+center_weights",
@@ -174,11 +181,12 @@ def run_granular_weight_processing_benchmarks(
     test_text: str,
     verbose: bool = True,
     include_refactor_tests: bool = False,
+    phase: int | None = None,
 ) -> Dict[str, List[BenchmarkResult]]:
     """Run benchmarks with each weight processing configuration.
 
-    This function tests each weight processing flag individually and in combination
-    to identify which specific processing steps cause issues.
+    This function tests each weight processing flag individually (Phase 4) and
+    in combination (Phase 5) to identify which specific processing steps cause issues.
 
     Args:
         model_name: Name of the model to benchmark
@@ -186,6 +194,7 @@ def run_granular_weight_processing_benchmarks(
         test_text: Test text for generation/inference
         verbose: Whether to print detailed output
         include_refactor_tests: Whether to include experimental refactor_factored_attn_matrices tests
+        phase: Optional phase number (4 for individual, 5 for combinations). If None, runs both.
 
     Returns:
         Dictionary mapping config name to list of benchmark results
@@ -234,20 +243,37 @@ def run_granular_weight_processing_benchmarks(
         all_results["skipped"] = [skip_result]
         return all_results
 
-    # Determine which configurations to test
-    configs_to_test = WEIGHT_PROCESSING_CONFIGS.copy()
+    # Determine which configurations to test based on phase
+    configs_to_test = []
+    phase_name = ""
+
+    if phase is None or phase == 4:
+        configs_to_test.extend(INDIVIDUAL_CONFIGS)
+        if phase == 4:
+            phase_name = "PHASE 4: Individual Weight Processing Flags"
+
+    if phase is None or phase == 5:
+        configs_to_test.extend(COMBINATION_CONFIGS)
+        if phase == 5:
+            phase_name = "PHASE 5: Combined Weight Processing Flags"
+
+    if phase is None:
+        phase_name = "PHASE 4 & 5: Granular Weight Processing"
+
     if include_refactor_tests:
         configs_to_test.extend(REFACTOR_ATTN_CONFIGS)
 
     if verbose:
         print("\n" + "=" * 80)
-        print("GRANULAR WEIGHT PROCESSING BENCHMARKS")
+        print(phase_name)
         print(f"Model: {model_name}")
         print(f"Testing {len(configs_to_test)} configurations")
+        if phase is None or phase == 4:
+            print(f"  Individual flags: {len(INDIVIDUAL_CONFIGS)}")
+        if phase is None or phase == 5:
+            print(f"  Combinations: {len(COMBINATION_CONFIGS)}")
         if include_refactor_tests:
-            print(
-                f"  ({len(WEIGHT_PROCESSING_CONFIGS)} standard + {len(REFACTOR_ATTN_CONFIGS)} refactor tests)"
-            )
+            print(f"  Refactor tests: {len(REFACTOR_ATTN_CONFIGS)}")
         print("=" * 80)
 
     for config in configs_to_test:
@@ -346,7 +372,13 @@ def run_granular_weight_processing_benchmarks(
             # Clean up
             del bridge
             del ht_ref
-            torch.cuda.empty_cache() if torch.cuda.is_available() else None
+            # Force garbage collection (multiple passes to break circular references)
+            import gc
+
+            for _ in range(3):
+                gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
         except Exception as e:
             # Record failure

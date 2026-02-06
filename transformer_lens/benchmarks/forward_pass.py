@@ -14,6 +14,29 @@ from transformer_lens.benchmarks.utils import (
 from transformer_lens.model_bridge import TransformerBridge
 
 
+def _is_encoder_decoder(model: torch.nn.Module) -> bool:
+    """Check if a model is an encoder-decoder architecture."""
+    config = getattr(model, "config", None)
+    if config is None:
+        return False
+    return getattr(config, "is_encoder_decoder", False)
+
+
+def _get_decoder_input_ids(model: torch.nn.Module, batch_size: int = 1) -> torch.Tensor:
+    """Get decoder_input_ids for encoder-decoder models.
+
+    Args:
+        model: The model to get decoder_start_token_id from
+        batch_size: Batch size for the decoder_input_ids
+
+    Returns:
+        Tensor of shape [batch_size, 1] with decoder_start_token_id
+    """
+    config = getattr(model, "config", None)
+    decoder_start_token_id = getattr(config, "decoder_start_token_id", 0) if config else 0
+    return torch.tensor([[decoder_start_token_id]] * batch_size)
+
+
 def benchmark_forward_pass(
     bridge: TransformerBridge,
     test_text: str,
@@ -34,8 +57,20 @@ def benchmark_forward_pass(
         BenchmarkResult with comparison details
     """
     try:
+        # Check if this is an encoder-decoder model
+        is_enc_dec = _is_encoder_decoder(bridge.original_model)
+
+        # Prepare extra kwargs for encoder-decoder models
+        extra_kwargs = {}
+        if is_enc_dec:
+            tokens = bridge.to_tokens(test_text)
+            batch_size = tokens.shape[0]
+            decoder_input_ids = _get_decoder_input_ids(bridge.original_model, batch_size)
+            decoder_input_ids = decoder_input_ids.to(tokens.device)
+            extra_kwargs["decoder_input_ids"] = decoder_input_ids
+
         # Run bridge forward pass
-        bridge_output = bridge(test_text, return_type="logits")
+        bridge_output = bridge(test_text, return_type="logits", **extra_kwargs)
 
         if reference_model is None:
             # No reference model - just verify output shape and validity
@@ -69,7 +104,14 @@ def benchmark_forward_pass(
             # HuggingFace model
             tokens = bridge.to_tokens(test_text)
             with torch.no_grad():
-                hf_output = reference_model(tokens)
+                if is_enc_dec:
+                    # Encoder-decoder models need decoder_input_ids
+                    batch_size = tokens.shape[0]
+                    decoder_input_ids = _get_decoder_input_ids(reference_model, batch_size)
+                    decoder_input_ids = decoder_input_ids.to(tokens.device)
+                    hf_output = reference_model(tokens, decoder_input_ids=decoder_input_ids)
+                else:
+                    hf_output = reference_model(tokens)
                 reference_output = hf_output.logits
 
         return compare_tensors(

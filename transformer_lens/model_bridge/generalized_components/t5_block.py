@@ -82,6 +82,7 @@ class T5BlockBridge(GeneralizedComponent):
             use_cache=False,
             output_attentions=False,
             return_dict=True,
+            cache_position=None,
             **kwargs,
         ):
             """Patched T5 block forward with hooks."""
@@ -112,9 +113,12 @@ class T5BlockBridge(GeneralizedComponent):
                 past_key_value=self_attn_past_key_value,
                 use_cache=use_cache,
                 output_attentions=output_attentions,
+                cache_position=cache_position,
             )
             hidden_states = self_attention_outputs[0]
-            present_key_value_state = self_attention_outputs[1] if use_cache else None
+            # Keep self-attention outputs and relative position weights
+            # attention_outputs contains: (position_bias,) or (position_bias, attn_weights)
+            attention_outputs = self_attention_outputs[1:]
             hidden_states = self.hook_resid_mid(hidden_states)
             if is_decoder_block and encoder_hidden_states is not None:
                 cross_attention_outputs = layers[1](
@@ -126,24 +130,25 @@ class T5BlockBridge(GeneralizedComponent):
                     past_key_value=cross_attn_past_key_value,
                     use_cache=use_cache,
                     output_attentions=output_attentions,
+                    cache_position=cache_position,
                 )
                 hidden_states = cross_attention_outputs[0]
                 if hasattr(self, "hook_resid_mid2"):
                     hidden_states = self.hook_resid_mid2(hidden_states)
-                if use_cache:
-                    present_key_value_state = present_key_value_state + cross_attention_outputs[1]
+                # Keep cross-attention outputs and relative position weights
+                attention_outputs = attention_outputs + cross_attention_outputs[1:]
             ff_layer_idx = 2 if is_decoder_block else 1
             feed_forward_outputs = layers[ff_layer_idx](hidden_states)
-            hidden_states = feed_forward_outputs[0]
+            # T5LayerFF returns a tensor, not a tuple
+            if isinstance(feed_forward_outputs, tuple):
+                hidden_states = feed_forward_outputs[0]
+            else:
+                hidden_states = feed_forward_outputs
             hidden_states = self.hook_out(hidden_states)
             outputs: tuple[Any, ...] = (hidden_states,)
-            if use_cache:
-                outputs = outputs + (present_key_value_state,)
-            if output_attentions:
-                outputs = outputs + (self_attention_outputs[2],)
-                if is_decoder_block and encoder_hidden_states is not None:
-                    outputs = outputs + (cross_attention_outputs[2],)
-            return outputs
+            # Return: hidden-states, (self-attention position bias), (self-attention weights),
+            # (cross-attention position bias), (cross-attention weights)
+            return outputs + attention_outputs
 
         self.original_component.forward = types.MethodType(patched_forward, self.original_component)
 

@@ -14,12 +14,12 @@ import stat
 from typing import Any, Callable, Dict
 
 import torch
-import transformers
 from datasets.arrow_dataset import Dataset
 from datasets.load import load_dataset
 from huggingface_hub import hf_hub_download
+from huggingface_hub.constants import HF_HUB_CACHE
 
-CACHE_DIR = transformers.TRANSFORMERS_CACHE
+CACHE_DIR = HF_HUB_CACHE
 
 
 def select_compatible_kwargs(kwargs_dict: Dict[str, Any], callable: Callable) -> Dict[str, Any]:

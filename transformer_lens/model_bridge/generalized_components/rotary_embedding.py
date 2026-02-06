@@ -123,3 +123,31 @@ class RotaryEmbeddingBridge(GeneralizedComponent):
         else:
             # For unexpected tuple lengths, just pass through
             return output
+
+    def get_dummy_inputs(
+        self, test_input: torch.Tensor, **kwargs: Any
+    ) -> tuple[tuple[Any, ...], dict[str, Any]]:
+        """Generate dummy inputs for rotary embedding forward method.
+
+        Rotary embeddings typically expect (x, position_ids) where:
+        - x: input tensor [batch, seq, d_model]
+        - position_ids: position indices [batch, seq]
+
+        Args:
+            test_input: Base test input tensor [batch, seq, d_model]
+            **kwargs: Additional context including position_ids
+
+        Returns:
+            Tuple of (args, kwargs) for the rotary embedding forward method
+        """
+        batch, seq_len, _ = test_input.shape
+
+        # Get position_ids from kwargs, or generate default
+        position_ids = kwargs.get("position_ids")
+        if position_ids is None:
+            position_ids = (
+                torch.arange(seq_len, device=test_input.device).unsqueeze(0).expand(batch, -1)
+            )
+
+        # Rotary embeddings expect (x, position_ids)
+        return (test_input, position_ids), {}

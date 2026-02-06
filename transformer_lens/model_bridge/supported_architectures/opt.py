@@ -12,9 +12,9 @@ from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
     LinearBridge,
-    MLPBridge,
     NormalizationBridge,
     PosEmbedBridge,
+    SymbolicBridge,
     UnembeddingBridge,
 )
 
@@ -60,6 +60,8 @@ class OptArchitectureAdapter(ArchitectureAdapter):
                     "attn": AttentionBridge(
                         name="self_attn",
                         config=self.cfg,
+                        requires_attention_mask=True,  # OPT requires attention_mask
+                        attention_mask_4d=True,  # OPT expects 4D mask [batch, 1, tgt_len, src_len]
                         submodules={
                             "q": LinearBridge(name="q_proj"),
                             "k": LinearBridge(name="k_proj"),
@@ -68,9 +70,10 @@ class OptArchitectureAdapter(ArchitectureAdapter):
                         },
                     ),
                     "ln2": NormalizationBridge(name="final_layer_norm", config=self.cfg),
-                    "mlp": MLPBridge(
-                        name=None,  # No MLP container; fc1/fc2 are on block
-                        config=self.cfg,  # Pass config for activation function
+                    # OPT has fc1/fc2 directly on the block, not in an MLP container.
+                    # Use SymbolicBridge to maintain TransformerLens structure while
+                    # correctly mapping to the underlying architecture.
+                    "mlp": SymbolicBridge(
                         submodules={
                             "in": LinearBridge(name="fc1"),
                             "out": LinearBridge(name="fc2"),

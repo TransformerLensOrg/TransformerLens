@@ -88,9 +88,7 @@ def test_integration_compatibility():
     # ===========================================
     print("\n3. Loading TransformerBridge without processing...")
     try:
-        bridge_unprocessed = TransformerBridge.boot_transformers(
-            model_name, device=device, apply_weight_processing=False
-        )
+        bridge_unprocessed = TransformerBridge.boot_transformers(model_name, device=device)
 
         print("\n   Testing baseline performance...")
         bridge_unprocessed_baseline = bridge_unprocessed(tokens, return_type="loss")
@@ -122,9 +120,9 @@ def test_integration_compatibility():
     # ===========================================
     print("\n4. Loading TransformerBridge with processing...")
     try:
-        bridge_processed = TransformerBridge.boot_transformers(
-            model_name, device=device, apply_weight_processing=True
-        )
+        bridge_processed = TransformerBridge.boot_transformers(model_name, device=device)
+
+        bridge_processed.process_weights()
 
         print("\n   Testing baseline performance...")
         bridge_processed_baseline = bridge_processed(tokens, return_type="loss")
@@ -288,10 +286,9 @@ def test_integration_compatibility():
     if overall_success:
         print("\n🎉🎉🎉 FULL INTEGRATION COMPATIBILITY ACHIEVED! 🎉🎉🎉")
         print("TransformerBridge is fully compatible with HookedTransformer!")
-        return True
     else:
         print("\n⚠️ Integration compatibility issues detected")
-        return False
+        pytest.fail("Integration compatibility issues detected")
 
 
 @pytest.mark.skip(

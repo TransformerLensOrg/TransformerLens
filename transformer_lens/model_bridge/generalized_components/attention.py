@@ -54,6 +54,7 @@ class AttentionBridge(GeneralizedComponent):
         maintain_native_attention: bool = False,
         requires_position_embeddings: bool = False,
         requires_attention_mask: bool = False,
+        attention_mask_4d: bool = False,
     ):
         """Initialize the attention bridge.
 
@@ -71,6 +72,8 @@ class AttentionBridge(GeneralizedComponent):
                                         (e.g., Gemma-3 with dual RoPE). Defaults to False.
             requires_attention_mask: If True, this attention requires attention_mask argument
                                     (e.g., GPTNeoX/Pythia). Defaults to False.
+            attention_mask_4d: If True, generate 4D attention_mask [batch, 1, tgt_len, src_len]
+                             instead of 2D [batch, seq_len]. Required for OPT. Defaults to False.
         """
         if conversion_rule is None:
             conversion_rule = AttentionAutoConversion(config)
@@ -95,6 +98,7 @@ class AttentionBridge(GeneralizedComponent):
         self.maintain_native_attention = maintain_native_attention
         self.requires_position_embeddings = requires_position_embeddings
         self.requires_attention_mask = requires_attention_mask
+        self.attention_mask_4d = attention_mask_4d
 
     def setup_hook_compatibility(self) -> None:
         """Setup hook compatibility transformations to match HookedTransformer behavior.
@@ -157,7 +161,14 @@ class AttentionBridge(GeneralizedComponent):
             sin = torch.zeros(1, seq_len, rotary_ndims, device=device, dtype=dtype)
             inputs["position_embeddings"] = (cos, sin)
         if self.requires_attention_mask:
-            inputs["attention_mask"] = torch.ones(batch_size, seq_len, device=device)
+            if self.attention_mask_4d:
+                # Generate 4D attention mask [batch, 1, tgt_len, src_len] for models like OPT
+                inputs["attention_mask"] = torch.ones(
+                    batch_size, 1, seq_len, seq_len, device=device
+                )
+            else:
+                # Generate 2D attention mask [batch, seq_len] for most models
+                inputs["attention_mask"] = torch.ones(batch_size, seq_len, device=device)
         return inputs
 
     def _setup_qkv_hook_reshaping(self) -> None:
@@ -312,18 +323,23 @@ class AttentionBridge(GeneralizedComponent):
             args = args[1:]
         output = self.original_component(*args, **kwargs)
         if isinstance(output, tuple) and len(output) >= 2:
-            # output[0] is attention output, output[1] is attention weights (pattern)
+            # output[0] is attention output
+            # output[1] may be attention weights (pattern) or position_bias (T5)
+            # Additional elements may include position_bias, attention weights, etc.
             attn_output = self.hook_out(output[0])
-            attn_weights = output[1]
+            second_element = output[1]
 
-            # Fire hook_pattern if attention weights are present
-            if isinstance(attn_weights, torch.Tensor):
-                attn_weights = self.hook_pattern(attn_weights)
+            # Fire hook_pattern if the second element is attention weights (4D tensor)
+            # For T5, second element is position_bias which should be passed through
+            if isinstance(second_element, torch.Tensor) and second_element.dim() == 4:
+                # This looks like attention weights [batch, heads, seq, seq]
+                second_element = self.hook_pattern(second_element)
                 # Also store for potential hook_attn_scores (before softmax)
-                # Note: Most HF implementations return post-softmax weights, so pattern == attn_scores for them
-                self.hook_attn_scores(attn_weights)
+                # Note: Most HF implementations return post-softmax weights
+                self.hook_attn_scores(second_element)
 
-            output = (attn_output, attn_weights)
+            # Preserve all output elements (important for T5 position_bias and other models)
+            output = (attn_output, second_element) + output[2:]
         elif isinstance(output, tuple) and len(output) == 1:
             output = (self.hook_out(output[0]),)
         else:
@@ -339,10 +355,19 @@ class AttentionBridge(GeneralizedComponent):
         )  # 2D: [d_model, n_heads*d_head] for Conv1D or [n_heads*d_head, d_model] for Linear
         if weight.ndim == 2 and self.config is not None:
             n_heads = self.config.n_heads if hasattr(self.config, "n_heads") else self.config.n_head
-            # Assume Conv1D format [d_model, n_heads*d_head] since postprocess_weights should have handled Linear models
-            return einops.rearrange(
-                weight, "d_model (n_heads d_head) -> n_heads d_model d_head", n_heads=n_heads
-            )
+            # Detect format based on weight shape
+            # Linear format: [(n_heads*d_head), d_model]
+            # Conv1D format: [d_model, (n_heads*d_head)]
+            if weight.shape[0] % n_heads == 0:
+                # Linear format - first dimension is (n_heads*d_head)
+                return einops.rearrange(
+                    weight, "(n_heads d_head) d_model -> n_heads d_model d_head", n_heads=n_heads
+                )
+            else:
+                # Conv1D format - second dimension is (n_heads*d_head)
+                return einops.rearrange(
+                    weight, "d_model (n_heads d_head) -> n_heads d_model d_head", n_heads=n_heads
+                )
         return weight
 
     @property
@@ -358,10 +383,19 @@ class AttentionBridge(GeneralizedComponent):
                     self.config.n_heads if hasattr(self.config, "n_heads") else self.config.n_head
                 )
             )
-            # Assume Conv1D format [d_model, n_heads*d_head] since postprocess_weights should have handled Linear models
-            return einops.rearrange(
-                weight, "d_model (n_heads d_head) -> n_heads d_model d_head", n_heads=n_heads
-            )
+            # Detect format based on weight shape
+            # Linear format: [(n_heads*d_head), d_model]
+            # Conv1D format: [d_model, (n_heads*d_head)]
+            if weight.shape[0] % n_heads == 0:
+                # Linear format - first dimension is (n_heads*d_head)
+                return einops.rearrange(
+                    weight, "(n_heads d_head) d_model -> n_heads d_model d_head", n_heads=n_heads
+                )
+            else:
+                # Conv1D format - second dimension is (n_heads*d_head)
+                return einops.rearrange(
+                    weight, "d_model (n_heads d_head) -> n_heads d_model d_head", n_heads=n_heads
+                )
         return weight
 
     @property
@@ -377,10 +411,19 @@ class AttentionBridge(GeneralizedComponent):
                     self.config.n_heads if hasattr(self.config, "n_heads") else self.config.n_head
                 )
             )
-            # Assume Conv1D format [d_model, n_heads*d_head] since postprocess_weights should have handled Linear models
-            return einops.rearrange(
-                weight, "d_model (n_heads d_head) -> n_heads d_model d_head", n_heads=n_heads
-            )
+            # Detect format based on weight shape
+            # Linear format: [(n_heads*d_head), d_model]
+            # Conv1D format: [d_model, (n_heads*d_head)]
+            if weight.shape[0] % n_heads == 0:
+                # Linear format - first dimension is (n_heads*d_head)
+                return einops.rearrange(
+                    weight, "(n_heads d_head) d_model -> n_heads d_model d_head", n_heads=n_heads
+                )
+            else:
+                # Conv1D format - second dimension is (n_heads*d_head)
+                return einops.rearrange(
+                    weight, "d_model (n_heads d_head) -> n_heads d_model d_head", n_heads=n_heads
+                )
         return weight
 
     @property

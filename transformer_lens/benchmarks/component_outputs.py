@@ -265,13 +265,17 @@ class ComponentBenchmarker:
 
         results: List[ComponentTestResult] = []
 
+        # Block-type components that need to be tested recursively by layer
+        # (they are ModuleLists that don't have direct forward methods)
+        block_components = {"blocks", "encoder_blocks", "decoder_blocks"}
+
         # Test top-level components (embed, pos_embed, ln_final, unembed)
         for comp_name, component in component_mapping.items():
             if comp_name in skip_components:
                 continue
 
-            if comp_name == "blocks":
-                # Handle blocks separately
+            if comp_name in block_components:
+                # Handle blocks separately - test their subcomponents by layer
                 continue
 
             result = self._test_component(comp_name, component, test_inputs)
@@ -279,17 +283,26 @@ class ComponentBenchmarker:
                 results.append(result)
 
         # Test block components recursively
-        if "blocks" in component_mapping and "blocks" not in skip_components:
-            blocks_component = component_mapping["blocks"]
-            n_layers = self.cfg.n_layers
+        for block_type in block_components:
+            if block_type in component_mapping and block_type not in skip_components:
+                blocks_component = component_mapping[block_type]
+                n_layers = self.cfg.n_layers
 
-            for layer_idx in range(n_layers):
-                # Recursively test each subcomponent and its nested subcomponents
-                for subcomp_name, subcomponent in blocks_component.submodules.items():
-                    comp_path = f"blocks.{layer_idx}.{subcomp_name}"
-                    self._test_component_recursive(
-                        comp_path, subcomponent, test_inputs, results, skip_components
-                    )
+                for layer_idx in range(n_layers):
+                    # Recursively test each subcomponent and its nested subcomponents
+                    for subcomp_name, subcomponent in blocks_component.submodules.items():
+                        comp_path = f"{block_type}.{layer_idx}.{subcomp_name}"
+                        self._test_component_recursive(
+                            comp_path, subcomponent, test_inputs, results, skip_components
+                        )
+
+        # Clean up test inputs to free memory
+        if test_inputs is not None:
+            for key in list(test_inputs.keys()):
+                tensor = test_inputs[key]
+                if tensor is not None and isinstance(tensor, torch.Tensor):
+                    del tensor
+            test_inputs.clear()
 
         # Create report
         passed = sum(1 for r in results if r.passed)
@@ -332,6 +345,58 @@ class ComponentBenchmarker:
         # Skip if in skip list
         if component_path in skip_components:
             return
+
+        # Skip MLP components that don't exist as separate modules in HF (name=None)
+        # These are virtual components where fc1/fc2 are directly on the layer
+        # Component testing doesn't work for these because get_component returns the parent layer
+        if "mlp" in component_path and hasattr(component, "name") and component.name is None:
+            return
+
+        # Skip MLP components with custom forward signatures (e.g., BLOOM requires residual)
+        # These can't be tested in isolation without full model context
+        if "mlp" in component_path and hasattr(component, "hf_component"):
+            import inspect
+
+            try:
+                sig = inspect.signature(component.hf_component.forward)
+                params = list(sig.parameters.keys())
+                # Standard MLP only needs hidden_states (or self + hidden_states)
+                # If there are more required params, skip testing
+                if len(params) > 2:  # self + hidden_states + other required params
+                    return
+            except Exception:
+                # If we can't inspect, proceed with testing
+                pass
+
+        # Skip attention components that require position embeddings in Phase 3
+        # These can't be tested in isolation without full model context for position embeddings
+        if (
+            "attn" in component_path
+            and hasattr(component, "requires_position_embeddings")
+            and component.requires_position_embeddings
+        ):
+            return
+
+        # Skip attention components that use native HF attention (maintain_native_attention=True)
+        # These have custom forward signatures (e.g., BLOOM requires residual, alibi, attention_mask)
+        # and can't be tested in isolation without full model context
+        if (
+            "attn" in component_path
+            and hasattr(component, "maintain_native_attention")
+            and component.maintain_native_attention
+        ):
+            return
+
+        # Skip BLOOM and T5 attention and MLP components - they have custom signatures that require
+        # residual connections, alibi bias, or cache_position from the full model context
+        if "attn" in component_path or "mlp" in component_path:
+            # Check if this is a BLOOM or T5 model by looking at the HF model config
+            hf_model_config = getattr(self.hf_model, "config", None)
+            if hf_model_config and hasattr(hf_model_config, "model_type"):
+                # BLOOM requires residual and alibi bias
+                # T5 requires cache_position for relative position embeddings
+                if hf_model_config.model_type in ["bloom", "t5"]:
+                    return
 
         # Skip components that require specific shaped inputs from their parent modules
         # These components expect intermediate outputs from their parent attention/MLP
@@ -402,7 +467,10 @@ class ComponentBenchmarker:
         """
         try:
             # Get bridge component
-            bridge_component = self.adapter.get_component(self.bridge_model, component_path)
+            # The adapter returns nn.Module, but for bridge models it's actually GeneralizedComponent
+            bridge_component = cast(
+                GeneralizedComponent, self.adapter.get_component(self.bridge_model, component_path)
+            )
 
             # Get HuggingFace component
             hf_component = self.adapter.get_component(self.hf_model, component_path)
@@ -412,7 +480,14 @@ class ComponentBenchmarker:
             if test_input is None:
                 return None
 
-            # For embedding components, generate token indices once to use for both
+            # Get input args/kwargs from the Bridge component
+            # All bridge components inherit from GeneralizedComponent and have get_dummy_inputs()
+            batch, seq_len, _ = test_input.shape
+            pos_indices = (
+                torch.arange(seq_len, device=test_input.device).unsqueeze(0).expand(batch, -1)
+            )
+
+            # For embedding components, generate token indices once
             shared_token_indices = None
             if component_path == "embed":
                 batch, seq_len, _ = test_input.shape
@@ -490,13 +565,28 @@ class ComponentBenchmarker:
                 bridge_tensor, hf_tensor
             )
 
+            # Get output shape before deleting tensors
+            output_shape = tuple(bridge_tensor.shape)
+
+            # Clean up output tensors immediately to free memory
+            del bridge_output, hf_output, bridge_tensor, hf_tensor
+            if shared_inputs is not None:
+                # Clean up shared inputs
+                for key in list(shared_inputs.keys()):
+                    val = shared_inputs[key]
+                    if val is not None and isinstance(val, torch.Tensor):
+                        del val
+                    shared_inputs[key] = None
+            if shared_token_indices is not None:
+                del shared_token_indices
+
             return ComponentTestResult(
                 component_path=component_path,
                 component_type=type(component).__name__,
                 passed=passed,
                 max_diff=max_diff,
                 mean_diff=mean_diff,
-                output_shape=tuple(bridge_tensor.shape),
+                output_shape=output_shape,
                 percentile_diffs=percentile_diffs,
             )
 

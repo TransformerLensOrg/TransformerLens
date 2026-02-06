@@ -101,6 +101,15 @@ class UnembeddingBridge(GeneralizedComponent):
         ):
             hidden_states = hidden_states.to(dtype=target_dtype)
         output = self.original_component(hidden_states, **kwargs)
+
+        # Apply logit soft-capping if configured (e.g., for Gemma-2)
+        if self.config is not None and hasattr(self.config, "output_logits_soft_cap"):
+            output_logits_soft_cap = self.config.output_logits_soft_cap
+            if output_logits_soft_cap is not None and output_logits_soft_cap > 0:
+                output = output / output_logits_soft_cap
+                output = torch.tanh(output)
+                output = output * output_logits_soft_cap
+
         output = self.hook_out(output)
         return output
 
