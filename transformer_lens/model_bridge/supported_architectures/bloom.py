@@ -10,11 +10,11 @@ from transformer_lens.conversion_utils.param_processing_conversion import (
 )
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
-    BlockBridge,
+    BloomAttentionBridge,
+    BloomBlockBridge,
+    BloomMLPBridge,
     EmbeddingBridge,
-    JointQKVAttentionBridge,
     LinearBridge,
-    MLPBridge,
     NormalizationBridge,
     UnembeddingBridge,
 )
@@ -71,12 +71,13 @@ class BloomArchitectureAdapter(ArchitectureAdapter):
             "embed_ln": NormalizationBridge(
                 name="transformer.word_embeddings_layernorm", config=self.cfg
             ),
-            "blocks": BlockBridge(
+            "blocks": BloomBlockBridge(
                 name="transformer.h",
+                config=self.cfg,
                 submodules={
                     "ln1": NormalizationBridge(name="input_layernorm", config=self.cfg),
                     "ln2": NormalizationBridge(name="post_attention_layernorm", config=self.cfg),
-                    "attn": JointQKVAttentionBridge(
+                    "attn": BloomAttentionBridge(
                         name="self_attention",
                         config=self.cfg,
                         split_qkv_matrix=self.split_qkv_matrix,
@@ -85,7 +86,7 @@ class BloomArchitectureAdapter(ArchitectureAdapter):
                             "o": LinearBridge(name="dense"),
                         },
                     ),
-                    "mlp": MLPBridge(
+                    "mlp": BloomMLPBridge(
                         name="mlp",
                         submodules={
                             "in": LinearBridge(name="dense_h_to_4h"),

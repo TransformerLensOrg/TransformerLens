@@ -283,6 +283,21 @@ class ProcessWeights:
         ln1_b_key = ProcessWeights._get_param_key(f"blocks.{layer}.ln1.b", adapter)
         ln1_w_key = ProcessWeights._get_param_key(f"blocks.{layer}.ln1.w", adapter)
 
+        # For GQA models, Q, K and V weights may use underscore prefix (_W_Q, _W_K, _W_V)
+        # Check if standard keys exist, otherwise update to use underscore-prefixed versions
+        if W_Q_key not in state_dict:
+            W_Q_key = W_Q_key.replace(".W_Q", "._W_Q")
+        if W_K_key not in state_dict:
+            W_K_key = W_K_key.replace(".W_K", "._W_K")
+        if W_V_key not in state_dict:
+            W_V_key = W_V_key.replace(".W_V", "._W_V")
+        if b_Q_key not in state_dict:
+            b_Q_key = b_Q_key.replace(".b_Q", "._b_Q")
+        if b_K_key not in state_dict:
+            b_K_key = b_K_key.replace(".b_K", "._b_K")
+        if b_V_key not in state_dict:
+            b_V_key = b_V_key.replace(".b_V", "._b_V")
+
         wq_tensor: Optional[torch.Tensor] = state_dict.get(W_Q_key)
         wk_tensor: Optional[torch.Tensor] = state_dict.get(W_K_key)
         wv_tensor: Optional[torch.Tensor] = state_dict.get(W_V_key)
@@ -380,10 +395,13 @@ class ProcessWeights:
             assert isinstance(bk_tensor, torch.Tensor)
         if bv_tensor is not None:
             assert isinstance(bv_tensor, torch.Tensor)
-        if ln1_b is not None and ln1_w is not None:
-            assert isinstance(ln1_b, torch.Tensor)
+        # CRITICAL FIX: For RMS norm (Gemma), ln1_b is None. We must still fold ln1_w!
+        # Only require ln1_w to be non-None for folding
+        if ln1_w is not None:
             assert isinstance(ln1_w, torch.Tensor)
-            if fold_biases:
+            # Only fold biases if they exist (LayerNorm). RMS norm has no biases.
+            if fold_biases and ln1_b is not None:
+                assert isinstance(ln1_b, torch.Tensor)
                 if all(
                     (
                         t is not None
@@ -406,10 +424,15 @@ class ProcessWeights:
                 )
                 if alternate_b_key != keys["ln1_b"] and alternate_b_key in state_dict:
                     state_dict[alternate_b_key] = torch.zeros_like(ln1_b)
+            # Fold ln1_w into QKV weights (works for both LayerNorm and RMS norm)
             if wk_tensor is not None and wv_tensor is not None:
                 wq_tensor, wk_tensor, wv_tensor = ProcessWeights.fold_layer_norm_weights(
                     wq_tensor, wk_tensor, wv_tensor, ln1_w
                 )
+            # After folding, set ln1.w to identity (all 1.0).
+            # For HookedTransformer with Pre normalization (LNPre/RMSNormPre), load_state_dict
+            # will ignore these weights since those layers have no weight parameters.
+            # For TransformerBridge and other models, the weights must be 1.0 after folding.
             if keys["ln1_w"] in state_dict:
                 state_dict[keys["ln1_w"]] = torch.ones_like(ln1_w)
             alternate_w_key = (
@@ -436,6 +459,11 @@ class ProcessWeights:
             cfg,
             layer,
         )
+
+        # NOTE: For Gemma 2/3 with use_normalization_before_and_after=True, ln1_post.w exists
+        # and should KEEP its original values (not be set to 1.0). It applies normalization
+        # AFTER the attention output, which is independent of the ln1 folding we just did.
+
         state_dict = ProcessWeights._fold_mlp_layer_norm(
             state_dict, cfg, layer, fold_biases, center_weights, adapter
         )
@@ -473,26 +501,30 @@ class ProcessWeights:
         )
         ln2_b_key = ProcessWeights._get_param_key(f"blocks.{layer}.ln2.b", adapter)
         ln2_w_key = ProcessWeights._get_param_key(f"blocks.{layer}.ln2.w", adapter)
-        if ln2_b_key in state_dict and ln2_w_key in state_dict:
+        # CRITICAL FIX: For RMS norm (Gemma), ln2_b doesn't exist. Only require ln2_w!
+        if ln2_w_key in state_dict:
             mlp_W_in = ProcessWeights.convert_tensor_to_tl_format(
                 mlp_W_in_key, state_dict, state_dict.get(mlp_W_in_key), cfg, adapter, layer
             )
             ln2_w = state_dict[ln2_w_key]
-            ln2_b = state_dict[ln2_b_key]
+            ln2_b = state_dict.get(ln2_b_key, None)  # May be None for RMS norm
             assert mlp_W_in is not None, f"MLP W_in not found at key {mlp_W_in_key}"
             if mlp_W_in.shape[1] == ln2_w.shape[0]:
                 ln2_w_broadcast = ln2_w[None, :]
-                ln2_b_broadcast = ln2_b[None, :]
                 sum_dim = -1
+                if ln2_b is not None:
+                    ln2_b_broadcast = ln2_b[None, :]
             elif mlp_W_in.shape[0] == ln2_w.shape[0]:
                 ln2_w_broadcast = ln2_w[:, None]
-                ln2_b_broadcast = ln2_b[:, None]
                 sum_dim = -2
+                if ln2_b is not None:
+                    ln2_b_broadcast = ln2_b[:, None]
             else:
                 raise ValueError(
                     f"Cannot broadcast MLP weight {mlp_W_in.shape} with layer norm weight {ln2_w.shape}"
                 )
-            if fold_biases:
+            # Only fold biases if they exist (LayerNorm). RMS norm has no biases.
+            if fold_biases and ln2_b is not None:
                 mlp_b_in = ProcessWeights.convert_tensor_to_tl_format(
                     mlp_b_in_key, state_dict, state_dict.get(mlp_b_in_key), cfg, adapter, layer
                 )
@@ -522,6 +554,9 @@ class ProcessWeights:
                 state_dict[mlp_W_gate_key] = ProcessWeights.convert_tensor_to_hf_format(
                     mlp_W_gate_key, new_mlp_W_gate, cfg, adapter, layer
                 )
+            # After folding, set ln2.w to identity (all 1.0).
+            # For HookedTransformer with Pre normalization, load_state_dict will ignore these.
+            # For TransformerBridge and other models, the weights must be 1.0 after folding.
             state_dict[ln2_w_key] = torch.ones_like(state_dict[ln2_w_key])
             alternate_ln2_w_key = (
                 ln2_w_key.replace("ln_2", "ln2")
@@ -581,6 +616,10 @@ class ProcessWeights:
 
             if mlp_ln_w_key in state_dict:
                 state_dict[mlp_ln_w_key] = torch.ones_like(mlp_ln_w)
+
+        # NOTE: For Gemma 2/3 with use_normalization_before_and_after=True, ln2_post.w exists
+        # and should KEEP its original values (not be set to 1.0). It applies normalization
+        # AFTER the MLP output, which is independent of the ln2 folding we just did.
 
         return state_dict
 
@@ -662,6 +701,12 @@ class ProcessWeights:
         unembed_W_U_key = ProcessWeights._get_param_key("unembed.W_U", adapter)
         ln_final_b_key = ProcessWeights._get_param_key("ln_final.b", adapter)
         ln_final_w_key = ProcessWeights._get_param_key("ln_final.w", adapter)
+
+        # Skip layer norm folding if ln_final doesn't exist
+        # (e.g., encoder-decoder models like T5 have encoder_ln_final/decoder_ln_final instead)
+        if ln_final_w_key not in state_dict:
+            return state_dict
+
         has_unembed_bias = unembed_b_U_key in state_dict
         unembed_weight = ProcessWeights.convert_tensor_to_tl_format(
             unembed_W_U_key, state_dict, state_dict.get(unembed_W_U_key), cfg, adapter, None
@@ -684,6 +729,9 @@ class ProcessWeights:
         state_dict[unembed_W_U_key] = ProcessWeights.convert_tensor_to_hf_format(
             unembed_W_U_key, new_unembed_weight, cfg, adapter, None
         )
+        # After folding, set ln_final.w to identity (all 1.0).
+        # For HookedTransformer with Pre normalization, load_state_dict will ignore these.
+        # For TransformerBridge and other models, the weights must be 1.0 after folding.
         if ln_final_w_key in state_dict:
             state_dict[ln_final_w_key] = torch.ones_like(ln_weight)
         alternate_final_w_key = (

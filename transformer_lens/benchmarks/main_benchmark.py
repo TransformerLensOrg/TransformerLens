@@ -9,10 +9,10 @@ Phase 4: Granular Weight Processing Tests (optional)
 """
 
 import gc
-from typing import List, Optional
+from typing import Dict, List, Optional, Union
 
 import torch
-from transformers import AutoModelForCausalLM
+from transformers import AutoConfig, AutoModelForCausalLM, AutoModelForSeq2SeqLM
 
 from transformer_lens import HookedTransformer
 from transformer_lens.benchmarks.activation_cache import (
@@ -62,6 +62,55 @@ from transformer_lens.benchmarks.weight_processing import (
     benchmark_weight_sharing,
 )
 from transformer_lens.model_bridge import TransformerBridge
+
+# Architecture names that indicate encoder-decoder models
+ENCODER_DECODER_ARCHITECTURES = [
+    "T5ForConditionalGeneration",
+    "BartForConditionalGeneration",
+    "MBartForConditionalGeneration",
+    "MT5ForConditionalGeneration",
+    "PegasusForConditionalGeneration",
+    "BlenderbotForConditionalGeneration",
+    "MarianMTModel",
+]
+
+
+def is_encoder_decoder_model(model_name: str) -> bool:
+    """Check if a model is an encoder-decoder architecture.
+
+    Args:
+        model_name: The HuggingFace model name or path
+
+    Returns:
+        True if the model is encoder-decoder (like T5), False otherwise
+    """
+    try:
+        config = AutoConfig.from_pretrained(model_name)
+        # Check config attribute first
+        if getattr(config, "is_encoder_decoder", False):
+            return True
+        # Fallback to architecture check
+        architectures = getattr(config, "architectures", []) or []
+        return any(arch in ENCODER_DECODER_ARCHITECTURES for arch in architectures)
+    except Exception:
+        return False
+
+
+def get_auto_model_class(model_name: str):
+    """Determine the correct AutoModel class for a given model.
+
+    Some models (like T5) are encoder-decoder and need AutoModelForSeq2SeqLM
+    instead of AutoModelForCausalLM.
+
+    Args:
+        model_name: The HuggingFace model name or path
+
+    Returns:
+        The appropriate AutoModel class (AutoModelForCausalLM or AutoModelForSeq2SeqLM)
+    """
+    if is_encoder_decoder_model(model_name):
+        return AutoModelForSeq2SeqLM
+    return AutoModelForCausalLM
 
 
 def run_comparison_benchmarks(
@@ -477,16 +526,18 @@ def run_benchmark_suite(
     verbose: bool = True,
     track_memory: bool = False,
     test_weight_processing_individually: bool = False,
+    phases: list[int] | None = None,
 ) -> List[BenchmarkResult]:
     """Run comprehensive benchmark suite for TransformerBridge.
 
-    This function implements an optimized 4-phase approach to minimize model reloading:
+    This function implements an optimized 5-phase approach to minimize model reloading:
     Phase 1: HF + Bridge (unprocessed) - Compare against raw HuggingFace model
     Phase 2: Bridge (unprocessed) + HT (unprocessed) - Compare unprocessed models
     Phase 3: Bridge (processed) + HT (processed) - Full compatibility mode testing
-    Phase 4: Granular Weight Processing Tests (optional)
+    Phase 4: Individual Weight Processing Flags (optional)
+    Phase 5: Combined Weight Processing Flags (optional)
 
-    When test_weight_processing_individually=True, an additional Phase 4 runs after
+    When test_weight_processing_individually=True, Phases 4 & 5 run after
     Phase 3, testing each weight processing flag individually and in combinations.
 
     Args:
@@ -500,6 +551,7 @@ def run_benchmark_suite(
         track_memory: Whether to track and report memory usage (requires psutil)
         test_weight_processing_individually: Whether to run granular weight processing
             tests that check each processing flag individually (default: False)
+        phases: Optional list of phase numbers to run (e.g., [1, 2, 3]). If None, runs all phases.
 
     Returns:
         List of BenchmarkResult objects
@@ -540,8 +592,62 @@ def run_benchmark_suite(
         print(f"Device: {device}")
         print(f"{'='*80}\n")
 
+    # Early exit if only running Phase 4/5 (they load their own models independently)
+    if phases is not None and all(p in [4, 5] for p in phases):
+        if verbose:
+            print(f"Skipping Phase 1-3 (only running Phase {', '.join(map(str, sorted(phases)))})")
+            print("Phase 4/5 load their own models independently\n")
+
+        # Jump directly to Phase 4/5
+        # Jump to granular testing
+        from transformer_lens.benchmarks.granular_weight_processing import (
+            run_granular_weight_processing_benchmarks,
+        )
+
+        if 4 in phases and test_weight_processing_individually and enable_compatibility_mode:
+            phase4_results = run_granular_weight_processing_benchmarks(
+                model_name=model_name,
+                device=device,
+                test_text=test_text,
+                verbose=verbose,
+                phase=4,
+            )
+            for config_name, config_results in phase4_results.items():
+                for result in config_results:
+                    result.phase = 4
+                    results.append(result)
+                    if verbose:
+                        result.print_immediate()
+
+        if 5 in phases and test_weight_processing_individually and enable_compatibility_mode:
+            phase5_results = run_granular_weight_processing_benchmarks(
+                model_name=model_name,
+                device=device,
+                test_text=test_text,
+                verbose=verbose,
+                phase=5,
+            )
+            for config_name, config_results in phase5_results.items():
+                for result in config_results:
+                    result.phase = 5
+                    results.append(result)
+                    if verbose:
+                        result.print_immediate()
+
+        return results
+
+    # Track current phase for result tagging
+    current_phase: List[Optional[int]] = [None]  # Use list to allow modification in nested function
+
+    def should_run_phase(phase_num: int) -> bool:
+        """Check if a phase should run based on the phases filter."""
+        return phases is None or phase_num in phases
+
     def add_result(result: BenchmarkResult) -> None:
         """Add a result and optionally print it immediately."""
+        # Tag result with current phase
+        if current_phase[0] is not None and result.phase is None:
+            result.phase = current_phase[0]
         results.append(result)
         if verbose:
             result.print_immediate()
@@ -701,6 +807,7 @@ def run_benchmark_suite(
     # ========================================================================
     # PHASE 1: HuggingFace + Bridge (unprocessed)
     # ========================================================================
+    current_phase[0] = 1
     if verbose:
         print(f"\n{'='*80}")
         print("PHASE 1: HuggingFace + TransformerBridge (unprocessed)")
@@ -722,8 +829,9 @@ def run_benchmark_suite(
             attn_implementation = bridge_config_only.adapter.cfg.attn_implementation
         if verbose and attn_implementation:
             print(f"✓ Detected attn_implementation={attn_implementation}")
-        # Clean up config-only bridge
+        # Clean up config-only bridge immediately to free memory
         del bridge_config_only
+        gc.collect()  # Force garbage collection immediately
     except Exception as e:
         if verbose:
             print(f"⚠ Could not detect config (will use defaults): {str(e)}")
@@ -734,12 +842,19 @@ def run_benchmark_suite(
             if verbose:
                 print("Loading HuggingFace reference model...")
             # Match attn_implementation from bridge to ensure numerical consistency
-            hf_kwargs = {"device_map": device}
+            hf_kwargs = {
+                "device_map": device,
+                "low_cpu_mem_usage": True,  # Reduce memory spikes during loading
+            }
             if attn_implementation is not None:
                 hf_kwargs["attn_implementation"] = attn_implementation
                 if verbose:
                     print(f"Using attn_implementation={attn_implementation}")
-            hf_model = AutoModelForCausalLM.from_pretrained(model_name, **hf_kwargs)  # type: ignore[arg-type]
+            # Use appropriate AutoModel class (e.g., AutoModelForSeq2SeqLM for T5)
+            auto_model_class = get_auto_model_class(model_name)
+            if verbose and auto_model_class != AutoModelForCausalLM:
+                print(f"Using {auto_model_class.__name__} for encoder-decoder model")
+            hf_model = auto_model_class.from_pretrained(model_name, **hf_kwargs)  # type: ignore[arg-type]
             hf_model.eval()
             # Detect dtype from HF model
             try:
@@ -779,7 +894,7 @@ def run_benchmark_suite(
         return results
 
     # Run Phase 1 benchmarks
-    if hf_model and bridge_unprocessed:
+    if should_run_phase(1) and hf_model and bridge_unprocessed:
         if verbose:
             print("Running Phase 1 benchmarks...\n")
 
@@ -792,6 +907,10 @@ def run_benchmark_suite(
             if verbose:
                 status = "✓" if component_result.passed else "✗"
                 print(f"{status} {component_result.message}\n")
+            # Clean up after component testing
+            gc.collect()
+            if device != "cpu" and torch.cuda.is_available():
+                torch.cuda.empty_cache()
         except Exception as e:
             if verbose:
                 print(f"✗ Component benchmark failed: {e}\n")
@@ -818,6 +937,7 @@ def run_benchmark_suite(
     # ========================================================================
     # PHASE 2: Bridge (unprocessed) + HookedTransformer (unprocessed)
     # ========================================================================
+    current_phase[0] = 2
     if verbose:
         print(f"\n{'='*80}")
         print("PHASE 2: TransformerBridge (unprocessed) + HookedTransformer (unprocessed)")
@@ -825,37 +945,69 @@ def run_benchmark_suite(
 
     # OPTIMIZATION: Run generation benchmarks first (only bridge in memory)
     # Then cleanup bridge before loading HT to reduce peak memory
-    if bridge_unprocessed:
+    if should_run_phase(2) and bridge_unprocessed:
         if verbose:
             print("Running Phase 2 benchmarks...\n")
 
         # Generation benchmarks (unprocessed only) - RUN FIRST
+        # Skip for encoder-decoder models (T5, etc.) which require different generation API
+        is_enc_dec = is_encoder_decoder_model(model_name)
         if verbose:
             print("1. Generation Benchmarks (unprocessed)")
-        try:
-            add_result(benchmark_generation(bridge_unprocessed, test_text, max_new_tokens=10))
+        if is_enc_dec:
+            if verbose:
+                print("⏭️ Skipped (encoder-decoder model - requires decoder_input_ids)\n")
             add_result(
-                benchmark_generation_with_kv_cache(bridge_unprocessed, test_text, max_new_tokens=10)
-            )
-            add_result(
-                benchmark_multiple_generation_calls(
-                    bridge_unprocessed,
-                    test_prompts=[
-                        "The quick brown fox",
-                        "Hello world",
-                        "Machine learning is",
-                    ],
-                    max_new_tokens=5,
+                BenchmarkResult(
+                    name="generation",
+                    severity=BenchmarkSeverity.INFO,
+                    passed=True,
+                    message="Skipped (encoder-decoder model)",
                 )
             )
-            gc.collect()  # Force cleanup after generation benchmarks
-        except Exception as e:
-            if verbose:
-                print(f"✗ Generation benchmark failed: {e}\n")
+            add_result(
+                BenchmarkResult(
+                    name="generation_with_kv_cache",
+                    severity=BenchmarkSeverity.INFO,
+                    passed=True,
+                    message="Skipped (encoder-decoder model)",
+                )
+            )
+            add_result(
+                BenchmarkResult(
+                    name="multiple_generation_calls",
+                    severity=BenchmarkSeverity.INFO,
+                    passed=True,
+                    message="Skipped (encoder-decoder model)",
+                )
+            )
+        else:
+            try:
+                add_result(benchmark_generation(bridge_unprocessed, test_text, max_new_tokens=10))
+                add_result(
+                    benchmark_generation_with_kv_cache(
+                        bridge_unprocessed, test_text, max_new_tokens=10
+                    )
+                )
+                add_result(
+                    benchmark_multiple_generation_calls(
+                        bridge_unprocessed,
+                        test_prompts=[
+                            "The quick brown fox",
+                            "Hello world",
+                            "Machine learning is",
+                        ],
+                        max_new_tokens=5,
+                    )
+                )
+                gc.collect()  # Force cleanup after generation benchmarks
+            except Exception as e:
+                if verbose:
+                    print(f"✗ Generation benchmark failed: {e}\n")
 
     # Load HookedTransformer for comparison (after generation benchmarks)
     ht_model_unprocessed = None
-    if use_ht_reference:
+    if should_run_phase(2) and use_ht_reference:
         try:
             if verbose:
                 print("Loading HookedTransformer (unprocessed) for comparison...")
@@ -875,7 +1027,7 @@ def run_benchmark_suite(
                 print(f"✗ Could not load unprocessed HookedTransformer: {str(e)}\n")
 
     # Run Phase 2 comparison benchmarks using unified function
-    if bridge_unprocessed:
+    if should_run_phase(2) and bridge_unprocessed:
         if verbose:
             print("2. Running Unprocessed Model Comparison Benchmarks\n")
 
@@ -888,6 +1040,10 @@ def run_benchmark_suite(
             verbose=verbose,
             gpt2_reference=None,  # No cross-model ref for Phase 2
         )
+        # Tag all phase 2 results with phase number
+        for result in phase2_results:
+            if result.phase is None:
+                result.phase = 2
         results.extend(phase2_results)
 
         # Generation benchmarks already run above (before loading HT)
@@ -903,10 +1059,23 @@ def run_benchmark_suite(
     # ========================================================================
     # PHASE 3: Bridge (processed) + HookedTransformer (processed)
     # ========================================================================
+    current_phase[0] = 3
     if not enable_compatibility_mode:
         if verbose:
             print("\n⚠ Compatibility mode disabled - skipping Phase 3\n")
         if verbose:
+            print("\n" + format_results(results))
+        return results
+
+    if not should_run_phase(3):
+        if verbose:
+            print("\n⚠ Phase 3 skipped (not in phases list)\n")
+        return results
+
+    # Skip Phase 3 for encoder-decoder models - weight processing is designed for decoder-only models
+    if is_encoder_decoder_model(model_name):
+        if verbose:
+            print("\n⚠ Phase 3 skipped (encoder-decoder model - weight processing not supported)\n")
             print("\n" + format_results(results))
         return results
 
@@ -1042,6 +1211,10 @@ def run_benchmark_suite(
             verbose=verbose,
             gpt2_reference=gpt2_reference,  # Use GPT-2 cross-model ref if no same-arch HT
         )
+        # Tag all phase 3 results with phase number
+        for result in phase3_results:
+            if result.phase is None:
+                result.phase = 3
         results.extend(phase3_results)
 
     # Clean up Phase 3 models before reporting memory
@@ -1107,12 +1280,46 @@ def run_benchmark_suite(
         print("BENCHMARK SUMMARY")
         print("=" * 80)
 
+        # Group results by phase
+        results_by_phase: Dict[Union[int, str], List[BenchmarkResult]] = {}
+        for r in results:
+            phase = r.phase if r.phase is not None else "Other"
+            if phase not in results_by_phase:
+                results_by_phase[phase] = []
+            results_by_phase[phase].append(r)
+
+        # Print phase-by-phase summary
+        for phase in sorted(
+            results_by_phase.keys(), key=lambda x: x if isinstance(x, int) else 999
+        ):
+            phase_results = results_by_phase[phase]
+            phase_name = f"Phase {phase}" if isinstance(phase, int) else phase
+
+            phase_passed = sum(
+                1 for r in phase_results if r.passed and r.severity != BenchmarkSeverity.SKIPPED
+            )
+            phase_failed = sum(
+                1 for r in phase_results if not r.passed and r.severity != BenchmarkSeverity.SKIPPED
+            )
+            phase_skipped = sum(1 for r in phase_results if r.severity == BenchmarkSeverity.SKIPPED)
+            phase_total = len(phase_results)
+            phase_run = phase_total - phase_skipped
+
+            print(f"\n{phase_name}: {phase_run} tests run")
+            if phase_run > 0:
+                print(f"  Passed: {phase_passed}/{phase_run} ({phase_passed/phase_run*100:.1f}%)")
+                print(f"  Failed: {phase_failed}/{phase_run} ({phase_failed/phase_run*100:.1f}%)")
+            if phase_skipped > 0:
+                print(f"  Skipped: {phase_skipped}")
+
+        # Overall summary
         passed = sum(1 for r in results if r.passed and r.severity != BenchmarkSeverity.SKIPPED)
         failed = sum(1 for r in results if not r.passed and r.severity != BenchmarkSeverity.SKIPPED)
         skipped = sum(1 for r in results if r.severity == BenchmarkSeverity.SKIPPED)
         total = len(results)
         run_tests = total - skipped
 
+        print(f"\nOverall:")
         print(f"Total: {total} tests")
         if skipped > 0:
             print(f"Run: {run_tests} tests")

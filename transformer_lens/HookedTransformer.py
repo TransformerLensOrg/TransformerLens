@@ -1746,7 +1746,7 @@ class HookedTransformer(HookedRootModule):
 
     def set_use_split_qkv_input(self, use_split_qkv_input: bool):
         """
-        Toggles whether to allow editing of inputs to each attention head.
+        Toggles whether to allow editing of the separate Q, K, and V inputs to each attention head.
         """
         self.cfg.use_split_qkv_input = use_split_qkv_input
 

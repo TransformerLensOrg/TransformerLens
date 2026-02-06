@@ -72,12 +72,14 @@
         datasets=">=2.7.1"
         einops=">=0.6.0"
         fancy-einsum=">=0.0.3"
+        huggingface-hub=">=0.23.2,<1.0"
         jaxtyping=">=0.2.11,<0.2.20"
         numpy=[
             {version=">=1.24", python=">=3.9,<3.12"},
             {version=">=1.26", python=">=3.12,<4.0"},
         ]
         pandas=">=1.1.5"
+        protobuf=">=3.20.0"
         python=">=3.10,<4.0"
         rich=">=12.6.0"
         sentencepiece="*"
@@ -93,6 +95,7 @@
         [tool.poetry.group.dev.dependencies]
             black="^23.3.0"
             circuitsvis=">=1.38.1"
+            gradio=">=4.0.0"
             isort="5.8.0"
             jupyter=">=1.0.0"
             mypy=">=1.10.0"
@@ -107,6 +110,20 @@
         [tool.poetry.group.jupyter.dependencies]
             ipywidgets="^8.1.1"
             jupyterlab=">=3.5.0"
+
+        [tool.poetry.group.docs.dependencies]
+            furo={version=">=2023.3.27,<2024.0.0"}
+            myst-parser={version=">=2.0.0,<3.0.0"}
+            nbconvert="^7.9.2"
+            nbsphinx="^0.9.3"
+            pandoc="^2.3"
+            snowballstemmer="*"
+            sphinx={version=">=7.0.0,<8.0.0"}
+            sphinx-autobuild={version=">=2021.3.14,<2022.12.7"}
+            sphinxcontrib-napoleon={version=">=0.7"}
+            tabulate={version=">=0.9.0"}
+            tiktoken = "^0.7.0"
+            muutils = "^0.6.15"
 
 [tool.uv]
     default-groups=["dev", "jupyter", "docs"]

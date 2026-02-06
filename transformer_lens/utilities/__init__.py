@@ -29,6 +29,7 @@ from .initialization_utils import (
     init_xavier_normal_,
     init_xavier_uniform_,
 )
+from .library_utils import is_library_available
 from .lm_utils import lm_accuracy, lm_cross_entropy_loss
 from .logits_utils import sample_logits
 from .matrix import (

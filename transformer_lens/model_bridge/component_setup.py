@@ -10,6 +10,7 @@ from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapt
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
+from transformer_lens.model_bridge.generalized_components.symbolic import SymbolicBridge
 from transformer_lens.model_bridge.types import RemoteModel
 
 if TYPE_CHECKING:
@@ -75,6 +76,20 @@ def setup_submodules(
             replace_remote_component(bridged_list, submodule.name, original_model)
             # Add to real_components mapping
             component.real_components[module_name] = (submodule.name, list(bridged_list))
+        elif isinstance(submodule, SymbolicBridge):
+            # SymbolicBridge: Set up the symbolic component and its submodules
+            # The symbolic bridge itself doesn't wrap a real component, but its
+            # submodules are set up using the parent's original_model as context
+            setup_submodules(submodule, architecture_adapter, original_model)
+
+            # Add the symbolic bridge as a module (for structural access like blocks[i].mlp.in)
+            if module_name not in component._modules:
+                component.add_module(module_name, submodule)
+
+            # Add symbolic bridge's real_components to parent's mapping with prefixed keys
+            for sub_name, (sub_path, sub_comp) in submodule.real_components.items():
+                prefixed_key = f"{module_name}.{sub_name}"
+                component.real_components[prefixed_key] = (sub_path, sub_comp)
         else:
             # Set up original_component if not already set
             if submodule.original_component is None:
