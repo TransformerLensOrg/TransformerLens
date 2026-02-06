@@ -1,5 +1,5 @@
 # TransformerLens 2.0
-### May 29, 2024
+**May 29, 2024**
 
 I am very happy to announce TransformerLens now has a 2.0 release! If you have been using recent versions of TransformerLens, then the good news is that not much has changed at all. The primary motivation behind this jump is to transition the project to strictly following semantic versioning as described [here](https://semver.org/). At the last minute we did also remove the recently added HookedSAE, so if you had been using that, I would direct you to Joseph Bloom’s [SAELens](http://github.com/jbloomAus/SAELens). Bundled with this major version change are also a handful of internal modifications that only affect contributors.
 

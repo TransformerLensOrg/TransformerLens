@@ -120,6 +120,12 @@ class ActivationCache:
         self.has_embed = "hook_embed" in self.cache_dict
         self.has_pos_embed = "hook_pos_embed" in self.cache_dict
 
+        # Note: self.model creates a strong reference that prevents model garbage collection.
+        # If memory is a concern and you don't need the cache methods that access model weights
+        # (e.g., compute_head_results, stack_head_results), you can break the reference with:
+        # cache.model = None  # after creating the cache
+        # Most analysis methods only need the cached activations, not the full model.
+
     def remove_batch_dim(self) -> ActivationCache:
         """Remove the Batch Dimension (if a single batch item).
 

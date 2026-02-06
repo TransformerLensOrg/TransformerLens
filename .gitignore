@@ -17,7 +17,9 @@ docs/build
 .coverage*
 .Ds_Store
 .pylintrc
+
 docs/source/generated
 # docs/source/_static/model_table
 **.orig
 .venv
+

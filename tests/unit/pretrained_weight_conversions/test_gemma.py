@@ -11,7 +11,7 @@ Tests cover:
 import torch
 import torch.nn as nn
 
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.pretrained.weight_conversions.gemma import convert_gemma_weights
 
 

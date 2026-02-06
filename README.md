@@ -32,6 +32,12 @@ functions to edit, remove or replace these activations as the model runs.
 pip install transformer_lens
 ```
 
+#### Python 3.8 or 3.9
+
+```shell
+pip install 'transformer_lens~=2.0'
+```
+
 ### Use
 
 ```python

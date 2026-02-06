@@ -11,8 +11,8 @@ from jaxtyping import Float
 from transformers.utils import is_bitsandbytes_available
 
 from transformer_lens.components.mlps.can_be_used_as_mlp import CanBeUsedAsMLP
+from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.hook_points import HookPoint
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.utilities.addmm import batch_addmm
 
 if is_bitsandbytes_available():

@@ -10,9 +10,9 @@ from functools import lru_cache
 from typing import List, Tuple, Union, overload
 
 import torch
-from jaxtyping import Float
+from jaxtyping import Complex, Float
 
-import transformer_lens.utils as utils
+import transformer_lens.utilities.tensors as tensor_utils
 
 
 class FactoredMatrix:
@@ -179,7 +179,7 @@ class FactoredMatrix:
         """
         Ua, Sa, Vha = torch.svd(self.A)
         Ub, Sb, Vhb = torch.svd(self.B)
-        middle = Sa[..., :, None] * utils.transpose(Vha) @ Ub * Sb[..., None, :]
+        middle = Sa[..., :, None] * tensor_utils.transpose(Vha) @ Ub * Sb[..., None, :]
         Um, Sm, Vhm = torch.svd(middle)
         U = Ua @ Um
         Vh = Vhb @ Vhm
@@ -199,9 +199,16 @@ class FactoredMatrix:
         return self.svd()[2]
 
     @property
-    def eigenvalues(self) -> Float[torch.Tensor, "*leading_dims mdim"]:
-        """Eigenvalues of AB are the same as for BA (apart from trailing zeros), because if BAv=kv ABAv = A(BAv)=kAv, so Av is an eigenvector of AB with eigenvalue k."""
-        return torch.linalg.eig(self.BA).eigenvalues
+    def eigenvalues(self) -> Complex[torch.Tensor, "*leading_dims mdim"]:
+        """
+        Eigenvalues of AB are the same as for BA (apart from trailing zeros), because if BAv=kv ABAv = A(BAv)=kAv,
+        so Av is an eigenvector of AB with eigenvalue k.
+        """
+        input_matrix = self.BA
+        if input_matrix.dtype in [torch.bfloat16, torch.float16]:
+            # Cast to float32 because eig is not implemented for 16-bit on CPU/CUDA
+            input_matrix = input_matrix.to(torch.float32)
+        return torch.linalg.eig(input_matrix).eigenvalues
 
     def _convert_to_slice(self, sequence: Union[Tuple, List], idx: int) -> Tuple:
         """
@@ -249,11 +256,11 @@ class FactoredMatrix:
         """
         return FactoredMatrix(
             self.U * self.S.sqrt()[..., None, :],
-            self.S.sqrt()[..., :, None] * utils.transpose(self.Vh),
+            self.S.sqrt()[..., :, None] * tensor_utils.transpose(self.Vh),
         )
 
     def get_corner(self, k=3):
-        return utils.get_corner(self.A[..., :k, :] @ self.B[..., :, :k], k)
+        return tensor_utils.get_corner(self.A[..., :k, :] @ self.B[..., :, :k], k)
 
     @property
     def ndim(self) -> int:
@@ -263,7 +270,7 @@ class FactoredMatrix:
         """
         Collapses the left side of the factorization by removing the orthogonal factor (given by self.U). Returns a (..., mdim, rdim) tensor
         """
-        return self.S[..., :, None] * utils.transpose(self.Vh)
+        return self.S[..., :, None] * tensor_utils.transpose(self.Vh)
 
     def collapse_r(self) -> Float[torch.Tensor, "*leading_dims ldim mdim"]:
         """

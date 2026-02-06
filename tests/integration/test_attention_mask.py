@@ -1,8 +1,8 @@
 import torch
 
 from transformer_lens import utils
+from transformer_lens.config import HookedTransformerConfig
 from transformer_lens.HookedTransformer import HookedTransformer
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 
 def test_attention_mask():

@@ -9,7 +9,8 @@ import torch
 import torch.nn as nn
 from jaxtyping import Float
 
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.hook_points import HookPoint
 from transformer_lens.utilities.addmm import batch_addmm
 
 
@@ -25,7 +26,13 @@ class Unembed(nn.Module):
             torch.zeros(self.cfg.d_vocab_out, dtype=self.cfg.dtype)
         )
 
+        # Add hooks for compatibility with HookedTransformer
+        self.hook_in = HookPoint()
+        self.hook_out = HookPoint()
+
     def forward(
         self, residual: Float[torch.Tensor, "batch pos d_model"]
     ) -> Float[torch.Tensor, "batch pos d_vocab_out"]:
-        return batch_addmm(self.b_U, self.W_U, residual)
+        residual = self.hook_in(residual)
+        result = batch_addmm(self.b_U, self.W_U, residual)
+        return self.hook_out(result)

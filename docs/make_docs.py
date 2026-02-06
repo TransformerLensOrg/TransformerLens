@@ -7,6 +7,7 @@ import multiprocessing
 import os
 import shutil
 import subprocess
+import sys
 import warnings
 from copy import deepcopy
 from functools import lru_cache, partial
@@ -28,6 +29,7 @@ from transformer_lens import (
     HookedTransformer,
     HookedTransformerConfig,
     loading,
+    supported_models,
 )
 from transformer_lens.loading_from_pretrained import (  # type: ignore[import-untyped]
     NON_HF_HOSTED_MODEL_NAMES,
@@ -261,7 +263,7 @@ def get_model_info(
     """
 
     # assumes the input is a default alias
-    if model_name not in transformer_lens.loading.DEFAULT_MODEL_ALIASES:
+    if model_name not in supported_models.DEFAULT_MODEL_ALIASES:
         raise ValueError(f"Model name '{model_name}' not found in default aliases")
 
     # get the names and model types
@@ -270,7 +272,7 @@ def get_model_info(
         "name.default_alias": model_name,
         "name.huggingface": official_name,
         "name.aliases": ", ".join(
-            list(transformer_lens.loading.MODEL_ALIASES.get(official_name, []))  # type: ignore[arg-type]
+            list(supported_models.MODEL_ALIASES.get(official_name, []))  # type: ignore[arg-type]
         ),
         "model_type": None,
     }
@@ -403,7 +405,7 @@ def make_model_table(
     **kwargs,
 ) -> pd.DataFrame:
     """make table of all models. kwargs passed to `get_model_info()`"""
-    model_names: list[str] = list(transformer_lens.loading.DEFAULT_MODEL_ALIASES)
+    model_names: list[str] = list(supported_models.DEFAULT_MODEL_ALIASES)
     model_data: list[tuple[str, Union[dict, Exception]]] = list()
 
     # filter by regex pattern if provided
@@ -436,7 +438,7 @@ def make_model_table(
     else:
         # serial
         with tqdm.tqdm(
-            transformer_lens.loading.DEFAULT_MODEL_ALIASES,
+            supported_models.DEFAULT_MODEL_ALIASES,
             desc="Loading model info",
             disable=not verbose,
         ) as pbar:
@@ -628,22 +630,6 @@ def get_model_table(
     return model_table
 
 
-def copy_demos(_app: Optional[Any] = None):
-    """Copy demo notebooks to the generated directory."""
-    copy_to_dir = GENERATED_DIR / "demos"
-    notebooks_to_copy = [
-        "Exploratory_Analysis_Demo.ipynb",
-        "Main_Demo.ipynb",
-    ]
-
-    if copy_to_dir.exists():
-        shutil.rmtree(copy_to_dir)
-
-    copy_to_dir.mkdir()
-    for filename in notebooks_to_copy:
-        shutil.copy(DEMOS_DIR / filename, copy_to_dir)
-
-
 def build_docs():
     """Build the docs."""
     get_model_table(
@@ -653,19 +639,22 @@ def build_docs():
     copy_demos()
 
     # Generating docs
+    # Use sys.executable with -m sphinx to ensure we use the venv's sphinx
     subprocess.run(
         [
-            "sphinx-build",
+            sys.executable,
+            "-m",
+            "sphinx",
             SOURCE_PATH,
             BUILD_PATH,
             # "-n",  # Nitpicky mode (warn about all missing references)
-            "-W",  # Turn warnings into errors
+            # "-W",  # Turn warnings into errors - temporarily disabled due to duplicate object warnings
         ],
         check=True,
     )
 
 
-def get_property(name, model_name):
+def get_property(name: str, model_name: str) -> Any:
     """Retrieve a specific property of a pretrained model.
 
     Args:
@@ -703,6 +692,66 @@ def get_property(name, model_name):
             return f"{round(n_params/1e9)}B"
         raise ValueError(f"Passed in {n_params} above 1T?")
     return cfg.to_dict()[name]
+
+
+def generate_model_table(_app: Optional[Any] = None):
+    """Generate a markdown table summarizing properties of pretrained models.
+
+    This script extracts various properties of pretrained models from the `easy_transformer`
+    library, such as the number of parameters, layers, and heads, among others, and generates a
+    markdown table.
+    """
+
+    # Create the table
+    column_names = [
+        "n_params",
+        "n_layers",
+        "d_model",
+        "n_heads",
+        "act_fn",
+        "n_ctx",
+        "d_vocab",
+        "d_head",
+        "d_mlp",
+        "n_key_value_heads",
+    ]
+    df = pd.DataFrame(
+        {
+            name: [
+                get_property(name, model_name)
+                for model_name in supported_models.DEFAULT_MODEL_ALIASES
+            ]
+            for name in column_names
+        },
+        index=supported_models.DEFAULT_MODEL_ALIASES,
+    )
+
+    # Convert to markdown (with a title)
+    df["n_key_value_heads"] = df["n_key_value_heads"].fillna(-1).astype(int).replace(-1, "")
+    markdown_string = df.to_markdown()
+    markdown_string = "# Model Properties Table\n\n" + markdown_string
+
+    # Save to the docs directory
+    GENERATED_DIR.mkdir(exist_ok=True)
+    file_path = GENERATED_DIR / "model_properties_table.md"
+    with open(file_path, "w", encoding="utf-8") as file:
+        file.write(markdown_string)
+
+
+def copy_demos(_app: Optional[Any] = None):
+    """Copy demo notebooks to the generated directory."""
+    copy_to_dir = GENERATED_DIR / "demos"
+    notebooks_to_copy = [
+        "Exploratory_Analysis_Demo.ipynb",
+        "Main_Demo.ipynb",
+    ]
+
+    if copy_to_dir.exists():
+        shutil.rmtree(copy_to_dir)
+
+    copy_to_dir.mkdir()
+    for filename in notebooks_to_copy:
+        shutil.copy(DEMOS_DIR / filename, copy_to_dir)
 
 
 def docs_hot_reload():

@@ -8,7 +8,7 @@ on:
 jobs:
   checks:
     name: Run checks workflow
-    uses: TransformerLensOrg/TransformerLens/.github/workflows/checks.yml@main
+    uses: ./.github/workflows/checks.yml
     secrets:
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
 
@@ -16,16 +16,26 @@ jobs:
     name: Parse the semantic version from the release
     runs-on: ubuntu-latest
     steps:
-     - name: Parse semver string
-       id: semver_parser 
-       uses: booxmedialtd/ws-action-parse-semver@v1.4.7
-       with:
-         input_string: ${{ github.event.release.tag_name }}
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          activate-environment: true
+          enable-cache: true
+
+      - name: Install packaging
+        run: uv pip install packaging
+
+      - name: Parse semver string
+        id: semver_parser
+        env:
+          RAW_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          VERSION="${RAW_TAG#v}"
+          echo "Detected version: $VERSION"
+          echo "version=$(uv run python -c "from packaging.version import Version; print(Version('$VERSION'))")" >> $GITHUB_OUTPUT
     outputs:
-      major: "${{ steps.semver_parser.outputs.major }}"
-      minor: "${{ steps.semver_parser.outputs.minor }}"
-      patch: "${{ steps.semver_parser.outputs.patch }}"
-      semver: "${{ steps.semver_parser.outputs.fullversion }}"
+      semver: "${{ steps.semver_parser.outputs.version }}"
 
   release-python:
     name: Release Python package to PyPi
@@ -35,22 +45,25 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - name: Install Poetry
-        uses: snok/install-poetry@v1
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
         with:
-          python-version: '3.11'
-          cache: 'poetry'
-      - name: Poetry config
-        run: poetry self add 'poethepoet[poetry_plugin]'
+          python-version: "3.12"
+          activate-environment: true
+          enable-cache: true
       - name: Install dependencies
-        run: poetry install --with dev
+        run: |
+          uv lock --check
+          uv sync
       - name: Set the version
-        run: poetry version ${{needs.semver-parser.outputs.semver}}
+        run: make version-set VERSION=${{needs.semver-parser.outputs.semver}}
+      - name: re-sync
+        run: uv sync
       - name: Build
-        run: poetry build
+        run: uv build
       - name: Publish
-        run: poetry publish
+        run: |
+          uv pip install twine
+          uv run twine upload --non-interactive -u __token__ -p "$PYPI_TOKEN_PYPI" dist/*
         env:
-          POETRY_PYPI_TOKEN_PYPI: ${{ secrets.PYPI_TOKEN_PYPI }}
+          PYPI_TOKEN_PYPI: ${{ secrets.PYPI_TOKEN_PYPI }}
