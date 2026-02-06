@@ -13,8 +13,18 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import (Dict, List, NamedTuple, Optional, Tuple, Type, TypeVar,
-                    Union, cast, overload)
+from typing import (
+    Dict,
+    List,
+    NamedTuple,
+    Optional,
+    Tuple,
+    Type,
+    TypeVar,
+    Union,
+    cast,
+    overload,
+)
 
 import einops
 import numpy as np
@@ -24,8 +34,7 @@ import torch.nn.functional as F
 import tqdm.auto as tqdm
 from jaxtyping import Float, Int
 from packaging import version
-from transformers import (AutoTokenizer, PreTrainedModel,
-                          PreTrainedTokenizerBase)
+from transformers import AutoTokenizer, PreTrainedModel, PreTrainedTokenizerBase
 from transformers.models.auto.tokenization_auto import AutoTokenizer
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 from typing_extensions import Literal
@@ -33,25 +42,38 @@ from typing_extensions import Literal
 import transformer_lens.loading_from_pretrained as loading
 import transformer_lens.utils as utils
 from transformer_lens.ActivationCache import ActivationCache
+
 # Note - activation cache is used with run_with_cache, past_key_value_caching is used for
 # generation.
 from transformer_lens.cache.key_value_cache import TransformerLensKeyValueCache
-from transformer_lens.components import (Embed, LayerNorm, LayerNormPre,
-                                         PosEmbed, RMSNorm, RMSNormPre,
-                                         TransformerBlock, Unembed)
+from transformer_lens.components import (
+    Embed,
+    LayerNorm,
+    LayerNormPre,
+    PosEmbed,
+    RMSNorm,
+    RMSNormPre,
+    TransformerBlock,
+    Unembed,
+)
 from transformer_lens.components.mlps.gated_mlp import GatedMLP
 from transformer_lens.components.mlps.mlp import MLP
-from transformer_lens.config.HookedTransformerConfig import \
-    HookedTransformerConfig
+from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookedRootModule, HookPoint
 from transformer_lens.loading_from_pretrained import NON_HF_HOSTED_MODEL_NAMES
-from transformer_lens.utilities import (get_best_available_device,
-                                        get_device_for_block_index)
+from transformer_lens.utilities import (
+    get_best_available_device,
+    get_device_for_block_index,
+)
 from transformer_lens.utilities.devices import move_to_and_update_config
-from transformer_lens.utils import (USE_DEFAULT_VALUE, init_kaiming_normal_,
-                                    init_kaiming_uniform_, init_xavier_normal_,
-                                    init_xavier_uniform_)
+from transformer_lens.utils import (
+    USE_DEFAULT_VALUE,
+    init_kaiming_normal_,
+    init_kaiming_uniform_,
+    init_xavier_normal_,
+    init_xavier_uniform_,
+)
 from transformer_lens.weight_processing import ProcessWeights
 
 SingleLoss = Float[torch.Tensor, ""]  # Type alias for a single element tensor

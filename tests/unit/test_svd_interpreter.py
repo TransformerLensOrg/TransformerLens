@@ -131,12 +131,13 @@ def test_svd_interpreter_returns_different_answers_for_different_models(second_m
 
 def test_svd_interpreter_fails_on_invalid_vector_type(model):
     svd_interpreter = SVDInterpreter(model)
-    # jaxtyping catches type errors before beartype, so we expect TypeCheckError
+    # Type checking can be done by jaxtyping (TypeCheckError) or beartype (BeartypeCallHintParamViolation)
     # Catch by checking the exception type name since jaxtyping may wrap typeguard's exception
     with pytest.raises(Exception) as exc_info:
         svd_interpreter.get_singular_vectors("test", layer_index=0, num_vectors=4, head_index=0)
-    # Verify it's a TypeCheckError (either from jaxtyping or typeguard)
-    assert "TypeCheckError" in type(exc_info.value).__name__
+    # Verify it's a type checking error (from jaxtyping, typeguard, or beartype)
+    exc_name = type(exc_info.value).__name__
+    assert "TypeCheckError" in exc_name or "Beartype" in exc_name
     assert "type-check" in str(exc_info.value).lower() or "vector_type" in str(exc_info.value)
 
 

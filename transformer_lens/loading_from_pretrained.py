@@ -14,23 +14,42 @@ from typing import Any
 
 import torch
 from huggingface_hub import HfApi
-from transformers import (AutoConfig, AutoModel, AutoModelForCausalLM,
-                          BertForPreTraining, T5ForConditionalGeneration)
+from transformers import (
+    AutoConfig,
+    AutoModel,
+    AutoModelForCausalLM,
+    BertForPreTraining,
+    T5ForConditionalGeneration,
+)
 
 import transformer_lens.utils as utils
-from transformer_lens.config.HookedTransformerConfig import \
-    HookedTransformerConfig
+from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.pretrained.weight_conversions import (
-    convert_bert_weights, convert_bloom_weights, convert_coder_weights,
-    convert_gemma_weights, convert_gpt2_weights, convert_gptj_weights,
-    convert_llama_weights, convert_mingpt_weights, convert_mistral_weights,
-    convert_mixtral_weights, convert_neel_solu_old_weights,
-    convert_neo_weights, convert_neox_weights, convert_olmo2_weights,
-    convert_olmo_weights, convert_olmoe_weights, convert_opt_weights,
-    convert_phi3_weights, convert_phi_weights, convert_qwen2_weights,
-    convert_qwen3_weights, convert_qwen_weights, convert_t5_weights)
-from transformer_lens.supported_models import (MODEL_ALIASES,
-                                               OFFICIAL_MODEL_NAMES)
+    convert_bert_weights,
+    convert_bloom_weights,
+    convert_coder_weights,
+    convert_gemma_weights,
+    convert_gpt2_weights,
+    convert_gptj_weights,
+    convert_llama_weights,
+    convert_mingpt_weights,
+    convert_mistral_weights,
+    convert_mixtral_weights,
+    convert_neel_solu_old_weights,
+    convert_neo_weights,
+    convert_neox_weights,
+    convert_olmo2_weights,
+    convert_olmo_weights,
+    convert_olmoe_weights,
+    convert_opt_weights,
+    convert_phi3_weights,
+    convert_phi_weights,
+    convert_qwen2_weights,
+    convert_qwen3_weights,
+    convert_qwen_weights,
+    convert_t5_weights,
+)
+from transformer_lens.supported_models import MODEL_ALIASES, OFFICIAL_MODEL_NAMES
 
 NON_HF_HOSTED_MODEL_NAMES = [
     "llama-7b-hf",

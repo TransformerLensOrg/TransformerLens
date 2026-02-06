@@ -2,7 +2,7 @@ import einops
 import torch
 from transformers.models.olmo2.modeling_olmo2 import Olmo2DecoderLayer
 
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 
 
 def convert_olmo2_weights(olmo2, cfg: HookedTransformerConfig):

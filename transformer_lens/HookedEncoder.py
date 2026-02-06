@@ -8,8 +8,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import (Any, Dict, List, Optional, Tuple, TypeVar, Union, cast,
-                    overload)
+from typing import Any, Dict, List, Optional, Tuple, TypeVar, Union, cast, overload
 
 import torch
 import torch.nn as nn
@@ -20,12 +19,17 @@ from typing_extensions import Literal
 
 import transformer_lens.loading_from_pretrained as loading
 from transformer_lens.ActivationCache import ActivationCache
-from transformer_lens.components import (MLP, BertBlock, BertEmbed,
-                                         BertMLMHead, BertNSPHead, BertPooler,
-                                         Unembed)
+from transformer_lens.components import (
+    MLP,
+    BertBlock,
+    BertEmbed,
+    BertMLMHead,
+    BertNSPHead,
+    BertPooler,
+    Unembed,
+)
 from transformer_lens.components.mlps.gated_mlp import GatedMLP
-from transformer_lens.config.HookedTransformerConfig import \
-    HookedTransformerConfig
+from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookedRootModule, HookPoint
 from transformer_lens.utilities import devices

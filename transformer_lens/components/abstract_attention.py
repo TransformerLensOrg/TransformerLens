@@ -10,15 +10,14 @@ from better_abc import abstract_attribute
 from jaxtyping import Float, Int
 from transformers.utils.import_utils import is_bitsandbytes_available
 
-from transformer_lens.cache.key_value_cache_entry import \
-    TransformerLensKeyValueCacheEntry
+from transformer_lens.cache.key_value_cache_entry import (
+    TransformerLensKeyValueCacheEntry,
+)
 from transformer_lens.components.rms_norm import RMSNorm
-from transformer_lens.config.HookedTransformerConfig import \
-    HookedTransformerConfig
+from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookPoint
-from transformer_lens.utilities.attention import (complex_attn_linear,
-                                                  simple_attn_linear)
+from transformer_lens.utilities.attention import complex_attn_linear, simple_attn_linear
 from transformer_lens.utils import get_offset_position_ids
 
 if is_bitsandbytes_available():

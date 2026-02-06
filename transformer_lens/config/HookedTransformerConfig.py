@@ -14,8 +14,7 @@ from typing import Any, Dict, List, Optional, Union
 import numpy as np
 import torch
 
-from transformer_lens.utilities.activation_functions import \
-    SUPPORTED_ACTIVATIONS
+from transformer_lens.utilities.activation_functions import SUPPORTED_ACTIVATIONS
 from transformer_lens.utilities.devices import get_device
 
 from .TransformerLensConfig import TransformerLensConfig
