@@ -1083,17 +1083,73 @@ class TransformerBridge(nn.Module):
     def OV(self):
         return FactoredMatrix(self.W_V, self.W_O)
 
+    def parameters(self, recurse: bool = True) -> Iterator[nn.Parameter]:
+        """Returns parameters following standard PyTorch semantics.
+
+        This method delegates to the underlying HuggingFace model's parameters().
+        For TransformerLens-style parameter generator, use tl_parameters() instead.
+
+        Args:
+            recurse: If True, yields parameters of this module and all submodules
+
+        Returns:
+            Iterator of nn.Parameter objects
+        """
+        return self.original_model.parameters(recurse=recurse)
+
     def named_parameters(
         self, prefix: str = "", recurse: bool = True, remove_duplicate: bool = True
-    ) -> Iterator[Tuple[str, torch.nn.Parameter]]:
-        """Return named parameters in the same format as TransformerLens.
+    ) -> Iterator[tuple[str, nn.Parameter]]:
+        """Returns named parameters following standard PyTorch semantics.
 
-        This ensures compatibility with tools like SVDInterpreter that expect
-        parameter names like 'blocks.0.attn.W_Q' instead of the raw model names.
+        This method delegates to the underlying HuggingFace model's named_parameters().
+        For TransformerLens-style generator, use tl_named_parameters() instead.
+
+        Args:
+            prefix: Prefix to prepend to all parameter names
+            recurse: If True, yields parameters of this module and all submodules
+            remove_duplicate: If True, removes duplicate parameters
+
+        Returns:
+            Iterator of (name, parameter) tuples
         """
-        params_dict = self.get_params()
-        for name, param in params_dict.items():
-            yield (name, param)
+        return self.original_model.named_parameters(prefix, recurse, remove_duplicate)
+
+    def tl_parameters(self) -> dict[str, torch.Tensor]:
+        """Returns TransformerLens-style parameter dictionary.
+
+        Parameter names follow TransformerLens conventions (e.g., 'blocks.0.attn.W_Q') and may
+        include processed weights (non-leaf tensors). This format is expected by SVDInterpreter
+        among other analysis tools.
+
+        Returns:
+            Dictionary mapping TransformerLens parameter names to tensors
+
+        Example:
+            >>> bridge = TransformerBridge.boot_transformers("gpt2")
+            >>> tl_params = bridge.tl_parameters()
+            >>> W_Q = tl_params["blocks.0.attn.W_Q"]  # Shape: [n_heads, d_model, d_head]
+        """
+        return self.get_params()
+
+    def tl_named_parameters(self) -> Iterator[tuple[str, torch.Tensor]]:
+        """Returns iterator of TransformerLens-style named parameters.
+
+        This provides the same parameters as tl_parameters() but as an iterator
+        for consistency with PyTorch's named_parameters() API pattern.
+
+        Returns:
+            Iterator of (name, tensor) tuples with TransformerLens naming conventions
+
+        Example:
+            >>> bridge = TransformerBridge.boot_transformers("gpt2")
+            >>> for name, param in bridge.tl_named_parameters():
+            ...     if "attn.W_Q" in name:
+            ...         print(f"{name}: {param.shape}")  # doctest: +ELLIPSIS
+            blocks.0.attn.W_Q: torch.Size([12, 768, 64])
+            ...
+        """
+        return iter(self.get_params().items())
 
     def forward(
         self,
