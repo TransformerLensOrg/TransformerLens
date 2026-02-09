@@ -950,7 +950,16 @@ class HookedTransformer(HookedRootModule):
                 ), f"Invalid tokens input to to_str_tokens, has shape: {tokens.shape}"
             else:
                 raise ValueError(f"Invalid input type to to_str_tokens: {type(input)}")
-            str_tokens = self.tokenizer.batch_decode(tokens, clean_up_tokenization_spaces=False)
+            # In transformers v5, batch_decode treats a flat list as a single sequence,
+            # not individual token IDs, so would return a single string. To maintain backward
+            # compatibility with v4, we wrap each token to decode them individually.
+            if isinstance(tokens, np.ndarray):
+                tokens_list = [[int(t)] for t in tokens]
+            else:
+                tokens_list = [[int(t)] for t in tokens.tolist()]
+            str_tokens = self.tokenizer.batch_decode(
+                tokens_list, clean_up_tokenization_spaces=False
+            )
             return str_tokens
 
     def to_single_token(self, string):
@@ -2085,8 +2094,8 @@ class HookedTransformer(HookedRootModule):
                 output_tokens = sampled_tokens
 
             if return_type == "str":
-                decoded_texts = [
-                    self.tokenizer.decode(tokens, skip_special_tokens=True)
+                decoded_texts: List[str] = [
+                    cast(str, self.tokenizer.decode(tokens, skip_special_tokens=True))
                     for tokens in output_tokens
                 ]
                 return decoded_texts[0] if len(decoded_texts) == 1 else decoded_texts

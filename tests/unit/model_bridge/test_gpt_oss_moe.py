@@ -239,7 +239,7 @@ def test_gpt_oss_run_with_cache_with_random_weights():
     assert "blocks.0.mlp.hook_router_scores" in cache
     assert "blocks.1.mlp.hook_router_scores" in cache
 
-    # Router scores should have shape [seq_len, num_experts]
-    # GPT-OSS has 32 experts
+    # Router scores should have shape [seq_len, num_experts_per_tok]
+    # GPT-OSS has 32 experts with top-4 routing, so router_scores is (seq_len, 4)
     router_scores_0 = cache["blocks.0.mlp.hook_router_scores"]
-    assert router_scores_0.shape == (5, 32)  # seq_len=5, num_experts=32
+    assert router_scores_0.shape == (5, 4)  # seq_len=5, num_experts_per_tok=4
