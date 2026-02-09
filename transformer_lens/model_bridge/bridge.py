@@ -890,7 +890,11 @@ class TransformerBridge(nn.Module):
             tokens = torch.tensor(tokens_np)
         else:
             raise ValueError(f"Invalid input type to to_str_tokens: {type(input)}")
-        str_tokens = self.tokenizer.batch_decode(tokens, clean_up_tokenization_spaces=False)
+        # In transformers v5, batch_decode treats a flat list as a single sequence,
+        # not individual token IDs, so would return a single string. To maintain backward
+        # compatibility with v4, we wrap each token to decode them individually.
+        tokens_list = [[int(t)] for t in tokens.tolist()]
+        str_tokens = self.tokenizer.batch_decode(tokens_list, clean_up_tokenization_spaces=False)
         return str_tokens
 
     def to_single_token(self, string: str) -> int:

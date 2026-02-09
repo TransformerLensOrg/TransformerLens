@@ -47,6 +47,7 @@ from transformer_lens.pretrained.weight_conversions import (
     convert_t5_weights,
 )
 from transformer_lens.supported_models import MODEL_ALIASES, OFFICIAL_MODEL_NAMES
+from transformer_lens.utilities.hf_utils import get_rotary_pct_from_config
 
 NON_HF_HOSTED_MODEL_NAMES = [
     "llama-7b-hf",
@@ -506,7 +507,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "rotary_adjacent_pairs": False,
             "normalization_type": "LN",
         }
-        rotary_pct = hf_config.rotary_pct
+        rotary_pct = get_rotary_pct_from_config(hf_config)
         cfg_dict["rotary_dim"] = round(rotary_pct * cfg_dict["d_head"])
     elif architecture == "BertForMaskedLM":
         # All supported Bert architectures have the same config,

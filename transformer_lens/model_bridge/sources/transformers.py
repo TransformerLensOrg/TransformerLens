@@ -254,13 +254,25 @@ def boot(
         tokenizer = setup_tokenizer(tokenizer, default_padding_side=default_padding_side)
     else:
         huggingface_token = os.environ.get("HF_TOKEN", "")
-        tokenizer = setup_tokenizer(
-            AutoTokenizer.from_pretrained(
+        token_arg = huggingface_token if len(huggingface_token) > 0 else None
+        # Try to load tokenizer with add_bos_token=True first
+        # (encoder-decoder models like T5 don't have BOS tokens and will raise ValueError)
+        try:
+            base_tokenizer = AutoTokenizer.from_pretrained(
                 model_name,
                 add_bos_token=True,
                 use_fast=use_fast,
-                token=huggingface_token if len(huggingface_token) > 0 else None,
-            ),
+                token=token_arg,
+            )
+        except ValueError:
+            # Model doesn't have a BOS token, load without add_bos_token
+            base_tokenizer = AutoTokenizer.from_pretrained(
+                model_name,
+                use_fast=use_fast,
+                token=token_arg,
+            )
+        tokenizer = setup_tokenizer(
+            base_tokenizer,
             default_padding_side=default_padding_side,
         )
     if tokenizer is not None:
