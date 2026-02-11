@@ -861,6 +861,13 @@ def run_benchmark_suite(
             auto_model_class = get_auto_model_class(model_name)
             if verbose and auto_model_class != AutoModelForCausalLM:
                 print(f"Using {auto_model_class.__name__} for encoder-decoder model")
+            # Ensure pad_token_id exists on HF config. Transformers v5 raises
+            # AttributeError for missing config attributes, which crashes models
+            # like StableLM that access config.pad_token_id during __init__.
+            hf_config = AutoConfig.from_pretrained(model_name)
+            if not hasattr(hf_config, "pad_token_id") or "pad_token_id" not in hf_config.__dict__:
+                hf_config.pad_token_id = getattr(hf_config, "eos_token_id", None)
+                hf_kwargs["config"] = hf_config
             hf_model = auto_model_class.from_pretrained(model_name, **hf_kwargs)  # type: ignore[arg-type]
             hf_model = hf_model.to(device)
             hf_model.eval()

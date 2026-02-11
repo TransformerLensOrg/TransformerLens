@@ -73,6 +73,9 @@ from transformer_lens.model_bridge.supported_architectures.qwen2 import (
 from transformer_lens.model_bridge.supported_architectures.qwen3 import (
     Qwen3ArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.stablelm import (
+    StableLmArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.t5 import (
     T5ArchitectureAdapter,
 )
@@ -101,5 +104,6 @@ __all__ = [
     "QwenArchitectureAdapter",
     "Qwen2ArchitectureAdapter",
     "Qwen3ArchitectureAdapter",
+    "StableLmArchitectureAdapter",
     "T5ArchitectureAdapter",
 ]

@@ -152,6 +152,7 @@ def determine_architecture_from_hf_config(hf_config):
             "qwen": "QwenForCausalLM",
             "qwen2": "Qwen2ForCausalLM",
             "qwen3": "Qwen3ForCausalLM",
+            "stablelm": "StableLmForCausalLM",
             "t5": "T5ForConditionalGeneration",
         }
         if model_type in model_type_mappings:
