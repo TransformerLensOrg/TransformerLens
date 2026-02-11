@@ -37,6 +37,7 @@ from transformer_lens.pretrained.weight_conversions import (
     convert_neel_solu_old_weights,
     convert_neo_weights,
     convert_neox_weights,
+    convert_olmo_weights,
     convert_opt_weights,
     convert_phi3_weights,
     convert_phi_weights,
@@ -246,6 +247,14 @@ OFFICIAL_MODEL_NAMES = [
     "microsoft/phi-2",
     "microsoft/Phi-3-mini-4k-instruct",
     "microsoft/phi-4",
+    "allenai/OLMo-1B",
+    "allenai/OLMo-7B",
+    "allenai/OLMo-7B-Instruct",
+    "allenai/Olmo-3-7B-Think",
+    "allenai/Olmo-3-32B-Think",
+    "allenai/Olmo-3.1-32B-Think",
+    "allenai/Olmo-3-7B-Instruct",
+    "allenai/Olmo-3.1-32B-Instruct",
     "google/gemma-2b",
     "google/gemma-7b",
     "google/gemma-2b-it",
@@ -1962,6 +1971,36 @@ def convert_hf_model_config(model_name: str, **kwargs: Any):
             "use_attn_scale": False,
             "tie_word_embeddings": hf_config.tie_word_embeddings,
         }
+    elif architecture == "Olmo3ForCausalLM":
+        cfg_dict = {
+            "d_model": hf_config.hidden_size,
+            "d_head": hf_config.hidden_size // hf_config.num_attention_heads,
+            "n_heads": hf_config.num_attention_heads,
+            "n_key_value_heads": hf_config.num_key_value_heads,
+            "d_mlp": hf_config.intermediate_size,
+            "n_layers": hf_config.num_hidden_layers,
+            "n_ctx": hf_config.max_position_embeddings,
+            "d_vocab": hf_config.vocab_size,
+            "act_fn": hf_config.hidden_act,  # Typically "silu"
+            "normalization_type": "RMS",
+            "positional_embedding_type": "rotary",
+            "gated_mlp": True,
+            "use_qk_norm": True,  # OLMO 3 has Q/K norms
+            "use_normalization_before_and_after": True,  # Post-norm pattern
+            "use_attn_scale": True,
+            "final_rms": True,
+            # Convert to TransformerLens format
+            "eps": hf_config.rms_norm_eps,
+        }
+        # Handle sliding window attention if configured
+        layer_types = getattr(hf_config, "layer_types", None)
+        if layer_types:
+            # Map layer types from OLMO format to TransformerLens format
+            cfg_dict["attn_types"] = [
+                "local" if t == "sliding_attention" else "global" for t in layer_types
+            ]
+            cfg_dict["use_local_attn"] = "sliding_attention" in layer_types
+            cfg_dict["window_size"] = getattr(hf_config, "sliding_window", None)
     else:
         raise NotImplementedError(f"{architecture} is not currently supported.")
     # All of these models use LayerNorm
@@ -2396,6 +2435,8 @@ def get_pretrained_state_dict(
         elif cfg.original_architecture == "Gemma3ForConditionalGeneration":
             # Multimodal model - extract text-only weights
             state_dict = convert_gemma_weights(hf_model, cfg)
+        elif cfg.original_architecture == "Olmo3ForCausalLM":
+            state_dict = convert_olmo_weights(hf_model, cfg)
         else:
             raise ValueError(
                 f"Loading weights from the architecture is not currently supported: {cfg.original_architecture}, generated from model name {cfg.model_name}. Feel free to open an issue on GitHub to request this feature."
