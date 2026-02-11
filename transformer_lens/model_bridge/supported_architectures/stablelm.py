@@ -75,7 +75,11 @@ class StableLmArchitectureAdapter(ArchitectureAdapter):
             self.default_config["n_key_value_heads"] = cfg.n_key_value_heads
             self.cfg.n_key_value_heads = cfg.n_key_value_heads
 
-        n_kv_heads = self.cfg.n_key_value_heads if self.cfg.n_key_value_heads is not None else self.cfg.n_heads
+        n_kv_heads = (
+            self.cfg.n_key_value_heads
+            if self.cfg.n_key_value_heads is not None
+            else self.cfg.n_heads
+        )
 
         self.weight_processing_conversions = {
             "blocks.{i}.attn.q.weight": ParamProcessingConversion(
@@ -212,12 +216,11 @@ class StableLmArchitectureAdapter(ArchitectureAdapter):
             original_k_ln_forward = hf_attn.k_layernorm.forward
 
             # Use a closure factory to capture the correct references
-            def _make_hooked_forward(
-                original_forward: Any, hook: HookPoint
-            ) -> Any:
+            def _make_hooked_forward(original_forward: Any, hook: HookPoint) -> Any:
                 def hooked_forward(hidden_states: torch.Tensor) -> torch.Tensor:
                     result = original_forward(hidden_states)
                     return hook(result)
+
                 return hooked_forward
 
             hf_attn.q_layernorm.forward = _make_hooked_forward(  # type: ignore[method-assign]
