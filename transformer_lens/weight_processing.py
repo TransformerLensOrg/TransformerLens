@@ -528,8 +528,12 @@ class ProcessWeights:
                 mlp_b_in = ProcessWeights.convert_tensor_to_tl_format(
                     mlp_b_in_key, state_dict, state_dict.get(mlp_b_in_key), cfg, adapter, layer
                 )
-                assert mlp_b_in is not None, f"MLP b_in not found at key {mlp_b_in_key}"
-                new_mlp_b_in = mlp_b_in + (mlp_W_in * ln2_b_broadcast).sum(sum_dim)
+                ln2_b_folded = (mlp_W_in * ln2_b_broadcast).sum(sum_dim)
+                if mlp_b_in is not None:
+                    new_mlp_b_in = mlp_b_in + ln2_b_folded
+                else:
+                    # MLP has no bias — create one from the folded LN bias
+                    new_mlp_b_in = ln2_b_folded
                 state_dict[mlp_b_in_key] = ProcessWeights.convert_tensor_to_hf_format(
                     mlp_b_in_key, new_mlp_b_in, cfg, adapter, layer
                 )
@@ -1554,6 +1558,9 @@ class ProcessWeights:
                     # (string mappings are handled elsewhere in the architecture adapter)
                     return tensor
                 else:
+                    # Skip conversion for optional parameters that don't exist (e.g. biases)
+                    if tensor is None and param_name not in model_state_dict:
+                        return None
                     # Let ParamProcessingConversion handle the fetching and conversion
                     return param_conversion.convert(model_state_dict, param_name)
             else:
