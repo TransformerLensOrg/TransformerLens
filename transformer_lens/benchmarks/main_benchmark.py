@@ -61,6 +61,10 @@ from transformer_lens.benchmarks.weight_processing import (
     benchmark_weight_processing,
     benchmark_weight_sharing,
 )
+from transformer_lens.config import TransformerBridgeConfig
+from transformer_lens.factories.architecture_adapter_factory import (
+    ArchitectureAdapterFactory,
+)
 from transformer_lens.model_bridge import TransformerBridge
 
 # Architecture names that indicate encoder-decoder models
@@ -75,17 +79,18 @@ ENCODER_DECODER_ARCHITECTURES = [
 ]
 
 
-def is_encoder_decoder_model(model_name: str) -> bool:
+def is_encoder_decoder_model(model_name: str, trust_remote_code: bool = False) -> bool:
     """Check if a model is an encoder-decoder architecture.
 
     Args:
         model_name: The HuggingFace model name or path
+        trust_remote_code: Whether to trust remote code for custom architectures.
 
     Returns:
         True if the model is encoder-decoder (like T5), False otherwise
     """
     try:
-        config = AutoConfig.from_pretrained(model_name)
+        config = AutoConfig.from_pretrained(model_name, trust_remote_code=trust_remote_code)
         # Check config attribute first
         if getattr(config, "is_encoder_decoder", False):
             return True
@@ -96,7 +101,7 @@ def is_encoder_decoder_model(model_name: str) -> bool:
         return False
 
 
-def get_auto_model_class(model_name: str):
+def get_auto_model_class(model_name: str, trust_remote_code: bool = False):
     """Determine the correct AutoModel class for a given model.
 
     Some models (like T5) are encoder-decoder and need AutoModelForSeq2SeqLM
@@ -108,9 +113,37 @@ def get_auto_model_class(model_name: str):
     Returns:
         The appropriate AutoModel class (AutoModelForCausalLM or AutoModelForSeq2SeqLM)
     """
-    if is_encoder_decoder_model(model_name):
+    if is_encoder_decoder_model(model_name, trust_remote_code=trust_remote_code):
         return AutoModelForSeq2SeqLM
     return AutoModelForCausalLM
+
+
+def _fixup_custom_model(hf_model) -> None:
+    """Apply post-load fixups for models with custom code.
+
+    Some custom models (e.g., OpenELM) have components that fail to initialize
+    properly on meta device during transformers v5 loading. This function
+    re-initializes those components after weights are loaded.
+    """
+    # OpenELM fixups
+    if hasattr(hf_model, "transformer") and hasattr(hf_model.transformer, "layers"):
+        # Ensure use_cache is set (OpenELM custom config omits it)
+        if not hasattr(hf_model.config, "use_cache") or "use_cache" not in hf_model.config.__dict__:
+            hf_model.config.use_cache = False
+        # Re-initialize RoPE embeddings that were skipped on meta device
+        rope_max = getattr(hf_model.config, "rope_max_length", None)
+        if rope_max is not None:
+            for layer in hf_model.transformer.layers:
+                if hasattr(layer, "attn") and hasattr(layer.attn, "pos_embedding"):
+                    rope = layer.attn.pos_embedding
+                    if getattr(rope, "_cached_cos", None) is None:
+                        rope._compute_sin_cos_embeddings(rope_max)
+        # Create synthetic lm_head for weight-tied models (share_input_output_layers)
+        if getattr(hf_model, "lm_head", None) is None:
+            embed = hf_model.transformer.token_embeddings
+            lm_head = torch.nn.Linear(embed.embedding_dim, embed.num_embeddings, bias=False)
+            lm_head.weight = embed.weight
+            hf_model.lm_head = lm_head
 
 
 def run_comparison_benchmarks(
@@ -255,7 +288,7 @@ def run_comparison_benchmarks(
         try:
             if verbose:
                 print("Using GPT-2 for cross-model validation (dimensional matching)")
-            add_result(benchmark_hook_registry(bridge_model, reference_model=gpt2_reference))
+            add_result(benchmark_hook_registry(bridge_model, reference_model=gpt2_reference, cross_model=True))
             gc.collect()
         except Exception as e:
             if verbose:
@@ -527,6 +560,7 @@ def run_benchmark_suite(
     track_memory: bool = False,
     test_weight_processing_individually: bool = False,
     phases: list[int] | None = None,
+    trust_remote_code: bool = False,
 ) -> List[BenchmarkResult]:
     """Run comprehensive benchmark suite for TransformerBridge.
 
@@ -823,7 +857,7 @@ def run_benchmark_suite(
     attn_implementation = None
     try:
         # Load a lightweight version without weights to get config
-        bridge_config_only = TransformerBridge.boot_transformers(model_name, device=device, dtype=bridge_dtype, load_weights=False)  # type: ignore[attr-defined]
+        bridge_config_only = TransformerBridge.boot_transformers(model_name, device=device, dtype=bridge_dtype, load_weights=False, trust_remote_code=trust_remote_code)  # type: ignore[attr-defined]
         # Extract attn_implementation for HF model loading.
         # First check if adapter explicitly sets it (e.g. qwen3, gemma3).
         if hasattr(bridge_config_only.adapter.cfg, "attn_implementation"):
@@ -841,6 +875,30 @@ def run_benchmark_suite(
     except Exception as e:
         if verbose:
             print(f"⚠ Could not detect config (will use defaults): {str(e)}")
+        # For custom code models, the config-only bridge may fail. We still need to
+        # apply architecture-specific patches (e.g., OpenELM RoPE fix, _init_weights fix)
+        # before loading any model. Create adapter directly to call prepare_loading.
+        if trust_remote_code:
+            try:
+                from transformer_lens.model_bridge.sources.transformers import (
+                    determine_architecture_from_hf_config,
+                    map_default_transformer_lens_config,
+                )
+
+                hf_cfg = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
+                tl_cfg = map_default_transformer_lens_config(hf_cfg)
+                arch = determine_architecture_from_hf_config(hf_cfg)
+                bridge_cfg = TransformerBridgeConfig.from_dict(tl_cfg.__dict__)
+                bridge_cfg.architecture = arch
+                bridge_cfg.model_name = model_name
+                adapter = ArchitectureAdapterFactory.select_architecture_adapter(bridge_cfg)
+                adapter.prepare_loading(model_name, {})
+                if verbose:
+                    print("✓ Applied architecture patches for custom code model")
+                del adapter, bridge_cfg, tl_cfg, hf_cfg
+            except Exception as patch_err:
+                if verbose:
+                    print(f"⚠ Could not apply architecture patches: {patch_err}")
 
     # Load HF model with matching attn_implementation
     if use_hf_reference:
@@ -858,17 +916,21 @@ def run_benchmark_suite(
                 if verbose:
                     print(f"Using attn_implementation={attn_implementation}")
             # Use appropriate AutoModel class (e.g., AutoModelForSeq2SeqLM for T5)
-            auto_model_class = get_auto_model_class(model_name)
+            auto_model_class = get_auto_model_class(model_name, trust_remote_code=trust_remote_code)
             if verbose and auto_model_class != AutoModelForCausalLM:
                 print(f"Using {auto_model_class.__name__} for encoder-decoder model")
             # Ensure pad_token_id exists on HF config. Transformers v5 raises
             # AttributeError for missing config attributes, which crashes models
             # like StableLM that access config.pad_token_id during __init__.
-            hf_config = AutoConfig.from_pretrained(model_name)
+            hf_config = AutoConfig.from_pretrained(model_name, trust_remote_code=trust_remote_code)
             if not hasattr(hf_config, "pad_token_id") or "pad_token_id" not in hf_config.__dict__:
                 hf_config.pad_token_id = getattr(hf_config, "eos_token_id", None)
                 hf_kwargs["config"] = hf_config
+            if trust_remote_code:
+                hf_kwargs["trust_remote_code"] = True
             hf_model = auto_model_class.from_pretrained(model_name, **hf_kwargs)  # type: ignore[arg-type]
+            # Post-load fixup for models with custom code (e.g., OpenELM RoPE re-init)
+            _fixup_custom_model(hf_model)
             hf_model = hf_model.to(device)
             hf_model.eval()
             # Detect dtype from HF model
@@ -888,7 +950,7 @@ def run_benchmark_suite(
     if verbose:
         print("Loading TransformerBridge (unprocessed)...")
     try:
-        bridge_unprocessed = TransformerBridge.boot_transformers(model_name, device=device, dtype=bridge_dtype)  # type: ignore[attr-defined]
+        bridge_unprocessed = TransformerBridge.boot_transformers(model_name, device=device, dtype=bridge_dtype, trust_remote_code=trust_remote_code)  # type: ignore[attr-defined]
         if verbose:
             print("✓ TransformerBridge loaded (unprocessed)\n")
     except Exception as e:
@@ -1029,6 +1091,7 @@ def run_benchmark_suite(
             ht_model_unprocessed = HookedTransformer.from_pretrained(
                 model_name,
                 device=device,
+                dtype=bridge_dtype,
                 fold_ln=False,
                 center_writing_weights=False,
                 center_unembed=False,
@@ -1110,7 +1173,7 @@ def run_benchmark_suite(
         bridge_dtype = saved_bridge_dtype
         if verbose:
             print(f"Using dtype={bridge_dtype} from Phase 1")
-        bridge_processed = TransformerBridge.boot_transformers(model_name, device=device, dtype=bridge_dtype)  # type: ignore[attr-defined]
+        bridge_processed = TransformerBridge.boot_transformers(model_name, device=device, dtype=bridge_dtype, trust_remote_code=trust_remote_code)  # type: ignore[attr-defined]
         bridge_processed.enable_compatibility_mode(disable_warnings=True)
         if verbose:
             print("✓ TransformerBridge compatibility mode enabled (processed)\n")
@@ -1178,6 +1241,7 @@ def run_benchmark_suite(
             ht_model_processed = HookedTransformer.from_pretrained(
                 model_name,
                 device=device,
+                dtype=bridge_dtype,
                 fold_ln=True,
                 center_writing_weights=True,
                 center_unembed=True,

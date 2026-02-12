@@ -645,6 +645,30 @@ class ArchitectureAdapter:
                                         return f"blocks.{layer_idx}.{tl_subname}.{tl_nested_name}.{param}"
         return hf_key
 
+    def prepare_loading(self, model_name: str, model_kwargs: dict) -> None:
+        """Called before HuggingFace model loading to apply architecture-specific patches.
+
+        Override this to patch HF model classes before from_pretrained() is called.
+        For example, patching custom model code that is incompatible with transformers v5
+        meta device initialization.
+
+        Args:
+            model_name: The HuggingFace model name/path
+            model_kwargs: The kwargs dict that will be passed to from_pretrained()
+        """
+        pass
+
+    def prepare_model(self, hf_model: Any) -> None:
+        """Called after HuggingFace model loading but before bridge creation.
+
+        Override this to fix up the loaded model (e.g., create synthetic modules,
+        re-initialize deferred computations, apply post-load patches).
+
+        Args:
+            hf_model: The loaded HuggingFace model instance
+        """
+        pass
+
     def setup_component_testing(self, hf_model: RemoteModel, bridge_model: Any = None) -> None:
         """Set up model-specific references needed for component testing.
 

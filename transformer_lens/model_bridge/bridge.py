@@ -145,6 +145,7 @@ class TransformerBridge(nn.Module):
         dtype: torch.dtype = torch.float32,
         tokenizer: Optional[Any] = None,
         load_weights: bool = True,
+        trust_remote_code: bool = False,
     ) -> "TransformerBridge":
         """Boot a model from HuggingFace (alias for sources.transformers.boot).
 
@@ -155,6 +156,7 @@ class TransformerBridge(nn.Module):
             dtype: The dtype to use for the model.
             tokenizer: Optional pre-initialized tokenizer to use; if not provided one will be created.
             load_weights: If False, load model without weights (on meta device) for config inspection only.
+            trust_remote_code: Whether to trust remote code for custom model architectures.
 
         Returns:
             The bridge to the loaded model.
@@ -168,6 +170,7 @@ class TransformerBridge(nn.Module):
             dtype=dtype,
             tokenizer=tokenizer,
             load_weights=load_weights,
+            trust_remote_code=trust_remote_code,
         )
 
     @property
@@ -1677,6 +1680,7 @@ class TransformerBridge(nn.Module):
         top_p: Optional[float] = None,
         temperature: float = 1.0,
         freq_penalty: float = 0.0,
+        repetition_penalty: float = 1.0,
         use_past_kv_cache: bool = True,
         prepend_bos: Optional[bool] = None,
         padding_side: Optional[str] = None,
@@ -1701,6 +1705,9 @@ class TransformerBridge(nn.Module):
             top_p: Probability mass to sample from. If 1.0, sample from all tokens
             temperature: Temperature for sampling. Higher values will make the model more random
             freq_penalty: Frequency penalty for sampling - how much to penalise previous tokens
+            repetition_penalty: HuggingFace-style repetition penalty. Values > 1.0 discourage
+                repetition by dividing positive logits and multiplying negative logits for
+                previously seen tokens. Default 1.0 (no penalty).
             use_past_kv_cache: Not used in Bridge (kept for API compatibility)
             prepend_bos: Not used in Bridge (kept for API compatibility)
             padding_side: Not used in Bridge (kept for API compatibility)
@@ -1785,10 +1792,16 @@ class TransformerBridge(nn.Module):
                         top_p=top_p,
                         temperature=temperature,
                         freq_penalty=freq_penalty,
+                        repetition_penalty=repetition_penalty,
                         tokens=current_tokens,
                     ).to(self.cfg.device)
                 else:
-                    sampled_tokens = final_logits.argmax(-1).to(self.cfg.device)
+                    sampled_tokens = utils.sample_logits(
+                        final_logits,
+                        temperature=0.0,
+                        repetition_penalty=repetition_penalty,
+                        tokens=current_tokens,
+                    ).to(self.cfg.device)
 
                 sampled_tokens_list.append(sampled_tokens.unsqueeze(1))
 

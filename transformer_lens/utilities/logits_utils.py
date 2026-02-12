@@ -11,12 +11,43 @@ import torch
 from jaxtyping import Float, Int
 
 
+def _apply_repetition_penalty(
+    logits: Float[torch.Tensor, "batch d_vocab"],
+    tokens: Int[torch.Tensor, "batch pos"],
+    penalty: float,
+) -> Float[torch.Tensor, "batch d_vocab"]:
+    """Apply HuggingFace-style repetition penalty to logits.
+
+    For each token that has appeared in the sequence, positive logits are divided
+    by the penalty and negative logits are multiplied by it.
+
+    Args:
+        logits: Logits tensor of shape [batch, d_vocab]
+        tokens: Token IDs of shape [batch, pos]
+        penalty: Repetition penalty value (1.0 = no penalty)
+
+    Returns:
+        Modified logits tensor
+    """
+    logits = logits.clone()
+    for batch_idx in range(logits.shape[0]):
+        # Get unique tokens that have appeared in this sequence
+        unique_tokens = tokens[batch_idx].unique()
+        score = logits[batch_idx, unique_tokens]
+        # Divide positive logits, multiply negative logits
+        logits[batch_idx, unique_tokens] = torch.where(
+            score > 0, score / penalty, score * penalty
+        )
+    return logits
+
+
 def sample_logits(
     final_logits: Float[torch.Tensor, "batch d_vocab"],
     top_k: Optional[int] = None,
     top_p: Optional[float] = None,
     temperature: float = 1.0,
     freq_penalty: float = 0.0,
+    repetition_penalty: float = 1.0,
     tokens: Optional[Int[torch.Tensor, "batch pos"]] = None,
 ) -> Int[torch.Tensor, "batch"]:
     """
@@ -28,16 +59,24 @@ def sample_logits(
 
     Frequency penalty is a penalty on the probability of a token, proportional to the number of times it has been generated so far. This encourages the model to generate new tokens, rather than repeating itself. It is a hyperparameter, and should be tuned. It is applied to the logits before sampling. If this is non-zero it is required to input the input_tokens
 
+    Repetition penalty (HuggingFace-style) divides positive logits by the penalty value and multiplies negative logits by it for any token that has appeared in the sequence. A value of 1.0 means no penalty. Values > 1.0 discourage repetition. This is applied before temperature scaling.
+
     #! TODO: Finish testing all the edge cases here. Useful testing code:
     logits = torch.randn(4)
     print(logits)
     np.unique(np.array([sample_logits(logits, top_k=2).item() for i in range(1000)]), return_counts=True)
     """
     if temperature == 0.0:
-        # Greedy sampling
+        # Greedy sampling - still apply repetition penalty before argmax
+        if repetition_penalty != 1.0 and tokens is not None:
+            final_logits = _apply_repetition_penalty(final_logits, tokens, repetition_penalty)
         return final_logits.argmax(dim=-1)
     else:
         # Sample from the distribution
+
+        # Apply repetition penalty before temperature scaling
+        if repetition_penalty != 1.0 and tokens is not None:
+            final_logits = _apply_repetition_penalty(final_logits, tokens, repetition_penalty)
 
         final_logits = final_logits / temperature
         if freq_penalty > 0:

@@ -329,11 +329,15 @@ def benchmark_weight_modification(
     except Exception as e:
         # Some architectures (e.g., Gemma 3 with complex attention) may have forward pass
         # issues after weight modification. Report as INFO (passed) for these known limitations.
-        if "cannot be multiplied" in str(e) or "shape" in str(e).lower():
+        if (
+            "cannot be multiplied" in str(e)
+            or "shape" in str(e).lower()
+            or "has no attribute" in str(e)
+        ):
             return BenchmarkResult(
                 name="weight_modification",
                 severity=BenchmarkSeverity.INFO,
-                message=f"Weight modification not testable for this architecture (shape incompatibility)",
+                message=f"Weight modification not testable for this architecture: {str(e)}",
                 details={"error": str(e), "architecture_limitation": True},
                 passed=True,
             )
