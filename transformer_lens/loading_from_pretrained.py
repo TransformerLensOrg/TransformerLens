@@ -1447,14 +1447,17 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "experts_per_token": hf_config.num_experts_per_tok,
             "norm_topk_prob": hf_config.norm_topk_prob,
             "n_key_value_heads": hf_config.num_key_value_heads,
-            "rotary_base": hf_config.rope_theta,
+            "rotary_base": getattr(
+                hf_config,
+                "rope_theta",
+                hf_config.rope_parameters.get("rope_theta", 10000.0),
+            ),
             "tie_word_embeddings": hf_config.tie_word_embeddings,
             "initializer_range": hf_config.initializer_range,
             "positional_embedding_type": "rotary",
             "rotary_dim": hf_config.hidden_size // hf_config.num_attention_heads,
-            "final_rms": True,
             "gated_mlp": True,
-            "normalization_type": "LN",
+            "normalization_type": "RMS",
         }
     elif architecture == "T5ForConditionalGeneration":
         cfg_dict = {
@@ -1612,6 +1615,15 @@ def get_pretrained_model_config(
     ):
         logging.warning(
             "You tried to specify fold_ln=True for a shortformer model, but this can't be done! Setting fold_ln=False instead."
+        )
+        fold_ln = False
+
+    # OLMo 2 uses post-norm (norm after attention/MLP, not before), so folding
+    # the norm weights into adjacent linear layers is not mathematically valid.
+    if cfg_dict.get("original_architecture") == "Olmo2ForCausalLM" and fold_ln:
+        logging.warning(
+            "fold_ln=True is incompatible with OLMo 2's post-norm architecture. "
+            "Setting fold_ln=False."
         )
         fold_ln = False
 

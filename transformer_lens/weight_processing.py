@@ -503,6 +503,30 @@ class ProcessWeights:
         ln2_w_key = ProcessWeights._get_param_key(f"blocks.{layer}.ln2.w", adapter)
         # CRITICAL FIX: For RMS norm (Gemma), ln2_b doesn't exist. Only require ln2_w!
         if ln2_w_key in state_dict:
+            # MoE layers: fold ln2 into router gate and each expert's W_in/W_gate
+            if getattr(cfg, "num_experts", None) is not None and cfg.num_experts > 0:
+                ln2_w = state_dict[ln2_w_key]
+                # Fold into router gate
+                router_key = f"blocks.{layer}.mlp.W_gate.weight"
+                if router_key in state_dict:
+                    state_dict[router_key] = state_dict[router_key] * ln2_w[None, :]
+                # Fold into each expert's W_in and W_gate (SwiGLU gate)
+                for e in range(cfg.num_experts):
+                    for suffix in ("W_in.weight", "W_gate.weight"):
+                        key = f"blocks.{layer}.mlp.experts.{e}.{suffix}"
+                        if key in state_dict:
+                            state_dict[key] = state_dict[key] * ln2_w[None, :]
+                # Set ln2.w to identity
+                state_dict[ln2_w_key] = torch.ones_like(ln2_w)
+                alternate_ln2_w_key = (
+                    ln2_w_key.replace("ln_2", "ln2")
+                    if "ln_2" in ln2_w_key
+                    else ln2_w_key.replace("ln2", "ln_2")
+                )
+                if alternate_ln2_w_key != ln2_w_key and alternate_ln2_w_key in state_dict:
+                    state_dict[alternate_ln2_w_key] = torch.ones_like(ln2_w)
+                return state_dict
+
             mlp_W_in = ProcessWeights.convert_tensor_to_tl_format(
                 mlp_W_in_key, state_dict, state_dict.get(mlp_W_in_key), cfg, adapter, layer
             )
@@ -1286,9 +1310,7 @@ class ProcessWeights:
             Dict[str, torch.Tensor]: Fully processed state dict.
         """
         if fold_ln:
-            if getattr(cfg, "num_experts", None) and cfg.num_experts > 1:
-                pass
-            elif getattr(cfg, "normalization_type", "LN") in ["LN", "LNPre"]:
+            if getattr(cfg, "normalization_type", "LN") in ["LN", "LNPre"]:
                 state_dict = ProcessWeights.fold_layer_norm(
                     state_dict, cfg, fold_biases=True, center_weights=True, adapter=adapter
                 )
