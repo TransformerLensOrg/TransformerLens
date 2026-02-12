@@ -35,9 +35,7 @@ def _apply_repetition_penalty(
         unique_tokens = tokens[batch_idx].unique()
         score = logits[batch_idx, unique_tokens]
         # Divide positive logits, multiply negative logits
-        logits[batch_idx, unique_tokens] = torch.where(
-            score > 0, score / penalty, score * penalty
-        )
+        logits[batch_idx, unique_tokens] = torch.where(score > 0, score / penalty, score * penalty)
     return logits
 
 
