@@ -72,7 +72,6 @@ class MockStableLmModel(nn.Module):
         self.model.norm = nn.LayerNorm(512)
         self.lm_head = nn.Linear(512, 1000, bias=False)
 
-
 class MockOpenElmModel(nn.Module):
     """A mock implementation of the OpenELM model architecture for testing purposes.
 
