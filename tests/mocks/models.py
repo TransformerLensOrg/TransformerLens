@@ -71,3 +71,34 @@ class MockStableLmModel(nn.Module):
             layer.mlp.down_proj = nn.Linear(2048, 512, bias=False)
         self.model.norm = nn.LayerNorm(512)
         self.lm_head = nn.Linear(512, 1000, bias=False)
+
+
+class MockOpenElmModel(nn.Module):
+    """A mock implementation of the OpenELM model architecture for testing purposes.
+
+    Replicates the key architectural components of OpenELM:
+    - Embedding layer (token_embeddings) under 'transformer' root
+    - Multiple transformer layers with:
+        - RMSNorm for attention (attn_norm) and FFN (ffn_norm)
+        - Combined QKV attention (qkv_proj + out_proj)
+        - Combined gate+up MLP (proj_1 + proj_2)
+    - Final RMSNorm (transformer.norm)
+    - Synthetic lm_head (weight-tied to embeddings)
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.transformer = nn.Module()
+        self.transformer.token_embeddings = nn.Embedding(1000, 512)
+        self.transformer.layers = nn.ModuleList([nn.Module() for _ in range(2)])
+        for layer in self.transformer.layers:
+            layer.attn_norm = nn.LayerNorm(512)  # RMSNorm in real model
+            layer.ffn_norm = nn.LayerNorm(512)  # RMSNorm in real model
+            layer.attn = nn.Module()
+            layer.attn.qkv_proj = nn.Linear(512, 1536, bias=False)  # Combined Q+K+V
+            layer.attn.out_proj = nn.Linear(512, 512, bias=False)
+            layer.ffn = nn.Module()
+            layer.ffn.proj_1 = nn.Linear(512, 4096, bias=False)  # Combined gate+up
+            layer.ffn.proj_2 = nn.Linear(2048, 512, bias=False)  # Down projection
+        self.transformer.norm = nn.LayerNorm(512)  # RMSNorm in real model
+        self.lm_head = nn.Linear(512, 1000, bias=False)
