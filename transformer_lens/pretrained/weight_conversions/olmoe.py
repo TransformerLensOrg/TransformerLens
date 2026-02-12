@@ -57,12 +57,8 @@ def convert_olmoe_weights(olmoe, cfg: HookedTransformerConfig):
 
         for e in range(cfg.num_experts):
             # Split fused gate_up into gate and up projections
-            state_dict[f"blocks.{l}.mlp.experts.{e}.W_gate.weight"] = gate_up[
-                e, : cfg.d_mlp, :
-            ]
-            state_dict[f"blocks.{l}.mlp.experts.{e}.W_in.weight"] = gate_up[
-                e, cfg.d_mlp :, :
-            ]
+            state_dict[f"blocks.{l}.mlp.experts.{e}.W_gate.weight"] = gate_up[e, : cfg.d_mlp, :]
+            state_dict[f"blocks.{l}.mlp.experts.{e}.W_in.weight"] = gate_up[e, cfg.d_mlp :, :]
             state_dict[f"blocks.{l}.mlp.experts.{e}.W_out.weight"] = down[e]
 
     state_dict["ln_final.w"] = olmoe.model.norm.weight

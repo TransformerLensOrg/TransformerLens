@@ -356,7 +356,12 @@ def test_detect_head_with_invalid_head_name():
     exc_msg = str(e.value).lower()
     assert "TypeCheckError" in exc_name or "Beartype" in exc_name
     # Check for meaningful error message (different formats for different type checkers)
-    assert "type-check" in exc_msg or "vector_type" in exc_msg or "detection_pattern" in exc_msg or "violates type" in exc_msg
+    assert (
+        "type-check" in exc_msg
+        or "vector_type" in exc_msg
+        or "detection_pattern" in exc_msg
+        or "violates type" in exc_msg
+    )
 
 
 def test_detect_head_with_zero_sequence_length():
