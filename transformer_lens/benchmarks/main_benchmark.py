@@ -288,7 +288,11 @@ def run_comparison_benchmarks(
         try:
             if verbose:
                 print("Using GPT-2 for cross-model validation (dimensional matching)")
-            add_result(benchmark_hook_registry(bridge_model, reference_model=gpt2_reference, cross_model=True))
+            add_result(
+                benchmark_hook_registry(
+                    bridge_model, reference_model=gpt2_reference, cross_model=True
+                )
+            )
             gc.collect()
         except Exception as e:
             if verbose:
