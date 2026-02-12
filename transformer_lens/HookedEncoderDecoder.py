@@ -479,7 +479,7 @@ class HookedEncoderDecoder(HookedRootModule):
         if return_type == "str":
             assert self.tokenizer is not None
             # Convert tokens to string
-            return self.tokenizer.decode(decoder_input[0], skip_special_tokens=True)
+            return cast(str, self.tokenizer.decode(decoder_input[0], skip_special_tokens=True))
 
         else:
             return decoder_input

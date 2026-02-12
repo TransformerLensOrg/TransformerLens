@@ -88,11 +88,9 @@ jobs:
         run: |
           uv lock --check
           uv sync
-      - name: Authenticate HuggingFace CLI
+      - name: Authenticate HuggingFace
         if: env.HF_TOKEN != ''
-        run: |
-          uv pip install huggingface_hub
-          uv run huggingface-cli login --token "$HF_TOKEN"
+        run: uv run python -c "import os; from huggingface_hub import login; login(token=os.environ['HF_TOKEN'])"
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
       - name: Unit Test
@@ -200,11 +198,9 @@ jobs:
         run: |
           uv lock --check
           uv sync
-      - name: Authenticate HuggingFace CLI
+      - name: Authenticate HuggingFace
         if: env.HF_TOKEN != ''
-        run: |
-          uv pip install huggingface_hub
-          uv run huggingface-cli login --token "$HF_TOKEN"
+        run: uv run python -c "import os; from huggingface_hub import login; login(token=os.environ['HF_TOKEN'])"
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
       - name: Test Suite with Coverage Report
@@ -297,11 +293,9 @@ jobs:
         with:
           name: test-coverage
           path: docs/source/_static/coverage
-      - name: Authenticate HuggingFace CLI
+      - name: Authenticate HuggingFace
         if: env.HF_TOKEN != ''
-        run: |
-          uv pip install huggingface_hub
-          uv run huggingface-cli login --token "$HF_TOKEN"
+        run: uv run python -c "import os; from huggingface_hub import login; login(token=os.environ['HF_TOKEN'])"
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
       - name: Build Docs

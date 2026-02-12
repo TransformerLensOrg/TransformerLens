@@ -8,6 +8,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from better_abc import abstract_attribute
 from jaxtyping import Float, Int
+from torch import Tensor
 from transformers.utils.import_utils import is_bitsandbytes_available
 
 from transformer_lens.cache.key_value_cache_entry import (
@@ -326,8 +327,7 @@ class AbstractAttention(ABC, nn.Module):
             raise TypeError(f"Expected 'pattern' to be a Tensor, got {type(pattern)}")
         pattern = torch.where(torch.isnan(pattern), torch.zeros_like(pattern), pattern)
         pattern = self.hook_pattern(pattern)  # [batch, head_index, query_pos, key_pos]
-        pattern = pattern.to(self.cfg.dtype)
-        pattern = pattern.to(v.device)
+        pattern = pattern.to(device=v.device, dtype=v.dtype)
         z = self.calculate_z_scores(v, pattern)  # [batch, pos, head_index, d_head]
         if not self.cfg.use_attn_result:
             if self.cfg.load_in_4bit:
@@ -347,15 +347,21 @@ class AbstractAttention(ABC, nn.Module):
                     self.W_O, "head_index d_head d_model -> d_model (head_index d_head)"
                 )
 
-                if self.b_O.device != w.device:
-                    w = w.to(self.b_O.device)
-                if self.b_O.device != z.device:
-                    z = z.to(self.b_O.device)
+                # Move output projection weights and bias to the same device as z
+                # so that the final linear operation occurs on the device of the inputs
+                if w.device != z.device:
+                    w = w.to(z.device)
+                b_O: Tensor = self.b_O
+                if b_O.device != z.device:
+                    b_O = b_O.to(z.device)
+                # Ensure z has the same dtype as weights used in the output projection
+                if z.dtype != w.dtype:
+                    z = z.to(w.dtype)
 
                 out = F.linear(
                     z.reshape(z.shape[0], z.shape[1], self.cfg.d_head * self.cfg.n_heads),
                     w,
-                    self.b_O,
+                    b_O,
                 )
         else:
             # Explicitly calculate the attention result so it can be accessed by a hook
@@ -375,6 +381,11 @@ class AbstractAttention(ABC, nn.Module):
                     self.W_O,
                     "head_index d_head d_model -> 1 1 head_index d_head d_model",
                 )
+                if w.device != z.device:
+                    w = w.to(z.device)
+                # Ensure z has the same dtype as w before multiplication
+                if z.dtype != w.dtype:
+                    z = z.to(w.dtype)
                 z = einops.rearrange(
                     z, "batch pos head_index d_head -> batch pos head_index d_head 1"
                 )

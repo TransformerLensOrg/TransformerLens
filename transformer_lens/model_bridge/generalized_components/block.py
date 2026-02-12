@@ -144,8 +144,10 @@ class BlockBridge(GeneralizedComponent):
             first = output[0]
             if isinstance(first, torch.Tensor):
                 first = self.hook_out(first)
+                # Always return tuple to maintain consistency with HF's expected format
+                # e.g. GPT2Model does hidden_states = outputs[0], it expects outputs to be a tuple
                 if len(output) == 1:
-                    return first
+                    return (first,)
                 output = (first,) + output[1:]
             return output
         if isinstance(output, torch.Tensor):

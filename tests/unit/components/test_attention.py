@@ -80,6 +80,25 @@ def test_attention_load_in_4bit():
     assert torch.all(attn.b_V == 0)
 
 
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required for half/bfloat16 tests")
+@pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
+def test_attention_forward_half_precisions(dtype):
+    # Construct a small attention block
+    cfg = HookedTransformerConfig(
+        d_model=64, d_head=16, n_heads=4, n_layers=1, n_ctx=8, dtype=dtype
+    )
+    attn = Attention(cfg)
+    # Random inputs in the matching dtype
+    batch = 1
+    seq = 4
+    x = torch.rand((batch, seq, cfg.d_model), dtype=dtype).to("cuda")
+    # Run forward through attention (q,k,v = x)
+    out = attn(x, x, x)
+    # Should not raise and return a tensor on cuda with same dtype as cfg or compatible
+    assert isinstance(out, torch.Tensor)
+    assert out.device.type == "cuda"
+
+
 def test_attention_config_dict():
     cfg = {
         "n_layers": 12,

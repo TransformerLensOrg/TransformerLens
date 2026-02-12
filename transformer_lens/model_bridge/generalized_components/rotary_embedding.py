@@ -72,7 +72,14 @@ class RotaryEmbeddingBridge(GeneralizedComponent):
             head_dim = 256
         x = torch.randn(batch_size, seq_len, num_heads, head_dim, device=device, dtype=dtype)
         position_ids = torch.arange(seq_len, device=device).unsqueeze(0).expand(batch_size, -1)
-        return {"args": (x, position_ids)}
+        args: tuple = (x, position_ids)
+        # Gemma3's rotary embedding requires a layer_type argument (e.g., "sliding_attention")
+        # to select the correct inv_freq buffer. Without it, forward() tries to access
+        # "None_inv_freq" which doesn't exist.
+        if self.original_component is not None and hasattr(self.original_component, "layer_types"):
+            layer_type = self.original_component.layer_types[0]  # type: ignore[index]
+            args = (x, position_ids, layer_type)
+        return {"args": args}
 
     def forward(self, *args: Any, **kwargs: Any) -> Tuple[torch.Tensor, torch.Tensor]:
         """Forward pass through the rotary embedding bridge.

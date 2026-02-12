@@ -14,6 +14,7 @@ from __future__ import annotations
 import logging
 import os
 from typing import (
+    Any,
     Dict,
     List,
     NamedTuple,
@@ -964,7 +965,16 @@ class HookedTransformer(HookedRootModule):
                 ), f"Invalid tokens input to to_str_tokens, has shape: {tokens.shape}"
             else:
                 raise ValueError(f"Invalid input type to to_str_tokens: {type(input)}")
-            str_tokens = self.tokenizer.batch_decode(tokens, clean_up_tokenization_spaces=False)
+            # In transformers v5, batch_decode treats a flat list as a single sequence,
+            # not individual token IDs, so would return a single string. To maintain backward
+            # compatibility with v4, we wrap each token to decode them individually.
+            if isinstance(tokens, np.ndarray):
+                tokens_list = [[int(t)] for t in tokens]
+            else:
+                tokens_list = [[int(t)] for t in tokens.tolist()]
+            str_tokens = self.tokenizer.batch_decode(
+                tokens_list, clean_up_tokenization_spaces=False
+            )
             return str_tokens
 
     def to_single_token(self, string):
@@ -1854,11 +1864,15 @@ class HookedTransformer(HookedRootModule):
         padding_side: Optional[Literal["left", "right"]] = USE_DEFAULT_VALUE,
         return_type: Optional[str] = "input",
         verbose: bool = True,
+        **generation_kwargs,
     ) -> Union[
         str,
         List[str],
         Int[torch.Tensor, "batch pos_plus_new_tokens"],
         Float[torch.Tensor, "batch pos_plus_new_tokens hidden_size"],
+        Any,  # transformers.utils.ModelOutput to accommodate output_logits=True.
+        # Using Any due to beartype's forward reference resolution limitations.
+        # See: https://github.com/beartype/beartype/issues/546
     ]:
         """Sample Tokens from the Model.
 
@@ -1957,6 +1971,34 @@ class HookedTransformer(HookedRootModule):
             else:
                 past_kv_cache = None
 
+            # We only support a single HF style generation kwarg: `output_logits` which will cause
+            # the function to return a ModelOutput-like object containing `sequences` and `logits`.
+            # Any other HF-style generation kwargs are rejected to avoid supporting the full HF API here.
+            output_logits_flag = False
+            if generation_kwargs:
+                if "output_logits" in generation_kwargs:
+                    output_logits_flag = bool(generation_kwargs.pop("output_logits"))
+                # Identify keys to warn about: anything other than allowed/silently ignored
+                accepted_keys = {"output_logits", "return_dict_in_generate"}
+                unsupported_keys = [k for k in generation_kwargs.keys() if k not in accepted_keys]
+                # silently ignore `return_dict_in_generate`
+                if "return_dict_in_generate" in generation_kwargs:
+                    generation_kwargs.pop("return_dict_in_generate")
+                # If any unsupported keys remain, warn and ignore them
+                if unsupported_keys:
+                    import warnings
+
+                    warnings.warn(
+                        f"HookedTransformer.generate received unsupported generation kwargs; ignoring: {unsupported_keys}",
+                        UserWarning,
+                    )
+                    # Clear unsupported keys
+                    for k in unsupported_keys:
+                        generation_kwargs.pop(k, None)
+
+            # Optionally collect logits at each generation step for downstream tooling/tests
+            logits_seq_list: Optional[List[torch.Tensor]] = [] if output_logits_flag else None
+
             shortformer_pos_embed = None
             embeds = input if input_type == "embeds" else self.embed(input)
 
@@ -2047,6 +2089,10 @@ class HookedTransformer(HookedRootModule):
                     )
                 final_logits = logits[:, -1, :]
 
+                if output_logits_flag:
+                    assert logits_seq_list is not None
+                    logits_seq_list.append(final_logits.clone())
+
                 if do_sample:
                     if input_type in [
                         "str",
@@ -2099,15 +2145,39 @@ class HookedTransformer(HookedRootModule):
                 output_tokens = sampled_tokens
 
             if return_type == "str":
-                decoded_texts = [
-                    self.tokenizer.decode(tokens, skip_special_tokens=True)
+                decoded_texts: List[str] = [
+                    cast(str, self.tokenizer.decode(tokens, skip_special_tokens=True))
                     for tokens in output_tokens
                 ]
-                return decoded_texts[0] if len(decoded_texts) == 1 else decoded_texts
+                result: Any = decoded_texts[0] if len(decoded_texts) == 1 else decoded_texts
             elif return_type == "tokens":
-                return output_tokens
+                result = cast(Any, output_tokens)
             else:
-                return embeds
+                result = cast(Any, embeds)
+
+            if output_logits_flag:
+                # Adhere to HF ModelOutput format with sequences (tokens) and logits (per-step)
+                from transformers.utils import ModelOutput  # type: ignore
+
+                def _logits_to_tuple(logits_list: list[torch.Tensor]) -> tuple[torch.Tensor, ...]:
+                    assert logits_list is not None
+                    # Convert list of [batch, vocab] tensors to tuple
+                    return tuple(logits_list)
+
+                try:
+                    from transformers.generation.utils import GenerateDecoderOnlyOutput
+
+                    return GenerateDecoderOnlyOutput(
+                        sequences=cast(torch.LongTensor, output_tokens),
+                        # HF's type hint tuple[FloatTensor] is really tuple[FloatTensor, ...]
+                        logits=_logits_to_tuple(logits_seq_list),  # type: ignore[arg-type]
+                    )
+                except (ImportError, AttributeError):
+                    # Fallback if GenerateDecoderOnlyOutput not available in this transformers version
+                    # `sequences` expects a tensor of token ids
+                    return ModelOutput(sequences=output_tokens, logits=_logits_to_tuple(logits_seq_list))  # type: ignore[arg-type]
+            else:
+                return result
 
     # Give access to all weights as properties.
     @property
