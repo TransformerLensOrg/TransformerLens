@@ -62,13 +62,13 @@ class Qwen2ArchitectureAdapter(ArchitectureAdapter):
             "blocks.{i}.attn.k.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
                     "(n h) m -> n m h",
-                    n=getattr(self.cfg, "num_key_value_heads", self.cfg.n_heads),
+                    n=getattr(self.cfg, "n_key_value_heads", self.cfg.n_heads),
                 ),
             ),
             "blocks.{i}.attn.v.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
                     "(n h) m -> n m h",
-                    n=getattr(self.cfg, "num_key_value_heads", self.cfg.n_heads),
+                    n=getattr(self.cfg, "n_key_value_heads", self.cfg.n_heads),
                 ),
             ),
             "blocks.{i}.attn.o.weight": ParamProcessingConversion(

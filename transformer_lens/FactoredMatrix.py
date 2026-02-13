@@ -34,12 +34,22 @@ class FactoredMatrix:
         self.rdim = self.B.size(-1)
         self.mdim = self.B.size(-2)
         self.has_leading_dims = (self.A.ndim > 2) or (self.B.ndim > 2)
-        self.shape = torch.broadcast_shapes(self.A.shape[:-2], self.B.shape[:-2]) + (
-            self.ldim,
-            self.rdim,
-        )
-        self.A = self.A.broadcast_to(self.shape[:-2] + (self.ldim, self.mdim))
-        self.B = self.B.broadcast_to(self.shape[:-2] + (self.mdim, self.rdim))
+        try:
+            self.shape = torch.broadcast_shapes(self.A.shape[:-2], self.B.shape[:-2]) + (
+                self.ldim,
+                self.rdim,
+            )
+        except RuntimeError as e:
+            raise RuntimeError(
+                f"Shape mismatch: Cannot broadcast leading dimensions. A has shape {self.A.shape}, B has shape {self.B.shape}. {str(e)}"
+            ) from e
+        try:
+            self.A = self.A.broadcast_to(self.shape[:-2] + (self.ldim, self.mdim))
+            self.B = self.B.broadcast_to(self.shape[:-2] + (self.mdim, self.rdim))
+        except RuntimeError as e:
+            raise RuntimeError(
+                f"Shape mismatch: Cannot broadcast tensors. A has shape {self.A.shape}, B has shape {self.B.shape}, expected broadcast shape {self.shape}. {str(e)}"
+            ) from e
 
     @overload
     def __matmul__(

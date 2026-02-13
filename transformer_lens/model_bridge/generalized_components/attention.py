@@ -17,6 +17,7 @@ from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
+from transformer_lens.utilities.hf_utils import get_rotary_pct_from_config
 
 
 class AttentionBridge(GeneralizedComponent):
@@ -155,7 +156,7 @@ class AttentionBridge(GeneralizedComponent):
                     d_head = 64
             else:
                 d_head = 64
-            rotary_pct = getattr(self.config, "rotary_pct", 1.0) if self.config else 1.0
+            rotary_pct = get_rotary_pct_from_config(self.config)
             rotary_ndims = int(rotary_pct * d_head)
             cos = torch.ones(1, seq_len, rotary_ndims, device=device, dtype=dtype)
             sin = torch.zeros(1, seq_len, rotary_ndims, device=device, dtype=dtype)

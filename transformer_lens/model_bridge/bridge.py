@@ -39,6 +39,7 @@ from transformer_lens.model_bridge.generalized_components.base import (
 )
 from transformer_lens.model_bridge.get_params_util import get_bridge_params
 from transformer_lens.utilities.aliases import resolve_alias
+from transformer_lens.utilities.devices import move_to_and_update_config
 
 if TYPE_CHECKING:
     from transformer_lens.ActivationCache import ActivationCache
@@ -889,7 +890,11 @@ class TransformerBridge(nn.Module):
             tokens = torch.tensor(tokens_np)
         else:
             raise ValueError(f"Invalid input type to to_str_tokens: {type(input)}")
-        str_tokens = self.tokenizer.batch_decode(tokens, clean_up_tokenization_spaces=False)
+        # In transformers v5, batch_decode treats a flat list as a single sequence,
+        # not individual token IDs, so would return a single string. To maintain backward
+        # compatibility with v4, we wrap each token to decode them individually.
+        tokens_list = [[int(t)] for t in tokens.tolist()]
+        str_tokens = self.tokenizer.batch_decode(tokens_list, clean_up_tokenization_spaces=False)
         return str_tokens
 
     def to_single_token(self, string: str) -> int:
@@ -1078,17 +1083,73 @@ class TransformerBridge(nn.Module):
     def OV(self):
         return FactoredMatrix(self.W_V, self.W_O)
 
+    def parameters(self, recurse: bool = True) -> Iterator[nn.Parameter]:
+        """Returns parameters following standard PyTorch semantics.
+
+        This method delegates to the underlying HuggingFace model's parameters().
+        For TransformerLens-style parameter generator, use tl_parameters() instead.
+
+        Args:
+            recurse: If True, yields parameters of this module and all submodules
+
+        Returns:
+            Iterator of nn.Parameter objects
+        """
+        return self.original_model.parameters(recurse=recurse)
+
     def named_parameters(
         self, prefix: str = "", recurse: bool = True, remove_duplicate: bool = True
-    ) -> Iterator[Tuple[str, torch.nn.Parameter]]:
-        """Return named parameters in the same format as TransformerLens.
+    ) -> Iterator[tuple[str, nn.Parameter]]:
+        """Returns named parameters following standard PyTorch semantics.
 
-        This ensures compatibility with tools like SVDInterpreter that expect
-        parameter names like 'blocks.0.attn.W_Q' instead of the raw model names.
+        This method delegates to the underlying HuggingFace model's named_parameters().
+        For TransformerLens-style generator, use tl_named_parameters() instead.
+
+        Args:
+            prefix: Prefix to prepend to all parameter names
+            recurse: If True, yields parameters of this module and all submodules
+            remove_duplicate: If True, removes duplicate parameters
+
+        Returns:
+            Iterator of (name, parameter) tuples
         """
-        params_dict = self.get_params()
-        for name, param in params_dict.items():
-            yield (name, param)
+        return self.original_model.named_parameters(prefix, recurse, remove_duplicate)
+
+    def tl_parameters(self) -> dict[str, torch.Tensor]:
+        """Returns TransformerLens-style parameter dictionary.
+
+        Parameter names follow TransformerLens conventions (e.g., 'blocks.0.attn.W_Q') and may
+        include processed weights (non-leaf tensors). This format is expected by SVDInterpreter
+        among other analysis tools.
+
+        Returns:
+            Dictionary mapping TransformerLens parameter names to tensors
+
+        Example:
+            >>> bridge = TransformerBridge.boot_transformers("gpt2")
+            >>> tl_params = bridge.tl_parameters()
+            >>> W_Q = tl_params["blocks.0.attn.W_Q"]  # Shape: [n_heads, d_model, d_head]
+        """
+        return self.get_params()
+
+    def tl_named_parameters(self) -> Iterator[tuple[str, torch.Tensor]]:
+        """Returns iterator of TransformerLens-style named parameters.
+
+        This provides the same parameters as tl_parameters() but as an iterator
+        for consistency with PyTorch's named_parameters() API pattern.
+
+        Returns:
+            Iterator of (name, tensor) tuples with TransformerLens naming conventions
+
+        Example:
+            >>> bridge = TransformerBridge.boot_transformers("gpt2")
+            >>> for name, param in bridge.tl_named_parameters():
+            ...     if "attn.W_Q" in name:
+            ...         print(f"{name}: {param.shape}")  # doctest: +ELLIPSIS
+            blocks.0.attn.W_Q: torch.Size([12, 768, 64])
+            ...
+        """
+        return iter(self.get_params().items())
 
     def forward(
         self,
@@ -1621,7 +1682,10 @@ class TransformerBridge(nn.Module):
         padding_side: Optional[str] = None,
         return_type: Optional[str] = "input",
         verbose: bool = True,
-    ) -> Union[str, List[str], torch.Tensor]:
+        output_logits: bool = False,
+    ) -> str | list[str] | torch.Tensor | Any:  # Any for transformers.utils.ModelOutput
+        # Using Any due to beartype's forward reference resolution limitations.
+        # See: https://github.com/beartype/beartype/issues/546
         """Sample tokens from the model.
 
         Sample tokens from the model until the model outputs eos_token or max_new_tokens is reached.
@@ -1642,9 +1706,11 @@ class TransformerBridge(nn.Module):
             padding_side: Not used in Bridge (kept for API compatibility)
             return_type: The type of output to return - 'input', 'str', or 'tokens'
             verbose: Not used in Bridge (kept for API compatibility)
+            output_logits: If True, return a ModelOutput with sequences and logits tuple
 
         Returns:
-            Generated sequence as string, list of strings, or tensor depending on input type and return_type
+            Generated sequence as string, list of strings, or tensor depending on input type and return_type.
+            If output_logits=True, returns a ModelOutput-like object with 'sequences' and 'logits' attributes.
         """
         # Convert input to tokens
         if isinstance(input, str):
@@ -1694,6 +1760,9 @@ class TransformerBridge(nn.Module):
         # Track which sequences have finished
         finished_sequences = torch.zeros(batch_size, dtype=torch.bool, device=self.cfg.device)
 
+        # Optionally collect logits at each generation step for downstream tooling/tests
+        logits_seq_list: list[torch.Tensor] | None = [] if output_logits else None
+
         # Generate tokens
         current_tokens = input_tokens.clone()
         sampled_tokens_list = []
@@ -1703,6 +1772,10 @@ class TransformerBridge(nn.Module):
             with torch.no_grad():
                 logits = self(current_tokens, return_type="logits")
                 final_logits = logits[:, -1, :]
+
+                # Collect logits if requested
+                if logits_seq_list is not None:
+                    logits_seq_list.append(final_logits.clone())
 
                 # Sample next token
                 if do_sample:
@@ -1740,6 +1813,33 @@ class TransformerBridge(nn.Module):
         sampled_tokens = torch.cat(sampled_tokens_list, dim=1)
         output_tokens = torch.cat([input_tokens, sampled_tokens], dim=1)
 
+        # Return ModelOutput if output_logits was requested
+        if output_logits and logits_seq_list is not None:
+            from transformers.utils import ModelOutput  # type: ignore
+
+            def _logits_to_tuple(logits_list: list[torch.Tensor]) -> tuple[torch.Tensor, ...]:
+                assert logits_list is not None
+                # Convert list of [batch, vocab] tensors to tuple
+                return tuple(logits_list)
+
+            try:
+                from transformers.generation.utils import GenerateDecoderOnlyOutput
+
+                # Return a HF-compatible ModelOutput structure
+                # GenerateDecoderOnlyOutput expects: sequences, scores (optional), logits (optional)
+                return GenerateDecoderOnlyOutput(
+                    sequences=cast(torch.LongTensor, output_tokens),
+                    # HF's type hint says tuple[FloatTensor] but should be tuple[FloatTensor, ...]
+                    # (variable-length tuple with one element per generated token)
+                    logits=_logits_to_tuple(logits_seq_list),  # type: ignore[arg-type]
+                )
+            except (ImportError, AttributeError):
+                # Fallback if GenerateDecoderOnlyOutput not available in this transformers version
+                return ModelOutput(
+                    sequences=output_tokens,
+                    logits=_logits_to_tuple(logits_seq_list),
+                )
+
         # Format output
         if return_type == "str":
             if input_type == "str":
@@ -1753,16 +1853,220 @@ class TransformerBridge(nn.Module):
         else:  # return_type == "tokens"
             return output_tokens
 
+    def hf_generate(
+        self,
+        input: str | list[str] | torch.Tensor = "",
+        max_new_tokens: int = 10,
+        stop_at_eos: bool = True,
+        eos_token_id: int | None = None,
+        do_sample: bool = True,
+        top_k: int | None = None,
+        top_p: float | None = None,
+        temperature: float = 1.0,
+        use_past_kv_cache: bool = True,
+        return_type: str | None = "input",
+        **generation_kwargs,
+    ) -> str | list[str] | torch.Tensor | Any:  # Any for HF ModelOutput types
+        # Using Any due to beartype's forward reference resolution limitations.
+        # See: https://github.com/beartype/beartype/issues/546
+        """Generate text using the underlying HuggingFace model with full HF API support.
+
+        This method provides direct access to HuggingFace's generation API, forwarding all
+        generation parameters (including output_scores, output_logits, output_attentions,
+        output_hidden_states) directly to the underlying HF model. Use this when you need
+        full HuggingFace generation features not supported by the standard generate() method.
+
+        For standard generation compatible with HookedTransformer, use generate() instead.
+
+        Args:
+            input: Text string, list of strings, or tensor of tokens
+            max_new_tokens: Maximum number of tokens to generate
+            stop_at_eos: If True, stop generating tokens when the model outputs eos_token
+            eos_token_id: The token ID to use for end of sentence
+            do_sample: If True, sample from the model's output distribution
+            top_k: Number of tokens to sample from
+            top_p: Probability mass to sample from
+            temperature: Temperature for sampling
+            use_past_kv_cache: If True, use KV caching for faster generation
+            return_type: The type of output to return - 'input', 'str', or 'tokens'
+            **generation_kwargs: Additional HuggingFace generation parameters including:
+                - output_scores: Return generation scores
+                - output_logits: Return generation logits
+                - output_attentions: Return attention weights
+                - output_hidden_states: Return hidden states
+                - return_dict_in_generate: Return ModelOutput object
+                - And any other HF generation parameters
+
+        Returns:
+            Generated sequence as string, list of strings, tensor, or HF ModelOutput
+            depending on input type, return_type, and generation_kwargs.
+
+        Example::
+
+            # Get full HF ModelOutput with logits and attentions
+            from transformer_lens import HookedTransformer
+            model = HookedTransformer.from_pretrained("tiny-stories-1M")
+            result = model.hf_generate(
+                "Hello world",
+                max_new_tokens=5,
+                output_logits=True,
+                output_attentions=True,
+                return_dict_in_generate=True
+            )
+            print(result.sequences)  # Generated tokens
+            print(result.logits)  # Logits for each generation step
+            print(result.attentions)  # Attention weights
+        """
+        # Handle string input by tokenizing it
+        if isinstance(input, str):
+            inputs = self.tokenizer(input, return_tensors="pt", padding=False, truncation=False).to(
+                self.cfg.device
+            )
+            input_ids = inputs["input_ids"]
+            input_type = "str"
+        elif isinstance(input, list):
+            inputs = self.tokenizer(input, return_tensors="pt", padding=True, truncation=False).to(
+                self.cfg.device
+            )
+            input_ids = inputs["input_ids"]
+            input_type = "list"
+        else:
+            input_ids = input
+            if input_ids.device != self.cfg.device:
+                input_ids = input_ids.to(self.cfg.device)
+            input_type = "tokens"
+
+        # Build generation_kwargs from explicit args and kwargs
+        generation_kwargs = dict(generation_kwargs) if generation_kwargs is not None else {}
+        generation_kwargs.update(
+            {
+                "max_new_tokens": max_new_tokens,
+                "do_sample": do_sample,
+                "temperature": temperature,
+                "pad_token_id": self.tokenizer.eos_token_id,
+            }
+        )
+
+        if top_k is not None:
+            generation_kwargs["top_k"] = top_k
+        if top_p is not None:
+            generation_kwargs["top_p"] = top_p
+        if eos_token_id is not None:
+            generation_kwargs["eos_token_id"] = eos_token_id
+        elif stop_at_eos and self.tokenizer.eos_token_id is not None:
+            generation_kwargs["eos_token_id"] = self.tokenizer.eos_token_id
+
+        if use_past_kv_cache:
+            generation_kwargs["use_cache"] = True
+
+        # HF dict flags that trigger ModelOutput returns
+        hf_dict_flags = (
+            "output_scores",
+            "output_logits",
+            "output_attentions",
+            "output_hidden_states",
+        )
+
+        # If any HF-style output flags are provided, ensure return_dict_in_generate is set
+        any_flag_set = False
+        for f in hf_dict_flags:
+            if generation_kwargs.get(f) is not None:
+                generation_kwargs[f] = bool(generation_kwargs[f])
+                any_flag_set = True
+
+        if any_flag_set:
+            generation_kwargs.setdefault("return_dict_in_generate", True)
+
+        # Generate using the original HuggingFace model
+        with torch.no_grad():
+            outputs = self.original_model.generate(input_ids, **generation_kwargs)  # type: ignore[operator]
+
+        # Check if output is a ModelOutput
+        try:
+            from transformers.utils import ModelOutput  # type: ignore
+
+            is_model_output = isinstance(outputs, ModelOutput)
+        except Exception:
+            is_model_output = False
+
+        # Return based on return_type and input format
+        if return_type == "input" or return_type is None:
+            if input_type == "str":
+                # Decode the full output back to string
+                if is_model_output and hasattr(outputs, "sequences"):
+                    return self.tokenizer.decode(outputs.sequences[0], skip_special_tokens=True)
+                return self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+            elif input_type == "list":
+                # Decode each sequence in the batch
+                if is_model_output and hasattr(outputs, "sequences"):
+                    return [
+                        self.tokenizer.decode(seq, skip_special_tokens=True)
+                        for seq in outputs.sequences
+                    ]
+                return [self.tokenizer.decode(seq, skip_special_tokens=True) for seq in outputs]
+            else:
+                # Return the full token sequence including input
+                return outputs
+        elif return_type == "tokens":
+            return outputs
+        else:
+            # For other return types, default to the decoded text
+            if input_type == "str":
+                if is_model_output and hasattr(outputs, "sequences"):
+                    return self.tokenizer.decode(outputs.sequences[0], skip_special_tokens=True)
+                return self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+            elif input_type == "list":
+                if is_model_output and hasattr(outputs, "sequences"):
+                    return [
+                        self.tokenizer.decode(seq, skip_special_tokens=True)
+                        for seq in outputs.sequences
+                    ]
+                return [self.tokenizer.decode(seq, skip_special_tokens=True) for seq in outputs]
+            else:
+                return outputs
+
     def to(self, *args, **kwargs) -> "TransformerBridge":
-        """Move model to device or change dtype.
+        """Move model to device and/or change dtype.
 
         Args:
             args: Positional arguments for nn.Module.to
             kwargs: Keyword arguments for nn.Module.to
+            print_details: Whether to print details about device/dtype changes (default: True)
 
         Returns:
             Self for chaining
         """
+        # Extract print_details if provided
+        print_details = kwargs.pop("print_details", True)
+
+        # Handle both device and dtype changes
+        # torch.nn.Module.to() supports: to(device), to(dtype), to(device, dtype),
+        # to(device=...), to(dtype=...), to(device=..., dtype=...)
+        target_device, target_dtype = None, None
+
+        if len(args) >= 1:
+            first_arg = args[0]
+            if isinstance(first_arg, (torch.device, str)):
+                target_device = first_arg
+            elif isinstance(first_arg, torch.dtype):
+                target_dtype = first_arg
+        if len(args) >= 2:
+            second_arg = args[1]
+            if isinstance(second_arg, torch.dtype):
+                target_dtype = second_arg
+
+        # these override positional args
+        if "device" in kwargs:
+            target_device = kwargs["device"]
+        if "dtype" in kwargs:
+            target_dtype = kwargs["dtype"]
+
+        if target_device is not None:
+            move_to_and_update_config(self, target_device, print_details)
+        if target_dtype is not None:
+            move_to_and_update_config(self, target_dtype, print_details)
+
+        # Move the original model with all original args/kwargs (with print_details removed)
         self.original_model = self.original_model.to(*args, **kwargs)
         return self
 

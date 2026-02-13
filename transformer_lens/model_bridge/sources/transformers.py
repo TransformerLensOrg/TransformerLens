@@ -86,6 +86,12 @@ def map_default_transformer_lens_config(hf_config):
         tl_config.n_ctx = hf_config.max_position_embeddings
     elif hasattr(hf_config, "max_length"):
         tl_config.n_ctx = hf_config.max_length
+    elif hasattr(hf_config, "seq_length"):
+        tl_config.n_ctx = hf_config.seq_length
+    else:
+        # Models like Bloom use ALiBi (no positional embeddings) and have no
+        # context length field. Default to 2048 as a reasonable fallback.
+        tl_config.n_ctx = 2048
     if hasattr(hf_config, "n_inner"):
         tl_config.d_mlp = hf_config.n_inner
     elif hasattr(hf_config, "intermediate_size"):
@@ -104,6 +110,8 @@ def map_default_transformer_lens_config(hf_config):
         tl_config.experts_per_token = hf_config.num_experts_per_tok
     if hasattr(hf_config, "sliding_window") and hf_config.sliding_window is not None:
         tl_config.sliding_window = hf_config.sliding_window
+    if getattr(hf_config, "use_parallel_residual", False):
+        tl_config.parallel_attn_mlp = True
     tl_config.default_prepend_bos = True
     return tl_config
 
@@ -146,6 +154,7 @@ def determine_architecture_from_hf_config(hf_config):
             "qwen": "QwenForCausalLM",
             "qwen2": "Qwen2ForCausalLM",
             "qwen3": "Qwen3ForCausalLM",
+            "stablelm": "StableLmForCausalLM",
             "t5": "T5ForConditionalGeneration",
         }
         if model_type in model_type_mappings:
@@ -237,6 +246,11 @@ def boot(
         device = get_device()
     adapter.cfg.device = str(device)
     model_class = get_hf_model_class_for_architecture(architecture)
+    # Ensure pad_token_id exists on HF config. Transformers v5 raises AttributeError
+    # for missing config attributes (instead of returning None), which crashes models
+    # like Phi-1 that access config.pad_token_id during __init__.
+    if not hasattr(hf_config, "pad_token_id") or "pad_token_id" not in hf_config.__dict__:
+        hf_config.pad_token_id = getattr(hf_config, "eos_token_id", None)
     model_kwargs = {"config": hf_config, "torch_dtype": dtype}
     if hasattr(adapter.cfg, "attn_implementation") and adapter.cfg.attn_implementation is not None:
         model_kwargs["attn_implementation"] = adapter.cfg.attn_implementation
@@ -254,13 +268,25 @@ def boot(
         tokenizer = setup_tokenizer(tokenizer, default_padding_side=default_padding_side)
     else:
         huggingface_token = os.environ.get("HF_TOKEN", "")
-        tokenizer = setup_tokenizer(
-            AutoTokenizer.from_pretrained(
+        token_arg = huggingface_token if len(huggingface_token) > 0 else None
+        # Try to load tokenizer with add_bos_token=True first
+        # (encoder-decoder models like T5 don't have BOS tokens and will raise ValueError)
+        try:
+            base_tokenizer = AutoTokenizer.from_pretrained(
                 model_name,
                 add_bos_token=True,
                 use_fast=use_fast,
-                token=huggingface_token if len(huggingface_token) > 0 else None,
-            ),
+                token=token_arg,
+            )
+        except ValueError:
+            # Model doesn't have a BOS token, load without add_bos_token
+            base_tokenizer = AutoTokenizer.from_pretrained(
+                model_name,
+                use_fast=use_fast,
+                token=token_arg,
+            )
+        tokenizer = setup_tokenizer(
+            base_tokenizer,
             default_padding_side=default_padding_side,
         )
     if tokenizer is not None:

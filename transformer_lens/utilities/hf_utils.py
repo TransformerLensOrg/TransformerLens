@@ -22,6 +22,35 @@ from huggingface_hub.constants import HF_HUB_CACHE
 CACHE_DIR = HF_HUB_CACHE
 
 
+def get_rotary_pct_from_config(config: Any) -> float:
+    """Get the rotary percentage from a config object.
+
+    In transformers v5, rotary_pct was moved to rope_parameters['partial_rotary_factor'].
+    This function handles both the old and new config formats.
+
+    Args:
+        config: Config object (HuggingFace or custom)
+
+    Returns:
+        float: The rotary percentage (0.0 to 1.0)
+    """
+    if config is None:
+        return 1.0
+
+    # Try the old attribute first (transformers v4)
+    if hasattr(config, "rotary_pct"):
+        return getattr(config, "rotary_pct", 1.0)
+
+    # Try the new rope_parameters format (transformers v5)
+    if hasattr(config, "rope_parameters"):
+        rope_params = getattr(config, "rope_parameters", None)
+        if isinstance(rope_params, dict) and "partial_rotary_factor" in rope_params:
+            return rope_params["partial_rotary_factor"]
+
+    # Default to 1.0 (full rotary) if not found
+    return 1.0
+
+
 def select_compatible_kwargs(kwargs_dict: Dict[str, Any], callable: Callable) -> Dict[str, Any]:
     """Return a dict with the elements kwargs_dict that are parameters of callable"""
     return {k: v for k, v in kwargs_dict.items() if k in inspect.getfullargspec(callable).args}

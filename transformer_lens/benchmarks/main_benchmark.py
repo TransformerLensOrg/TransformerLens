@@ -824,10 +824,16 @@ def run_benchmark_suite(
     try:
         # Load a lightweight version without weights to get config
         bridge_config_only = TransformerBridge.boot_transformers(model_name, device=device, dtype=bridge_dtype, load_weights=False)  # type: ignore[attr-defined]
-        # Extract attn_implementation for HF model loading
+        # Extract attn_implementation for HF model loading.
+        # First check if adapter explicitly sets it (e.g. qwen3, gemma3).
         if hasattr(bridge_config_only.adapter.cfg, "attn_implementation"):
             attn_implementation = bridge_config_only.adapter.cfg.attn_implementation
-        if verbose and attn_implementation:
+        # TransformerBridge always loads HF models with output_attentions=True
+        # (see sources/transformers.py), which causes HF to fall back from SDPA
+        # to eager attention. We must match this in the reference model.
+        if attn_implementation is None:
+            attn_implementation = "eager"
+        if verbose:
             print(f"✓ Detected attn_implementation={attn_implementation}")
         # Clean up config-only bridge immediately to free memory
         del bridge_config_only
@@ -841,20 +847,29 @@ def run_benchmark_suite(
         try:
             if verbose:
                 print("Loading HuggingFace reference model...")
-            # Match attn_implementation from bridge to ensure numerical consistency
+            # Match loading path to TransformerBridge: no device_map, explicit .to(device)
+            # Using device_map causes different weight materialization than .to(device),
+            # which produces numerical divergence for bfloat16 models.
             hf_kwargs = {
-                "device_map": device,
                 "low_cpu_mem_usage": True,  # Reduce memory spikes during loading
             }
             if attn_implementation is not None:
-                hf_kwargs["attn_implementation"] = attn_implementation
+                hf_kwargs["attn_implementation"] = attn_implementation  # type: ignore[assignment]
                 if verbose:
                     print(f"Using attn_implementation={attn_implementation}")
             # Use appropriate AutoModel class (e.g., AutoModelForSeq2SeqLM for T5)
             auto_model_class = get_auto_model_class(model_name)
             if verbose and auto_model_class != AutoModelForCausalLM:
                 print(f"Using {auto_model_class.__name__} for encoder-decoder model")
+            # Ensure pad_token_id exists on HF config. Transformers v5 raises
+            # AttributeError for missing config attributes, which crashes models
+            # like StableLM that access config.pad_token_id during __init__.
+            hf_config = AutoConfig.from_pretrained(model_name)
+            if not hasattr(hf_config, "pad_token_id") or "pad_token_id" not in hf_config.__dict__:
+                hf_config.pad_token_id = getattr(hf_config, "eos_token_id", None)
+                hf_kwargs["config"] = hf_config
             hf_model = auto_model_class.from_pretrained(model_name, **hf_kwargs)  # type: ignore[arg-type]
+            hf_model = hf_model.to(device)
             hf_model.eval()
             # Detect dtype from HF model
             try:

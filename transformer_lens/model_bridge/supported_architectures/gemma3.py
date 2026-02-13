@@ -127,7 +127,6 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
         self.component_mapping = {
             "embed": EmbeddingBridge(name="model.embed_tokens"),
             "rotary_emb": RotaryEmbeddingBridge(name="model.rotary_emb"),
-            "rotary_emb_local": RotaryEmbeddingBridge(name="model.rotary_emb_local"),
             "blocks": BlockBridge(
                 name="model.layers",
                 submodules={
@@ -224,8 +223,8 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
             hf_model: The HuggingFace Gemma-3 model instance
             bridge_model: The TransformerBridge model (if available, set rotary_emb on actual instances)
         """
-        # Get rotary embedding instances from the model
-        rotary_emb_local = hf_model.model.rotary_emb_local  # Used by 22/26 layers
+        # Get the shared rotary embedding from the model (contains both global and local RoPE)
+        rotary_emb = hf_model.model.rotary_emb
 
         # Force HF model to use "eager" attention to match bridge implementation
         # Bridge uses "eager" to support output_attentions for hook compatibility
@@ -244,7 +243,7 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
             # Set on each layer's actual attention bridge instance
             for block in bridge_model.blocks:
                 if hasattr(block, "attn"):
-                    block.attn.set_rotary_emb(rotary_emb_local)
+                    block.attn.set_rotary_emb(rotary_emb)
 
                     # Enable native autograd for q_norm/k_norm to match HF exactly
                     if hasattr(block.attn, "original_component"):
@@ -256,4 +255,4 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
 
         # Also set on the template for get_generalized_component() calls
         attn_bridge = self.get_generalized_component("blocks.0.attn")
-        attn_bridge.set_rotary_emb(rotary_emb_local)
+        attn_bridge.set_rotary_emb(rotary_emb)
