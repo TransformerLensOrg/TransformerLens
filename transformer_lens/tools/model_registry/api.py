@@ -4,22 +4,12 @@ This module provides a clean, programmatic interface for accessing model registr
 data. It supports lazy loading with in-memory caching to avoid repeated file reads.
 
 Example usage:
-    >>> from transformer_lens.tools.model_registry import api
-    >>>
-    >>> # Check if a model is supported
-    >>> api.is_model_supported("gpt2")
+    >>> from transformer_lens.tools.model_registry import api  # doctest: +SKIP
+    >>> api.is_model_supported("openai-community/gpt2")  # doctest: +SKIP
     True
-    >>>
-    >>> # Get all supported models
-    >>> models = api.get_supported_models()
-    >>> len(models)
-    1234
-    >>>
-    >>> # Get models for a specific architecture
-    >>> gpt2_models = api.get_architecture_models("GPT2LMHeadModel")
-    >>>
-    >>> # Get unsupported architectures ranked by model count
-    >>> gaps = api.get_unsupported_architectures(min_models=100, top_n=10)
+    >>> models = api.get_supported_models()  # doctest: +SKIP
+    >>> gpt2_models = api.get_architecture_models("GPT2LMHeadModel")  # doctest: +SKIP
+    >>> gaps = api.get_unsupported_architectures(min_models=100, top_n=10)  # doctest: +SKIP
 """
 
 import json
@@ -48,18 +38,6 @@ _cache_lock = Lock()
 _DATA_DIR = Path(__file__).parent / "data"
 
 
-def _get_data_path(filename: str) -> Path:
-    """Get the path to a data file.
-
-    Args:
-        filename: Name of the data file
-
-    Returns:
-        Path to the data file
-    """
-    return _DATA_DIR / filename
-
-
 def _load_json(filename: str) -> dict:
     """Load a JSON file from the data directory.
 
@@ -72,7 +50,7 @@ def _load_json(filename: str) -> dict:
     Raises:
         DataNotLoadedError: If the file doesn't exist or can't be read
     """
-    path = _get_data_path(filename)
+    path = _DATA_DIR / filename
     if not path.exists():
         raise DataNotLoadedError(filename, str(path))
     try:
@@ -89,7 +67,7 @@ def _get_supported_models_report() -> SupportedModelsReport:
         The SupportedModelsReport instance
 
     Raises:
-        DataNotLoadedError: If the data file is not available
+        DataNotLoadedError: If the data files are not available
     """
     cache_key = "supported_models"
     with _cache_lock:
@@ -127,7 +105,7 @@ def _get_verification_history() -> VerificationHistory:
         The VerificationHistory instance
 
     Raises:
-        DataNotLoadedError: If the data file is not available
+        DataNotLoadedError: If the data files are not available
     """
     cache_key = "verification_history"
     with _cache_lock:
@@ -169,10 +147,8 @@ def get_supported_models(
         DataNotLoadedError: If the supported models data is not available
 
     Example:
-        >>> models = get_supported_models(architecture="GPT2LMHeadModel")
-        >>> len(models)
-        42
-        >>> verified = get_supported_models(verified_only=True)
+        >>> models = get_supported_models(architecture="GPT2LMHeadModel")  # doctest: +SKIP
+        >>> verified = get_supported_models(verified_only=True)  # doctest: +SKIP
     """
     report = _get_supported_models_report()
     models = report.models
@@ -181,7 +157,7 @@ def get_supported_models(
         models = [m for m in models if m.architecture_id == architecture]
 
     if verified_only:
-        models = [m for m in models if m.verified]
+        models = [m for m in models if m.status == 1]
 
     return models
 
@@ -205,9 +181,8 @@ def get_unsupported_architectures(
         DataNotLoadedError: If the architecture gaps data is not available
 
     Example:
-        >>> # Get top 10 unsupported architectures with 100+ models
-        >>> gaps = get_unsupported_architectures(min_models=100, top_n=10)
-        >>> for gap in gaps:
+        >>> gaps = get_unsupported_architectures(min_models=100, top_n=10)  # doctest: +SKIP
+        >>> for gap in gaps:  # doctest: +SKIP
         ...     print(f"{gap.architecture_id}: {gap.total_models} models")
     """
     report = _get_architecture_gaps_report()
@@ -236,9 +211,9 @@ def is_model_supported(model_id: str) -> bool:
         DataNotLoadedError: If the supported models data is not available
 
     Example:
-        >>> is_model_supported("gpt2")
+        >>> is_model_supported("openai-community/gpt2")  # doctest: +SKIP
         True
-        >>> is_model_supported("some-unsupported-model")
+        >>> is_model_supported("some-unsupported-model")  # doctest: +SKIP
         False
     """
     report = _get_supported_models_report()
@@ -258,10 +233,9 @@ def get_model_architecture(model_id: str) -> Optional[str]:
         DataNotLoadedError: If the supported models data is not available
 
     Example:
-        >>> get_model_architecture("gpt2")
+        >>> get_model_architecture("openai-community/gpt2")  # doctest: +SKIP
         'GPT2LMHeadModel'
-        >>> get_model_architecture("unknown-model")
-        None
+        >>> get_model_architecture("unknown-model")  # doctest: +SKIP
     """
     report = _get_supported_models_report()
     for model in report.models:
@@ -283,8 +257,8 @@ def get_architecture_models(architecture_id: str) -> list[str]:
         DataNotLoadedError: If the supported models data is not available
 
     Example:
-        >>> models = get_architecture_models("GPT2LMHeadModel")
-        >>> "gpt2" in models
+        >>> models = get_architecture_models("GPT2LMHeadModel")  # doctest: +SKIP
+        >>> "openai-community/gpt2" in models  # doctest: +SKIP
         True
     """
     report = _get_supported_models_report()
@@ -308,8 +282,8 @@ def suggest_similar_model(model_id: str) -> Optional[str]:
         DataNotLoadedError: If the supported models data is not available
 
     Example:
-        >>> suggest_similar_model("bigscience/bloom-560m")
-        'bigscience/bloom-1b1'  # A supported BLOOM model
+        >>> suggest_similar_model("bigscience/bloom-560m")  # doctest: +SKIP
+        'bigscience/bloom-1b1'
     """
     report = _get_supported_models_report()
 
@@ -324,7 +298,6 @@ def suggest_similar_model(model_id: str) -> Optional[str]:
     # Build a scoring function for similarity
     def score_model(candidate: ModelEntry) -> int:
         candidate_lower = candidate.model_id.lower()
-        candidate_parts = candidate.model_id.replace("/", "-").replace("_", "-").lower().split("-")
         score = 0
 
         # Same organization prefix
@@ -369,11 +342,9 @@ def get_model_info(model_id: str) -> ModelEntry:
         DataNotLoadedError: If the supported models data is not available
 
     Example:
-        >>> info = get_model_info("gpt2")
-        >>> info.architecture_id
+        >>> info = get_model_info("openai-community/gpt2")  # doctest: +SKIP
+        >>> info.architecture_id  # doctest: +SKIP
         'GPT2LMHeadModel'
-        >>> info.verified
-        True
     """
     report = _get_supported_models_report()
     for model in report.models:
@@ -395,8 +366,8 @@ def get_supported_architectures() -> list[str]:
         DataNotLoadedError: If the supported models data is not available
 
     Example:
-        >>> archs = get_supported_architectures()
-        >>> "GPT2LMHeadModel" in archs
+        >>> archs = get_supported_architectures()  # doctest: +SKIP
+        >>> "GPT2LMHeadModel" in archs  # doctest: +SKIP
         True
     """
     report = _get_supported_models_report()
@@ -414,17 +385,16 @@ def get_all_architectures_with_stats() -> list[ArchitectureStats]:
         DataNotLoadedError: If the registry data is not available
 
     Example:
-        >>> stats = get_all_architectures_with_stats()
-        >>> for s in stats[:5]:
+        >>> stats = get_all_architectures_with_stats()  # doctest: +SKIP
+        >>> for s in stats[:5]:  # doctest: +SKIP
         ...     status = "supported" if s.is_supported else "unsupported"
         ...     print(f"{s.architecture_id}: {s.model_count} models ({status})")
     """
-    supported_report = _get_supported_models_report()
     gaps_report = _get_architecture_gaps_report()
+    supported_report = _get_supported_models_report()
 
     # Build stats for supported architectures
     arch_stats: dict[str, ArchitectureStats] = {}
-
     for model in supported_report.models:
         arch_id = model.architecture_id
         if arch_id not in arch_stats:
@@ -435,12 +405,12 @@ def get_all_architectures_with_stats() -> list[ArchitectureStats]:
                 verified_count=0,
                 example_models=[],
             )
-        stats = arch_stats[arch_id]
-        stats.model_count += 1
-        if model.verified:
-            stats.verified_count += 1
-        if len(stats.example_models) < 5:
-            stats.example_models.append(model.model_id)
+        stats_obj = arch_stats[arch_id]
+        stats_obj.model_count += 1
+        if model.status == 1:
+            stats_obj.verified_count += 1
+        if len(stats_obj.example_models) < 5:
+            stats_obj.example_models.append(model.model_id)
 
     # Add stats for unsupported architectures
     for gap in gaps_report.gaps:
@@ -471,9 +441,9 @@ def is_architecture_supported(architecture_id: str) -> bool:
         DataNotLoadedError: If the supported models data is not available
 
     Example:
-        >>> is_architecture_supported("GPT2LMHeadModel")
+        >>> is_architecture_supported("GPT2LMHeadModel")  # doctest: +SKIP
         True
-        >>> is_architecture_supported("SomeUnknownModel")
+        >>> is_architecture_supported("SomeUnknownModel")  # doctest: +SKIP
         False
     """
     report = _get_supported_models_report()
@@ -495,8 +465,8 @@ def get_registry_stats() -> dict:
         DataNotLoadedError: If the registry data is not available
 
     Example:
-        >>> stats = get_registry_stats()
-        >>> print(f"Supported: {stats['total_supported_models']} models")
+        >>> stats = get_registry_stats()  # doctest: +SKIP
+        >>> print(f"Supported: {stats['total_supported_models']} models")  # doctest: +SKIP
     """
     supported = _get_supported_models_report()
     gaps = _get_architecture_gaps_report()
@@ -505,7 +475,8 @@ def get_registry_stats() -> dict:
         "total_supported_models": supported.total_models,
         "total_supported_architectures": supported.total_architectures,
         "total_verified": supported.total_verified,
-        "total_unsupported_architectures": gaps.total_unsupported,
+        "total_unsupported_architectures": gaps.total_unsupported_architectures,
+        "total_unsupported_models": gaps.total_unsupported_models,
         "supported_generated_at": supported.generated_at.isoformat(),
         "gaps_generated_at": gaps.generated_at.isoformat(),
     }

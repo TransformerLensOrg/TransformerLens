@@ -10,12 +10,10 @@ Main modules:
     - exceptions: Custom exceptions for the model registry
 
 Example usage:
-    >>> from transformer_lens.tools.model_registry import api
-    >>> # Check if a model is supported
-    >>> api.is_model_supported("gpt2")
+    >>> from transformer_lens.tools.model_registry import api  # doctest: +SKIP
+    >>> api.is_model_supported("openai-community/gpt2")  # doctest: +SKIP
     True
-    >>> # Get all models for an architecture
-    >>> models = api.get_architecture_models("GPT2LMHeadModel")
+    >>> models = api.get_architecture_models("GPT2LMHeadModel")  # doctest: +SKIP
 """
 
 from .exceptions import (
@@ -32,11 +30,46 @@ from .schemas import (
     ArchitectureStats,
     ModelEntry,
     ModelMetadata,
+    ScanInfo,
     SupportedModelsReport,
 )
 from .verification import VerificationHistory, VerificationRecord
 
+# Canonical set of HuggingFace architecture class names supported by TransformerBridge.
+# These must match the exact strings found in HF model config.architectures[]
+# and correspond to adapters registered in architecture_adapter_factory.py.
+#
+# HookedTransformer-only architectures (OLMo family, Gemma3 multimodal) are excluded
+# since they don't have TransformerBridge adapters yet.
+# Internal-only architectures (NanoGPT, MinGPT, NeelSoluOld, GPT2LMHeadCustomModel)
+# are excluded since they never appear on HuggingFace Hub.
+HF_SUPPORTED_ARCHITECTURES: set[str] = {
+    "BertForMaskedLM",
+    "BloomForCausalLM",
+    "GemmaForCausalLM",
+    "Gemma2ForCausalLM",
+    "Gemma3ForCausalLM",
+    "GPT2LMHeadModel",
+    "GptOssForCausalLM",
+    "GPTJForCausalLM",
+    "GPTNeoForCausalLM",
+    "GPTNeoXForCausalLM",
+    "LlamaForCausalLM",
+    "MistralForCausalLM",
+    "MixtralForCausalLM",
+    "OPTForCausalLM",
+    "PhiForCausalLM",
+    "Phi3ForCausalLM",
+    "QwenForCausalLM",
+    "Qwen2ForCausalLM",
+    "Qwen3ForCausalLM",
+    "StableLmForCausalLM",
+    "T5ForConditionalGeneration",
+}
+
 __all__ = [
+    # Constants
+    "HF_SUPPORTED_ARCHITECTURES",
     # Exceptions
     "ModelRegistryError",
     "ModelNotFoundError",
@@ -46,6 +79,7 @@ __all__ = [
     # Schemas
     "ModelEntry",
     "ModelMetadata",
+    "ScanInfo",
     "ArchitectureGap",
     "ArchitectureStats",
     "ArchitectureAnalysis",

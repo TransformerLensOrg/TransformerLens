@@ -191,7 +191,7 @@ def generate_report(output_path: Path | None = None) -> str:
         for model_id in model_list:
             # Check if verified
             model_entry = next((m for m in models if m.model_id == model_id), None)
-            verified_badge = " ✓" if model_entry and model_entry.verified else ""
+            verified_badge = " ✓" if model_entry and model_entry.status == 1 else ""
             lines.append(f"- `{model_id}`{verified_badge}")
         lines.append("")
 

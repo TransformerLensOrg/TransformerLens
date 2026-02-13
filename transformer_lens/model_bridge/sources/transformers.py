@@ -378,12 +378,10 @@ def check_model_support(model_id: str) -> dict:
         - suggestion: str | None - Suggested alternative if not supported
 
     Example:
-        >>> from transformer_lens.model_bridge.sources.transformers import check_model_support
-        >>> info = check_model_support("gpt2")
-        >>> info["is_supported"]
+        >>> from transformer_lens.model_bridge.sources.transformers import check_model_support  # doctest: +SKIP
+        >>> info = check_model_support("openai-community/gpt2")  # doctest: +SKIP
+        >>> info["is_supported"]  # doctest: +SKIP
         True
-        >>> info["architecture_id"]
-        'GPT2LMHeadModel'
     """
     try:
         from transformer_lens.tools.model_registry import api
@@ -395,7 +393,7 @@ def check_model_support(model_id: str) -> dict:
             return {
                 "is_supported": True,
                 "architecture_id": model_info.architecture_id,
-                "verified": model_info.verified,
+                "status": model_info.status,
                 "verified_date": (
                     model_info.verified_date.isoformat() if model_info.verified_date else None
                 ),

@@ -1381,16 +1381,8 @@ def update_model_registry(model_name: str, results: List[BenchmarkResult]) -> bo
         True if registry was updated successfully
     """
     import json
-    from datetime import datetime
+    from datetime import date
     from pathlib import Path
-
-    registry_path = (
-        Path(__file__).parent.parent / "tools" / "model_registry" / "data" / "supported_models.json"
-    )
-
-    if not registry_path.exists():
-        print(f"Registry not found at {registry_path}")
-        return False
 
     # Calculate phase scores (percentage of passed tests per phase)
     phase_results: Dict[int, List[bool]] = {1: [], 2: [], 3: []}
@@ -1398,23 +1390,49 @@ def update_model_registry(model_name: str, results: List[BenchmarkResult]) -> bo
         if result.phase in phase_results and result.severity != BenchmarkSeverity.SKIPPED:
             phase_results[result.phase].append(result.passed)
 
-    phase_scores = {}
+    phase_scores: Dict[int, Optional[float]] = {}
     for phase, passed_list in phase_results.items():
         if passed_list:
             phase_scores[phase] = round(sum(passed_list) / len(passed_list) * 100, 1)
         else:
             phase_scores[phase] = None
 
-    # Load registry
-    with open(registry_path) as f:
-        registry = json.load(f)
+    # Try to determine architecture
+    architecture_id = "Unknown"
+    try:
+        from transformers import AutoConfig
 
-    # Find and update the model entry
+        config = AutoConfig.from_pretrained(model_name)
+        archs = getattr(config, "architectures", []) or []
+        if archs:
+            architecture_id = archs[0]
+    except Exception:
+        pass
+
+    # Load supported_models.json
+    data_path = Path(__file__).parent.parent / "tools" / "model_registry" / "data"
+    supported_path = data_path / "supported_models.json"
+
+    try:
+        with open(supported_path) as f:
+            data = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        data = {
+            "generated_at": date.today().isoformat(),
+            "scan_info": None,
+            "total_architectures": 0,
+            "total_models": 0,
+            "total_verified": 0,
+            "models": [],
+        }
+
+    # Try to update existing entry
     updated = False
-    for entry in registry.get("models", []):
+    for entry in data.get("models", []):
         if entry["model_id"] == model_name:
-            entry["verified"] = True
-            entry["verified_at"] = datetime.now().isoformat()
+            entry["status"] = 1
+            entry["verified_date"] = date.today().isoformat()
+            entry["note"] = None
             entry["phase1_score"] = phase_scores.get(1)
             entry["phase2_score"] = phase_scores.get(2)
             entry["phase3_score"] = phase_scores.get(3)
@@ -1423,24 +1441,14 @@ def update_model_registry(model_name: str, results: List[BenchmarkResult]) -> bo
 
     if not updated:
         # Model not in registry - add it
-        # Try to determine architecture from results or model name
-        architecture_id = "Unknown"
-        try:
-            from transformers import AutoConfig
-
-            config = AutoConfig.from_pretrained(model_name)
-            archs = getattr(config, "architectures", []) or []
-            if archs:
-                architecture_id = archs[0]
-        except Exception:
-            pass
-
-        registry.setdefault("models", []).append(
+        data["models"].append(
             {
                 "model_id": model_name,
                 "architecture_id": architecture_id,
-                "verified": True,
-                "verified_at": datetime.now().isoformat(),
+                "status": 1,
+                "verified_date": date.today().isoformat(),
+                "metadata": None,
+                "note": None,
                 "phase1_score": phase_scores.get(1),
                 "phase2_score": phase_scores.get(2),
                 "phase3_score": phase_scores.get(3),
@@ -1448,9 +1456,15 @@ def update_model_registry(model_name: str, results: List[BenchmarkResult]) -> bo
         )
         updated = True
 
-    # Write back
-    with open(registry_path, "w") as f:
-        json.dump(registry, f, indent=2)
+    # Update totals
+    data["total_models"] = len(data["models"])
+    data["total_verified"] = sum(1 for m in data["models"] if m.get("status", 0) == 1)
+    arch_ids = set(m["architecture_id"] for m in data["models"])
+    data["total_architectures"] = len(arch_ids)
+
+    with open(supported_path, "w") as f:
+        json.dump(data, f, indent=2)
+        f.write("\n")
 
     print(
         f"Updated registry for {model_name}: P1={phase_scores.get(1)}%, P2={phase_scores.get(2)}%, P3={phase_scores.get(3)}%"

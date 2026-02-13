@@ -277,9 +277,18 @@ def _validate_model_entry(data: dict, path: str) -> list[ValidationError]:
     # model_id (required string)
     errors.extend(_validate_string(data.get("model_id"), f"{path}.model_id", min_length=1))
 
-    # verified (optional boolean, defaults to False)
-    if "verified" in data:
-        errors.extend(_validate_bool(data["verified"], f"{path}.verified", required=False))
+    # status (optional int 0-3, defaults to 0)
+    if "status" in data:
+        errors.extend(_validate_int(data["status"], f"{path}.status", required=False, min_value=0))
+        if isinstance(data["status"], int) and not isinstance(data["status"], bool):
+            if data["status"] > 3:
+                errors.append(
+                    ValidationError(f"{path}.status", "value must be 0-3", data["status"])
+                )
+
+    # note (optional string)
+    if "note" in data and data["note"] is not None:
+        errors.extend(_validate_string(data["note"], f"{path}.note", min_length=1))
 
     # verified_date (optional date string)
     if "verified_date" in data and data["verified_date"] is not None:
@@ -299,6 +308,19 @@ def _validate_model_entry(data: dict, path: str) -> list[ValidationError]:
             )
         else:
             errors.extend(_validate_model_metadata(data["metadata"], f"{path}.metadata"))
+
+    # phase scores (optional floats, 0-100 or None)
+    for phase_field in ("phase1_score", "phase2_score", "phase3_score"):
+        if phase_field in data and data[phase_field] is not None:
+            val = data[phase_field]
+            if not isinstance(val, (int, float)) or isinstance(val, bool):
+                errors.append(
+                    ValidationError(
+                        f"{path}.{phase_field}",
+                        f"expected number, got {type(val).__name__}",
+                        val,
+                    )
+                )
 
     return errors
 
@@ -458,8 +480,23 @@ def validate_architecture_gaps_report(data: dict) -> ValidationResult:
     # generated_at (required date string)
     errors.extend(_validate_date_string(data.get("generated_at"), "generated_at"))
 
-    # total_unsupported (required int >= 0)
-    errors.extend(_validate_int(data.get("total_unsupported"), "total_unsupported", min_value=0))
+    # total_unsupported_architectures (required int >= 0)
+    errors.extend(
+        _validate_int(
+            data.get("total_unsupported_architectures"),
+            "total_unsupported_architectures",
+            min_value=0,
+        )
+    )
+
+    # total_unsupported_models (required int >= 0)
+    errors.extend(
+        _validate_int(
+            data.get("total_unsupported_models"),
+            "total_unsupported_models",
+            min_value=0,
+        )
+    )
 
     # gaps (required list of ArchitectureGap)
     gaps = data.get("gaps")
@@ -574,6 +611,9 @@ def validate_json_schema(file_path: Path | str, schema_type: str | None = None) 
 def validate_data_directory(data_dir: Path | str | None = None) -> dict[str, ValidationResult]:
     """Validate all JSON files in the data directory.
 
+    Validates supported_models.json, verification_history.json, and
+    architecture_gaps.json.
+
     Args:
         data_dir: Path to the data directory. If None, uses the default data directory.
 
@@ -587,25 +627,44 @@ def validate_data_directory(data_dir: Path | str | None = None) -> dict[str, Val
 
     results = {}
 
-    # Define known files and their schema types
-    known_files = {
-        "supported_models.json": "supported_models",
-        "architecture_gaps.json": "architecture_gaps",
-        "verification_history.json": "verification_history",
-    }
+    # Validate supported_models.json
+    supported_path = data_dir / "supported_models.json"
+    if supported_path.exists():
+        try:
+            results["supported_models.json"] = validate_json_schema(
+                supported_path, "supported_models"
+            )
+        except json.JSONDecodeError as e:
+            results["supported_models.json"] = ValidationResult(
+                valid=False,
+                errors=[ValidationError("", f"Invalid JSON: {e}")],
+                schema_type="supported_models",
+            )
 
-    for filename, schema_type in known_files.items():
-        file_path = data_dir / filename
-        if file_path.exists():
-            try:
-                results[filename] = validate_json_schema(file_path, schema_type)
-            except json.JSONDecodeError as e:
-                results[filename] = ValidationResult(
-                    valid=False,
-                    errors=[ValidationError("", f"Invalid JSON: {e}")],
-                    schema_type=schema_type,
-                )
-        else:
-            logger.debug(f"Skipping {filename}: file does not exist")
+    # Validate architecture_gaps.json
+    gaps_path = data_dir / "architecture_gaps.json"
+    if gaps_path.exists():
+        try:
+            results["architecture_gaps.json"] = validate_json_schema(gaps_path, "architecture_gaps")
+        except json.JSONDecodeError as e:
+            results["architecture_gaps.json"] = ValidationResult(
+                valid=False,
+                errors=[ValidationError("", f"Invalid JSON: {e}")],
+                schema_type="architecture_gaps",
+            )
+
+    # Validate verification_history.json
+    verification_path = data_dir / "verification_history.json"
+    if verification_path.exists():
+        try:
+            results["verification_history.json"] = validate_json_schema(
+                verification_path, "verification_history"
+            )
+        except json.JSONDecodeError as e:
+            results["verification_history.json"] = ValidationResult(
+                valid=False,
+                errors=[ValidationError("", f"Invalid JSON: {e}")],
+                schema_type="verification_history",
+            )
 
     return results

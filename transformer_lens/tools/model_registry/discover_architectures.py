@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Discover all architectures on HuggingFace and classify them.
 
-This script scans HuggingFace models to discover all unique architecture classes
-and categorizes them as supported or unsupported by TransformerLens.
+This is a lightweight discovery tool that scans a sample of HuggingFace models
+to discover all unique architecture classes and categorize them as supported or
+unsupported by TransformerLens. For comprehensive scanning, use hf_scraper.py.
 
 Usage:
     python -m transformer_lens.tools.model_registry.discover_architectures
@@ -10,11 +11,14 @@ Usage:
 
 import argparse
 import json
+import os
 import time
 from collections import Counter
 from datetime import date
 from pathlib import Path
 from typing import Optional, TypedDict
+
+from . import HF_SUPPORTED_ARCHITECTURES
 
 
 class ArchitectureEntry(TypedDict):
@@ -23,32 +27,6 @@ class ArchitectureEntry(TypedDict):
     architecture_id: str
     total_models: int
     example_models: list[str]
-
-
-# Architectures currently supported by TransformerLens
-# (from transformer_lens/factories/architecture_adapter_factory.py)
-SUPPORTED_ARCHITECTURES = {
-    "BertForMaskedLM",
-    "BloomForCausalLM",
-    "GemmaForCausalLM",
-    "Gemma2ForCausalLM",
-    "Gemma3ForCausalLM",
-    "GPT2LMHeadModel",
-    "GptOssForCausalLM",
-    "GPTJForCausalLM",
-    "LlamaForCausalLM",
-    "MixtralForCausalLM",
-    "MistralForCausalLM",
-    "GPTNeoForCausalLM",
-    "GPTNeoXForCausalLM",
-    "OPTForCausalLM",
-    "PhiForCausalLM",
-    "Phi3ForCausalLM",
-    "QwenForCausalLM",
-    "Qwen2ForCausalLM",
-    "Qwen3ForCausalLM",
-    "T5ForConditionalGeneration",
-}
 
 
 def discover_architectures(
@@ -69,16 +47,18 @@ def discover_architectures(
     except ImportError:
         raise ImportError("huggingface_hub required: pip install huggingface_hub")
 
-    api = HfApi()
+    token = os.environ.get("HF_TOKEN", None)
+    api = HfApi(token=token)
     arch_counts: Counter[str] = Counter()
     arch_models: dict[str, list[str]] = {}  # Track example models per architecture
     checked = 0
     errors = 0
 
     print(f"Scanning top {num_models} text-generation models on HuggingFace...")
+    print(f"Using {len(HF_SUPPORTED_ARCHITECTURES)} supported architectures")
     print("This may take several minutes due to API rate limits.\n")
 
-    for model in api.list_models(task="text-generation", sort="downloads", direction=-1):
+    for model in api.list_models(pipeline_tag="text-generation", sort="downloads"):
         checked += 1
         if checked > num_models:
             break
@@ -117,7 +97,7 @@ def discover_architectures(
             "total_models": count,
             "example_models": arch_models.get(arch, []),
         }
-        if arch in SUPPORTED_ARCHITECTURES:
+        if arch in HF_SUPPORTED_ARCHITECTURES:
             supported[arch] = entry
         else:
             unsupported[arch] = entry
@@ -144,40 +124,49 @@ def discover_architectures(
         print(f"  {arch}: {count} models (e.g., {examples})")
     print(f"\nTotal unsupported: {len(unsupported)} architectures, {total_unsupported} models")
 
-    # Write output if directory specified
+    # Write output if directory specified (matching schemas.py format)
     if output_dir:
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        # Write supported models
+        # Write supported models as single file
         supported_models = []
-        for arch, data in supported.items():
-            for model_id in data["example_models"]:
+        for arch, arch_data in supported.items():
+            for model_id in arch_data["example_models"]:
                 supported_models.append(
                     {
                         "architecture_id": arch,
                         "model_id": model_id,
-                        "verified": False,
+                        "status": 0,
                         "verified_date": None,
                         "metadata": None,
+                        "note": None,
+                        "phase1_score": None,
+                        "phase2_score": None,
+                        "phase3_score": None,
                     }
                 )
 
-        supported_report = {
+        # Count unique architectures
+        arch_ids = set(m["architecture_id"] for m in supported_models)
+
+        report = {
             "generated_at": date.today().isoformat(),
-            "total_architectures": len(supported),
+            "scan_info": None,
+            "total_architectures": len(arch_ids),
             "total_models": len(supported_models),
             "total_verified": 0,
             "models": supported_models,
         }
 
         with open(output_dir / "supported_models.json", "w") as f:
-            json.dump(supported_report, f, indent=2)
+            json.dump(report, f, indent=2)
+            f.write("\n")
 
         # Write gaps
         gaps = [
-            {"architecture_id": arch, "total_models": data["total_models"]}
-            for arch, data in sorted(unsupported.items(), key=lambda x: -x[1]["total_models"])
+            {"architecture_id": arch, "total_models": gap_data["total_models"]}
+            for arch, gap_data in sorted(unsupported.items(), key=lambda x: -x[1]["total_models"])
         ]
 
         gaps_report = {
