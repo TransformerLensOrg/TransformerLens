@@ -155,7 +155,7 @@ class TransformerBlock(nn.Module):
             key_input = attn_in
             value_input = attn_in
 
-        if self.cfg.original_architecture == "Olmo2ForCausalLM":
+        if self.cfg.original_architecture in ("Olmo2ForCausalLM", "Olmo3ForCausalLM"):
             attn_out = self.attn(
                 query_input=query_input,
                 key_input=key_input,
@@ -185,7 +185,7 @@ class TransformerBlock(nn.Module):
             attn_out = self.ln1_post(attn_out)
         attn_out = self.hook_attn_out(attn_out)
 
-        if self.cfg.original_architecture == "Olmo2ForCausalLM":
+        if self.cfg.original_architecture in ("Olmo2ForCausalLM", "Olmo3ForCausalLM"):
             attn_out = self.ln1(attn_out)
 
         if resid_pre.device != attn_out.device:
@@ -196,7 +196,7 @@ class TransformerBlock(nn.Module):
             mlp_in = (
                 resid_mid if not self.cfg.use_hook_mlp_in else self.hook_mlp_in(resid_mid.clone())
             )
-            if self.cfg.original_architecture == "Olmo2ForCausalLM":
+            if self.cfg.original_architecture in ("Olmo2ForCausalLM", "Olmo3ForCausalLM"):
                 mlp_out = self.apply_mlp(mlp_in)
                 mlp_out = self.ln2(mlp_out)
             else:

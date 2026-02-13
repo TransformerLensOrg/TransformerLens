@@ -39,6 +39,7 @@ from transformer_lens.pretrained.weight_conversions import (
     convert_neo_weights,
     convert_neox_weights,
     convert_olmo2_weights,
+    convert_olmo3_weights,
     convert_olmo_weights,
     convert_olmoe_weights,
     convert_opt_weights,
@@ -1432,6 +1433,43 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "positional_embedding_type": "rotary",
             "gated_mlp": True,
         }
+    elif architecture == "Olmo3ForCausalLM":
+        cfg_dict = {
+            "d_model": hf_config.hidden_size,
+            "d_head": hf_config.hidden_size // hf_config.num_attention_heads,
+            "n_heads": hf_config.num_attention_heads,
+            "n_key_value_heads": hf_config.num_key_value_heads,
+            "d_mlp": hf_config.intermediate_size,
+            "n_layers": hf_config.num_hidden_layers,
+            "n_ctx": hf_config.max_position_embeddings,
+            "eps": hf_config.rms_norm_eps,
+            "d_vocab": hf_config.vocab_size,
+            "act_fn": hf_config.hidden_act,
+            "initializer_range": hf_config.initializer_range,
+            "normalization_type": "RMS",
+            "positional_embedding_type": "rotary",
+            "rotary_base": getattr(hf_config, "rope_theta", 500000.0),
+            "gated_mlp": True,
+            "tie_word_embeddings": hf_config.tie_word_embeddings,
+        }
+        # OLMo 3 uses YARN RoPE scaling
+        rope_scaling = getattr(hf_config, "rope_scaling", None)
+        if rope_scaling and rope_scaling.get("rope_type") == "yarn":
+            cfg_dict["use_yarn_rope"] = True
+            cfg_dict["yarn_factor"] = rope_scaling.get("factor", 8.0)
+            cfg_dict["yarn_attention_factor"] = rope_scaling.get("attention_factor", 1.0)
+            cfg_dict["yarn_beta_fast"] = rope_scaling.get("beta_fast", 32.0)
+            cfg_dict["yarn_beta_slow"] = rope_scaling.get("beta_slow", 1.0)
+            cfg_dict["yarn_original_max_position_embeddings"] = rope_scaling.get(
+                "original_max_position_embeddings", 4096
+            )
+        layer_types = getattr(hf_config, "layer_types", None)
+        if layer_types:
+            cfg_dict["attn_types"] = [
+                "local" if t == "sliding_attention" else "global" for t in layer_types
+            ]
+        else:
+            cfg_dict["attn_types"] = ["global"] * hf_config.num_hidden_layers
     elif architecture == "OlmoeForCausalLM":
         cfg_dict = {
             "d_model": hf_config.hidden_size,
@@ -1911,6 +1949,8 @@ def get_pretrained_state_dict(
             state_dict = convert_olmo2_weights(hf_model, cfg)
         elif cfg.original_architecture == "OlmoeForCausalLM":
             state_dict = convert_olmoe_weights(hf_model, cfg)
+        elif cfg.original_architecture == "Olmo3ForCausalLM":
+            state_dict = convert_olmo3_weights(hf_model, cfg)
         else:
             raise ValueError(
                 f"Loading weights from the architecture is not currently supported: {cfg.original_architecture}, generated from model name {cfg.model_name}. Feel free to open an issue on GitHub to request this feature."

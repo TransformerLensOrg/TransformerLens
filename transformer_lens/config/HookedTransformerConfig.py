@@ -193,6 +193,17 @@ class HookedTransformerConfig(TransformerLensConfig):
         NTK_by_parts_factor (float): The overall factor used in the "NTK-by-parts" method that
             affects the rate of change between low and high-frequency interpolation strategies.
             Defaults to 8.0.
+        use_yarn_rope (bool): Whether to apply YARN (Yet Another RoPE extensioN) scaling to
+            rotary positional embeddings. YARN blends interpolated and extrapolated frequencies
+            per dimension using correction ranges. See https://arxiv.org/abs/2309.00071 for
+            details. Used by OLMo 3. Defaults to False.
+        yarn_factor (float): The interpolation factor for YARN RoPE scaling. Defaults to 1.0.
+        yarn_attention_factor (float): Multiplicative scaling applied to sin/cos embeddings in
+            YARN. Defaults to 1.0.
+        yarn_beta_fast (float): Upper rotation threshold for YARN correction range. Defaults to 32.
+        yarn_beta_slow (float): Lower rotation threshold for YARN correction range. Defaults to 1.
+        yarn_original_max_position_embeddings (int): The original max position embeddings before
+            YARN extension. Defaults to 4096.
         use_qk_norm (bool): Whether to apply RMSNorm to the query and key projections before
             computing attention scores. Used by Gemma 3 models. Defaults to False.
         rotary_base_local (int, *optional*): The base for rotary positional embeddings in local
@@ -260,6 +271,12 @@ class HookedTransformerConfig(TransformerLensConfig):
     NTK_by_parts_high_freq_factor: float = 4.0
     NTK_by_parts_factor: float = 8.0
     NTK_original_ctx_len: int = 8192
+    use_yarn_rope: bool = False
+    yarn_factor: float = 1.0
+    yarn_attention_factor: float = 1.0
+    yarn_beta_fast: float = 32.0
+    yarn_beta_slow: float = 1.0
+    yarn_original_max_position_embeddings: int = 4096
     norm_topk_prob: bool = False
 
     def __post_init__(self):
