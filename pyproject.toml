@@ -57,9 +57,7 @@
             optional=true
 
         [tool.poetry.group.demo.dependencies]
-            # Demo/web UI stack is isolated to Python 3.10+.
             gradio={version=">=4.0.0", python=">=3.10"}
-            # Pin to a non-vulnerable release train for CVE-2025-67221.
             orjson={version=">=3.11.7,<4.0", python=">=3.10"}
 
         [tool.poetry.group.jupyter.dependencies]
