@@ -43,6 +43,18 @@ from transformer_lens.model_bridge.supported_architectures.mixtral import (
 from transformer_lens.model_bridge.supported_architectures.nanogpt import (
     NanogptArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.olmo import (
+    OlmoArchitectureAdapter,
+)
+from transformer_lens.model_bridge.supported_architectures.olmo2 import (
+    Olmo2ArchitectureAdapter,
+)
+from transformer_lens.model_bridge.supported_architectures.olmo3 import (
+    Olmo3ArchitectureAdapter,
+)
+from transformer_lens.model_bridge.supported_architectures.olmoe import (
+    OlmoeArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.neel_solu_old import (
     NeelSoluOldArchitectureAdapter,
 )
@@ -97,6 +109,10 @@ __all__ = [
     "NeelSoluOldArchitectureAdapter",
     "NeoArchitectureAdapter",
     "NeoxArchitectureAdapter",
+    "OlmoArchitectureAdapter",
+    "Olmo2ArchitectureAdapter",
+    "Olmo3ArchitectureAdapter",
+    "OlmoeArchitectureAdapter",
     "OptArchitectureAdapter",
     "PhiArchitectureAdapter",
     "Phi3ArchitectureAdapter",
