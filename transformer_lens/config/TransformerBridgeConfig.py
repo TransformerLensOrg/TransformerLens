@@ -26,6 +26,7 @@ class TransformerBridgeConfig(TransformerLensConfig):
         d_vocab: int = -1,
         architecture: Optional[str] = None,
         tokenizer_prepends_bos: bool = True,
+        tokenizer_appends_eos: bool = False,
         default_padding_side: Optional[str] = None,
         # HookedTransformerConfig compatibility fields
         model_name: str = "custom",
@@ -109,6 +110,7 @@ class TransformerBridgeConfig(TransformerLensConfig):
 
         # Tokenizer configuration
         self.tokenizer_prepends_bos = tokenizer_prepends_bos
+        self.tokenizer_appends_eos = tokenizer_appends_eos
         self.default_padding_side = default_padding_side
 
         # Attention weight processing configuration
