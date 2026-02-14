@@ -806,6 +806,15 @@ class TransformerBridge(nn.Module):
             truncation=truncate,
             max_length=self.cfg.n_ctx if truncate else None,
         )["input_ids"]
+        # Strip trailing EOS tokens that some tokenizers auto-append
+        # (e.g., OLMo's GPTNeoXTokenizer appends <|endoftext|> to all inputs)
+        if (
+            getattr(self.cfg, "tokenizer_appends_eos", False)
+            and self.tokenizer.eos_token_id is not None
+        ):
+            # Remove trailing EOS from each sequence, but keep at least 1 token
+            while tokens.shape[-1] > 1 and (tokens[:, -1] == self.tokenizer.eos_token_id).all():
+                tokens = tokens[:, :-1]
         if not prepend_bos and tokenizer_prepends_bos:
             tokens = utils.get_tokens_with_bos_removed(self.tokenizer, tokens)
         if move_to_device:
@@ -1712,16 +1721,12 @@ class TransformerBridge(nn.Module):
             Generated sequence as string, list of strings, or tensor depending on input type and return_type.
             If output_logits=True, returns a ModelOutput-like object with 'sequences' and 'logits' attributes.
         """
-        # Convert input to tokens
+        # Convert input to tokens using to_tokens() for consistent special token handling
         if isinstance(input, str):
-            input_tokens = self.tokenizer(
-                input, return_tensors="pt", padding=False, truncation=False
-            )["input_ids"].to(self.cfg.device)
+            input_tokens = self.to_tokens(input, move_to_device=True, truncate=False)
             input_type = "str"
         elif isinstance(input, list):
-            input_tokens = self.tokenizer(
-                input, return_tensors="pt", padding=True, truncation=False
-            )["input_ids"].to(self.cfg.device)
+            input_tokens = self.to_tokens(input, move_to_device=True, truncate=False)
             input_type = "list"
         else:
             input_tokens = input.to(self.cfg.device)

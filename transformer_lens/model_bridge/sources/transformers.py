@@ -290,7 +290,21 @@ def boot(
             default_padding_side=default_padding_side,
         )
     if tokenizer is not None:
-        adapter.cfg.tokenizer_prepends_bos = len(tokenizer.encode("")) > 0
+        # Detect whether the tokenizer auto-prepends BOS or auto-appends EOS.
+        # We encode a non-empty test string and check the first/last tokens.
+        # Using encode("") is unreliable because setup_tokenizer may set
+        # bos_token = eos_token, making them indistinguishable.
+        encoded_test = tokenizer.encode("a")
+        adapter.cfg.tokenizer_prepends_bos = (
+            len(encoded_test) > 1
+            and tokenizer.bos_token_id is not None
+            and encoded_test[0] == tokenizer.bos_token_id
+        )
+        adapter.cfg.tokenizer_appends_eos = (
+            len(encoded_test) > 1
+            and tokenizer.eos_token_id is not None
+            and encoded_test[-1] == tokenizer.eos_token_id
+        )
     bridge = TransformerBridge(hf_model, adapter, tokenizer)
     return bridge
 
