@@ -32,6 +32,12 @@ functions to edit, remove or replace these activations as the model runs.
 pip install transformer_lens
 ```
 
+#### Python 3.8 or 3.9
+
+```shell
+pip install 'transformer_lens~=2.0'
+```
+
 ### Use
 
 ```python
@@ -47,7 +53,7 @@ logits, activations = model.run_with_cache("Hello World")
 ## Key Tutorials
 
 * [Introduction to the Library and Mech
-  Interp](https://arena3-chapter1-transformer-interp.streamlit.app/[1.2]_Intro_to_Mech_Interp)
+  Interp](https://arena-chapter1-transformer-interp.streamlit.app/[1.2]_Intro_to_Mech_Interp)
 * [Demo of Main TransformerLens Features](https://neelnanda.io/transformer-lens-demo)
 
 ## Gallery

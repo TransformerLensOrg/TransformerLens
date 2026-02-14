@@ -1,7 +1,7 @@
 from unittest import mock
 
 from transformer_lens import HookedTransformer
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.config import HookedTransformerConfig
 from transformer_lens.loading_from_pretrained import fill_missing_keys
 
 

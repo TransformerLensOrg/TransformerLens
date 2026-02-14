@@ -9,6 +9,9 @@ import torch
 import torch.nn as nn
 from jaxtyping import Float, Int
 
+from transformer_lens.cache.key_value_cache_entry import (
+    TransformerLensKeyValueCacheEntry,
+)
 from transformer_lens.components import (
     Attention,
     GroupedQueryAttention,
@@ -18,10 +21,9 @@ from transformer_lens.components import (
     RMSNormPre,
 )
 from transformer_lens.components.mlps.can_be_used_as_mlp import CanBeUsedAsMLP
+from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.factories.mlp_factory import MLPFactory
 from transformer_lens.hook_points import HookPoint
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
-from transformer_lens.past_key_value_caching import HookedTransformerKeyValueCacheEntry
 from transformer_lens.utils import repeat_along_head_dimension
 
 
@@ -102,14 +104,14 @@ class TransformerBlock(nn.Module):
         self,
         resid_pre: Float[torch.Tensor, "batch pos d_model"],
         shortformer_pos_embed: Optional[Float[torch.Tensor, "batch pos d_model"]] = None,
-        past_kv_cache_entry: Optional[HookedTransformerKeyValueCacheEntry] = None,
+        past_kv_cache_entry: Optional[TransformerLensKeyValueCacheEntry] = None,
         attention_mask: Optional[Int[torch.Tensor, "batch offset_pos"]] = None,
     ) -> Float[torch.Tensor, "batch pos d_model"]:
         """A single Transformer block.
 
         Args:
             resid_pre (torch.Tensor): The residual stream - shape [batch, pos, d_model]
-            cache (HookedTransformerKeyValueCache): A cache of previous keys and values, used only when generating text. Defaults to None.
+            cache (TransformerLensKeyValueCache): A cache of previous keys and values, used only when generating text. Defaults to None.
             shortformer_pos_embed (torch.Tensor, optional): Only used for positional_embeddings_type == "shortformer". The positional embeddings. See HookedTransformerConfig for details. Defaults to None.
             attention_mask (torch.Tensor, optional): The attention mask for padded tokens. Defaults to None.
 
@@ -153,7 +155,7 @@ class TransformerBlock(nn.Module):
             key_input = attn_in
             value_input = attn_in
 
-        if self.cfg.original_architecture == "Olmo2ForCausalLM":
+        if self.cfg.original_architecture in ("Olmo2ForCausalLM", "Olmo3ForCausalLM"):
             attn_out = self.attn(
                 query_input=query_input,
                 key_input=key_input,
@@ -185,6 +187,9 @@ class TransformerBlock(nn.Module):
         if self.cfg.original_architecture == "Olmo2ForCausalLM":
             attn_out = self.ln1(attn_out)
 
+        if self.cfg.original_architecture in ("Olmo2ForCausalLM", "Olmo3ForCausalLM"):
+            attn_out = self.ln1(attn_out)
+
         if resid_pre.device != attn_out.device:
             resid_pre = resid_pre.to(attn_out.device)
 
@@ -193,7 +198,7 @@ class TransformerBlock(nn.Module):
             mlp_in = (
                 resid_mid if not self.cfg.use_hook_mlp_in else self.hook_mlp_in(resid_mid.clone())
             )
-            if self.cfg.original_architecture == "Olmo2ForCausalLM":
+            if self.cfg.original_architecture in ("Olmo2ForCausalLM", "Olmo3ForCausalLM"):
                 mlp_out = self.apply_mlp(mlp_in)
                 mlp_out = self.ln2(mlp_out)
             else:

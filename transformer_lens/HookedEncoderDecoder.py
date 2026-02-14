@@ -34,10 +34,10 @@ from typing_extensions import Literal
 import transformer_lens.loading_from_pretrained as loading
 from transformer_lens.ActivationCache import ActivationCache
 from transformer_lens.components import MLP, Embed, GatedMLP, RMSNorm, T5Block, Unembed
+from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookedRootModule, HookPoint
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
-from transformer_lens.utilities import devices
+from transformer_lens.utilities.multi_gpu import get_device_for_block_index
 from transformer_lens.utils import sample_logits
 
 T = TypeVar("T", bound="HookedEncoderDecoder")
@@ -115,7 +115,7 @@ class HookedEncoderDecoder(HookedRootModule):
 
         self.hook_embed = HookPoint()
 
-        if move_to_device:
+        if move_to_device and self.cfg.device is not None:
             self.to(self.cfg.device)
 
         self.setup()
@@ -390,7 +390,7 @@ class HookedEncoderDecoder(HookedRootModule):
 
         assert isinstance(encoder_input, torch.Tensor)
         batch_size = encoder_input.shape[0]
-        device = devices.get_device_for_block_index(0, self.cfg)
+        device = get_device_for_block_index(0, self.cfg)
 
         # For the decoder input, we start with a tensor of PAD tokens of shape (batch, 1)
         assert self.tokenizer is not None
@@ -454,11 +454,9 @@ class HookedEncoderDecoder(HookedRootModule):
                     temperature=temperature,
                     freq_penalty=freq_penalty,
                     tokens=decoder_input,
-                ).to(devices.get_device_for_block_index(0, self.cfg))
+                ).to(get_device_for_block_index(0, self.cfg))
             else:
-                sampled_tokens = final_logits.argmax(-1).to(
-                    devices.get_device_for_block_index(0, self.cfg)
-                )
+                sampled_tokens = final_logits.argmax(-1).to(get_device_for_block_index(0, self.cfg))
 
             if stop_at_eos:
                 # For all unfinished sequences, add on the next token. If a sequence was
@@ -481,7 +479,7 @@ class HookedEncoderDecoder(HookedRootModule):
         if return_type == "str":
             assert self.tokenizer is not None
             # Convert tokens to string
-            return self.tokenizer.decode(decoder_input[0], skip_special_tokens=True)
+            return cast(str, self.tokenizer.decode(decoder_input[0], skip_special_tokens=True))
 
         else:
             return decoder_input
@@ -596,7 +594,7 @@ class HookedEncoderDecoder(HookedRootModule):
 
         model.load_state_dict(state_dict, strict=False)
 
-        if move_to_device:
+        if move_to_device and cfg.device is not None:
             model.to(cfg.device)
 
         print(f"Loaded pretrained model {model_name} into HookedTransformer")

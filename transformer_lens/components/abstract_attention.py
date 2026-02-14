@@ -1,6 +1,6 @@
 import math
 from abc import ABC
-from typing import Dict, Optional, Tuple, Union
+from typing import Dict, Optional, Tuple, Union, cast
 
 import einops
 import torch
@@ -8,13 +8,16 @@ import torch.nn as nn
 import torch.nn.functional as F
 from better_abc import abstract_attribute
 from jaxtyping import Float, Int
+from torch import Tensor
 from transformers.utils.import_utils import is_bitsandbytes_available
 
+from transformer_lens.cache.key_value_cache_entry import (
+    TransformerLensKeyValueCacheEntry,
+)
 from transformer_lens.components.rms_norm import RMSNorm
+from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookPoint
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
-from transformer_lens.past_key_value_caching import HookedTransformerKeyValueCacheEntry
 from transformer_lens.utilities.attention import complex_attn_linear, simple_attn_linear
 from transformer_lens.utils import get_offset_position_ids
 
@@ -86,6 +89,23 @@ class AbstractAttention(ABC, nn.Module):
         if self.cfg.use_qk_norm:
             self.q_norm = RMSNorm(self.cfg, length=self.cfg.d_head)
             self.k_norm = RMSNorm(self.cfg, length=self.cfg.d_head)
+
+        elif self.cfg.original_architecture in (
+            "OlmoeForCausalLM",
+            "Olmo2ForCausalLM",
+            "Olmo3ForCausalLM",
+        ):
+            # Q/K norms applied on full projected vectors (before head reshape).
+            # q_norm dim = n_heads * d_head = d_model
+            self.q_norm: Optional[RMSNorm] = RMSNorm(self.cfg, self.cfg.d_model)
+            # k_norm dim depends on whether GQA is used:
+            #   OLMo 2 (MHA): n_kv_heads == n_heads, so d_model
+            #   OLMo 3 / OLMoE (GQA): n_kv_heads * d_head
+            if self.cfg.n_key_value_heads is not None:
+                k_norm_dim = self.cfg.d_head * self.cfg.n_key_value_heads
+            else:
+                k_norm_dim = self.cfg.d_model
+            self.k_norm: Optional[RMSNorm] = RMSNorm(self.cfg, k_norm_dim)
         else:
             self.q_norm = None
             self.k_norm = None
@@ -137,10 +157,15 @@ class AbstractAttention(ABC, nn.Module):
             self.hook_rot_q = HookPoint()
             if self.cfg.rotary_dim is None:  # keep mypy happy
                 raise ValueError("Rotary dim must be provided for rotary positional embeddings")
+            # Use per-layer RoPE base if specified (e.g., Gemma 3 uses 10k for local, 1M for global)
+            if self.cfg.rotary_base_local is not None and self.attn_type == "local":
+                rope_base = self.cfg.rotary_base_local
+            else:
+                rope_base = self.cfg.rotary_base
             sin, cos = self.calculate_sin_cos_rotary(
                 self.cfg.rotary_dim,
                 self.cfg.n_ctx,
-                base=self.cfg.rotary_base,
+                base=rope_base,
                 dtype=self.cfg.dtype,
             )
             self.register_buffer("rotary_sin", sin)
@@ -159,10 +184,11 @@ class AbstractAttention(ABC, nn.Module):
             or self.cfg.original_architecture == "Olmo2ForCausalLM"
         ):
             self.q_norm = RMSNorm(self.cfg, self.cfg.d_model)
+            n_kv_heads = self.cfg.n_key_value_heads if self.cfg.n_key_value_heads is not None else self.cfg.n_heads
             k_norm_dim = (
                 self.cfg.d_model
                 if self.cfg.original_architecture == "Olmo2ForCausalLM"
-                else self.cfg.d_head * self.cfg.n_key_value_heads
+                else self.cfg.d_head * n_kv_heads
             )
             self.k_norm = RMSNorm(self.cfg, k_norm_dim)
 
@@ -207,7 +233,7 @@ class AbstractAttention(ABC, nn.Module):
             Float[torch.Tensor, "batch kv_pos head_index d_model"],
             Float[torch.Tensor, "batch kv_pos kv_head_index d_model"],
         ],
-        past_kv_cache_entry: Optional[HookedTransformerKeyValueCacheEntry] = None,
+        past_kv_cache_entry: Optional[TransformerLensKeyValueCacheEntry] = None,
         additive_attention_mask: Optional[Float[torch.Tensor, "batch 1 1 kv_pos"]] = None,
         attention_mask: Optional[Int[torch.Tensor, "batch offset_pos"]] = None,
         position_bias: Optional[Float[torch.Tensor, "1 head_index pos kv_pos"]] = None,
@@ -221,11 +247,14 @@ class AbstractAttention(ABC, nn.Module):
 
         q, k, v = self.calculate_qkv_matrices(query_input, key_input, value_input)
 
-        # OLMoE uses QK-norm.
-        if (
-            self.cfg.original_architecture == "OlmoeForCausalLM"
-            or self.cfg.original_architecture == "Olmo2ForCausalLM"
+        # OLMo-family QK-norm: applied on full projected vectors before head reshape.
+        if self.cfg.original_architecture in (
+            "OlmoeForCausalLM",
+            "Olmo2ForCausalLM",
+            "Olmo3ForCausalLM",
         ):
+            assert self.q_norm is not None
+            assert self.k_norm is not None
             q = einops.rearrange(
                 self.q_norm(
                     einops.rearrange(
@@ -282,10 +311,12 @@ class AbstractAttention(ABC, nn.Module):
                 )
 
             # Take the last query_ctx positions so it also works with past_kv_cache
-            if self.alibi is not None:  # Add None check
-                attn_scores += self.alibi[
-                    :, -query_ctx:, :key_ctx
-                ]  # [batch, head_index, query_pos, key_pos]
+            if isinstance(self.alibi, torch.Tensor):
+                attn_scores += self.alibi[:, -query_ctx:, :key_ctx]
+            else:
+                raise TypeError(
+                    f"Expected self.alibi to be a Tensor, but got {type(self.alibi)}"
+                )  # [batch, head_index, query_pos, key_pos]
         elif self.cfg.positional_embedding_type == "relative_positional_bias":
             if position_bias is None:
                 if self.has_relative_attention_bias:
@@ -311,10 +342,11 @@ class AbstractAttention(ABC, nn.Module):
 
         attn_scores = self.hook_attn_scores(attn_scores)
         pattern = F.softmax(attn_scores, dim=-1)
+        if not isinstance(pattern, torch.Tensor):
+            raise TypeError(f"Expected 'pattern' to be a Tensor, got {type(pattern)}")
         pattern = torch.where(torch.isnan(pattern), torch.zeros_like(pattern), pattern)
         pattern = self.hook_pattern(pattern)  # [batch, head_index, query_pos, key_pos]
-        pattern = pattern.to(self.cfg.dtype)
-        pattern = pattern.to(v.device)
+        pattern = pattern.to(device=v.device, dtype=v.dtype)
         z = self.calculate_z_scores(v, pattern)  # [batch, pos, head_index, d_head]
         if not self.cfg.use_attn_result:
             if self.cfg.load_in_4bit:
@@ -334,15 +366,21 @@ class AbstractAttention(ABC, nn.Module):
                     self.W_O, "head_index d_head d_model -> d_model (head_index d_head)"
                 )
 
-                if self.b_O.device != w.device:
-                    w = w.to(self.b_O.device)
-                if self.b_O.device != z.device:
-                    z = z.to(self.b_O.device)
+                # Move output projection weights and bias to the same device as z
+                # so that the final linear operation occurs on the device of the inputs
+                if w.device != z.device:
+                    w = w.to(z.device)
+                b_O: Tensor = self.b_O
+                if b_O.device != z.device:
+                    b_O = b_O.to(z.device)
+                # Ensure z has the same dtype as weights used in the output projection
+                if z.dtype != w.dtype:
+                    z = z.to(w.dtype)
 
                 out = F.linear(
                     z.reshape(z.shape[0], z.shape[1], self.cfg.d_head * self.cfg.n_heads),
                     w,
-                    self.b_O,
+                    b_O,
                 )
         else:
             # Explicitly calculate the attention result so it can be accessed by a hook
@@ -362,6 +400,11 @@ class AbstractAttention(ABC, nn.Module):
                     self.W_O,
                     "head_index d_head d_model -> 1 1 head_index d_head d_model",
                 )
+                if w.device != z.device:
+                    w = w.to(z.device)
+                # Ensure z has the same dtype as w before multiplication
+                if z.dtype != w.dtype:
+                    z = z.to(w.dtype)
                 z = einops.rearrange(
                     z, "batch pos head_index d_head -> batch pos head_index d_head 1"
                 )
@@ -537,8 +580,14 @@ class AbstractAttention(ABC, nn.Module):
                 f"query_ctx_length {query_ctx_length} + past_kv_pos_offset {past_kv_pos_offset} != key_ctx_length {key_ctx_length} - you likely have a bug."
             )
 
+        # Dynamically extend mask if needed for long context
+        if key_ctx_length > self.mask.shape[0]:
+            self._extend_mask(key_ctx_length)
+
         # Index back to front to ensure local attention works
-        final_mask = self.mask[None, None, -query_ctx_length:, -key_ctx_length:]  # [1, 1, pos, pos]
+        final_mask = cast(torch.Tensor, self.mask)[
+            None, None, -query_ctx_length:, -key_ctx_length:
+        ]  # [1, 1, pos, pos]
         if attention_mask is not None:
             # Apply a causal mask to the attention scores considering the padding
 
@@ -553,7 +602,7 @@ class AbstractAttention(ABC, nn.Module):
             final_mask = (final_mask * attention_mask).bool()  # [batch, head, pos, offset_pos]
 
         attn_scores = attn_scores.to(final_mask.device)
-        return torch.where(final_mask, attn_scores, self.IGNORE)
+        return torch.where(final_mask, attn_scores, cast(torch.Tensor, self.IGNORE))
 
     def calculate_sin_cos_rotary(
         self,
@@ -597,6 +646,38 @@ class AbstractAttention(ABC, nn.Module):
             is_medium_freq = ~(wavelen < high_freq_wavelen) * ~(wavelen > low_freq_wavelen)
             inv_freq_llama = torch.where(is_medium_freq, smoothed_inv_freq, inv_freq_llama)
             freq = 1 / inv_freq_llama
+        elif self.cfg.use_yarn_rope:
+            # YARN (Yet Another RoPE extensioN) from https://arxiv.org/abs/2309.00071
+            # Implementation follows HuggingFace: transformers/modeling_rope_utils.py
+            inv_freq = 1.0 / (
+                base ** (torch.arange(0, rotary_dim, 2, dtype=high_precision) / rotary_dim)
+            )
+            yarn_factor = self.cfg.yarn_factor
+            # HF uses original_max_position_embeddings (the pre-extension context length)
+            # for computing the correction range.
+            orig_max_pos = self.cfg.yarn_original_max_position_embeddings
+            beta_fast = self.cfg.yarn_beta_fast
+            beta_slow = self.cfg.yarn_beta_slow
+
+            def _find_correction_dim(num_rotations: float) -> float:
+                return (rotary_dim * math.log(orig_max_pos / (num_rotations * 2 * math.pi))) / (
+                    2 * math.log(base)
+                )
+
+            low = math.floor(_find_correction_dim(beta_fast))
+            high = math.ceil(_find_correction_dim(beta_slow))
+            low = max(low, 0)
+            high = min(high, rotary_dim - 1)
+
+            # Linear ramp from 0 to 1 between low and high dims
+            ramp = torch.arange(rotary_dim // 2, dtype=high_precision)
+            high_f = float(high) + 0.001 if low == high else float(high)
+            ramp = torch.clamp((ramp - low) / (high_f - low), 0, 1)
+
+            inv_freq_interp = inv_freq / yarn_factor
+            # ramp=0 (below low) → extrapolation (original freq), ramp=1 (above high) → interpolation (scaled)
+            inv_freq = inv_freq_interp * ramp + inv_freq * (1 - ramp)
+            freq = 1.0 / inv_freq
         else:
             freq = base ** (dim / (rotary_dim / 2))
         if self.cfg.rotary_adjacent_pairs:
@@ -605,7 +686,12 @@ class AbstractAttention(ABC, nn.Module):
             freq = einops.repeat(freq, "d -> (2 d)")
         # Create a n_ctx x rotary_dim tensor, where each column is an arithmetic sequence of angles in that frequency
         angles = pos[:, None] / freq[None, :]
-        return torch.sin(angles).to(dtype), torch.cos(angles).to(dtype)
+        sin, cos = torch.sin(angles).to(dtype), torch.cos(angles).to(dtype)
+        # YARN attention_factor scales the embeddings (default 1.0 is a no-op)
+        if self.cfg.use_yarn_rope and self.cfg.yarn_attention_factor != 1.0:
+            sin = sin * self.cfg.yarn_attention_factor
+            cos = cos * self.cfg.yarn_attention_factor
+        return sin, cos
 
     def rotate_every_two(
         self, x: Float[torch.Tensor, "... rotary_dim"]
@@ -637,29 +723,66 @@ class AbstractAttention(ABC, nn.Module):
         # Only apply rotary to first rotary_dim dimensions (eg, if rotary_dim=64 and d_head=256, only apply to first 1/4 of dimensions)
 
         if x.device != self.rotary_sin.device:
-            x = x.to(self.rotary_sin.device)
+            x = x.to(cast(torch.device, self.rotary_sin.device))
 
         x_pos = x.size(1)
         x_rot = x[..., : self.cfg.rotary_dim]
         x_pass = x[..., self.cfg.rotary_dim :]
         x_flip = self.rotate_every_two(x_rot)
 
+        # Dynamically extend rotary embeddings if needed for long context
+        max_pos_needed = past_kv_pos_offset + x_pos
+        if max_pos_needed > self.rotary_cos.shape[0]:
+            self._extend_rotary_embeddings(max_pos_needed)
+
         if attention_mask is None:
-            rotary_cos = self.rotary_cos[
+            rotary_cos = cast(torch.Tensor, self.rotary_cos)[
                 None, past_kv_pos_offset : past_kv_pos_offset + x_pos, None, :
             ]
-            rotary_sin = self.rotary_sin[
+            rotary_sin = cast(torch.Tensor, self.rotary_sin)[
                 None, past_kv_pos_offset : past_kv_pos_offset + x_pos, None, :
             ]
             x_rotated = x_rot * rotary_cos + x_flip * rotary_sin
         else:
             offset_position_ids = get_offset_position_ids(past_kv_pos_offset, attention_mask)
-            offset_position_ids = offset_position_ids.to(self.rotary_cos.device)
-            mask_rotary_cos = self.rotary_cos[offset_position_ids, None, :]
-            mask_rotary_sin = self.rotary_sin[offset_position_ids, None, :]
+            offset_position_ids = offset_position_ids.to(cast(torch.device, self.rotary_cos.device))
+            mask_rotary_cos = cast(torch.Tensor, self.rotary_cos)[offset_position_ids, None, :]
+            mask_rotary_sin = cast(torch.Tensor, self.rotary_sin)[offset_position_ids, None, :]
             x_rotated = x_rot * mask_rotary_cos + x_flip * mask_rotary_sin
 
         return torch.cat([x_rotated, x_pass], dim=-1)
+
+    def _extend_rotary_embeddings(self, new_size: int):
+        """Extend rotary embeddings to support longer contexts dynamically."""
+        # Get the RoPE base from config or use default
+        rope_base = getattr(self.cfg, "rotary_base", 10000)
+
+        # Ensure rotary_dim is set
+        assert self.cfg.rotary_dim is not None, "rotary_dim must be set for rotary embeddings"
+
+        # Calculate new embeddings
+        sin, cos = self.calculate_sin_cos_rotary(
+            self.cfg.rotary_dim,
+            new_size,
+            base=rope_base,
+            dtype=self.cfg.dtype,
+        )
+
+        # Update the registered buffers
+        self.rotary_sin = sin.to(self.rotary_sin.device)
+        self.rotary_cos = cos.to(self.rotary_cos.device)
+
+    def _extend_mask(self, new_size: int):
+        """Extend causal mask to support longer contexts dynamically."""
+        causal_mask = torch.tril(torch.ones((new_size, new_size), device=self.mask.device).bool())
+        if self.attn_type == "global":
+            self.mask = causal_mask
+        elif self.attn_type == "local":
+            if not isinstance(self.cfg.window_size, int):
+                raise ValueError("Window size must be an integer for local attention")
+            self.mask = torch.triu(causal_mask, 1 - self.cfg.window_size)
+        else:
+            raise ValueError(f"Invalid attention type: {self.attn_type}")
 
     @staticmethod
     def create_alibi_slope(
@@ -706,7 +829,7 @@ class AbstractAttention(ABC, nn.Module):
     @staticmethod
     def create_alibi_multipliers(
         n_heads: int, device: Optional[Union[str, torch.device]] = None
-    ) -> Float[torch.Tensor, "head_idx"]:
+    ) -> Float[torch.Tensor, "n_heads"]:
         """Create the ALiBi Scalar Multipliers for each Head.
 
         For n heads, the set of multipliers (m) is the geometric sequence that starts at 2^(-8/n), and

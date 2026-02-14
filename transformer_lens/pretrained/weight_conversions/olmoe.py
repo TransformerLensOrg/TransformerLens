@@ -1,7 +1,7 @@
 import einops
 import torch
 
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 
 
 def convert_olmoe_weights(olmoe, cfg: HookedTransformerConfig):
@@ -47,16 +47,19 @@ def convert_olmoe_weights(olmoe, cfg: HookedTransformerConfig):
 
         state_dict[f"blocks.{l}.mlp.W_gate.weight"] = olmoe_layer.mlp.gate.weight
 
+        # HF OLMoE uses batched expert weights:
+        #   gate_up_proj: [num_experts, 2 * intermediate_size, hidden_size]
+        #   down_proj: [num_experts, hidden_size, intermediate_size]
+        # The gate_up_proj fuses gate and up projections along dim 1.
+        experts = olmoe_layer.mlp.experts
+        gate_up = experts.gate_up_proj  # [num_experts, 2*d_mlp, d_model]
+        down = experts.down_proj  # [num_experts, d_model, d_mlp]
+
         for e in range(cfg.num_experts):
-            state_dict[f"blocks.{l}.mlp.experts.{e}.W_in.weight"] = olmoe_layer.mlp.experts[
-                e
-            ].up_proj.weight
-            state_dict[f"blocks.{l}.mlp.experts.{e}.W_gate.weight"] = olmoe_layer.mlp.experts[
-                e
-            ].gate_proj.weight
-            state_dict[f"blocks.{l}.mlp.experts.{e}.W_out.weight"] = olmoe_layer.mlp.experts[
-                e
-            ].down_proj.weight
+            # Split fused gate_up into gate and up projections
+            state_dict[f"blocks.{l}.mlp.experts.{e}.W_gate.weight"] = gate_up[e, : cfg.d_mlp, :]
+            state_dict[f"blocks.{l}.mlp.experts.{e}.W_in.weight"] = gate_up[e, cfg.d_mlp :, :]
+            state_dict[f"blocks.{l}.mlp.experts.{e}.W_out.weight"] = down[e]
 
     state_dict["ln_final.w"] = olmoe.model.norm.weight
 

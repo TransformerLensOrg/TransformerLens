@@ -1,11 +1,11 @@
 import einops
 import torch
-from transformers.models.olmo2.modeling_olmo2 import Olmo2ForCausalLM
+from transformers.models.olmo2.modeling_olmo2 import Olmo2DecoderLayer
 
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 
 
-def convert_olmo2_weights(olmo2: Olmo2ForCausalLM, cfg: HookedTransformerConfig):
+def convert_olmo2_weights(olmo2, cfg: HookedTransformerConfig):
     state_dict = {}
 
     assert cfg.d_mlp is not None
@@ -13,7 +13,8 @@ def convert_olmo2_weights(olmo2: Olmo2ForCausalLM, cfg: HookedTransformerConfig)
     state_dict["embed.W_E"] = olmo2.model.embed_tokens.weight
 
     for l in range(cfg.n_layers):
-        olmo2_layer = olmo2.model.layers[l]  # type: ignore
+        olmo2_layer = olmo2.model.layers[l]
+        assert isinstance(olmo2_layer, Olmo2DecoderLayer)
 
         W_Q = olmo2_layer.self_attn.q_proj.weight
         W_K = olmo2_layer.self_attn.k_proj.weight

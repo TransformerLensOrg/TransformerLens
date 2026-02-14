@@ -2,6 +2,7 @@
 
 This module contains all the component :class:`PosEmbed`.
 """
+
 from typing import Dict, Optional, Union
 
 import einops
@@ -9,7 +10,7 @@ import torch
 import torch.nn as nn
 from jaxtyping import Float, Int
 
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.utils import get_offset_position_ids
 
 

@@ -2,14 +2,15 @@
 
 This module contains all the component :class:`BertNSPHead`.
 """
+
 from typing import Dict, Union
 
 import torch
 import torch.nn as nn
 from jaxtyping import Float
 
+from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.hook_points import HookPoint
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 
 class BertNSPHead(nn.Module):
