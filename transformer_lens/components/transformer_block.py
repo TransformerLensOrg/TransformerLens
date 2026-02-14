@@ -184,8 +184,6 @@ class TransformerBlock(nn.Module):
             # is added to the residual stream"
             attn_out = self.ln1_post(attn_out)
         attn_out = self.hook_attn_out(attn_out)
-        if self.cfg.original_architecture == "Olmo2ForCausalLM":
-            attn_out = self.ln1(attn_out)
 
         if self.cfg.original_architecture in ("Olmo2ForCausalLM", "Olmo3ForCausalLM"):
             attn_out = self.ln1(attn_out)

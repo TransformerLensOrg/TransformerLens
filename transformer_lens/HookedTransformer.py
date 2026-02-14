@@ -754,6 +754,7 @@ class HookedTransformer(HookedRootModule):
             "Olmo2ForCausalLM",
         ]:
             tokenizer_with_bos = utils.get_tokenizer_with_bos(tokenizer)
+
         self.tokenizer = tokenizer_with_bos
         assert self.tokenizer is not None  # keep mypy happy
 
