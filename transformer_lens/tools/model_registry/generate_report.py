@@ -43,6 +43,10 @@ ARCHITECTURE_DESCRIPTIONS: dict[str, str] = {
     "PhiForCausalLM": "Microsoft's Phi small language model",
     "Phi3ForCausalLM": "Microsoft's Phi-3 improved small model",
     "FalconForCausalLM": "TII's Falcon model series",
+    "OlmoForCausalLM": "Allen AI's OLMo open language model",
+    "Olmo2ForCausalLM": "Allen AI's OLMo 2 with improved training",
+    "Olmo3ForCausalLM": "Allen AI's OLMo 3 latest generation",
+    "OlmoeForCausalLM": "Allen AI's OLMoE Mixture of Experts model",
     "StableLmForCausalLM": "Stability AI's StableLM model",
     "T5ForConditionalGeneration": "Google's T5 encoder-decoder model (partial support)",
     # Unsupported architectures

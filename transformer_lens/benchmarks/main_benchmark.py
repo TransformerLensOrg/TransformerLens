@@ -1380,9 +1380,11 @@ def update_model_registry(model_name: str, results: List[BenchmarkResult]) -> bo
     Returns:
         True if registry was updated successfully
     """
-    import json
-    from datetime import date
-    from pathlib import Path
+    from transformer_lens.tools.model_registry.registry_io import (
+        STATUS_VERIFIED,
+        add_verification_record,
+        update_model_status,
+    )
 
     # Calculate phase scores (percentage of passed tests per phase)
     phase_results: Dict[int, List[bool]] = {1: [], 2: [], 3: []}
@@ -1409,65 +1411,23 @@ def update_model_registry(model_name: str, results: List[BenchmarkResult]) -> bo
     except Exception:
         pass
 
-    # Load supported_models.json
-    data_path = Path(__file__).parent.parent / "tools" / "model_registry" / "data"
-    supported_path = data_path / "supported_models.json"
+    updated = update_model_status(
+        model_id=model_name,
+        arch_id=architecture_id,
+        status=STATUS_VERIFIED,
+        phase_scores=phase_scores,
+    )
 
-    try:
-        with open(supported_path) as f:
-            data = json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        data = {
-            "generated_at": date.today().isoformat(),
-            "scan_info": None,
-            "total_architectures": 0,
-            "total_models": 0,
-            "total_verified": 0,
-            "models": [],
-        }
-
-    # Try to update existing entry
-    updated = False
-    for entry in data.get("models", []):
-        if entry["model_id"] == model_name:
-            entry["status"] = 1
-            entry["verified_date"] = date.today().isoformat()
-            entry["note"] = None
-            entry["phase1_score"] = phase_scores.get(1)
-            entry["phase2_score"] = phase_scores.get(2)
-            entry["phase3_score"] = phase_scores.get(3)
-            updated = True
-            break
-
-    if not updated:
-        # Model not in registry - add it
-        data["models"].append(
-            {
-                "model_id": model_name,
-                "architecture_id": architecture_id,
-                "status": 1,
-                "verified_date": date.today().isoformat(),
-                "metadata": None,
-                "note": None,
-                "phase1_score": phase_scores.get(1),
-                "phase2_score": phase_scores.get(2),
-                "phase3_score": phase_scores.get(3),
-            }
-        )
-        updated = True
-
-    # Update totals
-    data["total_models"] = len(data["models"])
-    data["total_verified"] = sum(1 for m in data["models"] if m.get("status", 0) == 1)
-    arch_ids = set(m["architecture_id"] for m in data["models"])
-    data["total_architectures"] = len(arch_ids)
-
-    with open(supported_path, "w") as f:
-        json.dump(data, f, indent=2)
-        f.write("\n")
+    add_verification_record(
+        model_id=model_name,
+        arch_id=architecture_id,
+        notes="Benchmark passed",
+        verified_by="main_benchmark",
+    )
 
     print(
-        f"Updated registry for {model_name}: P1={phase_scores.get(1)}%, P2={phase_scores.get(2)}%, P3={phase_scores.get(3)}%"
+        f"Updated registry for {model_name}: "
+        f"P1={phase_scores.get(1)}%, P2={phase_scores.get(2)}%, P3={phase_scores.get(3)}%"
     )
     return updated
 

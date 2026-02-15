@@ -39,8 +39,6 @@ from .verification import VerificationHistory, VerificationRecord
 # These must match the exact strings found in HF model config.architectures[]
 # and correspond to adapters registered in architecture_adapter_factory.py.
 #
-# HookedTransformer-only architectures (OLMo family, Gemma3 multimodal) are excluded
-# since they don't have TransformerBridge adapters yet.
 # Internal-only architectures (NanoGPT, MinGPT, NeelSoluOld, GPT2LMHeadCustomModel)
 # are excluded since they never appear on HuggingFace Hub.
 HF_SUPPORTED_ARCHITECTURES: set[str] = {
@@ -57,6 +55,10 @@ HF_SUPPORTED_ARCHITECTURES: set[str] = {
     "LlamaForCausalLM",
     "MistralForCausalLM",
     "MixtralForCausalLM",
+    "Olmo2ForCausalLM",
+    "Olmo3ForCausalLM",
+    "OlmoForCausalLM",
+    "OlmoeForCausalLM",
     "OPTForCausalLM",
     "PhiForCausalLM",
     "Phi3ForCausalLM",

@@ -27,23 +27,25 @@ import logging
 import re
 import time
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
+
+from .registry_io import (
+    STATUS_FAILED,
+    STATUS_SKIPPED,
+    STATUS_UNVERIFIED,
+    STATUS_VERIFIED,
+    add_verification_record,
+    load_supported_models_raw,
+    update_model_status,
+)
 
 logger = logging.getLogger(__name__)
 
 # Data directory for registry files
 _DATA_DIR = Path(__file__).parent / "data"
 _CHECKPOINT_PATH = _DATA_DIR / "verification_checkpoint.json"
-_SUPPORTED_MODELS_PATH = _DATA_DIR / "supported_models.json"
-_VERIFICATION_HISTORY_PATH = _DATA_DIR / "verification_history.json"
-
-# Status codes matching ModelEntry schema
-STATUS_UNVERIFIED = 0
-STATUS_VERIFIED = 1
-STATUS_SKIPPED = 2
-STATUS_FAILED = 3
 
 # Pattern matching HuggingFace API tokens (hf_ followed by 20+ alphanumeric chars)
 _HF_TOKEN_RE = re.compile(r"hf_[A-Za-z0-9]{20,}")
@@ -236,27 +238,6 @@ def get_available_memory_gb(device: str) -> float:
         return 16.0  # Conservative default for CPU
 
 
-def _load_supported_models() -> dict:
-    """Load the supported_models.json file.
-
-    Returns:
-        Parsed JSON data as a dictionary
-    """
-    with open(_SUPPORTED_MODELS_PATH) as f:
-        return json.load(f)
-
-
-def _save_supported_models(data: dict) -> None:
-    """Save data back to supported_models.json.
-
-    Args:
-        data: The full report dict to write
-    """
-    with open(_SUPPORTED_MODELS_PATH, "w") as f:
-        json.dump(data, f, indent=2)
-        f.write("\n")
-
-
 def select_models_for_verification(
     per_arch: int = 10,
     architectures: Optional[list[str]] = None,
@@ -281,7 +262,7 @@ def select_models_for_verification(
     if resume_progress:
         already_tested = set(resume_progress.tested)
 
-    data = _load_supported_models()
+    data = load_supported_models_raw()
     models = data.get("models", [])
 
     # Group by architecture
@@ -351,96 +332,6 @@ def _extract_phase_scores(results: list) -> dict[int, Optional[float]]:
             scores[phase] = None
 
     return scores
-
-
-def _update_registry_entry(
-    model_id: str,
-    arch_id: str,
-    status: int,
-    phase_scores: dict[int, Optional[float]],
-    note: Optional[str] = None,
-) -> bool:
-    """Update a single model entry in supported_models.json.
-
-    Args:
-        model_id: The model to update
-        arch_id: Architecture of the model
-        status: New status code (0-3)
-        phase_scores: Phase score dict {1: float, 2: float, 3: float}
-        note: Optional note for skip/fail reason
-
-    Returns:
-        True if entry was found and updated
-    """
-    data = _load_supported_models()
-    updated = False
-
-    for entry in data.get("models", []):
-        if entry["model_id"] == model_id and entry["architecture_id"] == arch_id:
-            entry["status"] = status
-            entry["verified_date"] = (
-                date.today().isoformat() if status != STATUS_UNVERIFIED else None
-            )
-            entry["note"] = _sanitize_note(note)
-            entry["phase1_score"] = phase_scores.get(1)
-            entry["phase2_score"] = phase_scores.get(2)
-            entry["phase3_score"] = phase_scores.get(3)
-            updated = True
-            break
-
-    if updated:
-        # Update total_verified count
-        data["total_verified"] = sum(1 for m in data.get("models", []) if m.get("status", 0) == 1)
-        _save_supported_models(data)
-
-    return updated
-
-
-def _update_verification_history(
-    model_id: str,
-    architecture_id: str,
-    notes: Optional[str] = None,
-) -> None:
-    """Append a VerificationRecord to the verification history file.
-
-    Args:
-        model_id: The verified model
-        architecture_id: Architecture type
-        notes: Optional verification notes
-    """
-    # Get TransformerLens version
-    tl_version = None
-    try:
-        import transformer_lens
-
-        tl_version = getattr(transformer_lens, "__version__", None)
-    except Exception:
-        pass
-
-    record = {
-        "model_id": model_id,
-        "architecture_id": architecture_id,
-        "verified_date": date.today().isoformat(),
-        "verified_by": "verify_models",
-        "transformerlens_version": tl_version,
-        "notes": _sanitize_note(notes),
-        "invalidated": False,
-        "invalidation_reason": None,
-    }
-
-    # Load existing history
-    if _VERIFICATION_HISTORY_PATH.exists():
-        with open(_VERIFICATION_HISTORY_PATH) as f:
-            history = json.load(f)
-    else:
-        history = {"last_updated": None, "records": []}
-
-    history["records"].append(record)
-    history["last_updated"] = datetime.now().isoformat()
-
-    with open(_VERIFICATION_HISTORY_PATH, "w") as f:
-        json.dump(history, f, indent=2)
-        f.write("\n")
 
 
 def _save_checkpoint(progress: VerificationProgress) -> None:
@@ -524,7 +415,9 @@ def verify_models(
             note = f"Config unavailable: {str(e)[:200]}"
             if not quiet:
                 print(f"  SKIP: {note}")
-            _update_registry_entry(model_id, arch, STATUS_SKIPPED, {}, note=note)
+            update_model_status(
+                model_id, arch, STATUS_SKIPPED, note=note, sanitize_fn=_sanitize_note
+            )
             progress.skipped.append(model_id)
             _save_checkpoint(progress)
             continue
@@ -541,7 +434,9 @@ def verify_models(
             note = f"Estimated {estimated_mem:.1f} GB exceeds {max_memory_gb:.1f} GB limit"
             if not quiet:
                 print(f"  SKIP: {note}")
-            _update_registry_entry(model_id, arch, STATUS_SKIPPED, {}, note=note)
+            update_model_status(
+                model_id, arch, STATUS_SKIPPED, note=note, sanitize_fn=_sanitize_note
+            )
             progress.skipped.append(model_id)
             _save_checkpoint(progress)
             continue
@@ -586,16 +481,37 @@ def verify_models(
                     print(
                         f"  Partial scores saved: P1={phase_scores.get(1)}%, P2={phase_scores.get(2)}%, P3={phase_scores.get(3)}%"
                     )
-            _update_registry_entry(model_id, arch, STATUS_FAILED, phase_scores, note=note)
-            _update_verification_history(model_id, arch, notes=note)
+            update_model_status(
+                model_id,
+                arch,
+                STATUS_FAILED,
+                note=note,
+                phase_scores=phase_scores,
+                sanitize_fn=_sanitize_note,
+            )
+            add_verification_record(
+                model_id,
+                arch,
+                notes=note,
+                sanitize_fn=_sanitize_note,
+            )
             progress.failed.append(model_id)
         else:
             if not quiet:
                 print(
                     f"  VERIFIED: P1={phase_scores.get(1)}%, P2={phase_scores.get(2)}%, P3={phase_scores.get(3)}%"
                 )
-            _update_registry_entry(model_id, arch, STATUS_VERIFIED, phase_scores)
-            _update_verification_history(model_id, arch, notes="Benchmark passed")
+            update_model_status(
+                model_id,
+                arch,
+                STATUS_VERIFIED,
+                phase_scores=phase_scores,
+            )
+            add_verification_record(
+                model_id,
+                arch,
+                notes="Benchmark passed",
+            )
             progress.verified.append(model_id)
 
         # Cleanup between models
