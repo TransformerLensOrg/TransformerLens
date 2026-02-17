@@ -1124,6 +1124,8 @@ def benchmark_hook_functionality(
 
         def ablation_hook(activation, hook):
             # Zero out an attention head in layer 0
+            # Clone to avoid in-place modification of a view from a custom Function
+            activation = activation.clone()
             # For GQA models, the head dimension may be smaller than n_heads
             n_heads = activation.shape[2]
             head_idx = min(head_to_ablate, n_heads - 1)
