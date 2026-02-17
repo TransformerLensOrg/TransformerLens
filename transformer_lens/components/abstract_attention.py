@@ -89,6 +89,23 @@ class AbstractAttention(ABC, nn.Module):
         if self.cfg.use_qk_norm:
             self.q_norm = RMSNorm(self.cfg, length=self.cfg.d_head)
             self.k_norm = RMSNorm(self.cfg, length=self.cfg.d_head)
+
+        elif self.cfg.original_architecture in (
+            "OlmoeForCausalLM",
+            "Olmo2ForCausalLM",
+            "Olmo3ForCausalLM",
+        ):
+            # Q/K norms applied on full projected vectors (before head reshape).
+            # q_norm dim = n_heads * d_head = d_model
+            self.q_norm: Optional[RMSNorm] = RMSNorm(self.cfg, self.cfg.d_model)
+            # k_norm dim depends on whether GQA is used:
+            #   OLMo 2 (MHA): n_kv_heads == n_heads, so d_model
+            #   OLMo 3 / OLMoE (GQA): n_kv_heads * d_head
+            if self.cfg.n_key_value_heads is not None:
+                k_norm_dim = self.cfg.d_head * self.cfg.n_key_value_heads
+            else:
+                k_norm_dim = self.cfg.d_model
+            self.k_norm: Optional[RMSNorm] = RMSNorm(self.cfg, k_norm_dim)
         else:
             self.q_norm = None
             self.k_norm = None
@@ -217,6 +234,35 @@ class AbstractAttention(ABC, nn.Module):
 
         q, k, v = self.calculate_qkv_matrices(query_input, key_input, value_input)
 
+        # OLMo-family QK-norm: applied on full projected vectors before head reshape.
+        if self.cfg.original_architecture in (
+            "OlmoeForCausalLM",
+            "Olmo2ForCausalLM",
+            "Olmo3ForCausalLM",
+        ):
+            assert self.q_norm is not None
+            assert self.k_norm is not None
+            q = einops.rearrange(
+                self.q_norm(
+                    einops.rearrange(
+                        q,
+                        "batch pos head_index d_head -> batch pos (head_index d_head)",
+                    )
+                ),
+                "batch kv_pos (head_index d_head) -> batch kv_pos head_index d_head",
+                head_index=q.shape[2],
+            )
+            k = einops.rearrange(
+                self.k_norm(
+                    einops.rearrange(
+                        k,
+                        "batch pos head_index d_head -> batch pos (head_index d_head)",
+                    )
+                ),
+                "batch kv_pos (head_index d_head) -> batch kv_pos head_index d_head",
+                head_index=k.shape[2],
+            )
+
         if past_kv_cache_entry is not None:
             # Appends the new keys and values to the cached values, and automatically updates the cache
             kv_cache_pos_offset = past_kv_cache_entry.past_keys.size(1)
@@ -271,7 +317,8 @@ class AbstractAttention(ABC, nn.Module):
                         device=attn_scores.device,
                     )
 
-            attn_scores += position_bias
+            if position_bias is not None:  # Add None check
+                attn_scores += position_bias
         if self.cfg.attention_dir == "causal":
             # If causal attention, we mask it to only attend backwards. If bidirectional, we don't mask.
             attn_scores = self.apply_causal_mask(
@@ -586,6 +633,38 @@ class AbstractAttention(ABC, nn.Module):
             is_medium_freq = ~(wavelen < high_freq_wavelen) * ~(wavelen > low_freq_wavelen)
             inv_freq_llama = torch.where(is_medium_freq, smoothed_inv_freq, inv_freq_llama)
             freq = 1 / inv_freq_llama
+        elif self.cfg.use_yarn_rope:
+            # YARN (Yet Another RoPE extensioN) from https://arxiv.org/abs/2309.00071
+            # Implementation follows HuggingFace: transformers/modeling_rope_utils.py
+            inv_freq = 1.0 / (
+                base ** (torch.arange(0, rotary_dim, 2, dtype=high_precision) / rotary_dim)
+            )
+            yarn_factor = self.cfg.yarn_factor
+            # HF uses original_max_position_embeddings (the pre-extension context length)
+            # for computing the correction range.
+            orig_max_pos = self.cfg.yarn_original_max_position_embeddings
+            beta_fast = self.cfg.yarn_beta_fast
+            beta_slow = self.cfg.yarn_beta_slow
+
+            def _find_correction_dim(num_rotations: float) -> float:
+                return (rotary_dim * math.log(orig_max_pos / (num_rotations * 2 * math.pi))) / (
+                    2 * math.log(base)
+                )
+
+            low = math.floor(_find_correction_dim(beta_fast))
+            high = math.ceil(_find_correction_dim(beta_slow))
+            low = max(low, 0)
+            high = min(high, rotary_dim - 1)
+
+            # Linear ramp from 0 to 1 between low and high dims
+            ramp = torch.arange(rotary_dim // 2, dtype=high_precision)
+            high_f = float(high) + 0.001 if low == high else float(high)
+            ramp = torch.clamp((ramp - low) / (high_f - low), 0, 1)
+
+            inv_freq_interp = inv_freq / yarn_factor
+            # ramp=0 (below low) → extrapolation (original freq), ramp=1 (above high) → interpolation (scaled)
+            inv_freq = inv_freq_interp * ramp + inv_freq * (1 - ramp)
+            freq = 1.0 / inv_freq
         else:
             freq = base ** (dim / (rotary_dim / 2))
         if self.cfg.rotary_adjacent_pairs:
@@ -594,7 +673,12 @@ class AbstractAttention(ABC, nn.Module):
             freq = einops.repeat(freq, "d -> (2 d)")
         # Create a n_ctx x rotary_dim tensor, where each column is an arithmetic sequence of angles in that frequency
         angles = pos[:, None] / freq[None, :]
-        return torch.sin(angles).to(dtype), torch.cos(angles).to(dtype)
+        sin, cos = torch.sin(angles).to(dtype), torch.cos(angles).to(dtype)
+        # YARN attention_factor scales the embeddings (default 1.0 is a no-op)
+        if self.cfg.use_yarn_rope and self.cfg.yarn_attention_factor != 1.0:
+            sin = sin * self.cfg.yarn_attention_factor
+            cos = cos * self.cfg.yarn_attention_factor
+        return sin, cos
 
     def rotate_every_two(
         self, x: Float[torch.Tensor, "... rotary_dim"]
@@ -732,7 +816,7 @@ class AbstractAttention(ABC, nn.Module):
     @staticmethod
     def create_alibi_multipliers(
         n_heads: int, device: Optional[Union[str, torch.device]] = None
-    ) -> Float[torch.Tensor, "head_idx"]:
+    ) -> Float[torch.Tensor, "n_heads"]:
         """Create the ALiBi Scalar Multipliers for each Head.
 
         For n heads, the set of multipliers (m) is the geometric sequence that starts at 2^(-8/n), and

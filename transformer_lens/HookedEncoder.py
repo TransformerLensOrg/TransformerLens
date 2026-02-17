@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any, Dict, List, Optional, Tuple, TypeVar, Union, overload
+from typing import Any, Dict, List, Optional, Tuple, TypeVar, Union, cast, overload
 
 import torch
 import torch.nn as nn
@@ -21,7 +21,6 @@ import transformer_lens.loading_from_pretrained as loading
 from transformer_lens.ActivationCache import ActivationCache
 from transformer_lens.components import (
     MLP,
-    Attention,
     BertBlock,
     BertEmbed,
     BertMLMHead,
@@ -29,6 +28,7 @@ from transformer_lens.components import (
     BertPooler,
     Unembed,
 )
+from transformer_lens.components.mlps.gated_mlp import GatedMLP
 from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookedRootModule, HookPoint
@@ -47,6 +47,12 @@ class HookedEncoder(HookedRootModule):
     Like HookedTransformer, it can have a pretrained Transformer's weights loaded via `.from_pretrained`. There are a few features you might know from HookedTransformer which are not yet supported:
         - There is no preprocessing (e.g. LayerNorm folding) when loading a pretrained model
     """
+
+    blocks: nn.ModuleList[BertBlock]  # type: ignore[type-arg]
+
+    def _get_blocks(self) -> list[BertBlock]:
+        """Helper to get blocks with proper typing."""
+        return [cast(BertBlock, block) for block in self.blocks]
 
     def __init__(
         self,
@@ -463,86 +469,70 @@ class HookedEncoder(HookedRootModule):
     @property
     def W_K(self) -> Float[torch.Tensor, "n_layers n_heads d_model d_head"]:
         """Stacks the key weights across all layers"""
-        for block in self.blocks:
-            assert isinstance(block.attn, Attention)
-        return torch.stack([block.attn.W_K for block in self.blocks], dim=0)
+        return torch.stack([block.attn.W_K for block in self._get_blocks()], dim=0)
 
     @property
     def W_Q(self) -> Float[torch.Tensor, "n_layers n_heads d_model d_head"]:
         """Stacks the query weights across all layers"""
-        for block in self.blocks:
-            assert isinstance(block.attn, Attention)
-        return torch.stack([block.attn.W_Q for block in self.blocks], dim=0)
+        return torch.stack([block.attn.W_Q for block in self._get_blocks()], dim=0)
 
     @property
     def W_V(self) -> Float[torch.Tensor, "n_layers n_heads d_model d_head"]:
         """Stacks the value weights across all layers"""
-        for block in self.blocks:
-            assert isinstance(block.attn, Attention)
-        return torch.stack([block.attn.W_V for block in self.blocks], dim=0)
+        return torch.stack([block.attn.W_V for block in self._get_blocks()], dim=0)
 
     @property
     def W_O(self) -> Float[torch.Tensor, "n_layers n_heads d_head d_model"]:
         """Stacks the attn output weights across all layers"""
-        for block in self.blocks:
-            assert isinstance(block.attn, Attention)
-        return torch.stack([block.attn.W_O for block in self.blocks], dim=0)
+        return torch.stack([block.attn.W_O for block in self._get_blocks()], dim=0)
 
     @property
     def W_in(self) -> Float[torch.Tensor, "n_layers d_model d_mlp"]:
         """Stacks the MLP input weights across all layers"""
-        for block in self.blocks:
-            assert isinstance(block.mlp, MLP)
-        return torch.stack([block.mlp.W_in for block in self.blocks], dim=0)
+        return torch.stack(
+            [cast(Union[MLP, GatedMLP], block.mlp).W_in for block in self._get_blocks()], dim=0
+        )
 
     @property
     def W_out(self) -> Float[torch.Tensor, "n_layers d_mlp d_model"]:
         """Stacks the MLP output weights across all layers"""
-        for block in self.blocks:
-            assert isinstance(block.mlp, MLP)
-        return torch.stack([block.mlp.W_out for block in self.blocks], dim=0)
+        return torch.stack(
+            [cast(Union[MLP, GatedMLP], block.mlp).W_out for block in self._get_blocks()], dim=0
+        )
 
     @property
     def b_K(self) -> Float[torch.Tensor, "n_layers n_heads d_head"]:
         """Stacks the key biases across all layers"""
-        for block in self.blocks:
-            assert isinstance(block.attn, Attention)
-        return torch.stack([block.attn.b_K for block in self.blocks], dim=0)
+        return torch.stack([block.attn.b_K for block in self._get_blocks()], dim=0)
 
     @property
     def b_Q(self) -> Float[torch.Tensor, "n_layers n_heads d_head"]:
         """Stacks the query biases across all layers"""
-        for block in self.blocks:
-            assert isinstance(block.attn, Attention)
-        return torch.stack([block.attn.b_Q for block in self.blocks], dim=0)
+        return torch.stack([block.attn.b_Q for block in self._get_blocks()], dim=0)
 
     @property
     def b_V(self) -> Float[torch.Tensor, "n_layers n_heads d_head"]:
         """Stacks the value biases across all layers"""
-        for block in self.blocks:
-            assert isinstance(block.attn, Attention)
-        return torch.stack([block.attn.b_V for block in self.blocks], dim=0)
+        return torch.stack([block.attn.b_V for block in self._get_blocks()], dim=0)
 
     @property
     def b_O(self) -> Float[torch.Tensor, "n_layers d_model"]:
         """Stacks the attn output biases across all layers"""
-        for block in self.blocks:
-            assert isinstance(block.attn, Attention)
-        return torch.stack([block.attn.b_O for block in self.blocks], dim=0)
+        return torch.stack([block.attn.b_O for block in self._get_blocks()], dim=0)
 
     @property
     def b_in(self) -> Float[torch.Tensor, "n_layers d_mlp"]:
         """Stacks the MLP input biases across all layers"""
-        for block in self.blocks:
-            assert isinstance(block.mlp, MLP)
-        return torch.stack([block.mlp.b_in for block in self.blocks], dim=0)
+        return torch.stack(
+            [cast(Union[MLP, GatedMLP], block.mlp).b_in for block in self._get_blocks()], dim=0
+        )
 
     @property
     def b_out(self) -> Float[torch.Tensor, "n_layers d_model"]:
         """Stacks the MLP output biases across all layers"""
-        for block in self.blocks:
-            assert isinstance(block.mlp, MLP)
-        return torch.stack([block.mlp.b_out for block in self.blocks], dim=0)
+        return torch.stack(
+            [cast(Union[MLP, GatedMLP], block.mlp).b_out for block in self._get_blocks()], dim=0
+        )
 
     @property
     def QK(self) -> FactoredMatrix:  # [n_layers, n_heads, d_model, d_model]

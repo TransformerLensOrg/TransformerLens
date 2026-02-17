@@ -24,6 +24,7 @@ from .hf_utils import (
     select_compatible_kwargs,
 )
 from .initialization_utils import (
+    NonlinearityType,
     calc_fan_in_and_fan_out,
     init_kaiming_normal_,
     init_kaiming_uniform_,

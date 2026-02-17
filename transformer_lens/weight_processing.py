@@ -503,6 +503,30 @@ class ProcessWeights:
         ln2_w_key = ProcessWeights._get_param_key(f"blocks.{layer}.ln2.w", adapter)
         # CRITICAL FIX: For RMS norm (Gemma), ln2_b doesn't exist. Only require ln2_w!
         if ln2_w_key in state_dict:
+            # MoE layers: fold ln2 into router gate and each expert's W_in/W_gate
+            if getattr(cfg, "num_experts", None) is not None and cfg.num_experts > 0:
+                ln2_w = state_dict[ln2_w_key]
+                # Fold into router gate
+                router_key = f"blocks.{layer}.mlp.W_gate.weight"
+                if router_key in state_dict:
+                    state_dict[router_key] = state_dict[router_key] * ln2_w[None, :]
+                # Fold into each expert's W_in and W_gate (SwiGLU gate)
+                for e in range(cfg.num_experts):
+                    for suffix in ("W_in.weight", "W_gate.weight"):
+                        key = f"blocks.{layer}.mlp.experts.{e}.{suffix}"
+                        if key in state_dict:
+                            state_dict[key] = state_dict[key] * ln2_w[None, :]
+                # Set ln2.w to identity
+                state_dict[ln2_w_key] = torch.ones_like(ln2_w)
+                alternate_ln2_w_key = (
+                    ln2_w_key.replace("ln_2", "ln2")
+                    if "ln_2" in ln2_w_key
+                    else ln2_w_key.replace("ln2", "ln_2")
+                )
+                if alternate_ln2_w_key != ln2_w_key and alternate_ln2_w_key in state_dict:
+                    state_dict[alternate_ln2_w_key] = torch.ones_like(ln2_w)
+                return state_dict
+
             mlp_W_in = ProcessWeights.convert_tensor_to_tl_format(
                 mlp_W_in_key, state_dict, state_dict.get(mlp_W_in_key), cfg, adapter, layer
             )
@@ -884,52 +908,56 @@ class ProcessWeights:
         Returns:
             Dict[str, torch.Tensor]: Modified state dict with centered writing weights.
         """
-        # Make a deep copy to avoid modifying the original
-        embed_W_E_key = ProcessWeights._get_param_key("embed.W_E", adapter)
-        try:
-            pos_embed_W_pos_key = (
-                ProcessWeights._get_param_key("pos_embed.W_pos", adapter)
-                if getattr(cfg, "positional_embedding_type", "standard") != "rotary"
-                else None
-            )
-        except ValueError:
-            pos_embed_W_pos_key = None
-        if embed_W_E_key not in state_dict:
-            raise KeyError(
-                f"Expected embedding key '{embed_W_E_key}' not found in state_dict. Available keys: {list(state_dict.keys())[:10]}..."
-            )
-        embed_W_E = ProcessWeights.convert_tensor_to_tl_format(
-            embed_W_E_key, state_dict, state_dict.get(embed_W_E_key), cfg, adapter, None
-        )
-        assert embed_W_E is not None, f"Embedding not found at key {embed_W_E_key}"
-        embed_W_E = embed_W_E - embed_W_E.mean(-1, keepdim=True)
-        state_dict[embed_W_E_key] = ProcessWeights.convert_tensor_to_hf_format(
-            embed_W_E_key, embed_W_E, cfg, adapter, None
-        )
-
-        if (
-            getattr(cfg, "positional_embedding_type", "standard") != "rotary"
-            and pos_embed_W_pos_key is not None
-        ):
-            if pos_embed_W_pos_key not in state_dict:
-                raise KeyError(
-                    f"Expected positional embedding key '{pos_embed_W_pos_key}' not found in state_dict. Available keys: {list(state_dict.keys())[:10]}..."
+        # Skip centering for Olmo2 models - input of attn of 1st layer is not normed
+        if getattr(cfg, "original_architecture", None) == "Olmo2ForCausalLM":
+            print("Not centering embedding weights for Olmo2ForCausalLM")
+        else:
+            # Make a deep copy to avoid modifying the original
+            embed_W_E_key = ProcessWeights._get_param_key("embed.W_E", adapter)
+            try:
+                pos_embed_W_pos_key = (
+                    ProcessWeights._get_param_key("pos_embed.W_pos", adapter)
+                    if getattr(cfg, "positional_embedding_type", "standard") != "rotary"
+                    else None
                 )
-            pos_embed_W_pos = ProcessWeights.convert_tensor_to_tl_format(
-                pos_embed_W_pos_key,
-                state_dict,
-                state_dict.get(pos_embed_W_pos_key),
-                cfg,
-                adapter,
-                None,
+            except ValueError:
+                pos_embed_W_pos_key = None
+            if embed_W_E_key not in state_dict:
+                raise KeyError(
+                    f"Expected embedding key '{embed_W_E_key}' not found in state_dict. Available keys: {list(state_dict.keys())[:10]}..."
+                )
+            embed_W_E = ProcessWeights.convert_tensor_to_tl_format(
+                embed_W_E_key, state_dict, state_dict.get(embed_W_E_key), cfg, adapter, None
             )
-            assert (
-                pos_embed_W_pos is not None
-            ), f"Positional embedding not found at key {pos_embed_W_pos_key}"
-            pos_embed_W_pos = pos_embed_W_pos - pos_embed_W_pos.mean(-1, keepdim=True)
-            state_dict[pos_embed_W_pos_key] = ProcessWeights.convert_tensor_to_hf_format(
-                pos_embed_W_pos_key, pos_embed_W_pos, cfg, adapter, None
+            assert embed_W_E is not None, f"Embedding not found at key {embed_W_E_key}"
+            embed_W_E = embed_W_E - embed_W_E.mean(-1, keepdim=True)
+            state_dict[embed_W_E_key] = ProcessWeights.convert_tensor_to_hf_format(
+                embed_W_E_key, embed_W_E, cfg, adapter, None
             )
+
+            if (
+                getattr(cfg, "positional_embedding_type", "standard") != "rotary"
+                and pos_embed_W_pos_key is not None
+            ):
+                if pos_embed_W_pos_key not in state_dict:
+                    raise KeyError(
+                        f"Expected positional embedding key '{pos_embed_W_pos_key}' not found in state_dict. Available keys: {list(state_dict.keys())[:10]}..."
+                    )
+                pos_embed_W_pos = ProcessWeights.convert_tensor_to_tl_format(
+                    pos_embed_W_pos_key,
+                    state_dict,
+                    state_dict.get(pos_embed_W_pos_key),
+                    cfg,
+                    adapter,
+                    None,
+                )
+                assert (
+                    pos_embed_W_pos is not None
+                ), f"Positional embedding not found at key {pos_embed_W_pos_key}"
+                pos_embed_W_pos = pos_embed_W_pos - pos_embed_W_pos.mean(-1, keepdim=True)
+                state_dict[pos_embed_W_pos_key] = ProcessWeights.convert_tensor_to_hf_format(
+                    pos_embed_W_pos_key, pos_embed_W_pos, cfg, adapter, None
+                )
         for l in range(cfg.n_layers):
             attn_W_O_key = ProcessWeights._get_param_key(f"blocks.{l}.attn.W_O", adapter)
             attn_b_O_key = ProcessWeights._get_param_key(f"blocks.{l}.attn.b_O", adapter)
@@ -1282,9 +1310,7 @@ class ProcessWeights:
             Dict[str, torch.Tensor]: Fully processed state dict.
         """
         if fold_ln:
-            if getattr(cfg, "num_experts", None) and cfg.num_experts > 1:
-                pass
-            elif getattr(cfg, "normalization_type", "LN") in ["LN", "LNPre"]:
+            if getattr(cfg, "normalization_type", "LN") in ["LN", "LNPre"]:
                 state_dict = ProcessWeights.fold_layer_norm(
                     state_dict, cfg, fold_biases=True, center_weights=True, adapter=adapter
                 )
