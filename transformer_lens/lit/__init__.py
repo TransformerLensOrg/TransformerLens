@@ -308,35 +308,3 @@ class LITWidget:
 # Version info
 __version__ = "1.0.0"
 
-
-def _print_install_instructions():
-    """Print instructions for installing LIT."""
-    print(
-        """
-╔════════════════════════════════════════════════════════════════╗
-║          LIT (lit-nlp) is not installed                        ║
-╠════════════════════════════════════════════════════════════════╣
-║                                                                ║
-║  To use the LIT integration, install lit-nlp:                  ║
-║                                                                ║
-║    pip install lit-nlp                                         ║
-║                                                                ║
-║  Or install TransformerLens with the LIT extra:                ║
-║                                                                ║
-║    pip install transformer-lens[lit]                           ║
-║                                                                ║
-║  For more information, see:                                    ║
-║    https://pair-code.github.io/lit/                            ║
-║                                                                ║
-╚════════════════════════════════════════════════════════════════╝
-"""
-    )
-
-
-if not _LIT_AVAILABLE:
-    # Log a warning but don't fail the import
-    logger.warning(
-        "LIT (lit-nlp) is not installed. "
-        "Some features will be unavailable. "
-        "Install with: pip install lit-nlp"
-    )
