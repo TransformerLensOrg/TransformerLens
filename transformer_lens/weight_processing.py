@@ -105,6 +105,42 @@ class ProcessWeights:
         return tl_key
 
     @staticmethod
+    def _resolve_state_dict_key(
+        state_dict: Dict[str, torch.Tensor],
+        key: str,
+        layer: Optional[int] = None,
+    ) -> str:
+        """Resolve a bridge-style key to the actual key in the state_dict.
+
+        Some architectures (e.g., OPT with SymbolicBridge) store parameters
+        with HF-style prefixes instead of bridge-style prefixes. This method
+        handles the key resolution by falling back to a suffix search.
+
+        Args:
+            state_dict: Model state dictionary
+            key: The expected key (e.g., "blocks.0.mlp.in.weight")
+            layer: Optional layer index for layer-specific searches
+
+        Returns:
+            The actual key found in state_dict, or the original key if no match
+        """
+        if key in state_dict:
+            return key
+
+        # Extract the component path after "blocks.{i}."
+        import re
+        match = re.match(r"blocks\.(\d+)\.(.*)", key)
+        if match:
+            layer_idx = match.group(1)
+            component_suffix = match.group(2)
+            # Search for keys ending with the component suffix that include the layer index
+            for sd_key in state_dict:
+                if sd_key.endswith(f".{component_suffix}") and f".{layer_idx}." in sd_key:
+                    return sd_key
+
+        return key
+
+    @staticmethod
     def _safe_get_tensor(
         state_dict: Dict[str, torch.Tensor],
         tl_key: str,
@@ -326,6 +362,22 @@ class ProcessWeights:
                 b_V_key, state_dict, bv_tensor, cfg, adapter, layer
             )
 
+            # Auto-reshape 1D biases to [n_heads, d_head] when weights are 3D
+            # [n_heads, d_model, d_head]. This handles adapters that define weight
+            # conversions but not bias conversions (e.g., OPT).
+            def _reshape_bias_if_needed(bias, weight):
+                if bias is not None and weight is not None:
+                    if len(weight.shape) == 3 and len(bias.shape) == 1:
+                        n_heads = weight.shape[0]
+                        d_head = weight.shape[2]
+                        if bias.shape[0] == n_heads * d_head:
+                            return bias.reshape(n_heads, d_head)
+                return bias
+
+            bq_tensor = _reshape_bias_if_needed(bq_tensor, wq_tensor)
+            bk_tensor = _reshape_bias_if_needed(bk_tensor, wk_tensor)
+            bv_tensor = _reshape_bias_if_needed(bv_tensor, wv_tensor)
+
         return {
             "wq": wq_tensor,
             "wk": wk_tensor,
@@ -492,15 +544,25 @@ class ProcessWeights:
         if getattr(cfg, "attn_only", False):
             return state_dict
 
-        mlp_b_in_key = ProcessWeights._get_param_key(f"blocks.{layer}.mlp.b_in", adapter)
-        mlp_W_in_key = ProcessWeights._get_param_key(f"blocks.{layer}.mlp.W_in", adapter)
+        mlp_b_in_key = ProcessWeights._resolve_state_dict_key(
+            state_dict, ProcessWeights._get_param_key(f"blocks.{layer}.mlp.b_in", adapter), layer
+        )
+        mlp_W_in_key = ProcessWeights._resolve_state_dict_key(
+            state_dict, ProcessWeights._get_param_key(f"blocks.{layer}.mlp.W_in", adapter), layer
+        )
         mlp_W_gate_key = (
-            ProcessWeights._get_param_key(f"blocks.{layer}.mlp.W_gate", adapter)
+            ProcessWeights._resolve_state_dict_key(
+                state_dict, ProcessWeights._get_param_key(f"blocks.{layer}.mlp.W_gate", adapter), layer
+            )
             if getattr(cfg, "gated_mlp", False)
             else None
         )
-        ln2_b_key = ProcessWeights._get_param_key(f"blocks.{layer}.ln2.b", adapter)
-        ln2_w_key = ProcessWeights._get_param_key(f"blocks.{layer}.ln2.w", adapter)
+        ln2_b_key = ProcessWeights._resolve_state_dict_key(
+            state_dict, ProcessWeights._get_param_key(f"blocks.{layer}.ln2.b", adapter), layer
+        )
+        ln2_w_key = ProcessWeights._resolve_state_dict_key(
+            state_dict, ProcessWeights._get_param_key(f"blocks.{layer}.ln2.w", adapter), layer
+        )
         # CRITICAL FIX: For RMS norm (Gemma), ln2_b doesn't exist. Only require ln2_w!
         if ln2_w_key in state_dict:
             # MoE layers: fold ln2 into router gate and each expert's W_in/W_gate
@@ -920,7 +982,7 @@ class ProcessWeights:
             try:
                 pos_embed_W_pos_key = (
                     ProcessWeights._get_param_key("pos_embed.W_pos", adapter)
-                    if getattr(cfg, "positional_embedding_type", "standard") != "rotary"
+                    if getattr(cfg, "positional_embedding_type", "standard") not in ("rotary", "alibi")
                     else None
                 )
             except ValueError:
@@ -939,7 +1001,7 @@ class ProcessWeights:
             )
 
             if (
-                getattr(cfg, "positional_embedding_type", "standard") != "rotary"
+                getattr(cfg, "positional_embedding_type", "standard") not in ("rotary", "alibi")
                 and pos_embed_W_pos_key is not None
             ):
                 if pos_embed_W_pos_key not in state_dict:
@@ -965,8 +1027,12 @@ class ProcessWeights:
             attn_W_O_key = ProcessWeights._get_param_key(f"blocks.{l}.attn.W_O", adapter)
             attn_b_O_key = ProcessWeights._get_param_key(f"blocks.{l}.attn.b_O", adapter)
             try:
-                mlp_W_out_key = ProcessWeights._get_param_key(f"blocks.{l}.mlp.W_out", adapter)
-                mlp_b_out_key = ProcessWeights._get_param_key(f"blocks.{l}.mlp.b_out", adapter)
+                mlp_W_out_key = ProcessWeights._resolve_state_dict_key(
+                    state_dict, ProcessWeights._get_param_key(f"blocks.{l}.mlp.W_out", adapter), l
+                )
+                mlp_b_out_key = ProcessWeights._resolve_state_dict_key(
+                    state_dict, ProcessWeights._get_param_key(f"blocks.{l}.mlp.b_out", adapter), l
+                )
             except ValueError:
                 mlp_W_out_key = None
                 mlp_b_out_key = None

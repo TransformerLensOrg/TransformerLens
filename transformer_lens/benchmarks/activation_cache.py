@@ -6,7 +6,7 @@ import torch
 
 from transformer_lens import HookedTransformer
 from transformer_lens.ActivationCache import ActivationCache
-from transformer_lens.benchmarks.utils import BenchmarkResult, BenchmarkSeverity
+from transformer_lens.benchmarks.utils import BenchmarkResult, BenchmarkSeverity, safe_allclose
 from transformer_lens.model_bridge import TransformerBridge
 
 
@@ -175,9 +175,11 @@ def benchmark_activation_cache(
                 continue
 
             # Check values
-            if not torch.allclose(bridge_tensor, reference_tensor, atol=tolerance, rtol=0):
-                max_diff = torch.max(torch.abs(bridge_tensor - reference_tensor)).item()
-                mean_diff = torch.mean(torch.abs(bridge_tensor - reference_tensor)).item()
+            if not safe_allclose(bridge_tensor, reference_tensor, atol=tolerance, rtol=0):
+                b = bridge_tensor.float()
+                r = reference_tensor.float()
+                max_diff = torch.max(torch.abs(b - r)).item()
+                mean_diff = torch.mean(torch.abs(b - r)).item()
                 mismatches.append(
                     f"{key}: Value mismatch - max_diff={max_diff:.6f}, mean_diff={mean_diff:.6f}"
                 )

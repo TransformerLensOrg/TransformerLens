@@ -9,6 +9,7 @@ from transformer_lens.benchmarks.utils import (
     BenchmarkResult,
     BenchmarkSeverity,
     compare_scalars,
+    safe_allclose,
 )
 from transformer_lens.model_bridge import TransformerBridge
 
@@ -406,9 +407,11 @@ def benchmark_forward_hooks_values(
             reference_tensor = reference_activations[hook_name]
 
             # Check values
-            if not torch.allclose(bridge_tensor, reference_tensor, atol=tolerance, rtol=0):
-                max_diff = torch.max(torch.abs(bridge_tensor - reference_tensor)).item()
-                mean_diff = torch.mean(torch.abs(bridge_tensor - reference_tensor)).item()
+            if not safe_allclose(bridge_tensor, reference_tensor, atol=tolerance, rtol=0):
+                b = bridge_tensor.float()
+                r = reference_tensor.float()
+                max_diff = torch.max(torch.abs(b - r)).item()
+                mean_diff = torch.mean(torch.abs(b - r)).item()
                 value_mismatches.append(
                     f"{hook_name}: max_diff={max_diff:.6f}, mean_diff={mean_diff:.6f}"
                 )
@@ -782,9 +785,11 @@ def benchmark_forward_hooks(
                     continue
 
             # Check values (only for same-model comparison)
-            if not torch.allclose(bridge_tensor, reference_tensor, atol=tolerance, rtol=0):
-                max_diff = torch.max(torch.abs(bridge_tensor - reference_tensor)).item()
-                mean_diff = torch.mean(torch.abs(bridge_tensor - reference_tensor)).item()
+            if not safe_allclose(bridge_tensor, reference_tensor, atol=tolerance, rtol=0):
+                b = bridge_tensor.float()
+                r = reference_tensor.float()
+                max_diff = torch.max(torch.abs(b - r)).item()
+                mean_diff = torch.mean(torch.abs(b - r)).item()
                 mismatches.append(
                     f"{hook_name}: Value mismatch - max_diff={max_diff:.6f}, mean_diff={mean_diff:.6f}"
                 )
@@ -981,8 +986,8 @@ def benchmark_critical_forward_hooks(
                     continue
 
                 # Only compare values for same-model comparison
-                if not torch.allclose(bridge_tensor, reference_tensor, atol=tolerance, rtol=0):
-                    max_diff = torch.max(torch.abs(bridge_tensor - reference_tensor)).item()
+                if not safe_allclose(bridge_tensor, reference_tensor, atol=tolerance, rtol=0):
+                    max_diff = torch.max(torch.abs(bridge_tensor.float() - reference_tensor.float())).item()
                     mismatches.append(f"{hook_name}: max_diff={max_diff:.6f}")
 
         # Check if bridge is missing critical hooks (BAD)
@@ -1124,6 +1129,8 @@ def benchmark_hook_functionality(
 
         def ablation_hook(activation, hook):
             # Zero out an attention head in layer 0
+            # Clone to avoid in-place modification of autograd views
+            activation = activation.clone()
             # For GQA models, the head dimension may be smaller than n_heads
             n_heads = activation.shape[2]
             head_idx = min(head_to_ablate, n_heads - 1)

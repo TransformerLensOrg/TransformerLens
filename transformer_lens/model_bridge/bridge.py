@@ -718,6 +718,15 @@ class TransformerBridge(nn.Module):
         if adapter and hasattr(adapter, "preprocess_weights"):
             state_dict = adapter.preprocess_weights(state_dict)
 
+        # Upcast to float32 for weight processing to avoid precision loss in
+        # reduced-precision dtypes (bfloat16, float16). Operations like LayerNorm
+        # folding involve multiplications that accumulate rounding errors.
+        original_dtypes = {}
+        for k, v in state_dict.items():
+            if isinstance(v, torch.Tensor) and v.is_floating_point() and v.dtype != torch.float32:
+                original_dtypes[k] = v.dtype
+                state_dict[k] = v.float()
+
         # Use unified ProcessWeights.process_weights() like HookedTransformer does
         if verbose:
             print("  Processing weights (fold_ln, center_writing_weights, etc.)...")
@@ -732,7 +741,11 @@ class TransformerBridge(nn.Module):
             adapter=adapter,
         )
 
-        # print("new", state_dict.keys())
+        # Downcast back to original dtypes
+        for k, orig_dtype in original_dtypes.items():
+            if k in state_dict and isinstance(state_dict[k], torch.Tensor):
+                state_dict[k] = state_dict[k].to(orig_dtype)
+
         if verbose:
             print("  Distributing weights to generalized components...")
         ProcessWeights.distribute_weights_to_components(

@@ -7,6 +7,19 @@ from typing import Any, Dict, List, Optional, Union
 import torch
 
 
+def safe_allclose(
+    tensor1: torch.Tensor,
+    tensor2: torch.Tensor,
+    atol: float = 1e-5,
+    rtol: float = 1e-5,
+) -> bool:
+    """torch.allclose that handles dtype mismatches by upcasting to float32."""
+    if tensor1.dtype != tensor2.dtype:
+        tensor1 = tensor1.to(torch.float32)
+        tensor2 = tensor2.to(torch.float32)
+    return torch.allclose(tensor1, tensor2, atol=atol, rtol=rtol)
+
+
 class BenchmarkSeverity(Enum):
     """Severity levels for benchmark results."""
 
@@ -99,6 +112,12 @@ def compare_tensors(
             message=f"Shape mismatch: {tensor1.shape} vs {tensor2.shape}",
             passed=False,
         )
+
+    # Ensure same dtype for comparison (upcast to higher precision)
+    if tensor1.dtype != tensor2.dtype:
+        common_dtype = torch.float32
+        tensor1 = tensor1.to(common_dtype)
+        tensor2 = tensor2.to(common_dtype)
 
     # Compare values
     if torch.allclose(tensor1, tensor2, atol=atol, rtol=rtol):

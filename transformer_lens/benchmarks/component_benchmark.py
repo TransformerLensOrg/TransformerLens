@@ -9,7 +9,7 @@ from typing import Any, Optional
 import torch
 
 from transformer_lens.benchmarks.component_outputs import ComponentBenchmarker
-from transformer_lens.benchmarks.utils import BenchmarkResult, BenchmarkSeverity
+from transformer_lens.benchmarks.utils import BenchmarkResult, BenchmarkSeverity, safe_allclose
 
 
 def benchmark_component_forward(
@@ -51,9 +51,9 @@ def benchmark_component_forward(
             hf_tensor = hf_output
 
         # Compare outputs
-        if not torch.allclose(bridge_tensor, hf_tensor, atol=atol, rtol=rtol):
-            max_diff = (bridge_tensor - hf_tensor).abs().max().item()
-            mean_diff = (bridge_tensor - hf_tensor).abs().mean().item()
+        if not safe_allclose(bridge_tensor, hf_tensor, atol=atol, rtol=rtol):
+            max_diff = (bridge_tensor.float() - hf_tensor.float()).abs().max().item()
+            mean_diff = (bridge_tensor.float() - hf_tensor.float()).abs().mean().item()
 
             return BenchmarkResult(
                 name=f"{component_name}_forward",

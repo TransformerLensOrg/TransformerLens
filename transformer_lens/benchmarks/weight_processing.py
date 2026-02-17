@@ -5,7 +5,7 @@ from typing import Optional, cast
 import torch
 
 from transformer_lens import HookedTransformer
-from transformer_lens.benchmarks.utils import BenchmarkResult, BenchmarkSeverity
+from transformer_lens.benchmarks.utils import BenchmarkResult, BenchmarkSeverity, safe_allclose
 from transformer_lens.model_bridge import TransformerBridge
 
 
@@ -174,7 +174,7 @@ def benchmark_weight_sharing(
                         },
                     )
 
-            if not torch.allclose(bridge_W_V, reference_W_V):  # type: ignore[arg-type]
+            if not safe_allclose(bridge_W_V, reference_W_V):  # type: ignore[arg-type]
                 return BenchmarkResult(
                     name="weight_sharing",
                     severity=BenchmarkSeverity.WARNING,
