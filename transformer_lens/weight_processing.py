@@ -206,6 +206,7 @@ class ProcessWeights:
         Returns:
             Tuple of (new_bq, new_bk, new_bv) with folded biases (always non-None)
         """
+
         def _zero_bias(w: torch.Tensor) -> torch.Tensor:
             return torch.zeros(w.shape[0], w.shape[2], dtype=w.dtype, device=w.device)
 
@@ -1615,8 +1616,13 @@ class ProcessWeights:
                     # already have the tensor, fall back to applying the tensor
                     # conversion directly (needed for adapters like GPT-Neo whose
                     # source_key references HF keys not in the bridge state dict).
-                    if hasattr(param_conversion, "source_key") and param_conversion.source_key is not None:
-                        resolved_key = param_conversion._resolve_key(param_name, param_conversion.source_key)
+                    if (
+                        hasattr(param_conversion, "source_key")
+                        and param_conversion.source_key is not None
+                    ):
+                        resolved_key = param_conversion._resolve_key(
+                            param_name, param_conversion.source_key
+                        )
                         if resolved_key not in model_state_dict and tensor is not None:
                             return param_conversion.tensor_conversion.convert(
                                 tensor, model_state_dict

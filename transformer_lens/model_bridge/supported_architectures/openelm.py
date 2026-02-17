@@ -248,8 +248,7 @@ class OpenElmArchitectureAdapter(ArchitectureAdapter):
                     correct_inv_freq = 1.0 / (
                         rope.freq_constant
                         ** (
-                            torch.arange(0, rope.model_dim, 2, dtype=torch.float32)
-                            / rope.model_dim
+                            torch.arange(0, rope.model_dim, 2, dtype=torch.float32) / rope.model_dim
                         )
                     )
                     rope.inv_freq = correct_inv_freq.to(rope.inv_freq.device)

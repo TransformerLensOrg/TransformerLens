@@ -279,10 +279,6 @@ def run_comparison_benchmarks(
     if verbose:
         print("2. Model Equivalence Benchmarks (Forward Pass)")
 
-    has_phase1_ref = (
-        phase1_reference is not None and phase1_reference.hf_logits is not None
-    )
-
     if ht_available:
         try:
             add_result(
@@ -297,7 +293,7 @@ def run_comparison_benchmarks(
         except Exception as e:
             if verbose:
                 print(f"✗ Equivalence benchmark failed: {e}\n")
-    elif has_phase1_ref:
+    elif phase1_reference is not None and phase1_reference.hf_logits is not None:
         # Use saved Phase 1 bridge logits/loss as ground truth.
         # Weight processing should be mathematically equivalent, so the processed
         # bridge should produce the same output as the unprocessed bridge.
@@ -307,7 +303,6 @@ def run_comparison_benchmarks(
         try:
             if verbose:
                 print("Using saved Phase 1 bridge reference for equivalence comparison")
-
             # Compare log_softmax instead of raw logits to be centering-invariant.
             # center_unembed shifts all vocab logits at each position by a constant,
             # which changes raw logits but preserves log-probabilities.
