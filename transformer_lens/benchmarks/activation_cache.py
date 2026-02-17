@@ -6,7 +6,11 @@ import torch
 
 from transformer_lens import HookedTransformer
 from transformer_lens.ActivationCache import ActivationCache
-from transformer_lens.benchmarks.utils import BenchmarkResult, BenchmarkSeverity, safe_allclose
+from transformer_lens.benchmarks.utils import (
+    BenchmarkResult,
+    BenchmarkSeverity,
+    safe_allclose,
+)
 from transformer_lens.model_bridge import TransformerBridge
 
 

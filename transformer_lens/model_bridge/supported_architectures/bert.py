@@ -66,19 +66,13 @@ class BertArchitectureAdapter(ArchitectureAdapter):
                 ),
             ),
             "blocks.{i}.attn.q.bias": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion(
-                    "(h d_head) -> h d_head", h=n_heads
-                ),
+                tensor_conversion=RearrangeTensorConversion("(h d_head) -> h d_head", h=n_heads),
             ),
             "blocks.{i}.attn.k.bias": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion(
-                    "(h d_head) -> h d_head", h=n_heads
-                ),
+                tensor_conversion=RearrangeTensorConversion("(h d_head) -> h d_head", h=n_heads),
             ),
             "blocks.{i}.attn.v.bias": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion(
-                    "(h d_head) -> h d_head", h=n_heads
-                ),
+                tensor_conversion=RearrangeTensorConversion("(h d_head) -> h d_head", h=n_heads),
             ),
             "blocks.{i}.attn.o.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
@@ -127,5 +121,7 @@ class BertArchitectureAdapter(ArchitectureAdapter):
                 },
             ),
             "unembed": UnembeddingBridge(name="cls.predictions.decoder"),
-            "ln_final": NormalizationBridge(name="cls.predictions.transform.LayerNorm", config=self.cfg),
+            "ln_final": NormalizationBridge(
+                name="cls.predictions.transform.LayerNorm", config=self.cfg
+            ),
         }

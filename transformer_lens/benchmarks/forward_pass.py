@@ -184,6 +184,7 @@ def benchmark_loss_equivalence(
         if reference_loss is not None:
             ref_loss_val = reference_loss
         else:
+            assert reference_model is not None
             ref_loss_tensor = reference_model(test_text, return_type="loss")
             ref_loss_val = ref_loss_tensor.item()
 
@@ -260,6 +261,7 @@ def benchmark_logits_equivalence(
         if reference_logits is not None:
             ref_logits = reference_logits.to(bridge_logits.device)
         else:
+            assert reference_model is not None
             ref_logits = reference_model(test_text, return_type="logits")
 
         return compare_tensors(

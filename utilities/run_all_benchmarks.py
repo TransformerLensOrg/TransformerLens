@@ -10,13 +10,11 @@ Usage:
 """
 
 import gc
-import json
 import os
 import sys
 import time
 import traceback
 from dataclasses import dataclass, field
-from typing import Optional
 
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -25,6 +23,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 @dataclass
 class ModelSpec:
     """Specification for a model to benchmark."""
+
     architecture: str
     model_name: str
     approx_params_m: int  # Approximate parameter count in millions
@@ -36,6 +35,7 @@ class ModelSpec:
 @dataclass
 class BenchmarkRunResult:
     """Result of a single benchmark run."""
+
     model_spec: ModelSpec
     total_tests: int = 0
     passed: int = 0
@@ -58,49 +58,84 @@ BENCHMARK_MODELS = [
     ModelSpec("BERT", "google-bert/bert-base-uncased", 110, notes="Encoder-only"),
     ModelSpec("Neo", "EleutherAI/gpt-neo-125M", 125),
     ModelSpec("OPT", "facebook/opt-125m", 125),
-    ModelSpec("OpenELM", "apple/OpenELM-270M", 270, trust_remote_code=True,
-             has_hooked_transformer=False, notes="New architecture - no HT support"),
+    ModelSpec(
+        "OpenELM",
+        "apple/OpenELM-270M",
+        270,
+        trust_remote_code=True,
+        has_hooked_transformer=False,
+        notes="New architecture - no HT support",
+    ),
     ModelSpec("Qwen2", "Qwen/Qwen2-0.5B", 500),
     ModelSpec("Bloom", "bigscience/bloom-560m", 560),
     ModelSpec("Qwen3", "Qwen/Qwen3-0.6B", 600, trust_remote_code=True),
-    ModelSpec("Llama", "meta-llama/Llama-3.2-1B", 1000,
-             notes="Gated model - requires HF auth"),
+    ModelSpec("Llama", "meta-llama/Llama-3.2-1B", 1000, notes="Gated model - requires HF auth"),
 ]
 
 # Models too large for 24GB RAM (3x model in fp32)
 TOO_LARGE_MODELS = [
-    ModelSpec("Phi", "microsoft/phi-1", 1300, trust_remote_code=True,
-             notes="~15.6GB for 3 instances"),
-    ModelSpec("Gpt2LmHeadCustom", "bigcode/santacoder", 1600, trust_remote_code=True,
-             notes="~19.2GB for 3 instances"),
-    ModelSpec("Qwen", "Qwen/Qwen-1_8B", 1800, trust_remote_code=True,
-             notes="~21.6GB for 3 instances"),
-    ModelSpec("Gemma1", "google/gemma-2b", 2000,
-             notes="~24GB for 3 instances - too tight"),
-    ModelSpec("Gemma2", "google/gemma-2-2b", 2000,
-             notes="~24GB for 3 instances - too tight"),
-    ModelSpec("Gemma3", "google/gemma-3-270m", 270,
-             notes="Needs gated access and special tokenizer"),
-    ModelSpec("Olmo", "allenai/OLMo-1B-hf", 1000, trust_remote_code=True,
-             notes="1B but trust_remote_code adds overhead"),
-    ModelSpec("Olmo2", "allenai/OLMo-2-0425-1B", 1000, trust_remote_code=True,
-             notes="1B but trust_remote_code adds overhead"),
-    ModelSpec("StableLM", "stabilityai/stablelm-base-alpha-3b", 3000,
-             notes="~36GB for 3 instances"),
-    ModelSpec("Phi3", "microsoft/Phi-3-mini-4k-instruct", 3800, trust_remote_code=True,
-             notes="~45.6GB for 3 instances"),
-    ModelSpec("GPTJ", "EleutherAI/gpt-j-6B", 6000,
-             notes="~72GB for 3 instances"),
-    ModelSpec("Mistral", "mistralai/Mistral-7B-v0.1", 7000,
-             notes="~84GB for 3 instances"),
-    ModelSpec("Olmo3", "allenai/OLMo-3-7B-Instruct", 7000, trust_remote_code=True,
-             notes="~84GB for 3 instances"),
-    ModelSpec("OlmoE", "allenai/OLMoE-1B-7B-0924", 7000, trust_remote_code=True,
-             notes="MoE - ~84GB for 3 instances"),
-    ModelSpec("Neox", "EleutherAI/gpt-neox-20b", 20000,
-             notes="~240GB for 3 instances"),
-    ModelSpec("Mixtral", "mistralai/Mixtral-8x7B-v0.1", 46700,
-             notes="MoE - ~560GB for 3 instances"),
+    ModelSpec(
+        "Phi", "microsoft/phi-1", 1300, trust_remote_code=True, notes="~15.6GB for 3 instances"
+    ),
+    ModelSpec(
+        "Gpt2LmHeadCustom",
+        "bigcode/santacoder",
+        1600,
+        trust_remote_code=True,
+        notes="~19.2GB for 3 instances",
+    ),
+    ModelSpec(
+        "Qwen", "Qwen/Qwen-1_8B", 1800, trust_remote_code=True, notes="~21.6GB for 3 instances"
+    ),
+    ModelSpec("Gemma1", "google/gemma-2b", 2000, notes="~24GB for 3 instances - too tight"),
+    ModelSpec("Gemma2", "google/gemma-2-2b", 2000, notes="~24GB for 3 instances - too tight"),
+    ModelSpec(
+        "Gemma3", "google/gemma-3-270m", 270, notes="Needs gated access and special tokenizer"
+    ),
+    ModelSpec(
+        "Olmo",
+        "allenai/OLMo-1B-hf",
+        1000,
+        trust_remote_code=True,
+        notes="1B but trust_remote_code adds overhead",
+    ),
+    ModelSpec(
+        "Olmo2",
+        "allenai/OLMo-2-0425-1B",
+        1000,
+        trust_remote_code=True,
+        notes="1B but trust_remote_code adds overhead",
+    ),
+    ModelSpec(
+        "StableLM", "stabilityai/stablelm-base-alpha-3b", 3000, notes="~36GB for 3 instances"
+    ),
+    ModelSpec(
+        "Phi3",
+        "microsoft/Phi-3-mini-4k-instruct",
+        3800,
+        trust_remote_code=True,
+        notes="~45.6GB for 3 instances",
+    ),
+    ModelSpec("GPTJ", "EleutherAI/gpt-j-6B", 6000, notes="~72GB for 3 instances"),
+    ModelSpec("Mistral", "mistralai/Mistral-7B-v0.1", 7000, notes="~84GB for 3 instances"),
+    ModelSpec(
+        "Olmo3",
+        "allenai/OLMo-3-7B-Instruct",
+        7000,
+        trust_remote_code=True,
+        notes="~84GB for 3 instances",
+    ),
+    ModelSpec(
+        "OlmoE",
+        "allenai/OLMoE-1B-7B-0924",
+        7000,
+        trust_remote_code=True,
+        notes="MoE - ~84GB for 3 instances",
+    ),
+    ModelSpec("Neox", "EleutherAI/gpt-neox-20b", 20000, notes="~240GB for 3 instances"),
+    ModelSpec(
+        "Mixtral", "mistralai/Mixtral-8x7B-v0.1", 46700, notes="MoE - ~560GB for 3 instances"
+    ),
 ]
 
 # Not testable (custom models only, no public weights)
@@ -147,12 +182,16 @@ def run_single_benchmark(spec: ModelSpec, device: str = "cpu") -> BenchmarkRunRe
                 result.passed += 1
             else:
                 result.failed += 1
-                result.failure_details.append({
-                    "name": br.name,
-                    "severity": br.severity.value if hasattr(br.severity, 'value') else str(br.severity),
-                    "message": br.message,
-                    "phase": br.phase,
-                })
+                result.failure_details.append(
+                    {
+                        "name": br.name,
+                        "severity": br.severity.value
+                        if hasattr(br.severity, "value")
+                        else str(br.severity),
+                        "message": br.message,
+                        "phase": br.phase,
+                    }
+                )
 
         result.status = "success" if result.failed == 0 else "failure"
 
@@ -171,6 +210,7 @@ def run_single_benchmark(spec: ModelSpec, device: str = "cpu") -> BenchmarkRunRe
         gc.collect()
         try:
             import torch
+
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
         except:
@@ -218,7 +258,7 @@ def print_summary(results: list, too_large: list, not_testable: list):
 
         if r.failure_details:
             for fd in r.failure_details:
-                phase_str = f"P{fd['phase']}" if fd.get('phase') else "?"
+                phase_str = f"P{fd['phase']}" if fd.get("phase") else "?"
                 print(f"  [{phase_str}] FAIL: {fd['name']} - {fd['message'][:80]}")
 
     print(f"\nTested: {len(results)} architectures")
@@ -246,13 +286,13 @@ def print_summary(results: list, too_large: list, not_testable: list):
 
 def main():
     import argparse
+
     parser = argparse.ArgumentParser(description="Run all architecture benchmarks")
-    parser.add_argument("--skip-large", action="store_true",
-                       help="Skip models > 500M params")
-    parser.add_argument("--only", type=str, default=None,
-                       help="Run only a specific architecture (e.g., 'GPT2')")
-    parser.add_argument("--device", type=str, default="cpu",
-                       help="Device to run on (default: cpu)")
+    parser.add_argument("--skip-large", action="store_true", help="Skip models > 500M params")
+    parser.add_argument(
+        "--only", type=str, default=None, help="Run only a specific architecture (e.g., 'GPT2')"
+    )
+    parser.add_argument("--device", type=str, default="cpu", help="Device to run on (default: cpu)")
     args = parser.parse_args()
 
     models_to_run = BENCHMARK_MODELS
@@ -274,9 +314,11 @@ def main():
 
         # Print intermediate status
         status = "PASS" if result.status == "success" else result.status.upper()
-        print(f"\n>>> {spec.architecture}: {status} "
-              f"({result.passed} pass, {result.failed} fail, {result.skipped} skip) "
-              f"in {result.duration_s:.1f}s\n")
+        print(
+            f"\n>>> {spec.architecture}: {status} "
+            f"({result.passed} pass, {result.failed} fail, {result.skipped} skip) "
+            f"in {result.duration_s:.1f}s\n"
+        )
 
     print_summary(results, TOO_LARGE_MODELS, NOT_TESTABLE)
 

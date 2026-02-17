@@ -129,6 +129,7 @@ class ProcessWeights:
 
         # Extract the component path after "blocks.{i}."
         import re
+
         match = re.match(r"blocks\.(\d+)\.(.*)", key)
         if match:
             layer_idx = match.group(1)
@@ -242,6 +243,7 @@ class ProcessWeights:
         Returns:
             Tuple of (new_bq, new_bk, new_bv) with folded biases (always non-None)
         """
+
         def _zero_bias(w: torch.Tensor) -> torch.Tensor:
             return torch.zeros(w.shape[0], w.shape[2], dtype=w.dtype, device=w.device)
 
@@ -552,7 +554,9 @@ class ProcessWeights:
         )
         mlp_W_gate_key = (
             ProcessWeights._resolve_state_dict_key(
-                state_dict, ProcessWeights._get_param_key(f"blocks.{layer}.mlp.W_gate", adapter), layer
+                state_dict,
+                ProcessWeights._get_param_key(f"blocks.{layer}.mlp.W_gate", adapter),
+                layer,
             )
             if getattr(cfg, "gated_mlp", False)
             else None
@@ -667,10 +671,18 @@ class ProcessWeights:
             # TL format [d_model, d_mlp] -> center along dim=0
             # HF format [d_mlp, d_model] -> center along dim=-1
             d_model = cfg.d_model if cfg is not None else None
-            if d_model is not None and mlp_W_in_centered.shape[0] == d_model and mlp_W_in_centered.shape[-1] != d_model:
+            if (
+                d_model is not None
+                and mlp_W_in_centered.shape[0] == d_model
+                and mlp_W_in_centered.shape[-1] != d_model
+            ):
                 # TL format [d_model, d_mlp]
                 mlp_W_in_centered = mlp_W_in_centered - mlp_W_in_centered.mean(0, keepdim=True)
-            elif d_model is not None and mlp_W_in_centered.shape[-1] == d_model and mlp_W_in_centered.shape[0] != d_model:
+            elif (
+                d_model is not None
+                and mlp_W_in_centered.shape[-1] == d_model
+                and mlp_W_in_centered.shape[0] != d_model
+            ):
                 # HF format [d_mlp, d_model]
                 mlp_W_in_centered = mlp_W_in_centered - mlp_W_in_centered.mean(-1, keepdim=True)
             else:
@@ -713,9 +725,17 @@ class ProcessWeights:
                 # TL format [d_mlp, d_model] -> center along dim=0
                 # HF format [d_model, d_mlp] -> center along dim=-1
                 d_model_val = cfg.d_model if cfg is not None else None
-                if d_model_val is not None and new_mlp_W_out.shape[-1] == d_model_val and new_mlp_W_out.shape[0] != d_model_val:
+                if (
+                    d_model_val is not None
+                    and new_mlp_W_out.shape[-1] == d_model_val
+                    and new_mlp_W_out.shape[0] != d_model_val
+                ):
                     new_mlp_W_out = new_mlp_W_out - new_mlp_W_out.mean(0, keepdim=True)
-                elif d_model_val is not None and new_mlp_W_out.shape[0] == d_model_val and new_mlp_W_out.shape[-1] != d_model_val:
+                elif (
+                    d_model_val is not None
+                    and new_mlp_W_out.shape[0] == d_model_val
+                    and new_mlp_W_out.shape[-1] != d_model_val
+                ):
                     new_mlp_W_out = new_mlp_W_out - new_mlp_W_out.mean(-1, keepdim=True)
                 else:
                     new_mlp_W_out = new_mlp_W_out - new_mlp_W_out.mean(0, keepdim=True)
@@ -862,12 +882,20 @@ class ProcessWeights:
                 # Detect format: TL [d_model, d_vocab] vs HF [d_vocab, d_model].
                 # Center along the d_model dimension (mean over d_model).
                 d_vocab = getattr(cfg, "d_vocab", None) if cfg is not None else None
-                if d_vocab is not None and unembed_weight_centered.shape[0] == d_vocab and unembed_weight_centered.shape[-1] != d_vocab:
+                if (
+                    d_vocab is not None
+                    and unembed_weight_centered.shape[0] == d_vocab
+                    and unembed_weight_centered.shape[-1] != d_vocab
+                ):
                     # HF format [d_vocab, d_model] — center along dim=-1
-                    unembed_weight_centered = unembed_weight_centered - unembed_weight_centered.mean(-1, keepdim=True)
+                    unembed_weight_centered = (
+                        unembed_weight_centered - unembed_weight_centered.mean(-1, keepdim=True)
+                    )
                 else:
                     # TL format [d_model, d_vocab] — center along dim=0
-                    unembed_weight_centered = unembed_weight_centered - unembed_weight_centered.mean(0, keepdim=True)
+                    unembed_weight_centered = (
+                        unembed_weight_centered - unembed_weight_centered.mean(0, keepdim=True)
+                    )
                 state_dict[unembed_W_U_key] = ProcessWeights.convert_tensor_to_hf_format(
                     unembed_W_U_key, unembed_weight_centered, cfg, adapter, None
                 )
@@ -1005,7 +1033,8 @@ class ProcessWeights:
             try:
                 pos_embed_W_pos_key = (
                     ProcessWeights._get_param_key("pos_embed.W_pos", adapter)
-                    if getattr(cfg, "positional_embedding_type", "standard") not in ("rotary", "alibi")
+                    if getattr(cfg, "positional_embedding_type", "standard")
+                    not in ("rotary", "alibi")
                     else None
                 )
             except ValueError:
@@ -1721,19 +1750,33 @@ class ProcessWeights:
                     # already have the tensor, fall back to applying the tensor
                     # conversion directly (needed for adapters like GPT-Neo whose
                     # source_key references HF keys not in the bridge state dict).
-                    if hasattr(param_conversion, "source_key") and param_conversion.source_key is not None:
-                        resolved_key = param_conversion._resolve_key(param_name, param_conversion.source_key)
+                    if (
+                        hasattr(param_conversion, "source_key")
+                        and param_conversion.source_key is not None
+                    ):
+                        resolved_key = param_conversion._resolve_key(
+                            param_name, param_conversion.source_key
+                        )
                         if resolved_key not in model_state_dict and tensor is not None:
                             # Source key not in state dict — the tensor is already in
                             # bridge format (e.g. already split from combined QKV).
                             # If the conversion is a ChainTensorConversion that includes
                             # a SplitTensorConversion, skip the split step since
                             # it was already applied during bridge construction.
-                            from transformer_lens.conversion_utils.conversion_steps.chain_tensor_conversion import ChainTensorConversion
-                            from transformer_lens.conversion_utils.conversion_steps.split_tensor_conversion import SplitTensorConversion
+                            from transformer_lens.conversion_utils.conversion_steps.chain_tensor_conversion import (
+                                ChainTensorConversion,
+                            )
+                            from transformer_lens.conversion_utils.conversion_steps.split_tensor_conversion import (
+                                SplitTensorConversion,
+                            )
+
                             tc = param_conversion.tensor_conversion
                             if isinstance(tc, ChainTensorConversion):
-                                non_split = [c for c in tc.conversions if not isinstance(c, SplitTensorConversion)]
+                                non_split = [
+                                    c
+                                    for c in tc.conversions
+                                    if not isinstance(c, SplitTensorConversion)
+                                ]
                                 if len(non_split) < len(tc.conversions):
                                     # Apply only the non-split conversions
                                     result = tensor
@@ -1831,11 +1874,18 @@ class ProcessWeights:
                     # Revert the conversion. For ChainTensorConversions that include
                     # SplitTensorConversion, skip the split revert step (which is a
                     # no-op anyway) to match the forward conversion path.
-                    from transformer_lens.conversion_utils.conversion_steps.chain_tensor_conversion import ChainTensorConversion
-                    from transformer_lens.conversion_utils.conversion_steps.split_tensor_conversion import SplitTensorConversion
+                    from transformer_lens.conversion_utils.conversion_steps.chain_tensor_conversion import (
+                        ChainTensorConversion,
+                    )
+                    from transformer_lens.conversion_utils.conversion_steps.split_tensor_conversion import (
+                        SplitTensorConversion,
+                    )
+
                     tc = param_conversion.tensor_conversion
                     if isinstance(tc, ChainTensorConversion):
-                        non_split = [c for c in tc.conversions if not isinstance(c, SplitTensorConversion)]
+                        non_split = [
+                            c for c in tc.conversions if not isinstance(c, SplitTensorConversion)
+                        ]
                         if len(non_split) < len(tc.conversions):
                             # Revert only the non-split conversions in reverse order
                             result = tensor

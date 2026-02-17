@@ -1043,7 +1043,9 @@ def benchmark_critical_forward_hooks(
 
                 # Only compare values for same-model comparison
                 if not safe_allclose(bridge_tensor, reference_tensor, atol=tolerance, rtol=0.0):
-                    max_diff = torch.max(torch.abs(bridge_tensor.float() - reference_tensor.float())).item()
+                    max_diff = torch.max(
+                        torch.abs(bridge_tensor.float() - reference_tensor.float())
+                    ).item()
                     mismatches.append(f"{hook_name}: max_diff={max_diff:.6f}")
 
         # Filter out hooks expected to be missing in bridge models.

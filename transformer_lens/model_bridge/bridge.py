@@ -763,7 +763,7 @@ class TransformerBridge(nn.Module):
             new_key = key
             for hf_prefix, tl_prefix in hf_to_tl_prefix.items():
                 if key.startswith(hf_prefix + "."):
-                    suffix = key[len(hf_prefix) + 1:]
+                    suffix = key[len(hf_prefix) + 1 :]
                     new_key = f"{tl_prefix}.{suffix}"
                     break
             normalized_state_dict[new_key] = value

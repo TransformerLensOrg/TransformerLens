@@ -11,7 +11,6 @@ import warnings
 import torch
 from transformers import (
     AutoConfig,
-    AutoModel,
     AutoModelForCausalLM,
     AutoModelForMaskedLM,
     AutoModelForSeq2SeqLM,

@@ -9,7 +9,11 @@ from typing import Any, Optional
 import torch
 
 from transformer_lens.benchmarks.component_outputs import ComponentBenchmarker
-from transformer_lens.benchmarks.utils import BenchmarkResult, BenchmarkSeverity, safe_allclose
+from transformer_lens.benchmarks.utils import (
+    BenchmarkResult,
+    BenchmarkSeverity,
+    safe_allclose,
+)
 
 
 def benchmark_component_forward(

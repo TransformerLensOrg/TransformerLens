@@ -5,7 +5,11 @@ from typing import Optional, cast
 import torch
 
 from transformer_lens import HookedTransformer
-from transformer_lens.benchmarks.utils import BenchmarkResult, BenchmarkSeverity, safe_allclose
+from transformer_lens.benchmarks.utils import (
+    BenchmarkResult,
+    BenchmarkSeverity,
+    safe_allclose,
+)
 from transformer_lens.model_bridge import TransformerBridge
 
 
@@ -564,7 +568,9 @@ def benchmark_mlp_output_centering(
         elif hasattr(bridge.blocks[0].mlp, "out"):
             # Bridge format: mlp.out is a LinearBridge wrapping nn.Linear
             out_module = bridge.blocks[0].mlp.out
-            if hasattr(out_module, "original_component") and hasattr(out_module.original_component, "weight"):
+            if hasattr(out_module, "original_component") and hasattr(
+                out_module.original_component, "weight"
+            ):
                 w_out = out_module.original_component.weight
             elif hasattr(out_module, "weight"):
                 w_out = out_module.weight

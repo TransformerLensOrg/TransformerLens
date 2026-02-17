@@ -279,9 +279,7 @@ def run_comparison_benchmarks(
     if verbose:
         print("2. Model Equivalence Benchmarks (Forward Pass)")
 
-    has_phase1_ref = (
-        phase1_reference is not None and phase1_reference.hf_logits is not None
-    )
+    has_phase1_ref = phase1_reference is not None and phase1_reference.hf_logits is not None
 
     if ht_available:
         try:
@@ -308,11 +306,13 @@ def run_comparison_benchmarks(
             if verbose:
                 print("Using saved Phase 1 bridge reference for equivalence comparison")
 
+            assert phase1_reference is not None
             # Compare log_softmax instead of raw logits to be centering-invariant.
             # center_unembed shifts all vocab logits at each position by a constant,
             # which changes raw logits but preserves log-probabilities.
             # Always compute log_softmax in float32 for numerical stability.
             bridge_logits = bridge_model(test_text, return_type="logits")
+            assert phase1_reference.hf_logits is not None
             ref_logits = phase1_reference.hf_logits.to(bridge_logits.device)
             bridge_log_probs = torch.nn.functional.log_softmax(bridge_logits.float(), dim=-1)
             ref_log_probs = torch.nn.functional.log_softmax(ref_logits.float(), dim=-1)

@@ -6,7 +6,11 @@ import torch
 
 from transformer_lens import HookedTransformer
 from transformer_lens.benchmarks.hook_structure import validate_hook_shape_compatibility
-from transformer_lens.benchmarks.utils import BenchmarkResult, BenchmarkSeverity, safe_allclose
+from transformer_lens.benchmarks.utils import (
+    BenchmarkResult,
+    BenchmarkSeverity,
+    safe_allclose,
+)
 from transformer_lens.model_bridge import TransformerBridge
 
 
@@ -174,9 +178,7 @@ def benchmark_backward_hooks(
                         rf = reference_finite.float()
                         max_diff = torch.max(torch.abs(bf - rf)).item()
                         mean_diff = torch.mean(torch.abs(bf - rf)).item()
-                        rel_diff = torch.abs(bf - rf) / (
-                            torch.abs(bf) + 1e-8
-                        )
+                        rel_diff = torch.abs(bf - rf) / (torch.abs(bf) + 1e-8)
                         mean_rel = rel_diff.mean().item()
                         mismatches.append(
                             f"{hook_name}: Value mismatch - max_diff={max_diff:.6f}, mean_diff={mean_diff:.6f}, mean_rel={mean_rel:.6f}"
@@ -438,7 +440,9 @@ def benchmark_critical_backward_hooks(
                     if not safe_allclose(
                         bridge_finite, reference_finite, atol=abs_tolerance, rtol=rel_tolerance
                     ):
-                        max_diff = torch.max(torch.abs(bridge_finite.float() - reference_finite.float())).item()
+                        max_diff = torch.max(
+                            torch.abs(bridge_finite.float() - reference_finite.float())
+                        ).item()
                         mismatches.append(f"{hook_name}: max_diff={max_diff:.6f}")
 
         if mismatches:

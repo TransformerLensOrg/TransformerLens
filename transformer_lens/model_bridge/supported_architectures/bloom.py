@@ -116,9 +116,7 @@ class BloomArchitectureAdapter(ArchitectureAdapter):
         # Bloom QKV weights are interleaved: [Q0,K0,V0, Q1,K1,V1, ...]
         # i.e. layout is (n_heads, 3, d_head), not (3, n_heads*d_head).
         # Reshape to [d_model, n_heads, 3, d_head] to correctly deinterleave.
-        W_split = qkv_weights.T.reshape(
-            self.cfg.d_model, self.cfg.n_heads, 3, self.cfg.d_head
-        )
+        W_split = qkv_weights.T.reshape(self.cfg.d_model, self.cfg.n_heads, 3, self.cfg.d_head)
 
         # W_Q/K/V shape: [d_model, n_heads, d_head]
         W_Q, W_K, W_V = W_split[..., 0, :], W_split[..., 1, :], W_split[..., 2, :]
@@ -140,21 +138,15 @@ class BloomArchitectureAdapter(ArchitectureAdapter):
         d_out = self.cfg.n_heads * self.cfg.d_head
 
         W_Q_transformation = torch.nn.Linear(self.cfg.d_model, d_out, bias=True)
-        W_Q_transformation.weight = torch.nn.Parameter(
-            W_Q.reshape(self.cfg.d_model, d_out).T
-        )
+        W_Q_transformation.weight = torch.nn.Parameter(W_Q.reshape(self.cfg.d_model, d_out).T)
         W_Q_transformation.bias = torch.nn.Parameter(b_Q.reshape(d_out))
 
         W_K_transformation = torch.nn.Linear(self.cfg.d_model, d_out, bias=True)
-        W_K_transformation.weight = torch.nn.Parameter(
-            W_K.reshape(self.cfg.d_model, d_out).T
-        )
+        W_K_transformation.weight = torch.nn.Parameter(W_K.reshape(self.cfg.d_model, d_out).T)
         W_K_transformation.bias = torch.nn.Parameter(b_K.reshape(d_out))
 
         W_V_transformation = torch.nn.Linear(self.cfg.d_model, d_out, bias=True)
-        W_V_transformation.weight = torch.nn.Parameter(
-            W_V.reshape(self.cfg.d_model, d_out).T
-        )
+        W_V_transformation.weight = torch.nn.Parameter(W_V.reshape(self.cfg.d_model, d_out).T)
         W_V_transformation.bias = torch.nn.Parameter(b_V.reshape(d_out))
 
         return W_Q_transformation, W_K_transformation, W_V_transformation
