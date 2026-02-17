@@ -220,12 +220,14 @@ class OpenElmArchitectureAdapter(ArchitectureAdapter):
         if not hasattr(hf_model.config, "use_cache") or "use_cache" not in hf_model.config.__dict__:
             hf_model.config.use_cache = False
 
-        # Fix 1: Recompute causal_mask (non-persistent buffer zeroed during materialization).
-        # Without this, F.scaled_dot_product_attention sees attn_mask=0 everywhere,
-        # allowing every position to attend to every other position.
+        # Fix 1: Always recompute causal_mask (non-persistent buffer).
+        # After meta→real materialization, the buffer may contain garbage values
+        # (not all zeros) depending on the materializer's memory state. The old
+        # check `not cm.any()` only recomputed when all zeros, missing cases where
+        # garbage values are non-zero. Always recompute to guarantee correctness.
         if hasattr(hf_model, "transformer") and hasattr(hf_model.transformer, "causal_mask"):
             cm = hf_model.transformer.causal_mask
-            if cm is not None and not cm.any():
+            if cm is not None:
                 seq_len = cm.shape[-1]
                 correct_mask = torch.triu(
                     torch.ones(seq_len, seq_len, dtype=cm.dtype, device=cm.device),
@@ -240,16 +242,17 @@ class OpenElmArchitectureAdapter(ArchitectureAdapter):
             for layer in hf_model.transformer.layers:
                 if hasattr(layer, "attn") and hasattr(layer.attn, "pos_embedding"):
                     rope = layer.attn.pos_embedding
-                    # Recompute inv_freq (zeroed during meta→real materialization)
-                    if rope.inv_freq.abs().max() == 0:
-                        correct_inv_freq = 1.0 / (
-                            rope.freq_constant
-                            ** (
-                                torch.arange(0, rope.model_dim, 2, dtype=torch.float32)
-                                / rope.model_dim
-                            )
+                    # Always recompute inv_freq (non-persistent buffer).
+                    # Like causal_mask, inv_freq may contain garbage after meta
+                    # materialization rather than clean zeros.
+                    correct_inv_freq = 1.0 / (
+                        rope.freq_constant
+                        ** (
+                            torch.arange(0, rope.model_dim, 2, dtype=torch.float32)
+                            / rope.model_dim
                         )
-                        rope.inv_freq = correct_inv_freq.to(rope.inv_freq.device)
+                    )
+                    rope.inv_freq = correct_inv_freq.to(rope.inv_freq.device)
                     # Force-recompute sin/cos (may have been computed with zero inv_freq)
                     rope._cached_cos = None
                     rope._cached_sin = None

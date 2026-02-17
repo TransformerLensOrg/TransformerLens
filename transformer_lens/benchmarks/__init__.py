@@ -36,7 +36,7 @@ from transformer_lens.benchmarks.hook_structure import (
     validate_hook_shape_compatibility,
 )
 from transformer_lens.benchmarks.main_benchmark import run_benchmark_suite
-from transformer_lens.benchmarks.utils import BenchmarkResult, BenchmarkSeverity
+from transformer_lens.benchmarks.utils import BenchmarkResult, BenchmarkSeverity, PhaseReferenceData
 from transformer_lens.benchmarks.weight_processing import (
     benchmark_weight_modification,
     benchmark_weight_processing,
@@ -49,6 +49,7 @@ __all__ = [
     # Result types
     "BenchmarkResult",
     "BenchmarkSeverity",
+    "PhaseReferenceData",
     # Forward pass benchmarks
     "benchmark_forward_pass",
     "benchmark_logits_equivalence",

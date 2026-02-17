@@ -47,6 +47,8 @@ from transformer_lens.benchmarks.hook_structure import (
 from transformer_lens.benchmarks.utils import (
     BenchmarkResult,
     BenchmarkSeverity,
+    PhaseReferenceData,
+    compare_tensors,
     format_results,
 )
 from transformer_lens.benchmarks.weight_processing import (
@@ -138,10 +140,12 @@ def _fixup_custom_model(hf_model) -> None:
         if not hasattr(hf_model.config, "use_cache") or "use_cache" not in hf_model.config.__dict__:
             hf_model.config.use_cache = False
 
-        # Fix 1: Recompute causal_mask if zeroed (non-persistent buffer)
+        # Fix 1: Always recompute causal_mask (non-persistent buffer).
+        # After meta→real materialization, the buffer may contain garbage values
+        # rather than clean zeros, so we always recompute.
         if hasattr(hf_model.transformer, "causal_mask"):
             cm = hf_model.transformer.causal_mask
-            if cm is not None and cm.numel() > 0 and not cm.any():
+            if cm is not None and cm.numel() > 0:
                 seq_len = cm.shape[-1]
                 correct_mask = torch.triu(
                     torch.ones(seq_len, seq_len, dtype=cm.dtype, device=cm.device),
@@ -149,14 +153,13 @@ def _fixup_custom_model(hf_model) -> None:
                 )
                 hf_model.transformer.causal_mask = correct_mask
 
-        # Fix 2: Recompute RoPE inv_freq if zeroed, then force-recompute sin/cos
+        # Fix 2: Always recompute RoPE inv_freq and sin/cos (non-persistent buffers).
         rope_max = getattr(hf_model.config, "rope_max_length", None)
         if rope_max is not None:
             for layer in hf_model.transformer.layers:
                 if hasattr(layer, "attn") and hasattr(layer.attn, "pos_embedding"):
                     rope = layer.attn.pos_embedding
-                    # Recompute inv_freq if zeroed (non-persistent buffer)
-                    if hasattr(rope, "inv_freq") and rope.inv_freq.abs().max() == 0:
+                    if hasattr(rope, "inv_freq"):
                         correct_inv_freq = 1.0 / (
                             rope.freq_constant
                             ** (
@@ -165,7 +168,7 @@ def _fixup_custom_model(hf_model) -> None:
                             )
                         )
                         rope.inv_freq = correct_inv_freq.to(rope.inv_freq.device)
-                    # Force-recompute sin/cos (may have been computed with zero inv_freq)
+                    # Force-recompute sin/cos
                     rope._cached_cos = None
                     rope._cached_sin = None
                     rope._compute_sin_cos_embeddings(rope_max)
@@ -186,6 +189,7 @@ def run_comparison_benchmarks(
     is_processed: bool,
     verbose: bool = True,
     gpt2_reference: Optional[HookedTransformer] = None,
+    phase1_reference: Optional[PhaseReferenceData] = None,
 ) -> List[BenchmarkResult]:
     """Run standardized comparison benchmarks between Bridge and reference model.
 
@@ -200,6 +204,7 @@ def run_comparison_benchmarks(
         is_processed: Whether models have processed weights (for weight-specific tests)
         verbose: Whether to print detailed results
         gpt2_reference: Optional GPT-2 reference for cross-model validation
+        phase1_reference: Optional saved Phase 1 HF reference data for equivalence testing
 
     Returns:
         List of BenchmarkResult objects
@@ -274,6 +279,10 @@ def run_comparison_benchmarks(
     if verbose:
         print("2. Model Equivalence Benchmarks (Forward Pass)")
 
+    has_phase1_ref = (
+        phase1_reference is not None and phase1_reference.hf_logits is not None
+    )
+
     if ht_available:
         try:
             add_result(
@@ -288,6 +297,55 @@ def run_comparison_benchmarks(
         except Exception as e:
             if verbose:
                 print(f"✗ Equivalence benchmark failed: {e}\n")
+    elif has_phase1_ref:
+        # Use saved Phase 1 bridge logits/loss as ground truth.
+        # Weight processing should be mathematically equivalent, so the processed
+        # bridge should produce the same output as the unprocessed bridge.
+        #
+        # Important: center_unembed intentionally shifts raw logits by a per-position
+        # constant (softmax-invariant). We compare log_softmax to be invariant to this.
+        try:
+            if verbose:
+                print("Using saved Phase 1 bridge reference for equivalence comparison")
+
+            # Compare log_softmax instead of raw logits to be centering-invariant.
+            # center_unembed shifts all vocab logits at each position by a constant,
+            # which changes raw logits but preserves log-probabilities.
+            bridge_logits = bridge_model(test_text, return_type="logits")
+            ref_logits = phase1_reference.hf_logits.to(bridge_logits.device)
+            bridge_log_probs = torch.nn.functional.log_softmax(bridge_logits, dim=-1)
+            ref_log_probs = torch.nn.functional.log_softmax(ref_logits, dim=-1)
+            add_result(
+                compare_tensors(
+                    bridge_log_probs,
+                    ref_log_probs,
+                    atol=1e-4,
+                    rtol=1e-4,
+                    name="logits_equivalence",
+                )
+            )
+            if phase1_reference.hf_loss is not None:
+                add_result(
+                    benchmark_loss_equivalence(
+                        bridge_model,
+                        test_text,
+                        reference_loss=phase1_reference.hf_loss,
+                        atol=1e-3,
+                    )
+                )
+            else:
+                add_result(
+                    BenchmarkResult(
+                        name="loss_equivalence",
+                        severity=BenchmarkSeverity.SKIPPED,
+                        message="Skipped (no Phase 1 loss reference available)",
+                        passed=True,
+                    )
+                )
+            gc.collect()
+        except Exception as e:
+            if verbose:
+                print(f"✗ Phase 1 reference comparison failed: {e}\n")
     else:
         if verbose:
             print("⏭️ Skipped (no HookedTransformer reference)\n")
@@ -885,6 +943,7 @@ def run_benchmark_suite(
 
     bridge_unprocessed = None
     hf_model = None
+    phase1_reference = PhaseReferenceData()
 
     # Load bridge without weights first to detect attn_implementation and dtype
     if verbose:
@@ -1044,6 +1103,28 @@ def run_benchmark_suite(
             if verbose:
                 print(f"✗ Forward pass benchmark failed: {e}\n")
 
+        # Capture unprocessed bridge reference data for Phase 3 reuse.
+        # We save the BRIDGE's logits/loss (not the HF model's), because the bridge
+        # forward path may differ slightly from HF. Phase 3 tests whether weight
+        # processing preserves the bridge's own output — comparing processed bridge
+        # vs unprocessed bridge.
+        if bridge_unprocessed is not None:
+            try:
+                with torch.no_grad():
+                    bridge_logits = bridge_unprocessed(test_text, return_type="logits")
+                    phase1_reference.hf_logits = bridge_logits.detach().cpu().clone()
+                    bridge_loss = bridge_unprocessed(test_text, return_type="loss")
+                    phase1_reference.hf_loss = bridge_loss.item()
+                    phase1_reference.test_text = test_text
+                if verbose:
+                    print(
+                        f"✓ Saved Phase 1 reference data "
+                        f"(logits: {phase1_reference.hf_logits.shape})"
+                    )
+            except Exception as e:
+                if verbose:
+                    print(f"⚠ Could not save Phase 1 reference data: {e}")
+
     # Save bridge_dtype before cleaning up HF model (needed for Phase 3)
     saved_bridge_dtype = bridge_dtype
 
@@ -1167,19 +1248,30 @@ def run_benchmark_suite(
 
         # Generation benchmarks already run above (before loading HT)
 
-    # Clean up unprocessed models - no longer needed
+    # Clean up unprocessed HT model - no longer needed
     if ht_model_unprocessed is not None:
         cleanup_model(ht_model_unprocessed, "HookedTransformer (unprocessed)")
         ht_model_unprocessed = None
-    if bridge_unprocessed is not None:
-        cleanup_model(bridge_unprocessed, "TransformerBridge (unprocessed)")
-        bridge_unprocessed = None
+    # NOTE: bridge_unprocessed is intentionally kept alive for Phase 3.
+    # Instead of loading a fresh bridge (which can produce non-deterministic
+    # outputs for some architectures like OpenELM), we reuse the same instance
+    # and process its weights in-place. This ensures Phase 3 tests purely
+    # measure the effect of weight processing, not loading variability.
 
     # ========================================================================
     # PHASE 3: Bridge (processed) + HookedTransformer (processed)
     # ========================================================================
     current_phase[0] = 3
+
+    def _cleanup_bridge_unprocessed():
+        """Clean up the kept-alive bridge_unprocessed if Phase 3 is skipped."""
+        nonlocal bridge_unprocessed
+        if bridge_unprocessed is not None:
+            cleanup_model(bridge_unprocessed, "TransformerBridge (unprocessed)")
+            bridge_unprocessed = None
+
     if not enable_compatibility_mode:
+        _cleanup_bridge_unprocessed()
         if verbose:
             print("\n⚠ Compatibility mode disabled - skipping Phase 3\n")
         if verbose:
@@ -1187,12 +1279,14 @@ def run_benchmark_suite(
         return results
 
     if not should_run_phase(3):
+        _cleanup_bridge_unprocessed()
         if verbose:
             print("\n⚠ Phase 3 skipped (not in phases list)\n")
         return results
 
     # Skip Phase 3 for encoder-decoder models - weight processing is designed for decoder-only models
     if is_encoder_decoder_model(model_name):
+        _cleanup_bridge_unprocessed()
         if verbose:
             print("\n⚠ Phase 3 skipped (encoder-decoder model - weight processing not supported)\n")
             print("\n" + format_results(results))
@@ -1206,36 +1300,67 @@ def run_benchmark_suite(
     bridge_processed = None
     ht_model_processed = None
 
-    # Load processed models for Phase 3
-    try:
-        if verbose:
-            print("Loading TransformerBridge (processed)...")
-        # Use saved dtype from Phase 1 (HF model has been cleaned up)
-        bridge_dtype = saved_bridge_dtype
-        if verbose:
-            print(f"Using dtype={bridge_dtype} from Phase 1")
-        bridge_processed = TransformerBridge.boot_transformers(model_name, device=device, dtype=bridge_dtype, trust_remote_code=trust_remote_code)  # type: ignore[attr-defined]
-        bridge_processed.enable_compatibility_mode(disable_warnings=True)
-        if verbose:
-            print("✓ TransformerBridge compatibility mode enabled (processed)\n")
-    except Exception as e:
-        import traceback
+    # Reuse the Phase 1 bridge instance for Phase 3 instead of loading a fresh one.
+    # This avoids non-deterministic loading issues (some architectures like OpenELM
+    # produce different outputs across separate from_pretrained calls despite
+    # identical parameters and buffers). Processing weights in-place on the same
+    # instance ensures Phase 3 purely measures weight processing equivalence.
+    if bridge_unprocessed is not None:
+        try:
+            if verbose:
+                print("Processing weights on existing bridge (reusing Phase 1 instance)...")
+            bridge_processed = bridge_unprocessed
+            bridge_unprocessed = None  # Transfer ownership
+            bridge_processed.enable_compatibility_mode(disable_warnings=True)
+            if verbose:
+                print("✓ TransformerBridge compatibility mode enabled (processed)\n")
+        except Exception as e:
+            import traceback
 
-        error_trace = traceback.format_exc()
-        add_result(
-            BenchmarkResult(
-                name="load_bridge_processed",
-                severity=BenchmarkSeverity.ERROR,
-                message=f"Failed to load processed TransformerBridge: {str(e)}",
-                passed=False,
-                details={"error": str(e), "traceback": error_trace},
+            error_trace = traceback.format_exc()
+            add_result(
+                BenchmarkResult(
+                    name="process_bridge_weights",
+                    severity=BenchmarkSeverity.ERROR,
+                    message=f"Failed to process bridge weights: {str(e)}",
+                    passed=False,
+                    details={"error": str(e), "traceback": error_trace},
+                )
             )
-        )
-        if verbose:
-            print(f"✗ Failed to load processed TransformerBridge: {str(e)}")
-            print(f"\nStack trace:\n{error_trace}")
+            if verbose:
+                print(f"✗ Failed to process bridge weights: {str(e)}")
+                print(f"\nStack trace:\n{error_trace}")
+    else:
+        # Fallback: load a fresh bridge if Phase 1 bridge was not available
+        try:
+            if verbose:
+                print("Loading TransformerBridge (processed)...")
+            bridge_dtype = saved_bridge_dtype
+            if verbose:
+                print(f"Using dtype={bridge_dtype} from Phase 1")
+            bridge_processed = TransformerBridge.boot_transformers(model_name, device=device, dtype=bridge_dtype, trust_remote_code=trust_remote_code)  # type: ignore[attr-defined]
+            bridge_processed.enable_compatibility_mode(disable_warnings=True)
+            if verbose:
+                print("✓ TransformerBridge compatibility mode enabled (processed)\n")
+        except Exception as e:
+            import traceback
 
-        # Add failure results for all Phase 3 tests that would have been run
+            error_trace = traceback.format_exc()
+            add_result(
+                BenchmarkResult(
+                    name="load_bridge_processed",
+                    severity=BenchmarkSeverity.ERROR,
+                    message=f"Failed to load processed TransformerBridge: {str(e)}",
+                    passed=False,
+                    details={"error": str(e), "traceback": error_trace},
+                )
+            )
+            if verbose:
+                print(f"✗ Failed to load processed TransformerBridge: {str(e)}")
+                print(f"\nStack trace:\n{error_trace}")
+
+    if bridge_processed is None:
+        # Add failure results for all Phase 3 tests
         phase3_tests = [
             "no_nan_inf",
             "weight_magnitudes",
@@ -1265,9 +1390,9 @@ def run_benchmark_suite(
                 BenchmarkResult(
                     name=test_name,
                     severity=BenchmarkSeverity.ERROR,
-                    message=f"Skipped due to model load failure",
+                    message=f"Skipped due to weight processing failure",
                     passed=False,
-                    details={"reason": "load_bridge_processed_failed"},
+                    details={"reason": "bridge_processing_failed"},
                 )
             )
 
@@ -1330,6 +1455,7 @@ def run_benchmark_suite(
             is_processed=True,  # Processed mode - include weight processing tests
             verbose=verbose,
             gpt2_reference=gpt2_reference,  # Use GPT-2 cross-model ref if no same-arch HT
+            phase1_reference=phase1_reference,  # Saved HF logits/loss for equivalence testing
         )
         # Tag all phase 3 results with phase number
         for result in phase3_results:
@@ -1512,6 +1638,11 @@ def main():
         action="store_true",
         help="Suppress verbose output",
     )
+    parser.add_argument(
+        "--trust-remote-code",
+        action="store_true",
+        help="Trust remote code for custom architectures (e.g., OpenELM)",
+    )
 
     args = parser.parse_args()
 
@@ -1522,6 +1653,7 @@ def main():
         use_ht_reference=not args.no_ht_reference,
         enable_compatibility_mode=not args.no_compat,
         verbose=not args.quiet,
+        trust_remote_code=args.trust_remote_code,
     )
 
 
