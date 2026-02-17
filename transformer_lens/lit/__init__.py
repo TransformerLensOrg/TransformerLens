@@ -86,27 +86,19 @@ __all__ = [
 logger = logging.getLogger(__name__)
 
 # Import constants (always available)
-from .constants import (  # noqa: E402
-    ERRORS,
-    INPUT_FIELDS,
-    OUTPUT_FIELDS,
-    SERVER_CONFIG,
-)
-
-# Import model wrapper (handles LIT availability internally)
-from .model import (  # noqa: E402
-    HookedTransformerLIT,
-    HookedTransformerLITConfig,
-)
+from .constants import ERRORS, INPUT_FIELDS, OUTPUT_FIELDS, SERVER_CONFIG  # noqa: E402
 
 # Import datasets (handles LIT availability internally)
 from .dataset import (  # noqa: E402
-    IOIDataset,
     InductionDataset,
+    IOIDataset,
     PromptCompletionDataset,
     SimpleTextDataset,
     wrap_for_lit,
 )
+
+# Import model wrapper (handles LIT availability internally)
+from .model import HookedTransformerLIT, HookedTransformerLITConfig  # noqa: E402
 
 # Conditional imports that require LIT
 _LIT_AVAILABLE = check_lit_installed()
@@ -186,6 +178,7 @@ def serve(
 
     # Get the LIT client root path and layout
     import os
+
     import lit_nlp
     from lit_nlp.api import layout as lit_layout
 
@@ -307,4 +300,3 @@ class LITWidget:
 
 # Version info
 __version__ = "1.0.0"
-
