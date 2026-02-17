@@ -126,7 +126,9 @@ class NeoxArchitectureAdapter(ArchitectureAdapter):
             ),
             "blocks.{i}.attn.o": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
-                    "d_model (head d_head) -> head d_head d_model"
+                    "d_model (head d_head) -> head d_head d_model",
+                    head=self.cfg.n_heads,
+                    d_head=self.cfg.d_model // self.cfg.n_heads,
                 ),
                 source_key="gpt_neox.layers.{i}.attention.dense.weight",
             ),

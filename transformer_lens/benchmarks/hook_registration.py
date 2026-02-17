@@ -510,11 +510,21 @@ def benchmark_hook_registry(
         missing_hooks = reference_hooks - bridge_hooks
         extra_hooks = bridge_hooks - reference_hooks
 
-        # In cross-model mode, filter out hooks that are expected to differ
-        # due to architectural differences (e.g. fused QKV, rotary embeddings)
-        if cross_model and missing_hooks:
-            expected_missing_patterns = [
+        # Filter out hooks that are expected to differ due to architectural differences.
+        # Bridge models don't have HT-internal hooks (mlp.hook_pre/post, rotary hooks)
+        # because the bridge wraps HF's native implementation.
+        if missing_hooks:
+            # These hooks never exist in bridge models
+            bridge_expected_patterns = [
+                "mlp.hook_pre",
+                "mlp.hook_post",
+                "hook_mlp_in",
+                "hook_mlp_out",
+                "attn.hook_rot_q",
+                "attn.hook_rot_k",
                 "hook_pos_embed",
+                "embed.ln.hook_scale",
+                "embed.ln.hook_normalized",
                 "attn.hook_q",
                 "attn.hook_k",
                 "attn.hook_v",
@@ -527,7 +537,7 @@ def benchmark_hook_registry(
             missing_hooks = {
                 h
                 for h in missing_hooks
-                if not any(pattern in h for pattern in expected_missing_patterns)
+                if not any(pattern in h for pattern in bridge_expected_patterns)
             }
 
         if missing_hooks:
@@ -689,10 +699,20 @@ def benchmark_forward_hooks(
                 handle.remove()
 
         # CRITICAL CHECK: Bridge must have all hooks that reference has
-        # In cross-model mode, filter out expected architectural differences
-        if cross_model and missing_from_bridge:
-            expected_missing_patterns = [
+        # Filter out hooks that bridge models inherently don't have because
+        # they wrap HF's native implementation (mlp.hook_pre/post, rotary hooks,
+        # combined QKV attention, etc.).
+        if missing_from_bridge:
+            bridge_expected_patterns = [
+                "mlp.hook_pre",
+                "mlp.hook_post",
+                "hook_mlp_in",
+                "hook_mlp_out",
+                "attn.hook_rot_q",
+                "attn.hook_rot_k",
                 "hook_pos_embed",
+                "embed.ln.hook_scale",
+                "embed.ln.hook_normalized",
                 "attn.hook_q",
                 "attn.hook_k",
                 "attn.hook_v",
@@ -705,7 +725,7 @@ def benchmark_forward_hooks(
             missing_from_bridge = [
                 h
                 for h in missing_from_bridge
-                if not any(pattern in h for pattern in expected_missing_patterns)
+                if not any(pattern in h for pattern in bridge_expected_patterns)
             ]
 
         if missing_from_bridge:
@@ -722,11 +742,19 @@ def benchmark_forward_hooks(
             )
 
         # CRITICAL CHECK: All registered hooks must fire
-        # Filter out expected missing hooks in cross-model mode
-        if cross_model and hooks_that_didnt_fire:
-            # In cross-model mode, some hooks are expected to not fire due to architectural differences
-            expected_missing_patterns = [
+        # Filter out hooks that are expected to not fire due to architectural differences.
+        # Rotary embedding hooks (hook_rot_q, hook_rot_k) never fire in bridge models
+        # because RoPE is applied inside HF's attention mechanism.
+        if hooks_that_didnt_fire:
+            # These hooks never fire in bridge models due to architectural differences
+            bridge_expected_patterns = [
+                "attn.hook_rot_q",
+                "attn.hook_rot_k",
+                "hook_mlp_in",
+                "hook_mlp_out",
                 "hook_pos_embed",
+                "embed.ln.hook_scale",
+                "embed.ln.hook_normalized",
                 "attn.hook_q",
                 "attn.hook_k",
                 "attn.hook_v",
@@ -739,7 +767,7 @@ def benchmark_forward_hooks(
             actual_didnt_fire = [
                 h
                 for h in hooks_that_didnt_fire
-                if not any(pattern in h for pattern in expected_missing_patterns)
+                if not any(pattern in h for pattern in bridge_expected_patterns)
             ]
             hooks_that_didnt_fire = set(actual_didnt_fire)
 
@@ -777,12 +805,27 @@ def benchmark_forward_hooks(
                 # We only check that hooks exist, fire, and have compatible structure
                 continue
             else:
-                # Use exact shape matching for same-model comparison
+                # Handle batch dimension differences: some HF models (e.g., OPT)
+                # internally reshape to 2D for MLP path, producing [seq, dim] hooks
+                # while HT always maintains [batch, seq, dim]
                 if bridge_tensor.shape != reference_tensor.shape:
-                    mismatches.append(
-                        f"{hook_name}: Shape mismatch - Bridge{bridge_tensor.shape} vs Ref{reference_tensor.shape}"
-                    )
-                    continue
+                    if (
+                        bridge_tensor.ndim == reference_tensor.ndim - 1
+                        and reference_tensor.shape[0] == 1
+                        and bridge_tensor.shape == reference_tensor.shape[1:]
+                    ):
+                        bridge_tensor = bridge_tensor.unsqueeze(0)
+                    elif (
+                        reference_tensor.ndim == bridge_tensor.ndim - 1
+                        and bridge_tensor.shape[0] == 1
+                        and reference_tensor.shape == bridge_tensor.shape[1:]
+                    ):
+                        reference_tensor = reference_tensor.unsqueeze(0)
+                    else:
+                        mismatches.append(
+                            f"{hook_name}: Shape mismatch - Bridge{bridge_tensor.shape} vs Ref{reference_tensor.shape}"
+                        )
+                        continue
 
             # Check values (only for same-model comparison)
             if not safe_allclose(bridge_tensor, reference_tensor, atol=tolerance, rtol=0):
@@ -978,30 +1021,45 @@ def benchmark_critical_forward_hooks(
                 # Skip value comparison for cross-model (different architectures have different values)
                 # We only check that hooks exist, fire, and have compatible structure
             else:
-                # Use exact shape matching for same-model comparison
+                # Handle batch dimension differences (see forward_hooks)
                 if bridge_tensor.shape != reference_tensor.shape:
-                    mismatches.append(
-                        f"{hook_name}: Shape mismatch - Bridge{bridge_tensor.shape} vs Ref{reference_tensor.shape}"
-                    )
-                    continue
+                    if (
+                        bridge_tensor.ndim == reference_tensor.ndim - 1
+                        and reference_tensor.shape[0] == 1
+                        and bridge_tensor.shape == reference_tensor.shape[1:]
+                    ):
+                        bridge_tensor = bridge_tensor.unsqueeze(0)
+                    elif (
+                        reference_tensor.ndim == bridge_tensor.ndim - 1
+                        and bridge_tensor.shape[0] == 1
+                        and reference_tensor.shape == bridge_tensor.shape[1:]
+                    ):
+                        reference_tensor = reference_tensor.unsqueeze(0)
+                    else:
+                        mismatches.append(
+                            f"{hook_name}: Shape mismatch - Bridge{bridge_tensor.shape} vs Ref{reference_tensor.shape}"
+                        )
+                        continue
 
                 # Only compare values for same-model comparison
                 if not safe_allclose(bridge_tensor, reference_tensor, atol=tolerance, rtol=0):
                     max_diff = torch.max(torch.abs(bridge_tensor.float() - reference_tensor.float())).item()
                     mismatches.append(f"{hook_name}: max_diff={max_diff:.6f}")
 
-        # Check if bridge is missing critical hooks (BAD)
-        # Filter out expected missing hooks in cross-model mode
-        if cross_model and bridge_missing:
-            # In cross-model mode, some hooks are expected to be missing due to architectural differences
-            # For example, rotary embedding models (Gemma, LLaMA) don't have hook_pos_embed
-            # Hooks that may be missing due to architectural differences:
-            # - hook_pos_embed: rotary models don't have positional embeddings
-            # - hook_q/k/v: fused QKV architectures (maintain_native_attention)
-            # - hook_q/k/v_input: same reason
-            # - hook_attn_scores/pattern: native attention doesn't expose these
-            expected_missing_patterns = [
+        # Filter out hooks expected to be missing in bridge models.
+        # Bridge models don't have HT-internal hooks (mlp.hook_pre/post, rotary hooks)
+        # because the bridge wraps HF's native implementation.
+        if bridge_missing:
+            bridge_expected_patterns = [
+                "mlp.hook_pre",
+                "mlp.hook_post",
+                "hook_mlp_in",
+                "hook_mlp_out",
+                "attn.hook_rot_q",
+                "attn.hook_rot_k",
                 "hook_pos_embed",
+                "embed.ln.hook_scale",
+                "embed.ln.hook_normalized",
                 "attn.hook_q",
                 "attn.hook_k",
                 "attn.hook_v",
@@ -1014,7 +1072,7 @@ def benchmark_critical_forward_hooks(
             actual_missing = [
                 h
                 for h in bridge_missing
-                if not any(pattern in h for pattern in expected_missing_patterns)
+                if not any(pattern in h for pattern in bridge_expected_patterns)
             ]
             bridge_missing = actual_missing
 

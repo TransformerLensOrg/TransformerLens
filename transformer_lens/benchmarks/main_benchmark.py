@@ -1056,6 +1056,23 @@ def run_benchmark_suite(
                     print(f"Detected dtype={bridge_dtype}")
             except StopIteration:
                 pass
+            # Float16 models introduce too much rounding error through hook
+            # pass-through for meaningful benchmark comparison. Always upcast to
+            # float32 for benchmarking. (Also catches NaN overflow issues.)
+            if bridge_dtype == torch.float16:
+                if verbose:
+                    print("⚠ Float16 detected, upcasting to float32 for benchmarking...")
+                del hf_model
+                gc.collect()
+                bridge_dtype = torch.float32
+                hf_model = auto_model_class.from_pretrained(
+                    model_name, torch_dtype=torch.float32, **hf_kwargs
+                )
+                _fixup_custom_model(hf_model)
+                hf_model = hf_model.to(device)
+                hf_model.eval()
+                if verbose:
+                    print("✓ Reloaded in float32")
             if verbose:
                 print("✓ HuggingFace model loaded\n")
         except Exception as e:
@@ -1220,6 +1237,14 @@ def run_benchmark_suite(
                 if verbose:
                     print(f"✗ Generation benchmark failed: {e}\n")
 
+    # Extract default_prepend_bos from bridge adapter so HookedTransformer matches.
+    # Adapters like Pythia set default_prepend_bos=False, but HT defaults to True.
+    ht_prepend_bos = None
+    if bridge_unprocessed is not None and hasattr(bridge_unprocessed, "cfg"):
+        bridge_bos = getattr(bridge_unprocessed.cfg, "default_prepend_bos", None)
+        if bridge_bos is not None:
+            ht_prepend_bos = bridge_bos
+
     # Load HookedTransformer for comparison (after generation benchmarks)
     ht_model_unprocessed = None
     if should_run_phase(2) and use_ht_reference:
@@ -1235,6 +1260,7 @@ def run_benchmark_suite(
                 center_unembed=False,
                 fold_value_biases=False,
                 refactor_factored_attn_matrices=False,
+                default_prepend_bos=ht_prepend_bos,
             )
             if verbose:
                 print("✓ HookedTransformer loaded (unprocessed)\n")
@@ -1429,6 +1455,7 @@ def run_benchmark_suite(
                 center_unembed=True,
                 fold_value_biases=True,
                 refactor_factored_attn_matrices=False,
+                default_prepend_bos=ht_prepend_bos,
             )
             if verbose:
                 print("✓ HookedTransformer loaded (processed)\n")

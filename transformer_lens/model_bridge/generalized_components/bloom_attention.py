@@ -3,7 +3,7 @@
 BLOOM attention requires special arguments (residual, alibi, attention_mask) that standard
 JointQKVAttentionBridge doesn't handle. This custom component passes these arguments through.
 """
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Mapping, Optional
 
 import torch
 
@@ -109,3 +109,59 @@ class BloomAttentionBridge(JointQKVAttentionBridge):
             output = self.hook_out(output)
 
         return output
+
+    def set_processed_weights(
+        self, weights: Mapping[str, torch.Tensor | None], verbose: bool = False
+    ) -> None:
+        """Set processed weights and recombine Q/K/V back into combined QKV.
+
+        BloomAttentionBridge's forward() delegates to the original HF attention
+        component which uses the combined query_key_value weight. After weight
+        processing (fold_ln etc.) modifies the split Q/K/V weights, we must
+        recombine them back into the interleaved QKV format so the original
+        component uses the processed weights.
+        """
+        # First, let the parent distribute weights to Q/K/V/O submodules
+        super().set_processed_weights(dict(weights), verbose=verbose)
+
+        if self.original_component is None:
+            return
+
+        # Get the processed Q/K/V weights from split components
+        q_weight = self.q.original_component.weight.data  # [n_heads*d_head, d_model]
+        k_weight = self.k.original_component.weight.data
+        v_weight = self.v.original_component.weight.data
+
+        n_heads = self.config.n_heads
+        d_head = self.config.d_head
+        d_model = q_weight.shape[1]
+
+        # Reverse the split: recombine into interleaved QKV format
+        # [n_heads*d_head, d_model] -> [d_model, n_heads, d_head]
+        W_Q = q_weight.T.reshape(d_model, n_heads, d_head)
+        W_K = k_weight.T.reshape(d_model, n_heads, d_head)
+        W_V = v_weight.T.reshape(d_model, n_heads, d_head)
+
+        # Stack into [d_model, n_heads, 3, d_head] (interleaved format)
+        W_combined = torch.stack([W_Q, W_K, W_V], dim=2)
+
+        # Reshape to [d_model, 3*n_heads*d_head] and transpose to nn.Linear format
+        qkv_weight = W_combined.reshape(d_model, 3 * n_heads * d_head).T
+
+        # Update the original component's combined QKV weight
+        self.original_component.query_key_value.weight = torch.nn.Parameter(qkv_weight)
+
+        # Also recombine biases
+        q_bias = self.q.original_component.bias
+        if q_bias is not None:
+            k_bias = self.k.original_component.bias.data
+            v_bias = self.v.original_component.bias.data
+
+            # [n_heads*d_head] -> [n_heads, d_head]
+            b_Q = q_bias.data.reshape(n_heads, d_head)
+            b_K = k_bias.reshape(n_heads, d_head)
+            b_V = v_bias.reshape(n_heads, d_head)
+
+            # Stack into [n_heads, 3, d_head] and flatten
+            qkv_bias = torch.stack([b_Q, b_K, b_V], dim=1).reshape(3 * n_heads * d_head)
+            self.original_component.query_key_value.bias = torch.nn.Parameter(qkv_bias)

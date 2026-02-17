@@ -746,6 +746,29 @@ class TransformerBridge(nn.Module):
             if k in state_dict and isinstance(state_dict[k], torch.Tensor):
                 state_dict[k] = state_dict[k].to(orig_dtype)
 
+        # Normalize any remaining HF-prefix keys to TL format.
+        # Some architectures (e.g., OPT with SymbolicBridge) produce state dict keys
+        # with HF prefixes (model.decoder.layers.0.mlp.in.weight) instead of TL prefixes
+        # (blocks.0.mlp.in.weight). distribute_weights_to_components uses TL prefixes
+        # for routing, so we normalize all keys here.
+        import re
+
+        hf_to_tl_prefix = {}
+        for tl_name, (remote_path, _component) in self.real_components.items():
+            if remote_path and remote_path != tl_name:
+                hf_to_tl_prefix[remote_path] = tl_name
+
+        normalized_state_dict = {}
+        for key, value in state_dict.items():
+            new_key = key
+            for hf_prefix, tl_prefix in hf_to_tl_prefix.items():
+                if key.startswith(hf_prefix + "."):
+                    suffix = key[len(hf_prefix) + 1:]
+                    new_key = f"{tl_prefix}.{suffix}"
+                    break
+            normalized_state_dict[new_key] = value
+        state_dict = normalized_state_dict
+
         if verbose:
             print("  Distributing weights to generalized components...")
         ProcessWeights.distribute_weights_to_components(
