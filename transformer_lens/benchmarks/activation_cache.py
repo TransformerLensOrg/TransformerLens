@@ -175,7 +175,7 @@ def benchmark_activation_cache(
                 continue
 
             # Check values
-            if not safe_allclose(bridge_tensor, reference_tensor, atol=tolerance, rtol=0):
+            if not safe_allclose(bridge_tensor, reference_tensor, atol=tolerance, rtol=0.0):
                 b = bridge_tensor.float()
                 r = reference_tensor.float()
                 max_diff = torch.max(torch.abs(b - r)).item()

@@ -407,7 +407,7 @@ def benchmark_forward_hooks_values(
             reference_tensor = reference_activations[hook_name]
 
             # Check values
-            if not safe_allclose(bridge_tensor, reference_tensor, atol=tolerance, rtol=0):
+            if not safe_allclose(bridge_tensor, reference_tensor, atol=tolerance, rtol=0.0):
                 b = bridge_tensor.float()
                 r = reference_tensor.float()
                 max_diff = torch.max(torch.abs(b - r)).item()
@@ -828,7 +828,7 @@ def benchmark_forward_hooks(
                         continue
 
             # Check values (only for same-model comparison)
-            if not safe_allclose(bridge_tensor, reference_tensor, atol=tolerance, rtol=0):
+            if not safe_allclose(bridge_tensor, reference_tensor, atol=tolerance, rtol=0.0):
                 b = bridge_tensor.float()
                 r = reference_tensor.float()
                 max_diff = torch.max(torch.abs(b - r)).item()
@@ -1042,7 +1042,7 @@ def benchmark_critical_forward_hooks(
                         continue
 
                 # Only compare values for same-model comparison
-                if not safe_allclose(bridge_tensor, reference_tensor, atol=tolerance, rtol=0):
+                if not safe_allclose(bridge_tensor, reference_tensor, atol=tolerance, rtol=0.0):
                     max_diff = torch.max(torch.abs(bridge_tensor.float() - reference_tensor.float())).item()
                     mismatches.append(f"{hook_name}: max_diff={max_diff:.6f}")
 
