@@ -192,8 +192,11 @@ class ProcessWeights:
         bk_tensor: Optional[torch.Tensor],
         bv_tensor: Optional[torch.Tensor],
         ln_bias: torch.Tensor,
-    ) -> tuple[Optional[torch.Tensor], Optional[torch.Tensor], Optional[torch.Tensor]]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Fold LayerNorm bias into attention biases.
+
+        When QKV biases don't exist (e.g., GPT-Neo), creates zero-initialized biases
+        to absorb the LN bias contribution, similar to how MLP folding handles missing biases.
 
         Args:
             wq_tensor, wk_tensor, wv_tensor: Weight tensors [n_heads, d_model, d_head]
@@ -201,22 +204,20 @@ class ProcessWeights:
             ln_bias: LayerNorm bias [d_model]
 
         Returns:
-            Tuple of (new_bq, new_bk, new_bv) with folded biases (None if input bias was None)
+            Tuple of (new_bq, new_bk, new_bv) with folded biases (always non-None)
         """
-        new_bq = (
-            ProcessWeights.fold_layer_norm_bias_single(wq_tensor, bq_tensor, ln_bias)
-            if bq_tensor is not None
-            else None
+
+        def _zero_bias(w: torch.Tensor) -> torch.Tensor:
+            return torch.zeros(w.shape[0], w.shape[2], dtype=w.dtype, device=w.device)
+
+        new_bq = ProcessWeights.fold_layer_norm_bias_single(
+            wq_tensor, bq_tensor if bq_tensor is not None else _zero_bias(wq_tensor), ln_bias
         )
-        new_bk = (
-            ProcessWeights.fold_layer_norm_bias_single(wk_tensor, bk_tensor, ln_bias)
-            if bk_tensor is not None
-            else None
+        new_bk = ProcessWeights.fold_layer_norm_bias_single(
+            wk_tensor, bk_tensor if bk_tensor is not None else _zero_bias(wk_tensor), ln_bias
         )
-        new_bv = (
-            ProcessWeights.fold_layer_norm_bias_single(wv_tensor, bv_tensor, ln_bias)
-            if bv_tensor is not None
-            else None
+        new_bv = ProcessWeights.fold_layer_norm_bias_single(
+            wv_tensor, bv_tensor if bv_tensor is not None else _zero_bias(wv_tensor), ln_bias
         )
         return (new_bq, new_bk, new_bv)
 
@@ -381,89 +382,89 @@ class ProcessWeights:
         ln1_b = tensors["ln1_b"]
         ln1_w = tensors["ln1_w"]
         keys = tensors["keys"]
-        if wq_tensor is None:
-            return state_dict
-        assert isinstance(wq_tensor, torch.Tensor)
-        assert isinstance(keys, dict)
-        if wk_tensor is not None:
-            assert isinstance(wk_tensor, torch.Tensor)
-        if wv_tensor is not None:
-            assert isinstance(wv_tensor, torch.Tensor)
-        if bq_tensor is not None:
-            assert isinstance(bq_tensor, torch.Tensor)
-        if bk_tensor is not None:
-            assert isinstance(bk_tensor, torch.Tensor)
-        if bv_tensor is not None:
-            assert isinstance(bv_tensor, torch.Tensor)
-        # CRITICAL FIX: For RMS norm (Gemma), ln1_b is None. We must still fold ln1_w!
-        # Only require ln1_w to be non-None for folding
-        if ln1_w is not None:
-            assert isinstance(ln1_w, torch.Tensor)
-            # Only fold biases if they exist (LayerNorm). RMS norm has no biases.
-            if fold_biases and ln1_b is not None:
-                assert isinstance(ln1_b, torch.Tensor)
-                if all(
-                    (
-                        t is not None
-                        for t in [wq_tensor, wk_tensor, wv_tensor, bq_tensor, bk_tensor, bv_tensor]
-                    )
-                ):
-                    # Type narrowing for mypy
+
+        # Fold attention LN into QKV weights (only if separate Q/K/V weights exist).
+        # Models with combined QKV (e.g., OpenELM's qkv_proj) won't have separate
+        # Q/K/V weights — skip attention folding but still proceed to MLP folding.
+        if wq_tensor is not None:
+            assert isinstance(wq_tensor, torch.Tensor)
+            assert isinstance(keys, dict)
+            if wk_tensor is not None:
+                assert isinstance(wk_tensor, torch.Tensor)
+            if wv_tensor is not None:
+                assert isinstance(wv_tensor, torch.Tensor)
+            if bq_tensor is not None:
+                assert isinstance(bq_tensor, torch.Tensor)
+            if bk_tensor is not None:
+                assert isinstance(bk_tensor, torch.Tensor)
+            if bv_tensor is not None:
+                assert isinstance(bv_tensor, torch.Tensor)
+            # CRITICAL FIX: For RMS norm (Gemma), ln1_b is None. We must still fold ln1_w!
+            # Only require ln1_w to be non-None for folding
+            if ln1_w is not None:
+                assert isinstance(ln1_w, torch.Tensor)
+                # Only fold biases if they exist (LayerNorm). RMS norm has no biases.
+                if fold_biases and ln1_b is not None:
+                    assert isinstance(ln1_b, torch.Tensor)
+                    # fold_layer_norm_biases handles missing QKV biases by creating
+                    # zero-initialized ones, so we always fold (no all(...) guard needed).
                     assert wq_tensor is not None
                     assert wk_tensor is not None
                     assert wv_tensor is not None
                     bq_tensor, bk_tensor, bv_tensor = ProcessWeights.fold_layer_norm_biases(
                         wq_tensor, wk_tensor, wv_tensor, bq_tensor, bk_tensor, bv_tensor, ln1_b
                     )
-                if keys["ln1_b"] in state_dict:
-                    state_dict[keys["ln1_b"]] = torch.zeros_like(ln1_b)
-                alternate_b_key = (
-                    keys["ln1_b"].replace("ln_1", "ln1")
-                    if "ln_1" in keys["ln1_b"]
-                    else keys["ln1_b"].replace("ln1", "ln_1")
+                    if keys["ln1_b"] in state_dict:
+                        state_dict[keys["ln1_b"]] = torch.zeros_like(ln1_b)
+                    alternate_b_key = (
+                        keys["ln1_b"].replace("ln_1", "ln1")
+                        if "ln_1" in keys["ln1_b"]
+                        else keys["ln1_b"].replace("ln1", "ln_1")
+                    )
+                    if alternate_b_key != keys["ln1_b"] and alternate_b_key in state_dict:
+                        state_dict[alternate_b_key] = torch.zeros_like(ln1_b)
+                # Fold ln1_w into QKV weights (works for both LayerNorm and RMS norm)
+                if wk_tensor is not None and wv_tensor is not None:
+                    wq_tensor, wk_tensor, wv_tensor = ProcessWeights.fold_layer_norm_weights(
+                        wq_tensor, wk_tensor, wv_tensor, ln1_w
+                    )
+                # After folding, set ln1.w to identity (all 1.0).
+                # For HookedTransformer with Pre normalization (LNPre/RMSNormPre), load_state_dict
+                # will ignore these weights since those layers have no weight parameters.
+                # For TransformerBridge and other models, the weights must be 1.0 after folding.
+                if keys["ln1_w"] in state_dict:
+                    state_dict[keys["ln1_w"]] = torch.ones_like(ln1_w)
+                alternate_w_key = (
+                    keys["ln1_w"].replace("ln_1", "ln1")
+                    if "ln_1" in keys["ln1_w"]
+                    else keys["ln1_w"].replace("ln1", "ln_1")
                 )
-                if alternate_b_key != keys["ln1_b"] and alternate_b_key in state_dict:
-                    state_dict[alternate_b_key] = torch.zeros_like(ln1_b)
-            # Fold ln1_w into QKV weights (works for both LayerNorm and RMS norm)
-            if wk_tensor is not None and wv_tensor is not None:
-                wq_tensor, wk_tensor, wv_tensor = ProcessWeights.fold_layer_norm_weights(
-                    wq_tensor, wk_tensor, wv_tensor, ln1_w
+                if alternate_w_key != keys["ln1_w"] and alternate_w_key in state_dict:
+                    state_dict[alternate_w_key] = torch.ones_like(ln1_w)
+            if center_weights and wk_tensor is not None and (wv_tensor is not None):
+                wq_tensor, wk_tensor, wv_tensor = ProcessWeights.center_attention_weights(
+                    wq_tensor, wk_tensor, wv_tensor
                 )
-            # After folding, set ln1.w to identity (all 1.0).
-            # For HookedTransformer with Pre normalization (LNPre/RMSNormPre), load_state_dict
-            # will ignore these weights since those layers have no weight parameters.
-            # For TransformerBridge and other models, the weights must be 1.0 after folding.
-            if keys["ln1_w"] in state_dict:
-                state_dict[keys["ln1_w"]] = torch.ones_like(ln1_w)
-            alternate_w_key = (
-                keys["ln1_w"].replace("ln_1", "ln1")
-                if "ln_1" in keys["ln1_w"]
-                else keys["ln1_w"].replace("ln1", "ln_1")
+            state_dict = ProcessWeights._store_processed_attention_tensors(
+                state_dict,
+                keys,
+                wq_tensor,
+                wk_tensor,
+                wv_tensor,
+                bq_tensor,
+                bk_tensor,
+                bv_tensor,
+                adapter,
+                cfg,
+                layer,
             )
-            if alternate_w_key != keys["ln1_w"] and alternate_w_key in state_dict:
-                state_dict[alternate_w_key] = torch.ones_like(ln1_w)
-        if center_weights and wk_tensor is not None and (wv_tensor is not None):
-            wq_tensor, wk_tensor, wv_tensor = ProcessWeights.center_attention_weights(
-                wq_tensor, wk_tensor, wv_tensor
-            )
-        state_dict = ProcessWeights._store_processed_attention_tensors(
-            state_dict,
-            keys,
-            wq_tensor,
-            wk_tensor,
-            wv_tensor,
-            bq_tensor,
-            bk_tensor,
-            bv_tensor,
-            adapter,
-            cfg,
-            layer,
-        )
 
         # NOTE: For Gemma 2/3 with use_normalization_before_and_after=True, ln1_post.w exists
         # and should KEEP its original values (not be set to 1.0). It applies normalization
         # AFTER the attention output, which is independent of the ln1 folding we just did.
 
+        # Always fold MLP layer norm, even if attention QKV weights weren't available.
+        # MLP folding is independent of attention folding.
         state_dict = ProcessWeights._fold_mlp_layer_norm(
             state_dict, cfg, layer, fold_biases, center_weights, adapter
         )
@@ -577,11 +578,14 @@ class ProcessWeights:
                 mlp_W_gate = ProcessWeights.convert_tensor_to_tl_format(
                     mlp_W_gate_key, state_dict, state_dict.get(mlp_W_gate_key), cfg, adapter, layer
                 )
-                assert mlp_W_gate is not None, f"MLP W_gate not found at key {mlp_W_gate_key}"
-                new_mlp_W_gate = mlp_W_gate * ln2_w_broadcast
-                state_dict[mlp_W_gate_key] = ProcessWeights.convert_tensor_to_hf_format(
-                    mlp_W_gate_key, new_mlp_W_gate, cfg, adapter, layer
-                )
+                # For models with combined gate+up projections (e.g., OpenELM's proj_1),
+                # the separate gate weight won't exist — LN was already folded into the
+                # combined "in" weight above.
+                if mlp_W_gate is not None:
+                    new_mlp_W_gate = mlp_W_gate * ln2_w_broadcast
+                    state_dict[mlp_W_gate_key] = ProcessWeights.convert_tensor_to_hf_format(
+                        mlp_W_gate_key, new_mlp_W_gate, cfg, adapter, layer
+                    )
             # After folding, set ln2.w to identity (all 1.0).
             # For HookedTransformer with Pre normalization, load_state_dict will ignore these.
             # For TransformerBridge and other models, the weights must be 1.0 after folding.
@@ -1063,7 +1067,15 @@ class ProcessWeights:
                         mlp_W_out_key, state_dict, state_dict.get(mlp_W_out_key), cfg, adapter, l
                     )
                     assert mlp_W_out is not None, f"MLP W_out not found at key {mlp_W_out_key}"
-                    mlp_W_out = mlp_W_out - mlp_W_out.mean(-1, keepdim=True)
+                    # Center along d_model dimension. In TL format W_out is [d_mlp, d_model]
+                    # so d_model is dim=-1. But bridge adapters may keep HF format
+                    # [d_model, d_mlp] where d_model is dim=0. Detect via cfg.d_model.
+                    if mlp_W_out.shape[-1] == cfg.d_model:
+                        mlp_W_out = mlp_W_out - mlp_W_out.mean(-1, keepdim=True)
+                    elif mlp_W_out.shape[0] == cfg.d_model:
+                        mlp_W_out = mlp_W_out - mlp_W_out.mean(0, keepdim=True)
+                    else:
+                        mlp_W_out = mlp_W_out - mlp_W_out.mean(-1, keepdim=True)
                     state_dict[mlp_W_out_key] = ProcessWeights.convert_tensor_to_hf_format(
                         mlp_W_out_key, mlp_W_out, cfg, adapter, l
                     )
@@ -1085,7 +1097,7 @@ class ProcessWeights:
 
     @staticmethod
     def center_unembed(
-        state_dict: Dict[str, torch.Tensor], adapter=None
+        state_dict: Dict[str, torch.Tensor], cfg=None, adapter=None
     ) -> Dict[str, torch.Tensor]:
         """Center the unembedding weights W_U.
 
@@ -1097,6 +1109,7 @@ class ProcessWeights:
 
         Args:
             state_dict (Dict[str, torch.Tensor]): State dict of the model.
+            cfg: Model configuration (used to determine d_vocab for correct centering dimension).
             adapter: Optional architecture adapter for parameter key translation.
 
         Returns:
@@ -1116,7 +1129,20 @@ class ProcessWeights:
             unembed_W_U_key, state_dict, state_dict.get(unembed_W_U_key), None, adapter, None
         )
         assert W_U is not None, f"Unembed weight not found at key {unembed_W_U_key}"
-        W_U = W_U - W_U.mean(-1, keepdim=True)
+
+        # Determine which dimension is d_vocab to center along.
+        # In TL format W_U is [d_model, d_vocab], so we center along dim=-1.
+        # But if convert_tensor_to_tl_format was a no-op (empty weight_processing_conversions),
+        # W_U may still be in HF format [d_vocab, d_model]. Centering along the wrong
+        # dimension is NOT softmax-invariant and corrupts model output.
+        vocab_dim = -1  # Default: TL format [d_model, d_vocab]
+        if cfg is not None:
+            d_vocab = getattr(cfg, "d_vocab", None)
+            if d_vocab is not None:
+                if W_U.shape[0] == d_vocab and W_U.shape[-1] != d_vocab:
+                    # HF format [d_vocab, d_model] — center along dim=0
+                    vocab_dim = 0
+        W_U = W_U - W_U.mean(vocab_dim, keepdim=True)
         state_dict[unembed_W_U_key] = ProcessWeights.convert_tensor_to_hf_format(
             unembed_W_U_key, W_U, None, adapter, None
         )
@@ -1318,22 +1344,19 @@ class ProcessWeights:
                 state_dict = ProcessWeights.fold_layer_norm(
                     state_dict, cfg, fold_biases=False, center_weights=False, adapter=adapter
                 )
-                # For RMS normalization, set all layer norm weights to 1.0 after folding
-                # since RMS folding doesn't result in identity weights like LayerNorm does
-                for layer_idx in range(cfg.n_layers):
-                    for ln_name in ["ln1", "ln2"]:
-                        ln_w_key = ProcessWeights._get_param_key(
-                            f"blocks.{layer_idx}.{ln_name}.w", adapter
-                        )
-                        if ln_w_key in state_dict:
-                            state_dict[ln_w_key] = torch.ones_like(state_dict[ln_w_key])
+                # Note: Each folding function (_fold_layer for attention, _fold_mlp_layer_norm
+                # for MLP) sets its own LN weights to 1.0 after successful folding.
+                # We must NOT unconditionally set all LN weights to 1.0 here, because
+                # models with combined QKV projections (e.g., OpenELM's qkv_proj) may
+                # not be able to fold attention LN — setting ln1.w=1.0 without folding
+                # destroys the RMS scaling.
         if center_writing_weights:
             if getattr(cfg, "normalization_type", "LN") in ["LN", "LNPre"] and (
                 not getattr(cfg, "final_rms", False)
             ):
                 state_dict = ProcessWeights.center_writing_weights(state_dict, cfg, adapter=adapter)
         if center_unembed:
-            state_dict = ProcessWeights.center_unembed(state_dict, adapter=adapter)
+            state_dict = ProcessWeights.center_unembed(state_dict, cfg=cfg, adapter=adapter)
         if fold_value_biases:
             state_dict = ProcessWeights.fold_value_biases(state_dict, cfg, adapter=adapter)
             if center_writing_weights and getattr(cfg, "normalization_type", "LN") in [
@@ -1587,7 +1610,23 @@ class ProcessWeights:
                     # Skip conversion for optional parameters that don't exist (e.g. biases)
                     if tensor is None and param_name not in model_state_dict:
                         return None
-                    # Let ParamProcessingConversion handle the fetching and conversion
+                    # Try ParamProcessingConversion.convert() first (uses source_key
+                    # to fetch from state dict — needed for split conversions like
+                    # GPT-2's QKV). If source_key resolves to a missing key and we
+                    # already have the tensor, fall back to applying the tensor
+                    # conversion directly (needed for adapters like GPT-Neo whose
+                    # source_key references HF keys not in the bridge state dict).
+                    if (
+                        hasattr(param_conversion, "source_key")
+                        and param_conversion.source_key is not None
+                    ):
+                        resolved_key = param_conversion._resolve_key(
+                            param_name, param_conversion.source_key
+                        )
+                        if resolved_key not in model_state_dict and tensor is not None:
+                            return param_conversion.tensor_conversion.convert(
+                                tensor, model_state_dict
+                            )
                     return param_conversion.convert(model_state_dict, param_name)
             else:
                 # No conversion defined, return tensor as-is (may be None for optional params)

@@ -145,7 +145,7 @@ def benchmark_backward_hooks(
             if cross_model:
                 # Use relaxed dimensional matching for cross-model comparison
                 is_compatible, error_msg = validate_hook_shape_compatibility(
-                    bridge_grad.shape, reference_grad.shape, hook_name
+                    bridge_grad.shape, reference_grad.shape, hook_name, cross_model=True
                 )
                 if not is_compatible:
                     mismatches.append(f"{hook_name}: {error_msg}")
@@ -410,7 +410,7 @@ def benchmark_critical_backward_hooks(
             if cross_model:
                 # Use relaxed dimensional matching for cross-model comparison
                 is_compatible, error_msg = validate_hook_shape_compatibility(
-                    bridge_grad.shape, reference_grad.shape, hook_name
+                    bridge_grad.shape, reference_grad.shape, hook_name, cross_model=True
                 )
                 if not is_compatible:
                     mismatches.append(f"{hook_name}: {error_msg}")
