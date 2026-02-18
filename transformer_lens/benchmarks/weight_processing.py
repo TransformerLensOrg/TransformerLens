@@ -319,6 +319,7 @@ def benchmark_weight_modification(
             # combined QKV projections (e.g., Bloom) where the split V weight
             # is separate from the combined QKV weight used in forward.
             # Try MLP weight modification as fallback.
+            mlp_fallback_error = None
             try:
                 with torch.no_grad():
                     original_mlp_w = bridge.blocks[0].mlp.out.weight.clone()
@@ -335,13 +336,17 @@ def benchmark_weight_modification(
                         f"W_V not propagated (combined QKV architecture).",
                         details={"change": mlp_change.item(), "fallback": "mlp"},
                     )
-            except Exception:
-                pass
+            except Exception as mlp_err:
+                mlp_fallback_error = str(mlp_err)
+
+            details = {"change": change.item()}
+            if mlp_fallback_error is not None:
+                details["mlp_fallback_error"] = mlp_fallback_error
             return BenchmarkResult(
                 name="weight_modification",
                 severity=BenchmarkSeverity.DANGER,
                 message=f"Weight modification did not affect loss (change: {change:.6f})",
-                details={"change": change.item()},
+                details=details,
                 passed=False,
             )
 

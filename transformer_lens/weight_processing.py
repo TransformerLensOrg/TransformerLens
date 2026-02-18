@@ -1452,6 +1452,16 @@ class ProcessWeights:
         Returns:
             Dict[str, torch.Tensor]: Fully processed state dict.
         """
+        # Upcast to float32 for weight processing to avoid precision loss in
+        # reduced-precision dtypes (bfloat16, float16). Operations like LayerNorm
+        # folding involve multiplications that accumulate rounding errors when
+        # performed in low precision.
+        original_dtypes: Dict[str, torch.dtype] = {}
+        for k, v in state_dict.items():
+            if isinstance(v, torch.Tensor) and v.is_floating_point() and v.dtype != torch.float32:
+                original_dtypes[k] = v.dtype
+                state_dict[k] = v.float()
+
         # Skip fold_ln for adapters that don't support it (e.g., post-LN architectures
         # like BERT where LN placement means folding goes into the wrong sublayer).
         if fold_ln and adapter and not getattr(adapter, "supports_fold_ln", True):
@@ -1499,6 +1509,12 @@ class ProcessWeights:
             state_dict = ProcessWeights.refactor_factored_attn_matrices(
                 state_dict, cfg, adapter=adapter
             )
+
+        # Downcast back to original dtypes
+        for k, orig_dtype in original_dtypes.items():
+            if k in state_dict and isinstance(state_dict[k], torch.Tensor):
+                state_dict[k] = state_dict[k].to(orig_dtype)
+
         return state_dict
 
     @staticmethod

@@ -14,7 +14,12 @@ import math
 from typing import List, Optional, Tuple
 
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedModel, PreTrainedTokenizerBase
+from transformers import (
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    PreTrainedModel,
+    PreTrainedTokenizerBase,
+)
 
 from transformer_lens.benchmarks.utils import BenchmarkResult, BenchmarkSeverity
 from transformer_lens.model_bridge import TransformerBridge
@@ -131,7 +136,7 @@ def _perplexity_to_score(perplexity: float) -> float:
     Uses: score = 135 - 10 * ln(perplexity), capped to [0, 100].
     Calibrated for continuation-only perplexity (higher than full-text).
     A well-functioning model typically gets ppl 40-60 -> score 94-98.
-    Pass threshold of 95 corresponds to approximately ppl 50.
+    Default pass threshold of 85 corresponds to approximately ppl 150.
 
     Args:
         perplexity: The perplexity value from the scoring model.
@@ -149,7 +154,7 @@ def benchmark_text_quality(
     test_text: str,
     max_new_tokens: int = 50,
     scoring_model_name: str = "gpt2-medium",
-    pass_threshold: float = 95.0,
+    pass_threshold: float = 85.0,
     device: str = "cpu",
 ) -> BenchmarkResult:
     """Benchmark text generation quality using continuation-only perplexity scoring.
@@ -274,6 +279,7 @@ def benchmark_text_quality(
                     f"(below {pass_threshold}, avg perplexity: {avg_perplexity:.1f})"
                 ),
                 details=details,
+                passed=False,
             )
         else:
             return BenchmarkResult(

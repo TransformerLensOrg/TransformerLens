@@ -74,15 +74,11 @@ class BenchmarkResult:
 
 @dataclass
 class PhaseReferenceData:
-    """Reference data saved from Phase 1 for reuse in Phase 3.
+    """Float32 reference data from Phase 1 for Phase 3 equivalence comparison."""
 
-    When a model has no HookedTransformer support, Phase 1 HF logits serve as
-    ground truth for verifying that weight processing doesn't alter model output.
-    """
-
-    hf_logits: Optional[torch.Tensor] = None  # [batch, seq, vocab] from HF model
-    hf_loss: Optional[float] = None  # scalar loss from bridge (unprocessed)
-    test_text: Optional[str] = None  # text used (for verification)
+    hf_logits: Optional[torch.Tensor] = None
+    hf_loss: Optional[float] = None
+    test_text: Optional[str] = None
 
 
 def compare_tensors(
@@ -113,13 +109,10 @@ def compare_tensors(
             passed=False,
         )
 
-    # Ensure same dtype for comparison (upcast to higher precision)
     if tensor1.dtype != tensor2.dtype:
-        common_dtype = torch.float32
-        tensor1 = tensor1.to(common_dtype)
-        tensor2 = tensor2.to(common_dtype)
+        tensor1 = tensor1.to(torch.float32)
+        tensor2 = tensor2.to(torch.float32)
 
-    # Compare values
     if torch.allclose(tensor1, tensor2, atol=atol, rtol=rtol):
         return BenchmarkResult(
             name=name,
@@ -128,24 +121,15 @@ def compare_tensors(
             details={"atol": atol, "rtol": rtol},
         )
 
-    # Calculate differences
     diff = torch.abs(tensor1 - tensor2)
     max_diff = diff.max().item()
     mean_diff = diff.mean().item()
     rel_diff = diff / (torch.abs(tensor1) + 1e-10)
     mean_rel = rel_diff.mean().item()
 
-    # Determine severity based on differences
-    if max_diff < atol * 10 and mean_rel < rtol * 10:
-        severity = BenchmarkSeverity.WARNING
-        passed = True
-    else:
-        severity = BenchmarkSeverity.DANGER
-        passed = False
-
     return BenchmarkResult(
         name=name,
-        severity=severity,
+        severity=BenchmarkSeverity.DANGER,
         message=f"Tensors differ: max_diff={max_diff:.6f}, mean_rel={mean_rel:.6f}",
         details={
             "max_diff": max_diff,
@@ -154,7 +138,7 @@ def compare_tensors(
             "atol": atol,
             "rtol": rtol,
         },
-        passed=passed,
+        passed=False,
     )
 
 
@@ -184,18 +168,11 @@ def compare_scalars(
             message=f"Scalars match: {scalar1:.6f} ≈ {scalar2:.6f}",
             details={"diff": diff, "atol": atol},
         )
-    elif diff < atol * 10:
-        return BenchmarkResult(
-            name=name,
-            severity=BenchmarkSeverity.WARNING,
-            message=f"Scalars differ slightly: {scalar1:.6f} vs {scalar2:.6f}",
-            details={"diff": diff, "atol": atol},
-        )
     else:
         return BenchmarkResult(
             name=name,
             severity=BenchmarkSeverity.DANGER,
-            message=f"Scalars differ significantly: {scalar1:.6f} vs {scalar2:.6f}",
+            message=f"Scalars differ: {scalar1:.6f} vs {scalar2:.6f}",
             details={"diff": diff, "atol": atol},
             passed=False,
         )

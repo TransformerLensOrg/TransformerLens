@@ -69,9 +69,10 @@ def benchmark_run_with_cache(
         if missing_patterns:
             return BenchmarkResult(
                 name="run_with_cache",
-                severity=BenchmarkSeverity.WARNING,
+                severity=BenchmarkSeverity.DANGER,
                 message=f"Cache missing expected patterns: {missing_patterns}",
                 details={"missing": missing_patterns, "cache_keys_count": len(cache_keys)},
+                passed=False,
             )
 
         # Verify cached tensors are actually tensors
@@ -83,9 +84,10 @@ def benchmark_run_with_cache(
         if non_tensor_keys:
             return BenchmarkResult(
                 name="run_with_cache",
-                severity=BenchmarkSeverity.WARNING,
+                severity=BenchmarkSeverity.DANGER,
                 message=f"Cache contains {len(non_tensor_keys)} non-tensor values",
                 details={"non_tensor_keys": non_tensor_keys[:5]},
+                passed=False,
             )
 
         if reference_model is not None:
