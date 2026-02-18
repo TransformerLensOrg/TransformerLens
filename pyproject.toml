@@ -80,7 +80,10 @@
             {version=">=1.24", python=">=3.9,<3.12"},
             {version=">=1.26", python=">=3.12,<4.0"},
         ]
-        pandas=">=1.1.5"
+        pandas=[
+            {version=">=1.1.5,<2.1", python=">=3.8,<3.12"},
+            {version=">=2.1", python=">=3.12,<4.0"},
+        ]
         protobuf=">=3.20.0"
         python=">=3.10,<4.0"
         rich=">=12.6.0"
@@ -92,13 +95,16 @@
         typeguard="^4.2"
         typing-extensions="*"
         wandb=">=0.13.5"
+        # Optional dependencies
+        lit-nlp = {version = "^1.3", optional = true, python = ">=3.9"}
+
+    [tool.poetry.extras]
+        lit = ["lit-nlp"]
 
     [tool.poetry.group]
         [tool.poetry.group.dev.dependencies]
             black="^23.3.0"
             circuitsvis=">=1.38.1"
-            gradio=">=4.0.0"
-            ipython=">=8.0.0"
             isort="5.8.0"
             jupyter=">=1.0.0"
             mypy=">=1.10.0"
@@ -110,6 +116,13 @@
             pytest-doctestplus="^1.0.0"
             pytest-rerunfailures=">=12.0"
             pytest-xdist="^3.8.0"  # For parallel test execution
+
+        [tool.poetry.group.demo]
+            optional=true
+
+        [tool.poetry.group.demo.dependencies]
+            gradio={version=">=4.0.0", python=">=3.10"}
+            orjson={version=">=3.11.7,<4.0", python=">=3.10"}
 
         [tool.poetry.group.jupyter.dependencies]
             ipywidgets="^8.1.1"

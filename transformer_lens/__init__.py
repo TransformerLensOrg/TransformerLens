@@ -15,12 +15,18 @@ from .BertNextSentencePrediction import BertNextSentencePrediction
 from .cache.key_value_cache import TransformerLensKeyValueCache
 from .cache.key_value_cache_entry import TransformerLensKeyValueCacheEntry
 from .config import HookedTransformerConfig
-from .config import HookedTransformerConfig as EasyTransformerConfig
 from .FactoredMatrix import FactoredMatrix
 from .HookedEncoder import HookedEncoder
 from .HookedEncoderDecoder import HookedEncoderDecoder
 from .HookedTransformer import HookedTransformer
-from .HookedTransformer import HookedTransformer as EasyTransformer
+
+# LIT integration (optional, requires lit-nlp package)
+try:
+    from . import lit
+except ImportError:
+    # LIT is an optional dependency
+    lit = None  # type: ignore
+
 from .SVDInterpreter import SVDInterpreter
 
 __all__ = [
@@ -31,8 +37,6 @@ __all__ = [
     "SVDInterpreter",
     "HookedEncoder",
     "HookedEncoderDecoder",
-    "EasyTransformer",
-    "EasyTransformerConfig",
     "TransformerLensKeyValueCache",
     "TransformerLensKeyValueCacheEntry",
     "components",
