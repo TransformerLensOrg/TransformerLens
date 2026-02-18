@@ -59,6 +59,19 @@ class BenchmarkResult:
         print(str(self))
 
 
+@dataclass
+class PhaseReferenceData:
+    """Reference data saved from Phase 1 for reuse in Phase 3.
+
+    When a model has no HookedTransformer support, Phase 1 HF logits serve as
+    ground truth for verifying that weight processing doesn't alter model output.
+    """
+
+    hf_logits: Optional[torch.Tensor] = None  # [batch, seq, vocab] from HF model
+    hf_loss: Optional[float] = None  # scalar loss from bridge (unprocessed)
+    test_text: Optional[str] = None  # text used (for verification)
+
+
 def compare_tensors(
     tensor1: torch.Tensor,
     tensor2: torch.Tensor,

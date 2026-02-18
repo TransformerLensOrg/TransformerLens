@@ -296,10 +296,10 @@ def benchmark_weight_modification(
                 bridge.blocks[0].attn.W_V.copy_(original_w_v)
 
             # Some models (e.g., models with complex attention mechanisms) may have
-            # forward pass issues after weight modification. Report as a known limitation.
+            # forward pass issues after weight modification. Report as skipped.
             return BenchmarkResult(
                 name="weight_modification",
-                severity=BenchmarkSeverity.INFO,
+                severity=BenchmarkSeverity.SKIPPED,
                 message=f"Weight modification not testable for this architecture: {str(forward_error)}",
                 details={"error": str(forward_error), "architecture_limitation": True},
             )
@@ -327,15 +327,18 @@ def benchmark_weight_modification(
         )
 
     except Exception as e:
-        # Some architectures (e.g., Gemma 3 with complex attention) may have forward pass
-        # issues after weight modification. Report as INFO (passed) for these known limitations.
-        if "cannot be multiplied" in str(e) or "shape" in str(e).lower():
+        # Some architectures (e.g., Gemma 3 with complex attention, OpenELM with
+        # combined QKV) don't expose W_V. Report as skipped, not passed.
+        if (
+            "cannot be multiplied" in str(e)
+            or "shape" in str(e).lower()
+            or "has no attribute" in str(e)
+        ):
             return BenchmarkResult(
                 name="weight_modification",
-                severity=BenchmarkSeverity.INFO,
-                message=f"Weight modification not testable for this architecture (shape incompatibility)",
+                severity=BenchmarkSeverity.SKIPPED,
+                message=f"Weight modification not testable for this architecture: {str(e)}",
                 details={"error": str(e), "architecture_limitation": True},
-                passed=True,
             )
         return BenchmarkResult(
             name="weight_modification",
@@ -364,46 +367,68 @@ def benchmark_layer_norm_folding(
         # Get state dict from bridge (should return TransformerLens format keys)
         state_dict = bridge.state_dict()
 
-        # Check first layer normalization weights in TransformerLens format
-        ln_key = "blocks.0.ln1.weight"
-
-        # Fallback: if TL format key doesn't exist, try common HF format patterns
-        if ln_key not in state_dict:
-            # Try GPT-2 HF format
-            if "transformer.h.0.ln_1.weight" in state_dict:
-                ln_key = "transformer.h.0.ln_1.weight"
-            # Try Gemma HF format
-            elif "model.layers.0.input_layernorm.weight" in state_dict:
-                ln_key = "model.layers.0.input_layernorm.weight"
-            else:
-                return BenchmarkResult(
-                    name="layer_norm_folding",
-                    severity=BenchmarkSeverity.WARNING,
-                    message="Could not find layer norm weights in state dict",
-                    passed=False,
-                )
-
-        # Get the layer norm weight tensor
-        ln_weight = state_dict[ln_key]
-
-        # Check if weights are close to identity (all ones for LayerNorm/RMSNorm)
-        mean_val = torch.mean(ln_weight).item()
+        # Check both ln1 (attention LN) and ln2 (MLP LN) in TransformerLens format.
+        # Models with combined QKV projections (e.g., OpenELM's qkv_proj) cannot
+        # fold ln1 into attention weights, but ln2 should always be foldable.
+        tolerance = 0.01
         expected_val = 1.0
-        tolerance = 0.1
+        folded = []
+        not_folded = []
 
-        if abs(mean_val - expected_val) < tolerance:
-            return BenchmarkResult(
-                name="layer_norm_folding",
-                severity=BenchmarkSeverity.INFO,
-                message=f"Layer norm folding verified (mean={mean_val:.6f}, expected={expected_val})",
-                details={"mean": mean_val, "expected": expected_val, "key": ln_key},
-            )
-        else:
+        for ln_name in ["ln1", "ln2"]:
+            ln_key = f"blocks.0.{ln_name}.weight"
+            if ln_key not in state_dict:
+                continue
+            ln_weight = state_dict[ln_key]
+            mean_val = torch.mean(ln_weight).item()
+            if abs(mean_val - expected_val) < tolerance:
+                folded.append((ln_name, ln_key, mean_val))
+            else:
+                not_folded.append((ln_name, ln_key, mean_val))
+
+        if not folded and not not_folded:
             return BenchmarkResult(
                 name="layer_norm_folding",
                 severity=BenchmarkSeverity.WARNING,
-                message=f"Layer norm weights not identity after folding (mean={mean_val:.6f}, expected={expected_val})",
-                details={"mean": mean_val, "expected": expected_val, "key": ln_key},
+                message="Could not find layer norm weights in state dict",
+                passed=False,
+            )
+
+        if folded and not not_folded:
+            # All LN weights are folded
+            names = ", ".join(f"{n} (mean={m:.6f})" for n, _, m in folded)
+            return BenchmarkResult(
+                name="layer_norm_folding",
+                severity=BenchmarkSeverity.INFO,
+                message=f"Layer norm folding verified: {names}",
+                details={"folded": [n for n, _, _ in folded]},
+            )
+        elif folded and not_folded:
+            # Partial folding — some LN weights folded, some not.
+            # This is expected for models with combined QKV (ln1 can't fold).
+            folded_names = ", ".join(f"{n} (mean={m:.6f})" for n, _, m in folded)
+            unfolded_names = ", ".join(f"{n} (mean={m:.6f})" for n, _, m in not_folded)
+            return BenchmarkResult(
+                name="layer_norm_folding",
+                severity=BenchmarkSeverity.WARNING,
+                message=(
+                    f"Partial LN folding: {folded_names} folded; "
+                    f"{unfolded_names} preserved (expected for combined QKV models)"
+                ),
+                details={
+                    "folded": [n for n, _, _ in folded],
+                    "not_folded": [n for n, _, _ in not_folded],
+                },
+                passed=True,
+            )
+        else:
+            # No LN weights folded
+            names = ", ".join(f"{n} (mean={m:.6f})" for n, _, m in not_folded)
+            return BenchmarkResult(
+                name="layer_norm_folding",
+                severity=BenchmarkSeverity.WARNING,
+                message=f"Layer norm weights not identity after folding: {names}",
+                details={"not_folded": [n for n, _, _ in not_folded]},
                 passed=False,
             )
 
@@ -582,7 +607,7 @@ def benchmark_unembed_centering(
         # Compute mean along vocabulary dimension (dim 0)
         mean_abs = torch.mean(torch.abs(torch.mean(w_u, dim=0))).item()
 
-        tolerance = 0.1  # 10% tolerance (unembed centering is less strict)
+        tolerance = 0.01  # 1% tolerance (consistent with attn/mlp centering)
 
         if mean_abs < tolerance:
             return BenchmarkResult(

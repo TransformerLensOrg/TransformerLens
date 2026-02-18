@@ -135,6 +135,7 @@ def benchmark_loss_equivalence(
     bridge: TransformerBridge,
     test_text: str,
     reference_model: Optional[HookedTransformer] = None,
+    reference_loss: Optional[float] = None,
     atol: float = 1e-3,
 ) -> BenchmarkResult:
     """Benchmark loss computation between TransformerBridge and HookedTransformer.
@@ -143,6 +144,7 @@ def benchmark_loss_equivalence(
         bridge: TransformerBridge model to test
         test_text: Input text for testing
         reference_model: Optional HookedTransformer reference model
+        reference_loss: Optional pre-computed reference loss value (e.g., from Phase 1)
         atol: Absolute tolerance for comparison
 
     Returns:
@@ -152,7 +154,7 @@ def benchmark_loss_equivalence(
         # Run bridge loss computation
         bridge_loss = bridge(test_text, return_type="loss")
 
-        if reference_model is None:
+        if reference_model is None and reference_loss is None:
             # No reference - just verify loss is valid
             if not isinstance(bridge_loss, torch.Tensor):
                 return BenchmarkResult(
@@ -178,12 +180,18 @@ def benchmark_loss_equivalence(
                 details={"loss": loss_value},
             )
 
-        # Compare with reference model
-        reference_loss = reference_model(test_text, return_type="loss")
+        # Get reference loss from model or pre-computed value
+        if reference_loss is not None:
+            ref_loss_val = reference_loss
+        elif reference_model is not None:
+            ref_loss_tensor = reference_model(test_text, return_type="loss")
+            ref_loss_val = ref_loss_tensor.item()
+        else:
+            raise ValueError("Either reference_logits or reference_model must be provided")
 
         return compare_scalars(
             bridge_loss.item(),
-            reference_loss.item(),
+            ref_loss_val,
             atol=atol,
             name="loss_equivalence",
         )
@@ -201,6 +209,7 @@ def benchmark_logits_equivalence(
     bridge: TransformerBridge,
     test_text: str,
     reference_model: Optional[HookedTransformer] = None,
+    reference_logits: Optional[torch.Tensor] = None,
     atol: float = 3e-2,
     rtol: float = 3e-2,
 ) -> BenchmarkResult:
@@ -213,6 +222,7 @@ def benchmark_logits_equivalence(
         bridge: TransformerBridge model to test
         test_text: Input text for testing
         reference_model: Optional HookedTransformer reference model
+        reference_logits: Optional pre-computed reference logits tensor (e.g., from Phase 1)
         atol: Absolute tolerance for comparison
         rtol: Relative tolerance for comparison
 
@@ -223,7 +233,7 @@ def benchmark_logits_equivalence(
         # Run bridge forward pass
         bridge_logits = bridge(test_text, return_type="logits")
 
-        if reference_model is None:
+        if reference_model is None and reference_logits is None:
             # No reference - just verify logits shape and validity
             if not isinstance(bridge_logits, torch.Tensor):
                 return BenchmarkResult(
@@ -248,12 +258,17 @@ def benchmark_logits_equivalence(
                 details={"output_shape": str(bridge_logits.shape)},
             )
 
-        # Compare with reference model
-        reference_logits = reference_model(test_text, return_type="logits")
+        # Get reference logits from model or pre-computed tensor
+        if reference_logits is not None:
+            ref_logits = reference_logits.to(bridge_logits.device)
+        elif reference_model is not None:
+            ref_logits = reference_model(test_text, return_type="logits")
+        else:
+            raise ValueError("Either reference_logits or reference_model must be provided")
 
         return compare_tensors(
             bridge_logits,
-            reference_logits,
+            ref_logits,
             atol=atol,
             rtol=rtol,
             name="logits_equivalence",

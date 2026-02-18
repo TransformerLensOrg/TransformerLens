@@ -50,6 +50,8 @@ def map_default_transformer_lens_config(hf_config):
         tl_config.d_model = hf_config.n_embd
     elif hasattr(hf_config, "hidden_size"):
         tl_config.d_model = hf_config.hidden_size
+    elif hasattr(hf_config, "model_dim"):
+        tl_config.d_model = hf_config.model_dim
     elif hasattr(hf_config, "d_model"):
         tl_config.d_model = hf_config.d_model
     if hasattr(hf_config, "n_head"):
@@ -58,9 +60,30 @@ def map_default_transformer_lens_config(hf_config):
         tl_config.n_heads = hf_config.num_attention_heads
     elif hasattr(hf_config, "num_heads"):
         tl_config.n_heads = hf_config.num_heads
+    elif hasattr(hf_config, "num_query_heads") and isinstance(hf_config.num_query_heads, list):
+        tl_config.n_heads = max(hf_config.num_query_heads)
     if hasattr(hf_config, "num_key_value_heads") and hf_config.num_key_value_heads is not None:
         try:
             num_kv_heads = hf_config.num_key_value_heads
+            # Handle per-layer lists (e.g., OpenELM) by taking the max
+            if isinstance(num_kv_heads, list):
+                num_kv_heads = max(num_kv_heads)
+            if hasattr(num_kv_heads, "item"):
+                num_kv_heads = num_kv_heads.item()
+            num_kv_heads = int(num_kv_heads)
+            num_heads = tl_config.n_heads
+            if hasattr(num_heads, "item"):
+                num_heads = num_heads.item()
+            num_heads = int(num_heads)
+            if num_kv_heads != num_heads:
+                tl_config.n_key_value_heads = num_kv_heads
+        except (TypeError, ValueError, AttributeError):
+            pass
+    elif hasattr(hf_config, "num_kv_heads") and hf_config.num_kv_heads is not None:
+        try:
+            num_kv_heads = hf_config.num_kv_heads
+            if isinstance(num_kv_heads, list):
+                num_kv_heads = max(num_kv_heads)
             if hasattr(num_kv_heads, "item"):
                 num_kv_heads = num_kv_heads.item()
             num_kv_heads = int(num_kv_heads)
@@ -76,6 +99,8 @@ def map_default_transformer_lens_config(hf_config):
         tl_config.n_layers = hf_config.n_layer
     elif hasattr(hf_config, "num_hidden_layers"):
         tl_config.n_layers = hf_config.num_hidden_layers
+    elif hasattr(hf_config, "num_transformer_layers"):
+        tl_config.n_layers = hf_config.num_transformer_layers
     elif hasattr(hf_config, "num_layers"):
         tl_config.n_layers = hf_config.num_layers
     if hasattr(hf_config, "vocab_size"):
@@ -84,6 +109,8 @@ def map_default_transformer_lens_config(hf_config):
         tl_config.n_ctx = hf_config.n_positions
     elif hasattr(hf_config, "max_position_embeddings"):
         tl_config.n_ctx = hf_config.max_position_embeddings
+    elif hasattr(hf_config, "max_context_length"):
+        tl_config.n_ctx = hf_config.max_context_length
     elif hasattr(hf_config, "max_length"):
         tl_config.n_ctx = hf_config.max_length
     elif hasattr(hf_config, "seq_length"):
@@ -154,6 +181,7 @@ def determine_architecture_from_hf_config(hf_config):
             "qwen": "QwenForCausalLM",
             "qwen2": "Qwen2ForCausalLM",
             "qwen3": "Qwen3ForCausalLM",
+            "openelm": "OpenELMForCausalLM",
             "stablelm": "StableLmForCausalLM",
             "t5": "T5ForConditionalGeneration",
         }
@@ -211,6 +239,7 @@ def boot(
     dtype: torch.dtype = torch.float32,
     tokenizer: PreTrainedTokenizerBase | None = None,
     load_weights: bool = True,
+    trust_remote_code: bool = False,
 ) -> TransformerBridge:
     """Boot a model from HuggingFace.
 
@@ -232,7 +261,9 @@ def boot(
             )
             model_name = official_name
             break
-    hf_config = AutoConfig.from_pretrained(model_name, output_attentions=True)
+    hf_config = AutoConfig.from_pretrained(
+        model_name, output_attentions=True, trust_remote_code=trust_remote_code
+    )
     if hf_config_overrides:
         hf_config.__dict__.update(hf_config_overrides)
     tl_config = map_default_transformer_lens_config(hf_config)
@@ -252,15 +283,22 @@ def boot(
     if not hasattr(hf_config, "pad_token_id") or "pad_token_id" not in hf_config.__dict__:
         hf_config.pad_token_id = getattr(hf_config, "eos_token_id", None)
     model_kwargs = {"config": hf_config, "torch_dtype": dtype}
+    if trust_remote_code:
+        model_kwargs["trust_remote_code"] = True
     if hasattr(adapter.cfg, "attn_implementation") and adapter.cfg.attn_implementation is not None:
         model_kwargs["attn_implementation"] = adapter.cfg.attn_implementation
+    adapter.prepare_loading(model_name, model_kwargs)
     if not load_weights:
+        from_config_kwargs = {}
+        if trust_remote_code:
+            from_config_kwargs["trust_remote_code"] = True
         with contextlib.redirect_stdout(None):
-            hf_model = model_class.from_config(hf_config)
+            hf_model = model_class.from_config(hf_config, **from_config_kwargs)
     else:
         hf_model = model_class.from_pretrained(model_name, **model_kwargs)
         if device is not None:
             hf_model = hf_model.to(device)
+    adapter.prepare_model(hf_model)
     tokenizer = tokenizer
     default_padding_side = getattr(adapter.cfg, "default_padding_side", None)
     use_fast = getattr(adapter.cfg, "use_fast", True)
@@ -269,21 +307,28 @@ def boot(
     else:
         huggingface_token = os.environ.get("HF_TOKEN", "")
         token_arg = huggingface_token if len(huggingface_token) > 0 else None
+        # Determine tokenizer source: use adapter's tokenizer_name if the model
+        # doesn't ship its own tokenizer (e.g., OpenELM uses LLaMA tokenizer)
+        tokenizer_source = model_name
+        if hasattr(adapter.cfg, "tokenizer_name") and adapter.cfg.tokenizer_name is not None:
+            tokenizer_source = adapter.cfg.tokenizer_name
         # Try to load tokenizer with add_bos_token=True first
         # (encoder-decoder models like T5 don't have BOS tokens and will raise ValueError)
         try:
             base_tokenizer = AutoTokenizer.from_pretrained(
-                model_name,
+                tokenizer_source,
                 add_bos_token=True,
                 use_fast=use_fast,
                 token=token_arg,
+                trust_remote_code=trust_remote_code,
             )
         except ValueError:
             # Model doesn't have a BOS token, load without add_bos_token
             base_tokenizer = AutoTokenizer.from_pretrained(
-                model_name,
+                tokenizer_source,
                 use_fast=use_fast,
                 token=token_arg,
+                trust_remote_code=trust_remote_code,
             )
         tokenizer = setup_tokenizer(
             base_tokenizer,

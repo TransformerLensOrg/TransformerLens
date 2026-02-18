@@ -21,6 +21,14 @@ uv sync
 source .venv/bin/activate
 ```
 
+Demo/web UI dependencies are isolated into an optional `demo` group.
+- Core contributor setup (recommended default): `poetry install --with dev,docs,jupyter`
+- Demo setup (for Gradio notebooks/apps): `poetry install --with dev,docs,jupyter,demo`
+
+Notes:
+- The `demo` group is intended for Python 3.10+ environments.
+- Python 3.8/3.9 workflows should use the core contributor setup without `demo`.
+
 ## Testing
 
 If adding a feature, please add unit tests for it. If you need a model, please use one of the ones

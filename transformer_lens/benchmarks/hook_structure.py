@@ -18,6 +18,7 @@ def validate_hook_shape_compatibility(
     target_shape: tuple,
     reference_shape: tuple,
     hook_name: str,
+    cross_model: bool = False,
 ) -> tuple[bool, Optional[str]]:
     """Validate that hook shapes have compatible structure across different models.
 
@@ -28,6 +29,8 @@ def validate_hook_shape_compatibility(
         target_shape: Shape of the tensor from the target model
         reference_shape: Shape of the tensor from the reference model
         hook_name: Name of the hook (for error messages)
+        cross_model: If True, skip sequence dimension checks (different tokenizers
+            produce different token counts for the same text)
 
     Returns:
         Tuple of (is_compatible, error_message)
@@ -55,7 +58,7 @@ def validate_hook_shape_compatibility(
                         False,
                         f"Batch dimension mismatch: {target_shape[0]} vs {reference_shape[0]}",
                     )
-                if target_shape[1] != reference_shape[1]:
+                if not cross_model and target_shape[1] != reference_shape[1]:
                     return (
                         False,
                         f"Sequence dimension mismatch: {target_shape[1]} vs {reference_shape[1]}",
@@ -80,13 +83,14 @@ def validate_hook_shape_compatibility(
                 if target_dim <= 0 or ref_dim <= 0:
                     return False, f"Invalid n_heads dimension: {target_dim} vs {ref_dim}"
             else:
-                # For other hooks, dimension 1 is sequence - should be same
-                if target_dim != ref_dim:
+                # For other hooks, dimension 1 is sequence
+                # Cross-model references may tokenize differently, so skip this check
+                if not cross_model and target_dim != ref_dim:
                     return False, f"Sequence dimension mismatch: {target_dim} vs {ref_dim}"
         elif i >= 2 and is_attention_pattern_hook:
             # For attention patterns, dimensions 2 and 3 are seq_q and seq_k
-            # Should be same (both use same test input)
-            if target_dim != ref_dim:
+            # Cross-model references may tokenize differently
+            if not cross_model and target_dim != ref_dim:
                 return False, f"Sequence dimension mismatch: {target_dim} vs {ref_dim}"
         else:  # Model-specific dimensions (d_model, n_heads, d_head, etc.)
             # Can differ between models - just verify it's valid
@@ -224,6 +228,25 @@ def benchmark_forward_hooks_structure(
                 handle.remove()
 
         # CRITICAL CHECK: Bridge must have all hooks that reference has
+        # In cross-model mode, filter out expected architectural differences
+        if cross_model and missing_from_bridge:
+            expected_missing_patterns = [
+                "hook_pos_embed",
+                "attn.hook_q",
+                "attn.hook_k",
+                "attn.hook_v",
+                "hook_q_input",
+                "hook_k_input",
+                "hook_v_input",
+                "attn.hook_attn_scores",
+                "attn.hook_pattern",
+            ]
+            missing_from_bridge = [
+                h
+                for h in missing_from_bridge
+                if not any(pattern in h for pattern in expected_missing_patterns)
+            ]
+
         if missing_from_bridge:
             return BenchmarkResult(
                 name="forward_hooks_structure",
@@ -262,7 +285,7 @@ def benchmark_forward_hooks_structure(
             if cross_model:
                 # Use relaxed shape matching for cross-model comparison
                 is_compatible, error_msg = validate_hook_shape_compatibility(
-                    bridge_tensor.shape, reference_tensor.shape, hook_name
+                    bridge_tensor.shape, reference_tensor.shape, hook_name, cross_model=True
                 )
                 if not is_compatible:
                     shape_mismatches.append(f"{hook_name}: {error_msg}")
@@ -456,6 +479,25 @@ def benchmark_backward_hooks_structure(
                 handle.remove()
 
         # CRITICAL CHECK: Bridge must have all backward hooks that reference has
+        # In cross-model mode, filter out expected architectural differences
+        if cross_model and missing_from_bridge:
+            expected_missing_patterns = [
+                "hook_pos_embed",
+                "attn.hook_q",
+                "attn.hook_k",
+                "attn.hook_v",
+                "hook_q_input",
+                "hook_k_input",
+                "hook_v_input",
+                "attn.hook_attn_scores",
+                "attn.hook_pattern",
+            ]
+            missing_from_bridge = [
+                h
+                for h in missing_from_bridge
+                if not any(pattern in h for pattern in expected_missing_patterns)
+            ]
+
         if missing_from_bridge:
             return BenchmarkResult(
                 name="backward_hooks_structure",
@@ -494,7 +536,7 @@ def benchmark_backward_hooks_structure(
             if cross_model:
                 # Use relaxed shape matching for cross-model comparison
                 is_compatible, error_msg = validate_hook_shape_compatibility(
-                    bridge_grad.shape, reference_grad.shape, hook_name
+                    bridge_grad.shape, reference_grad.shape, hook_name, cross_model=True
                 )
                 if not is_compatible:
                     shape_mismatches.append(f"{hook_name}: {error_msg}")
@@ -600,8 +642,20 @@ def benchmark_activation_cache_structure(
         # Filter out expected missing hooks in cross-model mode
         if cross_model and missing_keys:
             # In cross-model mode, some hooks are expected to be missing due to architectural differences
-            # For example, rotary embedding models (Gemma, LLaMA) don't have hook_pos_embed
-            expected_missing_patterns = ["hook_pos_embed"]
+            # - hook_pos_embed: rotary models don't have positional embeddings
+            # - hook_q/k/v: fused QKV architectures (maintain_native_attention)
+            # - hook_attn_scores/pattern: native attention doesn't expose these
+            expected_missing_patterns = [
+                "hook_pos_embed",
+                "attn.hook_q",
+                "attn.hook_k",
+                "attn.hook_v",
+                "hook_q_input",
+                "hook_k_input",
+                "hook_v_input",
+                "attn.hook_attn_scores",
+                "attn.hook_pattern",
+            ]
             actual_missing = [
                 k
                 for k in missing_keys
@@ -633,7 +687,7 @@ def benchmark_activation_cache_structure(
             if cross_model:
                 # Use relaxed shape matching for cross-model comparison
                 is_compatible, error_msg = validate_hook_shape_compatibility(
-                    bridge_tensor.shape, ref_tensor.shape, key
+                    bridge_tensor.shape, ref_tensor.shape, key, cross_model=True
                 )
                 if not is_compatible:
                     shape_mismatches.append(f"{key}: {error_msg}")
