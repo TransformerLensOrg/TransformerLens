@@ -1,11 +1,13 @@
 """Main benchmark runner for TransformerBridge.
 
 This module provides the main benchmark suite that compares TransformerBridge
-against reference implementations in an optimized 4-phase approach:
+against reference implementations in an optimized multi-phase approach:
 Phase 1: HF + Bridge (unprocessed) - Compare against raw HuggingFace model
 Phase 2: Bridge (unprocessed) + HT (unprocessed) - Compare unprocessed models
 Phase 3: Bridge (processed) + HT (processed) - Full compatibility mode testing
-Phase 4: Granular Weight Processing Tests (optional)
+Phase 4: Text Quality - Perplexity-based legibility scoring via GPT-2 Medium
+Phase 5: Granular Weight Processing Tests (optional, individual flags)
+Phase 6: Granular Weight Processing Tests (optional, combined flags)
 """
 
 import gc
@@ -44,6 +46,7 @@ from transformer_lens.benchmarks.hook_registration import (
 from transformer_lens.benchmarks.hook_structure import (
     benchmark_activation_cache_structure,
 )
+from transformer_lens.benchmarks.text_quality import benchmark_text_quality
 from transformer_lens.benchmarks.utils import (
     BenchmarkResult,
     BenchmarkSeverity,
@@ -674,14 +677,15 @@ def run_benchmark_suite(
 ) -> List[BenchmarkResult]:
     """Run comprehensive benchmark suite for TransformerBridge.
 
-    This function implements an optimized 5-phase approach to minimize model reloading:
+    This function implements an optimized multi-phase approach to minimize model reloading:
     Phase 1: HF + Bridge (unprocessed) - Compare against raw HuggingFace model
     Phase 2: Bridge (unprocessed) + HT (unprocessed) - Compare unprocessed models
     Phase 3: Bridge (processed) + HT (processed) - Full compatibility mode testing
-    Phase 4: Individual Weight Processing Flags (optional)
-    Phase 5: Combined Weight Processing Flags (optional)
+    Phase 4: Text Quality - Perplexity-based legibility scoring via GPT-2 Medium
+    Phase 5: Individual Weight Processing Flags (optional)
+    Phase 6: Combined Weight Processing Flags (optional)
 
-    When test_weight_processing_individually=True, Phases 4 & 5 run after
+    When test_weight_processing_individually=True, Phases 5 & 6 run after
     Phase 3, testing each weight processing flag individually and in combinations.
 
     Args:
@@ -736,32 +740,17 @@ def run_benchmark_suite(
         print(f"Device: {device}")
         print(f"{'='*80}\n")
 
-    # Early exit if only running Phase 4/5 (they load their own models independently)
-    if phases is not None and all(p in [4, 5] for p in phases):
+    # Early exit if only running Phase 5/6 (they load their own models independently)
+    if phases is not None and all(p in [5, 6] for p in phases):
         if verbose:
-            print(f"Skipping Phase 1-3 (only running Phase {', '.join(map(str, sorted(phases)))})")
-            print("Phase 4/5 load their own models independently\n")
+            print(f"Skipping Phase 1-4 (only running Phase {', '.join(map(str, sorted(phases)))})")
+            print("Phase 5/6 load their own models independently\n")
 
-        # Jump directly to Phase 4/5
+        # Jump directly to Phase 5/6
         # Jump to granular testing
         from transformer_lens.benchmarks.granular_weight_processing import (
             run_granular_weight_processing_benchmarks,
         )
-
-        if 4 in phases and test_weight_processing_individually and enable_compatibility_mode:
-            phase4_results = run_granular_weight_processing_benchmarks(
-                model_name=model_name,
-                device=device,
-                test_text=test_text,
-                verbose=verbose,
-                phase=4,
-            )
-            for config_name, config_results in phase4_results.items():
-                for result in config_results:
-                    result.phase = 4
-                    results.append(result)
-                    if verbose:
-                        result.print_immediate()
 
         if 5 in phases and test_weight_processing_individually and enable_compatibility_mode:
             phase5_results = run_granular_weight_processing_benchmarks(
@@ -774,6 +763,21 @@ def run_benchmark_suite(
             for config_name, config_results in phase5_results.items():
                 for result in config_results:
                     result.phase = 5
+                    results.append(result)
+                    if verbose:
+                        result.print_immediate()
+
+        if 6 in phases and test_weight_processing_individually and enable_compatibility_mode:
+            phase6_results = run_granular_weight_processing_benchmarks(
+                model_name=model_name,
+                device=device,
+                test_text=test_text,
+                verbose=verbose,
+                phase=6,
+            )
+            for config_name, config_results in phase6_results.items():
+                for result in config_results:
+                    result.phase = 6
                     results.append(result)
                     if verbose:
                         result.print_immediate()
@@ -1213,6 +1217,14 @@ def run_benchmark_suite(
                     message="Skipped (encoder-decoder model)",
                 )
             )
+            add_result(
+                BenchmarkResult(
+                    name="text_quality",
+                    severity=BenchmarkSeverity.INFO,
+                    passed=True,
+                    message="Skipped (encoder-decoder model)",
+                )
+            )
         else:
             try:
                 add_result(benchmark_generation(bridge_unprocessed, test_text, max_new_tokens=10))
@@ -1236,6 +1248,27 @@ def run_benchmark_suite(
             except Exception as e:
                 if verbose:
                     print(f"✗ Generation benchmark failed: {e}\n")
+
+            # Phase 4: Text Quality Benchmark (runs in Phase 2 memory window)
+            # Generates text with bridge, scores via GPT-2 Medium, then cleans up scorer
+            if should_run_phase(4):
+                try:
+                    if verbose:
+                        print("\n2. Text Quality Benchmark (Phase 4)")
+                    text_quality_result = benchmark_text_quality(
+                        bridge_unprocessed,
+                        test_text,
+                        max_new_tokens=50,
+                        scoring_model_name="gpt2-medium",
+                        pass_threshold=95.0,
+                        device=device,
+                    )
+                    text_quality_result.phase = 4
+                    add_result(text_quality_result)
+                    gc.collect()
+                except Exception as e:
+                    if verbose:
+                        print(f"✗ Text quality benchmark failed: {e}\n")
 
     # Extract default_prepend_bos from bridge adapter so HookedTransformer matches.
     # Adapters like Pythia set default_prepend_bos=False, but HT defaults to True.
@@ -1515,12 +1548,12 @@ def run_benchmark_suite(
         ht_model_processed = None
 
     # ========================================================================
-    # Phase 4: Granular Weight Processing Tests (Optional)
+    # Phase 5/6: Granular Weight Processing Tests (Optional)
     # ========================================================================
     if test_weight_processing_individually and enable_compatibility_mode:
         if verbose:
             print("\n" + "=" * 80)
-            print("PHASE 4: GRANULAR WEIGHT PROCESSING TESTS")
+            print("PHASE 5/6: GRANULAR WEIGHT PROCESSING TESTS")
             print("=" * 80)
             print("Testing each weight processing flag individually and in combinations")
             print("to isolate which specific processing steps cause issues.")
@@ -1547,7 +1580,7 @@ def run_benchmark_suite(
 
             if verbose:
                 print("\n" + "=" * 80)
-                print("PHASE 4 COMPLETE")
+                print("PHASE 5/6 COMPLETE")
                 print("=" * 80)
 
         except Exception as e:
