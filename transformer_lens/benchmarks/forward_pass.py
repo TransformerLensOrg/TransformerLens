@@ -183,10 +183,11 @@ def benchmark_loss_equivalence(
         # Get reference loss from model or pre-computed value
         if reference_loss is not None:
             ref_loss_val = reference_loss
-        else:
-            assert reference_model is not None
+        elif reference_model is not None:
             ref_loss_tensor = reference_model(test_text, return_type="loss")
             ref_loss_val = ref_loss_tensor.item()
+        else:
+            raise ValueError("Either reference_logits or reference_model must be provided")
 
         return compare_scalars(
             bridge_loss.item(),
@@ -260,9 +261,10 @@ def benchmark_logits_equivalence(
         # Get reference logits from model or pre-computed tensor
         if reference_logits is not None:
             ref_logits = reference_logits.to(bridge_logits.device)
-        else:
-            assert reference_model is not None
+        elif reference_model is not None:
             ref_logits = reference_model(test_text, return_type="logits")
+        else:
+            raise ValueError("Either reference_logits or reference_model must be provided")
 
         return compare_tensors(
             bridge_logits,
