@@ -44,7 +44,7 @@ def _load_scoring_model(
     """
     tokenizer = AutoTokenizer.from_pretrained(scoring_model_name)
     model = AutoModelForCausalLM.from_pretrained(scoring_model_name)
-    model = model.to(device)
+    torch.nn.Module.to(model, device)
     model.eval()
     return model, tokenizer
 

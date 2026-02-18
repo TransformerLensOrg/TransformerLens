@@ -7,10 +7,7 @@ This module provides benchmarks for comparing individual model components
 from typing import Any, Optional
 
 from transformer_lens.benchmarks.component_outputs import ComponentBenchmarker
-from transformer_lens.benchmarks.utils import (
-    BenchmarkResult,
-    BenchmarkSeverity,
-)
+from transformer_lens.benchmarks.utils import BenchmarkResult, BenchmarkSeverity
 
 
 def benchmark_all_components(
