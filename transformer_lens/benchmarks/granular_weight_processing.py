@@ -39,7 +39,7 @@ class WeightProcessingConfig:
         return "+".join(flags) if flags else "none"
 
 
-# Phase 4: Individual weight processing operations (test each flag in isolation)
+# Phase 5: Individual weight processing operations (test each flag in isolation)
 # NOTE: Centering operations (center_writing_weights, center_unembed) require fold_ln=True
 # as they rely on LayerNorm ignoring the mean. Testing them without fold_ln produces
 # invalid/misleading results, so we test them with fold_ln enabled.
@@ -82,7 +82,7 @@ INDIVIDUAL_CONFIGS = [
     ),
 ]
 
-# Phase 5: Combinations of weight processing operations
+# Phase 6: Combinations of weight processing operations
 COMBINATION_CONFIGS = [
     # Two-way combinations (fold_ln + one other)
     WeightProcessingConfig(
@@ -185,8 +185,8 @@ def run_granular_weight_processing_benchmarks(
 ) -> Dict[str, List[BenchmarkResult]]:
     """Run benchmarks with each weight processing configuration.
 
-    This function tests each weight processing flag individually (Phase 4) and
-    in combination (Phase 5) to identify which specific processing steps cause issues.
+    This function tests each weight processing flag individually (Phase 5) and
+    in combination (Phase 6) to identify which specific processing steps cause issues.
 
     Args:
         model_name: Name of the model to benchmark
@@ -194,7 +194,7 @@ def run_granular_weight_processing_benchmarks(
         test_text: Test text for generation/inference
         verbose: Whether to print detailed output
         include_refactor_tests: Whether to include experimental refactor_factored_attn_matrices tests
-        phase: Optional phase number (4 for individual, 5 for combinations). If None, runs both.
+        phase: Optional phase number (5 for individual, 6 for combinations). If None, runs both.
 
     Returns:
         Dictionary mapping config name to list of benchmark results
@@ -247,18 +247,18 @@ def run_granular_weight_processing_benchmarks(
     configs_to_test = []
     phase_name = ""
 
-    if phase is None or phase == 4:
-        configs_to_test.extend(INDIVIDUAL_CONFIGS)
-        if phase == 4:
-            phase_name = "PHASE 4: Individual Weight Processing Flags"
-
     if phase is None or phase == 5:
-        configs_to_test.extend(COMBINATION_CONFIGS)
+        configs_to_test.extend(INDIVIDUAL_CONFIGS)
         if phase == 5:
-            phase_name = "PHASE 5: Combined Weight Processing Flags"
+            phase_name = "PHASE 5: Individual Weight Processing Flags"
+
+    if phase is None or phase == 6:
+        configs_to_test.extend(COMBINATION_CONFIGS)
+        if phase == 6:
+            phase_name = "PHASE 6: Combined Weight Processing Flags"
 
     if phase is None:
-        phase_name = "PHASE 4 & 5: Granular Weight Processing"
+        phase_name = "PHASE 5 & 6: Granular Weight Processing"
 
     if include_refactor_tests:
         configs_to_test.extend(REFACTOR_ATTN_CONFIGS)
@@ -268,9 +268,9 @@ def run_granular_weight_processing_benchmarks(
         print(phase_name)
         print(f"Model: {model_name}")
         print(f"Testing {len(configs_to_test)} configurations")
-        if phase is None or phase == 4:
-            print(f"  Individual flags: {len(INDIVIDUAL_CONFIGS)}")
         if phase is None or phase == 5:
+            print(f"  Individual flags: {len(INDIVIDUAL_CONFIGS)}")
+        if phase is None or phase == 6:
             print(f"  Combinations: {len(COMBINATION_CONFIGS)}")
         if include_refactor_tests:
             print(f"  Refactor tests: {len(REFACTOR_ATTN_CONFIGS)}")

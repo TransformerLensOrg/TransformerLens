@@ -320,8 +320,6 @@ class AttentionBridge(GeneralizedComponent):
             ):
                 hooked = hooked.to(dtype=target_dtype)
             args = (hooked,) + args[1:]
-            kwargs["hidden_states"] = args[0]
-            args = args[1:]
         output = self.original_component(*args, **kwargs)
         if isinstance(output, tuple) and len(output) >= 2:
             # output[0] is attention output

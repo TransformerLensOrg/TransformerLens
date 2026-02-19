@@ -40,44 +40,63 @@ class BertArchitectureAdapter(ArchitectureAdapter):
         self.cfg.gated_mlp = False
         self.cfg.attn_only = False
 
+        # BERT uses post-LN (LayerNorm after residual, not before sublayer).
+        # fold_ln assumes pre-LN (LN before sublayer) and folds ln1 into attention
+        # QKV and ln2 into MLP. For post-LN, ln1 output feeds MLP (not attention)
+        # and ln2 output feeds next block's attention (not MLP), so folding into
+        # the wrong sublayer produces incorrect results.
+        self.supports_fold_ln = False
+
+        n_heads = self.cfg.n_heads
+
         self.weight_processing_conversions = {
             "blocks.{i}.attn.q.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
-                    "(h d_head) d_model -> h d_head d_model"
+                    "(h d_head) d_model -> h d_model d_head", h=n_heads
                 ),
             ),
             "blocks.{i}.attn.k.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
-                    "(h d_head) d_model -> h d_head d_model"
+                    "(h d_head) d_model -> h d_model d_head", h=n_heads
                 ),
             ),
             "blocks.{i}.attn.v.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
-                    "(h d_head) d_model -> h d_head d_model"
+                    "(h d_head) d_model -> h d_model d_head", h=n_heads
                 ),
             ),
             "blocks.{i}.attn.q.bias": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion("(h d_head) -> h d_head"),
+                tensor_conversion=RearrangeTensorConversion("(h d_head) -> h d_head", h=n_heads),
             ),
             "blocks.{i}.attn.k.bias": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion("(h d_head) -> h d_head"),
+                tensor_conversion=RearrangeTensorConversion("(h d_head) -> h d_head", h=n_heads),
             ),
             "blocks.{i}.attn.v.bias": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion("(h d_head) -> h d_head"),
+                tensor_conversion=RearrangeTensorConversion("(h d_head) -> h d_head", h=n_heads),
             ),
             "blocks.{i}.attn.o.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
-                    "d_model (h d_head) -> h d_head d_model"
+                    "d_model (h d_head) -> h d_head d_model", h=n_heads
                 ),
             ),
         }
 
         # Set up component mapping
+        # The bridge loads BertForMaskedLM, so core model paths need the 'bert.' prefix.
+        # The MLM head (cls.predictions) is at the top level of BertForMaskedLM.
         self.component_mapping = {
-            "embed": EmbeddingBridge(name="bert.embeddings"),
+            "embed": EmbeddingBridge(name="bert.embeddings.word_embeddings"),
             "pos_embed": PosEmbedBridge(name="bert.embeddings.position_embeddings"),
             "blocks": BlockBridge(
                 name="bert.encoder.layer",
+                # BERT has no single MLP module (intermediate.dense and output.dense
+                # are siblings in BertLayer), so the MLPBridge forward is never called
+                # and mlp.hook_out never fires. Redirect hook_mlp_out to the actual
+                # MLP output hook (output of the "out" linear layer).
+                hook_alias_overrides={
+                    "hook_mlp_out": "mlp.out.hook_out",
+                    "hook_mlp_in": "mlp.in.hook_in",
+                },
                 submodules={
                     "ln1": NormalizationBridge(name="attention.output.LayerNorm", config=self.cfg),
                     "ln2": NormalizationBridge(name="output.LayerNorm", config=self.cfg),
@@ -92,15 +111,17 @@ class BertArchitectureAdapter(ArchitectureAdapter):
                         },
                     ),
                     "mlp": MLPBridge(
-                        name="intermediate",
+                        name=None,
                         config=self.cfg,
                         submodules={
-                            "in": LinearBridge(name="dense"),
-                            "out": LinearBridge(name="../output.dense"),
+                            "in": LinearBridge(name="intermediate.dense"),
+                            "out": LinearBridge(name="output.dense"),
                         },
                     ),
                 },
             ),
-            "unembed": UnembeddingBridge(name="cls.predictions"),
-            "ln_final": NormalizationBridge(name="bert.pooler.dense", config=self.cfg),
+            "unembed": UnembeddingBridge(name="cls.predictions.decoder"),
+            "ln_final": NormalizationBridge(
+                name="cls.predictions.transform.LayerNorm", config=self.cfg
+            ),
         }

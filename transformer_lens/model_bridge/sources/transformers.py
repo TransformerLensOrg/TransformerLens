@@ -11,8 +11,8 @@ import warnings
 import torch
 from transformers import (
     AutoConfig,
-    AutoModel,
     AutoModelForCausalLM,
+    AutoModelForMaskedLM,
     AutoModelForSeq2SeqLM,
     AutoTokenizer,
     PreTrainedTokenizerBase,
@@ -227,7 +227,7 @@ def get_hf_model_class_for_architecture(architecture: str):
     if architecture in seq2seq_architectures:
         return AutoModelForSeq2SeqLM
     elif architecture in masked_lm_architectures:
-        return AutoModel
+        return AutoModelForMaskedLM
     else:
         return AutoModelForCausalLM
 
