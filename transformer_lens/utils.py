@@ -358,7 +358,8 @@ def tokenize_and_concatenate(
     else:
         seq_len = max_length
 
-    def tokenize_function(examples: dict[str, list[str]]) -> dict[str, np.ndarray]:
+    def tokenize_function(examples: Any) -> dict[str, np.ndarray]:
+        # datasets.map() may pass a LazyBatch, not a plain dict; accept dict-like batches
         text = examples[column_name]
         # Concatenate it all into an enormous string, separated by eos_tokens
         assert tokenizer.eos_token is not None, "Tokenizer must have an EOS token."
