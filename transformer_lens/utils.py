@@ -349,7 +349,7 @@ def tokenize_and_concatenate(
     """
     dataset = keep_single_column(dataset, column_name)
     had_pad_token = tokenizer.pad_token is not None
-    if tokenizer.pad_token is None:
+    if not had_pad_token:
         # We add a padding token, purely to implement the tokenizer. This will be removed before inputting tokens to the model, so we do not need to increment d_vocab in the model.
         tokenizer.add_special_tokens({"pad_token": "<PAD>"})
     # Define the length to chop things up into - leaving space for a bos_token if required
