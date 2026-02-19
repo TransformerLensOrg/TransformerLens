@@ -583,12 +583,7 @@ class HookedTransformer(HookedRootModule):
             self, prepend_bos=prepend_bos, padding_side=padding_side
         ):
             if start_at_layer is None:
-                (
-                    residual,
-                    tokens,
-                    shortformer_pos_embed,
-                    attention_mask,
-                ) = self.input_to_embed(
+                (residual, tokens, shortformer_pos_embed, attention_mask,) = self.input_to_embed(
                     input,
                     prepend_bos=prepend_bos,
                     padding_side=padding_side,

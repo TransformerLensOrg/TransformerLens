@@ -458,14 +458,15 @@ def test_tokenize_and_concatenate_no_spurious_sequence_length_warning():
             tokenizer,
             max_length=tokenizer.model_max_length,
             add_bos_token=False,
+            streaming=True,
         )
 
     # No warning about sequence length exceeding model maximum
     for w in recorded:
         msg = str(w.message)
-        assert "longer than the specified maximum" not in msg, (
-            f"tokenize_and_concatenate should not emit sequence-length warning; got: {msg}"
-        )
+        assert (
+            "longer than the specified maximum" not in msg
+        ), f"tokenize_and_concatenate should not emit sequence-length warning; got: {msg}"
 
     # Sanity: output has expected shape (batch, max_length); result is a Dataset
     assert len(result) >= 1
