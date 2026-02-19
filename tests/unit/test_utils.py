@@ -472,3 +472,30 @@ def test_tokenize_and_concatenate_no_spurious_sequence_length_warning():
     first_row = result[0]["tokens"]
     assert first_row.shape[0] == tokenizer.model_max_length
     assert first_row.dim() == 1
+
+
+def test_tokenize_and_concatenate_short_sequence_no_invalid_tokens():
+    """
+    When the tokenizer has no pad token, output should only contain token IDs in the model's vocab.
+    """
+    from datasets import Dataset
+    from transformers import AutoTokenizer
+
+    tokenizer = AutoTokenizer.from_pretrained("gpt2")
+    assert tokenizer.pad_token is None, "GPT-2 has no pad token"
+    original_vocab_size = tokenizer.vocab_size
+
+    dataset = Dataset.from_dict({"text": ["Hello", "world", "today"]})
+    result = utils.tokenize_and_concatenate(
+        dataset,
+        tokenizer,
+        column_name="text",
+        add_bos_token=True,
+        streaming=True,
+    )
+    tokens = result[0]["tokens"]
+    assert tokens.min().item() >= 0
+    assert tokens.max().item() < original_vocab_size, (
+        "Returned tensor contained invalid token ID (e.g. synthetic pad). "
+        "All IDs must be < original tokenizer vocab size."
+    )
