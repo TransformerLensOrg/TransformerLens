@@ -496,9 +496,7 @@ def sample_logits(
 SliceInput = Optional[
     Union[
         int,
-        Tuple[
-            int,
-        ],
+        Tuple[int,],
         Tuple[int, int],
         Tuple[int, int, int],
         List[int],
