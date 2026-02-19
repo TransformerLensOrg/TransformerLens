@@ -386,7 +386,8 @@ def tokenize_and_concatenate(
             tokens = tokens[:seq_len]
             if len(tokens) < seq_len:
                 padding_length = seq_len - len(tokens)
-                padding = np.full(padding_length, tokenizer.eos_token_id if not has_pad_token else tokenizer.pad_token_id)
+                padding_id = tokenizer.eos_token_id if not has_pad_token else tokenizer.pad_token_id
+                padding = np.full(padding_length, padding_id)
                 tokens = np.concatenate([tokens, padding], axis=0)
         else:
             num_batches = num_tokens // seq_len
