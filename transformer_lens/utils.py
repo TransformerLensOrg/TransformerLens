@@ -348,6 +348,7 @@ def tokenize_and_concatenate(
         Dataset: Returns the tokenized dataset, as a dataset of tensors, with a single column called "tokens"
     """
     dataset = keep_single_column(dataset, column_name)
+    had_pad_token = tokenizer.pad_token is not None
     if tokenizer.pad_token is None:
         # We add a padding token, purely to implement the tokenizer. This will be removed before inputting tokens to the model, so we do not need to increment d_vocab in the model.
         tokenizer.add_special_tokens({"pad_token": "<PAD>"})
@@ -380,11 +381,11 @@ def tokenize_and_concatenate(
         # Handle cases where num_tokens is less than seq_len
         if num_tokens < seq_len:
             num_batches = 1
-            # Pad tokens if necessary
+            # Pad tokens if necessary. Use eos_token_id if the model has no pad token.
             tokens = tokens[:seq_len]
             if len(tokens) < seq_len:
                 padding_length = seq_len - len(tokens)
-                padding = np.full(padding_length, tokenizer.pad_token_id)
+                padding = np.full(padding_length, tokenizer.eos_token_id if not had_pad_token else tokenizer.pad_token_id)
                 tokens = np.concatenate([tokens, padding], axis=0)
         else:
             num_batches = num_tokens // seq_len
