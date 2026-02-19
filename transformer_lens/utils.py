@@ -348,7 +348,8 @@ def tokenize_and_concatenate(
         Dataset: Returns the tokenized dataset, as a dataset of tensors, with a single column called "tokens"
     """
     dataset = keep_single_column(dataset, column_name)
-    if tokenizer.pad_token is None:
+    has_pad_token = tokenizer.pad_token is not None
+    if not has_pad_token:
         # We add a padding token, purely to implement the tokenizer. This will be removed before inputting tokens to the model, so we do not need to increment d_vocab in the model.
         tokenizer.add_special_tokens({"pad_token": "<PAD>"})
     # Define the length to chop things up into - leaving space for a bos_token if required
@@ -357,7 +358,8 @@ def tokenize_and_concatenate(
     else:
         seq_len = max_length
 
-    def tokenize_function(examples: dict[str, list[str]]) -> dict[str, np.ndarray]:
+    def tokenize_function(examples: Any) -> dict[str, np.ndarray]:
+        # datasets.map() may pass a LazyBatch, not a plain dict; accept dict-like batches
         text = examples[column_name]
         # Concatenate it all into an enormous string, separated by eos_tokens
         assert tokenizer.eos_token is not None, "Tokenizer must have an EOS token."
@@ -380,11 +382,12 @@ def tokenize_and_concatenate(
         # Handle cases where num_tokens is less than seq_len
         if num_tokens < seq_len:
             num_batches = 1
-            # Pad tokens if necessary
+            # Pad tokens if necessary. Use eos_token_id if the model has no pad token.
             tokens = tokens[:seq_len]
             if len(tokens) < seq_len:
                 padding_length = seq_len - len(tokens)
-                padding = np.full(padding_length, tokenizer.pad_token_id)
+                padding_id = tokenizer.eos_token_id if not has_pad_token else tokenizer.pad_token_id
+                padding = np.full(padding_length, padding_id)
                 tokens = np.concatenate([tokens, padding], axis=0)
         else:
             num_batches = num_tokens // seq_len
