@@ -5,457 +5,45 @@ from typing import Dict, Optional
 import torch
 
 from transformer_lens import HookedTransformer
+from transformer_lens.benchmarks.hook_structure import validate_hook_shape_compatibility
 from transformer_lens.benchmarks.utils import (
     BenchmarkResult,
     BenchmarkSeverity,
     compare_scalars,
+    safe_allclose,
 )
 from transformer_lens.model_bridge import TransformerBridge
 
-
-def validate_hook_shape_compatibility(
-    target_shape: tuple,
-    reference_shape: tuple,
-    hook_name: str,
-    cross_model: bool = False,
-) -> tuple[bool, Optional[str]]:
-    """Validate that hook shapes have compatible structure across different models.
-
-    This allows comparing hooks from different models (e.g., Llama vs GPT-2) by checking
-    structural compatibility rather than exact shape matching.
-
-    Args:
-        target_shape: Shape of the tensor from the target model
-        reference_shape: Shape of the tensor from the reference model
-        hook_name: Name of the hook (for error messages)
-        cross_model: If True, skip sequence dimension checks (different tokenizers
-            produce different token counts for the same text)
-
-    Returns:
-        Tuple of (is_compatible, error_message)
-        - is_compatible: True if shapes are structurally compatible
-        - error_message: None if compatible, otherwise description of incompatibility
-    """
-    # For GQA (Grouped Query Attention) models, k/v hooks may have different ranks
-    # GPT-2: (batch, seq, n_heads, d_head) = 4D
-    # Gemma/Llama with GQA: (batch, seq, d_head) = 3D (heads are already collapsed)
-    # This is expected and fine - both are valid attention representations
-    gqa_attention_hooks = ["hook_q", "hook_k", "hook_v", "hook_z"]
-    is_gqa_hook = any(pattern in hook_name for pattern in gqa_attention_hooks)
-
-    # Attention pattern hooks have shape [batch, n_heads, seq_q, seq_k]
-    # Different models can have different numbers of heads
-    is_attention_pattern_hook = "hook_pattern" in hook_name or "hook_attn_scores" in hook_name
-
-    # Same rank (number of dimensions) is required, except for GQA attention hooks
-    if len(target_shape) != len(reference_shape):
-        if is_gqa_hook:
-            # For GQA hooks, different ranks are okay - just verify batch and sequence dims match
-            if len(target_shape) >= 2 and len(reference_shape) >= 2:
-                if target_shape[0] != reference_shape[0]:
-                    return (
-                        False,
-                        f"Batch dimension mismatch: {target_shape[0]} vs {reference_shape[0]}",
-                    )
-                if not cross_model and target_shape[1] != reference_shape[1]:
-                    return (
-                        False,
-                        f"Sequence dimension mismatch: {target_shape[1]} vs {reference_shape[1]}",
-                    )
-                # Rank mismatch is fine for GQA - different attention implementations
-                return True, None
-            else:
-                return False, f"Invalid tensor rank: {len(target_shape)} or {len(reference_shape)}"
-        return False, f"Rank mismatch: {len(target_shape)} vs {len(reference_shape)}"
-
-    # For each dimension, check compatibility
-    for i, (target_dim, ref_dim) in enumerate(zip(target_shape, reference_shape)):
-        if i == 0:  # Batch dimension
-            # Should be same (both use same test input)
-            if target_dim != ref_dim:
-                return False, f"Batch dimension mismatch: {target_dim} vs {ref_dim}"
-        elif i == 1:  # Usually sequence dimension, but n_heads for attention patterns
-            if is_attention_pattern_hook:
-                # For attention patterns: [batch, n_heads, seq_q, seq_k]
-                # Dimension 1 is n_heads, which can differ between models
-                # Just verify it's valid
-                if target_dim <= 0 or ref_dim <= 0:
-                    return False, f"Invalid n_heads dimension: {target_dim} vs {ref_dim}"
-            else:
-                # For other hooks, dimension 1 is sequence
-                # Cross-model references may tokenize differently, so skip this check
-                if not cross_model and target_dim != ref_dim:
-                    return False, f"Sequence dimension mismatch: {target_dim} vs {ref_dim}"
-        elif i >= 2 and is_attention_pattern_hook:
-            # For attention patterns, dimensions 2 and 3 are seq_q and seq_k
-            # Cross-model references may tokenize differently
-            if not cross_model and target_dim != ref_dim:
-                return False, f"Sequence dimension mismatch: {target_dim} vs {ref_dim}"
-        else:  # Model-specific dimensions (d_model, n_heads, d_head, etc.)
-            # Can differ between models - just verify it's valid
-            if target_dim <= 0:
-                return False, f"Invalid dimension {i}: {target_dim} <= 0"
-            if ref_dim <= 0:
-                return False, f"Invalid reference dimension {i}: {ref_dim} <= 0"
-
-    return True, None
+# Hook patterns that bridge models inherently don't have because they wrap HF's
+# native implementation. Used to filter expected missing/non-firing hooks.
+_BRIDGE_EXPECTED_MISSING_PATTERNS = [
+    "mlp.hook_pre",
+    "mlp.hook_post",
+    "hook_mlp_in",
+    "hook_mlp_out",
+    "attn.hook_rot_q",
+    "attn.hook_rot_k",
+    "hook_pos_embed",
+    "embed.ln.hook_scale",
+    "embed.ln.hook_normalized",
+    "attn.hook_q",
+    "attn.hook_k",
+    "attn.hook_v",
+    "hook_q_input",
+    "hook_k_input",
+    "hook_v_input",
+    "attn.hook_attn_scores",
+    "attn.hook_pattern",
+]
 
 
-def benchmark_forward_hooks_structure(
-    bridge: TransformerBridge,
-    test_text: str,
-    reference_model: Optional[HookedTransformer] = None,
-    prepend_bos: Optional[bool] = None,
-    cross_model: bool = False,
-) -> BenchmarkResult:
-    """Benchmark forward hooks for structural correctness (existence, firing, shapes).
-
-    This checks:
-    - All reference hooks exist in bridge
-    - Hooks can be registered
-    - Hooks fire during forward pass
-    - Hook tensor shapes are compatible (allows cross-model comparison)
-
-    Args:
-        bridge: TransformerBridge model to test
-        test_text: Input text for testing
-        reference_model: Optional HookedTransformer for comparison
-        prepend_bos: Whether to prepend BOS token. If None, uses model default.
-        cross_model: If True, uses relaxed shape matching for cross-model comparison
-
-    Returns:
-        BenchmarkResult with structural validation details
-    """
-    try:
-        bridge_activations: Dict[str, torch.Tensor] = {}
-        reference_activations: Dict[str, torch.Tensor] = {}
-
-        # Get all hook names
-        if reference_model is not None:
-            hook_names = list(reference_model.hook_dict.keys())
-        else:
-            hook_names = list(bridge.hook_dict.keys())
-
-        # Register hooks on bridge and track missing hooks
-        def make_bridge_hook(name: str):
-            def hook_fn(tensor, hook):
-                if isinstance(tensor, torch.Tensor):
-                    bridge_activations[name] = tensor.detach().clone()
-                elif isinstance(tensor, tuple) and len(tensor) > 0:
-                    if isinstance(tensor[0], torch.Tensor):
-                        bridge_activations[name] = tensor[0].detach().clone()
-                return tensor
-
-            return hook_fn
-
-        bridge_handles = []
-        missing_from_bridge = []
-        for hook_name in hook_names:
-            if hook_name in bridge.hook_dict:
-                hook_point = bridge.hook_dict[hook_name]
-                handle = hook_point.add_hook(make_bridge_hook(hook_name))  # type: ignore[func-returns-value]
-                bridge_handles.append((hook_name, handle))
-            else:
-                missing_from_bridge.append(hook_name)
-
-        # Run bridge forward pass
-        with torch.no_grad():
-            if prepend_bos is not None:
-                _ = bridge(test_text, prepend_bos=prepend_bos)
-            else:
-                _ = bridge(test_text)
-
-        # Clean up bridge hooks
-        for hook_name, handle in bridge_handles:
-            if handle is not None:
-                handle.remove()
-
-        # Check for hooks that didn't fire
-        registered_hooks = {name for name, _ in bridge_handles}
-        hooks_that_didnt_fire = registered_hooks - set(bridge_activations.keys())
-
-        if reference_model is None:
-            # No reference - just verify hooks were captured
-            if hooks_that_didnt_fire:
-                return BenchmarkResult(
-                    name="forward_hooks_structure",
-                    severity=BenchmarkSeverity.WARNING,
-                    message=f"{len(hooks_that_didnt_fire)}/{len(registered_hooks)} hooks didn't fire",
-                    details={
-                        "captured": len(bridge_activations),
-                        "registered": len(registered_hooks),
-                        "didnt_fire": list(hooks_that_didnt_fire)[:10],
-                    },
-                )
-
-            return BenchmarkResult(
-                name="forward_hooks_structure",
-                severity=BenchmarkSeverity.INFO,
-                message=f"Bridge captured {len(bridge_activations)} forward hook activations",
-                details={"activation_count": len(bridge_activations)},
-            )
-
-        # Register hooks on reference model
-        def make_reference_hook(name: str):
-            def hook_fn(tensor, hook):
-                if isinstance(tensor, torch.Tensor):
-                    reference_activations[name] = tensor.detach().clone()
-                elif isinstance(tensor, tuple) and len(tensor) > 0:
-                    if isinstance(tensor[0], torch.Tensor):
-                        reference_activations[name] = tensor[0].detach().clone()
-                return tensor
-
-            return hook_fn
-
-        reference_handles = []
-        for hook_name in hook_names:
-            if hook_name in reference_model.hook_dict:
-                hook_point = reference_model.hook_dict[hook_name]
-                handle = hook_point.add_hook(make_reference_hook(hook_name))  # type: ignore[func-returns-value]
-                reference_handles.append(handle)
-
-        # Run reference forward pass
-        with torch.no_grad():
-            if prepend_bos is not None:
-                _ = reference_model(test_text, prepend_bos=prepend_bos)
-            else:
-                _ = reference_model(test_text)
-
-        # Clean up reference hooks
-        for handle in reference_handles:
-            if handle is not None:
-                handle.remove()
-
-        # CRITICAL CHECK: Bridge must have all hooks that reference has
-        if missing_from_bridge:
-            return BenchmarkResult(
-                name="forward_hooks_structure",
-                severity=BenchmarkSeverity.DANGER,
-                message=f"Bridge MISSING {len(missing_from_bridge)} hooks from reference",
-                details={
-                    "missing_count": len(missing_from_bridge),
-                    "missing_hooks": missing_from_bridge[:20],
-                    "total_reference_hooks": len(hook_names),
-                },
-                passed=False,
-            )
-
-        # CRITICAL CHECK: All registered hooks must fire
-        if hooks_that_didnt_fire:
-            return BenchmarkResult(
-                name="forward_hooks_structure",
-                severity=BenchmarkSeverity.DANGER,
-                message=f"{len(hooks_that_didnt_fire)} hooks DIDN'T FIRE during forward pass",
-                details={
-                    "didnt_fire_count": len(hooks_that_didnt_fire),
-                    "didnt_fire_hooks": list(hooks_that_didnt_fire)[:20],
-                    "total_registered": len(registered_hooks),
-                },
-                passed=False,
-            )
-
-        # Check shapes
-        common_hooks = set(bridge_activations.keys()) & set(reference_activations.keys())
-        shape_mismatches = []
-
-        for hook_name in sorted(common_hooks):
-            bridge_tensor = bridge_activations[hook_name]
-            reference_tensor = reference_activations[hook_name]
-
-            if cross_model:
-                # Use relaxed shape matching for cross-model comparison
-                is_compatible, error_msg = validate_hook_shape_compatibility(
-                    bridge_tensor.shape, reference_tensor.shape, hook_name, cross_model=True
-                )
-                if not is_compatible:
-                    shape_mismatches.append(f"{hook_name}: {error_msg}")
-            else:
-                # Exact shape matching for same-model comparison
-                if bridge_tensor.shape != reference_tensor.shape:
-                    shape_mismatches.append(
-                        f"{hook_name}: Shape {bridge_tensor.shape} vs {reference_tensor.shape}"
-                    )
-
-        if shape_mismatches:
-            return BenchmarkResult(
-                name="forward_hooks_structure",
-                severity=BenchmarkSeverity.DANGER,
-                message=f"Found {len(shape_mismatches)}/{len(common_hooks)} hooks with shape incompatibilities",
-                details={
-                    "total_hooks": len(common_hooks),
-                    "shape_mismatches": len(shape_mismatches),
-                    "sample_mismatches": shape_mismatches[:5],
-                    "cross_model": cross_model,
-                },
-                passed=False,
-            )
-
-        ref_type = "cross-model reference" if cross_model else "same-model reference"
-        return BenchmarkResult(
-            name="forward_hooks_structure",
-            severity=BenchmarkSeverity.INFO,
-            message=f"All {len(common_hooks)} forward hooks structurally compatible ({ref_type})",
-            details={"hook_count": len(common_hooks), "cross_model": cross_model},
-        )
-
-    except Exception as e:
-        return BenchmarkResult(
-            name="forward_hooks_structure",
-            severity=BenchmarkSeverity.ERROR,
-            message=f"Forward hooks structure check failed: {str(e)}",
-            passed=False,
-        )
-
-
-def benchmark_forward_hooks_values(
-    bridge: TransformerBridge,
-    test_text: str,
-    reference_model: HookedTransformer,
-    tolerance: float = 0.5,
-    prepend_bos: Optional[bool] = None,
-) -> BenchmarkResult:
-    """Benchmark forward hooks for value equivalence (requires same-model reference).
-
-    This checks that hook activation values match between bridge and reference.
-    Should only be called when reference_model is the same architecture as bridge.
-
-    Args:
-        bridge: TransformerBridge model to test
-        test_text: Input text for testing
-        reference_model: HookedTransformer reference (must be same architecture)
-        tolerance: Tolerance for activation matching
-        prepend_bos: Whether to prepend BOS token. If None, uses model default.
-
-    Returns:
-        BenchmarkResult with value comparison details
-    """
-    try:
-        bridge_activations: Dict[str, torch.Tensor] = {}
-        reference_activations: Dict[str, torch.Tensor] = {}
-
-        hook_names = list(reference_model.hook_dict.keys())
-
-        # Register hooks on bridge
-        def make_bridge_hook(name: str):
-            def hook_fn(tensor, hook):
-                if isinstance(tensor, torch.Tensor):
-                    bridge_activations[name] = tensor.detach().clone()
-                elif isinstance(tensor, tuple) and len(tensor) > 0:
-                    if isinstance(tensor[0], torch.Tensor):
-                        bridge_activations[name] = tensor[0].detach().clone()
-                return tensor
-
-            return hook_fn
-
-        bridge_handles = []
-        for hook_name in hook_names:
-            if hook_name in bridge.hook_dict:
-                hook_point = bridge.hook_dict[hook_name]
-                handle = hook_point.add_hook(make_bridge_hook(hook_name))  # type: ignore[func-returns-value]
-                bridge_handles.append((hook_name, handle))
-
-        # Run bridge forward pass
-        with torch.no_grad():
-            if prepend_bos is not None:
-                _ = bridge(test_text, prepend_bos=prepend_bos)
-            else:
-                _ = bridge(test_text)
-
-        # Clean up bridge hooks
-        for hook_name, handle in bridge_handles:
-            if handle is not None:
-                handle.remove()
-
-        # Register hooks on reference
-        def make_reference_hook(name: str):
-            def hook_fn(tensor, hook):
-                if isinstance(tensor, torch.Tensor):
-                    reference_activations[name] = tensor.detach().clone()
-                elif isinstance(tensor, tuple) and len(tensor) > 0:
-                    if isinstance(tensor[0], torch.Tensor):
-                        reference_activations[name] = tensor[0].detach().clone()
-                return tensor
-
-            return hook_fn
-
-        reference_handles = []
-        for hook_name in hook_names:
-            if hook_name in reference_model.hook_dict:
-                hook_point = reference_model.hook_dict[hook_name]
-                handle = hook_point.add_hook(make_reference_hook(hook_name))  # type: ignore[func-returns-value]
-                reference_handles.append(handle)
-
-        # Run reference forward pass
-        with torch.no_grad():
-            if prepend_bos is not None:
-                _ = reference_model(test_text, prepend_bos=prepend_bos)
-            else:
-                _ = reference_model(test_text)
-
-        # Clean up reference hooks
-        for handle in reference_handles:
-            if handle is not None:
-                handle.remove()
-
-        # Compare activation values
-        common_hooks = set(bridge_activations.keys()) & set(reference_activations.keys())
-        value_mismatches = []
-
-        for hook_name in sorted(common_hooks):
-            bridge_tensor = bridge_activations[hook_name]
-            reference_tensor = reference_activations[hook_name]
-
-            # Check values
-            if not torch.allclose(bridge_tensor, reference_tensor, atol=tolerance, rtol=0):
-                max_diff = torch.max(torch.abs(bridge_tensor - reference_tensor)).item()
-                mean_diff = torch.mean(torch.abs(bridge_tensor - reference_tensor)).item()
-                value_mismatches.append(
-                    f"{hook_name}: max_diff={max_diff:.6f}, mean_diff={mean_diff:.6f}"
-                )
-
-        if value_mismatches:
-            # Filter out known architectural differences
-            significant_mismatches = [
-                m
-                for m in value_mismatches
-                if "hook_attn_scores" not in m  # Exclude attn_scores (has inf from masking)
-            ]
-
-            if significant_mismatches:
-                return BenchmarkResult(
-                    name="forward_hooks_values",
-                    severity=BenchmarkSeverity.DANGER,
-                    message=f"Found {len(significant_mismatches)}/{len(common_hooks)} hooks with value mismatches",
-                    details={
-                        "total_hooks": len(common_hooks),
-                        "mismatches": len(significant_mismatches),
-                        "sample_mismatches": significant_mismatches[:5],
-                        "tolerance": tolerance,
-                    },
-                    passed=False,
-                )
-            else:
-                return BenchmarkResult(
-                    name="forward_hooks_values",
-                    severity=BenchmarkSeverity.WARNING,
-                    message=f"All mismatches due to known differences ({len(value_mismatches)} hooks)",
-                    details={"total_hooks": len(common_hooks), "tolerance": tolerance},
-                )
-
-        return BenchmarkResult(
-            name="forward_hooks_values",
-            severity=BenchmarkSeverity.INFO,
-            message=f"All {len(common_hooks)} forward hooks match within tolerance",
-            details={"hook_count": len(common_hooks), "tolerance": tolerance},
-        )
-
-    except Exception as e:
-        return BenchmarkResult(
-            name="forward_hooks_values",
-            severity=BenchmarkSeverity.ERROR,
-            message=f"Forward hooks values check failed: {str(e)}",
-            passed=False,
-        )
+def _filter_expected_missing(hook_names):
+    """Filter out hook names that bridge models are expected to be missing."""
+    return [
+        h
+        for h in hook_names
+        if not any(pattern in h for pattern in _BRIDGE_EXPECTED_MISSING_PATTERNS)
+    ]
 
 
 def benchmark_hook_registry(
@@ -507,25 +95,9 @@ def benchmark_hook_registry(
         missing_hooks = reference_hooks - bridge_hooks
         extra_hooks = bridge_hooks - reference_hooks
 
-        # In cross-model mode, filter out hooks that are expected to differ
-        # due to architectural differences (e.g. fused QKV, rotary embeddings)
-        if cross_model and missing_hooks:
-            expected_missing_patterns = [
-                "hook_pos_embed",
-                "attn.hook_q",
-                "attn.hook_k",
-                "attn.hook_v",
-                "hook_q_input",
-                "hook_k_input",
-                "hook_v_input",
-                "attn.hook_attn_scores",
-                "attn.hook_pattern",
-            ]
-            missing_hooks = {
-                h
-                for h in missing_hooks
-                if not any(pattern in h for pattern in expected_missing_patterns)
-            }
+        # Filter out hooks that are expected to differ due to architectural differences.
+        if missing_hooks:
+            missing_hooks = set(_filter_expected_missing(missing_hooks))
 
         if missing_hooks:
             return BenchmarkResult(
@@ -686,24 +258,9 @@ def benchmark_forward_hooks(
                 handle.remove()
 
         # CRITICAL CHECK: Bridge must have all hooks that reference has
-        # In cross-model mode, filter out expected architectural differences
-        if cross_model and missing_from_bridge:
-            expected_missing_patterns = [
-                "hook_pos_embed",
-                "attn.hook_q",
-                "attn.hook_k",
-                "attn.hook_v",
-                "hook_q_input",
-                "hook_k_input",
-                "hook_v_input",
-                "attn.hook_attn_scores",
-                "attn.hook_pattern",
-            ]
-            missing_from_bridge = [
-                h
-                for h in missing_from_bridge
-                if not any(pattern in h for pattern in expected_missing_patterns)
-            ]
+        # Filter out hooks that bridge models inherently don't have.
+        if missing_from_bridge:
+            missing_from_bridge = _filter_expected_missing(missing_from_bridge)
 
         if missing_from_bridge:
             return BenchmarkResult(
@@ -719,26 +276,9 @@ def benchmark_forward_hooks(
             )
 
         # CRITICAL CHECK: All registered hooks must fire
-        # Filter out expected missing hooks in cross-model mode
-        if cross_model and hooks_that_didnt_fire:
-            # In cross-model mode, some hooks are expected to not fire due to architectural differences
-            expected_missing_patterns = [
-                "hook_pos_embed",
-                "attn.hook_q",
-                "attn.hook_k",
-                "attn.hook_v",
-                "hook_q_input",
-                "hook_k_input",
-                "hook_v_input",
-                "attn.hook_attn_scores",
-                "attn.hook_pattern",
-            ]
-            actual_didnt_fire = [
-                h
-                for h in hooks_that_didnt_fire
-                if not any(pattern in h for pattern in expected_missing_patterns)
-            ]
-            hooks_that_didnt_fire = set(actual_didnt_fire)
+        # Filter out hooks expected to not fire due to architectural differences.
+        if hooks_that_didnt_fire:
+            hooks_that_didnt_fire = set(_filter_expected_missing(hooks_that_didnt_fire))
 
         if hooks_that_didnt_fire:
             return BenchmarkResult(
@@ -774,17 +314,34 @@ def benchmark_forward_hooks(
                 # We only check that hooks exist, fire, and have compatible structure
                 continue
             else:
-                # Use exact shape matching for same-model comparison
+                # Handle batch dimension differences: some HF models (e.g., OPT)
+                # internally reshape to 2D for MLP path, producing [seq, dim] hooks
+                # while HT always maintains [batch, seq, dim]
                 if bridge_tensor.shape != reference_tensor.shape:
-                    mismatches.append(
-                        f"{hook_name}: Shape mismatch - Bridge{bridge_tensor.shape} vs Ref{reference_tensor.shape}"
-                    )
-                    continue
+                    if (
+                        bridge_tensor.ndim == reference_tensor.ndim - 1
+                        and reference_tensor.shape[0] == 1
+                        and bridge_tensor.shape == reference_tensor.shape[1:]
+                    ):
+                        bridge_tensor = bridge_tensor.unsqueeze(0)
+                    elif (
+                        reference_tensor.ndim == bridge_tensor.ndim - 1
+                        and bridge_tensor.shape[0] == 1
+                        and reference_tensor.shape == bridge_tensor.shape[1:]
+                    ):
+                        reference_tensor = reference_tensor.unsqueeze(0)
+                    else:
+                        mismatches.append(
+                            f"{hook_name}: Shape mismatch - Bridge{bridge_tensor.shape} vs Ref{reference_tensor.shape}"
+                        )
+                        continue
 
             # Check values (only for same-model comparison)
-            if not torch.allclose(bridge_tensor, reference_tensor, atol=tolerance, rtol=0):
-                max_diff = torch.max(torch.abs(bridge_tensor - reference_tensor)).item()
-                mean_diff = torch.mean(torch.abs(bridge_tensor - reference_tensor)).item()
+            if not safe_allclose(bridge_tensor, reference_tensor, atol=tolerance, rtol=0.0):
+                b = bridge_tensor.float()
+                r = reference_tensor.float()
+                max_diff = torch.max(torch.abs(b - r)).item()
+                mean_diff = torch.mean(torch.abs(b - r)).item()
                 mismatches.append(
                     f"{hook_name}: Value mismatch - max_diff={max_diff:.6f}, mean_diff={mean_diff:.6f}"
                 )
@@ -973,45 +530,36 @@ def benchmark_critical_forward_hooks(
                 # Skip value comparison for cross-model (different architectures have different values)
                 # We only check that hooks exist, fire, and have compatible structure
             else:
-                # Use exact shape matching for same-model comparison
+                # Handle batch dimension differences (see forward_hooks)
                 if bridge_tensor.shape != reference_tensor.shape:
-                    mismatches.append(
-                        f"{hook_name}: Shape mismatch - Bridge{bridge_tensor.shape} vs Ref{reference_tensor.shape}"
-                    )
-                    continue
+                    if (
+                        bridge_tensor.ndim == reference_tensor.ndim - 1
+                        and reference_tensor.shape[0] == 1
+                        and bridge_tensor.shape == reference_tensor.shape[1:]
+                    ):
+                        bridge_tensor = bridge_tensor.unsqueeze(0)
+                    elif (
+                        reference_tensor.ndim == bridge_tensor.ndim - 1
+                        and bridge_tensor.shape[0] == 1
+                        and reference_tensor.shape == bridge_tensor.shape[1:]
+                    ):
+                        reference_tensor = reference_tensor.unsqueeze(0)
+                    else:
+                        mismatches.append(
+                            f"{hook_name}: Shape mismatch - Bridge{bridge_tensor.shape} vs Ref{reference_tensor.shape}"
+                        )
+                        continue
 
                 # Only compare values for same-model comparison
-                if not torch.allclose(bridge_tensor, reference_tensor, atol=tolerance, rtol=0):
-                    max_diff = torch.max(torch.abs(bridge_tensor - reference_tensor)).item()
+                if not safe_allclose(bridge_tensor, reference_tensor, atol=tolerance, rtol=0.0):
+                    max_diff = torch.max(
+                        torch.abs(bridge_tensor.float() - reference_tensor.float())
+                    ).item()
                     mismatches.append(f"{hook_name}: max_diff={max_diff:.6f}")
 
-        # Check if bridge is missing critical hooks (BAD)
-        # Filter out expected missing hooks in cross-model mode
-        if cross_model and bridge_missing:
-            # In cross-model mode, some hooks are expected to be missing due to architectural differences
-            # For example, rotary embedding models (Gemma, LLaMA) don't have hook_pos_embed
-            # Hooks that may be missing due to architectural differences:
-            # - hook_pos_embed: rotary models don't have positional embeddings
-            # - hook_q/k/v: fused QKV architectures (maintain_native_attention)
-            # - hook_q/k/v_input: same reason
-            # - hook_attn_scores/pattern: native attention doesn't expose these
-            expected_missing_patterns = [
-                "hook_pos_embed",
-                "attn.hook_q",
-                "attn.hook_k",
-                "attn.hook_v",
-                "hook_q_input",
-                "hook_k_input",
-                "hook_v_input",
-                "attn.hook_attn_scores",
-                "attn.hook_pattern",
-            ]
-            actual_missing = [
-                h
-                for h in bridge_missing
-                if not any(pattern in h for pattern in expected_missing_patterns)
-            ]
-            bridge_missing = actual_missing
+        # Filter out hooks expected to be missing in bridge models.
+        if bridge_missing:
+            bridge_missing = _filter_expected_missing(bridge_missing)
 
         if bridge_missing:
             return BenchmarkResult(
@@ -1124,7 +672,7 @@ def benchmark_hook_functionality(
 
         def ablation_hook(activation, hook):
             # Zero out an attention head in layer 0
-            # Clone to avoid in-place modification of a view from a custom Function
+            # Clone to avoid in-place modification of autograd views
             activation = activation.clone()
             # For GQA models, the head dimension may be smaller than n_heads
             n_heads = activation.shape[2]

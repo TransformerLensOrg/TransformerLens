@@ -36,7 +36,12 @@ from transformer_lens.benchmarks.hook_structure import (
     validate_hook_shape_compatibility,
 )
 from transformer_lens.benchmarks.main_benchmark import run_benchmark_suite
-from transformer_lens.benchmarks.utils import BenchmarkResult, BenchmarkSeverity, PhaseReferenceData
+from transformer_lens.benchmarks.text_quality import benchmark_text_quality
+from transformer_lens.benchmarks.utils import (
+    BenchmarkResult,
+    BenchmarkSeverity,
+    PhaseReferenceData,
+)
 from transformer_lens.benchmarks.weight_processing import (
     benchmark_weight_modification,
     benchmark_weight_processing,
@@ -72,6 +77,8 @@ __all__ = [
     "benchmark_generation",
     "benchmark_generation_with_kv_cache",
     "benchmark_multiple_generation_calls",
+    # Text quality benchmarks
+    "benchmark_text_quality",
     # Weight processing benchmarks
     "benchmark_weight_processing",
     "benchmark_weight_sharing",

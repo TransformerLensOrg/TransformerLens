@@ -6,7 +6,11 @@ import torch
 
 from transformer_lens import HookedTransformer
 from transformer_lens.ActivationCache import ActivationCache
-from transformer_lens.benchmarks.utils import BenchmarkResult, BenchmarkSeverity
+from transformer_lens.benchmarks.utils import (
+    BenchmarkResult,
+    BenchmarkSeverity,
+    safe_allclose,
+)
 from transformer_lens.model_bridge import TransformerBridge
 
 
@@ -65,9 +69,10 @@ def benchmark_run_with_cache(
         if missing_patterns:
             return BenchmarkResult(
                 name="run_with_cache",
-                severity=BenchmarkSeverity.WARNING,
+                severity=BenchmarkSeverity.DANGER,
                 message=f"Cache missing expected patterns: {missing_patterns}",
                 details={"missing": missing_patterns, "cache_keys_count": len(cache_keys)},
+                passed=False,
             )
 
         # Verify cached tensors are actually tensors
@@ -79,9 +84,10 @@ def benchmark_run_with_cache(
         if non_tensor_keys:
             return BenchmarkResult(
                 name="run_with_cache",
-                severity=BenchmarkSeverity.WARNING,
+                severity=BenchmarkSeverity.DANGER,
                 message=f"Cache contains {len(non_tensor_keys)} non-tensor values",
                 details={"non_tensor_keys": non_tensor_keys[:5]},
+                passed=False,
             )
 
         if reference_model is not None:
@@ -175,9 +181,11 @@ def benchmark_activation_cache(
                 continue
 
             # Check values
-            if not torch.allclose(bridge_tensor, reference_tensor, atol=tolerance, rtol=0):
-                max_diff = torch.max(torch.abs(bridge_tensor - reference_tensor)).item()
-                mean_diff = torch.mean(torch.abs(bridge_tensor - reference_tensor)).item()
+            if not safe_allclose(bridge_tensor, reference_tensor, atol=tolerance, rtol=0.0):
+                b = bridge_tensor.float()
+                r = reference_tensor.float()
+                max_diff = torch.max(torch.abs(b - r)).item()
+                mean_diff = torch.mean(torch.abs(b - r)).item()
                 mismatches.append(
                     f"{key}: Value mismatch - max_diff={max_diff:.6f}, mean_diff={mean_diff:.6f}"
                 )

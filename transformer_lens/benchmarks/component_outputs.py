@@ -751,16 +751,15 @@ class ComponentBenchmarker:
         if bridge_output.shape != hf_output.shape:
             return False, float("inf"), float("inf"), {}
 
-        # Compute differences
-        diff = torch.abs(bridge_output - hf_output)
+        # Compute differences (upcast to float32 for safety)
+        bo = bridge_output.float()
+        ho = hf_output.float()
+        diff = torch.abs(bo - ho)
         max_diff = diff.max().item()
         mean_diff = diff.mean().item()
 
         # Compute percentile differences
-        # Convert to float32 for quantile computation (bfloat16 not supported)
         flat_diff = diff.flatten()
-        if flat_diff.dtype == torch.bfloat16 or flat_diff.dtype == torch.float16:
-            flat_diff = flat_diff.float()
         percentile_diffs = {
             "50th": torch.quantile(flat_diff, 0.5).item(),
             "90th": torch.quantile(flat_diff, 0.9).item(),
@@ -768,7 +767,7 @@ class ComponentBenchmarker:
         }
 
         # Check if within tolerance
-        passed = torch.allclose(bridge_output, hf_output, atol=self.atol, rtol=self.rtol)
+        passed = torch.allclose(bo, ho, atol=self.atol, rtol=self.rtol)
 
         return passed, max_diff, mean_diff, percentile_diffs
 

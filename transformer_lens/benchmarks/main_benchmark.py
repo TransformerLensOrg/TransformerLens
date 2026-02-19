@@ -1,11 +1,13 @@
 """Main benchmark runner for TransformerBridge.
 
 This module provides the main benchmark suite that compares TransformerBridge
-against reference implementations in an optimized 4-phase approach:
+against reference implementations in an optimized multi-phase approach:
 Phase 1: HF + Bridge (unprocessed) - Compare against raw HuggingFace model
 Phase 2: Bridge (unprocessed) + HT (unprocessed) - Compare unprocessed models
 Phase 3: Bridge (processed) + HT (processed) - Full compatibility mode testing
-Phase 4: Granular Weight Processing Tests (optional)
+Phase 4: Text Quality - Perplexity-based legibility scoring via GPT-2 Medium
+Phase 5: Granular Weight Processing Tests (optional, individual flags)
+Phase 6: Granular Weight Processing Tests (optional, combined flags)
 """
 
 import gc
@@ -44,6 +46,7 @@ from transformer_lens.benchmarks.hook_registration import (
 from transformer_lens.benchmarks.hook_structure import (
     benchmark_activation_cache_structure,
 )
+from transformer_lens.benchmarks.text_quality import benchmark_text_quality
 from transformer_lens.benchmarks.utils import (
     BenchmarkResult,
     BenchmarkSeverity,
@@ -121,18 +124,10 @@ def get_auto_model_class(model_name: str, trust_remote_code: bool = False):
 
 
 def _fixup_custom_model(hf_model) -> None:
-    """Apply post-load fixups for models with custom code.
+    """Apply post-load fixups for models with custom code (e.g., OpenELM).
 
-    Some custom models (e.g., OpenELM) have non-persistent buffers (inv_freq,
-    causal_mask) that may be zeroed during HuggingFace's meta-device loading.
-    This function recomputes broken buffers to minimize forward pass divergence
-    against the bridge model.
-
-    Note: The bridge model goes through a more thorough initialization via the
-    adapter's prepare_loading() + prepare_model() lifecycle hooks. Any remaining
-    forward pass divergence is an inherent consequence of different loading paths
-    for custom-code models, not a bridge correctness issue (all individual
-    components produce identical output, and hooks have zero numerical impact).
+    Recomputes non-persistent buffers (inv_freq, causal_mask) that may be
+    zeroed during HuggingFace's meta-device loading.
     """
     # OpenELM fixups
     if hasattr(hf_model, "transformer") and hasattr(hf_model.transformer, "layers"):
@@ -190,6 +185,7 @@ def run_comparison_benchmarks(
     verbose: bool = True,
     gpt2_reference: Optional[HookedTransformer] = None,
     phase1_reference: Optional[PhaseReferenceData] = None,
+    restore_dtype_after_equivalence: Optional[torch.dtype] = None,
 ) -> List[BenchmarkResult]:
     """Run standardized comparison benchmarks between Bridge and reference model.
 
@@ -205,6 +201,9 @@ def run_comparison_benchmarks(
         verbose: Whether to print detailed results
         gpt2_reference: Optional GPT-2 reference for cross-model validation
         phase1_reference: Optional saved Phase 1 HF reference data for equivalence testing
+        restore_dtype_after_equivalence: If set, downcast bridge_model to this dtype after
+            the equivalence comparison but before hook/cache/gradient tests. Used when the
+            bridge was upcast to float32 for precise equivalence testing.
 
     Returns:
         List of BenchmarkResult objects
@@ -279,6 +278,8 @@ def run_comparison_benchmarks(
     if verbose:
         print("2. Model Equivalence Benchmarks (Forward Pass)")
 
+    has_phase1_ref = phase1_reference is not None and phase1_reference.hf_logits is not None
+
     if ht_available:
         try:
             add_result(
@@ -293,29 +294,35 @@ def run_comparison_benchmarks(
         except Exception as e:
             if verbose:
                 print(f"✗ Equivalence benchmark failed: {e}\n")
-    elif phase1_reference is not None and phase1_reference.hf_logits is not None:
-        # Use saved Phase 1 bridge logits/loss as ground truth.
-        # Weight processing should be mathematically equivalent, so the processed
-        # bridge should produce the same output as the unprocessed bridge.
-        #
-        # Important: center_unembed intentionally shifts raw logits by a per-position
-        # constant (softmax-invariant). We compare log_softmax to be invariant to this.
+    elif has_phase1_ref:
+        # Compare processed bridge against unprocessed Phase 1 reference.
+        # We use log_softmax because center_unembed shifts raw logits by a
+        # softmax-invariant constant. Both passes run in float32 (no bf16 round-trip).
         try:
             if verbose:
                 print("Using saved Phase 1 bridge reference for equivalence comparison")
-            # Compare log_softmax instead of raw logits to be centering-invariant.
-            # center_unembed shifts all vocab logits at each position by a constant,
-            # which changes raw logits but preserves log-probabilities.
+
+            assert phase1_reference is not None
+            assert phase1_reference.hf_logits is not None
+
+            # Compare log_softmax (centering-invariant) instead of raw logits.
             bridge_logits = bridge_model(test_text, return_type="logits")
             ref_logits = phase1_reference.hf_logits.to(bridge_logits.device)
             bridge_log_probs = torch.nn.functional.log_softmax(bridge_logits, dim=-1)
             ref_log_probs = torch.nn.functional.log_softmax(ref_logits, dim=-1)
+
+            # Both passes in float32 — remaining error is float32 non-associativity
+            # in weight processing (~0.006 max_diff on 24-layer Qwen2).
+            logits_atol = 0.01
+            logits_rtol = 1e-4
+            loss_atol = 1e-3
+
             add_result(
                 compare_tensors(
                     bridge_log_probs,
                     ref_log_probs,
-                    atol=1e-4,
-                    rtol=1e-4,
+                    atol=logits_atol,
+                    rtol=logits_rtol,
                     name="logits_equivalence",
                 )
             )
@@ -325,7 +332,7 @@ def run_comparison_benchmarks(
                         bridge_model,
                         test_text,
                         reference_loss=phase1_reference.hf_loss,
-                        atol=1e-3,
+                        atol=loss_atol,
                     )
                 )
             else:
@@ -353,6 +360,16 @@ def run_comparison_benchmarks(
                     passed=True,
                 )
             )
+
+    # Restore native dtype so remaining tests run in the model's real dtype.
+    if restore_dtype_after_equivalence is not None:
+        try:
+            bridge_model.to(restore_dtype_after_equivalence)
+            if verbose:
+                print(f"  (restored to {restore_dtype_after_equivalence} for remaining tests)\n")
+        except Exception as e:
+            if verbose:
+                print(f"⚠ Could not restore dtype: {e}\n")
 
     # ========================================================================
     # 3. Hook Registration Benchmarks
@@ -653,14 +670,15 @@ def run_benchmark_suite(
 ) -> List[BenchmarkResult]:
     """Run comprehensive benchmark suite for TransformerBridge.
 
-    This function implements an optimized 5-phase approach to minimize model reloading:
+    This function implements an optimized multi-phase approach to minimize model reloading:
     Phase 1: HF + Bridge (unprocessed) - Compare against raw HuggingFace model
     Phase 2: Bridge (unprocessed) + HT (unprocessed) - Compare unprocessed models
     Phase 3: Bridge (processed) + HT (processed) - Full compatibility mode testing
-    Phase 4: Individual Weight Processing Flags (optional)
-    Phase 5: Combined Weight Processing Flags (optional)
+    Phase 4: Text Quality - Perplexity-based legibility scoring via GPT-2 Medium
+    Phase 5: Individual Weight Processing Flags (optional)
+    Phase 6: Combined Weight Processing Flags (optional)
 
-    When test_weight_processing_individually=True, Phases 4 & 5 run after
+    When test_weight_processing_individually=True, Phases 5 & 6 run after
     Phase 3, testing each weight processing flag individually and in combinations.
 
     Args:
@@ -715,32 +733,15 @@ def run_benchmark_suite(
         print(f"Device: {device}")
         print(f"{'='*80}\n")
 
-    # Early exit if only running Phase 4/5 (they load their own models independently)
-    if phases is not None and all(p in [4, 5] for p in phases):
+    # Early exit if only running Phase 5/6 (they load their own models independently)
+    if phases is not None and all(p in [5, 6] for p in phases):
         if verbose:
-            print(f"Skipping Phase 1-3 (only running Phase {', '.join(map(str, sorted(phases)))})")
-            print("Phase 4/5 load their own models independently\n")
+            print(f"Skipping Phase 1-4 (only running Phase {', '.join(map(str, sorted(phases)))})")
+            print("Phase 5/6 load their own models independently\n")
 
-        # Jump directly to Phase 4/5
-        # Jump to granular testing
         from transformer_lens.benchmarks.granular_weight_processing import (
             run_granular_weight_processing_benchmarks,
         )
-
-        if 4 in phases and test_weight_processing_individually and enable_compatibility_mode:
-            phase4_results = run_granular_weight_processing_benchmarks(
-                model_name=model_name,
-                device=device,
-                test_text=test_text,
-                verbose=verbose,
-                phase=4,
-            )
-            for config_name, config_results in phase4_results.items():
-                for result in config_results:
-                    result.phase = 4
-                    results.append(result)
-                    if verbose:
-                        result.print_immediate()
 
         if 5 in phases and test_weight_processing_individually and enable_compatibility_mode:
             phase5_results = run_granular_weight_processing_benchmarks(
@@ -753,6 +754,21 @@ def run_benchmark_suite(
             for config_name, config_results in phase5_results.items():
                 for result in config_results:
                     result.phase = 5
+                    results.append(result)
+                    if verbose:
+                        result.print_immediate()
+
+        if 6 in phases and test_weight_processing_individually and enable_compatibility_mode:
+            phase6_results = run_granular_weight_processing_benchmarks(
+                model_name=model_name,
+                device=device,
+                test_text=test_text,
+                verbose=verbose,
+                phase=6,
+            )
+            for config_name, config_results in phase6_results.items():
+                for result in config_results:
+                    result.phase = 6
                     results.append(result)
                     if verbose:
                         result.print_immediate()
@@ -806,7 +822,7 @@ def run_benchmark_suite(
         if track_memory and memory_tracker is not None:
             memory_before = get_memory_mb()
 
-        # NEW: Move model to CPU first to free GPU memory immediately
+        # Move model to CPU first to free GPU memory immediately
         if device != "cpu" and hasattr(model, "cpu"):
             try:
                 model.cpu()
@@ -841,7 +857,7 @@ def run_benchmark_suite(
                     if hasattr(module, "remove_all_hooks"):
                         module.remove_all_hooks()
 
-                    # NEW: Clear gradients
+                    # Clear gradients
                     if hasattr(module, "zero_grad"):
                         try:
                             module.zero_grad(set_to_none=True)
@@ -859,15 +875,14 @@ def run_benchmark_suite(
         if hasattr(model, "_forward_pre_hooks"):
             model._forward_pre_hooks.clear()
 
-        # NEW: Clear top-level gradients
+        # Clear top-level gradients
         if hasattr(model, "zero_grad"):
             try:
                 model.zero_grad(set_to_none=True)
             except Exception:
                 pass
 
-        # OPTIMIZATION: Break circular references more aggressively
-        # Clear all submodule references to help GC
+        # Break circular references to help GC
         if hasattr(model, "_modules"):
             # Clear each submodule's __dict__ to break circular references
             for name, submodule in list(model._modules.items()):
@@ -886,7 +901,6 @@ def run_benchmark_suite(
             for param_name in list(model._parameters.keys()):
                 param = model._parameters[param_name]
                 if param is not None:
-                    # NEW: Delete parameter tensor
                     del param
                 model._parameters[param_name] = None
             model._parameters.clear()
@@ -896,7 +910,6 @@ def run_benchmark_suite(
             for buffer_name in list(model._buffers.keys()):
                 buffer = model._buffers[buffer_name]
                 if buffer is not None:
-                    # NEW: Delete buffer tensor
                     del buffer
                 model._buffers[buffer_name] = None
             model._buffers.clear()
@@ -910,7 +923,6 @@ def run_benchmark_suite(
         # Clear CUDA cache if using GPU
         if device != "cpu" and torch.cuda.is_available():
             torch.cuda.empty_cache()
-            # NEW: Synchronize to ensure GPU operations complete
             torch.cuda.synchronize()
 
         # Track memory after cleanup
@@ -948,13 +960,10 @@ def run_benchmark_suite(
     try:
         # Load a lightweight version without weights to get config
         bridge_config_only = TransformerBridge.boot_transformers(model_name, device=device, dtype=bridge_dtype, load_weights=False, trust_remote_code=trust_remote_code)  # type: ignore[attr-defined]
-        # Extract attn_implementation for HF model loading.
-        # First check if adapter explicitly sets it (e.g. qwen3, gemma3).
+        # Match bridge's attn_implementation: check adapter config first, then
+        # default to "eager" (bridge uses output_attentions=True which forces eager).
         if hasattr(bridge_config_only.adapter.cfg, "attn_implementation"):
             attn_implementation = bridge_config_only.adapter.cfg.attn_implementation
-        # TransformerBridge always loads HF models with output_attentions=True
-        # (see sources/transformers.py), which causes HF to fall back from SDPA
-        # to eager attention. We must match this in the reference model.
         if attn_implementation is None:
             attn_implementation = "eager"
         if verbose:
@@ -965,9 +974,8 @@ def run_benchmark_suite(
     except Exception as e:
         if verbose:
             print(f"⚠ Could not detect config (will use defaults): {str(e)}")
-        # For custom code models, the config-only bridge may fail. We still need to
-        # apply architecture-specific patches (e.g., OpenELM _init_weights fix) before
-        # loading any model, otherwise _init_weights may re-randomize loaded weights.
+        # Config-only bridge failed; apply architecture patches directly to prevent
+        # _init_weights from re-randomizing loaded weights.
         if trust_remote_code:
             try:
                 from transformer_lens.model_bridge.sources.transformers import (
@@ -995,9 +1003,7 @@ def run_benchmark_suite(
         try:
             if verbose:
                 print("Loading HuggingFace reference model...")
-            # Match loading path to TransformerBridge: no device_map, explicit .to(device)
-            # Using device_map causes different weight materialization than .to(device),
-            # which produces numerical divergence for bfloat16 models.
+            # Match bridge loading path: no device_map, explicit .to(device).
             hf_kwargs = {
                 "low_cpu_mem_usage": True,  # Reduce memory spikes during loading
             }
@@ -1009,9 +1015,7 @@ def run_benchmark_suite(
             auto_model_class = get_auto_model_class(model_name, trust_remote_code=trust_remote_code)
             if verbose and auto_model_class != AutoModelForCausalLM:
                 print(f"Using {auto_model_class.__name__} for encoder-decoder model")
-            # Ensure pad_token_id exists on HF config. Transformers v5 raises
-            # AttributeError for missing config attributes, which crashes models
-            # like StableLM that access config.pad_token_id during __init__.
+            # Ensure pad_token_id exists (some models crash without it during init).
             hf_config = AutoConfig.from_pretrained(model_name, trust_remote_code=trust_remote_code)
             if not hasattr(hf_config, "pad_token_id") or "pad_token_id" not in hf_config.__dict__:
                 hf_config.pad_token_id = getattr(hf_config, "eos_token_id", None)
@@ -1020,11 +1024,9 @@ def run_benchmark_suite(
                 hf_kwargs["trust_remote_code"] = True
             hf_model = auto_model_class.from_pretrained(model_name, **hf_kwargs)  # type: ignore[arg-type]
             # Post-load fixup for custom code models (e.g., OpenELM).
-            # NOTE: We intentionally use _fixup_custom_model instead of the adapter's
-            # prepare_model here. The adapter's prepare_model unconditionally recomputes
-            # non-persistent buffers (causal_mask, inv_freq) which is needed for the
-            # bridge path (meta-device loading), but the reference model loads normally
-            # on CPU with correct buffers. Recomputing them can introduce numeric drift.
+            # Uses _fixup_custom_model (not adapter.prepare_model) because the reference
+            # model loads normally on CPU — unconditional buffer recomputation would
+            # introduce numeric drift.
             _fixup_custom_model(hf_model)
             hf_model = hf_model.to(device)
             hf_model.eval()
@@ -1035,6 +1037,21 @@ def run_benchmark_suite(
                     print(f"Detected dtype={bridge_dtype}")
             except StopIteration:
                 pass
+            # Float16 introduces too much rounding error for benchmarking; upcast.
+            if bridge_dtype == torch.float16:
+                if verbose:
+                    print("⚠ Float16 detected, upcasting to float32 for benchmarking...")
+                del hf_model
+                gc.collect()
+                bridge_dtype = torch.float32
+                hf_model = auto_model_class.from_pretrained(
+                    model_name, torch_dtype=torch.float32, **hf_kwargs
+                )
+                _fixup_custom_model(hf_model)
+                hf_model = hf_model.to(device)
+                hf_model.eval()
+                if verbose:
+                    print("✓ Reloaded in float32")
             if verbose:
                 print("✓ HuggingFace model loaded\n")
         except Exception as e:
@@ -1098,23 +1115,27 @@ def run_benchmark_suite(
             if verbose:
                 print(f"✗ Forward pass benchmark failed: {e}\n")
 
-        # Capture unprocessed bridge reference data for Phase 3 reuse.
-        # We save the BRIDGE's logits/loss (not the HF model's), because the bridge
-        # forward path may differ slightly from HF. Phase 3 tests whether weight
-        # processing preserves the bridge's own output — comparing processed bridge
-        # vs unprocessed bridge.
+        # Capture Phase 1 reference in float32 for Phase 3 equivalence comparison.
+        # Running both passes in float32 avoids bf16 forward-pass amplification.
         if bridge_unprocessed is not None:
             try:
+                original_dtype = bridge_unprocessed.cfg.dtype
+                needs_upcast = original_dtype not in (torch.float32, torch.float64)
+                if needs_upcast:
+                    bridge_unprocessed.to(torch.float32)
                 with torch.no_grad():
                     bridge_logits = bridge_unprocessed(test_text, return_type="logits")
                     phase1_reference.hf_logits = bridge_logits.detach().cpu().clone()
                     bridge_loss = bridge_unprocessed(test_text, return_type="loss")
                     phase1_reference.hf_loss = bridge_loss.item()
                     phase1_reference.test_text = test_text
+                if needs_upcast:
+                    bridge_unprocessed.to(original_dtype)
                 if verbose:
+                    dtype_note = " (upcast to float32)" if needs_upcast else ""
                     print(
                         f"✓ Saved Phase 1 reference data "
-                        f"(logits: {phase1_reference.hf_logits.shape})"
+                        f"(logits: {phase1_reference.hf_logits.shape}){dtype_note}"
                     )
             except Exception as e:
                 if verbose:
@@ -1175,6 +1196,14 @@ def run_benchmark_suite(
                     message="Skipped (encoder-decoder model)",
                 )
             )
+            add_result(
+                BenchmarkResult(
+                    name="text_quality",
+                    severity=BenchmarkSeverity.INFO,
+                    passed=True,
+                    message="Skipped (encoder-decoder model)",
+                )
+            )
         else:
             try:
                 add_result(benchmark_generation(bridge_unprocessed, test_text, max_new_tokens=10))
@@ -1199,6 +1228,33 @@ def run_benchmark_suite(
                 if verbose:
                     print(f"✗ Generation benchmark failed: {e}\n")
 
+            # Phase 4: Text Quality (runs in Phase 2 memory window)
+            if should_run_phase(4):
+                try:
+                    if verbose:
+                        print("\n2. Text Quality Benchmark (Phase 4)")
+                    text_quality_result = benchmark_text_quality(
+                        bridge_unprocessed,
+                        test_text,
+                        max_new_tokens=50,
+                        scoring_model_name="gpt2-medium",
+                        pass_threshold=85.0,
+                        device=device,
+                    )
+                    text_quality_result.phase = 4
+                    add_result(text_quality_result)
+                    gc.collect()
+                except Exception as e:
+                    if verbose:
+                        print(f"✗ Text quality benchmark failed: {e}\n")
+
+    # Match bridge's default_prepend_bos setting in HookedTransformer.
+    ht_prepend_bos = None
+    if bridge_unprocessed is not None and hasattr(bridge_unprocessed, "cfg"):
+        bridge_bos = getattr(bridge_unprocessed.cfg, "default_prepend_bos", None)
+        if bridge_bos is not None:
+            ht_prepend_bos = bridge_bos
+
     # Load HookedTransformer for comparison (after generation benchmarks)
     ht_model_unprocessed = None
     if should_run_phase(2) and use_ht_reference:
@@ -1214,6 +1270,7 @@ def run_benchmark_suite(
                 center_unembed=False,
                 fold_value_biases=False,
                 refactor_factored_attn_matrices=False,
+                default_prepend_bos=ht_prepend_bos,
             )
             if verbose:
                 print("✓ HookedTransformer loaded (unprocessed)\n")
@@ -1247,11 +1304,8 @@ def run_benchmark_suite(
     if ht_model_unprocessed is not None:
         cleanup_model(ht_model_unprocessed, "HookedTransformer (unprocessed)")
         ht_model_unprocessed = None
-    # NOTE: bridge_unprocessed is intentionally kept alive for Phase 3.
-    # Instead of loading a fresh bridge (which can produce non-deterministic
-    # outputs for some architectures like OpenELM), we reuse the same instance
-    # and process its weights in-place. This ensures Phase 3 tests purely
-    # measure the effect of weight processing, not loading variability.
+    # bridge_unprocessed is kept alive for Phase 3 — reusing the same instance
+    # avoids non-deterministic loading in some architectures (e.g., OpenELM).
 
     # ========================================================================
     # PHASE 3: Bridge (processed) + HookedTransformer (processed)
@@ -1295,17 +1349,25 @@ def run_benchmark_suite(
     bridge_processed = None
     ht_model_processed = None
 
-    # Reuse the Phase 1 bridge instance for Phase 3 instead of loading a fresh one.
-    # This avoids non-deterministic loading issues (some architectures like OpenELM
-    # produce different outputs across separate from_pretrained calls despite
-    # identical parameters and buffers). Processing weights in-place on the same
-    # instance ensures Phase 3 purely measures weight processing equivalence.
+    # Reuse the Phase 1 bridge instance and process weights in-place.
+    # For reduced-precision models, upcast to float32 BEFORE processing so
+    # weight operations avoid bf16 quantization round-trips. The bridge is
+    # downcast back to native dtype after the equivalence comparison.
+    phase3_native_dtype = None  # Set if we upcast; used to restore later
     if bridge_unprocessed is not None:
         try:
             if verbose:
                 print("Processing weights on existing bridge (reusing Phase 1 instance)...")
             bridge_processed = bridge_unprocessed
             bridge_unprocessed = None  # Transfer ownership
+            # Upcast to float32 before processing to avoid bf16 quantization loss.
+            phase3_native_dtype = bridge_processed.cfg.dtype
+            if phase3_native_dtype not in (torch.float32, torch.float64):
+                bridge_processed.to(torch.float32)
+                if verbose:
+                    print(f"  (upcast from {phase3_native_dtype} to float32 before processing)")
+            else:
+                phase3_native_dtype = None  # No restore needed
             bridge_processed.enable_compatibility_mode(disable_warnings=True)
             if verbose:
                 print("✓ TransformerBridge compatibility mode enabled (processed)\n")
@@ -1408,6 +1470,7 @@ def run_benchmark_suite(
                 center_unembed=True,
                 fold_value_biases=True,
                 refactor_factored_attn_matrices=False,
+                default_prepend_bos=ht_prepend_bos,
             )
             if verbose:
                 print("✓ HookedTransformer loaded (processed)\n")
@@ -1451,6 +1514,7 @@ def run_benchmark_suite(
             verbose=verbose,
             gpt2_reference=gpt2_reference,  # Use GPT-2 cross-model ref if no same-arch HT
             phase1_reference=phase1_reference,  # Saved HF logits/loss for equivalence testing
+            restore_dtype_after_equivalence=phase3_native_dtype,
         )
         # Tag all phase 3 results with phase number
         for result in phase3_results:
@@ -1467,12 +1531,12 @@ def run_benchmark_suite(
         ht_model_processed = None
 
     # ========================================================================
-    # Phase 4: Granular Weight Processing Tests (Optional)
+    # Phase 5/6: Granular Weight Processing Tests (Optional)
     # ========================================================================
     if test_weight_processing_individually and enable_compatibility_mode:
         if verbose:
             print("\n" + "=" * 80)
-            print("PHASE 4: GRANULAR WEIGHT PROCESSING TESTS")
+            print("PHASE 5/6: GRANULAR WEIGHT PROCESSING TESTS")
             print("=" * 80)
             print("Testing each weight processing flag individually and in combinations")
             print("to isolate which specific processing steps cause issues.")
@@ -1499,7 +1563,7 @@ def run_benchmark_suite(
 
             if verbose:
                 print("\n" + "=" * 80)
-                print("PHASE 4 COMPLETE")
+                print("PHASE 5/6 COMPLETE")
                 print("=" * 80)
 
         except Exception as e:

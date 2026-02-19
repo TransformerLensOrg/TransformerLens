@@ -718,7 +718,8 @@ class TransformerBridge(nn.Module):
         if adapter and hasattr(adapter, "preprocess_weights"):
             state_dict = adapter.preprocess_weights(state_dict)
 
-        # Use unified ProcessWeights.process_weights() like HookedTransformer does
+        # Use unified ProcessWeights.process_weights() like HookedTransformer does.
+        # Float32 upcasting for precision is handled centrally in process_weights().
         if verbose:
             print("  Processing weights (fold_ln, center_writing_weights, etc.)...")
         state_dict = ProcessWeights.process_weights(
@@ -732,7 +733,29 @@ class TransformerBridge(nn.Module):
             adapter=adapter,
         )
 
-        # print("new", state_dict.keys())
+        # Normalize any remaining HF-prefix keys to TL format.
+        # Some architectures (e.g., OPT with SymbolicBridge) produce state dict keys
+        # with HF prefixes (model.decoder.layers.0.mlp.in.weight) instead of TL prefixes
+        # (blocks.0.mlp.in.weight). distribute_weights_to_components uses TL prefixes
+        # for routing, so we normalize all keys here.
+        import re
+
+        hf_to_tl_prefix = {}
+        for tl_name, (remote_path, _component) in self.real_components.items():
+            if remote_path and remote_path != tl_name:
+                hf_to_tl_prefix[remote_path] = tl_name
+
+        normalized_state_dict = {}
+        for key, value in state_dict.items():
+            new_key = key
+            for hf_prefix, tl_prefix in hf_to_tl_prefix.items():
+                if key.startswith(hf_prefix + "."):
+                    suffix = key[len(hf_prefix) + 1 :]
+                    new_key = f"{tl_prefix}.{suffix}"
+                    break
+            normalized_state_dict[new_key] = value
+        state_dict = normalized_state_dict
+
         if verbose:
             print("  Distributing weights to generalized components...")
         ProcessWeights.distribute_weights_to_components(
