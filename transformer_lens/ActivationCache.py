@@ -553,9 +553,11 @@ class ActivationCache:
                 incorrect_tokens_for_shape_check = torch.as_tensor(incorrect_tokens_for_shape_check)
 
             if tokens_for_shape_check.shape != incorrect_tokens_for_shape_check.shape:
-                raise ValueError(f"tokens and incorrect_tokens must have the same shape! \
+                raise ValueError(
+                    f"tokens and incorrect_tokens must have the same shape! \
                         (tokens.shape={tokens_for_shape_check.shape}, \
-                        incorrect_tokens.shape={incorrect_tokens_for_shape_check.shape})")
+                        incorrect_tokens.shape={incorrect_tokens_for_shape_check.shape})"
+                )
 
             # If incorrect_tokens was provided, take the logit difference
             logit_directions = logit_directions - self.model.tokens_to_residual_directions(
