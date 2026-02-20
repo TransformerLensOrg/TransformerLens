@@ -278,17 +278,13 @@ def test_apply_ln_recompute_ln_differs_from_cached():
     _, cache = model.run_with_cache(tokens)
 
     accumulated = cache.accumulated_resid(layer=-1, incl_mid=True, pos_slice=-1)
-    with_recompute = cache.apply_ln_to_stack(
-        accumulated, layer=-1, pos_slice=-1, recompute_ln=True
-    )
-    with_cached = cache.apply_ln_to_stack(
-        accumulated, layer=-1, pos_slice=-1, recompute_ln=False
-    )
+    with_recompute = cache.apply_ln_to_stack(accumulated, layer=-1, pos_slice=-1, recompute_ln=True)
+    with_cached = cache.apply_ln_to_stack(accumulated, layer=-1, pos_slice=-1, recompute_ln=False)
 
     assert with_recompute.shape == with_cached.shape
-    assert not torch.isclose(with_recompute, with_cached, atol=1e-7).all(), (
-        "recompute_ln=True and recompute_ln=False should differ for accumulated residual stack"
-    )
+    assert not torch.isclose(
+        with_recompute, with_cached, atol=1e-7
+    ).all(), "recompute_ln=True and recompute_ln=False should differ for accumulated residual stack"
 
 
 @torch.no_grad
