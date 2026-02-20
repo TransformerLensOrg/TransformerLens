@@ -1,3 +1,5 @@
+import warnings
+
 import numpy as np
 import pytest
 import torch
@@ -433,6 +435,44 @@ class TestInitXavier:
         x_new = nn.Parameter(torch.empty(2, d_model, 137))
         utils.init_xavier_normal_(x_new)
         assert torch.allclose(x_new, x, rtol=1e-2)
+
+
+def test_tokenize_and_concatenate_no_spurious_sequence_length_warning():
+    """Test that tokenize_and_concatenate does not emit the HF 'sequence length longer than maximum' warning."""
+    from datasets import Dataset
+    from transformers import AutoTokenizer
+
+    # Use a tokenizer with model_max_length and EOS
+    tokenizer = AutoTokenizer.from_pretrained("t5-small")
+    assert tokenizer.model_max_length == 512
+    assert tokenizer.eos_token is not None
+
+    # Long text so that when split into 20 chunks, at least one chunk tokenizes to > 512 tokens
+    long_text = "word " * 20000
+    dataset = Dataset.from_dict({"text": [long_text]})
+
+    with warnings.catch_warnings(record=True) as recorded:
+        warnings.simplefilter("always")
+        result = utils.tokenize_and_concatenate(
+            dataset,
+            tokenizer,
+            max_length=tokenizer.model_max_length,
+            add_bos_token=False,
+            streaming=True,
+        )
+
+    # No warning about sequence length exceeding model maximum
+    for w in recorded:
+        msg = str(w.message)
+        assert (
+            "longer than the specified maximum" not in msg
+        ), f"tokenize_and_concatenate should not emit sequence-length warning; got: {msg}"
+
+    # Sanity: output has expected shape (batch, max_length); result is a Dataset
+    assert len(result) >= 1
+    first_row = result[0]["tokens"]
+    assert first_row.shape[0] == tokenizer.model_max_length
+    assert first_row.dim() == 1
 
 
 def test_tokenize_and_concatenate_short_sequence_no_invalid_tokens():

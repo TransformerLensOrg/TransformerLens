@@ -352,64 +352,81 @@ def tokenize_and_concatenate(
     if not has_pad_token:
         # We add a padding token, purely to implement the tokenizer. This will be removed before inputting tokens to the model, so we do not need to increment d_vocab in the model.
         tokenizer.add_special_tokens({"pad_token": "<PAD>"})
-    # Define the length to chop things up into - leaving space for a bos_token if required
-    if add_bos_token:
-        seq_len = max_length - 1
-    else:
-        seq_len = max_length
 
-    def tokenize_function(examples: Any) -> dict[str, np.ndarray]:
-        # datasets.map() may pass a LazyBatch, not a plain dict; accept dict-like batches
-        text = examples[column_name]
-        # Concatenate it all into an enormous string, separated by eos_tokens
-        assert tokenizer.eos_token is not None, "Tokenizer must have an EOS token."
-        full_text = tokenizer.eos_token.join(text)
-
-        # Handle the case when full_text is empty
-        if not full_text.strip():
-            return {"tokens": np.array([], dtype=np.int64)}
-
-        # Divide into 20 chunks of ~ equal length
-        num_chunks = 20
-        chunk_length = (len(full_text) - 1) // num_chunks + 1
-        chunks = [full_text[i * chunk_length : (i + 1) * chunk_length] for i in range(num_chunks)]
-        # Tokenize the chunks in parallel. Uses NumPy because HuggingFace map doesn't want tensors returned
-        tokens = tokenizer(chunks, return_tensors="np", padding=True)["input_ids"].flatten()
-        # Drop padding tokens
-        tokens = tokens[tokens != tokenizer.pad_token_id]
-        num_tokens = len(tokens)
-
-        # Handle cases where num_tokens is less than seq_len
-        if num_tokens < seq_len:
-            num_batches = 1
-            # Pad tokens if necessary. Use eos_token_id if the model has no pad token.
-            tokens = tokens[:seq_len]
-            if len(tokens) < seq_len:
-                padding_length = seq_len - len(tokens)
-                padding_id = tokenizer.eos_token_id if not has_pad_token else tokenizer.pad_token_id
-                padding = np.full(padding_length, padding_id)
-                tokens = np.concatenate([tokens, padding], axis=0)
-        else:
-            num_batches = num_tokens // seq_len
-            # Drop the final tokens if not enough to make a full sequence
-            tokens = tokens[: seq_len * num_batches]
-
-        tokens = einops.rearrange(
-            tokens, "(batch seq) -> batch seq", batch=num_batches, seq=seq_len
-        )
+    # Suppress the "sequence length longer than maximum" warning during chunked tokenization.
+    _deprecation_warnings_saved = None
+    if hasattr(tokenizer, "deprecation_warnings"):
+        _deprecation_warnings_saved = tokenizer.deprecation_warnings.copy()
+        tokenizer.deprecation_warnings[
+            "sequence-length-is-longer-than-the-specified-maximum"
+        ] = False
+    try:
+        # Define the length to chop things up into - leaving space for a bos_token if required
         if add_bos_token:
-            prefix = np.full((num_batches, 1), tokenizer.bos_token_id)
-            tokens = np.concatenate([prefix, tokens], axis=1)
-        return {"tokens": tokens}
+            seq_len = max_length - 1
+        else:
+            seq_len = max_length
 
-    tokenized_dataset = dataset.map(
-        tokenize_function,
-        batched=True,
-        num_proc=(num_proc if not streaming else None),
-        remove_columns=[column_name],
-    )
-    tokenized_dataset.set_format(type="torch", columns=["tokens"])
-    return tokenized_dataset
+        def tokenize_function(examples: Any) -> dict[str, np.ndarray]:
+            # datasets.map() may pass a LazyBatch, not a plain dict; accept dict-like batches
+            text = examples[column_name]
+            # Concatenate it all into an enormous string, separated by eos_tokens
+            assert tokenizer.eos_token is not None, "Tokenizer must have an EOS token."
+            full_text = tokenizer.eos_token.join(text)
+
+            # Handle the case when full_text is empty
+            if not full_text.strip():
+                return {"tokens": np.array([], dtype=np.int64)}
+
+            # Divide into 20 chunks of ~ equal length
+            num_chunks = 20
+            chunk_length = (len(full_text) - 1) // num_chunks + 1
+            chunks = [
+                full_text[i * chunk_length : (i + 1) * chunk_length] for i in range(num_chunks)
+            ]
+            # Tokenize the chunks in parallel. Uses NumPy because HuggingFace map doesn't want tensors returned
+            tokens = tokenizer(chunks, return_tensors="np", padding=True)["input_ids"].flatten()
+            # Drop padding tokens
+            tokens = tokens[tokens != tokenizer.pad_token_id]
+            num_tokens = len(tokens)
+
+            # Handle cases where num_tokens is less than seq_len
+            if num_tokens < seq_len:
+                num_batches = 1
+                # Pad tokens if necessary
+                tokens = tokens[:seq_len]
+                if len(tokens) < seq_len:
+                    padding_length = seq_len - len(tokens)
+                    padding_id = (
+                        tokenizer.eos_token_id if not has_pad_token else tokenizer.pad_token_id
+                    )
+                    padding = np.full(padding_length, padding_id)
+                    tokens = np.concatenate([tokens, padding], axis=0)
+            else:
+                num_batches = num_tokens // seq_len
+                # Drop the final tokens if not enough to make a full sequence
+                tokens = tokens[: seq_len * num_batches]
+
+            tokens = einops.rearrange(
+                tokens, "(batch seq) -> batch seq", batch=num_batches, seq=seq_len
+            )
+            if add_bos_token:
+                prefix = np.full((num_batches, 1), tokenizer.bos_token_id)
+                tokens = np.concatenate([prefix, tokens], axis=1)
+            return {"tokens": tokens}
+
+        tokenized_dataset = dataset.map(
+            tokenize_function,
+            batched=True,
+            num_proc=(num_proc if not streaming else None),
+            remove_columns=[column_name],
+        )
+        tokenized_dataset.set_format(type="torch", columns=["tokens"])
+        return tokenized_dataset
+    finally:
+        if _deprecation_warnings_saved is not None:
+            tokenizer.deprecation_warnings.clear()
+            tokenizer.deprecation_warnings.update(_deprecation_warnings_saved)
 
 
 def sample_logits(
