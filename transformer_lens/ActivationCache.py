@@ -443,7 +443,6 @@ class ActivationCache:
         components_list = [pos_slice.apply(c, dim=-2) for c in components_list]
         components = torch.stack(components_list, dim=0)
         if apply_ln:
-            # Use recomputed layer norm per component for standard logit lens
             recompute_ln = layer == self.model.cfg.n_layers
             components = self.apply_ln_to_stack(
                 components,
@@ -971,10 +970,9 @@ class ActivationCache:
         element and position, which is why we need to use the cached scale factors rather than just
         applying a new LayerNorm.
 
-        When ``recompute_ln=True`` and the target layer is the final layer (unembed), each
-        component is normalized using statistics recomputed from that component (standard logit
-        lens). This gives correct intermediate "belief" distributions; use this for logit lens
-        analysis. When ``recompute_ln=False``, a single cached scale is used for all components.
+        When recompute_ln=True and the target layer is the final layer (unembed), each
+        component is normalized using stats recomputed from that component; use this for logit lens
+        analysis. When recompute_ln=False, a single cached scale is used for all components.
 
         If the model does not use LayerNorm or RMSNorm, it returns the residual stack unchanged.
 
@@ -1000,8 +998,7 @@ class ActivationCache:
                 Whether residual_stack has a batch dimension.
             recompute_ln:
                 If True and target layer is the unembed (final layer), apply the final layer norm
-                to each component with statistics recomputed from that component (standard logit
-                lens). Defaults to False (use single cached scale for all components).
+                to each component with statistics recomputed from that component. Defaults to False.
 
         """
         if self.model.cfg.normalization_type not in ["LN", "LNPre", "RMS", "RMSPre"]:
