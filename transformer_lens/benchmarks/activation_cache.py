@@ -182,8 +182,8 @@ def benchmark_activation_cache(
 
             # Check values
             if not safe_allclose(bridge_tensor, reference_tensor, atol=tolerance, rtol=0.0):
-                b = bridge_tensor.float()
-                r = reference_tensor.float()
+                b = bridge_tensor.cpu().float()
+                r = reference_tensor.cpu().float()
                 max_diff = torch.max(torch.abs(b - r)).item()
                 mean_diff = torch.mean(torch.abs(b - r)).item()
                 mismatches.append(

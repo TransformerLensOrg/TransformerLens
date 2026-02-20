@@ -84,7 +84,9 @@ class TransformerBridge(nn.Module):
     """
 
     hook_aliases: Dict[str, Union[str, List[str]]] = {
-        "hook_embed": "embed.hook_out",
+        # Prefer embed_ln.hook_out (post-LN) when available, matching HT's convention
+        # for models with post-embedding LayerNorm (e.g., Bloom, BERT)
+        "hook_embed": ["embed_ln.hook_out", "embed.hook_out"],
         "hook_pos_embed": ["pos_embed.hook_out", "rotary_emb.hook_out"],
         "hook_unembed": "unembed.hook_out",
     }
@@ -622,17 +624,21 @@ class TransformerBridge(nn.Module):
 
         apply_fn_to_all_components(self, set_compatibility_mode)
         self.clear_hook_registry()
-        if not no_processing:
-            self.process_weights(
-                fold_ln=fold_ln,
-                center_writing_weights=center_writing_weights,
-                center_unembed=center_unembed,
-                fold_value_biases=fold_value_biases,
-                refactor_factored_attn_matrices=refactor_factored_attn_matrices,
-            )
-        self._initialize_hook_registry()
-        self._setup_hook_compatibility()
-        self._register_all_aliases_recursive()
+        try:
+            if not no_processing:
+                self.process_weights(
+                    fold_ln=fold_ln,
+                    center_writing_weights=center_writing_weights,
+                    center_unembed=center_unembed,
+                    fold_value_biases=fold_value_biases,
+                    refactor_factored_attn_matrices=refactor_factored_attn_matrices,
+                )
+        finally:
+            # Always re-initialize hooks even if weight processing fails,
+            # so the bridge remains usable for downstream tests.
+            self._initialize_hook_registry()
+            self._setup_hook_compatibility()
+            self._register_all_aliases_recursive()
 
     def _setup_hook_compatibility(self) -> None:
         """Setup hook compatibility transformations to match HookedTransformer behavior.

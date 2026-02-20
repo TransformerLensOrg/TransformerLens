@@ -268,10 +268,19 @@ def boot(
         hf_config.__dict__.update(hf_config_overrides)
     tl_config = map_default_transformer_lens_config(hf_config)
     architecture = determine_architecture_from_hf_config(hf_config)
-    bridge_config = TransformerBridgeConfig.from_dict(tl_config.__dict__)
+    config_dict = dict(tl_config.__dict__)
+    # HF configs may remap attribute names via attribute_map (e.g., MixtralConfig maps
+    # `num_experts` -> `num_local_experts`). Explicitly restore the TL name so that
+    # TransformerBridgeConfig.from_dict receives the expected key.
+    if "num_local_experts" in config_dict and "num_experts" not in config_dict:
+        config_dict["num_experts"] = config_dict["num_local_experts"]
+    bridge_config = TransformerBridgeConfig.from_dict(config_dict)
     bridge_config.architecture = architecture
     bridge_config.model_name = model_name
     bridge_config.dtype = dtype
+    # Preserve HF-specific config attributes that adapters may need
+    if getattr(hf_config, "is_gated_act", False):
+        bridge_config.is_gated_act = True
     adapter = ArchitectureAdapterFactory.select_architecture_adapter(bridge_config)
     if device is None:
         device = get_device()

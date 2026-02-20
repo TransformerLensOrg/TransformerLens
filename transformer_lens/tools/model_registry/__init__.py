@@ -51,6 +51,7 @@ HF_SUPPORTED_ARCHITECTURES: set[str] = {
     "GptOssForCausalLM",
     "GPTJForCausalLM",
     "GPTNeoForCausalLM",
+    "OpenELMForCausalLM",
     "GPTNeoXForCausalLM",
     "LlamaForCausalLM",
     "MistralForCausalLM",

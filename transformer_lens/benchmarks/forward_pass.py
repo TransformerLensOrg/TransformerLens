@@ -69,8 +69,10 @@ def benchmark_forward_pass(
             decoder_input_ids = decoder_input_ids.to(tokens.device)
             extra_kwargs["decoder_input_ids"] = decoder_input_ids
 
-        # Run bridge forward pass
-        bridge_output = bridge(test_text, return_type="logits", **extra_kwargs)
+        # Run bridge forward pass (use no_grad to match HF reference context —
+        # MPS SDPA can produce different results with vs without gradient tracking)
+        with torch.no_grad():
+            bridge_output = bridge(test_text, return_type="logits", **extra_kwargs)
 
         if reference_model is None:
             # No reference model - just verify output shape and validity

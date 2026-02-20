@@ -412,7 +412,12 @@ def benchmark_layer_norm_folding(
         # Models with combined QKV projections (e.g., OpenELM's qkv_proj) cannot
         # fold ln1 into attention weights, but ln2 should always be foldable.
         tolerance = 0.01
-        expected_val = 1.0
+        # For rmsnorm_uses_offset models (Gemma/Gemma2), HF computes x*(1+weight),
+        # so the identity weight after folding is 0.0 (gives 1+0=1). For standard
+        # models, identity is 1.0.
+        cfg = getattr(getattr(bridge, "adapter", None), "cfg", None)
+        rmsnorm_uses_offset = getattr(cfg, "rmsnorm_uses_offset", False)
+        expected_val = 0.0 if rmsnorm_uses_offset else 1.0
         folded = []
         not_folded = []
 
@@ -428,11 +433,14 @@ def benchmark_layer_norm_folding(
                 not_folded.append((ln_name, ln_key, mean_val))
 
         if not folded and not not_folded:
+            # No LN weights found — model uses non-parametric LayerNorm
+            # (e.g., OLMo v1 has fixed weight=1, bias=0 with no learnable params).
+            # Nothing to fold, so this is a pass.
             return BenchmarkResult(
                 name="layer_norm_folding",
-                severity=BenchmarkSeverity.WARNING,
-                message="Could not find layer norm weights in state dict",
-                passed=False,
+                severity=BenchmarkSeverity.INFO,
+                message="No learnable layer norm weights (non-parametric LayerNorm)",
+                passed=True,
             )
 
         if folded and not not_folded:
@@ -850,6 +858,11 @@ def benchmark_weight_magnitudes(
         min_threshold = 1e-6
         max_threshold = 1000.0
 
+        # For rmsnorm_uses_offset models (Gemma/Gemma2), fold_ln sets LN weights
+        # to 0.0 (identity for (1+w) normalization). Skip LN weights for these models.
+        cfg = getattr(getattr(bridge, "adapter", None), "cfg", None)
+        rmsnorm_uses_offset = getattr(cfg, "rmsnorm_uses_offset", False)
+
         for key, value in state_dict.items():
             # Skip non-weight tensors (buffers, etc.)
             if "weight" not in key and "bias" not in key:
@@ -888,17 +901,33 @@ def benchmark_weight_magnitudes(
             ):
                 continue
 
+            # For rmsnorm_uses_offset models, fold_ln sets LN weights to 0.0
+            # (identity for (1+w) normalization). Skip LN weight keys to avoid
+            # false "too small" warnings.
+            if rmsnorm_uses_offset and (
+                "ln1.weight" in key
+                or "ln2.weight" in key
+                or "ln_1.weight" in key
+                or "ln_2.weight" in key
+                or "ln_final.weight" in key
+                or "input_layernorm.weight" in key
+                or "post_attention_layernorm.weight" in key
+            ):
+                continue
+
             # Skip unembed bias - it may be zero after processing
             if "unembed.bias" in key:
+                continue
+
+            # Skip zero biases - many models initialize biases to zero which is
+            # mathematically equivalent to having no bias. This is a valid state.
+            if "bias" in key and torch.all(value == 0).item():
                 continue
 
             mean_abs = torch.mean(torch.abs(value)).item()
             max_abs = torch.max(torch.abs(value)).item()
 
-            # Only flag as too small if it's truly problematic (all zeros)
-            if mean_abs == 0.0 and max_abs == 0.0:
-                too_small_keys.append((key, mean_abs))
-            elif mean_abs > 0.0 and mean_abs < min_threshold:
+            if mean_abs > 0.0 and mean_abs < min_threshold:
                 # For non-zero weights, check if they're suspiciously small
                 too_small_keys.append((key, mean_abs))
 

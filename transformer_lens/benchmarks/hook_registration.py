@@ -5,58 +5,25 @@ from typing import Dict, Optional
 import torch
 
 from transformer_lens import HookedTransformer
-from transformer_lens.benchmarks.hook_structure import validate_hook_shape_compatibility
 from transformer_lens.benchmarks.utils import (
     BenchmarkResult,
     BenchmarkSeverity,
     compare_scalars,
+    filter_expected_missing_hooks,
     safe_allclose,
 )
 from transformer_lens.model_bridge import TransformerBridge
-
-# Hook patterns that bridge models inherently don't have because they wrap HF's
-# native implementation. Used to filter expected missing/non-firing hooks.
-_BRIDGE_EXPECTED_MISSING_PATTERNS = [
-    "mlp.hook_pre",
-    "mlp.hook_post",
-    "hook_mlp_in",
-    "hook_mlp_out",
-    "attn.hook_rot_q",
-    "attn.hook_rot_k",
-    "hook_pos_embed",
-    "embed.ln.hook_scale",
-    "embed.ln.hook_normalized",
-    "attn.hook_q",
-    "attn.hook_k",
-    "attn.hook_v",
-    "hook_q_input",
-    "hook_k_input",
-    "hook_v_input",
-    "attn.hook_attn_scores",
-    "attn.hook_pattern",
-]
-
-
-def _filter_expected_missing(hook_names):
-    """Filter out hook names that bridge models are expected to be missing."""
-    return [
-        h
-        for h in hook_names
-        if not any(pattern in h for pattern in _BRIDGE_EXPECTED_MISSING_PATTERNS)
-    ]
 
 
 def benchmark_hook_registry(
     bridge: TransformerBridge,
     reference_model: Optional[HookedTransformer] = None,
-    cross_model: bool = False,
 ) -> BenchmarkResult:
     """Benchmark hook registry completeness.
 
     Args:
         bridge: TransformerBridge model to test
         reference_model: Optional HookedTransformer reference model
-        cross_model: If True, filter out expected architectural differences
 
     Returns:
         BenchmarkResult with registry comparison details
@@ -97,7 +64,7 @@ def benchmark_hook_registry(
 
         # Filter out hooks that are expected to differ due to architectural differences.
         if missing_hooks:
-            missing_hooks = set(_filter_expected_missing(missing_hooks))
+            missing_hooks = set(filter_expected_missing_hooks(missing_hooks))
 
         if missing_hooks:
             return BenchmarkResult(
@@ -142,7 +109,6 @@ def benchmark_forward_hooks(
     reference_model: Optional[HookedTransformer] = None,
     tolerance: float = 0.5,
     prepend_bos: Optional[bool] = None,
-    cross_model: bool = False,
 ) -> BenchmarkResult:
     """Benchmark all forward hooks for activation matching.
 
@@ -152,7 +118,6 @@ def benchmark_forward_hooks(
         reference_model: Optional HookedTransformer for comparison
         tolerance: Tolerance for activation matching (fraction of mismatches allowed)
         prepend_bos: Whether to prepend BOS token. If None, uses model default.
-        cross_model: If True, uses relaxed dimensional matching instead of exact shape matching
 
     Returns:
         BenchmarkResult with hook activation comparison details
@@ -257,10 +222,10 @@ def benchmark_forward_hooks(
             if handle is not None:
                 handle.remove()
 
-        # CRITICAL CHECK: Bridge must have all hooks that reference has
+        # CRITICAL CHECK: Bridge must have all hooks that reference has.
         # Filter out hooks that bridge models inherently don't have.
         if missing_from_bridge:
-            missing_from_bridge = _filter_expected_missing(missing_from_bridge)
+            missing_from_bridge = filter_expected_missing_hooks(missing_from_bridge)
 
         if missing_from_bridge:
             return BenchmarkResult(
@@ -278,7 +243,7 @@ def benchmark_forward_hooks(
         # CRITICAL CHECK: All registered hooks must fire
         # Filter out hooks expected to not fire due to architectural differences.
         if hooks_that_didnt_fire:
-            hooks_that_didnt_fire = set(_filter_expected_missing(hooks_that_didnt_fire))
+            hooks_that_didnt_fire = set(filter_expected_missing_hooks(hooks_that_didnt_fire))
 
         if hooks_that_didnt_fire:
             return BenchmarkResult(
@@ -302,41 +267,29 @@ def benchmark_forward_hooks(
             reference_tensor = reference_activations[hook_name]
 
             # Check shapes
-            if cross_model:
-                # Use relaxed dimensional matching for cross-model comparison
-                is_compatible, error_msg = validate_hook_shape_compatibility(
-                    bridge_tensor.shape, reference_tensor.shape, hook_name, cross_model=True
-                )
-                if not is_compatible:
-                    mismatches.append(f"{hook_name}: {error_msg}")
+            # Handle batch dimension differences: some HF models (e.g., OPT)
+            # internally reshape to 2D for MLP path, producing [seq, dim] hooks
+            # while HT always maintains [batch, seq, dim]
+            if bridge_tensor.shape != reference_tensor.shape:
+                if (
+                    bridge_tensor.ndim == reference_tensor.ndim - 1
+                    and reference_tensor.shape[0] == 1
+                    and bridge_tensor.shape == reference_tensor.shape[1:]
+                ):
+                    bridge_tensor = bridge_tensor.unsqueeze(0)
+                elif (
+                    reference_tensor.ndim == bridge_tensor.ndim - 1
+                    and bridge_tensor.shape[0] == 1
+                    and reference_tensor.shape == bridge_tensor.shape[1:]
+                ):
+                    reference_tensor = reference_tensor.unsqueeze(0)
+                else:
+                    mismatches.append(
+                        f"{hook_name}: Shape mismatch - Bridge{bridge_tensor.shape} vs Ref{reference_tensor.shape}"
+                    )
                     continue
-                # Skip value comparison for cross-model (different architectures have different values)
-                # We only check that hooks exist, fire, and have compatible structure
-                continue
-            else:
-                # Handle batch dimension differences: some HF models (e.g., OPT)
-                # internally reshape to 2D for MLP path, producing [seq, dim] hooks
-                # while HT always maintains [batch, seq, dim]
-                if bridge_tensor.shape != reference_tensor.shape:
-                    if (
-                        bridge_tensor.ndim == reference_tensor.ndim - 1
-                        and reference_tensor.shape[0] == 1
-                        and bridge_tensor.shape == reference_tensor.shape[1:]
-                    ):
-                        bridge_tensor = bridge_tensor.unsqueeze(0)
-                    elif (
-                        reference_tensor.ndim == bridge_tensor.ndim - 1
-                        and bridge_tensor.shape[0] == 1
-                        and reference_tensor.shape == bridge_tensor.shape[1:]
-                    ):
-                        reference_tensor = reference_tensor.unsqueeze(0)
-                    else:
-                        mismatches.append(
-                            f"{hook_name}: Shape mismatch - Bridge{bridge_tensor.shape} vs Ref{reference_tensor.shape}"
-                        )
-                        continue
 
-            # Check values (only for same-model comparison)
+            # Check values
             if not safe_allclose(bridge_tensor, reference_tensor, atol=tolerance, rtol=0.0):
                 b = bridge_tensor.float()
                 r = reference_tensor.float()
@@ -347,11 +300,22 @@ def benchmark_forward_hooks(
                 )
 
         if mismatches:
+            # Detect Bloom-style residual-merged hooks: Bloom adds residual inside
+            # attn/MLP modules (dropout_add), so hook_attn_out and hook_mlp_out capture
+            # attn+residual instead of just attn. This is a known HF architectural difference.
+            has_bloom_blocks = any(
+                type(m).__name__ == "BloomBlockBridge"
+                for m in bridge.modules()
+            )
             # Filter out known architectural differences
             significant_mismatches = [
                 m
                 for m in mismatches
                 if "hook_attn_scores" not in m  # Exclude attn_scores which have inf from masking
+                and not (
+                    has_bloom_blocks
+                    and ("hook_attn_out" in m or "hook_mlp_out" in m)
+                )
             ]
 
             if significant_mismatches:
@@ -395,7 +359,6 @@ def benchmark_critical_forward_hooks(
     test_text: str,
     reference_model: Optional[HookedTransformer] = None,
     tolerance: float = 2e-2,
-    cross_model: bool = False,
 ) -> BenchmarkResult:
     """Benchmark critical forward hooks commonly used in interpretability research.
 
@@ -404,7 +367,6 @@ def benchmark_critical_forward_hooks(
         test_text: Input text for testing
         reference_model: Optional HookedTransformer reference model
         tolerance: Tolerance for activation comparison
-        cross_model: If True, uses relaxed dimensional matching instead of exact shape matching
 
     Returns:
         BenchmarkResult with critical hook comparison details
@@ -518,48 +480,35 @@ def benchmark_critical_forward_hooks(
             bridge_tensor = bridge_activations[hook_name]
             reference_tensor = reference_activations[hook_name]
 
-            # Check shapes
-            if cross_model:
-                # Use relaxed dimensional matching for cross-model comparison
-                is_compatible, error_msg = validate_hook_shape_compatibility(
-                    bridge_tensor.shape, reference_tensor.shape, hook_name, cross_model=True
-                )
-                if not is_compatible:
-                    mismatches.append(f"{hook_name}: {error_msg}")
+            # Handle batch dimension differences (see forward_hooks)
+            if bridge_tensor.shape != reference_tensor.shape:
+                if (
+                    bridge_tensor.ndim == reference_tensor.ndim - 1
+                    and reference_tensor.shape[0] == 1
+                    and bridge_tensor.shape == reference_tensor.shape[1:]
+                ):
+                    bridge_tensor = bridge_tensor.unsqueeze(0)
+                elif (
+                    reference_tensor.ndim == bridge_tensor.ndim - 1
+                    and bridge_tensor.shape[0] == 1
+                    and reference_tensor.shape == bridge_tensor.shape[1:]
+                ):
+                    reference_tensor = reference_tensor.unsqueeze(0)
+                else:
+                    mismatches.append(
+                        f"{hook_name}: Shape mismatch - Bridge{bridge_tensor.shape} vs Ref{reference_tensor.shape}"
+                    )
                     continue
-                # Skip value comparison for cross-model (different architectures have different values)
-                # We only check that hooks exist, fire, and have compatible structure
-            else:
-                # Handle batch dimension differences (see forward_hooks)
-                if bridge_tensor.shape != reference_tensor.shape:
-                    if (
-                        bridge_tensor.ndim == reference_tensor.ndim - 1
-                        and reference_tensor.shape[0] == 1
-                        and bridge_tensor.shape == reference_tensor.shape[1:]
-                    ):
-                        bridge_tensor = bridge_tensor.unsqueeze(0)
-                    elif (
-                        reference_tensor.ndim == bridge_tensor.ndim - 1
-                        and bridge_tensor.shape[0] == 1
-                        and reference_tensor.shape == bridge_tensor.shape[1:]
-                    ):
-                        reference_tensor = reference_tensor.unsqueeze(0)
-                    else:
-                        mismatches.append(
-                            f"{hook_name}: Shape mismatch - Bridge{bridge_tensor.shape} vs Ref{reference_tensor.shape}"
-                        )
-                        continue
 
-                # Only compare values for same-model comparison
-                if not safe_allclose(bridge_tensor, reference_tensor, atol=tolerance, rtol=0.0):
-                    max_diff = torch.max(
-                        torch.abs(bridge_tensor.float() - reference_tensor.float())
-                    ).item()
-                    mismatches.append(f"{hook_name}: max_diff={max_diff:.6f}")
+            if not safe_allclose(bridge_tensor, reference_tensor, atol=tolerance, rtol=0.0):
+                max_diff = torch.max(
+                    torch.abs(bridge_tensor.cpu().float() - reference_tensor.cpu().float())
+                ).item()
+                mismatches.append(f"{hook_name}: max_diff={max_diff:.6f}")
 
         # Filter out hooks expected to be missing in bridge models.
         if bridge_missing:
-            bridge_missing = _filter_expected_missing(bridge_missing)
+            bridge_missing = filter_expected_missing_hooks(bridge_missing)
 
         if bridge_missing:
             return BenchmarkResult(
@@ -583,8 +532,21 @@ def benchmark_critical_forward_hooks(
             )
 
         if mismatches:
+            # Detect Bloom-style residual-merged hooks
+            has_bloom_blocks = any(
+                type(m).__name__ == "BloomBlockBridge"
+                for m in bridge.modules()
+            )
             # Filter out known architectural differences
-            significant_mismatches = [m for m in mismatches if "hook_z" not in m]
+            significant_mismatches = [
+                m
+                for m in mismatches
+                if "hook_z" not in m
+                and not (
+                    has_bloom_blocks
+                    and ("hook_mlp_out" in m or "hook_attn_out" in m)
+                )
+            ]
 
             if significant_mismatches:
                 return BenchmarkResult(
@@ -641,7 +603,6 @@ def benchmark_hook_functionality(
     test_text: str,
     reference_model: Optional[HookedTransformer] = None,
     atol: float = 2e-3,
-    cross_model: bool = False,
 ) -> BenchmarkResult:
     """Benchmark hook system functionality through ablation effects.
 
@@ -650,20 +611,10 @@ def benchmark_hook_functionality(
         test_text: Input text for testing
         reference_model: Optional HookedTransformer reference model
         atol: Absolute tolerance for effect comparison
-        cross_model: If True, skips this test as ablation effects require same architecture
 
     Returns:
         BenchmarkResult with hook functionality comparison details
     """
-    # Skip ablation tests for cross-model comparison (requires same architecture)
-    if cross_model and reference_model is not None:
-        return BenchmarkResult(
-            name="hook_functionality",
-            severity=BenchmarkSeverity.INFO,
-            message="Skipped - ablation tests require same model architecture",
-            details={"reason": "cross_model_skip"},
-        )
-
     try:
         # For GQA models, V/K tensors have fewer heads than Q
         # Use head 0 which always exists, or last head if we want to test a later one

@@ -43,9 +43,6 @@ from transformer_lens.benchmarks.hook_registration import (
     benchmark_hook_functionality,
     benchmark_hook_registry,
 )
-from transformer_lens.benchmarks.hook_structure import (
-    benchmark_activation_cache_structure,
-)
 from transformer_lens.benchmarks.text_quality import benchmark_text_quality
 from transformer_lens.benchmarks.utils import (
     BenchmarkResult,
@@ -82,6 +79,33 @@ ENCODER_DECODER_ARCHITECTURES = [
     "BlenderbotForConditionalGeneration",
     "MarianMTModel",
 ]
+
+# Architecture names that indicate masked language models (not suited for text generation)
+MASKED_LM_ARCHITECTURES = [
+    "BertForMaskedLM",
+    "RobertaForMaskedLM",
+    "AlbertForMaskedLM",
+    "DistilBertForMaskedLM",
+    "ElectraForMaskedLM",
+]
+
+
+def is_masked_lm_model(model_name: str, trust_remote_code: bool = False) -> bool:
+    """Check if a model is a masked language model (not suited for text generation).
+
+    Args:
+        model_name: The HuggingFace model name or path
+        trust_remote_code: Whether to trust remote code for custom architectures.
+
+    Returns:
+        True if the model is a masked LM (like BERT), False otherwise
+    """
+    try:
+        config = AutoConfig.from_pretrained(model_name, trust_remote_code=trust_remote_code)
+        architectures = getattr(config, "architectures", []) or []
+        return any(arch in MASKED_LM_ARCHITECTURES for arch in architectures)
+    except Exception:
+        return False
 
 
 def is_encoder_decoder_model(model_name: str, trust_remote_code: bool = False) -> bool:
@@ -183,7 +207,6 @@ def run_comparison_benchmarks(
     phase_name: str,
     is_processed: bool,
     verbose: bool = True,
-    gpt2_reference: Optional[HookedTransformer] = None,
     phase1_reference: Optional[PhaseReferenceData] = None,
     restore_dtype_after_equivalence: Optional[torch.dtype] = None,
 ) -> List[BenchmarkResult]:
@@ -199,7 +222,6 @@ def run_comparison_benchmarks(
         phase_name: Name of the phase ("Phase 2" or "Phase 3") for logging
         is_processed: Whether models have processed weights (for weight-specific tests)
         verbose: Whether to print detailed results
-        gpt2_reference: Optional GPT-2 reference for cross-model validation
         phase1_reference: Optional saved Phase 1 HF reference data for equivalence testing
         restore_dtype_after_equivalence: If set, downcast bridge_model to this dtype after
             the equivalence comparison but before hook/cache/gradient tests. Used when the
@@ -218,7 +240,6 @@ def run_comparison_benchmarks(
 
     # Check if we have a same-architecture reference
     ht_available = reference_model is not None
-    has_cross_model_ref = gpt2_reference is not None
 
     # ========================================================================
     # 1. Weight Processing Benchmarks (only for processed mode)
@@ -385,31 +406,13 @@ def run_comparison_benchmarks(
         except Exception as e:
             if verbose:
                 print(f"✗ Hook registry benchmark failed: {e}\n")
-    elif has_cross_model_ref:
-        # Use GPT-2 for cross-model validation with dimensional matching
+    else:
         try:
-            if verbose:
-                print("Using GPT-2 for cross-model validation (dimensional matching)")
-            add_result(
-                benchmark_hook_registry(
-                    bridge_model, reference_model=gpt2_reference, cross_model=True
-                )
-            )
+            add_result(benchmark_hook_registry(bridge_model))
             gc.collect()
         except Exception as e:
             if verbose:
                 print(f"✗ Hook registry benchmark failed: {e}\n")
-    else:
-        if verbose:
-            print("⏭️ Skipped (no HookedTransformer reference)\n")
-        add_result(
-            BenchmarkResult(
-                name="hook_registry",
-                severity=BenchmarkSeverity.SKIPPED,
-                message="Skipped (HookedTransformer not available for this model)",
-                passed=True,
-            )
-        )
 
     # ========================================================================
     # 4. Forward Hook Functionality Benchmarks
@@ -442,60 +445,18 @@ def run_comparison_benchmarks(
         except Exception as e:
             if verbose:
                 print(f"✗ Forward hook benchmark failed: {e}\n")
-    elif has_cross_model_ref:
-        # Use GPT-2 for cross-model validation with dimensional matching
+    else:
         try:
-            if verbose:
-                print("Using GPT-2 for cross-model validation (dimensional matching)")
-            add_result(
-                benchmark_hook_functionality(
-                    bridge_model,
-                    test_text,
-                    reference_model=gpt2_reference,
-                    cross_model=True,
-                )
-            )
-            add_result(
-                benchmark_critical_forward_hooks(
-                    bridge_model,
-                    test_text,
-                    reference_model=gpt2_reference,
-                    cross_model=True,
-                )
-            )
-            add_result(
-                benchmark_forward_hooks(
-                    bridge_model,
-                    test_text,
-                    reference_model=gpt2_reference,
-                    cross_model=True,
-                )
-            )
-            # Reset hooks
+            add_result(benchmark_hook_functionality(bridge_model, test_text))
+            add_result(benchmark_critical_forward_hooks(bridge_model, test_text))
+            add_result(benchmark_forward_hooks(bridge_model, test_text))
+            # Reset hooks to prevent handle leaks
             if hasattr(bridge_model, "reset_hooks"):
                 bridge_model.reset_hooks()
-            if gpt2_reference is not None and hasattr(gpt2_reference, "reset_hooks"):
-                gpt2_reference.reset_hooks()
             gc.collect()
         except Exception as e:
             if verbose:
                 print(f"✗ Forward hook benchmark failed: {e}\n")
-    else:
-        if verbose:
-            print("⏭️ Skipped (no HookedTransformer reference)\n")
-        for benchmark_name in [
-            "hook_functionality",
-            "critical_forward_hooks",
-            "forward_hooks",
-        ]:
-            add_result(
-                BenchmarkResult(
-                    name=benchmark_name,
-                    severity=BenchmarkSeverity.SKIPPED,
-                    message="Skipped (HookedTransformer not available for this model)",
-                    passed=True,
-                )
-            )
 
     # ========================================================================
     # 5. Activation Cache Benchmarks
@@ -521,53 +482,17 @@ def run_comparison_benchmarks(
         except Exception as e:
             if verbose:
                 print(f"✗ Activation cache benchmark failed: {e}\n")
-    elif has_cross_model_ref:
-        # Use GPT-2 for structural validation of cache
+    else:
         try:
-            if verbose:
-                print("Using GPT-2 for cache structural validation")
-            # Structure-only benchmark with cross-model comparison
-            add_result(
-                benchmark_activation_cache_structure(
-                    bridge_model,
-                    test_text,
-                    reference_model=gpt2_reference,
-                    cross_model=True,
-                )
-            )
-            # Value benchmarks are skipped
-            if verbose:
-                print("⏭️ Cache value comparison skipped (requires same-model HT reference)\n")
-            for benchmark_name in ["run_with_cache_values", "activation_cache_values"]:
-                add_result(
-                    BenchmarkResult(
-                        name=benchmark_name,
-                        severity=BenchmarkSeverity.SKIPPED,
-                        message="Skipped (cache value comparison requires same-model HT reference)",
-                        passed=True,
-                    )
-                )
-            # Reset hooks
+            add_result(benchmark_run_with_cache(bridge_model, test_text))
+            add_result(benchmark_activation_cache(bridge_model, test_text))
+            # Reset hooks to prevent handle leaks
             if hasattr(bridge_model, "reset_hooks"):
                 bridge_model.reset_hooks()
-            if gpt2_reference is not None and hasattr(gpt2_reference, "reset_hooks"):
-                gpt2_reference.reset_hooks()
             gc.collect()
         except Exception as e:
             if verbose:
-                print(f"✗ Activation cache structure benchmark failed: {e}\n")
-    else:
-        if verbose:
-            print("⏭️ Skipped (no HookedTransformer reference)\n")
-        for benchmark_name in ["run_with_cache", "activation_cache"]:
-            add_result(
-                BenchmarkResult(
-                    name=benchmark_name,
-                    severity=BenchmarkSeverity.SKIPPED,
-                    message="Skipped (HookedTransformer not available for this model)",
-                    passed=True,
-                )
-            )
+                print(f"✗ Activation cache benchmark failed: {e}\n")
 
     # ========================================================================
     # 6. Backward Gradient Benchmarks
@@ -575,6 +500,21 @@ def run_comparison_benchmarks(
     # ========================================================================
     if verbose:
         print("6. Backward Gradient Benchmarks")
+
+    # MPS does not support bfloat16 autograd. Upcast to float32 for gradient tests if needed.
+    bridge_grad_dtype = bridge_model.cfg.dtype if hasattr(bridge_model, "cfg") else None
+    bridge_device = next(bridge_model.parameters()).device
+    mps_bf16_upcast = (
+        str(bridge_device).startswith("mps")
+        and bridge_grad_dtype == torch.bfloat16
+    )
+    if mps_bf16_upcast:
+        try:
+            bridge_model.to(torch.float32)
+            if reference_model is not None:
+                reference_model.to(torch.float32)
+        except Exception:
+            mps_bf16_upcast = False  # Upcast failed; proceed as-is
 
     if ht_available:
         try:
@@ -600,57 +540,26 @@ def run_comparison_benchmarks(
         except Exception as e:
             if verbose:
                 print(f"✗ Gradient benchmark failed: {e}\n")
-    elif has_cross_model_ref:
-        # Use GPT-2 for cross-model validation with dimensional matching
+    else:
         try:
-            if verbose:
-                print("Using GPT-2 for backward hook cross-model validation (dimensional matching)")
-            add_result(
-                benchmark_gradient_computation(
-                    bridge_model, test_text, reference_model=gpt2_reference
-                )
-            )
-            add_result(
-                benchmark_critical_backward_hooks(
-                    bridge_model,
-                    test_text,
-                    reference_model=gpt2_reference,
-                    cross_model=True,
-                )
-            )
-            add_result(
-                benchmark_backward_hooks(
-                    bridge_model,
-                    test_text,
-                    reference_model=gpt2_reference,
-                    cross_model=True,
-                )
-            )
-            # Reset hooks
+            add_result(benchmark_gradient_computation(bridge_model, test_text))
+            add_result(benchmark_critical_backward_hooks(bridge_model, test_text))
+            add_result(benchmark_backward_hooks(bridge_model, test_text))
+            # Reset hooks to prevent handle leaks
             if hasattr(bridge_model, "reset_hooks"):
                 bridge_model.reset_hooks()
-            if gpt2_reference is not None and hasattr(gpt2_reference, "reset_hooks"):
-                gpt2_reference.reset_hooks()
             gc.collect()
         except Exception as e:
             if verbose:
-                print(f"✗ Backward hooks benchmark failed: {e}\n")
-    else:
-        if verbose:
-            print("⏭️ Skipped (no HookedTransformer reference)\n")
-        for benchmark_name in [
-            "gradient_computation",
-            "critical_backward_hooks",
-            "backward_hooks",
-        ]:
-            add_result(
-                BenchmarkResult(
-                    name=benchmark_name,
-                    severity=BenchmarkSeverity.SKIPPED,
-                    message="Skipped (HookedTransformer not available for this model)",
-                    passed=True,
-                )
-            )
+                print(f"✗ Gradient benchmark failed: {e}\n")
+
+    if mps_bf16_upcast and bridge_grad_dtype is not None:
+        try:
+            bridge_model.to(bridge_grad_dtype)
+            if reference_model is not None:
+                reference_model.to(bridge_grad_dtype)
+        except Exception:
+            pass
 
     return results
 
@@ -1023,12 +932,12 @@ def run_benchmark_suite(
             if trust_remote_code:
                 hf_kwargs["trust_remote_code"] = True
             hf_model = auto_model_class.from_pretrained(model_name, **hf_kwargs)  # type: ignore[arg-type]
-            # Post-load fixup for custom code models (e.g., OpenELM).
-            # Uses _fixup_custom_model (not adapter.prepare_model) because the reference
-            # model loads normally on CPU — unconditional buffer recomputation would
-            # introduce numeric drift.
-            _fixup_custom_model(hf_model)
             hf_model = hf_model.to(device)
+            # Post-load fixup for custom code models (e.g., OpenELM).
+            # Must run AFTER .to(device) so non-persistent buffers (RoPE sin/cos,
+            # causal_mask) are recomputed on the target device, matching the bridge
+            # which also recomputes after .to(device).
+            _fixup_custom_model(hf_model)
             hf_model.eval()
             # Detect dtype from HF model
             try:
@@ -1047,8 +956,8 @@ def run_benchmark_suite(
                 hf_model = auto_model_class.from_pretrained(
                     model_name, torch_dtype=torch.float32, **hf_kwargs
                 )
-                _fixup_custom_model(hf_model)
                 hf_model = hf_model.to(device)
+                _fixup_custom_model(hf_model)
                 hf_model.eval()
                 if verbose:
                     print("✓ Reloaded in float32")
@@ -1229,7 +1138,8 @@ def run_benchmark_suite(
                     print(f"✗ Generation benchmark failed: {e}\n")
 
             # Phase 4: Text Quality (runs in Phase 2 memory window)
-            if should_run_phase(4):
+            # Skip for masked LMs (e.g., BERT) which aren't designed for causal generation.
+            if should_run_phase(4) and not is_masked_lm_model(model_name, trust_remote_code=trust_remote_code):
                 try:
                     if verbose:
                         print("\n2. Text Quality Benchmark (Phase 4)")
@@ -1290,7 +1200,6 @@ def run_benchmark_suite(
             phase_name="Phase 2",
             is_processed=False,  # Unprocessed mode - skip weight processing tests
             verbose=verbose,
-            gpt2_reference=None,  # No cross-model ref for Phase 2
         )
         # Tag all phase 2 results with phase number
         for result in phase2_results:
@@ -1478,28 +1387,6 @@ def run_benchmark_suite(
             if verbose:
                 print(f"✗ Could not load processed HookedTransformer: {str(e)}\n")
 
-    # Automatically load GPT-2 as cross-model reference if HT not available for this model
-    gpt2_reference = None
-    if use_ht_reference and ht_model_processed is None and model_name.lower() != "gpt2":
-        try:
-            if verbose:
-                print("HookedTransformer not available for this model.")
-                print("Loading GPT-2 as cross-model reference for hook validation...\n")
-            gpt2_reference = HookedTransformer.from_pretrained(
-                "gpt2",
-                device=device,
-                fold_ln=True,
-                center_writing_weights=True,
-                center_unembed=True,
-                fold_value_biases=True,
-                refactor_factored_attn_matrices=False,
-            )
-            if verbose:
-                print("✓ GPT-2 cross-model reference loaded\n")
-        except Exception as e:
-            if verbose:
-                print(f"✗ Could not load GPT-2 cross-model reference: {str(e)}\n")
-
     # Run Phase 3 benchmarks using unified function
     if bridge_processed:
         if verbose:
@@ -1512,7 +1399,6 @@ def run_benchmark_suite(
             phase_name="Phase 3",
             is_processed=True,  # Processed mode - include weight processing tests
             verbose=verbose,
-            gpt2_reference=gpt2_reference,  # Use GPT-2 cross-model ref if no same-arch HT
             phase1_reference=phase1_reference,  # Saved HF logits/loss for equivalence testing
             restore_dtype_after_equivalence=phase3_native_dtype,
         )
