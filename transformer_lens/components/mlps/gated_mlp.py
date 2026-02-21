@@ -7,13 +7,13 @@ from typing import Dict, Union
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from jaxtyping import Float
 from transformers.utils import is_bitsandbytes_available
 
 from transformer_lens.components.mlps.can_be_used_as_mlp import CanBeUsedAsMLP
 from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.hook_points import HookPoint
-from transformer_lens.utilities.addmm import batch_addmm
 
 if is_bitsandbytes_available():
     pass
@@ -50,12 +50,14 @@ class GatedMLP(CanBeUsedAsMLP):
     def forward(
         self, x: Float[torch.Tensor, "batch pos d_model"]
     ) -> Float[torch.Tensor, "batch pos d_model"]:
-        # Technically, all these einsums could be done with a single matmul, but this is more readable.
+        # Use F.linear with contiguous transposed weights to match HF's nn.Linear
+        # memory layout. In bfloat16, matmul accumulation order depends on tensor
+        # contiguity, so matching HF's layout ensures numerically identical results.
         if self.W_gate.device != x.device:
             x = x.to(self.W_gate.device)
         pre_act = self.hook_pre(
-            torch.matmul(x, self.W_gate)  # batch pos d_model, d_model d_mlp -> batch pos d_mlp
-        )  # [batch, pos, d_mlp]
+            F.linear(x, self.W_gate.T.contiguous())  # [batch, pos, d_mlp]
+        )
 
         if (
             self.cfg.is_layer_norm_activation()
@@ -66,11 +68,11 @@ class GatedMLP(CanBeUsedAsMLP):
             post_act = self.hook_post(self.ln(mid_act))
         else:
             pre_linear = self.hook_pre_linear(
-                torch.matmul(x, self.W_in)  # batch pos d_model, d_model d_mlp -> batch pos d_mlp
+                F.linear(x, self.W_in.T.contiguous())  # [batch, pos, d_mlp]
             )
 
             post_act = self.hook_post(
                 (self.act_fn(pre_act) * pre_linear) + self.b_in
             )  # [batch, pos, d_mlp]
 
-        return batch_addmm(self.b_out, self.W_out, post_act)
+        return F.linear(post_act, self.W_out.T.contiguous(), self.b_out)

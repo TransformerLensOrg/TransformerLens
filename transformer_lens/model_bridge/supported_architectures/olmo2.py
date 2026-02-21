@@ -56,6 +56,10 @@ class Olmo2ArchitectureAdapter(ArchitectureAdapter):
         self.cfg.gated_mlp = True
         self.cfg.attn_only = False
         self.cfg.uses_rms_norm = True
+        # OLMo-2 uses post-norm (RMSNorm AFTER attention/MLP), so layer norm
+        # folding into QKV/MLP weights is incorrect — the norms apply to the
+        # output, not the input. Same pattern as BERT and Phi-3.
+        self.supports_fold_ln = False
         # Force eager attention for numerical consistency with benchmark reference.
         # PositionEmbeddingsAttentionBridge delegates to native HF attention, so
         # both bridge and reference must use the same implementation.

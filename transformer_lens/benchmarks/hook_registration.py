@@ -625,10 +625,23 @@ def benchmark_hook_functionality(
             # Zero out an attention head in layer 0
             # Clone to avoid in-place modification of autograd views
             activation = activation.clone()
-            # For GQA models, the head dimension may be smaller than n_heads
-            n_heads = activation.shape[2]
-            head_idx = min(head_to_ablate, n_heads - 1)
-            activation[:, :, head_idx, :] = 0
+            if activation.ndim == 4:
+                # Standard: [batch, seq, n_heads, d_head]
+                # For GQA models, the head dimension may be smaller than n_heads
+                n_heads = activation.shape[2]
+                head_idx = min(head_to_ablate, n_heads - 1)
+                activation[:, :, head_idx, :] = 0
+            elif activation.ndim == 3:
+                # Bridge with joint QKV projection (e.g., Phi-3): [batch, seq, d_model]
+                # hook_conversion may not reshape when the underlying linear is a
+                # combined qkv_proj. Zero out a head-sized slice instead.
+                d_model = activation.shape[-1]
+                n_heads = bridge.cfg.n_heads
+                d_head = d_model // n_heads
+                head_idx = min(head_to_ablate, n_heads - 1)
+                start = head_idx * d_head
+                end = start + d_head
+                activation[:, :, start:end] = 0
             return activation
 
         # Test bridge

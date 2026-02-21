@@ -26,6 +26,13 @@ BRIDGE_EXPECTED_MISSING_PATTERNS = [
     "hook_v_input",
     "attn.hook_attn_scores",
     "attn.hook_pattern",
+    # MoE per-expert hooks: Bridge uses HF's batched MoE forward pass via MoEBridge,
+    # which wraps the entire MoE module. HookedTransformer creates individual expert
+    # modules with per-expert hooks (e.g., blocks.0.mlp.experts.3.hook_pre).
+    "mlp.experts.",
+    "mlp.hook_experts",
+    "mlp.hook_expert_indices",
+    "mlp.hook_expert_weights",
 ]
 
 def filter_expected_missing_hooks(hook_names: Collection[str]) -> list[str]:

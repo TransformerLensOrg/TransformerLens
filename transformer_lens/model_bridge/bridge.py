@@ -40,6 +40,7 @@ from transformer_lens.model_bridge.generalized_components.base import (
 from transformer_lens.model_bridge.get_params_util import get_bridge_params
 from transformer_lens.utilities.aliases import resolve_alias
 from transformer_lens.utilities.devices import move_to_and_update_config
+from transformer_lens.utilities.lm_utils import lm_cross_entropy_loss
 
 if TYPE_CHECKING:
     from transformer_lens.ActivationCache import ActivationCache
@@ -1264,9 +1265,30 @@ class TransformerBridge(nn.Module):
                 kwargs["use_cache"] = True
             elif "use_past_kv_cache" in kwargs and kwargs["use_past_kv_cache"]:
                 kwargs["use_cache"] = True
+            # For encoder-decoder models (T5, BART, etc.), auto-generate
+            # decoder_input_ids if not explicitly provided. Uses the standard
+            # right-shift pattern: prepend decoder_start_token_id, drop last token.
+            if (
+                "decoder_input_ids" not in kwargs
+                and hasattr(self.original_model, "config")
+                and getattr(self.original_model.config, "is_encoder_decoder", False)
+            ):
+                decoder_start_token_id = getattr(
+                    self.original_model.config, "decoder_start_token_id", None
+                )
+                if decoder_start_token_id is not None:
+                    shifted = input_ids[:, :-1]
+                    start_tokens = torch.full(
+                        (input_ids.shape[0], 1),
+                        decoder_start_token_id,
+                        dtype=input_ids.dtype,
+                        device=input_ids.device,
+                    )
+                    kwargs["decoder_input_ids"] = torch.cat([start_tokens, shifted], dim=1)
+                else:
+                    kwargs["decoder_input_ids"] = input_ids
+
             original_tl_cache = past_kv_cache
-            if return_type in ["loss", "both"]:
-                kwargs["labels"] = input_ids
             output = self.original_model(input_ids, **kwargs)
             if (
                 original_tl_cache is not None
@@ -1304,16 +1326,14 @@ class TransformerBridge(nn.Module):
             if return_type == "logits":
                 return logits
             elif return_type == "loss":
-                if hasattr(output, "loss") and output.loss is not None:
-                    return output.loss
-                else:
-                    return self.loss_fn(logits, input_ids, per_token=loss_per_token)
+                # Always use self.loss_fn for consistency with HT's formula
+                # (log_softmax + gather).  HF's output.loss uses F.cross_entropy
+                # which gives different results in bfloat16.
+                assert isinstance(logits, torch.Tensor), f"Expected logits tensor, got {type(logits)}"
+                return self.loss_fn(logits, input_ids, per_token=loss_per_token)
             elif return_type == "both":
-                loss = None  # type: ignore[operator]
-                if hasattr(output, "loss") and output.loss is not None:
-                    loss = output.loss
-                else:
-                    loss = self.loss_fn(logits, input_ids, per_token=loss_per_token)
+                assert isinstance(logits, torch.Tensor), f"Expected logits tensor, got {type(logits)}"
+                loss = self.loss_fn(logits, input_ids, per_token=loss_per_token)
                 return (logits, loss)
             elif return_type is None:
                 return None
@@ -1344,13 +1364,21 @@ class TransformerBridge(nn.Module):
         return None
 
     def loss_fn(
-        self, logits: torch.Tensor, tokens: torch.Tensor, per_token: bool = False
+        self,
+        logits: torch.Tensor,
+        tokens: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        per_token: bool = False,
     ) -> torch.Tensor:
         """Calculate cross-entropy loss.
+
+        Uses the same formula as HookedTransformer (log_softmax + gather) to ensure
+        numerically identical results when logits match.
 
         Args:
             logits: Model logits
             tokens: Target tokens
+            attention_mask: Optional attention mask for padding
             per_token: Whether to return per-token loss
 
         Returns:
@@ -1358,17 +1386,7 @@ class TransformerBridge(nn.Module):
         """
         if tokens.device != logits.device:
             tokens = tokens.to(logits.device)
-        target_tokens = tokens[:, 1:].contiguous()
-        pred_logits = logits[:, :-1]
-        loss = torch.nn.functional.cross_entropy(
-            pred_logits.reshape(-1, pred_logits.size(-1)),
-            target_tokens.reshape(-1),
-            reduction="none",
-        )
-        if per_token:
-            return loss.reshape(target_tokens.shape)
-        else:
-            return loss.mean()
+        return lm_cross_entropy_loss(logits, tokens, attention_mask, per_token)
 
     @overload
     def run_with_cache(

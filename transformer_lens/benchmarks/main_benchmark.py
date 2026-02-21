@@ -383,9 +383,14 @@ def run_comparison_benchmarks(
             )
 
     # Restore native dtype so remaining tests run in the model's real dtype.
+    # Both bridge and reference must be downcast so hook comparisons use the
+    # same precision — otherwise bridge activations (bfloat16) are compared
+    # against reference activations (float32), producing spurious mismatches.
     if restore_dtype_after_equivalence is not None:
         try:
             bridge_model.to(restore_dtype_after_equivalence)
+            if reference_model is not None:
+                reference_model.to(restore_dtype_after_equivalence)
             if verbose:
                 print(f"  (restored to {restore_dtype_after_equivalence} for remaining tests)\n")
         except Exception as e:
@@ -1030,7 +1035,14 @@ def run_benchmark_suite(
             try:
                 original_dtype = bridge_unprocessed.cfg.dtype
                 needs_upcast = original_dtype not in (torch.float32, torch.float64)
+                # Snapshot registered buffers before the round-trip.  HF's
+                # RotaryEmbedding recomputes inv_freq during the float32 forward
+                # pass, and the downcast back to bfloat16 would produce different
+                # values than the original, corrupting the model for Phase 2.
+                saved_buffers = {}
                 if needs_upcast:
+                    for bname, buf in bridge_unprocessed.named_buffers():
+                        saved_buffers[bname] = buf.data.clone()
                     bridge_unprocessed.to(torch.float32)
                 with torch.no_grad():
                     bridge_logits = bridge_unprocessed(test_text, return_type="logits")
@@ -1040,6 +1052,14 @@ def run_benchmark_suite(
                     phase1_reference.test_text = test_text
                 if needs_upcast:
                     bridge_unprocessed.to(original_dtype)
+                    # Restore buffers that were corrupted by the round-trip.
+                    # Use direct assignment (not copy_) to preserve original dtype.
+                    # HF's RotaryEmbedding keeps inv_freq in float32 even when the
+                    # model is bfloat16.  After to(bfloat16), the buffer becomes
+                    # bfloat16, and copy_() would truncate the float32 saved values.
+                    for bname, buf in bridge_unprocessed.named_buffers():
+                        if bname in saved_buffers:
+                            buf.data = saved_buffers[bname]
                 if verbose:
                     dtype_note = " (upcast to float32)" if needs_upcast else ""
                     print(
@@ -1193,6 +1213,22 @@ def run_benchmark_suite(
         if verbose:
             print("2. Running Unprocessed Model Comparison Benchmarks\n")
 
+        # Upcast bfloat16/float16 models to float32 for Phase 2 comparison.
+        # bfloat16 matmul can produce dtype mismatches when internal ops promote
+        # to float32 (e.g., OLMoE MoE routing). Phase 3 already handles this
+        # via the restore_dtype_after_equivalence pattern.
+        phase2_restore_dtype = None
+        if bridge_dtype in (torch.bfloat16, torch.float16):
+            try:
+                bridge_unprocessed.to(torch.float32)
+                if ht_model_unprocessed is not None:
+                    ht_model_unprocessed.to(torch.float32)
+                phase2_restore_dtype = bridge_dtype
+                if verbose:
+                    print(f"  (upcast from {bridge_dtype} to float32 for comparison)\n")
+            except Exception:
+                phase2_restore_dtype = None  # Upcast failed; proceed as-is
+
         phase2_results = run_comparison_benchmarks(
             bridge_model=bridge_unprocessed,
             reference_model=ht_model_unprocessed,
@@ -1200,6 +1236,7 @@ def run_benchmark_suite(
             phase_name="Phase 2",
             is_processed=False,  # Unprocessed mode - skip weight processing tests
             verbose=verbose,
+            restore_dtype_after_equivalence=phase2_restore_dtype,
         )
         # Tag all phase 2 results with phase number
         for result in phase2_results:
@@ -1366,6 +1403,12 @@ def run_benchmark_suite(
             print("\n" + format_results(results))
         return results
 
+    # Use the bridge's current dtype for HT so both models are in the same
+    # precision.  When the bridge was upcast to float32 for weight processing,
+    # bridge_dtype still holds the *original* dtype (e.g. bfloat16).  The HT
+    # reference must match the bridge's actual dtype for a fair comparison.
+    phase3_ht_dtype = bridge_processed.cfg.dtype if bridge_processed is not None else bridge_dtype
+
     if use_ht_reference:
         try:
             if verbose:
@@ -1373,7 +1416,7 @@ def run_benchmark_suite(
             ht_model_processed = HookedTransformer.from_pretrained(
                 model_name,
                 device=device,
-                dtype=bridge_dtype,
+                dtype=phase3_ht_dtype,
                 fold_ln=True,
                 center_writing_weights=True,
                 center_unembed=True,
@@ -1392,6 +1435,14 @@ def run_benchmark_suite(
         if verbose:
             print("Running Phase 3 benchmarks...\n")
 
+        # Don't restore native dtype for Phase 3.  Processed-weight models
+        # naturally operate in float32 — both HT and bridge process weights
+        # in float32.  Downcasting to bfloat16 after float32 processing is
+        # an unusual workflow that introduces precision loss: the bridge's
+        # float32 weights have only bfloat16 precision (loaded in bf16 then
+        # upcast), while HT's float32 weights have full precision (loaded in
+        # f32).  When both are downcast to bfloat16, tiny float32 rounding
+        # differences cross bfloat16 boundaries and accumulate through layers.
         phase3_results = run_comparison_benchmarks(
             bridge_model=bridge_processed,
             reference_model=ht_model_processed,
@@ -1400,7 +1451,6 @@ def run_benchmark_suite(
             is_processed=True,  # Processed mode - include weight processing tests
             verbose=verbose,
             phase1_reference=phase1_reference,  # Saved HF logits/loss for equivalence testing
-            restore_dtype_after_equivalence=phase3_native_dtype,
         )
         # Tag all phase 3 results with phase number
         for result in phase3_results:
