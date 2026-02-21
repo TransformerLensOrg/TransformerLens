@@ -303,19 +303,13 @@ def benchmark_forward_hooks(
             # Detect Bloom-style residual-merged hooks: Bloom adds residual inside
             # attn/MLP modules (dropout_add), so hook_attn_out and hook_mlp_out capture
             # attn+residual instead of just attn. This is a known HF architectural difference.
-            has_bloom_blocks = any(
-                type(m).__name__ == "BloomBlockBridge"
-                for m in bridge.modules()
-            )
+            has_bloom_blocks = any(type(m).__name__ == "BloomBlockBridge" for m in bridge.modules())
             # Filter out known architectural differences
             significant_mismatches = [
                 m
                 for m in mismatches
                 if "hook_attn_scores" not in m  # Exclude attn_scores which have inf from masking
-                and not (
-                    has_bloom_blocks
-                    and ("hook_attn_out" in m or "hook_mlp_out" in m)
-                )
+                and not (has_bloom_blocks and ("hook_attn_out" in m or "hook_mlp_out" in m))
             ]
 
             if significant_mismatches:
@@ -533,19 +527,13 @@ def benchmark_critical_forward_hooks(
 
         if mismatches:
             # Detect Bloom-style residual-merged hooks
-            has_bloom_blocks = any(
-                type(m).__name__ == "BloomBlockBridge"
-                for m in bridge.modules()
-            )
+            has_bloom_blocks = any(type(m).__name__ == "BloomBlockBridge" for m in bridge.modules())
             # Filter out known architectural differences
             significant_mismatches = [
                 m
                 for m in mismatches
                 if "hook_z" not in m
-                and not (
-                    has_bloom_blocks
-                    and ("hook_mlp_out" in m or "hook_attn_out" in m)
-                )
+                and not (has_bloom_blocks and ("hook_mlp_out" in m or "hook_attn_out" in m))
             ]
 
             if significant_mismatches:

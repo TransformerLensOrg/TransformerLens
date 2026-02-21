@@ -509,10 +509,7 @@ def run_comparison_benchmarks(
     # MPS does not support bfloat16 autograd. Upcast to float32 for gradient tests if needed.
     bridge_grad_dtype = bridge_model.cfg.dtype if hasattr(bridge_model, "cfg") else None
     bridge_device = next(bridge_model.parameters()).device
-    mps_bf16_upcast = (
-        str(bridge_device).startswith("mps")
-        and bridge_grad_dtype == torch.bfloat16
-    )
+    mps_bf16_upcast = str(bridge_device).startswith("mps") and bridge_grad_dtype == torch.bfloat16
     if mps_bf16_upcast:
         try:
             bridge_model.to(torch.float32)
@@ -1159,7 +1156,9 @@ def run_benchmark_suite(
 
             # Phase 4: Text Quality (runs in Phase 2 memory window)
             # Skip for masked LMs (e.g., BERT) which aren't designed for causal generation.
-            if should_run_phase(4) and not is_masked_lm_model(model_name, trust_remote_code=trust_remote_code):
+            if should_run_phase(4) and not is_masked_lm_model(
+                model_name, trust_remote_code=trust_remote_code
+            ):
                 try:
                     if verbose:
                         print("\n2. Text Quality Benchmark (Phase 4)")

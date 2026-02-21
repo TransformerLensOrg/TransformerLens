@@ -55,9 +55,7 @@ class GatedMLP(CanBeUsedAsMLP):
         # contiguity, so matching HF's layout ensures numerically identical results.
         if self.W_gate.device != x.device:
             x = x.to(self.W_gate.device)
-        pre_act = self.hook_pre(
-            F.linear(x, self.W_gate.T.contiguous())  # [batch, pos, d_mlp]
-        )
+        pre_act = self.hook_pre(F.linear(x, self.W_gate.T.contiguous()))  # [batch, pos, d_mlp]
 
         if (
             self.cfg.is_layer_norm_activation()

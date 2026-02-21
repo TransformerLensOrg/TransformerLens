@@ -9,10 +9,7 @@ from typing import Dict, Optional
 import torch
 
 from transformer_lens import HookedTransformer
-from transformer_lens.benchmarks.utils import (
-    BenchmarkResult,
-    BenchmarkSeverity,
-)
+from transformer_lens.benchmarks.utils import BenchmarkResult, BenchmarkSeverity
 from transformer_lens.model_bridge import TransformerBridge
 
 
@@ -509,9 +506,7 @@ def benchmark_activation_cache_structure(
             ref_tensor = ref_cache[key]
 
             if bridge_tensor.shape != ref_tensor.shape:
-                shape_mismatches.append(
-                    f"{key}: Shape {bridge_tensor.shape} vs {ref_tensor.shape}"
-                )
+                shape_mismatches.append(f"{key}: Shape {bridge_tensor.shape} vs {ref_tensor.shape}")
 
         if shape_mismatches:
             return BenchmarkResult(

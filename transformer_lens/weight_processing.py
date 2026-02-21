@@ -492,7 +492,9 @@ class ProcessWeights:
                 # For TransformerBridge and other models, the weights must be identity after folding:
                 #   - Standard RMSNorm/LayerNorm: identity = ones (computes x * 1.0 = x)
                 #   - rmsnorm_uses_offset (Gemma): identity = zeros (computes x * (1+0.0) = x)
-                identity_val = torch.zeros_like(ln1_w) if rmsnorm_uses_offset else torch.ones_like(ln1_w)
+                identity_val = (
+                    torch.zeros_like(ln1_w) if rmsnorm_uses_offset else torch.ones_like(ln1_w)
+                )
                 if keys["ln1_w"] in state_dict:
                     state_dict[keys["ln1_w"]] = identity_val
                 alternate_w_key = (
@@ -545,9 +547,17 @@ class ProcessWeights:
                 )
             else:
                 # Shared ln1 (e.g., Phi-2, GPT-J) — fold ln1 → MLP via override
+                assert isinstance(ln1_w, torch.Tensor)
+                assert ln1_b is None or isinstance(ln1_b, torch.Tensor)
                 state_dict = ProcessWeights._fold_mlp_layer_norm(
-                    state_dict, cfg, layer, fold_biases, center_weights, adapter,
-                    override_ln_w=ln1_w, override_ln_b=ln1_b,
+                    state_dict,
+                    cfg,
+                    layer,
+                    fold_biases,
+                    center_weights,
+                    adapter,
+                    override_ln_w=ln1_w,
+                    override_ln_b=ln1_b,
                 )
         else:
             state_dict = ProcessWeights._fold_mlp_layer_norm(
@@ -610,6 +620,8 @@ class ProcessWeights:
 
         # For parallel architectures, ln1 values are passed via override params.
         # Otherwise, look up ln2 from the state dict.
+        ln2_w: Optional[torch.Tensor]
+        ln2_b: Optional[torch.Tensor]
         if override_ln_w is not None:
             ln2_w = override_ln_w
             ln2_b = override_ln_b
@@ -718,7 +730,12 @@ class ProcessWeights:
                     # Also fold ln2 bias into gate bias (mirrors the in-proj bias folding above)
                     if fold_biases and ln2_b is not None and mlp_b_gate_key is not None:
                         mlp_b_gate = ProcessWeights.convert_tensor_to_tl_format(
-                            mlp_b_gate_key, state_dict, state_dict.get(mlp_b_gate_key), cfg, adapter, layer
+                            mlp_b_gate_key,
+                            state_dict,
+                            state_dict.get(mlp_b_gate_key),
+                            cfg,
+                            adapter,
+                            layer,
                         )
                         ln2_b_gate_folded = (mlp_W_gate * ln2_b_broadcast).sum(sum_dim)
                         if mlp_b_gate is not None:
@@ -731,7 +748,9 @@ class ProcessWeights:
             # After folding, set ln2.w to identity (skip for parallel override —
             # ln1 was already set to identity by the attention folding code).
             if ln2_w_key is not None:
-                identity_ln2 = torch.zeros_like(ln2_w) if rmsnorm_uses_offset else torch.ones_like(ln2_w)
+                identity_ln2 = (
+                    torch.zeros_like(ln2_w) if rmsnorm_uses_offset else torch.ones_like(ln2_w)
+                )
                 state_dict[ln2_w_key] = identity_ln2
                 alternate_ln2_w_key = (
                     ln2_w_key.replace("ln_2", "ln2")
@@ -947,7 +966,9 @@ class ProcessWeights:
         # computes x * (1 + weight); setting weight=0.0 gives (1+0.0)=1.0 = identity.
         # For standard models, identity is 1.0.
         # For HookedTransformer with Pre normalization, load_state_dict will ignore these.
-        identity_val = torch.zeros_like(ln_weight) if rmsnorm_uses_offset else torch.ones_like(ln_weight)
+        identity_val = (
+            torch.zeros_like(ln_weight) if rmsnorm_uses_offset else torch.ones_like(ln_weight)
+        )
         if ln_final_w_key in state_dict:
             state_dict[ln_final_w_key] = identity_val
         alternate_final_w_key = (
@@ -1416,10 +1437,13 @@ class ProcessWeights:
                     b_O_original = torch.zeros(cfg.d_model, dtype=b_V.dtype, device=b_V.device)
                     state_dict[b_O_key] = b_O_original
                 else:
-                    b_O_original = ProcessWeights.convert_tensor_to_tl_format(
+                    b_O_original_maybe = ProcessWeights.convert_tensor_to_tl_format(
                         b_O_key, state_dict, state_dict.get(b_O_key), cfg, adapter, layer
                     )
-                assert b_O_original is not None, f"Attention b_O not found at key {b_O_key}"
+                    assert (
+                        b_O_original_maybe is not None
+                    ), f"Attention b_O not found at key {b_O_key}"
+                    b_O_original = b_O_original_maybe
                 is_split_format = ".attn.v.bias" in b_V_key or ".attn.k.bias" in b_V_key
                 if is_split_format and len(b_V.shape) == 1 and (len(W_O.shape) == 2):
                     n_heads = cfg.n_heads

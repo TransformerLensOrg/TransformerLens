@@ -52,19 +52,13 @@ class MixtralArchitectureAdapter(ArchitectureAdapter):
 
         self.weight_processing_conversions = {
             "blocks.{i}.attn.q.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion(
-                    "(n h) m -> n m h", n=self.cfg.n_heads
-                ),
+                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
             ),
             "blocks.{i}.attn.k.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion(
-                    "(n h) m -> n m h", n=n_kv_heads
-                ),
+                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=n_kv_heads),
             ),
             "blocks.{i}.attn.v.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion(
-                    "(n h) m -> n m h", n=n_kv_heads
-                ),
+                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=n_kv_heads),
             ),
             "blocks.{i}.attn.q.bias": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
@@ -72,19 +66,13 @@ class MixtralArchitectureAdapter(ArchitectureAdapter):
                 ),
             ),
             "blocks.{i}.attn.k.bias": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion(
-                    "(h d_head) -> h d_head", h=n_kv_heads
-                ),
+                tensor_conversion=RearrangeTensorConversion("(h d_head) -> h d_head", h=n_kv_heads),
             ),
             "blocks.{i}.attn.v.bias": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion(
-                    "(h d_head) -> h d_head", h=n_kv_heads
-                ),
+                tensor_conversion=RearrangeTensorConversion("(h d_head) -> h d_head", h=n_kv_heads),
             ),
             "blocks.{i}.attn.o.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion(
-                    "m (n h) -> n h m", n=self.cfg.n_heads
-                ),
+                tensor_conversion=RearrangeTensorConversion("m (n h) -> n h m", n=self.cfg.n_heads),
             ),
         }
 

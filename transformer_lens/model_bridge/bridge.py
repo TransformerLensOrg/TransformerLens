@@ -1329,10 +1329,14 @@ class TransformerBridge(nn.Module):
                 # Always use self.loss_fn for consistency with HT's formula
                 # (log_softmax + gather).  HF's output.loss uses F.cross_entropy
                 # which gives different results in bfloat16.
-                assert isinstance(logits, torch.Tensor), f"Expected logits tensor, got {type(logits)}"
+                assert isinstance(
+                    logits, torch.Tensor
+                ), f"Expected logits tensor, got {type(logits)}"
                 return self.loss_fn(logits, input_ids, per_token=loss_per_token)
             elif return_type == "both":
-                assert isinstance(logits, torch.Tensor), f"Expected logits tensor, got {type(logits)}"
+                assert isinstance(
+                    logits, torch.Tensor
+                ), f"Expected logits tensor, got {type(logits)}"
                 loss = self.loss_fn(logits, input_ids, per_token=loss_per_token)
                 return (logits, loss)
             elif return_type is None:

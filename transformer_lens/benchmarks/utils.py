@@ -35,6 +35,7 @@ BRIDGE_EXPECTED_MISSING_PATTERNS = [
     "mlp.hook_expert_weights",
 ]
 
+
 def filter_expected_missing_hooks(hook_names: Collection[str]) -> list[str]:
     """Filter out hook names that bridge models are expected to be missing."""
     return [

@@ -185,9 +185,7 @@ class Phi3ArchitectureAdapter(ArchitectureAdapter):
             # Safe to skip - only needed for cached remote code compatibility.
             pass
 
-    def preprocess_weights(
-        self, state_dict: dict[str, torch.Tensor]
-    ) -> dict[str, torch.Tensor]:
+    def preprocess_weights(self, state_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
         """Fold layer norms directly into joint QKV/gate_up projections.
 
         Phi-3 uses joint qkv_proj (Q+K+V concatenated) and gate_up_proj (gate+up
@@ -219,9 +217,9 @@ class Phi3ArchitectureAdapter(ArchitectureAdapter):
                 ]:
                     if qkv_key in state_dict:
                         orig_dtype = state_dict[qkv_key].dtype
-                        state_dict[qkv_key] = (
-                            state_dict[qkv_key].float() * ln1_w[None, :]
-                        ).to(orig_dtype)
+                        state_dict[qkv_key] = (state_dict[qkv_key].float() * ln1_w[None, :]).to(
+                            orig_dtype
+                        )
                 state_dict[ln1_key] = torch.ones_like(state_dict[ln1_key])
 
             # Fold ln2 into the joint gate_up_proj (stored under gate and in keys)
@@ -233,9 +231,9 @@ class Phi3ArchitectureAdapter(ArchitectureAdapter):
                 ]:
                     if mlp_key in state_dict:
                         orig_dtype = state_dict[mlp_key].dtype
-                        state_dict[mlp_key] = (
-                            state_dict[mlp_key].float() * ln2_w[None, :]
-                        ).to(orig_dtype)
+                        state_dict[mlp_key] = (state_dict[mlp_key].float() * ln2_w[None, :]).to(
+                            orig_dtype
+                        )
                 state_dict[ln2_key] = torch.ones_like(state_dict[ln2_key])
 
         # Fold ln_final into the unembedding weight

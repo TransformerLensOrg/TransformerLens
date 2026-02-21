@@ -1,6 +1,6 @@
 """T5 architecture adapter."""
 
-from typing import Any
+from typing import Any, Union
 
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
@@ -50,6 +50,8 @@ class T5ArchitectureAdapter(ArchitectureAdapter):
         self.weight_processing_conversions = {}
 
         # Build MLP bridge based on whether the model uses gated FFN
+        encoder_mlp: Union[GatedMLPBridge, MLPBridge]
+        decoder_mlp: Union[GatedMLPBridge, MLPBridge]
         if is_gated:
             encoder_mlp = GatedMLPBridge(
                 name="layer.1.DenseReluDense",
