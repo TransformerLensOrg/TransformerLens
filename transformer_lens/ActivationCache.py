@@ -24,7 +24,7 @@ from jaxtyping import Float, Int
 from typing_extensions import Literal
 
 import transformer_lens.utils as utils
-from transformer_lens.utils import Slice, SliceInput
+from transformer_lens.utils import Slice, SliceInput, warn_if_mps
 
 
 class ActivationCache:
@@ -205,6 +205,7 @@ class ActivationCache:
                 DeprecationWarning,
             )
 
+        warn_if_mps(device)
         self.cache_dict = {key: value.to(device) for key, value in self.cache_dict.items()}
 
         if move_model:

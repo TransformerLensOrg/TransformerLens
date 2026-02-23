@@ -1099,6 +1099,7 @@ class HookedTransformer(HookedRootModule):
         return self.to(torch.device("cpu"))
 
     def mps(self: T) -> T:
+        """Warning: MPS may produce silently incorrect results. See #1178."""
         return self.to(torch.device("mps"))
 
     def move_model_modules_to_device(self):

@@ -15,6 +15,7 @@ from datasets import load_dataset
 from torch.utils.data import DataLoader, Dataset
 
 from transformer_lens import utils
+from transformer_lens.utils import warn_if_mps
 
 
 # %%
@@ -97,6 +98,7 @@ DATASET_LOADERS = [
 # %%
 @torch.inference_mode()
 def evaluate_on_dataset(model, data_loader, truncate=100, device="cuda"):
+    warn_if_mps(device)
     running_loss = 0
     total = 0
     for batch in tqdm.tqdm(data_loader):
@@ -119,6 +121,7 @@ def induction_loss(
     By default, prepends a beginning of string token (when prepend_bos flag defaults to None, model.cfg.default_prepend_bos is used
     whose default is True unless specified otherwise), which is useful to give models a resting position, and sometimes models were trained with this.
     """
+    warn_if_mps(device)
     # Make the repeated sequence
     first_half_tokens = torch.randint(100, 20000, (batch_size, subseq_len)).to(device)
     repeated_tokens = einops.repeat(first_half_tokens, "b p -> b (2 p)")
