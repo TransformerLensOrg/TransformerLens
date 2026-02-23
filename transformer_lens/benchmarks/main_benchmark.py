@@ -22,6 +22,7 @@ def _hf_token() -> Optional[str]:
     """Get HuggingFace token from environment for gated model access."""
     return os.environ.get("HF_TOKEN", "") or None
 
+
 from transformer_lens import HookedTransformer
 from transformer_lens.benchmarks.activation_cache import (
     benchmark_activation_cache,
@@ -107,7 +108,9 @@ def is_masked_lm_model(model_name: str, trust_remote_code: bool = False) -> bool
         True if the model is a masked LM (like BERT), False otherwise
     """
     try:
-        config = AutoConfig.from_pretrained(model_name, trust_remote_code=trust_remote_code, token=_hf_token())
+        config = AutoConfig.from_pretrained(
+            model_name, trust_remote_code=trust_remote_code, token=_hf_token()
+        )
         architectures = getattr(config, "architectures", []) or []
         return any(arch in MASKED_LM_ARCHITECTURES for arch in architectures)
     except Exception:
@@ -125,7 +128,9 @@ def is_encoder_decoder_model(model_name: str, trust_remote_code: bool = False) -
         True if the model is encoder-decoder (like T5), False otherwise
     """
     try:
-        config = AutoConfig.from_pretrained(model_name, trust_remote_code=trust_remote_code, token=_hf_token())
+        config = AutoConfig.from_pretrained(
+            model_name, trust_remote_code=trust_remote_code, token=_hf_token()
+        )
         # Check config attribute first
         if getattr(config, "is_encoder_decoder", False):
             return True
@@ -916,7 +921,9 @@ def run_benchmark_suite(
                     map_default_transformer_lens_config,
                 )
 
-                hf_cfg = AutoConfig.from_pretrained(model_name, trust_remote_code=True, token=_hf_token())
+                hf_cfg = AutoConfig.from_pretrained(
+                    model_name, trust_remote_code=True, token=_hf_token()
+                )
                 tl_cfg = map_default_transformer_lens_config(hf_cfg)
                 arch = determine_architecture_from_hf_config(hf_cfg)
                 bridge_cfg = TransformerBridgeConfig.from_dict(tl_cfg.__dict__)
@@ -953,13 +960,13 @@ def run_benchmark_suite(
             if verbose:
                 print("Loading HuggingFace reference model...")
             # Match bridge loading path: no device_map, explicit .to(device).
-            hf_kwargs = {
+            hf_kwargs: dict[str, object] = {
                 "low_cpu_mem_usage": True,  # Reduce memory spikes during loading
             }
             if _hf_token():
                 hf_kwargs["token"] = _hf_token()
             if attn_implementation is not None:
-                hf_kwargs["attn_implementation"] = attn_implementation  # type: ignore[assignment]
+                hf_kwargs["attn_implementation"] = attn_implementation
                 if verbose:
                     print(f"Using attn_implementation={attn_implementation}")
             # Use appropriate AutoModel class (e.g., AutoModelForSeq2SeqLM for T5)
@@ -967,7 +974,9 @@ def run_benchmark_suite(
             if verbose and auto_model_class != AutoModelForCausalLM:
                 print(f"Using {auto_model_class.__name__} for encoder-decoder model")
             # Ensure pad_token_id exists (some models crash without it during init).
-            hf_config = AutoConfig.from_pretrained(model_name, trust_remote_code=trust_remote_code, token=_hf_token())
+            hf_config = AutoConfig.from_pretrained(
+                model_name, trust_remote_code=trust_remote_code, token=_hf_token()
+            )
             if not hasattr(hf_config, "pad_token_id") or "pad_token_id" not in hf_config.__dict__:
                 hf_config.pad_token_id = getattr(hf_config, "eos_token_id", None)
                 hf_kwargs["config"] = hf_config
@@ -1065,9 +1074,7 @@ def run_benchmark_suite(
         elif hf_model is not None:
             # Full mode: component benchmark with independent HF model (brief 2.0x)
             try:
-                component_result = benchmark_all_components(
-                    bridge_unprocessed, hf_model
-                )
+                component_result = benchmark_all_components(bridge_unprocessed, hf_model)
                 add_result(component_result)
                 if verbose:
                     status = "✓" if component_result.passed else "✗"
@@ -1096,14 +1103,11 @@ def run_benchmark_suite(
                     if is_enc_dec:
                         decoder_start_id = getattr(
                             getattr(hf_model, "config", None),
-                            "decoder_start_token_id", 0,
+                            "decoder_start_token_id",
+                            0,
                         )
-                        dec_ids = torch.tensor(
-                            [[decoder_start_id]]
-                        ).to(hf_tokens.device)
-                        hf_out = hf_model(
-                            hf_tokens, decoder_input_ids=dec_ids
-                        )
+                        dec_ids = torch.tensor([[decoder_start_id]]).to(hf_tokens.device)
+                        hf_out = hf_model(hf_tokens, decoder_input_ids=dec_ids)
                     else:
                         hf_out = hf_model(hf_tokens)
                     hf_saved_logits = hf_out.logits.detach().cpu().clone()
@@ -1119,15 +1123,8 @@ def run_benchmark_suite(
                         ).item()
 
                 if verbose:
-                    loss_str = (
-                        f"{hf_saved_loss:.4f}"
-                        if hf_saved_loss is not None
-                        else "N/A"
-                    )
-                    print(
-                        f"✓ Captured HF logits {hf_saved_logits.shape}, "
-                        f"loss={loss_str}\n"
-                    )
+                    loss_str = f"{hf_saved_loss:.4f}" if hf_saved_loss is not None else "N/A"
+                    print(f"✓ Captured HF logits {hf_saved_logits.shape}, " f"loss={loss_str}\n")
                 del hf_tokens
             except Exception as e:
                 if verbose:
@@ -1178,9 +1175,7 @@ def run_benchmark_suite(
                     print(f"✗ Forward pass benchmark failed: {e}\n")
         else:
             try:
-                add_result(
-                    benchmark_forward_pass(bridge_unprocessed, test_text)
-                )
+                add_result(benchmark_forward_pass(bridge_unprocessed, test_text))
             except Exception as e:
                 if verbose:
                     print(f"✗ Forward pass benchmark failed: {e}\n")
@@ -1870,7 +1865,7 @@ def main():
         "--conserve-memory",
         action="store_true",
         help="Reduce Phase 1 peak memory from 2.0x to 1.0x by using "
-             "bridge.original_model instead of loading a separate HF model",
+        "bridge.original_model instead of loading a separate HF model",
     )
 
     args = parser.parse_args()

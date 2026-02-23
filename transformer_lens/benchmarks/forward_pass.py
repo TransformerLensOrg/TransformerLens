@@ -108,7 +108,9 @@ def benchmark_forward_pass(
         elif isinstance(reference_model, HookedTransformer):
             reference_output = reference_model(test_text, return_type="logits")
         else:
-            # HuggingFace model
+            # HuggingFace model (reference_model is guaranteed non-None here
+            # because we returned early at line 80 when both are None)
+            assert reference_model is not None
             tokens = bridge.to_tokens(test_text)
             with torch.no_grad():
                 if is_enc_dec:

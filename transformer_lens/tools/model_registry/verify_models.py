@@ -77,6 +77,7 @@ def _handle_sigint(signum, frame):  # noqa: ARG001
     print("\n\nInterrupt received — finishing current model before stopping.")
     print("(Press Ctrl+C again to force quit immediately.)\n")
 
+
 # Pattern matching HuggingFace API tokens (hf_ followed by 20+ alphanumeric chars)
 _HF_TOKEN_RE = re.compile(r"hf_[A-Za-z0-9]{20,}")
 
@@ -160,9 +161,7 @@ def estimate_model_params(model_id: str) -> int:
 
     trust_remote_code = any(model_id.startswith(prefix) for prefix in NEED_REMOTE_CODE_MODELS)
     _token = os.environ.get("HF_TOKEN", "") or None
-    config = AutoConfig.from_pretrained(
-        model_id, trust_remote_code=trust_remote_code, token=_token
-    )
+    config = AutoConfig.from_pretrained(model_id, trust_remote_code=trust_remote_code, token=_token)
 
     # Extract dimensions from config (different models use different attribute names)
     d_model = (
@@ -448,14 +447,10 @@ def _check_phase_scores(
             failed_tests = [
                 r.name
                 for r in all_results
-                if r.phase == phase
-                and not r.passed
-                and r.severity != BenchmarkSeverity.SKIPPED
+                if r.phase == phase and not r.passed and r.severity != BenchmarkSeverity.SKIPPED
             ]
             tests_str = ", ".join(failed_tests) if failed_tests else "unknown"
-            failing_phases.append(
-                f"P{phase}={score}% < {threshold}% (failed: {tests_str})"
-            )
+            failing_phases.append(f"P{phase}={score}% < {threshold}% (failed: {tests_str})")
 
     if failing_phases:
         return f"Below threshold: {'; '.join(failing_phases)}"
@@ -481,9 +476,7 @@ def _build_verified_note(
             failed_tests = [
                 r.name
                 for r in all_results
-                if r.phase == phase
-                and not r.passed
-                and r.severity != BenchmarkSeverity.SKIPPED
+                if r.phase == phase and not r.passed and r.severity != BenchmarkSeverity.SKIPPED
             ]
             if failed_tests:
                 parts.append(f"P{phase}={score}% (failed: {', '.join(failed_tests)})")
@@ -684,10 +677,7 @@ def verify_models(
             else:
                 # Include the specific error from failed results (e.g., tokenizer
                 # errors, load failures) so the note explains WHY it failed.
-                root_errors = [
-                    r.message for r in all_results
-                    if not r.passed and r.message
-                ]
+                root_errors = [r.message for r in all_results if not r.passed and r.message]
                 if root_errors:
                     # Deduplicate and use first unique error as the detail
                     unique_errors = list(dict.fromkeys(root_errors))
@@ -750,17 +740,10 @@ def verify_models(
                 torch.mps.empty_cache()
 
             # Log MPS memory state for debugging long runs
-            if (
-                device == "mps"
-                and not quiet
-                and hasattr(torch.mps, "current_allocated_memory")
-            ):
+            if device == "mps" and not quiet and hasattr(torch.mps, "current_allocated_memory"):
                 alloc_mb = torch.mps.current_allocated_memory() / (1024 * 1024)
                 driver_mb = torch.mps.driver_allocated_memory() / (1024 * 1024)
-                print(
-                    f"  MPS memory: {alloc_mb:.0f} MB allocated, "
-                    f"{driver_mb:.0f} MB driver"
-                )
+                print(f"  MPS memory: {alloc_mb:.0f} MB allocated, " f"{driver_mb:.0f} MB driver")
         except ImportError:
             pass
 
@@ -935,20 +918,20 @@ Examples:
         "--conserve-memory",
         action="store_true",
         help="Reduce Phase 1 peak memory from 2.0x to 1.0x by using "
-             "bridge.original_model instead of a separate HF model",
+        "bridge.original_model instead of a separate HF model",
     )
     parser.add_argument(
         "--reverify",
         action="store_true",
         help="Re-run verification for already-verified/skipped/failed models. "
-             "Ignores previous status and re-tests matching models from scratch.",
+        "Ignores previous status and re-tests matching models from scratch.",
     )
     parser.add_argument(
         "--model",
         type=str,
         default=None,
         help="Verify a single model by its HuggingFace model ID. "
-             "Looks up architecture from the registry automatically.",
+        "Looks up architecture from the registry automatically.",
     )
 
     args = parser.parse_args()

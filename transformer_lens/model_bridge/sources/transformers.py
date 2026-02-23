@@ -264,7 +264,9 @@ def boot(
     # Pass HF token for gated model access (e.g. meta-llama/*)
     _hf_token = os.environ.get("HF_TOKEN", "") or None
     hf_config = AutoConfig.from_pretrained(
-        model_name, output_attentions=True, trust_remote_code=trust_remote_code,
+        model_name,
+        output_attentions=True,
+        trust_remote_code=trust_remote_code,
         token=_hf_token,
     )
     if hf_config_overrides:

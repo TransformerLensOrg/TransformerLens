@@ -1186,7 +1186,9 @@ def generate_bridge_models_page():
     """
     GENERATED_DIR.mkdir(exist_ok=True)
     # Write the markdown wrapper page
-    (GENERATED_DIR / "transformer_bridge_models.md").write_text(BRIDGE_MODELS_PAGE, encoding="utf-8")
+    (GENERATED_DIR / "transformer_bridge_models.md").write_text(
+        BRIDGE_MODELS_PAGE, encoding="utf-8"
+    )
 
 
 def docs_hot_reload():

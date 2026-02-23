@@ -244,7 +244,8 @@ class JointQKVAttentionBridge(AttentionBridge):
 
         # Capture layer index from HF attention component (e.g. GPT2Attention.layer_idx)
         if hasattr(original_component, "layer_idx"):
-            self._layer_idx = original_component.layer_idx
+            layer_idx: int = getattr(original_component, "layer_idx")
+            self._layer_idx = layer_idx
 
         # Capture HF-specific attention flags for faithful reconstruction
         self._reorder_and_upcast_attn = getattr(
