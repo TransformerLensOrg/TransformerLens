@@ -38,15 +38,21 @@ class GPTOSSArchitectureAdapter(ArchitectureAdapter):
 
         # Conversion rules for weight processing/folding
         # GPT-OSS uses MoE with batched experts, so we need special handling
+        # GPT-OSS may use GQA: K/V heads can differ from Q heads
+        n_kv_heads = (
+            self.cfg.n_key_value_heads
+            if hasattr(self.cfg, "n_key_value_heads") and self.cfg.n_key_value_heads is not None
+            else self.cfg.n_heads
+        )
         self.weight_processing_conversions = {
             "blocks.{i}.attn.q.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
             ),
             "blocks.{i}.attn.k.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
+                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=n_kv_heads),
             ),
             "blocks.{i}.attn.v.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
+                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=n_kv_heads),
             ),
             "blocks.{i}.attn.o.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("m (n h) -> n h m", n=self.cfg.n_heads),

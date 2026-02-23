@@ -5,7 +5,6 @@ from typing import Dict, Optional
 import torch
 
 from transformer_lens import HookedTransformer
-from transformer_lens.benchmarks.hook_structure import validate_hook_shape_compatibility
 from transformer_lens.benchmarks.utils import (
     BenchmarkResult,
     BenchmarkSeverity,
@@ -20,7 +19,6 @@ def benchmark_backward_hooks(
     reference_model: Optional[HookedTransformer] = None,
     abs_tolerance: float = 0.2,
     rel_tolerance: float = 3e-4,
-    cross_model: bool = False,
 ) -> BenchmarkResult:
     """Benchmark all backward hooks for gradient matching.
 
@@ -30,7 +28,6 @@ def benchmark_backward_hooks(
         reference_model: Optional HookedTransformer reference model
         abs_tolerance: Absolute tolerance for gradient comparison
         rel_tolerance: Relative tolerance for gradient comparison
-        cross_model: If True, uses relaxed dimensional matching instead of exact shape matching
 
     Returns:
         BenchmarkResult with backward hook comparison details
@@ -146,43 +143,30 @@ def benchmark_backward_hooks(
             reference_grad = reference_gradients[hook_name]
 
             # Check shapes
-            if cross_model:
-                # Use relaxed dimensional matching for cross-model comparison
-                is_compatible, error_msg = validate_hook_shape_compatibility(
-                    bridge_grad.shape, reference_grad.shape, hook_name, cross_model=True
+            if bridge_grad.shape != reference_grad.shape:
+                mismatches.append(
+                    f"{hook_name}: Shape mismatch - Bridge{bridge_grad.shape} vs Ref{reference_grad.shape}"
                 )
-                if not is_compatible:
-                    mismatches.append(f"{hook_name}: {error_msg}")
-                    continue
-                # Skip value comparison for cross-model (different architectures have different gradients)
-                # We only check that hooks exist, fire, and have compatible structure
-            else:
-                # Use exact shape matching for same-model comparison
-                if bridge_grad.shape != reference_grad.shape:
+                continue
+
+            # Handle special cases with inf or nan
+            bridge_finite = bridge_grad[torch.isfinite(bridge_grad)]
+            reference_finite = reference_grad[torch.isfinite(reference_grad)]
+
+            if bridge_finite.numel() > 0 and reference_finite.numel() > 0:
+                # Compare finite values
+                if not safe_allclose(
+                    bridge_finite, reference_finite, atol=abs_tolerance, rtol=rel_tolerance
+                ):
+                    bf = bridge_finite.float()
+                    rf = reference_finite.float()
+                    max_diff = torch.max(torch.abs(bf - rf)).item()
+                    mean_diff = torch.mean(torch.abs(bf - rf)).item()
+                    rel_diff = torch.abs(bf - rf) / (torch.abs(bf) + 1e-8)
+                    mean_rel = rel_diff.mean().item()
                     mismatches.append(
-                        f"{hook_name}: Shape mismatch - Bridge{bridge_grad.shape} vs Ref{reference_grad.shape}"
+                        f"{hook_name}: Value mismatch - max_diff={max_diff:.6f}, mean_diff={mean_diff:.6f}, mean_rel={mean_rel:.6f}"
                     )
-                    continue
-
-                # Only compare values for same-model comparison
-                # Handle special cases with inf or nan
-                bridge_finite = bridge_grad[torch.isfinite(bridge_grad)]
-                reference_finite = reference_grad[torch.isfinite(reference_grad)]
-
-                if bridge_finite.numel() > 0 and reference_finite.numel() > 0:
-                    # Compare finite values
-                    if not safe_allclose(
-                        bridge_finite, reference_finite, atol=abs_tolerance, rtol=rel_tolerance
-                    ):
-                        bf = bridge_finite.float()
-                        rf = reference_finite.float()
-                        max_diff = torch.max(torch.abs(bf - rf)).item()
-                        mean_diff = torch.mean(torch.abs(bf - rf)).item()
-                        rel_diff = torch.abs(bf - rf) / (torch.abs(bf) + 1e-8)
-                        mean_rel = rel_diff.mean().item()
-                        mismatches.append(
-                            f"{hook_name}: Value mismatch - max_diff={max_diff:.6f}, mean_diff={mean_diff:.6f}, mean_rel={mean_rel:.6f}"
-                        )
 
         tested_hooks = len(common_hooks) - len(excluded_hooks)
         matching_hooks = tested_hooks - len(mismatches)
@@ -298,7 +282,6 @@ def benchmark_critical_backward_hooks(
     reference_model: Optional[HookedTransformer] = None,
     abs_tolerance: float = 0.2,
     rel_tolerance: float = 3e-4,
-    cross_model: bool = False,
 ) -> BenchmarkResult:
     """Benchmark critical backward hooks for gradient matching.
 
@@ -308,7 +291,6 @@ def benchmark_critical_backward_hooks(
         reference_model: Optional HookedTransformer reference model
         abs_tolerance: Absolute tolerance for gradient comparison
         rel_tolerance: Relative tolerance for gradient comparison
-        cross_model: If True, uses relaxed dimensional matching instead of exact shape matching
 
     Returns:
         BenchmarkResult with critical backward hook comparison details
@@ -413,37 +395,24 @@ def benchmark_critical_backward_hooks(
             reference_grad = reference_gradients[hook_name]
 
             # Check shapes
-            if cross_model:
-                # Use relaxed dimensional matching for cross-model comparison
-                is_compatible, error_msg = validate_hook_shape_compatibility(
-                    bridge_grad.shape, reference_grad.shape, hook_name, cross_model=True
+            if bridge_grad.shape != reference_grad.shape:
+                mismatches.append(
+                    f"{hook_name}: Shape mismatch - Bridge{bridge_grad.shape} vs Ref{reference_grad.shape}"
                 )
-                if not is_compatible:
-                    mismatches.append(f"{hook_name}: {error_msg}")
-                    continue
-                # Skip value comparison for cross-model (different architectures have different gradients)
-                # We only check that hooks exist, fire, and have compatible structure
-            else:
-                # Use exact shape matching for same-model comparison
-                if bridge_grad.shape != reference_grad.shape:
-                    mismatches.append(
-                        f"{hook_name}: Shape mismatch - Bridge{bridge_grad.shape} vs Ref{reference_grad.shape}"
-                    )
-                    continue
+                continue
 
-                # Only compare values for same-model comparison
-                # Compare only finite values
-                bridge_finite = bridge_grad[torch.isfinite(bridge_grad)]
-                reference_finite = reference_grad[torch.isfinite(reference_grad)]
+            # Compare only finite values
+            bridge_finite = bridge_grad[torch.isfinite(bridge_grad)]
+            reference_finite = reference_grad[torch.isfinite(reference_grad)]
 
-                if bridge_finite.numel() > 0 and reference_finite.numel() > 0:
-                    if not safe_allclose(
-                        bridge_finite, reference_finite, atol=abs_tolerance, rtol=rel_tolerance
-                    ):
-                        max_diff = torch.max(
-                            torch.abs(bridge_finite.float() - reference_finite.float())
-                        ).item()
-                        mismatches.append(f"{hook_name}: max_diff={max_diff:.6f}")
+            if bridge_finite.numel() > 0 and reference_finite.numel() > 0:
+                if not safe_allclose(
+                    bridge_finite, reference_finite, atol=abs_tolerance, rtol=rel_tolerance
+                ):
+                    max_diff = torch.max(
+                        torch.abs(bridge_finite.float() - reference_finite.float())
+                    ).item()
+                    mismatches.append(f"{hook_name}: max_diff={max_diff:.6f}")
 
         if mismatches:
             # Filter out known architectural differences

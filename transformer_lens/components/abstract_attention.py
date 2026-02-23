@@ -277,11 +277,6 @@ class AbstractAttention(ABC, nn.Module):
                 self.apply_rotary(k, 0, attention_mask)
             )  # keys are cached so no offset
 
-        if self.cfg.dtype not in [torch.float32, torch.float64]:
-            # If using 16 bits, increase the precision to avoid numerical instabilities
-            q = q.to(torch.float32)
-            k = k.to(torch.float32)
-
         attn_scores = self.calculate_attention_scores(
             q, k
         )  # [batch, head_index, query_pos, key_pos]
@@ -351,7 +346,7 @@ class AbstractAttention(ABC, nn.Module):
             else:
                 w = einops.rearrange(
                     self.W_O, "head_index d_head d_model -> d_model (head_index d_head)"
-                )
+                ).contiguous()
 
                 # Move output projection weights and bias to the same device as z
                 # so that the final linear operation occurs on the device of the inputs

@@ -86,6 +86,12 @@ class TransformerBridgeConfig(TransformerLensConfig):
         eps_attr: str = "eps",
         rmsnorm_uses_offset: bool = False,
         attn_implementation: Optional[str] = None,
+        # Multimodal configuration
+        is_multimodal: bool = False,
+        vision_hidden_size: Optional[int] = None,
+        vision_num_layers: Optional[int] = None,
+        vision_num_heads: Optional[int] = None,
+        mm_tokens_per_image: Optional[int] = None,
         **kwargs,
     ):
         """Initialize TransformerBridgeConfig."""
@@ -168,6 +174,12 @@ class TransformerBridgeConfig(TransformerLensConfig):
         self.eps_attr = eps_attr
         self.rmsnorm_uses_offset = rmsnorm_uses_offset
         self.attn_implementation = attn_implementation
+        # Multimodal configuration
+        self.is_multimodal = is_multimodal
+        self.vision_hidden_size = vision_hidden_size
+        self.vision_num_layers = vision_num_layers
+        self.vision_num_heads = vision_num_heads
+        self.mm_tokens_per_image = mm_tokens_per_image
 
         self.__post_init__()
 

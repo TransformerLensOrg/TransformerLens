@@ -60,12 +60,11 @@ class Gemma2ArchitectureAdapter(ArchitectureAdapter):
         # by map_default_transformer_lens_config() in sources/transformers.py
 
         self.weight_processing_conversions = {
-            # Embedding weight scaling - Gemma models scale embeddings by sqrt(d_model)
-            "embed.weight": ParamProcessingConversion(
-                tensor_conversion=ArithmeticTensorConversion(
-                    OperationTypes.MULTIPLICATION, self.cfg.d_model**0.5
-                ),
-            ),
+            # NOTE: Gemma2 scales embeddings by sqrt(d_model) at RUNTIME in
+            # Gemma2Model.forward(). We must NOT pre-scale embed weights here
+            # because that would cause double-scaling (pre-scale + runtime).
+            # The runtime hook_conversion in setup_hook_compatibility() handles
+            # scaling the hook output so it matches HookedTransformer's behavior.
             "blocks.{i}.attn.q.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
             ),

@@ -491,7 +491,9 @@ class ComponentBenchmarker:
             shared_token_indices = None
             if component_path == "embed":
                 batch, seq_len, _ = test_input.shape
-                shared_token_indices = torch.randint(0, self.cfg.d_vocab, (batch, seq_len))
+                shared_token_indices = torch.randint(
+                    0, self.cfg.d_vocab, (batch, seq_len), device=test_input.device
+                )
 
             # Generate shared inputs for attention/MLP/rotary components that have get_random_inputs()
             # This is needed for model-specific inputs like position_embeddings or attention_mask
@@ -666,13 +668,17 @@ class ComponentBenchmarker:
                 token_indices = shared_token_indices
             else:
                 batch, seq_len, _ = test_input.shape
-                token_indices = torch.randint(0, self.cfg.d_vocab, (batch, seq_len))
+                token_indices = torch.randint(
+                    0, self.cfg.d_vocab, (batch, seq_len), device=test_input.device
+                )
             return component(token_indices)
         elif component_path == "pos_embed" or "pos_embed" in component_path:
             # Position embedding expects integer position indices
             batch, seq_len, _ = test_input.shape
             # For positional embeddings, we need position indices
-            pos_indices = torch.arange(seq_len).unsqueeze(0).expand(batch, -1)
+            pos_indices = (
+                torch.arange(seq_len, device=test_input.device).unsqueeze(0).expand(batch, -1)
+            )
             try:
                 return component(pos_indices)
             except (TypeError, IndexError):

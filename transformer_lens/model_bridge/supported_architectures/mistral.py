@@ -74,6 +74,8 @@ class MistralArchitectureAdapter(ArchitectureAdapter):
                     "attn": AttentionBridge(
                         name="self_attn",
                         config=self.cfg,
+                        requires_position_embeddings=True,
+                        requires_attention_mask=True,
                         submodules={
                             "q": LinearBridge(name="q_proj"),
                             "k": LinearBridge(name="k_proj"),

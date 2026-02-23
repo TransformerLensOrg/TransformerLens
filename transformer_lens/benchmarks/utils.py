@@ -2,9 +2,47 @@
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Collection, Dict, List, Optional, Union
 
 import torch
+
+# Hook patterns that bridge models inherently don't have because they use HF's
+# native implementation rather than reimplementing attention/MLP internals.
+BRIDGE_EXPECTED_MISSING_PATTERNS = [
+    "mlp.hook_pre",
+    "mlp.hook_post",
+    "hook_mlp_in",
+    "hook_mlp_out",
+    "attn.hook_rot_q",
+    "attn.hook_rot_k",
+    "hook_pos_embed",
+    "embed.ln.hook_scale",
+    "embed.ln.hook_normalized",
+    "attn.hook_q",
+    "attn.hook_k",
+    "attn.hook_v",
+    "hook_q_input",
+    "hook_k_input",
+    "hook_v_input",
+    "attn.hook_attn_scores",
+    "attn.hook_pattern",
+    # MoE per-expert hooks: Bridge uses HF's batched MoE forward pass via MoEBridge,
+    # which wraps the entire MoE module. HookedTransformer creates individual expert
+    # modules with per-expert hooks (e.g., blocks.0.mlp.experts.3.hook_pre).
+    "mlp.experts.",
+    "mlp.hook_experts",
+    "mlp.hook_expert_indices",
+    "mlp.hook_expert_weights",
+]
+
+
+def filter_expected_missing_hooks(hook_names: Collection[str]) -> list[str]:
+    """Filter out hook names that bridge models are expected to be missing."""
+    return [
+        h
+        for h in hook_names
+        if not any(pattern in h for pattern in BRIDGE_EXPECTED_MISSING_PATTERNS)
+    ]
 
 
 def safe_allclose(
@@ -13,7 +51,10 @@ def safe_allclose(
     atol: float = 1e-5,
     rtol: float = 1e-5,
 ) -> bool:
-    """torch.allclose that handles dtype mismatches by upcasting to float32."""
+    """torch.allclose that handles dtype and device mismatches."""
+    if tensor1.device != tensor2.device:
+        tensor1 = tensor1.cpu()
+        tensor2 = tensor2.cpu()
     if tensor1.dtype != tensor2.dtype:
         tensor1 = tensor1.to(torch.float32)
         tensor2 = tensor2.to(torch.float32)
@@ -108,6 +149,10 @@ def compare_tensors(
             message=f"Shape mismatch: {tensor1.shape} vs {tensor2.shape}",
             passed=False,
         )
+
+    if tensor1.device != tensor2.device:
+        tensor1 = tensor1.cpu()
+        tensor2 = tensor2.cpu()
 
     if tensor1.dtype != tensor2.dtype:
         tensor1 = tensor1.to(torch.float32)
