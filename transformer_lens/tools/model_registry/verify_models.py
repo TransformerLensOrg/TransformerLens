@@ -854,6 +854,7 @@ Examples:
   %(prog)s --device cuda --max-memory 24
   %(prog)s --resume                     Resume from checkpoint
   %(prog)s --reverify --architectures Olmo2ForCausalLM   Re-verify already-tested models
+  %(prog)s --model google/gemma-2b      Verify a single model by ID
         """,
     )
     parser.add_argument(
@@ -942,6 +943,13 @@ Examples:
         help="Re-run verification for already-verified/skipped/failed models. "
              "Ignores previous status and re-tests matching models from scratch.",
     )
+    parser.add_argument(
+        "--model",
+        type=str,
+        default=None,
+        help="Verify a single model by its HuggingFace model ID. "
+             "Looks up architecture from the registry automatically.",
+    )
 
     args = parser.parse_args()
 
@@ -984,15 +992,30 @@ Examples:
             _save_checkpoint(progress)
             print(f"  Cleared {len(failed_set)} failed models for retry")
 
-    # Select models
-    candidates = select_models_for_verification(
-        per_arch=args.per_arch,
-        architectures=args.architectures,
-        limit=args.limit,
-        resume_progress=progress,
-        retry_failed=args.retry_failed,
-        reverify=args.reverify,
-    )
+    # Select models — either a single --model or the normal batch selection
+    if args.model:
+        # Look up architecture from the registry
+        registry_data = load_supported_models_raw()
+        arch_id = None
+        for entry in registry_data.get("models", []):
+            if entry["model_id"] == args.model:
+                arch_id = entry["architecture_id"]
+                break
+        if arch_id is None:
+            print(f"Model '{args.model}' not found in supported_models.json")
+            print("Tip: use the exact model_id as listed in the registry.")
+            return
+        candidates = [ModelCandidate(model_id=args.model, architecture_id=arch_id)]
+        print(f"Single-model mode: {args.model} ({arch_id})")
+    else:
+        candidates = select_models_for_verification(
+            per_arch=args.per_arch,
+            architectures=args.architectures,
+            limit=args.limit,
+            resume_progress=progress,
+            retry_failed=args.retry_failed,
+            reverify=args.reverify,
+        )
 
     if not candidates:
         print("No models to verify (all matching models already tested)")
