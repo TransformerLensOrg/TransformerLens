@@ -213,13 +213,14 @@ def run_granular_weight_processing_benchmarks(
 
     all_results: Dict[str, List[BenchmarkResult]] = {}
 
-    # Check if HookedTransformer is available for this model before running any tests
+    # Check if HookedTransformer supports this model using a lightweight config-only
+    # check instead of loading the full model (which downloads all weights).
     ht_available = False
     try:
-        test_ht = HookedTransformer.from_pretrained(model_name, device=device)
+        from transformer_lens.loading_from_pretrained import get_pretrained_model_config
+
+        get_pretrained_model_config(model_name)
         ht_available = True
-        del test_ht
-        torch.cuda.empty_cache() if torch.cuda.is_available() else None
     except Exception as e:
         if verbose:
             print("\n" + "=" * 80)
@@ -379,6 +380,9 @@ def run_granular_weight_processing_benchmarks(
                 gc.collect()
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
+            if hasattr(torch, "mps") and hasattr(torch.mps, "empty_cache"):
+                torch.mps.synchronize()
+                torch.mps.empty_cache()
 
         except Exception as e:
             # Record failure

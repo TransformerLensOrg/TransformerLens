@@ -41,6 +41,7 @@ def benchmark_forward_pass(
     bridge: TransformerBridge,
     test_text: str,
     reference_model: Optional[Union[HookedTransformer, torch.nn.Module]] = None,
+    reference_logits: Optional[torch.Tensor] = None,
     atol: float = 1e-3,
     rtol: float = 3e-2,
 ) -> BenchmarkResult:
@@ -50,6 +51,8 @@ def benchmark_forward_pass(
         bridge: TransformerBridge model to test
         test_text: Input text for testing
         reference_model: Optional reference model (HookedTransformer or HF model)
+        reference_logits: Optional pre-computed reference logits tensor (e.g., saved
+            from a prior HF forward pass to avoid needing both models in memory)
         atol: Absolute tolerance for comparison
         rtol: Relative tolerance for comparison
 
@@ -74,8 +77,8 @@ def benchmark_forward_pass(
         with torch.no_grad():
             bridge_output = bridge(test_text, return_type="logits", **extra_kwargs)
 
-        if reference_model is None:
-            # No reference model - just verify output shape and validity
+        if reference_model is None and reference_logits is None:
+            # No reference model or logits - just verify output shape and validity
             if not isinstance(bridge_output, torch.Tensor):
                 return BenchmarkResult(
                     name="forward_pass",
@@ -99,8 +102,10 @@ def benchmark_forward_pass(
                 details={"output_shape": str(bridge_output.shape)},
             )
 
-        # Compare with reference model
-        if isinstance(reference_model, HookedTransformer):
+        # Get reference logits from pre-computed tensor or live model
+        if reference_logits is not None:
+            reference_output = reference_logits.to(bridge_output.device)
+        elif isinstance(reference_model, HookedTransformer):
             reference_output = reference_model(test_text, return_type="logits")
         else:
             # HuggingFace model

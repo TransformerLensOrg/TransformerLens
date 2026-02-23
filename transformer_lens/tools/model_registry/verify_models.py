@@ -25,11 +25,20 @@ import gc
 import json
 import logging
 import re
+import signal
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
+
+# Exit code used for graceful interrupts (Ctrl+C).  The wrapper script
+# recognises this and stops without marking the in-flight model as failed.
+_EXIT_GRACEFUL_INTERRUPT = 42
+
+# Module-level flag set by the SIGINT handler so the main loop can stop
+# between models without corrupting state.
+_interrupt_requested = False
 
 from .registry_io import (
     STATUS_FAILED,
@@ -46,6 +55,23 @@ logger = logging.getLogger(__name__)
 # Data directory for registry files
 _DATA_DIR = Path(__file__).parent / "data"
 _CHECKPOINT_PATH = _DATA_DIR / "verification_checkpoint.json"
+
+
+def _handle_sigint(signum, frame):  # noqa: ARG001
+    """Handle Ctrl+C by setting a flag instead of raising immediately.
+
+    The main verification loop checks this flag between models so it can
+    save the checkpoint cleanly and exit without marking the current model
+    as failed.
+    """
+    global _interrupt_requested  # noqa: PLW0603
+    if _interrupt_requested:
+        # Second Ctrl+C — force exit immediately
+        print("\nForce quit.")
+        raise SystemExit(1)
+    _interrupt_requested = True
+    print("\n\nInterrupt received — finishing current model before stopping.")
+    print("(Press Ctrl+C again to force quit immediately.)\n")
 
 # Pattern matching HuggingFace API tokens (hf_ followed by 20+ alphanumeric chars)
 _HF_TOKEN_RE = re.compile(r"hf_[A-Za-z0-9]{20,}")
@@ -136,7 +162,14 @@ def estimate_model_params(model_id: str) -> int:
         getattr(config, "intermediate_size", None)
         or getattr(config, "d_inner", None)
         or getattr(config, "n_inner", None)
+        or getattr(config, "ffn_dim", None)  # OPT
+        or getattr(config, "d_ff", None)  # T5
     )
+    # Many architectures (GPT-2, Bloom, GPT-Neo, GPT-J) leave d_mlp/n_inner
+    # as None and default to 4 * hidden_size internally.  Fall back to that
+    # standard ratio so MLP params are always counted in memory estimates.
+    if not d_mlp and d_model:
+        d_mlp = 4 * d_model
     d_vocab = getattr(config, "vocab_size", None) or 0
 
     if d_model == 0 or n_heads == 0 or n_layers == 0:
@@ -149,21 +182,24 @@ def estimate_model_params(model_id: str) -> int:
 
     # MLP parameters (if present)
     if d_mlp is not None and d_mlp > 0:
-        # Check for gated MLP (LLaMA, Gemma, Mistral, Qwen, etc.)
-        has_gate = hasattr(config, "intermediate_size") and (
-            getattr(config, "hidden_act", None) in ("silu", "gelu", "swiglu")
-            or getattr(config, "model_type", None)
-            in (
-                "llama",
-                "gemma",
-                "gemma2",
-                "gemma3",
-                "mistral",
-                "mixtral",
-                "qwen2",
-                "qwen3",
-                "phi3",
-                "stablelm",
+        # Check for gated MLP (LLaMA, Gemma, Mistral, Qwen, T5 gated-gelu, etc.)
+        has_gate = getattr(config, "is_gated_act", False) or (
+            hasattr(config, "intermediate_size")
+            and (
+                getattr(config, "hidden_act", None) in ("silu", "gelu", "swiglu")
+                or getattr(config, "model_type", None)
+                in (
+                    "llama",
+                    "gemma",
+                    "gemma2",
+                    "gemma3",
+                    "mistral",
+                    "mixtral",
+                    "qwen2",
+                    "qwen3",
+                    "phi3",
+                    "stablelm",
+                )
             )
         )
         mlp_multiplier = 3 if has_gate else 2
@@ -243,6 +279,7 @@ def select_models_for_verification(
     architectures: Optional[list[str]] = None,
     limit: Optional[int] = None,
     resume_progress: Optional[VerificationProgress] = None,
+    retry_failed: bool = False,
 ) -> list[ModelCandidate]:
     """Select models for verification from the registry.
 
@@ -254,6 +291,7 @@ def select_models_for_verification(
         architectures: Filter to specific architectures (None = all)
         limit: Total model cap (None = no cap)
         resume_progress: If resuming, skip already-tested models
+        retry_failed: If True, include previously failed models for re-testing
 
     Returns:
         List of ModelCandidate objects to verify
@@ -261,6 +299,10 @@ def select_models_for_verification(
     already_tested: set[str] = set()
     if resume_progress:
         already_tested = set(resume_progress.tested)
+        if retry_failed:
+            # Remove failed models from already_tested so they get re-selected
+            failed_set = set(resume_progress.failed)
+            already_tested -= failed_set
 
     data = load_supported_models_raw()
     models = data.get("models", [])
@@ -287,7 +329,10 @@ def select_models_for_verification(
             model_id = model["model_id"]
 
             # Skip already-verified or already-tested models
-            if model.get("status", 0) != STATUS_UNVERIFIED:
+            model_status = model.get("status", 0)
+            if model_status == STATUS_VERIFIED or model_status == STATUS_SKIPPED:
+                continue
+            if model_status == STATUS_FAILED and not retry_failed:
                 continue
             if model_id in already_tested:
                 continue
@@ -334,6 +379,110 @@ def _extract_phase_scores(results: list) -> dict[int, Optional[float]]:
     return scores
 
 
+# Per-phase minimum score thresholds (0-100).
+# Phase 1: Core correctness (bridge vs HF) — must pass everything.
+# Phase 2: Hook/cache/gradient tests — most should pass.
+# Phase 3: Weight processing tests — most should pass.
+# Phase 4: Text quality — inherently fuzzy, keep lenient.
+_MIN_PHASE_SCORES: dict[int, float] = {
+    1: 100.0,
+    2: 75.0,
+    3: 75.0,
+    4: 50.0,
+}
+_DEFAULT_MIN_PHASE_SCORE = 50.0
+
+
+def _check_phase_scores(
+    phase_scores: dict[int, Optional[float]],
+    all_results: list,
+) -> Optional[str]:
+    """Check phase scores against per-phase minimum thresholds.
+
+    Returns an error message if any phase is below its threshold, or None
+    if all phases pass.  The message includes the names of failed tests.
+    """
+    from transformer_lens.benchmarks.utils import BenchmarkSeverity
+
+    failing_phases: list[str] = []
+    for phase, score in sorted(phase_scores.items()):
+        if score is None:
+            continue
+        threshold = _MIN_PHASE_SCORES.get(phase, _DEFAULT_MIN_PHASE_SCORE)
+        if score < threshold:
+            # Collect names of tests that failed in this phase
+            failed_tests = [
+                r.name
+                for r in all_results
+                if r.phase == phase
+                and not r.passed
+                and r.severity != BenchmarkSeverity.SKIPPED
+            ]
+            tests_str = ", ".join(failed_tests) if failed_tests else "unknown"
+            failing_phases.append(
+                f"P{phase}={score}% < {threshold}% (failed: {tests_str})"
+            )
+
+    if failing_phases:
+        return f"Below threshold: {'; '.join(failing_phases)}"
+    return None
+
+
+def _build_verified_note(
+    phase_scores: dict[int, Optional[float]],
+    all_results: list,
+) -> str:
+    """Build a verification note, including failed test names for any phase < 100%."""
+    from transformer_lens.benchmarks.utils import BenchmarkSeverity
+
+    parts: list[str] = []
+    all_perfect = True
+
+    for phase in sorted(phase_scores):
+        score = phase_scores[phase]
+        if score is None:
+            continue
+        if score < 100.0:
+            all_perfect = False
+            failed_tests = [
+                r.name
+                for r in all_results
+                if r.phase == phase
+                and not r.passed
+                and r.severity != BenchmarkSeverity.SKIPPED
+            ]
+            if failed_tests:
+                parts.append(f"P{phase}={score}% (failed: {', '.join(failed_tests)})")
+            else:
+                parts.append(f"P{phase}={score}%")
+
+    if all_perfect:
+        return "Benchmark passed"
+    return f"Benchmark passed with issues: {'; '.join(parts)}"
+
+
+def _clear_hf_cache(quiet: bool = False) -> None:
+    """Remove downloaded model weights from the HuggingFace cache to free disk."""
+    from pathlib import Path
+
+    cache_dir = Path.home() / ".cache" / "huggingface" / "hub"
+    if not cache_dir.exists():
+        return
+
+    freed = 0
+    for blobs_dir in cache_dir.glob("models--*/blobs"):
+        for blob in blobs_dir.iterdir():
+            try:
+                size = blob.stat().st_size
+                blob.unlink()
+                freed += size
+            except OSError:
+                pass
+
+    if not quiet and freed > 0:
+        print(f"  Cleared {freed / (1024**3):.1f} GB from HuggingFace cache")
+
+
 def _save_checkpoint(progress: VerificationProgress) -> None:
     """Save verification progress to checkpoint file."""
     with open(_CHECKPOINT_PATH, "w") as f:
@@ -363,6 +512,7 @@ def verify_models(
     phases: Optional[list[int]] = None,
     quiet: bool = False,
     progress: Optional[VerificationProgress] = None,
+    conserve_memory: bool = False,
 ) -> VerificationProgress:
     """Run verification benchmarks on a list of model candidates.
 
@@ -376,6 +526,7 @@ def verify_models(
         phases: Which benchmark phases to run (default: [1, 2, 3])
         quiet: Suppress verbose output
         progress: Existing progress for resume
+        conserve_memory: Reduce Phase 1 peak memory by using bridge.original_model
 
     Returns:
         VerificationProgress with results
@@ -395,6 +546,13 @@ def verify_models(
 
     total = len(candidates)
     for i, candidate in enumerate(candidates, 1):
+        # Check for graceful interrupt between models
+        if _interrupt_requested:
+            if not quiet:
+                print(f"\nStopping gracefully. Progress saved ({len(progress.verified)} verified).")
+            _save_checkpoint(progress)
+            raise SystemExit(_EXIT_GRACEFUL_INTERRUPT)
+
         model_id = candidate.model_id
         arch = candidate.architecture_id
 
@@ -457,6 +615,7 @@ def verify_models(
                     use_ht_reference=use_ht_reference,
                     verbose=not quiet,
                     phases=[phase_num],
+                    conserve_memory=conserve_memory,
                 )
                 all_results.extend(phase_results)
             except Exception as e:
@@ -469,12 +628,33 @@ def verify_models(
         # Extract phase scores from whatever results we have
         phase_scores = _extract_phase_scores(all_results)
 
+        # Check for phases below the minimum score threshold
+        if not error_msg:
+            score_error = _check_phase_scores(phase_scores, all_results)
+            if score_error:
+                error_msg = score_error
+                failed_phase = None  # Already described in error_msg
+
         if error_msg:
             is_oom = "out of memory" in error_msg.lower() or "oom" in error_msg.lower()
             if is_oom:
                 note = f"OOM during phase {failed_phase}"
-            else:
+            elif failed_phase is not None:
                 note = f"Error during phase {failed_phase}: {error_msg[:200]}"
+            else:
+                # Include the specific error from failed results (e.g., tokenizer
+                # errors, load failures) so the note explains WHY it failed.
+                root_errors = [
+                    r.message for r in all_results
+                    if not r.passed and r.message
+                ]
+                if root_errors:
+                    # Deduplicate and use first unique error as the detail
+                    unique_errors = list(dict.fromkeys(root_errors))
+                    detail = unique_errors[0][:150]
+                    note = f"{error_msg[:100]} — {detail}"
+                else:
+                    note = error_msg[:200]
             if not quiet:
                 print(f"  FAILED: {note}")
                 if any(v is not None for v in phase_scores.values()):
@@ -497,6 +677,8 @@ def verify_models(
             )
             progress.failed.append(model_id)
         else:
+            # Build note with failed test details for any phase under 100%
+            note = _build_verified_note(phase_scores, all_results)
             if not quiet:
                 print(
                     f"  VERIFIED: P1={phase_scores.get(1)}%, P2={phase_scores.get(2)}%, P3={phase_scores.get(3)}%"
@@ -506,11 +688,12 @@ def verify_models(
                 arch,
                 STATUS_VERIFIED,
                 phase_scores=phase_scores,
+                note=note,
             )
             add_verification_record(
                 model_id,
                 arch,
-                notes="Benchmark passed",
+                notes=note,
             )
             progress.verified.append(model_id)
 
@@ -521,8 +704,33 @@ def verify_models(
 
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
+                torch.cuda.synchronize()
+            if hasattr(torch, "mps") and hasattr(torch.mps, "empty_cache"):
+                torch.mps.synchronize()
+                torch.mps.empty_cache()
+
+            # Log MPS memory state for debugging long runs
+            if (
+                device == "mps"
+                and not quiet
+                and hasattr(torch.mps, "current_allocated_memory")
+            ):
+                alloc_mb = torch.mps.current_allocated_memory() / (1024 * 1024)
+                driver_mb = torch.mps.driver_allocated_memory() / (1024 * 1024)
+                print(
+                    f"  MPS memory: {alloc_mb:.0f} MB allocated, "
+                    f"{driver_mb:.0f} MB driver"
+                )
         except ImportError:
             pass
+
+        # Brief pause to let the OS and MPS reclaim memory between models
+        if device in ("mps", "cuda"):
+            time.sleep(3)
+
+        # Periodically clear the HuggingFace cache to prevent disk exhaustion
+        if i % 50 == 0:
+            _clear_hf_cache(quiet)
 
         _save_checkpoint(progress)
 
@@ -676,6 +884,17 @@ Examples:
         action="store_true",
         help="Suppress verbose output",
     )
+    parser.add_argument(
+        "--retry-failed",
+        action="store_true",
+        help="Re-run previously failed models instead of skipping them",
+    )
+    parser.add_argument(
+        "--conserve-memory",
+        action="store_true",
+        help="Reduce Phase 1 peak memory from 2.0x to 1.0x by using "
+             "bridge.original_model instead of a separate HF model",
+    )
 
     args = parser.parse_args()
 
@@ -699,12 +918,32 @@ Examples:
         else:
             print("No checkpoint found, starting fresh")
 
+    # If retrying failed, clean them from checkpoint and reset status in registry
+    if args.retry_failed and progress and not args.dry_run:
+        failed_set = set(progress.failed)
+        if failed_set:
+            # Reset status in supported_models.json
+            registry_data = load_supported_models_raw()
+            for entry in registry_data.get("models", []):
+                if entry["model_id"] in failed_set and entry.get("status") == STATUS_FAILED:
+                    update_model_status(
+                        entry["model_id"],
+                        entry["architecture_id"],
+                        STATUS_UNVERIFIED,
+                    )
+            # Clean checkpoint
+            progress.tested = [m for m in progress.tested if m not in failed_set]
+            progress.failed = []
+            _save_checkpoint(progress)
+            print(f"  Cleared {len(failed_set)} failed models for retry")
+
     # Select models
     candidates = select_models_for_verification(
         per_arch=args.per_arch,
         architectures=args.architectures,
         limit=args.limit,
         resume_progress=progress,
+        retry_failed=args.retry_failed,
     )
 
     if not candidates:
@@ -718,6 +957,9 @@ Examples:
         _print_dry_run(candidates, args.dtype, max_memory_gb)
         return
 
+    # Install graceful interrupt handler (Ctrl+C stops between models)
+    signal.signal(signal.SIGINT, _handle_sigint)
+
     # Run verification
     start = time.time()
     progress = verify_models(
@@ -730,6 +972,7 @@ Examples:
         phases=args.phases,
         quiet=args.quiet,
         progress=progress,
+        conserve_memory=args.conserve_memory,
     )
     elapsed = time.time() - start
 

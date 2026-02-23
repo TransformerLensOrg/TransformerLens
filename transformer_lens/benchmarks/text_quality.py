@@ -308,3 +308,6 @@ def benchmark_text_quality(
         gc.collect()
         if device != "cpu" and torch.cuda.is_available():
             torch.cuda.empty_cache()
+        if device == "mps" and hasattr(torch, "mps") and hasattr(torch.mps, "empty_cache"):
+            torch.mps.synchronize()
+            torch.mps.empty_cache()

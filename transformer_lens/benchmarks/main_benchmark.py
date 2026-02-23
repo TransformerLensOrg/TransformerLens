@@ -578,6 +578,7 @@ def run_benchmark_suite(
     test_weight_processing_individually: bool = False,
     phases: list[int] | None = None,
     trust_remote_code: bool = False,
+    conserve_memory: bool = False,
 ) -> List[BenchmarkResult]:
     """Run comprehensive benchmark suite for TransformerBridge.
 
@@ -604,6 +605,12 @@ def run_benchmark_suite(
         test_weight_processing_individually: Whether to run granular weight processing
             tests that check each processing flag individually (default: False)
         phases: Optional list of phase numbers to run (e.g., [1, 2, 3]). If None, runs all phases.
+        trust_remote_code: Whether to trust remote code for custom architectures.
+        conserve_memory: When True, Phase 1 avoids loading a separate HF model
+            and instead uses bridge.original_model for component benchmarks and
+            forward pass comparison. This halves Phase 1 peak memory (1.0x vs 2.0x)
+            at the cost of losing the independent HF loading cross-check (~5%
+            weakening). Default is False (full dual-load for maximum test coverage).
 
     Returns:
         List of BenchmarkResult objects
@@ -721,6 +728,9 @@ def run_benchmark_suite(
         gc.collect()
         if device != "cpu" and torch.cuda.is_available():
             torch.cuda.empty_cache()
+        if device == "mps" and hasattr(torch, "mps") and hasattr(torch.mps, "empty_cache"):
+            torch.mps.synchronize()
+            torch.mps.empty_cache()
 
     def cleanup_model(model, model_name_str: str):
         """Free up memory by deleting a model and forcing garbage collection."""
@@ -739,6 +749,9 @@ def run_benchmark_suite(
                 model.cpu()
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
+                if hasattr(torch, "mps") and hasattr(torch.mps, "empty_cache"):
+                    torch.mps.synchronize()
+                    torch.mps.empty_cache()
             except Exception:
                 pass
 
@@ -831,10 +844,13 @@ def run_benchmark_suite(
         for _ in range(3):
             gc.collect()
 
-        # Clear CUDA cache if using GPU
+        # Clear GPU cache
         if device != "cpu" and torch.cuda.is_available():
             torch.cuda.empty_cache()
             torch.cuda.synchronize()
+        if device == "mps" and hasattr(torch, "mps") and hasattr(torch.mps, "empty_cache"):
+            torch.mps.synchronize()
+            torch.mps.empty_cache()
 
         # Track memory after cleanup
         if track_memory and memory_tracker is not None:
@@ -909,8 +925,24 @@ def run_benchmark_suite(
                 if verbose:
                     print(f"⚠ Could not apply architecture patches: {patch_err}")
 
-    # Load HF model with matching attn_implementation
-    if use_hf_reference:
+    # ----------------------------------------------------------------
+    # Phase 1 memory strategy (controlled by conserve_memory flag):
+    #
+    # conserve_memory=False (default):
+    #   Load separate HF model, capture logits to CPU, load Bridge,
+    #   run component benchmark with both models (brief 2.0x), delete
+    #   HF immediately after, forward pass uses saved logits (1.0x).
+    #
+    # conserve_memory=True:
+    #   Skip separate HF model entirely.  Load Bridge only (1.0x
+    #   throughout).  Component benchmark uses bridge.original_model
+    #   as the HF reference.  Forward pass compares bridge output
+    #   against bridge.original_model logits.
+    # ----------------------------------------------------------------
+    hf_saved_logits = None
+    hf_saved_loss = None
+
+    if use_hf_reference and not conserve_memory:
         try:
             if verbose:
                 print("Loading HuggingFace reference model...")
@@ -948,28 +980,30 @@ def run_benchmark_suite(
                     print(f"Detected dtype={bridge_dtype}")
             except StopIteration:
                 pass
-            # Float16 introduces too much rounding error for benchmarking; upcast.
+            # Float16 introduces too much rounding error for benchmarking; upcast
+            # in-place to avoid a second download/load and the brief memory spike
+            # of having old + new model overlapping.
             if bridge_dtype == torch.float16:
                 if verbose:
                     print("⚠ Float16 detected, upcasting to float32 for benchmarking...")
-                del hf_model
-                gc.collect()
+                hf_model.to(torch.float32)
                 bridge_dtype = torch.float32
-                hf_model = auto_model_class.from_pretrained(
-                    model_name, torch_dtype=torch.float32, **hf_kwargs
-                )
-                hf_model = hf_model.to(device)
-                _fixup_custom_model(hf_model)
-                hf_model.eval()
                 if verbose:
-                    print("✓ Reloaded in float32")
+                    print("✓ Upcast to float32 in-place")
             if verbose:
-                print("✓ HuggingFace model loaded\n")
+                print("✓ HuggingFace model loaded")
+
+            # HF reference logits will be captured AFTER the bridge is
+            # loaded so we can use bridge.to_tokens() for consistent
+            # tokenization (e.g. BOS prepending).  This happens right
+            # after the component benchmark, while both models are still
+            # in memory, before the HF model is deleted.
+
         except Exception as e:
             if verbose:
                 print(f"✗ Could not load HuggingFace model: {str(e)}\n")
 
-    # Now load the full bridge with correct dtype
+    # Now load the full bridge with correct dtype (GPU is mostly free)
     if verbose:
         print("Loading TransformerBridge (unprocessed)...")
     try:
@@ -994,37 +1028,151 @@ def run_benchmark_suite(
         return results
 
     # Run Phase 1 benchmarks
-    if should_run_phase(1) and hf_model and bridge_unprocessed:
+    if should_run_phase(1) and bridge_unprocessed:
         if verbose:
-            print("Running Phase 1 benchmarks...\n")
+            mode_label = " [conserve-memory]" if conserve_memory else ""
+            print(f"Running Phase 1 benchmarks{mode_label}...\n")
 
         # Component-level benchmarks
         if verbose:
             print("1. Component-Level Benchmarks")
-        try:
-            component_result = benchmark_all_components(bridge_unprocessed, hf_model)
-            add_result(component_result)
+        if conserve_memory:
+            # conserve_memory mode: use bridge.original_model as the HF
+            # reference (no separate HF load, 1.0x peak throughout).
+            try:
+                component_result = benchmark_all_components(
+                    bridge_unprocessed, bridge_unprocessed.original_model
+                )
+                add_result(component_result)
+                if verbose:
+                    status = "✓" if component_result.passed else "✗"
+                    print(f"{status} {component_result.message}")
+                    print("  (reference: bridge.original_model)\n")
+            except Exception as e:
+                if verbose:
+                    print(f"✗ Component benchmark failed: {e}\n")
+        elif hf_model is not None:
+            # Full mode: component benchmark with independent HF model (brief 2.0x)
+            try:
+                component_result = benchmark_all_components(
+                    bridge_unprocessed, hf_model
+                )
+                add_result(component_result)
+                if verbose:
+                    status = "✓" if component_result.passed else "✗"
+                    print(f"{status} {component_result.message}\n")
+                gc.collect()
+                if device != "cpu" and torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                if device == "mps" and hasattr(torch, "mps") and hasattr(torch.mps, "empty_cache"):
+                    torch.mps.synchronize()
+                    torch.mps.empty_cache()
+            except Exception as e:
+                if verbose:
+                    print(f"✗ Component benchmark failed: {e}\n")
+
+            # Capture HF reference logits using bridge.to_tokens() for
+            # consistent tokenization (BOS prepending, etc.).  Both models
+            # are still in memory so this is still within the 2.0x window.
             if verbose:
-                status = "✓" if component_result.passed else "✗"
-                print(f"{status} {component_result.message}\n")
-            # Clean up after component testing
-            gc.collect()
-            if device != "cpu" and torch.cuda.is_available():
-                torch.cuda.empty_cache()
-        except Exception as e:
+                print("Capturing HF reference outputs to CPU...")
+            try:
+                hf_tokens = bridge_unprocessed.to_tokens(test_text)
+                is_enc_dec = is_encoder_decoder_model(
+                    model_name, trust_remote_code=trust_remote_code
+                )
+                with torch.no_grad():
+                    if is_enc_dec:
+                        decoder_start_id = getattr(
+                            getattr(hf_model, "config", None),
+                            "decoder_start_token_id", 0,
+                        )
+                        dec_ids = torch.tensor(
+                            [[decoder_start_id]]
+                        ).to(hf_tokens.device)
+                        hf_out = hf_model(
+                            hf_tokens, decoder_input_ids=dec_ids
+                        )
+                    else:
+                        hf_out = hf_model(hf_tokens)
+                    hf_saved_logits = hf_out.logits.detach().cpu().clone()
+
+                    # Compute causal LM loss (shift logits and labels)
+                    if not is_enc_dec and hf_saved_logits.shape[1] > 1:
+                        shift_logits = hf_out.logits[..., :-1, :].contiguous()
+                        shift_labels = hf_tokens[..., 1:].contiguous()
+                        loss_fn = torch.nn.CrossEntropyLoss()
+                        hf_saved_loss = loss_fn(
+                            shift_logits.view(-1, shift_logits.size(-1)),
+                            shift_labels.view(-1),
+                        ).item()
+
+                if verbose:
+                    loss_str = (
+                        f"{hf_saved_loss:.4f}"
+                        if hf_saved_loss is not None
+                        else "N/A"
+                    )
+                    print(
+                        f"✓ Captured HF logits {hf_saved_logits.shape}, "
+                        f"loss={loss_str}\n"
+                    )
+                del hf_tokens
+            except Exception as e:
+                if verbose:
+                    print(f"⚠ Could not capture HF reference outputs: {e}\n")
+
+            # Delete HF model immediately after component benchmark + logit capture.
+            # From here on, Phase 1 runs at 1.0x using saved HF tensors.
+            cleanup_model(hf_model, "HuggingFace model")
+            hf_model = None
+        else:
             if verbose:
-                print(f"✗ Component benchmark failed: {e}\n")
+                print("⏭️ Skipped (no HF reference model available)\n")
 
         # Forward pass benchmarks
         if verbose:
             print("2. Forward Pass Benchmarks")
-        try:
-            add_result(
-                benchmark_forward_pass(bridge_unprocessed, test_text, reference_model=hf_model)
-            )
-        except Exception as e:
-            if verbose:
-                print(f"✗ Forward pass benchmark failed: {e}\n")
+        if conserve_memory:
+            # conserve_memory mode: capture reference logits from
+            # bridge.original_model (same tokenization as bridge).
+            try:
+                tokens = bridge_unprocessed.to_tokens(test_text)
+                with torch.no_grad():
+                    hf_out = bridge_unprocessed.original_model(tokens)
+                    ref_logits = hf_out.logits.detach()
+                add_result(
+                    benchmark_forward_pass(
+                        bridge_unprocessed,
+                        test_text,
+                        reference_logits=ref_logits,
+                    )
+                )
+                del ref_logits
+            except Exception as e:
+                if verbose:
+                    print(f"✗ Forward pass benchmark failed: {e}\n")
+        elif hf_saved_logits is not None:
+            # Full mode: use pre-captured HF logits (bridge only, 1.0x)
+            try:
+                add_result(
+                    benchmark_forward_pass(
+                        bridge_unprocessed,
+                        test_text,
+                        reference_logits=hf_saved_logits.to(device),
+                    )
+                )
+            except Exception as e:
+                if verbose:
+                    print(f"✗ Forward pass benchmark failed: {e}\n")
+        else:
+            try:
+                add_result(
+                    benchmark_forward_pass(bridge_unprocessed, test_text)
+                )
+            except Exception as e:
+                if verbose:
+                    print(f"✗ Forward pass benchmark failed: {e}\n")
 
         # Capture Phase 1 reference in float32 for Phase 3 equivalence comparison.
         # Running both passes in float32 avoids bf16 forward-pass amplification.
@@ -1067,10 +1215,13 @@ def run_benchmark_suite(
                 if verbose:
                     print(f"⚠ Could not save Phase 1 reference data: {e}")
 
-    # Save bridge_dtype before cleaning up HF model (needed for Phase 3)
+    # Free saved HF tensors now that Phase 1 is done
+    del hf_saved_logits, hf_saved_loss
+
+    # Save bridge_dtype before potential cleanup (needed for Phase 3)
     saved_bridge_dtype = bridge_dtype
 
-    # Clean up HF model - no longer needed
+    # Clean up HF model if still alive (e.g., Phase 1 was skipped)
     if hf_model is not None:
         cleanup_model(hf_model, "HuggingFace model")
         hf_model = None
@@ -1704,6 +1855,12 @@ def main():
         action="store_true",
         help="Trust remote code for custom architectures (e.g., OpenELM)",
     )
+    parser.add_argument(
+        "--conserve-memory",
+        action="store_true",
+        help="Reduce Phase 1 peak memory from 2.0x to 1.0x by using "
+             "bridge.original_model instead of loading a separate HF model",
+    )
 
     args = parser.parse_args()
 
@@ -1715,6 +1872,7 @@ def main():
         enable_compatibility_mode=not args.no_compat,
         verbose=not args.quiet,
         trust_remote_code=args.trust_remote_code,
+        conserve_memory=args.conserve_memory,
     )
 
     if args.update_registry:

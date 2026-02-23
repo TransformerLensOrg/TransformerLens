@@ -492,10 +492,10 @@ def huggingface_name_to_url(df: pd.DataFrame) -> pd.DataFrame:
 
 
 MD_TABLE_HEARDER: str = """---
-title: Model Properties Table
+title: HookedTransformer
 hide-toc: true
 ---
-# Model Properties Table
+# HookedTransformer Model Properties
 
 also see the [interactive model table](../_static/model_properties_table_interactive.html)
 """
@@ -635,8 +635,10 @@ def build_docs():
     get_model_table(
         model_table_path=GENERATED_DIR / "model_properties_table.jsonl",
         force_reload=True,
+        allow_except=True,
     )
     copy_demos()
+    generate_bridge_models_page()
 
     # Generating docs
     # Use sys.executable with -m sphinx to ensure we use the venv's sphinx
@@ -754,12 +756,417 @@ def copy_demos(_app: Optional[Any] = None):
         shutil.copy(DEMOS_DIR / filename, copy_to_dir)
 
 
+BRIDGE_MODELS_PAGE: str = """---
+title: TransformerBridge Models
+hide-toc: true
+---
+# TransformerBridge Models
+
+The TransformerBridge provides automatic model compatibility for HuggingFace models
+across supported architectures.
+
+```{raw} html
+<style>
+/* Widen the Furo content area for this page */
+.main > .content {
+    width: 80vw !important;
+    max-width: 80vw !important;
+}
+
+#bt-root { font-size: 14px; }
+#bt-root .bt-controls {
+    display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 16px;
+}
+#bt-root .bt-controls input[type="text"] {
+    padding: 6px 10px; border: 1px solid var(--color-foreground-border, #ccc);
+    border-radius: 4px; font-size: 14px; min-width: 260px;
+    background: var(--color-background-primary, #fff); color: var(--color-foreground-primary, #333);
+}
+#bt-root .bt-controls select {
+    padding: 6px 10px; border: 1px solid var(--color-foreground-border, #ccc);
+    border-radius: 4px; font-size: 14px; min-width: 220px;
+    background: var(--color-background-primary, #fff); color: var(--color-foreground-primary, #333);
+}
+#bt-root .bt-controls label {
+    display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; white-space: nowrap;
+}
+#bt-root .bt-count {
+    margin-left: auto; font-size: 13px; color: var(--color-foreground-muted, #666); white-space: nowrap;
+}
+#bt-root .bt-wrap { overflow-x: auto; }
+#bt-root table {
+    width: 100%; border-collapse: collapse; font-size: 13px;
+}
+#bt-root thead th {
+    background: var(--color-background-secondary, #f5f5f5);
+    border-bottom: 2px solid var(--color-foreground-border, #ddd);
+    padding: 8px 12px; text-align: left; font-weight: 600; white-space: nowrap;
+    position: sticky; top: 0; z-index: 1;
+}
+#bt-root tbody td {
+    padding: 6px 12px; border-bottom: 1px solid var(--color-background-border, #eee); white-space: nowrap;
+}
+#bt-root tbody tr:hover { background: var(--color-background-hover, #f8f8ff); }
+#bt-root tbody td a { color: var(--color-link, #0366d6); text-decoration: none; }
+#bt-root tbody td a:hover { text-decoration: underline; }
+#bt-root .bt-rn { color: var(--color-foreground-muted, #999); font-size: 12px; width: 36px; text-align: right; }
+#bt-root .bt-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+#bt-root .bt-s0 { background: #e8e8e8; color: #666; }
+#bt-root .bt-s1 { background: #d4edda; color: #155724; }
+#bt-root .bt-s2 { background: #fff3cd; color: #856404; }
+#bt-root .bt-s3 { background: #f8d7da; color: #721c24; }
+#bt-root .bt-muted { color: var(--color-foreground-muted, #999); }
+#bt-root .bt-note { max-width: 280px; white-space: normal; word-wrap: break-word; font-size: 12px; line-height: 1.4; }
+#bt-root .bt-note-toggle { color: var(--color-link, #2962ff); cursor: pointer; font-size: 11px; margin-left: 4px; white-space: nowrap; }
+#bt-root .bt-detail-link { cursor: pointer; font-size: 12px; }
+#bt-root .bt-detail-row td { padding: 0; border-bottom: 2px solid var(--color-foreground-border, #ddd); }
+#bt-root .bt-detail-row:hover { background: transparent; }
+#bt-root .bt-detail {
+    padding: 12px 16px 12px 48px;
+    background: var(--color-background-secondary, #f9f9f9);
+    font-size: 13px;
+}
+#bt-root .bt-detail-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 6px 24px;
+}
+#bt-root .bt-detail-grid dt {
+    font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em;
+    color: var(--color-foreground-muted, #888); margin: 0;
+}
+#bt-root .bt-detail-grid dd {
+    margin: 0 0 6px 0; font-family: monospace; font-size: 13px;
+}
+#bt-root .bt-detail-loading { color: var(--color-foreground-muted, #999); font-style: italic; }
+#bt-root .bt-detail-error { color: #dc3545; font-style: italic; }
+#bt-root .bt-pag {
+    display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 16px; flex-wrap: wrap;
+}
+#bt-root .bt-pag button {
+    padding: 6px 14px; border: 1px solid var(--color-foreground-border, #ccc); border-radius: 4px;
+    background: var(--color-background-primary, #fff); color: var(--color-foreground-primary, #333);
+    cursor: pointer; font-size: 13px;
+}
+#bt-root .bt-pag button:hover:not(:disabled) { background: var(--color-background-hover, #f0f0f0); }
+#bt-root .bt-pag button:disabled { opacity: 0.4; cursor: default; }
+#bt-root .bt-pag .bt-pinfo { font-size: 13px; color: var(--color-foreground-muted, #666); }
+#bt-root .bt-pag .bt-pnums { display: flex; gap: 4px; }
+#bt-root .bt-pag .bt-pbtn { padding: 4px 10px; min-width: 32px; text-align: center; }
+#bt-root .bt-pag .bt-pbtn.active {
+    background: var(--color-link, #0366d6); color: #fff; border-color: var(--color-link, #0366d6);
+}
+#bt-root .bt-pag .bt-ellip { padding: 4px 6px; color: var(--color-foreground-muted, #999); }
+#bt-root .bt-empty { text-align: center; padding: 40px 20px; color: var(--color-foreground-muted, #999); }
+</style>
+
+<div id="bt-root">
+  <div class="bt-controls">
+    <input type="text" id="btSearch" placeholder="Search by model name...">
+    <select id="btArch"><option value="">All Architectures</option></select>
+    <label><input type="checkbox" id="btHide"> Hide unverified</label>
+    <span class="bt-count" id="btCount"></span>
+  </div>
+  <div class="bt-wrap">
+    <table>
+      <thead><tr>
+        <th class="bt-rn">#</th>
+        <th>Model</th>
+        <th>Architecture</th>
+        <th>Status</th>
+        <th>Verified Date</th>
+        <th>Note</th>
+        <th></th>
+      </tr></thead>
+      <tbody id="btBody"><tr><td colspan="7" class="bt-empty">Loading models...</td></tr></tbody>
+    </table>
+  </div>
+  <div class="bt-pag" id="btPag"></div>
+</div>
+
+<script>
+(function() {
+    const PS = 25, COLS = 7;
+    const SM = {0:'Unverified',1:'Verified',2:'Skipped',3:'Failed'};
+    const cfgCache = {};
+    let all=[], filt=[], pg=1, dt=null;
+
+    /* Fields to extract from HuggingFace config.json, with beautified labels.
+       Each entry: [label, ...candidate keys to try in order].
+       Keys starting with _ are computed/inferred fields handled in extractField(). */
+    const CFG_FIELDS = [
+        /* Size & Shape */
+        ['Parameters',          '_n_params'],
+        ['Layers',              'num_hidden_layers', 'n_layer', 'num_layers'],
+        ['Heads',               'num_attention_heads', 'n_head', 'num_heads'],
+        ['KV Heads',            'num_key_value_heads'],
+        ['Model Dim (d_model)', 'hidden_size', 'n_embd', 'd_model'],
+        ['Head Dim (d_head)',   'head_dim'],
+        ['MLP Dim (d_mlp)',     'intermediate_size', 'd_ff'],
+        ['Vocab Size',          'vocab_size'],
+        ['Context Length',      'max_position_embeddings', 'n_positions', 'n_ctx'],
+        /* Architecture details relevant for MI */
+        ['Activation',          'hidden_act', 'activation_function', 'feed_forward_proj'],
+        ['Normalization',       '_norm_type'],
+        ['Positional Embedding','_pos_embed_type'],
+        ['Parallel Attn & MLP', '_parallel_attn_mlp'],
+        ['Gated MLP',           '_gated_mlp'],
+        ['Tie Embeddings',      'tie_word_embeddings'],
+        /* Tokenizer */
+        ['Tokenizer',           '_tokenizer'],
+    ];
+
+    function fmtParam(n) {
+        if (n === null || n === undefined) return null;
+        if (n >= 1e12) return (n/1e12).toFixed(1) + 'T';
+        if (n >= 1e9)  return (n/1e9).toFixed(1) + 'B';
+        if (n >= 1e6)  return (n/1e6).toFixed(0) + 'M';
+        if (n >= 1e3)  return (n/1e3).toFixed(0) + 'K';
+        return String(n);
+    }
+
+    function estimateParams(cfg) {
+        const d = cfg.hidden_size || cfg.n_embd || cfg.d_model;
+        const L = cfg.num_hidden_layers || cfg.n_layer || cfg.num_layers;
+        const V = cfg.vocab_size;
+        const dff = cfg.intermediate_size || cfg.d_ff;
+        if (!d || !L) return null;
+        /* Rough: 2*V*d + L*(4*d^2 + 2*d*dff) */
+        let p = 2 * (V||0) * d;
+        p += L * (4 * d * d + (dff ? 2 * d * dff : 8 * d * d));
+        return p;
+    }
+
+    function inferNormType(cfg) {
+        if (cfg.rms_norm_eps !== undefined) return 'RMSNorm';
+        if (cfg.layer_norm_epsilon !== undefined || cfg.layer_norm_eps !== undefined) return 'LayerNorm';
+        if (cfg.norm_eps !== undefined) return 'LayerNorm';
+        return null;
+    }
+
+    function inferPosEmbedType(cfg) {
+        /* Check for rotary indicators */
+        if (cfg.rope_theta || cfg.rope_parameters || cfg.rope_scaling ||
+            cfg.rotary_pct || cfg.rotary_dim || cfg.rotary_emb_base) return 'Rotary (RoPE)';
+        if (cfg.partial_rotary_factor !== undefined) return 'Partial Rotary (RoPE)';
+        /* ALiBi */
+        if (cfg.alibi || cfg.position_embedding_type === 'alibi') return 'ALiBi';
+        /* Relative position bias (T5-style) */
+        if (cfg.relative_attention_num_buckets !== undefined) return 'Relative Bias (T5)';
+        /* Explicit type */
+        if (cfg.position_embedding_type) return cfg.position_embedding_type;
+        /* If max_position_embeddings is set and no rotary found, likely learned */
+        if (cfg.max_position_embeddings || cfg.n_positions) return 'Learned';
+        return null;
+    }
+
+    function inferParallelAttnMlp(cfg) {
+        /* Explicit flags in some configs */
+        if (cfg.parallel_attn !== undefined) return cfg.parallel_attn;
+        /* Phi models use parallel attention+MLP */
+        const arch = cfg.architectures?.[0] || cfg.model_type || '';
+        if (/^phi$/i.test(cfg.model_type) && cfg.model_type !== 'phi3') return true;
+        if (arch === 'GPTJForCausalLM' || cfg.model_type === 'gptj') return true;
+        return null;
+    }
+
+    function inferGatedMlp(cfg) {
+        /* SwiGLU / gated MLPs are used by LLaMA, Mistral, Qwen, Gemma, OLMo, etc.
+           The tell-tale sign is hidden_act being 'silu' + intermediate_size present,
+           or an explicit gate_proj in the architecture. */
+        const act = cfg.hidden_act || '';
+        const arch = cfg.architectures?.[0] || '';
+        const gatedArchs = ['LlamaForCausalLM', 'MistralForCausalLM', 'MixtralForCausalLM',
+            'Qwen2ForCausalLM', 'Qwen3ForCausalLM', 'GemmaForCausalLM', 'Gemma2ForCausalLM',
+            'Gemma3ForCausalLM', 'Phi3ForCausalLM', 'OlmoForCausalLM', 'Olmo2ForCausalLM',
+            'Olmo3ForCausalLM', 'OlmoeForCausalLM', 'StableLmForCausalLM', 'GptOssForCausalLM'];
+        if (gatedArchs.includes(arch)) return true;
+        /* T5 with gated-gelu or gated-silu */
+        if (cfg.feed_forward_proj && cfg.feed_forward_proj.includes('gated')) return true;
+        if (arch === 'GPT2LMHeadModel' || arch === 'GPTNeoForCausalLM' ||
+            arch === 'GPTNeoXForCausalLM' || arch === 'GPTJForCausalLM' ||
+            arch === 'OPTForCausalLM' || arch === 'BloomForCausalLM') return false;
+        return null;
+    }
+
+    function inferTokenizer(cfg) {
+        return cfg.tokenizer_class || null;
+    }
+
+    function extractField(cfg, keys) {
+        for (const k of keys) {
+            if (k === '_n_params') {
+                const est = estimateParams(cfg);
+                return est ? fmtParam(est) + ' (est.)' : null;
+            }
+            if (k === '_norm_type') return inferNormType(cfg);
+            if (k === '_pos_embed_type') return inferPosEmbedType(cfg);
+            if (k === '_parallel_attn_mlp') return inferParallelAttnMlp(cfg);
+            if (k === '_gated_mlp') return inferGatedMlp(cfg);
+            if (k === '_tokenizer') return inferTokenizer(cfg);
+            if (cfg[k] !== undefined && cfg[k] !== null) return cfg[k];
+        }
+        return null;
+    }
+
+    async function fetchDetail(modelId) {
+        if (cfgCache[modelId]) return cfgCache[modelId];
+        const url = 'https://huggingface.co/' + modelId + '/resolve/main/config.json';
+        const r = await fetch(url);
+        if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
+        const cfg = await r.json();
+        cfgCache[modelId] = cfg;
+        return cfg;
+    }
+
+    function renderDetail(cfg) {
+        let html = '<dl class="bt-detail-grid">';
+        for (const [label, ...keys] of CFG_FIELDS) {
+            let val = extractField(cfg, keys);
+            if (val === null || val === undefined) continue;
+            if (typeof val === 'boolean') val = val ? 'Yes' : 'No';
+            if (typeof val === 'number') val = val.toLocaleString();
+            html += '<div><dt>' + esc(label) + '</dt><dd>' + esc(String(val)) + '</dd></div>';
+        }
+        html += '</dl>';
+        return html;
+    }
+
+    async function toggleDetail(modelId, rowEl) {
+        const nextRow = rowEl.nextElementSibling;
+        if (nextRow && nextRow.classList.contains('bt-detail-row')) {
+            nextRow.remove();
+            rowEl.querySelector('.bt-detail-link').textContent = 'Details';
+            return;
+        }
+        const detailRow = document.createElement('tr');
+        detailRow.className = 'bt-detail-row';
+        detailRow.innerHTML = '<td colspan="' + COLS + '"><div class="bt-detail"><span class="bt-detail-loading">Loading config from HuggingFace...</span></div></td>';
+        rowEl.after(detailRow);
+        rowEl.querySelector('.bt-detail-link').textContent = 'Hide';
+        try {
+            const cfg = await fetchDetail(modelId);
+            detailRow.querySelector('.bt-detail').innerHTML = renderDetail(cfg);
+        } catch(e) {
+            detailRow.querySelector('.bt-detail').innerHTML = '<span class="bt-detail-error">Could not load config: ' + esc(String(e.message)) + '</span>';
+        }
+    }
+
+    async function init() {
+        try {
+            const r = await fetch('../_static/supported_models.json');
+            const d = await r.json();
+            all = d.models;
+            const ac = {};
+            all.forEach(m => ac[m.architecture_id] = (ac[m.architecture_id]||0)+1);
+            const sel = document.getElementById('btArch');
+            Object.keys(ac).sort().forEach(a => {
+                const o = document.createElement('option');
+                o.value = a; o.textContent = a+' ('+ac[a]+')';
+                sel.appendChild(o);
+            });
+            apply();
+        } catch(e) {
+            document.getElementById('btBody').innerHTML =
+                '<tr><td colspan="'+COLS+'" class="bt-empty">Failed to load model data.</td></tr>';
+        }
+    }
+
+    function apply() {
+        const s = document.getElementById('btSearch').value.toLowerCase().trim();
+        const a = document.getElementById('btArch').value;
+        const h = document.getElementById('btHide').checked;
+        filt = all.filter(m => {
+            if (s && !m.model_id.toLowerCase().includes(s)) return false;
+            if (a && m.architecture_id !== a) return false;
+            if (h && m.status === 0) return false;
+            return true;
+        });
+        pg = 1; render(); pag(); count();
+    }
+
+    function esc(str) { const d=document.createElement('div'); d.textContent=str; return d.innerHTML; }
+
+    function render() {
+        const tb = document.getElementById('btBody');
+        const st = (pg-1)*PS, pm = filt.slice(st, st+PS);
+        if (!pm.length) {
+            tb.innerHTML='<tr><td colspan="'+COLS+'" class="bt-empty">No models match your filters.</td></tr>';
+            return;
+        }
+        tb.innerHTML = pm.map((m,i) => {
+            const id = esc(m.model_id);
+            return '<tr data-model="'+id+'">' +
+            '<td class="bt-rn">'+(st+i+1)+'</td>' +
+            '<td><a href="https://huggingface.co/'+id+'" target="_blank" rel="noopener">'+id+'</a></td>' +
+            '<td>'+esc(m.architecture_id)+'</td>' +
+            '<td><span class="bt-badge bt-s'+m.status+'">'+SM[m.status]+'</span></td>' +
+            '<td>'+(m.verified_date || '<span class="bt-muted">&mdash;</span>')+'</td>' +
+            '<td>'+(m.note ? esc(m.note) : '<span class="bt-muted">&mdash;</span>')+'</td>' +
+            '<td><a class="bt-detail-link" href="javascript:void(0)">Details</a></td>' +
+            '</tr>';
+        }).join('');
+
+        tb.querySelectorAll('.bt-detail-link').forEach(link => {
+            link.addEventListener('click', function(e) {
+                e.preventDefault();
+                const row = this.closest('tr');
+                toggleDetail(row.dataset.model, row);
+            });
+        });
+    }
+
+    function pag() {
+        const tp = Math.max(1, Math.ceil(filt.length/PS)), c = document.getElementById('btPag');
+        if (tp<=1) { c.innerHTML=''; return; }
+        let h = '<button id="btPrev" '+(pg===1?'disabled':'')+'>Previous</button><div class="bt-pnums">';
+        const pages=[1]; if(tp>1) pages.push(tp);
+        for(let i=Math.max(2,pg-1);i<=Math.min(tp-1,pg+1);i++) if(!pages.includes(i)) pages.push(i);
+        pages.sort((a,b)=>a-b);
+        let last=0;
+        pages.forEach(p => {
+            if(last&&p-last>1) h+='<span class="bt-ellip">...</span>';
+            h+='<button class="bt-pbtn'+(p===pg?' active':'')+'" data-p="'+p+'">'+p+'</button>';
+            last=p;
+        });
+        h += '</div><button id="btNext" '+(pg===tp?'disabled':'')+'>Next</button>';
+        h += '<span class="bt-pinfo">Page '+pg+' of '+tp+'</span>';
+        c.innerHTML = h;
+        document.getElementById('btPrev').addEventListener('click', () => go(pg-1));
+        document.getElementById('btNext').addEventListener('click', () => go(pg+1));
+        c.querySelectorAll('.bt-pbtn').forEach(b => b.addEventListener('click', () => go(+b.dataset.p)));
+    }
+
+    function go(p) { const tp=Math.ceil(filt.length/PS); if(p<1||p>tp) return; pg=p; render(); pag(); count(); }
+    function count() { document.getElementById('btCount').textContent='Showing '+filt.length+' of '+all.length+' models'; }
+
+    document.getElementById('btSearch').addEventListener('input', () => { clearTimeout(dt); dt=setTimeout(apply,200); });
+    document.getElementById('btArch').addEventListener('change', apply);
+    document.getElementById('btHide').addEventListener('change', apply);
+    init();
+})();
+</script>
+```
+"""
+
+
+def generate_bridge_models_page():
+    """Generate the TransformerBridge models markdown page.
+
+    The page fetches supported_models.json from _static/, which is a symlink
+    to the canonical source at transformer_lens/tools/model_registry/data/.
+    """
+    GENERATED_DIR.mkdir(exist_ok=True)
+    # Write the markdown wrapper page
+    (GENERATED_DIR / "transformer_bridge_models.md").write_text(BRIDGE_MODELS_PAGE, encoding="utf-8")
+
+
 def docs_hot_reload():
     """Hot reload the docs."""
     get_model_table(
         model_table_path=GENERATED_DIR / "model_properties_table.jsonl", force_reload=False
     )
     copy_demos()
+    generate_bridge_models_page()
 
     subprocess.run(
         [
