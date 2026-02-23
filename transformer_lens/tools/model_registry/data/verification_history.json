@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-02-23T11:32:43.850151",
+  "last_updated": "2026-02-23T15:20:35.406284",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -4268,6 +4268,46 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B",
+      "architecture_id": "Qwen2ForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "deepseek-ai/DeepSeek-R1-0528-Qwen3-8B",
+      "architecture_id": "Qwen3ForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "deepseek-ai/DeepSeek-R1-Distill-Llama-8B",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "deepseek-ai/DeepSeek-R1-Distill-Qwen-14B",
+      "architecture_id": "Qwen2ForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed with issues: P3=94.1% (failed: weight_modification)",
       "invalidated": false,
       "invalidation_reason": null
     }

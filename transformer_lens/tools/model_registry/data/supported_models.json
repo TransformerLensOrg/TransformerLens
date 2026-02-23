@@ -8,7 +8,7 @@
   },
   "total_architectures": 25,
   "total_models": 4908,
-  "total_verified": 318,
+  "total_verified": 324,
   "models": [
     {
       "architecture_id": "Qwen2ForCausalLM",
@@ -475,10 +475,10 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": null,
+      "note": "Architecture validation only (model too large for full benchmarks on test hardware). Config loading, adapter instantiation (Qwen2ArchitectureAdapter), and full component mapping verified. GQA 40 heads / 8 KV heads. Identical architecture to DeepSeek-R1-Distill-Qwen-7B and 14B which passed full benchmarks.",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -619,13 +619,13 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "Qwen2ForCausalLM",
@@ -828,24 +828,24 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "deepseek-ai/DeepSeek-R1-Distill-Qwen-14B",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed with issues: P3=94.1% (failed: weight_modification)",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 94.1
     },
     {
       "architecture_id": "LlamaForCausalLM",
       "model_id": "deepseek-ai/DeepSeek-R1-Distill-Llama-8B",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "Qwen2ForCausalLM",
@@ -1356,10 +1356,10 @@
     {
       "architecture_id": "LlamaForCausalLM",
       "model_id": "deepseek-ai/DeepSeek-R1-Distill-Llama-70B",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": null,
+      "note": "Architecture validation only (model too large for full benchmarks on test hardware). Config loading, adapter instantiation (LlamaArchitectureAdapter), and full component mapping verified. GQA 64 heads / 8 KV heads. Identical architecture to DeepSeek-R1-Distill-Llama-8B which passed full benchmarks.",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -3039,13 +3039,13 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "deepseek-ai/DeepSeek-R1-0528-Qwen3-8B",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "LlamaForCausalLM",
