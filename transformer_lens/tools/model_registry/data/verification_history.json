@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-02-23T09:26:39.872543",
+  "last_updated": "2026-02-23T11:32:43.850151",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -3864,6 +3864,406 @@
     {
       "model_id": "facebook/opt-125m",
       "architecture_id": "OPTForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "facebook/opt-125m",
+      "architecture_id": "OPTForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "facebook/opt-1.3b",
+      "architecture_id": "OPTForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "peft-internal-testing/tiny-random-OPTForCausalLM",
+      "architecture_id": "OPTForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "facebook/opt-350m",
+      "architecture_id": "OPTForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=50.0% < 100.0% (failed: all_components) \u2014 1/147 components failed (1 critical)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "peft-internal-testing/opt-125m",
+      "architecture_id": "OPTForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "optimum-intel-internal-testing/opt-125m",
+      "architecture_id": "OPTForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "facebook/opt-2.7b",
+      "architecture_id": "OPTForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "BabyLM-community/babylm-multimodal-baseline-flamingo",
+      "architecture_id": "OPTForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: ",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "openai-community/gpt2",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "distilbert/distilgpt2",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "openai-community/gpt2-large",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "openai-community/gpt2-medium",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "sshleifer/tiny-gpt2",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "openai-community/gpt2-xl",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "microsoft/DialoGPT-medium",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "skt/kogpt2-base-v2",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "erwanf/gpt2-mini",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "AI-Sweden-Models/gpt-sw3-126m",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "stanford-crfm/BioMedLM",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "codeparrot/codeparrot-small",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Xenova/distilgpt2",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: Xenova/distilgpt2 does not appear to have a file named pytorch_model.bin or model.safetensors.",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Xenova/gpt2",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: Xenova/gpt2 does not appear to have a file named pytorch_model.bin or model.safetensors.",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "stanford-crfm/alias-gpt2-small-x21",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "stanford-crfm/expanse-gpt2-small-x777",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "optimum/gpt2",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: optimum/gpt2 does not appear to have a file named pytorch_model.bin or model.safetensors.",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "codeparrot/codeparrot",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Writer/palmyra-3B",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Corianas/256_5epoch",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "SebastianSchramm/Cerebras-GPT-111M-instruction-GPTQ-4bit-128g-actorder_True",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: Loading a GPTQ quantized model requires optimum (`pip install optimum`)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "c-bone/CrystaLLM-pi_base",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: 'NoneType' object has no attribute 'from_pretrained'",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "FabbriSimo01/Cerebras_1.3b_Quantized",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: Using `bitsandbytes` 8-bit quantization requires bitsandbytes: `pip install -U bitsandbytes>=0.46.1`",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "FabbriSimo01/GPT_Large_Quantized",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: Using `bitsandbytes` 8-bit quantization requires bitsandbytes: `pip install -U bitsandbytes>=0.46.1`",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Mohammed-Altaf/Medical-ChatBot",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "pavfi-at-m/gpt2GPTQ",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: all_components, forward_pass_logits) \u2014 48/76 components failed (48 critical)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "nomic-ai/gpt4all-j",
+      "architecture_id": "GPTJForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Corianas/gpt-j-6B-Dolly",
+      "architecture_id": "GPTJForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "locuslab/tofu_ft_phi-1.5",
+      "architecture_id": "PhiForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed with issues: P2=75.0% (failed: generation, generation_with_kv_cache, multiple_generation_calls)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Artples/L-MChat-Small",
+      "architecture_id": "PhiForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=50.0% < 100.0% (failed: forward_pass_logits) \u2014 Tensors differ: max_diff=0.002074, mean_rel=0.000409",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "ncfrey/ChemGPT-4.7M",
+      "architecture_id": "GPTNeoForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "ncfrey/ChemGPT-1.2B",
+      "architecture_id": "GPTNeoForCausalLM",
       "verified_date": "2026-02-23",
       "verified_by": "verify_models",
       "transformerlens_version": null,

@@ -988,12 +988,15 @@ def run_benchmark_suite(
                     print(f"Detected dtype={bridge_dtype}")
             except StopIteration:
                 pass
-            # Float16 introduces too much rounding error for benchmarking; upcast
-            # in-place to avoid a second download/load and the brief memory spike
-            # of having old + new model overlapping.
-            if bridge_dtype == torch.float16:
+            # Float16/bfloat16 introduce too much rounding error for benchmarking;
+            # upcast in-place to avoid a second download/load and the brief memory
+            # spike of having old + new model overlapping.  bfloat16 is especially
+            # problematic on MPS where two separate model instances can produce
+            # different matmul results from identical weights due to Metal kernel
+            # non-determinism.
+            if bridge_dtype in (torch.float16, torch.bfloat16):
                 if verbose:
-                    print("⚠ Float16 detected, upcasting to float32 for benchmarking...")
+                    print(f"⚠ {bridge_dtype} detected, upcasting to float32 for benchmarking...")
                 hf_model.to(torch.float32)
                 bridge_dtype = torch.float32
                 if verbose:

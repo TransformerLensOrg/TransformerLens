@@ -50,6 +50,13 @@ class OptArchitectureAdapter(ArchitectureAdapter):
             ),
         }
 
+        # OPT-350m is uniquely the only OPT size where word_embed_proj_dim (512)
+        # != hidden_size (1024).  It uses project_in/project_out linear layers
+        # instead of a final_layer_norm.  Detect this and conditionally include
+        # ln_final only when the model actually has one.
+        word_embed_proj_dim = getattr(self.cfg, "word_embed_proj_dim", self.cfg.d_model)
+        has_final_layer_norm = word_embed_proj_dim == self.cfg.d_model
+
         self.component_mapping = {
             "embed": EmbeddingBridge(name="model.decoder.embed_tokens"),
             "pos_embed": PosEmbedBridge(name="model.decoder.embed_positions"),
@@ -81,6 +88,9 @@ class OptArchitectureAdapter(ArchitectureAdapter):
                     ),
                 },
             ),
-            "ln_final": NormalizationBridge(name="model.decoder.final_layer_norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head"),
         }
+        if has_final_layer_norm:
+            self.component_mapping["ln_final"] = NormalizationBridge(
+                name="model.decoder.final_layer_norm", config=self.cfg
+            )

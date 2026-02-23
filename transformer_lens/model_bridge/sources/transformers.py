@@ -284,6 +284,11 @@ def boot(
     # Preserve HF-specific config attributes that adapters may need
     if getattr(hf_config, "is_gated_act", False):
         bridge_config.is_gated_act = True
+    # OPT-350m: word_embed_proj_dim != hidden_size means the model uses
+    # project_in/project_out instead of final_layer_norm.
+    word_embed_proj_dim = getattr(hf_config, "word_embed_proj_dim", None)
+    if word_embed_proj_dim is not None:
+        bridge_config.word_embed_proj_dim = word_embed_proj_dim
     adapter = ArchitectureAdapterFactory.select_architecture_adapter(bridge_config)
     if device is None:
         device = get_device()
@@ -397,6 +402,18 @@ def setup_tokenizer(tokenizer, default_padding_side=None):
         tokenizer.pad_token = tokenizer.eos_token
     if tokenizer.bos_token is None:
         tokenizer.bos_token = tokenizer.eos_token
+
+    # Ensure special token strings resolve to valid IDs.  Some tokenizers
+    # (e.g. ChemGPT's SMILES vocabulary) don't contain the default fallback
+    # strings, leaving pad_token_id as None.  HF's padding logic then crashes
+    # with "TypeError: '<' not supported between instances of 'NoneType' and 'int'".
+    if tokenizer.pad_token is not None and tokenizer.pad_token_id is None:
+        tokenizer.add_special_tokens({"pad_token": tokenizer.pad_token})
+    if tokenizer.eos_token is not None and tokenizer.eos_token_id is None:
+        tokenizer.add_special_tokens({"eos_token": tokenizer.eos_token})
+    if tokenizer.bos_token is not None and tokenizer.bos_token_id is None:
+        tokenizer.add_special_tokens({"bos_token": tokenizer.bos_token})
+
     return tokenizer
 
 

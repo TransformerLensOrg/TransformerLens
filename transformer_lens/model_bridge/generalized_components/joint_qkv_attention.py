@@ -241,6 +241,16 @@ class JointQKVAttentionBridge(AttentionBridge):
             original_component: The original attention layer to wrap
         """
         super().set_original_component(original_component)
+
+        # Capture layer index from HF attention component (e.g. GPT2Attention.layer_idx)
+        if hasattr(original_component, "layer_idx"):
+            self._layer_idx = original_component.layer_idx
+
+        # Capture HF-specific attention flags for faithful reconstruction
+        self._reorder_and_upcast_attn = getattr(
+            original_component, "reorder_and_upcast_attn", False
+        )
+
         q_transformation, k_transformation, v_transformation = self.split_qkv_matrix(
             original_component
         )
@@ -352,8 +362,29 @@ class JointQKVAttentionBridge(AttentionBridge):
             v = v.transpose(1, 2)
         else:
             raise ValueError(f"Unexpected Q tensor shape: {q.shape}. Expected 3D or 4D tensor.")
+
+        # Build attention scale matching HF's GPT2Attention behavior:
+        # 1. Standard 1/sqrt(d_head) scaling
+        # 2. Optional 1/(layer_idx + 1) scaling (scale_attn_by_inverse_layer_idx)
         scale = head_dim ** (-0.5)
-        attn_scores = torch.matmul(q, k.transpose(-2, -1)) * scale
+        if (
+            hasattr(self.config, "scale_attn_by_inverse_layer_idx")
+            and self.config.scale_attn_by_inverse_layer_idx
+            and self._layer_idx is not None
+        ):
+            scale /= float(self._layer_idx + 1)
+
+        # When reorder_and_upcast_attn is True, HF computes attention in float32
+        # using torch.baddbmm for numerical stability. Mirror that behavior here.
+        reorder_and_upcast = getattr(self, "_reorder_and_upcast_attn", False)
+        if reorder_and_upcast:
+            # Upcast Q/K to float32 for matmul, then apply combined scale
+            q_f32 = q.to(torch.float32)
+            k_f32 = k.to(torch.float32)
+            attn_scores = torch.matmul(q_f32, k_f32.transpose(-2, -1)) * scale
+        else:
+            attn_scores = torch.matmul(q, k.transpose(-2, -1)) * scale
+
         causal_mask = torch.tril(torch.ones(seq_len, seq_len, device=q.device))
         attn_scores = attn_scores.masked_fill(causal_mask == 0, float("-inf"))
         attention_mask = kwargs.get("attention_mask", None)
@@ -364,7 +395,14 @@ class JointQKVAttentionBridge(AttentionBridge):
                 attention_mask = attention_mask[..., :seq_len, :]
             attn_scores = attn_scores + attention_mask
         attn_scores = self.hook_attn_scores(attn_scores)
-        attn_weights = torch.nn.functional.softmax(attn_scores, dim=-1)
+
+        # Softmax in float32 when upcast mode is active, then cast back
+        if reorder_and_upcast:
+            attn_weights = torch.nn.functional.softmax(attn_scores, dim=-1)
+            attn_weights = attn_weights.to(v.dtype)
+        else:
+            attn_weights = torch.nn.functional.softmax(attn_scores, dim=-1)
+
         if hasattr(original_component, "attn_dropout"):
             attn_weights = original_component.attn_dropout(attn_weights)  # type: ignore[operator]
         attn_weights = self.hook_pattern(attn_weights)
