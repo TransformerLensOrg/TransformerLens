@@ -261,8 +261,11 @@ def boot(
             )
             model_name = official_name
             break
+    # Pass HF token for gated model access (e.g. meta-llama/*)
+    _hf_token = os.environ.get("HF_TOKEN", "") or None
     hf_config = AutoConfig.from_pretrained(
-        model_name, output_attentions=True, trust_remote_code=trust_remote_code
+        model_name, output_attentions=True, trust_remote_code=trust_remote_code,
+        token=_hf_token,
     )
     if hf_config_overrides:
         hf_config.__dict__.update(hf_config_overrides)
@@ -292,6 +295,8 @@ def boot(
     if not hasattr(hf_config, "pad_token_id") or "pad_token_id" not in hf_config.__dict__:
         hf_config.pad_token_id = getattr(hf_config, "eos_token_id", None)
     model_kwargs = {"config": hf_config, "torch_dtype": dtype}
+    if _hf_token:
+        model_kwargs["token"] = _hf_token
     if trust_remote_code:
         model_kwargs["trust_remote_code"] = True
     if hasattr(adapter.cfg, "attn_implementation") and adapter.cfg.attn_implementation is not None:

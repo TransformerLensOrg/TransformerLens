@@ -8,7 +8,7 @@
   },
   "total_architectures": 25,
   "total_models": 4908,
-  "total_verified": 294,
+  "total_verified": 305,
   "models": [
     {
       "architecture_id": "Qwen2ForCausalLM",
@@ -36,9 +36,9 @@
       "architecture_id": "GPT2LMHeadModel",
       "model_id": "openai-community/gpt2",
       "status": 1,
-      "verified_date": "2026-02-21",
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": null,
+      "note": "Benchmark passed",
       "phase1_score": 100.0,
       "phase2_score": 100.0,
       "phase3_score": 100.0
@@ -146,7 +146,7 @@
       "architecture_id": "OPTForCausalLM",
       "model_id": "facebook/opt-125m",
       "status": 1,
-      "verified_date": "2026-02-22",
+      "verified_date": "2026-02-23",
       "metadata": null,
       "note": "Benchmark passed",
       "phase1_score": 100.0,
@@ -333,7 +333,7 @@
       "architecture_id": "LlamaForCausalLM",
       "model_id": "RedHatAI/Llama-3.2-1B-Instruct-FP8-dynamic",
       "status": 3,
-      "verified_date": "2026-02-22",
+      "verified_date": "2026-02-23",
       "metadata": null,
       "note": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: compressed_tensors is not installed and is required for compressed-tensors quantization. Please install ",
       "phase1_score": 0.0,
@@ -442,10 +442,10 @@
     {
       "architecture_id": "LlamaForCausalLM",
       "model_id": "meta-llama/Llama-3.1-8B",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Gated repo (meta-llama/Llama-3)",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -486,13 +486,14 @@
     {
       "architecture_id": "OpenELMForCausalLM",
       "model_id": "apple/OpenELM-1_1B-Instruct",
-      "status": 2,
-      "verified_date": "2026-02-22",
+      "status": 1,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": "Config unavailable: The repository apple/OpenELM-1_1B-Instruct contains custom code which must be executed to correctly load the model. You can inspect the repository content at https://hf.co/apple/OpenELM-1_1B-Instruct ",
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "status_label": "UNVERIFIED"
     },
     {
       "architecture_id": "BloomForCausalLM",
@@ -508,13 +509,13 @@
     {
       "architecture_id": "LlamaForCausalLM",
       "model_id": "hmellor/tiny-random-LlamaForCausalLM",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed with issues: P3=94.4% (failed: process_bridge_weights)",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 94.4
     },
     {
       "architecture_id": "Qwen2ForCausalLM",
@@ -552,13 +553,13 @@
     {
       "architecture_id": "LlamaForCausalLM",
       "model_id": "HuggingFaceTB/SmolLM2-135M",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "Qwen2ForCausalLM",
@@ -574,13 +575,13 @@
     {
       "architecture_id": "LlamaForCausalLM",
       "model_id": "meta-llama/Llama-3.2-3B",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed with issues: P2=92.9% (failed: critical_forward_hooks)",
+      "phase1_score": 100.0,
+      "phase2_score": 92.9,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "Phi3ForCausalLM",
@@ -607,10 +608,10 @@
     {
       "architecture_id": "LlamaForCausalLM",
       "model_id": "meta-llama/Llama-3.3-70B-Instruct",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Gated repo (meta-llama/Llama-3)",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -640,10 +641,10 @@
     {
       "architecture_id": "LlamaForCausalLM",
       "model_id": "meta-llama/Llama-3.1-70B-Instruct",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Gated repo (meta-llama/Llama-3)",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -695,13 +696,13 @@
     {
       "architecture_id": "LlamaForCausalLM",
       "model_id": "llamafactory/tiny-random-Llama-3",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed with issues: P3=94.4% (failed: process_bridge_weights)",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 94.4
     },
     {
       "architecture_id": "MistralForCausalLM",
@@ -739,10 +740,10 @@
     {
       "architecture_id": "LlamaForCausalLM",
       "model_id": "RedHatAI/Meta-Llama-3.1-8B-Instruct-FP8",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 108.3 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -750,11 +751,11 @@
     {
       "architecture_id": "LlamaForCausalLM",
       "model_id": "RedHatAI/Llama-3.2-1B-Instruct-FP8",
-      "status": 0,
-      "verified_date": null,
+      "status": 3,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
+      "note": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: compressed_tensors is not installed and is required for compressed-tensors quantization. Please install ",
+      "phase1_score": 0.0,
       "phase2_score": null,
       "phase3_score": null
     },
@@ -1477,7 +1478,7 @@
       "architecture_id": "Olmo2ForCausalLM",
       "model_id": "allenai/OLMo-2-0425-1B",
       "status": 1,
-      "verified_date": "2026-02-22",
+      "verified_date": "2026-02-23",
       "metadata": null,
       "note": "Benchmark passed with issues: P2=85.7% (failed: critical_forward_hooks, forward_hooks); P3=85.0% (failed: logits_equivalence, critical_forward_hooks, forward_hooks)",
       "phase1_score": 100.0,
@@ -1730,7 +1731,7 @@
       "architecture_id": "GPTNeoForCausalLM",
       "model_id": "EleutherAI/gpt-neo-125m",
       "status": 1,
-      "verified_date": "2026-02-22",
+      "verified_date": "2026-02-23",
       "metadata": null,
       "note": "Benchmark passed",
       "phase1_score": 100.0,
@@ -4986,7 +4987,7 @@
       "architecture_id": "Olmo2ForCausalLM",
       "model_id": "allenai/OLMo-2-0425-1B-Instruct",
       "status": 1,
-      "verified_date": "2026-02-22",
+      "verified_date": "2026-02-23",
       "metadata": null,
       "note": "Benchmark passed",
       "phase1_score": 100.0,
@@ -7461,7 +7462,7 @@
       "architecture_id": "Olmo2ForCausalLM",
       "model_id": "allenai/OLMo-2-1124-7B-Instruct",
       "status": 2,
-      "verified_date": "2026-02-22",
+      "verified_date": "2026-02-23",
       "metadata": null,
       "note": "Estimated 89.8 GB exceeds 78.0 GB limit",
       "phase1_score": null,
@@ -11355,7 +11356,7 @@
       "architecture_id": "Olmo2ForCausalLM",
       "model_id": "allenai/OLMo-2-1124-13B-Instruct",
       "status": 2,
-      "verified_date": "2026-02-22",
+      "verified_date": "2026-02-23",
       "metadata": null,
       "note": "Estimated 172.1 GB exceeds 78.0 GB limit",
       "phase1_score": null,
@@ -11905,7 +11906,7 @@
       "architecture_id": "Olmo2ForCausalLM",
       "model_id": "allenai/OLMo-2-0325-32B",
       "status": 2,
-      "verified_date": "2026-02-22",
+      "verified_date": "2026-02-23",
       "metadata": null,
       "note": "Estimated 448.6 GB exceeds 78.0 GB limit",
       "phase1_score": null,
@@ -12840,7 +12841,7 @@
       "architecture_id": "Olmo2ForCausalLM",
       "model_id": "allenai/OLMo-2-0425-1B-DPO",
       "status": 1,
-      "verified_date": "2026-02-22",
+      "verified_date": "2026-02-23",
       "metadata": null,
       "note": "Benchmark passed",
       "phase1_score": 100.0,
@@ -13720,7 +13721,7 @@
       "architecture_id": "Olmo2ForCausalLM",
       "model_id": "allenai/OLMo-2-0425-1B-SFT",
       "status": 1,
-      "verified_date": "2026-02-22",
+      "verified_date": "2026-02-23",
       "metadata": null,
       "note": "Benchmark passed",
       "phase1_score": 100.0,
@@ -14434,13 +14435,14 @@
     {
       "architecture_id": "OpenELMForCausalLM",
       "model_id": "apple/OpenELM-3B-Instruct",
-      "status": 2,
-      "verified_date": "2026-02-22",
+      "status": 1,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": "Config unavailable: The repository apple/OpenELM-3B-Instruct contains custom code which must be executed to correctly load the model. You can inspect the repository content at https://hf.co/apple/OpenELM-3B-Instruct .\n Y",
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "status_label": "UNVERIFIED"
     },
     {
       "architecture_id": "OPTForCausalLM",
@@ -14831,7 +14833,7 @@
       "architecture_id": "Olmo2ForCausalLM",
       "model_id": "allenai/OLMo-2-1124-7B-SFT",
       "status": 2,
-      "verified_date": "2026-02-22",
+      "verified_date": "2026-02-23",
       "metadata": null,
       "note": "Estimated 89.8 GB exceeds 78.0 GB limit",
       "phase1_score": null,
@@ -17130,7 +17132,7 @@
       "architecture_id": "Olmo2ForCausalLM",
       "model_id": "allenai/OLMo-2-1124-7B-DPO",
       "status": 2,
-      "verified_date": "2026-02-22",
+      "verified_date": "2026-02-23",
       "metadata": null,
       "note": "Estimated 89.8 GB exceeds 78.0 GB limit",
       "phase1_score": null,
@@ -17492,13 +17494,14 @@
     {
       "architecture_id": "OpenELMForCausalLM",
       "model_id": "apple/OpenELM-270M-Instruct",
-      "status": 2,
-      "verified_date": "2026-02-22",
+      "status": 1,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": "Config unavailable: The repository apple/OpenELM-270M-Instruct contains custom code which must be executed to correctly load the model. You can inspect the repository content at https://hf.co/apple/OpenELM-270M-Instruct ",
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "status_label": "UNVERIFIED"
     },
     {
       "architecture_id": "Qwen2ForCausalLM",
@@ -21068,7 +21071,7 @@
       "architecture_id": "Olmo2ForCausalLM",
       "model_id": "allenai/OLMo-2-0325-32B-Instruct",
       "status": 2,
-      "verified_date": "2026-02-22",
+      "verified_date": "2026-02-23",
       "metadata": null,
       "note": "Estimated 448.6 GB exceeds 78.0 GB limit",
       "phase1_score": null,
@@ -27788,13 +27791,14 @@
     {
       "architecture_id": "OpenELMForCausalLM",
       "model_id": "apple/OpenELM-270M",
-      "status": 2,
-      "verified_date": "2026-02-22",
+      "status": 1,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": "Config unavailable: The repository apple/OpenELM-270M contains custom code which must be executed to correctly load the model. You can inspect the repository content at https://hf.co/apple/OpenELM-270M .\n You can inspect",
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "status_label": "UNVERIFIED"
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -29240,13 +29244,14 @@
     {
       "architecture_id": "OpenELMForCausalLM",
       "model_id": "apple/OpenELM-450M-Instruct",
-      "status": 2,
-      "verified_date": "2026-02-22",
+      "status": 1,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": "Config unavailable: The repository apple/OpenELM-450M-Instruct contains custom code which must be executed to correctly load the model. You can inspect the repository content at https://hf.co/apple/OpenELM-450M-Instruct ",
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "status_label": "UNVERIFIED"
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -33706,13 +33711,14 @@
     {
       "architecture_id": "OpenELMForCausalLM",
       "model_id": "apple/OpenELM-1_1B",
-      "status": 2,
-      "verified_date": "2026-02-22",
+      "status": 1,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": "Config unavailable: The repository apple/OpenELM-1_1B contains custom code which must be executed to correctly load the model. You can inspect the repository content at https://hf.co/apple/OpenELM-1_1B .\n You can inspect",
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "status_label": "UNVERIFIED"
     },
     {
       "architecture_id": "GPTNeoXForCausalLM",
@@ -51295,13 +51301,14 @@
     {
       "architecture_id": "OpenELMForCausalLM",
       "model_id": "apple/OpenELM-3B",
-      "status": 2,
-      "verified_date": "2026-02-22",
+      "status": 1,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": "Config unavailable: The repository apple/OpenELM-3B contains custom code which must be executed to correctly load the model. You can inspect the repository content at https://hf.co/apple/OpenELM-3B .\n You can inspect the",
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "status_label": "UNVERIFIED"
     },
     {
       "architecture_id": "LlamaForCausalLM",

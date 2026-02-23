@@ -18,12 +18,16 @@ Examples:
 
     # Resume from a previous interrupted run
     python -m transformer_lens.tools.model_registry.verify_models --resume
+
+    # Re-verify already-tested models for a specific architecture
+    python -m transformer_lens.tools.model_registry.verify_models --reverify --architectures Olmo2ForCausalLM
 """
 
 import argparse
 import gc
 import json
 import logging
+import os
 import re
 import signal
 import time
@@ -152,12 +156,35 @@ def estimate_model_params(model_id: str) -> int:
     """
     from transformers import AutoConfig
 
-    config = AutoConfig.from_pretrained(model_id)
+    from transformer_lens.loading_from_pretrained import NEED_REMOTE_CODE_MODELS
+
+    trust_remote_code = any(model_id.startswith(prefix) for prefix in NEED_REMOTE_CODE_MODELS)
+    _token = os.environ.get("HF_TOKEN", "") or None
+    config = AutoConfig.from_pretrained(
+        model_id, trust_remote_code=trust_remote_code, token=_token
+    )
 
     # Extract dimensions from config (different models use different attribute names)
-    d_model = getattr(config, "hidden_size", None) or getattr(config, "d_model", None) or 0
-    n_heads = getattr(config, "num_attention_heads", None) or getattr(config, "n_head", None) or 0
-    n_layers = getattr(config, "num_hidden_layers", None) or getattr(config, "n_layer", None) or 0
+    d_model = (
+        getattr(config, "hidden_size", None)
+        or getattr(config, "d_model", None)
+        or getattr(config, "model_dim", None)  # OpenELM
+        or 0
+    )
+    n_heads_raw = (
+        getattr(config, "num_attention_heads", None)
+        or getattr(config, "n_head", None)
+        or getattr(config, "num_query_heads", None)  # OpenELM (may be per-layer list)
+        or 0
+    )
+    # OpenELM uses per-layer lists for heads; take the max for estimation
+    n_heads = max(n_heads_raw) if isinstance(n_heads_raw, (list, tuple)) else n_heads_raw
+    n_layers = (
+        getattr(config, "num_hidden_layers", None)
+        or getattr(config, "n_layer", None)
+        or getattr(config, "num_transformer_layers", None)  # OpenELM
+        or 0
+    )
     d_mlp = (
         getattr(config, "intermediate_size", None)
         or getattr(config, "d_inner", None)
@@ -165,17 +192,21 @@ def estimate_model_params(model_id: str) -> int:
         or getattr(config, "ffn_dim", None)  # OPT
         or getattr(config, "d_ff", None)  # T5
     )
-    # Many architectures (GPT-2, Bloom, GPT-Neo, GPT-J) leave d_mlp/n_inner
-    # as None and default to 4 * hidden_size internally.  Fall back to that
-    # standard ratio so MLP params are always counted in memory estimates.
+    # OpenELM uses per-layer ffn_multipliers instead of a fixed intermediate_size
     if not d_mlp and d_model:
-        d_mlp = 4 * d_model
+        ffn_multipliers = getattr(config, "ffn_multipliers", None)
+        if isinstance(ffn_multipliers, (list, tuple)):
+            d_mlp = int(max(ffn_multipliers) * d_model)
+        else:
+            # Many architectures (GPT-2, Bloom, GPT-Neo, GPT-J) leave d_mlp/n_inner
+            # as None and default to 4 * hidden_size internally.
+            d_mlp = 4 * d_model
     d_vocab = getattr(config, "vocab_size", None) or 0
 
     if d_model == 0 or n_heads == 0 or n_layers == 0:
         raise ValueError(f"Could not extract model dimensions from config for {model_id}")
 
-    d_head = d_model // n_heads
+    d_head = getattr(config, "head_dim", None) or (d_model // n_heads)
 
     # Attention parameters: W_Q, W_K, W_V, W_O per layer
     n_params = n_layers * (d_model * d_head * n_heads * 4)
@@ -280,6 +311,7 @@ def select_models_for_verification(
     limit: Optional[int] = None,
     resume_progress: Optional[VerificationProgress] = None,
     retry_failed: bool = False,
+    reverify: bool = False,
 ) -> list[ModelCandidate]:
     """Select models for verification from the registry.
 
@@ -292,12 +324,13 @@ def select_models_for_verification(
         limit: Total model cap (None = no cap)
         resume_progress: If resuming, skip already-tested models
         retry_failed: If True, include previously failed models for re-testing
+        reverify: If True, ignore previous status and re-test all matching models
 
     Returns:
         List of ModelCandidate objects to verify
     """
     already_tested: set[str] = set()
-    if resume_progress:
+    if resume_progress and not reverify:
         already_tested = set(resume_progress.tested)
         if retry_failed:
             # Remove failed models from already_tested so they get re-selected
@@ -329,11 +362,12 @@ def select_models_for_verification(
             model_id = model["model_id"]
 
             # Skip already-verified or already-tested models
-            model_status = model.get("status", 0)
-            if model_status == STATUS_VERIFIED or model_status == STATUS_SKIPPED:
-                continue
-            if model_status == STATUS_FAILED and not retry_failed:
-                continue
+            if not reverify:
+                model_status = model.get("status", 0)
+                if model_status == STATUS_VERIFIED or model_status == STATUS_SKIPPED:
+                    continue
+                if model_status == STATUS_FAILED and not retry_failed:
+                    continue
             if model_id in already_tested:
                 continue
 
@@ -604,6 +638,11 @@ def verify_models(
         failed_phase: Optional[int] = None
         error_msg: Optional[str] = None
 
+        # Determine if this model needs trust_remote_code
+        from transformer_lens.loading_from_pretrained import NEED_REMOTE_CODE_MODELS
+
+        needs_remote_code = any(model_id.startswith(prefix) for prefix in NEED_REMOTE_CODE_MODELS)
+
         for phase_num in phases:
             if not quiet:
                 print(f"  Running phase {phase_num}...")
@@ -616,6 +655,7 @@ def verify_models(
                     verbose=not quiet,
                     phases=[phase_num],
                     conserve_memory=conserve_memory,
+                    trust_remote_code=needs_remote_code,
                 )
                 all_results.extend(phase_results)
             except Exception as e:
@@ -813,6 +853,7 @@ Examples:
   %(prog)s --architectures GPT2LMHeadModel --per-arch 5
   %(prog)s --device cuda --max-memory 24
   %(prog)s --resume                     Resume from checkpoint
+  %(prog)s --reverify --architectures Olmo2ForCausalLM   Re-verify already-tested models
         """,
     )
     parser.add_argument(
@@ -895,6 +936,12 @@ Examples:
         help="Reduce Phase 1 peak memory from 2.0x to 1.0x by using "
              "bridge.original_model instead of a separate HF model",
     )
+    parser.add_argument(
+        "--reverify",
+        action="store_true",
+        help="Re-run verification for already-verified/skipped/failed models. "
+             "Ignores previous status and re-tests matching models from scratch.",
+    )
 
     args = parser.parse_args()
 
@@ -944,6 +991,7 @@ Examples:
         limit=args.limit,
         resume_progress=progress,
         retry_failed=args.retry_failed,
+        reverify=args.reverify,
     )
 
     if not candidates:

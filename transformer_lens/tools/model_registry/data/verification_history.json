@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-02-22T20:41:36.049340",
+  "last_updated": "2026-02-23T09:26:39.872543",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -3665,6 +3665,206 @@
       "model_id": "j5ng/et5-typos-corrector",
       "architecture_id": "T5ForConditionalGeneration",
       "verified_date": "2026-02-22",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "RedHatAI/Llama-3.2-1B-Instruct-FP8-dynamic",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: compressed_tensors is not installed and is required for compressed-tensors quantization. Please install ",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "hmellor/tiny-random-LlamaForCausalLM",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed with issues: P3=94.4% (failed: process_bridge_weights)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "HuggingFaceTB/SmolLM2-135M",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "meta-llama/Llama-3.2-3B",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed with issues: P2=92.9% (failed: critical_forward_hooks)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "llamafactory/tiny-random-Llama-3",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed with issues: P3=94.4% (failed: process_bridge_weights)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "RedHatAI/Llama-3.2-1B-Instruct-FP8",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: compressed_tensors is not installed and is required for compressed-tensors quantization. Please install ",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "apple/OpenELM-1_1B-Instruct",
+      "architecture_id": "OpenELMForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "apple/OpenELM-3B-Instruct",
+      "architecture_id": "OpenELMForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "apple/OpenELM-270M-Instruct",
+      "architecture_id": "OpenELMForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "apple/OpenELM-270M",
+      "architecture_id": "OpenELMForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "apple/OpenELM-450M-Instruct",
+      "architecture_id": "OpenELMForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "apple/OpenELM-1_1B",
+      "architecture_id": "OpenELMForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "apple/OpenELM-3B",
+      "architecture_id": "OpenELMForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "allenai/OLMo-2-0425-1B",
+      "architecture_id": "Olmo2ForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed with issues: P2=85.7% (failed: critical_forward_hooks, forward_hooks); P3=85.0% (failed: logits_equivalence, critical_forward_hooks, forward_hooks)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "allenai/OLMo-2-0425-1B-Instruct",
+      "architecture_id": "Olmo2ForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "allenai/OLMo-2-0425-1B-DPO",
+      "architecture_id": "Olmo2ForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "allenai/OLMo-2-0425-1B-SFT",
+      "architecture_id": "Olmo2ForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "openai-community/gpt2",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/gpt-neo-125m",
+      "architecture_id": "GPTNeoForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "facebook/opt-125m",
+      "architecture_id": "OPTForCausalLM",
+      "verified_date": "2026-02-23",
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Benchmark passed",

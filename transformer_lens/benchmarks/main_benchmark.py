@@ -11,10 +11,16 @@ Phase 6: Granular Weight Processing Tests (optional, combined flags)
 """
 
 import gc
+import os
 from typing import Dict, List, Optional, Union
 
 import torch
 from transformers import AutoConfig, AutoModelForCausalLM, AutoModelForSeq2SeqLM
+
+
+def _hf_token() -> Optional[str]:
+    """Get HuggingFace token from environment for gated model access."""
+    return os.environ.get("HF_TOKEN", "") or None
 
 from transformer_lens import HookedTransformer
 from transformer_lens.benchmarks.activation_cache import (
@@ -101,7 +107,7 @@ def is_masked_lm_model(model_name: str, trust_remote_code: bool = False) -> bool
         True if the model is a masked LM (like BERT), False otherwise
     """
     try:
-        config = AutoConfig.from_pretrained(model_name, trust_remote_code=trust_remote_code)
+        config = AutoConfig.from_pretrained(model_name, trust_remote_code=trust_remote_code, token=_hf_token())
         architectures = getattr(config, "architectures", []) or []
         return any(arch in MASKED_LM_ARCHITECTURES for arch in architectures)
     except Exception:
@@ -119,7 +125,7 @@ def is_encoder_decoder_model(model_name: str, trust_remote_code: bool = False) -
         True if the model is encoder-decoder (like T5), False otherwise
     """
     try:
-        config = AutoConfig.from_pretrained(model_name, trust_remote_code=trust_remote_code)
+        config = AutoConfig.from_pretrained(model_name, trust_remote_code=trust_remote_code, token=_hf_token())
         # Check config attribute first
         if getattr(config, "is_encoder_decoder", False):
             return True
@@ -910,7 +916,7 @@ def run_benchmark_suite(
                     map_default_transformer_lens_config,
                 )
 
-                hf_cfg = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
+                hf_cfg = AutoConfig.from_pretrained(model_name, trust_remote_code=True, token=_hf_token())
                 tl_cfg = map_default_transformer_lens_config(hf_cfg)
                 arch = determine_architecture_from_hf_config(hf_cfg)
                 bridge_cfg = TransformerBridgeConfig.from_dict(tl_cfg.__dict__)
@@ -950,6 +956,8 @@ def run_benchmark_suite(
             hf_kwargs = {
                 "low_cpu_mem_usage": True,  # Reduce memory spikes during loading
             }
+            if _hf_token():
+                hf_kwargs["token"] = _hf_token()
             if attn_implementation is not None:
                 hf_kwargs["attn_implementation"] = attn_implementation  # type: ignore[assignment]
                 if verbose:
@@ -959,7 +967,7 @@ def run_benchmark_suite(
             if verbose and auto_model_class != AutoModelForCausalLM:
                 print(f"Using {auto_model_class.__name__} for encoder-decoder model")
             # Ensure pad_token_id exists (some models crash without it during init).
-            hf_config = AutoConfig.from_pretrained(model_name, trust_remote_code=trust_remote_code)
+            hf_config = AutoConfig.from_pretrained(model_name, trust_remote_code=trust_remote_code, token=_hf_token())
             if not hasattr(hf_config, "pad_token_id") or "pad_token_id" not in hf_config.__dict__:
                 hf_config.pad_token_id = getattr(hf_config, "eos_token_id", None)
                 hf_kwargs["config"] = hf_config
@@ -1780,7 +1788,7 @@ def update_model_registry(model_name: str, results: List[BenchmarkResult]) -> bo
     try:
         from transformers import AutoConfig
 
-        config = AutoConfig.from_pretrained(model_name)
+        config = AutoConfig.from_pretrained(model_name, token=_hf_token())
         archs = getattr(config, "architectures", []) or []
         if archs:
             architecture_id = archs[0]

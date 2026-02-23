@@ -863,7 +863,7 @@ across supported architectures.
   <div class="bt-controls">
     <input type="text" id="btSearch" placeholder="Search by model name...">
     <select id="btArch"><option value="">All Architectures</option></select>
-    <label><input type="checkbox" id="btHide"> Hide unverified</label>
+    <select id="btStatus"><option value="">All Statuses</option><option value="1">Verified</option><option value="0">Unverified</option><option value="2">Skipped</option><option value="3">Failed</option></select>
     <span class="bt-count" id="btCount"></span>
   </div>
   <div class="bt-wrap">
@@ -1074,17 +1074,35 @@ across supported architectures.
     function apply() {
         const s = document.getElementById('btSearch').value.toLowerCase().trim();
         const a = document.getElementById('btArch').value;
-        const h = document.getElementById('btHide').checked;
+        const sv = document.getElementById('btStatus').value;
         filt = all.filter(m => {
             if (s && !m.model_id.toLowerCase().includes(s)) return false;
             if (a && m.architecture_id !== a) return false;
-            if (h && m.status === 0) return false;
+            if (sv !== '' && m.status !== +sv) return false;
             return true;
         });
         pg = 1; render(); pag(); count();
     }
 
     function esc(str) { const d=document.createElement('div'); d.textContent=str; return d.innerHTML; }
+    function cleanNote(note) {
+        if (!note) return '';
+        // "Benchmark passed with issues: P1=50.0% (failed: a, b); P3=88.9% (failed: c, d)"
+        // → "Benchmark passed with issues: a, b, c, d"
+        const m = note.match(/^(.*?:\s*)(.+)$/);
+        if (!m) return note;
+        const prefix = m[1];
+        const failures = [...m[2].matchAll(/failed:\s*([^)]+)/g)].map(x => x[1].trim());
+        if (!failures.length) return note;
+        return prefix + failures.join(', ');
+    }
+    function renderNote(note) {
+        if (!note) return '<span class="bt-muted">&mdash;</span>';
+        const clean = cleanNote(note);
+        if (clean.length <= 50) return esc(clean);
+        return '<span class="bt-note-trunc">' + esc(clean.slice(0,50)) + '&hellip; <a class="bt-note-toggle" href="javascript:void(0)">more</a></span>' +
+               '<span class="bt-note-full" style="display:none">' + esc(clean) + ' <a class="bt-note-toggle" href="javascript:void(0)">less</a></span>';
+    }
 
     function render() {
         const tb = document.getElementById('btBody');
@@ -1101,7 +1119,7 @@ across supported architectures.
             '<td>'+esc(m.architecture_id)+'</td>' +
             '<td><span class="bt-badge bt-s'+m.status+'">'+SM[m.status]+'</span></td>' +
             '<td>'+(m.verified_date || '<span class="bt-muted">&mdash;</span>')+'</td>' +
-            '<td>'+(m.note ? esc(m.note) : '<span class="bt-muted">&mdash;</span>')+'</td>' +
+            '<td class="bt-note">'+ renderNote(m.note) +'</td>' +
             '<td><a class="bt-detail-link" href="javascript:void(0)">Details</a></td>' +
             '</tr>';
         }).join('');
@@ -1111,6 +1129,17 @@ across supported architectures.
                 e.preventDefault();
                 const row = this.closest('tr');
                 toggleDetail(row.dataset.model, row);
+            });
+        });
+        tb.querySelectorAll('.bt-note-toggle').forEach(link => {
+            link.addEventListener('click', function(e) {
+                e.preventDefault();
+                const cell = this.closest('.bt-note');
+                const trunc = cell.querySelector('.bt-note-trunc');
+                const full = cell.querySelector('.bt-note-full');
+                const showing = trunc.style.display === 'none';
+                trunc.style.display = showing ? '' : 'none';
+                full.style.display = showing ? 'none' : '';
             });
         });
     }
@@ -1141,7 +1170,7 @@ across supported architectures.
 
     document.getElementById('btSearch').addEventListener('input', () => { clearTimeout(dt); dt=setTimeout(apply,200); });
     document.getElementById('btArch').addEventListener('change', apply);
-    document.getElementById('btHide').addEventListener('change', apply);
+    document.getElementById('btStatus').addEventListener('change', apply);
     init();
 })();
 </script>
