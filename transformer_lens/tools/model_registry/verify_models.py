@@ -45,11 +45,13 @@ _EXIT_GRACEFUL_INTERRUPT = 42
 _interrupt_requested = False
 
 from .registry_io import (
+    QUANTIZED_NOTE,
     STATUS_FAILED,
     STATUS_SKIPPED,
     STATUS_UNVERIFIED,
     STATUS_VERIFIED,
     add_verification_record,
+    is_quantized_model,
     load_supported_models_raw,
     update_model_status,
 )
@@ -98,6 +100,20 @@ def _sanitize_note(note: Optional[str]) -> Optional[str]:
         model_ref = url_match.group(1) if url_match else "unknown"
         return f"Config unavailable: Gated repo ({model_ref})"
     return note
+
+
+def _get_current_model_status(model_id: str, arch_id: str) -> int:
+    """Look up a model's current status in the registry.
+
+    Returns STATUS_UNVERIFIED (0) if the model is not found.
+    """
+    data = load_supported_models_raw()
+    for entry in data.get("models", []):
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("model_id") == model_id and entry.get("architecture_id") == arch_id:
+            return entry.get("status", STATUS_UNVERIFIED)
+    return STATUS_UNVERIFIED
 
 
 @dataclass
@@ -425,15 +441,27 @@ _MIN_PHASE_SCORES: dict[int, float] = {
 }
 _DEFAULT_MIN_PHASE_SCORE = 50.0
 
+# Tests that MUST pass for a phase to be considered passing, regardless of
+# the overall percentage score.  If any required test fails, the phase fails
+# even if the score is above the minimum threshold.
+_REQUIRED_PHASE_TESTS: dict[int, list[str]] = {
+    2: ["logits_equivalence", "loss_equivalence"],
+    3: ["logits_equivalence", "loss_equivalence"],
+}
+
 
 def _check_phase_scores(
     phase_scores: dict[int, Optional[float]],
     all_results: list,
 ) -> Optional[str]:
-    """Check phase scores against per-phase minimum thresholds.
+    """Check phase scores against per-phase minimum thresholds and required tests.
 
-    Returns an error message if any phase is below its threshold, or None
-    if all phases pass.  The message includes the names of failed tests.
+    A phase fails if:
+      1. Its overall score is below the minimum threshold, OR
+      2. Any of its required tests (per _REQUIRED_PHASE_TESTS) failed.
+
+    Returns an error message if any phase fails, or None if all phases pass.
+    The message includes the names of failed tests.
     """
     from transformer_lens.benchmarks.utils import BenchmarkSeverity
 
@@ -441,9 +469,10 @@ def _check_phase_scores(
     for phase, score in sorted(phase_scores.items()):
         if score is None:
             continue
+
+        # Check 1: overall score threshold
         threshold = _MIN_PHASE_SCORES.get(phase, _DEFAULT_MIN_PHASE_SCORE)
         if score < threshold:
-            # Collect names of tests that failed in this phase
             failed_tests = [
                 r.name
                 for r in all_results
@@ -451,6 +480,22 @@ def _check_phase_scores(
             ]
             tests_str = ", ".join(failed_tests) if failed_tests else "unknown"
             failing_phases.append(f"P{phase}={score}% < {threshold}% (failed: {tests_str})")
+            continue  # Already failing; no need to also check required tests
+
+        # Check 2: required tests must pass
+        required_tests = _REQUIRED_PHASE_TESTS.get(phase, [])
+        if required_tests:
+            failed_required = [
+                r.name
+                for r in all_results
+                if r.phase == phase
+                and r.name in required_tests
+                and not r.passed
+                and r.severity != BenchmarkSeverity.SKIPPED
+            ]
+            if failed_required:
+                tests_str = ", ".join(failed_required)
+                failing_phases.append(f"P{phase}={score}% but required tests failed: {tests_str}")
 
     if failing_phases:
         return f"Below threshold: {'; '.join(failing_phases)}"
@@ -590,6 +635,19 @@ def verify_models(
 
         progress.tested.append(model_id)
 
+        # Step 0: Check for quantized models (fundamentally incompatible)
+        if is_quantized_model(model_id):
+            if not quiet:
+                print(f"  SKIP: {QUANTIZED_NOTE}")
+            current_status = _get_current_model_status(model_id, arch)
+            if current_status != STATUS_VERIFIED:
+                update_model_status(model_id, arch, STATUS_SKIPPED, note=QUANTIZED_NOTE)
+            elif not quiet:
+                print(f"  (preserving existing verified status)")
+            progress.skipped.append(model_id)
+            _save_checkpoint(progress)
+            continue
+
         # Step 1: Estimate parameters
         try:
             n_params = estimate_model_params(model_id)
@@ -600,9 +658,16 @@ def verify_models(
             note = f"Config unavailable: {str(e)[:200]}"
             if not quiet:
                 print(f"  SKIP: {note}")
-            update_model_status(
-                model_id, arch, STATUS_SKIPPED, note=note, sanitize_fn=_sanitize_note
-            )
+            # Don't downgrade previously verified models to SKIPPED
+            # If a model is verified, we assume it still runs even though
+            # it is below the memory limit of the current run
+            current_status = _get_current_model_status(model_id, arch)
+            if current_status != STATUS_VERIFIED:
+                update_model_status(
+                    model_id, arch, STATUS_SKIPPED, note=note, sanitize_fn=_sanitize_note
+                )
+            elif not quiet:
+                print(f"  (preserving existing verified status)")
             progress.skipped.append(model_id)
             _save_checkpoint(progress)
             continue
@@ -619,19 +684,25 @@ def verify_models(
             note = f"Estimated {estimated_mem:.1f} GB exceeds {max_memory_gb:.1f} GB limit"
             if not quiet:
                 print(f"  SKIP: {note}")
-            update_model_status(
-                model_id, arch, STATUS_SKIPPED, note=note, sanitize_fn=_sanitize_note
-            )
+            # Don't downgrade previously verified models to SKIPPED
+            # If a model is verified, we assume it still runs even though
+            # it is below the memory limit of the current run
+            current_status = _get_current_model_status(model_id, arch)
+            if current_status != STATUS_VERIFIED:
+                update_model_status(
+                    model_id, arch, STATUS_SKIPPED, note=note, sanitize_fn=_sanitize_note
+                )
+            elif not quiet:
+                print(f"  (preserving existing verified status)")
             progress.skipped.append(model_id)
             _save_checkpoint(progress)
             continue
 
-        # Step 3: Run benchmarks phase by phase for partial result capture
+        # Step 3: Run benchmarks phase by phase
         all_results: list = []
         failed_phase: Optional[int] = None
         error_msg: Optional[str] = None
 
-        # Determine if this model needs trust_remote_code
         from transformer_lens.loading_from_pretrained import NEED_REMOTE_CODE_MODELS
 
         needs_remote_code = any(model_id.startswith(prefix) for prefix in NEED_REMOTE_CODE_MODELS)
@@ -658,15 +729,13 @@ def verify_models(
                     print(f"  Phase {phase_num} failed: {error_msg[:200]}")
                 break
 
-        # Extract phase scores from whatever results we have
         phase_scores = _extract_phase_scores(all_results)
 
-        # Check for phases below the minimum score threshold
         if not error_msg:
             score_error = _check_phase_scores(phase_scores, all_results)
             if score_error:
                 error_msg = score_error
-                failed_phase = None  # Already described in error_msg
+                failed_phase = None
 
         if error_msg:
             is_oom = "out of memory" in error_msg.lower() or "oom" in error_msg.lower()
@@ -685,11 +754,38 @@ def verify_models(
                     note = f"{error_msg[:100]} — {detail}"
                 else:
                     note = error_msg[:200]
+            final_status = STATUS_FAILED
+        else:
+            note = _build_verified_note(phase_scores, all_results)
+            final_status = STATUS_VERIFIED
+
+        # Update registry based on results
+        if final_status == STATUS_VERIFIED:
+            if not quiet:
+                print(
+                    f"  VERIFIED: P1={phase_scores.get(1)}%, "
+                    f"P2={phase_scores.get(2)}%, P3={phase_scores.get(3)}%"
+                )
+            update_model_status(
+                model_id,
+                arch,
+                STATUS_VERIFIED,
+                phase_scores=phase_scores,
+                note=note,
+            )
+            add_verification_record(
+                model_id,
+                arch,
+                notes=note,
+            )
+            progress.verified.append(model_id)
+        else:
             if not quiet:
                 print(f"  FAILED: {note}")
                 if any(v is not None for v in phase_scores.values()):
                     print(
-                        f"  Partial scores saved: P1={phase_scores.get(1)}%, P2={phase_scores.get(2)}%, P3={phase_scores.get(3)}%"
+                        f"  Partial scores saved: P1={phase_scores.get(1)}%, "
+                        f"P2={phase_scores.get(2)}%, P3={phase_scores.get(3)}%"
                     )
             update_model_status(
                 model_id,
@@ -706,28 +802,8 @@ def verify_models(
                 sanitize_fn=_sanitize_note,
             )
             progress.failed.append(model_id)
-        else:
-            # Build note with failed test details for any phase under 100%
-            note = _build_verified_note(phase_scores, all_results)
-            if not quiet:
-                print(
-                    f"  VERIFIED: P1={phase_scores.get(1)}%, P2={phase_scores.get(2)}%, P3={phase_scores.get(3)}%"
-                )
-            update_model_status(
-                model_id,
-                arch,
-                STATUS_VERIFIED,
-                phase_scores=phase_scores,
-                note=note,
-            )
-            add_verification_record(
-                model_id,
-                arch,
-                notes=note,
-            )
-            progress.verified.append(model_id)
 
-        # Cleanup between models
+        # Post-model cleanup
         gc.collect()
         try:
             import torch

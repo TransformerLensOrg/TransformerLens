@@ -144,8 +144,7 @@ class TransformerLensConfig:
         # If the constructor accepts **kwargs, also include fields from parent
         # classes whose __init__ would receive those kwargs.
         has_var_keyword = any(
-            p.kind == inspect.Parameter.VAR_KEYWORD
-            for p in sig.parameters.values()
+            p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
         )
         if has_var_keyword:
             for parent_cls in cls.__mro__[1:]:

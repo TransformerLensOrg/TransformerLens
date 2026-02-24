@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-02-23T15:20:35.406284",
+  "last_updated": "2026-02-24T06:21:53.353362",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -288,8 +288,8 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Benchmark passed",
-      "invalidated": false,
-      "invalidation_reason": null
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
     },
     {
       "model_id": "YeungNLP/firefly-bloom-2b6-v2",
@@ -1758,8 +1758,8 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Benchmark passed",
-      "invalidated": false,
-      "invalidation_reason": null
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
     },
     {
       "model_id": "c-bone/CrystaLLM-pi_base",
@@ -1858,8 +1858,8 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Benchmark passed",
-      "invalidated": false,
-      "invalidation_reason": null
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
     },
     {
       "model_id": "Mikivis/gpt2-large-lora-sft2",
@@ -1908,8 +1908,8 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Benchmark passed",
-      "invalidated": false,
-      "invalidation_reason": null
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
     },
     {
       "model_id": "postbot/gpt2-medium-emailgen",
@@ -2068,8 +2068,8 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Benchmark passed",
-      "invalidated": false,
-      "invalidation_reason": null
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
     },
     {
       "model_id": "vicgalle/gpt2-open-instruct-v1",
@@ -2298,8 +2298,8 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Below threshold: P1=0.0% < 100.0% \u2014 Requires bitsandbytes 8-bit quantization (ImportError: pip install -U bitsandbytes>=0.46.1)",
-      "invalidated": false,
-      "invalidation_reason": null
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
     },
     {
       "model_id": "skt/kogpt2-base-v2",
@@ -2448,8 +2448,8 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: Loading a GPTQ quantized model requires optimum (`pip install optimum`)",
-      "invalidated": false,
-      "invalidation_reason": null
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
     },
     {
       "model_id": "c-bone/CrystaLLM-pi_base",
@@ -2468,8 +2468,8 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: Using `bitsandbytes` 8-bit quantization requires bitsandbytes: `pip install -U bitsandbytes>=0.46.1`",
-      "invalidated": false,
-      "invalidation_reason": null
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
     },
     {
       "model_id": "FabbriSimo01/GPT_Large_Quantized",
@@ -2478,8 +2478,8 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: Using `bitsandbytes` 8-bit quantization requires bitsandbytes: `pip install -U bitsandbytes>=0.46.1`",
-      "invalidated": false,
-      "invalidation_reason": null
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
     },
     {
       "model_id": "Mohammed-Altaf/Medical-ChatBot",
@@ -2498,8 +2498,8 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Below threshold: P1=0.0% < 100.0% (failed: all_components, forward_pass_logits) \u2014 48/76 components failed (48 critical)",
-      "invalidated": false,
-      "invalidation_reason": null
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
     },
     {
       "model_id": "nomic-ai/gpt4all-j",
@@ -2838,8 +2838,8 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: Using `bitsandbytes` 4-bit quantization requires bitsandbytes: `pip install -U bitsandbytes>=0.46.1`",
-      "invalidated": false,
-      "invalidation_reason": null
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
     },
     {
       "model_id": "google/gemma-3-1b-it",
@@ -2888,8 +2888,8 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: unsloth/gemma-3-1b-it-GGUF does not appear to have a file named pytorch_model.bin or model.safetensors.",
-      "invalidated": false,
-      "invalidation_reason": null
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
     },
     {
       "model_id": "mlx-community/gemma-3-1b-it-qat-4bit",
@@ -2898,8 +2898,8 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: The model's quantization config from the arguments has no `quant_method` attribute. Make sure that the m",
-      "invalidated": false,
-      "invalidation_reason": null
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
     },
     {
       "model_id": "google/gemma-3-1b-pt",
@@ -2968,8 +2968,8 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: Loading a GPTQ quantized model requires optimum (`pip install optimum`)",
-      "invalidated": false,
-      "invalidation_reason": null
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
     },
     {
       "model_id": "trl-internal-testing/tiny-GptOssForCausalLM",
@@ -3038,8 +3038,8 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: compressed_tensors is not installed and is required for compressed-tensors quantization. Please install ",
-      "invalidated": false,
-      "invalidation_reason": null
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
     },
     {
       "model_id": "trl-internal-testing/tiny-MistralForCausalLM-0.2",
@@ -3228,8 +3228,8 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: Loading a GPTQ quantized model requires optimum (`pip install optimum`)",
-      "invalidated": false,
-      "invalidation_reason": null
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
     },
     {
       "model_id": "microsoft/Phi-3-mini-4k-instruct",
@@ -3478,8 +3478,8 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: No module named 'triton'",
-      "invalidated": false,
-      "invalidation_reason": null
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
     },
     {
       "model_id": "Qwen/Qwen3-4B-Thinking-2507",
@@ -3678,8 +3678,8 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: compressed_tensors is not installed and is required for compressed-tensors quantization. Please install ",
-      "invalidated": false,
-      "invalidation_reason": null
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
     },
     {
       "model_id": "hmellor/tiny-random-LlamaForCausalLM",
@@ -3728,8 +3728,8 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: compressed_tensors is not installed and is required for compressed-tensors quantization. Please install ",
-      "invalidated": false,
-      "invalidation_reason": null
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
     },
     {
       "model_id": "apple/OpenELM-1_1B-Instruct",
@@ -4158,8 +4158,8 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: Loading a GPTQ quantized model requires optimum (`pip install optimum`)",
-      "invalidated": false,
-      "invalidation_reason": null
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
     },
     {
       "model_id": "c-bone/CrystaLLM-pi_base",
@@ -4178,8 +4178,8 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: Using `bitsandbytes` 8-bit quantization requires bitsandbytes: `pip install -U bitsandbytes>=0.46.1`",
-      "invalidated": false,
-      "invalidation_reason": null
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
     },
     {
       "model_id": "FabbriSimo01/GPT_Large_Quantized",
@@ -4188,8 +4188,8 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: Using `bitsandbytes` 8-bit quantization requires bitsandbytes: `pip install -U bitsandbytes>=0.46.1`",
-      "invalidated": false,
-      "invalidation_reason": null
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
     },
     {
       "model_id": "Mohammed-Altaf/Medical-ChatBot",
@@ -4208,8 +4208,8 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Below threshold: P1=0.0% < 100.0% (failed: all_components, forward_pass_logits) \u2014 48/76 components failed (48 critical)",
-      "invalidated": false,
-      "invalidation_reason": null
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
     },
     {
       "model_id": "nomic-ai/gpt4all-j",
@@ -4310,6 +4310,1916 @@
       "notes": "Benchmark passed with issues: P3=94.1% (failed: weight_modification)",
       "invalidated": false,
       "invalidation_reason": null
+    },
+    {
+      "model_id": "google/gemma-2b",
+      "architecture_id": "GemmaForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed with issues: P2=85.7% (failed: hook_functionality, critical_forward_hooks); P3=90.5% (failed: hook_functionality, critical_forward_hooks)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "google/gemma-3-1b-pt",
+      "architecture_id": "Gemma3ForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed with issues: P2=85.7% (failed: critical_forward_hooks, forward_hooks); P3=76.2% (failed: logits_equivalence, loss_equivalence, hook_functionality, critical_forward_hooks, forward_hooks)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "google/functiongemma-270m-it",
+      "architecture_id": "Gemma3ForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed with issues: P3=94.1% (failed: weight_magnitudes)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "llm-jp/llm-jp-3-3.7b-instruct",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed with issues: P3=88.9% (failed: process_bridge_weights, layer_norm_folding)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "meta-llama/Llama-3.2-3B-Instruct",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Qwen/Qwen2.5-0.5B-Instruct",
+      "architecture_id": "Qwen2ForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "TitanML/tiny-mixtral",
+      "architecture_id": "MixtralForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "stabilityai/stablelm-2-zephyr-1_6b",
+      "architecture_id": "StableLmForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "microsoft/Phi-3-mini-4k-instruct",
+      "architecture_id": "Phi3ForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "roneneldan/TinyStories-28M",
+      "architecture_id": "GPTNeoForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "roneneldan/TinyStories-1Layer-21M",
+      "architecture_id": "GPTNeoForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "PygmalionAI/pygmalion-2.7b",
+      "architecture_id": "GPTNeoForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "roneneldan/TinyStories-1Layer-21M",
+      "architecture_id": "GPTNeoForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "bertin-project/bertin-gpt-j-6B-alpaca",
+      "architecture_id": "GPTJForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Worker timed out after 900s",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "bertin-project/bertin-gpt-j-6B-alpaca",
+      "architecture_id": "GPTJForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "ncfrey/ChemGPT-19M",
+      "architecture_id": "GPTNeoForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "ncfrey/ChemGPT-19M",
+      "architecture_id": "GPTNeoForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "SummerSigh/GPTNeo350M-Instruct-SFT",
+      "architecture_id": "GPTNeoForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "SummerSigh/GPTNeo350M-Instruct-SFT",
+      "architecture_id": "GPTNeoForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "xhyi/PT_GPTNEO350_ATG",
+      "architecture_id": "GPTNeoForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Tincando/fiction_story_generator",
+      "architecture_id": "GPTNeoForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "blueapple8259/TinyStories-Alpaca",
+      "architecture_id": "GPTNeoForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Harshvir/LaMini-Neo-1.3B-Mental-Health_lora",
+      "architecture_id": "GPTNeoForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: Using `bitsandbytes` 8-bit quantization requires bitsandbytes: `pip install -U bitsandbytes>=0.46.1`",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "ogimgio/gpt-neo-125m-neurallinguisticpioneers",
+      "architecture_id": "GPTNeoForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/pythia-1b",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/pythia-1.4b",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/pythia-410m-deduped",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/pythia-410m-v0",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/pythia-2.8b",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/pythia-1.4b-deduped",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/pythia-2.8b-deduped",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "google/gemma-2-2b-jpn-it",
+      "architecture_id": "Gemma2ForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "mlx-community/gemma-2-2b-it-4bit",
+      "architecture_id": "Gemma2ForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: You set `ignore_mismatched_sizes` to `False`, thus raising an error. For details look at the above repor",
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
+    },
+    {
+      "model_id": "EleutherAI/pythia-1b-deduped",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "rinna/japanese-gpt-neox-3.6b-instruction-sft-v2",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/polyglot-ko-1.3b",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/pythia-31m-deduped",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "verseAI/databricks-dolly-v2-3b",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "lomahony/pythia-70m-helpful-sft",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "stabilityai/stablelm-base-alpha-3b",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "unsloth/gemma-2-2b-bnb-4bit",
+      "architecture_id": "Gemma2ForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: Using `bitsandbytes` 4-bit quantization requires bitsandbytes: `pip install -U bitsandbytes>=0.46.1`",
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
+    },
+    {
+      "model_id": "cyberagent/open-calm-small",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "peft-internal-testing/tiny-random-GPTNeoXForCausalLM",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "cleanrl/EleutherAI_pythia-1b-deduped__sft__tldr",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "ollieturnbull/p-IgGen",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Fredithefish/Guanaco-3B-Uncensored-v2",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "vandijklab/C2S-Scale-Gemma-2-2B",
+      "architecture_id": "Gemma2ForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "google/shieldgemma-2b",
+      "architecture_id": "Gemma2ForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "cjvt/GaMS-2B-Instruct",
+      "architecture_id": "Gemma2ForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "unsloth/gemma-3-1b-it-unsloth-bnb-4bit",
+      "architecture_id": "Gemma3ForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: Using `bitsandbytes` 4-bit quantization requires bitsandbytes: `pip install -U bitsandbytes>=0.46.1`",
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
+    },
+    {
+      "model_id": "unsloth/gemma-3-270m-it",
+      "architecture_id": "Gemma3ForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed with issues: P3=94.1% (failed: weight_magnitudes)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "unsloth/functiongemma-270m-it",
+      "architecture_id": "Gemma3ForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed with issues: P3=94.1% (failed: weight_magnitudes)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "typhoon-ai/typhoon2.1-gemma3-4b",
+      "architecture_id": "Gemma3ForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed with issues: P3=94.1% (failed: weight_magnitudes)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "unsloth/gemma-3-270m-it-unsloth-bnb-4bit",
+      "architecture_id": "Gemma3ForCausalLM",
+      "verified_date": "2026-02-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: Using `bitsandbytes` 4-bit quantization requires bitsandbytes: `pip install -U bitsandbytes>=0.46.1`",
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
+    },
+    {
+      "model_id": "HuggingFaceTB/SmolLM2-135M-Instruct",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "TheBloke/TinyLlama-1.1B-Chat-v0.3-GPTQ",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: Loading a GPTQ quantized model requires optimum (`pip install optimum`)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Joaoffg/ELM",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed with issues: P3=88.9% (failed: process_bridge_weights, layer_norm_folding)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "NousResearch/Hermes-3-Llama-3.2-3B",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "HuggingFaceTB/SmolLM-135M-Instruct",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "trl-internal-testing/tiny-random-LlamaForCausalLM",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed with issues: P3=94.4% (failed: process_bridge_weights)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "trl-internal-testing/tiny-LlamaForCausalLM-3.2",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed with issues: P3=88.2% (failed: attention_output_centering, mlp_output_centering)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "HuggingFaceTB/SmolLM-135M",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "HuggingFaceTB/SmolLM2-360M-Instruct",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "unsloth/Llama-3.2-3B-Instruct",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "unsloth/Llama-3.2-1B-Instruct",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "ibm-granite/granite-3b-code-base-2k",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed with issues: P3=83.3% (failed: process_bridge_weights, layer_norm_folding, value_bias_folding)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "deepseek-ai/deepseek-coder-1.3b-instruct",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed with issues: P3=83.3% (failed: process_bridge_weights, layer_norm_folding, unembed_centering)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "meta-llama/Llama-Guard-3-1B",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "hyper-accel/tiny-random-llama",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "HuggingFaceTB/SmolLM2-1.7B-Instruct",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed with issues: P3=83.3% (failed: process_bridge_weights, layer_norm_folding, unembed_centering)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "JackFram/llama-68m",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed with issues: P3=83.3% (failed: process_bridge_weights, layer_norm_folding, unembed_centering)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "unsloth/Llama-3.2-1B-Instruct-unsloth-bnb-4bit",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: Using `bitsandbytes` 4-bit quantization requires bitsandbytes: `pip install -U bitsandbytes>=0.46.1`",
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
+    },
+    {
+      "model_id": "Nanbeige/Nanbeige4.1-3B",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "unsloth/Llama-3.2-1B-Instruct-GGUF",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: unsloth/Llama-3.2-1B-Instruct-GGUF does not appear to have a file named pytorch_model.bin or model.safet",
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
+    },
+    {
+      "model_id": "trl-internal-testing/tiny-LlamaForCausalLM-3.1",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed with issues: P3=88.2% (failed: attention_output_centering, mlp_output_centering)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "trl-internal-testing/tiny-LlamaForCausalLM-3",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed with issues: P3=88.2% (failed: attention_output_centering, mlp_output_centering)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "mlx-community/Llama-3.2-1B-Instruct-4bit",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: The model's quantization config from the arguments has no `quant_method` attribute. Make sure that the m",
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
+    },
+    {
+      "model_id": "unsloth/Llama-3.2-3B-Instruct-unsloth-bnb-4bit",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: Using `bitsandbytes` 4-bit quantization requires bitsandbytes: `pip install -U bitsandbytes>=0.46.1`",
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
+    },
+    {
+      "model_id": "michaelbenayoun/llama-2-tiny-4kv-heads-4layers-random",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed with issues: P3=88.2% (failed: attention_output_centering, mlp_output_centering)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "arnir0/Tiny-LLM",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "unsloth/Llama-3.2-3B-Instruct-bnb-4bit",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: Using `bitsandbytes` 4-bit quantization requires bitsandbytes: `pip install -U bitsandbytes>=0.46.1`",
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
+    },
+    {
+      "model_id": "mlx-community/Llama-3.2-3B-Instruct-4bit",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: The model's quantization config from the arguments has no `quant_method` attribute. Make sure that the m",
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
+    },
+    {
+      "model_id": "HuggingFaceTB/SmolLM2-1.7B",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed with issues: P3=83.3% (failed: process_bridge_weights, layer_norm_folding, unembed_centering)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "HuggingFaceTB/SmolLM-1.7B",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed with issues: P3=83.3% (failed: process_bridge_weights, layer_norm_folding, unembed_centering)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B",
+      "architecture_id": "Qwen2ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Qwen/Qwen2.5-0.5B",
+      "architecture_id": "Qwen2ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "RedHatAI/Qwen2.5-1.5B-quantized.w8a8",
+      "architecture_id": "Qwen2ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: compressed_tensors is not installed and is required for compressed-tensors quantization. Please install ",
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
+    },
+    {
+      "model_id": "Qwen/Qwen2.5-Coder-1.5B",
+      "architecture_id": "Qwen2ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Qwen/Qwen2.5-1.5B-Instruct-AWQ",
+      "architecture_id": "Qwen2ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: Loading an AWQ quantized model requires gptqmodel. Please install it with `pip install gptqmodel`",
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
+    },
+    {
+      "model_id": "Qwen/Qwen2.5-1.5B",
+      "architecture_id": "Qwen2ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Qwen/Qwen2.5-Math-1.5B",
+      "architecture_id": "Qwen2ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Qwen/Qwen2-0.5B",
+      "architecture_id": "Qwen2ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Qwen/Qwen2.5-3B",
+      "architecture_id": "Qwen2ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Qwen/Qwen2-0.5B-Instruct",
+      "architecture_id": "Qwen2ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Qwen/Qwen2.5-Coder-1.5B-Instruct-AWQ",
+      "architecture_id": "Qwen2ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: Loading an AWQ quantized model requires gptqmodel. Please install it with `pip install gptqmodel`",
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
+    },
+    {
+      "model_id": "Qwen/Qwen2.5-Coder-3B-Instruct",
+      "architecture_id": "Qwen2ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Gensyn/Qwen2.5-0.5B-Instruct",
+      "architecture_id": "Qwen2ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Qwen/Qwen2-1.5B",
+      "architecture_id": "Qwen2ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Salesforce/xLAM-2-3b-fc-r",
+      "architecture_id": "Qwen2ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Qwen/Qwen1.5-0.5B-Chat",
+      "architecture_id": "Qwen2ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed with issues: P2=91.7% (failed: generation); P3=83.3% (failed: process_bridge_weights, layer_norm_folding, value_bias_folding)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Qwen/Qwen1.5-1.8B-Chat",
+      "architecture_id": "Qwen2ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed with issues: P3=83.3% (failed: process_bridge_weights, layer_norm_folding, value_bias_folding)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "unsloth/Qwen2.5-3B-Instruct-unsloth-bnb-4bit",
+      "architecture_id": "Qwen2ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: Using `bitsandbytes` 4-bit quantization requires bitsandbytes: `pip install -U bitsandbytes>=0.46.1`",
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
+    },
+    {
+      "model_id": "unsloth/Qwen2.5-1.5B-Instruct",
+      "architecture_id": "Qwen2ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Qwen/Qwen2.5-Math-1.5B-Instruct",
+      "architecture_id": "Qwen2ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Qwen/Qwen2.5-3B-Instruct-AWQ",
+      "architecture_id": "Qwen2ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: Loading an AWQ quantized model requires gptqmodel. Please install it with `pip install gptqmodel`",
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
+    },
+    {
+      "model_id": "Salesforce/xLAM-2-1b-fc-r",
+      "architecture_id": "Qwen2ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "unsloth/DeepSeek-R1-Distill-Qwen-1.5B-GGUF",
+      "architecture_id": "Qwen2ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: unsloth/DeepSeek-R1-Distill-Qwen-1.5B-GGUF does not appear to have a file named pytorch_model.bin or mod",
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
+    },
+    {
+      "model_id": "peft-internal-testing/tiny-dummy-qwen2",
+      "architecture_id": "Qwen2ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Qwen/Qwen2.5-Coder-0.5B",
+      "architecture_id": "Qwen2ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "unsloth/Qwen2.5-1.5B-Instruct-unsloth-bnb-4bit",
+      "architecture_id": "Qwen2ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: Using `bitsandbytes` 4-bit quantization requires bitsandbytes: `pip install -U bitsandbytes>=0.46.1`",
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
+    },
+    {
+      "model_id": "Qwen/Qwen2.5-Coder-3B",
+      "architecture_id": "Qwen2ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "rinna/bilingual-gpt-neox-4b",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "stabilityai/stablelm-tuned-alpha-3b",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Waterhorse/chessgpt-base-v1",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: all_components, forward_pass_logits) \u2014 130/132 components failed (125 high, 5 medium)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/pythia-410m-seed2",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=50.0% < 100.0% (failed: forward_pass_logits) \u2014 Tensors differ: max_diff=0.002012, mean_rel=0.000401",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "togethercomputer/RedPajama-INCITE-Instruct-3B-v1",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/pythia-1b-v0",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/pythia-160m-seed1",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/pythia-160m-seed2",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/pythia-70m-seed1",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/pythia-160m-seed3",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "togethercomputer/RedPajama-INCITE-Base-3B-v1",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "togethercomputer/RedPajama-INCITE-Chat-3B-v1",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/pythia-160m-seed4",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/pythia-410m-seed6",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "rinna/japanese-gpt-neox-3.6b-instruction-ppo",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "cyberagent/open-calm-large",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "PygmalionAI/pygmalion-1.3b",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "PygmalionAI/metharme-1.3b",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: extra_special_tokens must be a list/tuple of str or AddedToken, or a dict mapping names to tokens",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "vandijklab/C2S-Pythia-410m-diverse-single-and-multi-cell-tasks",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=50.0% < 100.0% (failed: forward_pass_logits) \u2014 Tensors differ: max_diff=0.004045, mean_rel=0.000066",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "concedo/Pythia-70M-ChatSalad",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=50.0% < 100.0% (failed: forward_pass_logits) \u2014 Tensors differ: max_diff=0.003122, mean_rel=0.000469",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "stabilityai/stablecode-completion-alpha-3b-4k",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Dampish/StellarX-4B-V0",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Dampish/Dante-2.8B",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "pszemraj/pythia-31m-goodwiki-deduped-2048-scratch",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Dampish/StellarX-4B-V0.2",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "SummerSigh/Pythia410m-V0-Instruct",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "HWERI/pythia-70m-deduped-cleansharegpt",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=50.0% < 100.0% (failed: forward_pass_logits) \u2014 Tensors differ: max_diff=0.011660, mean_rel=0.002703",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/pythia-410m-seed9",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "HWERI/pythia-1.4b-deduped-sharegpt",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "saberai/Zro1.5_3B",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "HWERI/pythia-70m-deduped-cleansharegpt-en",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "acrastt/RedPajama-INCITE-Chat-Instruct-3B-V1",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "hoskinson-center/proofGPT-v0.1",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "beaugogh/pythia-1.4b-deduped-sharegpt",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "w601sxs/b1ade-1b",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "heegyu/RedTulu-Uncensored-3B-0719",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "pszemraj/pythia-31m-simplepile-lite-2048-scratch-2e",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Qwen/Qwen3-4B-Instruct-2507-FP8",
+      "architecture_id": "Qwen3ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: No module named 'triton'",
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
+    },
+    {
+      "model_id": "Qwen/Qwen3-1.7B-Base",
+      "architecture_id": "Qwen3ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Qwen/Qwen3-4B-Base",
+      "architecture_id": "Qwen3ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "unsloth/Qwen3-4B-Instruct-2507-unsloth-bnb-4bit",
+      "architecture_id": "Qwen3ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: Using `bitsandbytes` 4-bit quantization requires bitsandbytes: `pip install -U bitsandbytes>=0.46.1`",
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
+    },
+    {
+      "model_id": "trl-internal-testing/tiny-Qwen3ForCausalLM",
+      "architecture_id": "Qwen3ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed with issues: P3=88.2% (failed: attention_output_centering, mlp_output_centering)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Qwen/Qwen3-0.6B-Base",
+      "architecture_id": "Qwen3ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Qwen/Qwen3-4B-FP8",
+      "architecture_id": "Qwen3ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: No module named 'triton'",
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
+    },
+    {
+      "model_id": "Qwen/Qwen3-4B-AWQ",
+      "architecture_id": "Qwen3ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: Loading an AWQ quantized model requires gptqmodel. Please install it with `pip install gptqmodel`",
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
+    },
+    {
+      "model_id": "Qwen/Qwen3-4B-Thinking-2507-FP8",
+      "architecture_id": "Qwen3ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: No module named 'triton'",
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
+    },
+    {
+      "model_id": "Qwen/Qwen3Guard-Gen-0.6B",
+      "architecture_id": "Qwen3ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "unsloth/Qwen3-4B-Base",
+      "architecture_id": "Qwen3ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "typhoon-ai/typhoon2.5-qwen3-4b",
+      "architecture_id": "Qwen3ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "unsloth/Qwen3-0.6B-GGUF",
+      "architecture_id": "Qwen3ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: unsloth/Qwen3-0.6B-GGUF does not appear to have a file named pytorch_model.bin or model.safetensors.",
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
+    },
+    {
+      "model_id": "unsloth/Qwen3-4B-Instruct-2507",
+      "architecture_id": "Qwen3ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "lmstudio-community/Qwen3-4B-Thinking-2507-MLX-4bit",
+      "architecture_id": "Qwen3ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: The model's quantization config from the arguments has no `quant_method` attribute. Make sure that the m",
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
+    },
+    {
+      "model_id": "lmstudio-community/Qwen3-4B-Thinking-2507-MLX-8bit",
+      "architecture_id": "Qwen3ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: The model's quantization config from the arguments has no `quant_method` attribute. Make sure that the m",
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
+    },
+    {
+      "model_id": "unsloth/Qwen3-4B-GGUF",
+      "architecture_id": "Qwen3ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: unsloth/Qwen3-4B-GGUF does not appear to have a file named pytorch_model.bin or model.safetensors.",
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
+    },
+    {
+      "model_id": "lmstudio-community/Qwen3-4B-Thinking-2507-MLX-6bit",
+      "architecture_id": "Qwen3ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: The model's quantization config from the arguments has no `quant_method` attribute. Make sure that the m",
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
+    },
+    {
+      "model_id": "Qwen/Qwen3-4B-MLX-4bit",
+      "architecture_id": "Qwen3ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: The model's quantization config from the arguments has no `quant_method` attribute. Make sure that the m",
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
+    },
+    {
+      "model_id": "lmstudio-community/Qwen3-4B-Instruct-2507-MLX-4bit",
+      "architecture_id": "Qwen3ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: The model's quantization config from the arguments has no `quant_method` attribute. Make sure that the m",
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
+    },
+    {
+      "model_id": "unsloth/Qwen3-1.7B-GGUF",
+      "architecture_id": "Qwen3ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: unsloth/Qwen3-1.7B-GGUF does not appear to have a file named pytorch_model.bin or model.safetensors.",
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
+    },
+    {
+      "model_id": "lmstudio-community/Qwen3-4B-Instruct-2507-MLX-8bit",
+      "architecture_id": "Qwen3ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: The model's quantization config from the arguments has no `quant_method` attribute. Make sure that the m",
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
+    },
+    {
+      "model_id": "lmstudio-community/Qwen3-4B-Instruct-2507-MLX-5bit",
+      "architecture_id": "Qwen3ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: The model's quantization config from the arguments has no `quant_method` attribute. Make sure that the m",
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
+    },
+    {
+      "model_id": "lmstudio-community/Qwen3-4B-Instruct-2507-MLX-6bit",
+      "architecture_id": "Qwen3ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: The model's quantization config from the arguments has no `quant_method` attribute. Make sure that the m",
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
+    },
+    {
+      "model_id": "unsloth/Qwen3-1.7B-unsloth-bnb-4bit",
+      "architecture_id": "Qwen3ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: Using `bitsandbytes` 4-bit quantization requires bitsandbytes: `pip install -U bitsandbytes>=0.46.1`",
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
+    },
+    {
+      "model_id": "unsloth/Qwen3-4B-unsloth-bnb-4bit",
+      "architecture_id": "Qwen3ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: Using `bitsandbytes` 4-bit quantization requires bitsandbytes: `pip install -U bitsandbytes>=0.46.1`",
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
+    },
+    {
+      "model_id": "mlx-community/Qwen3-0.6B-4bit",
+      "architecture_id": "Qwen3ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: The model's quantization config from the arguments has no `quant_method` attribute. Make sure that the m",
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
+    },
+    {
+      "model_id": "cyankiwi/Qwen3-4B-Thinking-2507-AWQ-8bit",
+      "architecture_id": "Qwen3ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: compressed_tensors is not installed and is required for compressed-tensors quantization. Please install ",
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
+    },
+    {
+      "model_id": "unsloth/Qwen3-0.6B-unsloth-bnb-4bit",
+      "architecture_id": "Qwen3ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: Using `bitsandbytes` 4-bit quantization requires bitsandbytes: `pip install -U bitsandbytes>=0.46.1`",
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
+    },
+    {
+      "model_id": "mlx-community/Qwen3-0.6B-8bit",
+      "architecture_id": "Qwen3ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: The model's quantization config from the arguments has no `quant_method` attribute. Make sure that the m",
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
+    },
+    {
+      "model_id": "Qwen/Qwen3-1.7B-FP8",
+      "architecture_id": "Qwen3ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: No module named 'triton'",
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
+    },
+    {
+      "model_id": "llamafactory/tiny-random-qwen3",
+      "architecture_id": "Qwen3ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed with issues: P3=94.4% (failed: process_bridge_weights)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "lmstudio-community/Qwen3-1.7B-MLX-8bit",
+      "architecture_id": "Qwen3ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: The model's quantization config from the arguments has no `quant_method` attribute. Make sure that the m",
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
+    },
+    {
+      "model_id": "unsloth/Qwen3-4B-Thinking-2507-unsloth-bnb-4bit",
+      "architecture_id": "Qwen3ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: Using `bitsandbytes` 4-bit quantization requires bitsandbytes: `pip install -U bitsandbytes>=0.46.1`",
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
+    },
+    {
+      "model_id": "mlx-community/Qwen3-1.7B-4bit",
+      "architecture_id": "Qwen3ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: The model's quantization config from the arguments has no `quant_method` attribute. Make sure that the m",
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
+    },
+    {
+      "model_id": "lmstudio-community/Qwen3-1.7B-MLX-4bit",
+      "architecture_id": "Qwen3ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: The model's quantization config from the arguments has no `quant_method` attribute. Make sure that the m",
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
+    },
+    {
+      "model_id": "lmstudio-community/Qwen3-4B-MLX-4bit",
+      "architecture_id": "Qwen3ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: The model's quantization config from the arguments has no `quant_method` attribute. Make sure that the m",
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
+    },
+    {
+      "model_id": "lmstudio-community/Qwen3-1.7B-MLX-bf16",
+      "architecture_id": "Qwen3ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "mlx-community/Qwen3-4B-Instruct-2507-4bit",
+      "architecture_id": "Qwen3ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: The model's quantization config from the arguments has no `quant_method` attribute. Make sure that the m",
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
+    },
+    {
+      "model_id": "michaelbenayoun/qwen3-tiny-4kv-heads-4layers-random",
+      "architecture_id": "Qwen3ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "lmstudio-community/Qwen3-4B-MLX-8bit",
+      "architecture_id": "Qwen3ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: The model's quantization config from the arguments has no `quant_method` attribute. Make sure that the m",
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
+    },
+    {
+      "model_id": "mlx-community/Qwen3-4B-4bit",
+      "architecture_id": "Qwen3ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: The model's quantization config from the arguments has no `quant_method` attribute. Make sure that the m",
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
+    },
+    {
+      "model_id": "warshanks/Jan-nano-AWQ",
+      "architecture_id": "Qwen3ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: compressed_tensors is not installed and is required for compressed-tensors quantization. Please install ",
+      "invalidated": true,
+      "invalidation_reason": "TransformerLens does not support quantized models at this time"
     }
   ]
 }

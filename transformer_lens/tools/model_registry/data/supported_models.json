@@ -8,13 +8,13 @@
   },
   "total_architectures": 25,
   "total_models": 4908,
-  "total_verified": 324,
+  "total_verified": 430,
   "models": [
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Qwen/Qwen2.5-7B-Instruct",
       "status": 2,
-      "verified_date": "2026-02-22",
+      "verified_date": "2026-02-24",
       "metadata": null,
       "note": "Estimated 100.2 GB exceeds 78.0 GB limit",
       "phase1_score": null,
@@ -80,7 +80,7 @@
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Qwen/Qwen2.5-0.5B-Instruct",
       "status": 1,
-      "verified_date": "2026-02-22",
+      "verified_date": "2026-02-23",
       "metadata": null,
       "note": "Benchmark passed",
       "phase1_score": 100.0,
@@ -222,10 +222,10 @@
     {
       "architecture_id": "MistralForCausalLM",
       "model_id": "mistralai/Mistral-7B-Instruct-v0.2",
-      "status": 2,
-      "verified_date": "2026-02-22",
+      "status": 0,
+      "verified_date": null,
       "metadata": null,
-      "note": "Estimated 103.2 GB exceeds 78.0 GB limit",
+      "note": null,
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -245,7 +245,7 @@
       "architecture_id": "LlamaForCausalLM",
       "model_id": "llm-jp/llm-jp-3-3.7b-instruct",
       "status": 1,
-      "verified_date": "2026-02-22",
+      "verified_date": "2026-02-23",
       "metadata": null,
       "note": "Benchmark passed with issues: P3=88.9% (failed: process_bridge_weights, layer_norm_folding)",
       "phase1_score": 100.0,
@@ -256,11 +256,11 @@
       "architecture_id": "LlamaForCausalLM",
       "model_id": "meta-llama/Llama-3.2-3B-Instruct",
       "status": 1,
-      "verified_date": "2026-02-22",
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": "Benchmark passed with issues: P2=92.9% (failed: critical_forward_hooks)",
+      "note": "Benchmark passed",
       "phase1_score": 100.0,
-      "phase2_score": 92.9,
+      "phase2_score": 100.0,
       "phase3_score": 100.0
     },
     {
@@ -311,7 +311,7 @@
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Qwen/Qwen2.5-7B",
       "status": 2,
-      "verified_date": "2026-02-22",
+      "verified_date": "2026-02-24",
       "metadata": null,
       "note": "Estimated 100.2 GB exceeds 78.0 GB limit",
       "phase1_score": null,
@@ -332,11 +332,11 @@
     {
       "architecture_id": "LlamaForCausalLM",
       "model_id": "RedHatAI/Llama-3.2-1B-Instruct-FP8-dynamic",
-      "status": 3,
-      "verified_date": "2026-02-23",
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: compressed_tensors is not installed and is required for compressed-tensors quantization. Please install ",
-      "phase1_score": 0.0,
+      "note": "TransformerLens does not support quantized models at this time",
+      "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
     },
@@ -376,10 +376,10 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Qwen/Qwen2.5-Coder-7B-Instruct",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 100.2 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -387,13 +387,13 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "Gemma3ForCausalLM",
@@ -409,11 +409,11 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "Qwen/Qwen3-0.6B-FP8",
-      "status": 3,
-      "verified_date": "2026-02-22",
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: No module named 'triton'",
-      "phase1_score": 0.0,
+      "note": "TransformerLens does not support quantized models at this time",
+      "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
     },
@@ -453,10 +453,10 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Qwen/Qwen2.5-32B-Instruct-AWQ",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 452.0 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -464,13 +464,13 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Qwen/Qwen2.5-0.5B",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "Qwen2ForCausalLM",
@@ -520,10 +520,10 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "RedHatAI/Qwen2.5-1.5B-quantized.w8a8",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -531,10 +531,10 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Qwen/Qwen2.5-14B-Instruct",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 208.7 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -542,10 +542,10 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Qwen/Qwen2.5-14B-Instruct-AWQ",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 208.7 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -564,10 +564,10 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Qwen/Qwen2.5-72B-Instruct-AWQ",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 1057.5 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -586,21 +586,21 @@
     {
       "architecture_id": "Phi3ForCausalLM",
       "model_id": "kaitchup/Phi-3-mini-4k-instruct-gptq-4bit",
-      "status": 3,
-      "verified_date": "2026-02-22",
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: Loading a GPTQ quantized model requires optimum (`pip install optimum`)",
-      "phase1_score": 0.0,
+      "note": "TransformerLens does not support quantized models at this time",
+      "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
     },
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Qwen/Qwen2.5-Coder-32B-Instruct",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 452.0 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -630,13 +630,13 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Qwen/Qwen2.5-Coder-1.5B",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -663,10 +663,10 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Qwen/Qwen2.5-Coder-7B-Instruct-AWQ",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 100.2 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -675,7 +675,7 @@
       "architecture_id": "Phi3ForCausalLM",
       "model_id": "microsoft/Phi-3-mini-4k-instruct",
       "status": 1,
-      "verified_date": "2026-02-22",
+      "verified_date": "2026-02-23",
       "metadata": null,
       "note": "Benchmark passed",
       "phase1_score": 100.0,
@@ -685,10 +685,10 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Qwen/Qwen2.5-Coder-32B-Instruct-AWQ",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 452.0 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -707,10 +707,10 @@
     {
       "architecture_id": "MistralForCausalLM",
       "model_id": "mistralai/Mistral-7B-Instruct-v0.1",
-      "status": 2,
-      "verified_date": "2026-02-22",
+      "status": 0,
+      "verified_date": null,
       "metadata": null,
-      "note": "Estimated 103.2 GB exceeds 78.0 GB limit",
+      "note": null,
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -718,10 +718,10 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Qwen/Qwen2.5-1.5B-Instruct-AWQ",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -741,7 +741,7 @@
       "architecture_id": "LlamaForCausalLM",
       "model_id": "RedHatAI/Meta-Llama-3.1-8B-Instruct-FP8",
       "status": 2,
-      "verified_date": "2026-02-23",
+      "verified_date": "2026-02-24",
       "metadata": null,
       "note": "Estimated 108.3 GB exceeds 78.0 GB limit",
       "phase1_score": null,
@@ -751,11 +751,11 @@
     {
       "architecture_id": "LlamaForCausalLM",
       "model_id": "RedHatAI/Llama-3.2-1B-Instruct-FP8",
-      "status": 3,
-      "verified_date": "2026-02-23",
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: compressed_tensors is not installed and is required for compressed-tensors quantization. Please install ",
-      "phase1_score": 0.0,
+      "note": "TransformerLens does not support quantized models at this time",
+      "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
     },
@@ -795,10 +795,10 @@
     {
       "architecture_id": "LlamaForCausalLM",
       "model_id": "meta-llama/Llama-3.1-405B",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Gated repo (meta-llama/Llama-3)",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -817,10 +817,10 @@
     {
       "architecture_id": "LlamaForCausalLM",
       "model_id": "NousResearch/Hermes-3-Llama-3.1-8B",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 108.3 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -850,10 +850,10 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Qwen/Qwen2.5-Coder-7B-Instruct-GPTQ-Int4",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 100.2 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -861,10 +861,10 @@
     {
       "architecture_id": "LlamaForCausalLM",
       "model_id": "kosbu/Llama-3.3-70B-Instruct-AWQ",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 1028.7 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -883,21 +883,21 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Qwen/Qwen2.5-1.5B",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "LlamaForCausalLM",
       "model_id": "hugging-quants/Meta-Llama-3.1-8B-Instruct-AWQ-INT4",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 108.3 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -916,10 +916,10 @@
     {
       "architecture_id": "LlamaForCausalLM",
       "model_id": "meta-llama/Llama-2-7b-hf",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Gated repo (meta-llama/Llama-2-7b-hf)",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -927,10 +927,10 @@
     {
       "architecture_id": "LlamaForCausalLM",
       "model_id": "lmsys/vicuna-7b-v1.5",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 86.1 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -938,10 +938,10 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Qwen/Qwen2.5-Math-7B-Instruct",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 100.2 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -949,21 +949,21 @@
     {
       "architecture_id": "LlamaForCausalLM",
       "model_id": "HuggingFaceTB/SmolLM2-135M-Instruct",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "Qwen/Qwen3-4B-Instruct-2507-FP8",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -971,21 +971,21 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Qwen/Qwen2.5-Math-1.5B",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "Qwen/Qwen3-8B-Base",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 110.5 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -1015,10 +1015,10 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Qwen/Qwen2.5-Coder-14B-Instruct",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 208.7 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -1037,10 +1037,10 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "Qwen/Qwen3-32B-FP8",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 478.3 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -1081,21 +1081,21 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "Qwen/Qwen3-1.7B-Base",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Qwen/Qwen2.5-72B-Instruct",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 1054.2 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -1103,10 +1103,10 @@
     {
       "architecture_id": "MistralForCausalLM",
       "model_id": "unsloth/mistral-7b-v0.3-bnb-4bit",
-      "status": 2,
-      "verified_date": "2026-02-22",
+      "status": 0,
+      "verified_date": null,
       "metadata": null,
-      "note": "Estimated 103.2 GB exceeds 78.0 GB limit",
+      "note": null,
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -1125,10 +1125,10 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "Qwen/Qwen3-32B-AWQ",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 478.3 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -1169,10 +1169,10 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "Qwen/Qwen3-8B-FP8",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 110.5 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -1180,21 +1180,21 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Qwen/Qwen2-0.5B",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "MistralForCausalLM",
       "model_id": "mistralai/Mistral-7B-v0.1",
-      "status": 2,
-      "verified_date": "2026-02-22",
+      "status": 0,
+      "verified_date": null,
       "metadata": null,
-      "note": "Estimated 103.2 GB exceeds 78.0 GB limit",
+      "note": null,
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -1202,10 +1202,10 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Qwen/Qwen2.5-7B-Instruct-AWQ",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 100.2 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -1213,21 +1213,21 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "Qwen/Qwen3-4B-Base",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "lmstudio-community/DeepSeek-R1-0528-Qwen3-8B-MLX-4bit",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 110.5 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -1235,10 +1235,10 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "lmstudio-community/DeepSeek-R1-0528-Qwen3-8B-MLX-8bit",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 110.5 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -1268,10 +1268,10 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "unsloth/Qwen3-4B-Instruct-2507-unsloth-bnb-4bit",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -1279,13 +1279,13 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "trl-internal-testing/tiny-Qwen3ForCausalLM",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed with issues: P3=88.2% (failed: attention_output_centering, mlp_output_centering)",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 88.2
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -1301,10 +1301,10 @@
     {
       "architecture_id": "MistralForCausalLM",
       "model_id": "unsloth/mistral-7b-bnb-4bit",
-      "status": 2,
-      "verified_date": "2026-02-22",
+      "status": 0,
+      "verified_date": null,
       "metadata": null,
-      "note": "Estimated 103.2 GB exceeds 78.0 GB limit",
+      "note": null,
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -1312,10 +1312,10 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Qwen/QwQ-32B-AWQ",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 452.0 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -1334,13 +1334,13 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Qwen/Qwen2.5-3B",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -1367,13 +1367,13 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "Qwen/Qwen3-0.6B-Base",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "Phi3ForCausalLM",
@@ -1389,10 +1389,10 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "Qwen/Qwen3-4B-FP8",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -1400,10 +1400,10 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Qwen/Qwen2.5-Coder-7B",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 100.2 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -1499,21 +1499,21 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Qwen/Qwen2-0.5B-Instruct",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Qwen/Qwen1.5-110B-Chat-AWQ",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 1556.2 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -1532,10 +1532,10 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "OpenPipe/Qwen3-14B-Instruct",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 204.3 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -1587,10 +1587,10 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Qwen/Qwen2.5-Coder-1.5B-Instruct-AWQ",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -1620,10 +1620,10 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "Qwen/Qwen3-4B-AWQ",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -1675,13 +1675,13 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Qwen/Qwen2.5-Coder-3B-Instruct",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -1741,10 +1741,10 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "Qwen/Qwen3-4B-Thinking-2507-FP8",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -1796,10 +1796,10 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "Qwen/Qwen3-8B-AWQ",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 110.5 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -1818,10 +1818,10 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Qwen/Qwen2.5-7B-Instruct-GPTQ-Int4",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 100.2 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -1874,11 +1874,11 @@
       "architecture_id": "GemmaForCausalLM",
       "model_id": "google/gemma-2b",
       "status": 1,
-      "verified_date": "2026-02-22",
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": "Benchmark passed with issues: P2=78.6% (failed: hook_functionality, critical_forward_hooks, forward_hooks); P3=90.5% (failed: hook_functionality, critical_forward_hooks)",
+      "note": "Benchmark passed with issues: P2=85.7% (failed: hook_functionality, critical_forward_hooks); P3=90.5% (failed: hook_functionality, critical_forward_hooks)",
       "phase1_score": 100.0,
-      "phase2_score": 78.6,
+      "phase2_score": 85.7,
       "phase3_score": 90.5
     },
     {
@@ -1917,10 +1917,10 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Qwen/Qwen2-7B-Instruct",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 100.2 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -1939,10 +1939,10 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Qwen/Qwen2.5-32B-Instruct-GPTQ-Int4",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 452.0 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -1950,10 +1950,10 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "unsloth/Qwen3-14B-unsloth-bnb-4bit",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 204.3 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -2016,10 +2016,10 @@
     {
       "architecture_id": "MistralForCausalLM",
       "model_id": "teknium/OpenHermes-2.5-Mistral-7B",
-      "status": 2,
-      "verified_date": "2026-02-22",
+      "status": 0,
+      "verified_date": null,
       "metadata": null,
-      "note": "Estimated 103.2 GB exceeds 78.0 GB limit",
+      "note": null,
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -2027,10 +2027,10 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "DeepHat/DeepHat-V1-7B",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 100.2 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -2049,10 +2049,10 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "baichuan-inc/Baichuan-M2-32B",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 452.0 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -2060,17 +2060,6 @@
     {
       "architecture_id": "Olmo3ForCausalLM",
       "model_id": "allenai/Olmo-3-7B-Instruct-SFT",
-      "status": 2,
-      "verified_date": "2026-02-22",
-      "metadata": null,
-      "note": "Estimated 89.8 GB exceeds 78.0 GB limit",
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
-    },
-    {
-      "architecture_id": "Qwen3ForCausalLM",
-      "model_id": "Qwen/Qwen3Guard-Gen-0.6B",
       "status": 0,
       "verified_date": null,
       "metadata": null,
@@ -2078,6 +2067,17 @@
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
+    },
+    {
+      "architecture_id": "Qwen3ForCausalLM",
+      "model_id": "Qwen/Qwen3Guard-Gen-0.6B",
+      "status": 1,
+      "verified_date": "2026-02-24",
+      "metadata": null,
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "MistralForCausalLM",
@@ -2115,13 +2115,13 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Gensyn/Qwen2.5-0.5B-Instruct",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "BloomForCausalLM",
@@ -2159,10 +2159,10 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Qwen/Qwen2.5-32B",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 452.0 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -2225,13 +2225,13 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Qwen/Qwen2-1.5B",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -2258,10 +2258,10 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Qwen/Qwen2.5-Coder-14B-Instruct-AWQ",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 208.7 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -2346,13 +2346,13 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "unsloth/Qwen3-4B-Base",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "GptOssForCausalLM",
@@ -2368,10 +2368,10 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Qwen/Qwen2.5-14B-Instruct-GPTQ-Int4",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 208.7 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -2379,21 +2379,21 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "typhoon-ai/typhoon2.5-qwen3-4b",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "unsloth/Qwen3-0.6B-GGUF",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -2467,13 +2467,13 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "unsloth/Qwen3-4B-Instruct-2507",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -2500,10 +2500,10 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Qwen/Qwen2.5-14B",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 208.7 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -2511,10 +2511,10 @@
     {
       "architecture_id": "Olmo3ForCausalLM",
       "model_id": "allenai/Olmo-3-7B-Instruct",
-      "status": 2,
-      "verified_date": "2026-02-22",
+      "status": 0,
+      "verified_date": null,
       "metadata": null,
-      "note": "Estimated 89.8 GB exceeds 78.0 GB limit",
+      "note": null,
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -2522,10 +2522,10 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "lmstudio-community/Qwen3-4B-Thinking-2507-MLX-4bit",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -2566,10 +2566,10 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "lmstudio-community/Qwen3-4B-Thinking-2507-MLX-8bit",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -2588,10 +2588,10 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "unsloth/Qwen3-4B-GGUF",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -2599,10 +2599,10 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "unsloth/DeepSeek-R1-0528-Qwen3-8B-GGUF",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 110.5 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -2610,10 +2610,10 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "lmstudio-community/Qwen3-4B-Thinking-2507-MLX-6bit",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -2654,10 +2654,10 @@
     {
       "architecture_id": "LlamaForCausalLM",
       "model_id": "unsloth/Llama-3.2-1B-Instruct-unsloth-bnb-4bit",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -2665,13 +2665,13 @@
     {
       "architecture_id": "LlamaForCausalLM",
       "model_id": "Nanbeige/Nanbeige4.1-3B",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "MistralForCausalLM",
@@ -2687,21 +2687,21 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Salesforce/xLAM-2-3b-fc-r",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "LlamaForCausalLM",
       "model_id": "speakleash/Bielik-4.5B-v3.0-Instruct",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Gated repo (speakleash/Bielik-4)",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -2709,10 +2709,10 @@
     {
       "architecture_id": "LlamaForCausalLM",
       "model_id": "meta-llama/Llama-Guard-3-8B",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Gated repo (meta-llama/Llama-Guard-3-8B)",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -2742,10 +2742,10 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "lmstudio-community/Qwen2.5-Coder-14B-Instruct-MLX-4bit",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 208.7 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -2775,10 +2775,10 @@
     {
       "architecture_id": "LlamaForCausalLM",
       "model_id": "huggyllama/llama-7b",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 86.1 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -2797,10 +2797,10 @@
     {
       "architecture_id": "LlamaForCausalLM",
       "model_id": "unsloth/Llama-3.2-1B-Instruct-GGUF",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -2808,10 +2808,10 @@
     {
       "architecture_id": "LlamaForCausalLM",
       "model_id": "Salesforce/Llama-xLAM-2-8b-fc-r",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 108.3 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -2841,32 +2841,32 @@
     {
       "architecture_id": "LlamaForCausalLM",
       "model_id": "trl-internal-testing/tiny-LlamaForCausalLM-3.1",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed with issues: P3=88.2% (failed: attention_output_centering, mlp_output_centering)",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 88.2
     },
     {
       "architecture_id": "LlamaForCausalLM",
       "model_id": "trl-internal-testing/tiny-LlamaForCausalLM-3",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed with issues: P3=88.2% (failed: attention_output_centering, mlp_output_centering)",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 88.2
     },
     {
       "architecture_id": "LlamaForCausalLM",
       "model_id": "unsloth/llama-3-8b-bnb-4bit",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 108.3 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -2875,7 +2875,7 @@
       "architecture_id": "MixtralForCausalLM",
       "model_id": "TitanML/tiny-mixtral",
       "status": 1,
-      "verified_date": "2026-02-22",
+      "verified_date": "2026-02-23",
       "metadata": null,
       "note": "Benchmark passed",
       "phase1_score": 100.0,
@@ -2885,10 +2885,10 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Qwen/QwQ-32B",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 452.0 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -2907,10 +2907,10 @@
     {
       "architecture_id": "LlamaForCausalLM",
       "model_id": "mlx-community/Llama-3.2-1B-Instruct-4bit",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -2918,10 +2918,10 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Qwen/Qwen2.5-7B-Instruct-1M",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 100.2 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -2929,10 +2929,10 @@
     {
       "architecture_id": "LlamaForCausalLM",
       "model_id": "unsloth/Llama-3.2-3B-Instruct-unsloth-bnb-4bit",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -2940,10 +2940,10 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "Qwen/Qwen3-4B-MLX-4bit",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -2951,19 +2951,19 @@
     {
       "architecture_id": "LlamaForCausalLM",
       "model_id": "michaelbenayoun/llama-2-tiny-4kv-heads-4layers-random",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed with issues: P3=88.2% (failed: attention_output_centering, mlp_output_centering)",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 88.2
     },
     {
       "architecture_id": "Gemma3ForCausalLM",
       "model_id": "google/functiongemma-270m-it",
       "status": 1,
-      "verified_date": "2026-02-22",
+      "verified_date": "2026-02-23",
       "metadata": null,
       "note": "Benchmark passed with issues: P3=94.1% (failed: weight_magnitudes)",
       "phase1_score": 100.0,
@@ -2973,10 +2973,10 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "lmstudio-community/Qwen2.5-Coder-14B-Instruct-MLX-8bit",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 208.7 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -2984,21 +2984,21 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Qwen/Qwen1.5-0.5B-Chat",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed with issues: P2=91.7% (failed: generation); P3=83.3% (failed: process_bridge_weights, layer_norm_folding, value_bias_folding)",
+      "phase1_score": 100.0,
+      "phase2_score": 91.7,
+      "phase3_score": 83.3
     },
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "unsloth/Qwen2.5-7B-Instruct-unsloth-bnb-4bit",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 100.2 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -3006,10 +3006,10 @@
     {
       "architecture_id": "Olmo3ForCausalLM",
       "model_id": "allenai/Olmo-3-1025-7B",
-      "status": 2,
-      "verified_date": "2026-02-22",
+      "status": 0,
+      "verified_date": null,
       "metadata": null,
-      "note": "Estimated 89.8 GB exceeds 78.0 GB limit",
+      "note": null,
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -3017,21 +3017,21 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Qwen/Qwen1.5-1.8B-Chat",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed with issues: P3=83.3% (failed: process_bridge_weights, layer_norm_folding, value_bias_folding)",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 83.3
     },
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "nn-tech/MetalGPT-1",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 478.3 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -3050,10 +3050,10 @@
     {
       "architecture_id": "LlamaForCausalLM",
       "model_id": "meta-llama/Meta-Llama-3-70B-Instruct",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Gated repo (meta-llama/Meta-Llama-3-70B-Instruct)",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -3061,10 +3061,10 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Qwen/Qwen1.5-7B",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 92.6 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -3072,10 +3072,10 @@
     {
       "architecture_id": "LlamaForCausalLM",
       "model_id": "nvidia/Llama-3.1-8B-Instruct-FP8",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 108.3 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -3083,10 +3083,10 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Qwen/Qwen2.5-Math-7B",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 100.2 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -3094,10 +3094,10 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Qwen/Qwen2-7B",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 100.2 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -3105,21 +3105,21 @@
     {
       "architecture_id": "LlamaForCausalLM",
       "model_id": "arnir0/Tiny-LLM",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "unsloth/Qwen2.5-3B-Instruct-unsloth-bnb-4bit",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -3138,10 +3138,10 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "unsloth/Qwen2.5-7B-Instruct",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 100.2 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -3171,10 +3171,10 @@
     {
       "architecture_id": "LlamaForCausalLM",
       "model_id": "unsloth/Llama-3.2-3B-Instruct-bnb-4bit",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -3193,10 +3193,10 @@
     {
       "architecture_id": "LlamaForCausalLM",
       "model_id": "mlx-community/Llama-3.2-3B-Instruct-4bit",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -3215,10 +3215,10 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "lmstudio-community/Qwen3-4B-Instruct-2507-MLX-4bit",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -3226,10 +3226,10 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "unsloth/Qwen3-1.7B-GGUF",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -3237,10 +3237,10 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "unsloth/Qwen2.5-7B-Instruct-bnb-4bit",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 100.2 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -3248,10 +3248,10 @@
     {
       "architecture_id": "LlamaForCausalLM",
       "model_id": "codellama/CodeLlama-7b-Instruct-hf",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 86.1 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -3259,10 +3259,10 @@
     {
       "architecture_id": "LlamaForCausalLM",
       "model_id": "NousResearch/Llama-2-7b-hf",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 86.1 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -3270,10 +3270,10 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "Goekdeniz-Guelmez/Josiefied-Qwen3-14B-abliterated-v3",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 204.3 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -3281,10 +3281,10 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "lmstudio-community/Qwen3-4B-Instruct-2507-MLX-8bit",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -3292,32 +3292,32 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "unsloth/Qwen2.5-1.5B-Instruct",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "LlamaForCausalLM",
       "model_id": "HuggingFaceTB/SmolLM2-1.7B",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed with issues: P3=83.3% (failed: process_bridge_weights, layer_norm_folding, unembed_centering)",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 83.3
     },
     {
       "architecture_id": "LlamaForCausalLM",
       "model_id": "LLM360/K2-Think-V2",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 1041.7 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -3325,10 +3325,10 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "lmstudio-community/Qwen3-4B-Instruct-2507-MLX-5bit",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -3336,10 +3336,10 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "lmstudio-community/Qwen3-4B-Instruct-2507-MLX-6bit",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -3358,21 +3358,21 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Qwen/Qwen2.5-Math-1.5B-Instruct",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "LlamaForCausalLM",
       "model_id": "RedHatAI/Llama-3.3-70B-Instruct-FP8-dynamic",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 1028.7 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -3391,21 +3391,21 @@
     {
       "architecture_id": "LlamaForCausalLM",
       "model_id": "HuggingFaceTB/SmolLM-1.7B",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed with issues: P3=83.3% (failed: process_bridge_weights, layer_norm_folding, unembed_centering)",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 83.3
     },
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "Qwen/Qwen3-14B-Base",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 204.3 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -3413,10 +3413,10 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "unsloth/Qwen3-8B",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 110.5 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -3446,10 +3446,10 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Qwen/Qwen2.5-32B-Instruct-GPTQ-Int8",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 452.0 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -3457,10 +3457,10 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Qwen/Qwen2.5-3B-Instruct-AWQ",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -3479,10 +3479,10 @@
     {
       "architecture_id": "LlamaForCausalLM",
       "model_id": "fdtn-ai/Foundation-Sec-1.1-8B-Instruct",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 108.4 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -3523,10 +3523,10 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Qwen/Qwen2.5-72B-Instruct-GPTQ-Int8",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 1057.5 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -3534,10 +3534,10 @@
     {
       "architecture_id": "OlmoeForCausalLM",
       "model_id": "allenai/OLMoE-1B-7B-0125",
-      "status": 2,
-      "verified_date": "2026-02-22",
+      "status": 0,
+      "verified_date": null,
       "metadata": null,
-      "note": "Estimated 88.9 GB exceeds 78.0 GB limit",
+      "note": null,
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -3567,10 +3567,10 @@
     {
       "architecture_id": "LlamaForCausalLM",
       "model_id": "unsloth/Meta-Llama-3.1-8B-Instruct-unsloth-bnb-4bit",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 108.3 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -3578,10 +3578,10 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "lmstudio-community/Qwen3-8B-MLX-4bit",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 110.5 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -3589,10 +3589,10 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "unsloth/Qwen3-1.7B-unsloth-bnb-4bit",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -3600,10 +3600,10 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "unsloth/Qwen3-4B-unsloth-bnb-4bit",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -3611,13 +3611,13 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Salesforce/xLAM-2-1b-fc-r",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "OPTForCausalLM",
@@ -3644,10 +3644,10 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "lmstudio-community/Qwen3-8B-MLX-8bit",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 110.5 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -3655,11 +3655,11 @@
     {
       "architecture_id": "Gemma3ForCausalLM",
       "model_id": "unsloth/gemma-3-1b-it-GGUF",
-      "status": 3,
-      "verified_date": "2026-02-22",
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: unsloth/gemma-3-1b-it-GGUF does not appear to have a file named pytorch_model.bin or model.safetensors.",
-      "phase1_score": 0.0,
+      "note": "TransformerLens does not support quantized models at this time",
+      "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
     },
@@ -3677,10 +3677,10 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "unsloth/DeepSeek-R1-Distill-Qwen-1.5B-GGUF",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -3688,13 +3688,13 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "peft-internal-testing/tiny-dummy-qwen2",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -3710,13 +3710,13 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Qwen/Qwen2.5-Coder-0.5B",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -3732,10 +3732,10 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "OpenDFM/ChemDFM-R-14B",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 208.7 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -3743,10 +3743,10 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "mlx-community/Qwen3-0.6B-4bit",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -3754,11 +3754,11 @@
     {
       "architecture_id": "Gemma3ForCausalLM",
       "model_id": "mlx-community/gemma-3-1b-it-qat-4bit",
-      "status": 3,
-      "verified_date": "2026-02-22",
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: The model's quantization config from the arguments has no `quant_method` attribute. Make sure that the m",
-      "phase1_score": 0.0,
+      "note": "TransformerLens does not support quantized models at this time",
+      "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
     },
@@ -3787,10 +3787,10 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "cyankiwi/Qwen3-4B-Thinking-2507-AWQ-8bit",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -3798,10 +3798,10 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "huihui-ai/Qwen2.5-32B-Instruct-abliterated",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 452.0 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -3820,10 +3820,10 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Qwen/Qwen2-72B",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 1054.2 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -3919,10 +3919,10 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "unsloth/Qwen3-0.6B-unsloth-bnb-4bit",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -3930,10 +3930,10 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "unsloth/Qwen2.5-1.5B-Instruct-unsloth-bnb-4bit",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -3941,10 +3941,10 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "unsloth/Qwen3-32B-GGUF",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 478.3 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -3952,10 +3952,10 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "nytopop/Qwen3-8B.w8a8",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 110.5 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -3963,10 +3963,10 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "lmstudio-community/Qwen2.5-Coder-32B-Instruct-MLX-4bit",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 452.0 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -3985,10 +3985,10 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "lmstudio-community/Qwen3-14B-MLX-4bit",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 204.3 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -4007,10 +4007,10 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Qwen/Qwen2.5-Coder-32B",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 452.0 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -4051,10 +4051,10 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Qwen/Qwen2.5-72B-Instruct-GPTQ-Int4",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 1057.5 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -4073,13 +4073,13 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Qwen/Qwen2.5-Coder-3B",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "GptOssForCausalLM",
@@ -4128,10 +4128,10 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "lmstudio-community/Qwen2.5-Coder-32B-Instruct-MLX-8bit",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 452.0 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -4150,10 +4150,10 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Qwen/Qwen2-72B-Instruct",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 1054.2 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -4173,7 +4173,7 @@
       "architecture_id": "Gemma3ForCausalLM",
       "model_id": "google/gemma-3-1b-pt",
       "status": 1,
-      "verified_date": "2026-02-22",
+      "verified_date": "2026-02-23",
       "metadata": null,
       "note": "Benchmark passed with issues: P2=85.7% (failed: critical_forward_hooks, forward_hooks); P3=76.2% (failed: logits_equivalence, loss_equivalence, hook_functionality, critical_forward_hooks, forward_hooks)",
       "phase1_score": 100.0,
@@ -4205,10 +4205,10 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "mlx-community/Qwen3-0.6B-8bit",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -4216,10 +4216,10 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Qwen/Qwen2.5-14B-Instruct-GPTQ-Int8",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 208.7 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -4238,10 +4238,10 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "lmstudio-community/Qwen3-14B-MLX-8bit",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 204.3 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -4304,10 +4304,10 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "galaxycore/Qwen3-Reranker-8B-MLX-4bit",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 110.5 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -4326,10 +4326,10 @@
     {
       "architecture_id": "Olmo3ForCausalLM",
       "model_id": "allenai/Olmo-3-7B-Think",
-      "status": 2,
-      "verified_date": "2026-02-22",
+      "status": 0,
+      "verified_date": null,
       "metadata": null,
-      "note": "Estimated 89.8 GB exceeds 78.0 GB limit",
+      "note": null,
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -4359,10 +4359,10 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "Qwen/Qwen3-1.7B-FP8",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -4370,10 +4370,10 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "unsloth/Qwen3-8B-GGUF",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 110.5 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -4436,10 +4436,10 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "unsloth/Qwen3-14B-GGUF",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 204.3 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -4535,11 +4535,11 @@
     {
       "architecture_id": "Gemma2ForCausalLM",
       "model_id": "unsloth/gemma-2-2b-it-bnb-4bit",
-      "status": 3,
-      "verified_date": "2026-02-22",
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: Using `bitsandbytes` 4-bit quantization requires bitsandbytes: `pip install -U bitsandbytes>=0.46.1`",
-      "phase1_score": 0.0,
+      "note": "TransformerLens does not support quantized models at this time",
+      "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
     },
@@ -4579,13 +4579,13 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "llamafactory/tiny-random-qwen3",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed with issues: P3=94.4% (failed: process_bridge_weights)",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 94.4
     },
     {
       "architecture_id": "Gemma3ForCausalLM",
@@ -4656,13 +4656,13 @@
     {
       "architecture_id": "Gemma2ForCausalLM",
       "model_id": "google/gemma-2-2b-jpn-it",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "Qwen2ForCausalLM",
@@ -4722,13 +4722,13 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "EleutherAI/pythia-1b",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -4755,10 +4755,10 @@
     {
       "architecture_id": "OlmoeForCausalLM",
       "model_id": "allenai/OLMoE-1B-7B-0924",
-      "status": 2,
-      "verified_date": "2026-02-22",
+      "status": 0,
+      "verified_date": null,
       "metadata": null,
-      "note": "Estimated 88.9 GB exceeds 78.0 GB limit",
+      "note": null,
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -4865,10 +4865,10 @@
     {
       "architecture_id": "OlmoeForCausalLM",
       "model_id": "allenai/OLMoE-1B-7B-0125-Instruct",
-      "status": 2,
-      "verified_date": "2026-02-22",
+      "status": 0,
+      "verified_date": null,
       "metadata": null,
-      "note": "Estimated 88.9 GB exceeds 78.0 GB limit",
+      "note": null,
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -4887,21 +4887,21 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "EleutherAI/pythia-1.4b",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "Jubilant/Affine-19-5ECwAdnT5r3M4eiVFGjYgKrk93LG8RjZfESA2f97PRNJtajC",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Jubilant/Affine-19-5ECwAdnT5r3M4eiVFGjYgKrk93LG8RjZfESA2f97PRNJtajC is not a local folder and is not a valid model identifier listed on 'https://huggingface.co/models'\nIf this is a private repository,",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -4920,10 +4920,10 @@
     {
       "architecture_id": "OPTForCausalLM",
       "model_id": "facebook/opt-6.7b",
-      "status": 2,
-      "verified_date": "2026-02-23",
+      "status": 0,
+      "verified_date": null,
       "metadata": null,
-      "note": "Estimated 86.7 GB exceeds 78.0 GB limit",
+      "note": null,
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -4953,10 +4953,10 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "lmstudio-community/Qwen3-32B-MLX-4bit",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 478.3 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -5008,10 +5008,10 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "huihui-ai/Huihui-Qwen3-8B-abliterated-v2",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 110.5 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -5030,10 +5030,10 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "lmstudio-community/Qwen3-32B-MLX-8bit",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 478.3 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -5041,10 +5041,10 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "lmstudio-community/Qwen3-1.7B-MLX-8bit",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -5074,21 +5074,21 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "EleutherAI/pythia-410m-deduped",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "unsloth/Qwen3-4B-Thinking-2507-unsloth-bnb-4bit",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -5107,10 +5107,10 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "nvidia/Qwen3-8B-NVFP4",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 110.5 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -5140,10 +5140,10 @@
     {
       "architecture_id": "Gemma3ForCausalLM",
       "model_id": "unsloth/gemma-3-1b-it-unsloth-bnb-4bit",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -5162,10 +5162,10 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "mlx-community/Qwen3-1.7B-4bit",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -5173,13 +5173,13 @@
     {
       "architecture_id": "Gemma3ForCausalLM",
       "model_id": "unsloth/gemma-3-270m-it",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed with issues: P3=94.1% (failed: weight_magnitudes)",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 94.1
     },
     {
       "architecture_id": "MistralForCausalLM",
@@ -5217,10 +5217,10 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "lmstudio-community/Qwen3-1.7B-MLX-4bit",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -5305,10 +5305,10 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "lmstudio-community/Qwen3-4B-MLX-4bit",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -5316,10 +5316,10 @@
     {
       "architecture_id": "Olmo3ForCausalLM",
       "model_id": "allenai/Olmo-3-7B-Think-DPO",
-      "status": 2,
-      "verified_date": "2026-02-22",
+      "status": 0,
+      "verified_date": null,
       "metadata": null,
-      "note": "Estimated 89.8 GB exceeds 78.0 GB limit",
+      "note": null,
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -5338,13 +5338,13 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "lmstudio-community/Qwen3-1.7B-MLX-bf16",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -5382,21 +5382,21 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "EleutherAI/pythia-410m-v0",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "nvidia/Qwen3-32B-NVFP4",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 478.3 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -5404,24 +5404,24 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "EleutherAI/pythia-2.8b",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "Gemma3ForCausalLM",
       "model_id": "unsloth/functiongemma-270m-it",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed with issues: P3=94.1% (failed: weight_magnitudes)",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 94.1
     },
     {
       "architecture_id": "StableLmForCausalLM",
@@ -5448,10 +5448,10 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "nvidia/Qwen3-14B-NVFP4",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 204.3 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -5503,10 +5503,10 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "mlx-community/Qwen3-4B-Instruct-2507-4bit",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -5668,21 +5668,21 @@
     {
       "architecture_id": "Gemma3ForCausalLM",
       "model_id": "typhoon-ai/typhoon2.1-gemma3-4b",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed with issues: P3=94.1% (failed: weight_magnitudes)",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 94.1
     },
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "Qwen/Qwen3-14B-FP8",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 204.3 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -5690,13 +5690,13 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "michaelbenayoun/qwen3-tiny-4kv-heads-4layers-random",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "GPTJForCausalLM",
@@ -5778,11 +5778,11 @@
     {
       "architecture_id": "GemmaForCausalLM",
       "model_id": "TechxGenus/gemma-1.1-2b-it-GPTQ",
-      "status": 3,
-      "verified_date": "2026-02-22",
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: Loading a GPTQ quantized model requires optimum (`pip install optimum`)",
-      "phase1_score": 0.0,
+      "note": "TransformerLens does not support quantized models at this time",
+      "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
     },
@@ -5888,10 +5888,10 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "lmstudio-community/Qwen3-4B-MLX-8bit",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -5910,10 +5910,10 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "EleutherAI/pythia-6.9b",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 114.7 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -5998,10 +5998,10 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "mlx-community/Qwen3-4B-4bit",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -6086,10 +6086,10 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "unsloth/Qwen3-14B-Base-unsloth-bnb-4bit",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 204.3 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -6174,10 +6174,10 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "warshanks/Jan-nano-AWQ",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -6284,10 +6284,10 @@
     {
       "architecture_id": "Gemma3ForCausalLM",
       "model_id": "unsloth/gemma-3-270m-it-unsloth-bnb-4bit",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -6504,10 +6504,10 @@
     {
       "architecture_id": "Gemma2ForCausalLM",
       "model_id": "mlx-community/gemma-2-2b-it-4bit",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -6559,13 +6559,13 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "EleutherAI/pythia-1.4b-deduped",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "MistralForCausalLM",
@@ -6669,10 +6669,10 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "EleutherAI/deep-ignorance-unfiltered",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 114.7 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -6779,10 +6779,10 @@
     {
       "architecture_id": "Gemma2ForCausalLM",
       "model_id": "unsloth/gemma-2-2b-bnb-4bit",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -7263,13 +7263,13 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "EleutherAI/pythia-2.8b-deduped",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "MixtralForCausalLM",
@@ -7461,10 +7461,10 @@
     {
       "architecture_id": "Olmo2ForCausalLM",
       "model_id": "allenai/OLMo-2-1124-7B-Instruct",
-      "status": 2,
-      "verified_date": "2026-02-23",
+      "status": 0,
+      "verified_date": null,
       "metadata": null,
-      "note": "Estimated 89.8 GB exceeds 78.0 GB limit",
+      "note": null,
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -7560,10 +7560,10 @@
     {
       "architecture_id": "Gemma2ForCausalLM",
       "model_id": "unsloth/gemma-2-27b",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 366.3 GB exceeds 100.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -7901,10 +7901,10 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "EleutherAI/pythia-12b",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 200.3 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -7945,10 +7945,10 @@
     {
       "architecture_id": "Gemma2ForCausalLM",
       "model_id": "unsloth/gemma-2-9b-bnb-4bit",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 128.5 GB exceeds 100.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -7979,7 +7979,7 @@
       "architecture_id": "BloomForCausalLM",
       "model_id": "bigscience/bloomz-7b1",
       "status": 2,
-      "verified_date": "2026-02-22",
+      "verified_date": "2026-02-23",
       "metadata": null,
       "note": "Estimated 92.1 GB exceeds 78.0 GB limit",
       "phase1_score": null,
@@ -8023,7 +8023,7 @@
       "architecture_id": "BloomForCausalLM",
       "model_id": "bigscience/bloom-7b1",
       "status": 2,
-      "verified_date": "2026-02-22",
+      "verified_date": "2026-02-23",
       "metadata": null,
       "note": "Estimated 92.1 GB exceeds 78.0 GB limit",
       "phase1_score": null,
@@ -8198,10 +8198,10 @@
     {
       "architecture_id": "Gemma2ForCausalLM",
       "model_id": "google/gemma-2-27b",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 366.3 GB exceeds 100.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -10057,10 +10057,10 @@
     {
       "architecture_id": "OlmoeForCausalLM",
       "model_id": "allenai/OLMoE-1B-7B-0924-Instruct",
-      "status": 2,
-      "verified_date": "2026-02-22",
+      "status": 0,
+      "verified_date": null,
       "metadata": null,
-      "note": "Estimated 88.9 GB exceeds 78.0 GB limit",
+      "note": null,
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -11322,13 +11322,13 @@
     {
       "architecture_id": "Gemma2ForCausalLM",
       "model_id": "vandijklab/C2S-Scale-Gemma-2-2B",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "MistralForCausalLM",
@@ -11674,10 +11674,10 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "EleutherAI/pythia-12b-deduped",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 200.3 GB exceeds 100.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -11729,13 +11729,13 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "EleutherAI/pythia-1b-deduped",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -12026,10 +12026,10 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "h2oai/h2ogpt-oig-oasst1-512-6_9b",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 114.7 GB exceeds 100.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -12125,10 +12125,10 @@
     {
       "architecture_id": "OlmoForCausalLM",
       "model_id": "allenai/OLMo-7B-hf",
-      "status": 2,
-      "verified_date": "2026-02-22",
+      "status": 0,
+      "verified_date": null,
       "metadata": null,
-      "note": "Estimated 87.1 GB exceeds 78.0 GB limit",
+      "note": null,
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -12147,10 +12147,10 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "geodesic-research/sfm-sft_dolci_instruct_unfiltered",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 114.7 GB exceeds 100.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -12158,13 +12158,13 @@
     {
       "architecture_id": "Gemma2ForCausalLM",
       "model_id": "google/shieldgemma-2b",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "MistralForCausalLM",
@@ -13489,13 +13489,13 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "rinna/japanese-gpt-neox-3.6b-instruction-sft-v2",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -14204,13 +14204,13 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "EleutherAI/polyglot-ko-1.3b",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -14579,13 +14579,13 @@
     {
       "architecture_id": "Gemma2ForCausalLM",
       "model_id": "cjvt/GaMS-2B-Instruct",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "Gemma3ForCausalLM",
@@ -14667,10 +14667,10 @@
     {
       "architecture_id": "Olmo3ForCausalLM",
       "model_id": "allenai/Olmo-3-7B-Think-SFT",
-      "status": 2,
-      "verified_date": "2026-02-22",
+      "status": 0,
+      "verified_date": null,
       "metadata": null,
-      "note": "Estimated 89.8 GB exceeds 78.0 GB limit",
+      "note": null,
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -14821,21 +14821,21 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "EleutherAI/pythia-31m-deduped",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "Olmo2ForCausalLM",
       "model_id": "allenai/OLMo-2-1124-7B-SFT",
-      "status": 2,
-      "verified_date": "2026-02-23",
+      "status": 0,
+      "verified_date": null,
       "metadata": null,
-      "note": "Estimated 89.8 GB exceeds 78.0 GB limit",
+      "note": null,
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -14854,13 +14854,13 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "verseAI/databricks-dolly-v2-3b",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -15184,10 +15184,10 @@
     {
       "architecture_id": "Olmo3ForCausalLM",
       "model_id": "allenai/Olmo-3.1-7B-RL-Zero-Math",
-      "status": 2,
-      "verified_date": "2026-02-22",
+      "status": 0,
+      "verified_date": null,
       "metadata": null,
-      "note": "Estimated 89.8 GB exceeds 78.0 GB limit",
+      "note": null,
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -15569,13 +15569,13 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "lomahony/pythia-70m-helpful-sft",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "MistralForCausalLM",
@@ -15712,10 +15712,10 @@
     {
       "architecture_id": "OlmoForCausalLM",
       "model_id": "allenai/OLMo-7B-0724-hf",
-      "status": 2,
-      "verified_date": "2026-02-22",
+      "status": 0,
+      "verified_date": null,
       "metadata": null,
-      "note": "Estimated 87.1 GB exceeds 78.0 GB limit",
+      "note": null,
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -16361,13 +16361,13 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "stabilityai/stablelm-base-alpha-3b",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "MistralForCausalLM",
@@ -17131,10 +17131,10 @@
     {
       "architecture_id": "Olmo2ForCausalLM",
       "model_id": "allenai/OLMo-2-1124-7B-DPO",
-      "status": 2,
-      "verified_date": "2026-02-23",
+      "status": 0,
+      "verified_date": null,
       "metadata": null,
-      "note": "Estimated 89.8 GB exceeds 78.0 GB limit",
+      "note": null,
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -17186,13 +17186,13 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "rinna/bilingual-gpt-neox-4b",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "MistralForCausalLM",
@@ -17230,10 +17230,10 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "EleutherAI/polyglot-ko-5.8b",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 99.6 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -17472,13 +17472,13 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "cyberagent/open-calm-small",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -18012,13 +18012,13 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "peft-internal-testing/tiny-random-GPTNeoXForCausalLM",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -18606,13 +18606,13 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "cleanrl/EleutherAI_pythia-1b-deduped__sft__tldr",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "Qwen3ForCausalLM",
@@ -19464,13 +19464,13 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "ollieturnbull/p-IgGen",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "MistralForCausalLM",
@@ -19552,13 +19552,13 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "stabilityai/stablelm-tuned-alpha-3b",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "Qwen2ForCausalLM",
@@ -20124,13 +20124,13 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "Fredithefish/Guanaco-3B-Uncensored-v2",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "Qwen3ForCausalLM",
@@ -20234,10 +20234,10 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "stabilityai/stablelm-tuned-alpha-7b",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 130.0 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -20399,10 +20399,10 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "OpenAssistant/oasst-sft-4-pythia-12b-epoch-3.5",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 200.2 GB exceeds 100.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -20784,10 +20784,10 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "EleutherAI/polyglot-ko-12.8b",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 220.8 GB exceeds 100.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -21224,13 +21224,13 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "Waterhorse/chessgpt-base-v1",
-      "status": 0,
-      "verified_date": null,
+      "status": 3,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Below threshold: P1=0.0% < 100.0% (failed: all_components, forward_pass_logits) \u2014 130/132 components failed (125 high, 5 medium)",
+      "phase1_score": 0.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -21642,10 +21642,10 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "sapienzanlp/modello-italia-9b-bf16",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 107.9 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -21796,13 +21796,13 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "EleutherAI/pythia-410m-seed2",
-      "status": 0,
-      "verified_date": null,
+      "status": 3,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Below threshold: P1=50.0% < 100.0% (failed: forward_pass_logits) \u2014 Tensors differ: max_diff=0.002012, mean_rel=0.000401",
+      "phase1_score": 50.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -22038,10 +22038,10 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "sapienzanlp/modello-italia-9b",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 107.9 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -22192,10 +22192,10 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "togethercomputer/RedPajama-INCITE-7B-Instruct",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 114.7 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -22489,13 +22489,13 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "togethercomputer/RedPajama-INCITE-Instruct-3B-v1",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -23314,10 +23314,10 @@
     {
       "architecture_id": "BloomForCausalLM",
       "model_id": "bigscience/bloomz-7b1-mt",
-      "status": 2,
-      "verified_date": "2026-02-22",
+      "status": 0,
+      "verified_date": null,
       "metadata": null,
-      "note": "Estimated 92.1 GB exceeds 78.0 GB limit",
+      "note": null,
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -23754,10 +23754,10 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "EleutherAI/deep-ignorance-pretraining-stage-unfiltered",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 114.7 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -24414,13 +24414,13 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "EleutherAI/pythia-1b-v0",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "MistralForCausalLM",
@@ -24568,10 +24568,10 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "h2oai/h2ogpt-oasst1-512-12b",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 200.3 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -24722,10 +24722,10 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "stabilityai/stablelm-base-alpha-7b",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 130.0 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -24931,21 +24931,21 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "EleutherAI/pythia-160m-seed1",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "cyberagent/open-calm-7b",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 114.8 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -25151,10 +25151,10 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "geodesic-research/sfm_unfiltered_e2e_alignment_upsampled_base",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 114.7 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -25580,21 +25580,21 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "EleutherAI/pythia-160m-seed2",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "KoboldAI/GPT-NeoX-20B-Erebus",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 263.9 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -25690,24 +25690,24 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "EleutherAI/pythia-70m-seed1",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "EleutherAI/pythia-160m-seed3",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "GPT2LMHeadModel",
@@ -26108,21 +26108,21 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "togethercomputer/RedPajama-INCITE-Base-3B-v1",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "OlmoForCausalLM",
       "model_id": "allenai/OLMo-7B-0424-hf",
-      "status": 2,
-      "verified_date": "2026-02-22",
+      "status": 0,
+      "verified_date": null,
       "metadata": null,
-      "note": "Estimated 87.1 GB exceeds 78.0 GB limit",
+      "note": null,
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -26548,13 +26548,13 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "togethercomputer/RedPajama-INCITE-Chat-3B-v1",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "Qwen3ForCausalLM",
@@ -26801,13 +26801,13 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "EleutherAI/pythia-160m-seed4",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "MistralForCausalLM",
@@ -26900,13 +26900,13 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "EleutherAI/pythia-410m-seed6",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -27593,13 +27593,13 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "rinna/japanese-gpt-neox-3.6b-instruction-ppo",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "Qwen2ForCausalLM",
@@ -27814,13 +27814,13 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "cyberagent/open-calm-large",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -27891,13 +27891,13 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "PygmalionAI/pygmalion-1.3b",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -28188,11 +28188,11 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "PygmalionAI/metharme-1.3b",
-      "status": 0,
-      "verified_date": null,
+      "status": 3,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
+      "note": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: extra_special_tokens must be a list/tuple of str or AddedToken, or a dict mapping names to tokens",
+      "phase1_score": 0.0,
       "phase2_score": null,
       "phase3_score": null
     },
@@ -28276,10 +28276,10 @@
     {
       "architecture_id": "OlmoForCausalLM",
       "model_id": "allenai/OLMo-7B-0724-Instruct-hf",
-      "status": 2,
-      "verified_date": "2026-02-22",
+      "status": 0,
+      "verified_date": null,
       "metadata": null,
-      "note": "Estimated 87.1 GB exceeds 78.0 GB limit",
+      "note": null,
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -28441,10 +28441,10 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "OpenAssistant/oasst-sft-1-pythia-12b",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 200.2 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -28463,13 +28463,13 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "vandijklab/C2S-Pythia-410m-diverse-single-and-multi-cell-tasks",
-      "status": 0,
-      "verified_date": null,
+      "status": 3,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Below threshold: P1=50.0% < 100.0% (failed: forward_pass_logits) \u2014 Tensors differ: max_diff=0.004045, mean_rel=0.000066",
+      "phase1_score": 50.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "GPT2LMHeadModel",
@@ -28903,24 +28903,24 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "concedo/Pythia-70M-ChatSalad",
-      "status": 0,
-      "verified_date": null,
+      "status": 3,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Below threshold: P1=50.0% < 100.0% (failed: forward_pass_logits) \u2014 Tensors differ: max_diff=0.003122, mean_rel=0.000469",
+      "phase1_score": 50.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "GPTNeoForCausalLM",
       "model_id": "roneneldan/TinyStories-28M",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -28958,13 +28958,13 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "stabilityai/stablecode-completion-alpha-3b-4k",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -29046,10 +29046,10 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "dahara1/weblab-10b-instruction-sft-GPTQ",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 180.9 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -29134,13 +29134,13 @@
     {
       "architecture_id": "GPTNeoForCausalLM",
       "model_id": "PygmalionAI/pygmalion-2.7b",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -29267,10 +29267,10 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "togethercomputer/Pythia-Chat-Base-7B",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 114.7 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -29696,13 +29696,13 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "Dampish/StellarX-4B-V0",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -30158,13 +30158,13 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "Dampish/Dante-2.8B",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -30202,13 +30202,13 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "pszemraj/pythia-31m-goodwiki-deduped-2048-scratch",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -30345,13 +30345,13 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "Dampish/StellarX-4B-V0.2",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -30554,13 +30554,13 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "SummerSigh/Pythia410m-V0-Instruct",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -30708,10 +30708,10 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "hoskinson-center/proofGPT-v0.1-6.7B",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 114.7 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -31445,13 +31445,13 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "HWERI/pythia-70m-deduped-cleansharegpt",
-      "status": 0,
-      "verified_date": null,
+      "status": 3,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Below threshold: P1=50.0% < 100.0% (failed: forward_pass_logits) \u2014 Tensors differ: max_diff=0.011660, mean_rel=0.002703",
+      "phase1_score": 50.0,
+      "phase2_score": 91.7,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "MistralForCausalLM",
@@ -31940,10 +31940,10 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "togethercomputer/GPT-NeoXT-Chat-Base-20B",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 263.9 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -32270,13 +32270,13 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "EleutherAI/pythia-410m-seed9",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -32578,10 +32578,10 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "h2oai/h2ogpt-oasst1-512-20b",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 263.9 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -32787,10 +32787,10 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "h2oai/h2ogpt-oig-oasst1-256-6_9b",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 114.7 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -32908,13 +32908,13 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "HWERI/pythia-1.4b-deduped-sharegpt",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -33150,13 +33150,13 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "saberai/Zro1.5_3B",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -33172,10 +33172,10 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "h2oai/h2ogpt-gm-oasst1-en-1024-12b",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 200.3 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -33568,10 +33568,10 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "h2oai/h2ogpt-gm-oasst1-en-1024-20b",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 263.9 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -33623,13 +33623,13 @@
     {
       "architecture_id": "GPTNeoForCausalLM",
       "model_id": "roneneldan/TinyStories-1Layer-21M",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -33723,10 +33723,10 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "JamesConley/glados_together_20b_lora_merged",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 263.9 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -33800,13 +33800,13 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "HWERI/pythia-70m-deduped-cleansharegpt-en",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -33866,10 +33866,10 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "togethercomputer/RedPajama-INCITE-7B-Base",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 114.7 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -33899,10 +33899,10 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "matsuo-lab/weblab-10b-instruction-sft",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 180.9 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -33998,10 +33998,10 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "h2oai/h2ogpt-gm-oasst1-multilang-1024-20b",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 263.9 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -34515,13 +34515,13 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "acrastt/RedPajama-INCITE-Chat-Instruct-3B-V1",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -34746,13 +34746,13 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "hoskinson-center/proofGPT-v0.1",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "GPTJForCausalLM",
@@ -35241,10 +35241,10 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "dvruette/oasst-gpt-neox-20b-1000-steps",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 263.9 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -35813,10 +35813,10 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "togethercomputer/RedPajama-INCITE-7B-Chat",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 114.7 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -36055,10 +36055,10 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "OpenAssistant/pythia-12b-sft-v8-7k-steps",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 200.2 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -36143,13 +36143,13 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "beaugogh/pythia-1.4b-deduped-sharegpt",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -36242,24 +36242,24 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "w601sxs/b1ade-1b",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "heegyu/RedTulu-Uncensored-3B-0719",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -36440,10 +36440,10 @@
     {
       "architecture_id": "BloomForCausalLM",
       "model_id": "FreedomIntelligence/phoenix-inst-chat-7b",
-      "status": 2,
-      "verified_date": "2026-02-22",
+      "status": 0,
+      "verified_date": null,
       "metadata": null,
-      "note": "Estimated 92.1 GB exceeds 78.0 GB limit",
+      "note": null,
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -36539,10 +36539,10 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "dvruette/oasst-gpt-neox-20b-3000-steps",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 263.9 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -36682,10 +36682,10 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "NYTK/PULI-GPTrio",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 120.0 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -36814,13 +36814,13 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "pszemraj/pythia-31m-simplepile-lite-2048-scratch-2e",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -36880,10 +36880,10 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "dvruette/oasst-pythia-6.9b-4000-steps",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 114.7 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -37034,13 +37034,13 @@
     {
       "architecture_id": "GPTNeoForCausalLM",
       "model_id": "ncfrey/ChemGPT-19M",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "GPT2LMHeadModel",
@@ -37232,10 +37232,10 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "KoboldAI/GPT-NeoX-20B-Skein",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 263.9 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -37694,10 +37694,10 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "dvruette/gpt-neox-20b-full-precision",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 263.9 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -37837,10 +37837,10 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "hakurei/lotus-12B",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 200.3 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -37881,10 +37881,10 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "matsuo-lab/weblab-10b",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 180.9 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -38002,10 +38002,10 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "dvruette/oasst-pythia-12b-6000-steps",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 200.2 GB exceeds 78.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -39597,13 +39597,13 @@
     {
       "architecture_id": "GPTNeoForCausalLM",
       "model_id": "SummerSigh/GPTNeo350M-Instruct-SFT",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "GPT2LMHeadModel",
@@ -40026,11 +40026,11 @@
     {
       "architecture_id": "GPT2LMHeadModel",
       "model_id": "SebastianSchramm/Cerebras-GPT-111M-instruction-GPTQ-4bit-128g-actorder_True",
-      "status": 3,
-      "verified_date": "2026-02-23",
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: Loading a GPTQ quantized model requires optimum (`pip install optimum`)",
-      "phase1_score": 0.0,
+      "note": "TransformerLens does not support quantized models at this time",
+      "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
     },
@@ -40158,13 +40158,13 @@
     {
       "architecture_id": "GPTNeoForCausalLM",
       "model_id": "xhyi/PT_GPTNEO350_ATG",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -41148,11 +41148,11 @@
     {
       "architecture_id": "GPT2LMHeadModel",
       "model_id": "FabbriSimo01/Cerebras_1.3b_Quantized",
-      "status": 3,
-      "verified_date": "2026-02-23",
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: Using `bitsandbytes` 8-bit quantization requires bitsandbytes: `pip install -U bitsandbytes>=0.46.1`",
-      "phase1_score": 0.0,
+      "note": "TransformerLens does not support quantized models at this time",
+      "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
     },
@@ -41544,11 +41544,11 @@
     {
       "architecture_id": "GPT2LMHeadModel",
       "model_id": "FabbriSimo01/GPT_Large_Quantized",
-      "status": 3,
-      "verified_date": "2026-02-23",
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: Using `bitsandbytes` 8-bit quantization requires bitsandbytes: `pip install -U bitsandbytes>=0.46.1`",
-      "phase1_score": 0.0,
+      "note": "TransformerLens does not support quantized models at this time",
+      "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
     },
@@ -42600,13 +42600,13 @@
     {
       "architecture_id": "GPTNeoForCausalLM",
       "model_id": "Tincando/fiction_story_generator",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "GPTNeoXForCausalLM",
@@ -42809,13 +42809,13 @@
     {
       "architecture_id": "GPTJForCausalLM",
       "model_id": "bertin-project/bertin-gpt-j-6B-alpaca",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -43128,11 +43128,11 @@
     {
       "architecture_id": "BloomForCausalLM",
       "model_id": "FabbriSimo01/Bloom_1b_Quantized",
-      "status": 3,
-      "verified_date": "2026-02-22",
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_bridge_unprocessed)",
-      "phase1_score": 0.0,
+      "note": "TransformerLens does not support quantized models at this time",
+      "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
     },
@@ -45878,10 +45878,10 @@
     {
       "architecture_id": "BloomForCausalLM",
       "model_id": "YeungNLP/firefly-bloom-7b1",
-      "status": 2,
-      "verified_date": "2026-02-22",
+      "status": 0,
+      "verified_date": null,
       "metadata": null,
-      "note": "Estimated 92.1 GB exceeds 78.0 GB limit",
+      "note": null,
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -46164,10 +46164,10 @@
     {
       "architecture_id": "BloomForCausalLM",
       "model_id": "golaxy/gogpt-7b-bloom",
-      "status": 2,
-      "verified_date": "2026-02-22",
+      "status": 0,
+      "verified_date": null,
       "metadata": null,
-      "note": "Estimated 92.1 GB exceeds 78.0 GB limit",
+      "note": null,
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null
@@ -48661,13 +48661,13 @@
     {
       "architecture_id": "GPTNeoForCausalLM",
       "model_id": "blueapple8259/TinyStories-Alpaca",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -49541,11 +49541,11 @@
     {
       "architecture_id": "GPTNeoForCausalLM",
       "model_id": "Harshvir/LaMini-Neo-1.3B-Mental-Health_lora",
-      "status": 0,
-      "verified_date": null,
+      "status": 3,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
+      "note": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed, load_bridge_unprocessed, load_br \u2014 Failed to load unprocessed TransformerBridge: Using `bitsandbytes` 8-bit quantization requires bitsandbytes: `pip install -U bitsandbytes>=0.46.1`",
+      "phase1_score": 0.0,
       "phase2_score": null,
       "phase3_score": null
     },
@@ -50091,13 +50091,13 @@
     {
       "architecture_id": "GPT2LMHeadModel",
       "model_id": "pavfi-at-m/gpt2GPTQ",
-      "status": 3,
-      "verified_date": "2026-02-23",
+      "status": 2,
+      "verified_date": "2026-02-24",
       "metadata": null,
-      "note": "Below threshold: P1=0.0% < 100.0% (failed: all_components, forward_pass_logits) \u2014 48/76 components failed (48 critical)",
-      "phase1_score": 0.0,
-      "phase2_score": 100.0,
-      "phase3_score": 100.0
+      "note": "TransformerLens does not support quantized models at this time",
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null
     },
     {
       "architecture_id": "MistralForCausalLM",
@@ -50267,13 +50267,13 @@
     {
       "architecture_id": "GPTNeoForCausalLM",
       "model_id": "ogimgio/gpt-neo-125m-neurallinguisticpioneers",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-02-23",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Benchmark passed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0
     },
     {
       "architecture_id": "MistralForCausalLM",

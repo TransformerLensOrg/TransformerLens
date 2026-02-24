@@ -25,6 +25,62 @@ STATUS_VERIFIED = 1
 STATUS_SKIPPED = 2
 STATUS_FAILED = 3
 
+# Patterns in model IDs that indicate quantized models.  TransformerLens
+# requires full-precision weights for mechanistic interpretability research,
+# so quantized variants are fundamentally incompatible.
+_QUANTIZED_PATTERNS = [
+    "-awq",
+    "_awq",
+    "-AWQ",
+    "_AWQ",
+    "-gptq",
+    "_gptq",
+    "-GPTQ",
+    "_GPTQ",
+    "GPTQ",
+    "-gguf",
+    "_gguf",
+    "-GGUF",
+    "_GGUF",
+    "-bnb-",
+    "_bnb_",
+    "bnb-4bit",
+    "bnb-8bit",
+    "-4bit",
+    "_4bit",
+    "-5bit",
+    "-6bit",
+    "-8bit",
+    "_8bit",
+    "-fp8",
+    "_fp8",
+    "-FP8",
+    "_FP8",
+    "-int4",
+    "_int4",
+    "-int8",
+    "_int8",
+    "-w4a16",
+    "-w8a8",
+    "-W4A16",
+    "-W8A8",
+    "-quantized.",
+    "_Quantized",
+    "-Quantized",
+    "mlx-community/",
+    "-MLX-",
+]
+QUANTIZED_NOTE = "TransformerLens does not support quantized models at this time"
+
+
+def is_quantized_model(model_id: str) -> bool:
+    """Check if a model ID indicates a quantized model variant.
+
+    Detects AWQ, GPTQ, GGUF, BitsAndBytes (bnb), FP8, INT4/INT8,
+    MLX quantized, and other common quantization suffixes.
+    """
+    return any(pat in model_id for pat in _QUANTIZED_PATTERNS)
+
 
 def load_supported_models_raw() -> dict:
     """Load supported_models.json as a raw dict."""
