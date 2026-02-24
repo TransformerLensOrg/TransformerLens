@@ -181,6 +181,8 @@ def benchmark_backward_hooks(
                 "hook_v",
                 "hook_q",
                 "hook_k",
+                "q_norm",  # QK norm: Bridge uses 4D, HT uses 2D (shape convention)
+                "k_norm",  # QK norm: Bridge uses 4D, HT uses 2D (shape convention)
                 "ln1.hook_",
                 "ln2.hook_",
                 "ln_final.hook_",
@@ -424,6 +426,8 @@ def benchmark_critical_backward_hooks(
                 "hook_v",
                 "hook_q",
                 "hook_k",
+                "q_norm",  # QK norm: Bridge uses 4D, HT uses 2D (shape convention)
+                "k_norm",  # QK norm: Bridge uses 4D, HT uses 2D (shape convention)
                 "ln1.hook_",
                 "ln2.hook_",
                 "hook_resid_pre",

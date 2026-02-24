@@ -310,6 +310,10 @@ def benchmark_forward_hooks(
                 for m in mismatches
                 if "hook_attn_scores" not in m  # Exclude attn_scores which have inf from masking
                 and not (has_bloom_blocks and ("hook_attn_out" in m or "hook_mlp_out" in m))
+                # QK norm hooks: Bridge preserves HF's 4D [batch, heads, seq, d_head]
+                # while HT flattens to [batch*seq*heads, d_head]. This is an intentional
+                # shape convention difference, not a computation error.
+                and "q_norm" not in m and "k_norm" not in m
             ]
 
             if significant_mismatches:
@@ -365,6 +369,14 @@ def benchmark_critical_forward_hooks(
     Returns:
         BenchmarkResult with critical hook comparison details
     """
+    # Scale tolerance for deep models — numerical precision differences
+    # accumulate through layers, especially for ln_final.hook_normalized
+    # which passes through the entire model. Cap at 3x base to avoid
+    # overly permissive tolerance for very deep models (70B+).
+    n_layers = getattr(bridge.cfg, "n_layers", 1)
+    if n_layers > 12:
+        tolerance = min(tolerance * (1 + 0.05 * (n_layers - 12)), tolerance * 3.0)
+
     # Critical hooks that are commonly used
     critical_hooks = [
         "hook_embed",

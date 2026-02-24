@@ -139,6 +139,12 @@ def map_default_transformer_lens_config(hf_config):
         tl_config.sliding_window = hf_config.sliding_window
     if getattr(hf_config, "use_parallel_residual", False):
         tl_config.parallel_attn_mlp = True
+    # GPT-J has a parallel attention+MLP architecture (both read from same ln_1
+    # output) but doesn't set use_parallel_residual in its HF config. Detect it
+    # by architecture class so fold_ln correctly folds ln1 into BOTH attn and MLP.
+    arch_classes = getattr(hf_config, "architectures", []) or []
+    if any(a in ("GPTJForCausalLM",) for a in arch_classes):
+        tl_config.parallel_attn_mlp = True
     tl_config.default_prepend_bos = True
     return tl_config
 
@@ -308,6 +314,11 @@ def boot(
         model_kwargs["trust_remote_code"] = True
     if hasattr(adapter.cfg, "attn_implementation") and adapter.cfg.attn_implementation is not None:
         model_kwargs["attn_implementation"] = adapter.cfg.attn_implementation
+    else:
+        # Default to "eager" — the Bridge uses output_attentions for hooks,
+        # which requires eager attention.  This also ensures numerical parity
+        # with benchmarks that compare Bridge vs HF reference (both use eager).
+        model_kwargs["attn_implementation"] = "eager"
     adapter.prepare_loading(model_name, model_kwargs)
     if not load_weights:
         from_config_kwargs = {}

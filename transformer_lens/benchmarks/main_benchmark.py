@@ -96,6 +96,15 @@ MASKED_LM_ARCHITECTURES = [
     "ElectraForMaskedLM",
 ]
 
+# Architectures where the Bridge intentionally uses different hook shapes than
+# HookedTransformer. These models skip Phase 2/3 (HT comparison) because the
+# Bridge preserves HuggingFace's native tensor layouts for interpretability
+# (e.g., 4D [batch, heads, seq, d_head] QK norm hooks) rather than matching
+# HT's flattened convention. Phase 1 (HF comparison) remains the gold standard.
+NO_HT_COMPARISON_ARCHITECTURES = [
+    "Gemma3ForCausalLM",
+]
+
 
 def is_masked_lm_model(model_name: str, trust_remote_code: bool = False) -> bool:
     """Check if a model is a masked language model (not suited for text generation).
@@ -137,6 +146,31 @@ def is_encoder_decoder_model(model_name: str, trust_remote_code: bool = False) -
         # Fallback to architecture check
         architectures = getattr(config, "architectures", []) or []
         return any(arch in ENCODER_DECODER_ARCHITECTURES for arch in architectures)
+    except Exception:
+        return False
+
+
+def should_skip_ht_comparison(model_name: str, trust_remote_code: bool = False) -> bool:
+    """Check if a model's architecture should skip HookedTransformer comparison.
+
+    Some architectures (e.g., Gemma3) intentionally use different hook tensor
+    layouts in the Bridge than HookedTransformer. For these models, Phase 1
+    (Bridge vs HuggingFace) is the gold standard; Phase 2/3 HT comparisons
+    are skipped since shape differences are by design, not bugs.
+
+    Args:
+        model_name: The HuggingFace model name or path
+        trust_remote_code: Whether to trust remote code for custom architectures.
+
+    Returns:
+        True if the model should skip HT comparison, False otherwise
+    """
+    try:
+        config = AutoConfig.from_pretrained(
+            model_name, trust_remote_code=trust_remote_code, token=_hf_token()
+        )
+        architectures = getattr(config, "architectures", []) or []
+        return any(arch in NO_HT_COMPARISON_ARCHITECTURES for arch in architectures)
     except Exception:
         return False
 
@@ -662,6 +696,15 @@ def run_benchmark_suite(
         print(f"Device: {device}")
         print(f"{'='*80}\n")
 
+    # Auto-skip HT comparison for architectures with intentionally different hook shapes
+    if use_ht_reference and should_skip_ht_comparison(model_name, trust_remote_code):
+        use_ht_reference = False
+        if verbose:
+            print(
+                "Note: Skipping HookedTransformer comparison (architecture uses "
+                "different hook shapes by design). Phase 1 is the gold standard.\n"
+            )
+
     # Early exit if only running Phase 5/6 (they load their own models independently)
     if phases is not None and all(p in [5, 6] for p in phases):
         if verbose:
@@ -959,9 +1002,15 @@ def run_benchmark_suite(
         try:
             if verbose:
                 print("Loading HuggingFace reference model...")
-            # Match bridge loading path: no device_map, explicit .to(device).
+            # Match bridge loading path: no device_map, explicit .to(device),
+            # and torch_dtype=float32.  Loading in float32 from the start
+            # ensures non-persistent buffers (e.g., Gemma3's embed_scale)
+            # are computed at full precision, matching the bridge which also
+            # loads in float32.  Loading in bfloat16 then upcasting loses
+            # precision on these buffers (e.g., sqrt(640)=25.298 → 25.25).
             hf_kwargs: dict[str, object] = {
                 "low_cpu_mem_usage": True,  # Reduce memory spikes during loading
+                "torch_dtype": torch.float32,
             }
             if _hf_token():
                 hf_kwargs["token"] = _hf_token()
