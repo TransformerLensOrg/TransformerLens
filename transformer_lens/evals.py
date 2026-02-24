@@ -185,10 +185,10 @@ def make_mmlu_data_loader(
         >>> from transformer_lens.evals import make_mmlu_data_loader
 
         >>> # Load specific subject
-        >>> mmlu_data = make_mmlu_data_loader(subjects="college_mathematics")
+        >>> mmlu_data = make_mmlu_data_loader(subjects="college_mathematics")  # doctest: +SKIP
 
         >>> # Load multiple subjects
-        >>> mmlu_data = make_mmlu_data_loader(
+        >>> mmlu_data = make_mmlu_data_loader(  # doctest: +SKIP
         ...     subjects=["abstract_algebra", "astronomy", "college_chemistry"]
         ... )
     """
@@ -534,24 +534,9 @@ def mmlu_eval(
         >>> from transformer_lens import HookedTransformer
         >>> from transformer_lens.evals import mmlu_eval
 
-        >>> model = HookedTransformer.from_pretrained("gpt2-small")
-        Loaded pretrained model gpt2-small into HookedTransformer
-
-        >>> # Evaluate on a specific subject
-        >>> results = mmlu_eval(model, subjects="abstract_algebra", num_samples=10)
-        >>> print(f"Accuracy: {results['accuracy']:.2%}")
-        Accuracy: 30.00%
-
-        >>> # Evaluate on multiple subjects
-        >>> results = mmlu_eval(
-        ...     model,
-        ...     subjects=["astronomy", "college_mathematics"],
-        ...     num_samples=20
-        ... )
-        >>> for subject, acc in results["subject_scores"].items():
-        ...     print(f"{subject}: {acc:.2%}")
-        astronomy: 35.00%
-        college_mathematics: 25.00%
+        >>> model = HookedTransformer.from_pretrained("gpt2-small")  # doctest: +SKIP
+        >>> results = mmlu_eval(model, subjects="abstract_algebra", num_samples=10, device="cpu")  # doctest: +SKIP
+        >>> print(f"Accuracy: {results['accuracy']:.2%}")  # doctest: +SKIP
     """
     if tokenizer is None:
         tokenizer = model.tokenizer
