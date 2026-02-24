@@ -863,6 +863,7 @@ across supported architectures.
   <div class="bt-controls">
     <input type="text" id="btSearch" placeholder="Search by model name...">
     <select id="btArch"><option value="">All Architectures</option></select>
+    <select id="btPrefix"><option value="">All Prefixes</option></select>
     <select id="btStatus"><option value="">All Statuses</option><option value="1">Verified</option><option value="0">Unverified</option><option value="2">Skipped</option><option value="3">Failed</option></select>
     <span class="bt-count" id="btCount"></span>
   </div>
@@ -1051,6 +1052,31 @@ across supported architectures.
         }
     }
 
+    function getPrefix(modelId) {
+        const i = modelId.indexOf('/');
+        return i > 0 ? modelId.slice(0, i) : '';
+    }
+
+    function populatePrefixFilter() {
+        const arch = document.getElementById('btArch').value;
+        const subset = arch ? all.filter(m => m.architecture_id === arch) : all;
+        const pc = {};
+        subset.forEach(m => {
+            const p = getPrefix(m.model_id);
+            if (p) pc[p] = (pc[p] || 0) + 1;
+        });
+        const sel = document.getElementById('btPrefix');
+        const cur = sel.value;
+        sel.innerHTML = '<option value="">All Prefixes</option>';
+        Object.keys(pc).sort().forEach(p => {
+            const o = document.createElement('option');
+            o.value = p; o.textContent = p + ' (' + pc[p] + ')';
+            sel.appendChild(o);
+        });
+        // Preserve selection if still valid, otherwise reset
+        if (cur && pc[cur]) sel.value = cur; else sel.value = '';
+    }
+
     async function init() {
         try {
             const r = await fetch('../_static/supported_models.json');
@@ -1064,6 +1090,7 @@ across supported architectures.
                 o.value = a; o.textContent = a+' ('+ac[a]+')';
                 sel.appendChild(o);
             });
+            populatePrefixFilter();
             apply();
         } catch(e) {
             document.getElementById('btBody').innerHTML =
@@ -1074,10 +1101,12 @@ across supported architectures.
     function apply() {
         const s = document.getElementById('btSearch').value.toLowerCase().trim();
         const a = document.getElementById('btArch').value;
+        const pf = document.getElementById('btPrefix').value;
         const sv = document.getElementById('btStatus').value;
         filt = all.filter(m => {
             if (s && !m.model_id.toLowerCase().includes(s)) return false;
             if (a && m.architecture_id !== a) return false;
+            if (pf && getPrefix(m.model_id) !== pf) return false;
             if (sv !== '' && m.status !== +sv) return false;
             return true;
         });
@@ -1087,14 +1116,10 @@ across supported architectures.
     function esc(str) { const d=document.createElement('div'); d.textContent=str; return d.innerHTML; }
     function cleanNote(note) {
         if (!note) return '';
-        // "Benchmark passed with issues: P1=50.0% (failed: a, b); P3=88.9% (failed: c, d)"
-        // → "Benchmark passed with issues: a, b, c, d"
-        const m = note.match(/^(.*?:\s*)(.+)$/);
-        if (!m) return note;
-        const prefix = m[1];
-        const failures = [...m[2].matchAll(/failed:\s*([^)]+)/g)].map(x => x[1].trim());
-        if (!failures.length) return note;
-        return prefix + failures.join(', ');
+        // "Benchmark passed with issues: P1=50.0% ..." → "Benchmark passed with issues"
+        const m = note.match(/^(.+?):\s/);
+        if (m) return m[1];
+        return note;
     }
     function renderNote(note) {
         if (!note) return '<span class="bt-muted">&mdash;</span>';
@@ -1169,7 +1194,8 @@ across supported architectures.
     function count() { document.getElementById('btCount').textContent='Showing '+filt.length+' of '+all.length+' models'; }
 
     document.getElementById('btSearch').addEventListener('input', () => { clearTimeout(dt); dt=setTimeout(apply,200); });
-    document.getElementById('btArch').addEventListener('change', apply);
+    document.getElementById('btArch').addEventListener('change', () => { populatePrefixFilter(); apply(); });
+    document.getElementById('btPrefix').addEventListener('change', apply);
     document.getElementById('btStatus').addEventListener('change', apply);
     init();
 })();
