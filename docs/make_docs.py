@@ -816,6 +816,10 @@ across supported architectures.
 #bt-root .bt-s2 { background: #fff3cd; color: #856404; }
 #bt-root .bt-s3 { background: #f8d7da; color: #721c24; }
 #bt-root .bt-muted { color: var(--color-foreground-muted, #999); }
+#bt-root .bt-score { font-weight: 600; font-size: 12px; }
+#bt-root .bt-score-high { color: #155724; }
+#bt-root .bt-score-mid { color: #856404; }
+#bt-root .bt-score-low { color: #721c24; }
 #bt-root .bt-note { max-width: 280px; white-space: normal; word-wrap: break-word; font-size: 12px; line-height: 1.4; }
 #bt-root .bt-note-toggle { color: var(--color-link, #2962ff); cursor: pointer; font-size: 11px; margin-left: 4px; white-space: nowrap; }
 #bt-root .bt-detail-link { cursor: pointer; font-size: 12px; }
@@ -874,11 +878,12 @@ across supported architectures.
         <th>Model</th>
         <th>Architecture</th>
         <th>Status</th>
+        <th title="English language generation quality scored out of 100. Scores for non-English models may be invalid.">Text Quality</th>
         <th>Verified Date</th>
         <th>Note</th>
         <th></th>
       </tr></thead>
-      <tbody id="btBody"><tr><td colspan="7" class="bt-empty">Loading models...</td></tr></tbody>
+      <tbody id="btBody"><tr><td colspan="8" class="bt-empty">Loading models...</td></tr></tbody>
     </table>
   </div>
   <div class="bt-pag" id="btPag"></div>
@@ -886,7 +891,7 @@ across supported architectures.
 
 <script>
 (function() {
-    const PS = 25, COLS = 7;
+    const PS = 25, COLS = 8;
     const SM = {0:'Unverified',1:'Verified',2:'Skipped',3:'Failed'};
     const cfgCache = {};
     let all=[], filt=[], pg=1, dt=null;
@@ -1114,6 +1119,7 @@ across supported architectures.
     }
 
     function esc(str) { const d=document.createElement('div'); d.textContent=str; return d.innerHTML; }
+    function scoreClass(v) { return v >= 70 ? ' bt-score-high' : v >= 40 ? ' bt-score-mid' : ' bt-score-low'; }
     function cleanNote(note) {
         if (!note) return '';
         // "Benchmark passed with issues: P1=50.0% ..." → "Benchmark passed with issues"
@@ -1143,6 +1149,7 @@ across supported architectures.
             '<td><a href="https://huggingface.co/'+id+'" target="_blank" rel="noopener">'+id+'</a></td>' +
             '<td>'+esc(m.architecture_id)+'</td>' +
             '<td><span class="bt-badge bt-s'+m.status+'">'+SM[m.status]+'</span></td>' +
+            '<td>'+(m.phase4_score != null ? '<span class="bt-score'+scoreClass(m.phase4_score)+'">'+m.phase4_score.toFixed(1)+'</span>' : '<span class="bt-muted">&mdash;</span>')+'</td>' +
             '<td>'+(m.verified_date || '<span class="bt-muted">&mdash;</span>')+'</td>' +
             '<td class="bt-note">'+ renderNote(m.note) +'</td>' +
             '<td><a class="bt-detail-link" href="javascript:void(0)">Details</a></td>' +

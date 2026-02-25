@@ -413,7 +413,7 @@ def _extract_phase_scores(results: list) -> dict[int, Optional[float]]:
     """
     from transformer_lens.benchmarks.utils import BenchmarkSeverity
 
-    phase_results: dict[int, list[bool]] = {1: [], 2: [], 3: []}
+    phase_results: dict[int, list[bool]] = {1: [], 2: [], 3: [], 4: []}
     for result in results:
         if result.phase in phase_results and result.severity != BenchmarkSeverity.SKIPPED:
             phase_results[result.phase].append(result.passed)
@@ -422,8 +422,16 @@ def _extract_phase_scores(results: list) -> dict[int, Optional[float]]:
     for phase, passed_list in phase_results.items():
         if passed_list:
             scores[phase] = round(sum(passed_list) / len(passed_list) * 100, 1)
-        else:
-            scores[phase] = None
+        # Omit phases with no results — they weren't run, so their
+        # existing registry scores should be preserved.
+
+    # Phase 4 (text quality): store the actual 0-100 quality score from the
+    # benchmark details instead of a binary pass/fail percentage.
+    if 4 in scores:
+        for result in results:
+            if result.phase == 4 and result.details and "score" in result.details:
+                scores[4] = round(result.details["score"], 1)
+                break
 
     return scores
 
@@ -595,7 +603,7 @@ def verify_models(
         dtype: Dtype for memory estimation
         use_hf_reference: Whether to compare against HuggingFace model
         use_ht_reference: Whether to compare against HookedTransformer
-        phases: Which benchmark phases to run (default: [1, 2, 3])
+        phases: Which benchmark phases to run (default: [1, 2, 3, 4])
         quiet: Suppress verbose output
         progress: Existing progress for resume
         conserve_memory: Reduce Phase 1 peak memory by using bridge.original_model
@@ -614,7 +622,7 @@ def verify_models(
             print(f"Auto-detected available memory: {max_memory_gb:.1f} GB")
 
     if phases is None:
-        phases = [1, 2, 3]
+        phases = [1, 2, 3, 4]
 
     total = len(candidates)
     for i, candidate in enumerate(candidates, 1):
@@ -698,36 +706,42 @@ def verify_models(
             _save_checkpoint(progress)
             continue
 
-        # Step 3: Run benchmarks phase by phase
+        # Step 3: Run benchmarks (all phases in a single call to share models)
         all_results: list = []
-        failed_phase: Optional[int] = None
         error_msg: Optional[str] = None
 
         from transformer_lens.loading_from_pretrained import NEED_REMOTE_CODE_MODELS
 
         needs_remote_code = any(model_id.startswith(prefix) for prefix in NEED_REMOTE_CODE_MODELS)
 
-        for phase_num in phases:
+        # Convert string dtype to torch.dtype for benchmark suite
+        import torch
+
+        _dtype_map = {
+            "float32": torch.float32,
+            "float16": torch.float16,
+            "bfloat16": torch.bfloat16,
+        }
+        torch_dtype = _dtype_map[dtype]
+
+        if not quiet:
+            print(f"  Running phases {phases} in a single benchmark call...")
+        try:
+            all_results = run_benchmark_suite(
+                model_id,
+                device=device,
+                dtype=torch_dtype,
+                use_hf_reference=use_hf_reference,
+                use_ht_reference=use_ht_reference,
+                verbose=not quiet,
+                phases=phases,
+                conserve_memory=conserve_memory,
+                trust_remote_code=needs_remote_code,
+            )
+        except Exception as e:
+            error_msg = str(e)
             if not quiet:
-                print(f"  Running phase {phase_num}...")
-            try:
-                phase_results = run_benchmark_suite(
-                    model_id,
-                    device=device,
-                    use_hf_reference=use_hf_reference,
-                    use_ht_reference=use_ht_reference,
-                    verbose=not quiet,
-                    phases=[phase_num],
-                    conserve_memory=conserve_memory,
-                    trust_remote_code=needs_remote_code,
-                )
-                all_results.extend(phase_results)
-            except Exception as e:
-                failed_phase = phase_num
-                error_msg = str(e)
-                if not quiet:
-                    print(f"  Phase {phase_num} failed: {error_msg[:200]}")
-                break
+                print(f"  Benchmark failed: {error_msg[:200]}")
 
         phase_scores = _extract_phase_scores(all_results)
 
@@ -735,14 +749,11 @@ def verify_models(
             score_error = _check_phase_scores(phase_scores, all_results)
             if score_error:
                 error_msg = score_error
-                failed_phase = None
 
         if error_msg:
             is_oom = "out of memory" in error_msg.lower() or "oom" in error_msg.lower()
             if is_oom:
-                note = f"OOM during phase {failed_phase}"
-            elif failed_phase is not None:
-                note = f"Error during phase {failed_phase}: {error_msg[:200]}"
+                note = "OOM during benchmark"
             else:
                 # Include the specific error from failed results (e.g., tokenizer
                 # errors, load failures) so the note explains WHY it failed.
@@ -759,12 +770,28 @@ def verify_models(
             note = _build_verified_note(phase_scores, all_results)
             final_status = STATUS_VERIFIED
 
-        # Update registry based on results
-        if final_status == STATUS_VERIFIED:
+        # When running a partial phase set (e.g., --phases 4 for backfill),
+        # only update the phase scores that were run.  Don't change the
+        # model's overall status or note — those reflect the full
+        # verification and should only be set by a complete run.
+        is_partial_run = set(phases) != {1, 2, 3, 4}
+
+        if is_partial_run and phase_scores:
+            if not quiet:
+                score_parts = [f"P{p}={s}%" for p, s in sorted(phase_scores.items())]
+                print(f"  Partial phase update: {', '.join(score_parts)}")
+            update_model_status(
+                model_id,
+                arch,
+                phase_scores=phase_scores,
+            )
+            progress.verified.append(model_id)
+        elif final_status == STATUS_VERIFIED:
             if not quiet:
                 print(
                     f"  VERIFIED: P1={phase_scores.get(1)}%, "
-                    f"P2={phase_scores.get(2)}%, P3={phase_scores.get(3)}%"
+                    f"P2={phase_scores.get(2)}%, P3={phase_scores.get(3)}%, "
+                    f"P4={phase_scores.get(4)}%"
                 )
             update_model_status(
                 model_id,
@@ -785,7 +812,8 @@ def verify_models(
                 if any(v is not None for v in phase_scores.values()):
                     print(
                         f"  Partial scores saved: P1={phase_scores.get(1)}%, "
-                        f"P2={phase_scores.get(2)}%, P3={phase_scores.get(3)}%"
+                        f"P2={phase_scores.get(2)}%, P3={phase_scores.get(3)}%, "
+                        f"P4={phase_scores.get(4)}%"
                     )
             update_model_status(
                 model_id,
@@ -971,7 +999,7 @@ Examples:
         nargs="+",
         type=int,
         default=None,
-        help="Which benchmark phases to run (default: 1 2 3)",
+        help="Which benchmark phases to run (default: 1 2 3 4)",
     )
     parser.add_argument(
         "--dtype",

@@ -153,7 +153,7 @@ def benchmark_text_quality(
     bridge: TransformerBridge,
     test_text: str,
     max_new_tokens: int = 50,
-    scoring_model_name: str = "gpt2-medium",
+    scoring_model_name: str = "gpt2",
     pass_threshold: float = 85.0,
     device: str = "cpu",
 ) -> BenchmarkResult:
@@ -175,6 +175,7 @@ def benchmark_text_quality(
         BenchmarkResult with quality score details.
     """
     scoring_model = None
+    tokenizer = None
     try:
         prompts = [test_text] + _DEFAULT_PROMPTS
 
@@ -305,6 +306,8 @@ def benchmark_text_quality(
     finally:
         if scoring_model is not None:
             del scoring_model
+        if tokenizer is not None:
+            del tokenizer
         gc.collect()
         if device != "cpu" and torch.cuda.is_available():
             torch.cuda.empty_cache()

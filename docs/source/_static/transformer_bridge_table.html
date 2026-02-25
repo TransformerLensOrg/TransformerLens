@@ -124,6 +124,13 @@
         .status-2 { background: #fff3cd; color: #856404; }
         .status-3 { background: #f8d7da; color: #721c24; }
 
+        /* Score colors */
+        .score { font-weight: 600; font-size: 12px; }
+        .score-high { color: #155724; }
+        .score-mid { color: #856404; }
+        .score-low { color: #721c24; }
+        .muted { color: #999; }
+
         /* Pagination */
         .pagination {
             display: flex;
@@ -216,10 +223,11 @@
                     <th>Model ID</th>
                     <th>Architecture</th>
                     <th>Status</th>
+                    <th title="English language generation quality scored out of 100. Scores for non-English models may be invalid.">Text Quality</th>
                 </tr>
             </thead>
             <tbody id="tableBody">
-                <tr><td colspan="4" class="loading">Loading models...</td></tr>
+                <tr><td colspan="5" class="loading">Loading models...</td></tr>
             </tbody>
         </table>
     </div>
@@ -244,7 +252,7 @@
                 applyFilters();
             } catch (err) {
                 document.getElementById('tableBody').innerHTML =
-                    '<tr><td colspan="4" class="empty-state">Failed to load model data.</td></tr>';
+                    '<tr><td colspan="5" class="empty-state">Failed to load model data.</td></tr>';
             }
         }
 
@@ -286,7 +294,7 @@
             const pageModels = filteredModels.slice(start, start + PAGE_SIZE);
 
             if (pageModels.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="4" class="empty-state">No models match your filters.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No models match your filters.</td></tr>';
                 return;
             }
 
@@ -300,6 +308,7 @@
                     '<td><a href="' + hfLink + '" target="_blank" rel="noopener">' + escapeHtml(m.model_id) + '</a></td>' +
                     '<td>' + escapeHtml(m.architecture_id) + '</td>' +
                     '<td><span class="status-badge ' + statusClass + '">' + statusText + '</span></td>' +
+                    '<td>' + (m.phase4_score != null ? '<span class="score' + scoreClass(m.phase4_score) + '">' + m.phase4_score.toFixed(1) + '</span>' : '<span class="muted">&mdash;</span>') + '</td>' +
                     '</tr>';
             }).join('');
         }
@@ -367,6 +376,8 @@
             const el = document.getElementById('modelCount');
             el.textContent = 'Showing ' + filteredModels.length + ' of ' + allModels.length + ' models';
         }
+
+        function scoreClass(v) { return v >= 70 ? ' score-high' : v >= 40 ? ' score-mid' : ' score-low'; }
 
         function escapeHtml(str) {
             const div = document.createElement('div');

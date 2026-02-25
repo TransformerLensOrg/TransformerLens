@@ -614,6 +614,7 @@ def run_comparison_benchmarks(
 def run_benchmark_suite(
     model_name: str,
     device: str = "cpu",
+    dtype: torch.dtype = torch.float32,
     test_text: Optional[str] = None,
     use_hf_reference: bool = True,
     use_ht_reference: bool = True,
@@ -641,6 +642,9 @@ def run_benchmark_suite(
     Args:
         model_name: Name of the model to benchmark (e.g., "gpt2")
         device: Device to run on ("cpu" or "cuda")
+        dtype: Precision for model loading (default: torch.float32). Use
+            torch.bfloat16 to halve memory for larger models. Phase 2/3
+            comparisons automatically upcast to float32 for precision.
         test_text: Optional test text (default: standard test prompt)
         use_hf_reference: Whether to compare against HuggingFace model
         use_ht_reference: Whether to compare against HookedTransformer
@@ -936,7 +940,7 @@ def run_benchmark_suite(
     # Load bridge without weights first to detect attn_implementation and dtype
     if verbose:
         print("Detecting model configuration...")
-    bridge_dtype = torch.float32
+    bridge_dtype = dtype
     attn_implementation = None
     try:
         # Load a lightweight version without weights to get config
@@ -998,19 +1002,18 @@ def run_benchmark_suite(
     hf_saved_logits = None
     hf_saved_loss = None
 
-    if use_hf_reference and not conserve_memory:
+    if use_hf_reference and not conserve_memory and should_run_phase(1):
         try:
             if verbose:
                 print("Loading HuggingFace reference model...")
             # Match bridge loading path: no device_map, explicit .to(device),
-            # and torch_dtype=float32.  Loading in float32 from the start
-            # ensures non-persistent buffers (e.g., Gemma3's embed_scale)
-            # are computed at full precision, matching the bridge which also
-            # loads in float32.  Loading in bfloat16 then upcasting loses
-            # precision on these buffers (e.g., sqrt(640)=25.298 → 25.25).
+            # and matching torch_dtype.  When dtype=float32, loading in float32
+            # ensures non-persistent buffers (e.g., Gemma3's embed_scale) are
+            # computed at full precision.  When dtype=bfloat16, both HF and
+            # Bridge load in bfloat16 so comparisons are apples-to-apples.
             hf_kwargs: dict[str, object] = {
                 "low_cpu_mem_usage": True,  # Reduce memory spikes during loading
-                "torch_dtype": torch.float32,
+                "torch_dtype": dtype,
             }
             if _hf_token():
                 hf_kwargs["token"] = _hf_token()
@@ -1046,19 +1049,19 @@ def run_benchmark_suite(
                     print(f"Detected dtype={bridge_dtype}")
             except StopIteration:
                 pass
-            # Float16/bfloat16 introduce too much rounding error for benchmarking;
-            # upcast in-place to avoid a second download/load and the brief memory
-            # spike of having old + new model overlapping.  bfloat16 is especially
-            # problematic on MPS where two separate model instances can produce
-            # different matmul results from identical weights due to Metal kernel
-            # non-determinism.
-            if bridge_dtype in (torch.float16, torch.bfloat16):
+            # When float32 was requested but the model natively uses reduced
+            # precision, upcast for maximum benchmark accuracy.  When dtype was
+            # explicitly set to bfloat16/float16 (e.g., to fit larger models in
+            # memory), respect it — both HF and Bridge will run in that precision.
+            if dtype == torch.float32 and bridge_dtype in (torch.float16, torch.bfloat16):
                 if verbose:
                     print(f"⚠ {bridge_dtype} detected, upcasting to float32 for benchmarking...")
                 hf_model.to(torch.float32)
                 bridge_dtype = torch.float32
                 if verbose:
                     print("✓ Upcast to float32 in-place")
+            elif bridge_dtype != dtype:
+                bridge_dtype = dtype  # Trust the requested dtype
             if verbose:
                 print("✓ HuggingFace model loaded")
 
@@ -1190,6 +1193,11 @@ def run_benchmark_suite(
         # Forward pass benchmarks
         if verbose:
             print("2. Forward Pass Benchmarks")
+
+        # Widen tolerance for reduced-precision benchmarking — MPS bfloat16
+        # matmul non-determinism can exceed the float32 default of 1e-3
+        p1_atol = 1e-3 if dtype == torch.float32 else 5e-3
+
         if conserve_memory:
             # conserve_memory mode: capture reference logits from
             # bridge.original_model (same tokenization as bridge).
@@ -1203,6 +1211,7 @@ def run_benchmark_suite(
                         bridge_unprocessed,
                         test_text,
                         reference_logits=ref_logits,
+                        atol=p1_atol,
                     )
                 )
                 del ref_logits
@@ -1217,6 +1226,7 @@ def run_benchmark_suite(
                         bridge_unprocessed,
                         test_text,
                         reference_logits=hf_saved_logits.to(device),
+                        atol=p1_atol,
                     )
                 )
             except Exception as e:
@@ -1224,17 +1234,20 @@ def run_benchmark_suite(
                     print(f"✗ Forward pass benchmark failed: {e}\n")
         else:
             try:
-                add_result(benchmark_forward_pass(bridge_unprocessed, test_text))
+                add_result(benchmark_forward_pass(bridge_unprocessed, test_text, atol=p1_atol))
             except Exception as e:
                 if verbose:
                     print(f"✗ Forward pass benchmark failed: {e}\n")
 
-        # Capture Phase 1 reference in float32 for Phase 3 equivalence comparison.
-        # Running both passes in float32 avoids bf16 forward-pass amplification.
+        # Capture Phase 1 reference for Phase 3 equivalence comparison.
+        # When dtype==float32 (default) and the model natively uses reduced
+        # precision, upcast for maximum accuracy.  When the user explicitly
+        # requested a non-float32 dtype, run the reference pass in that dtype
+        # so the entire pipeline honours the requested precision.
         if bridge_unprocessed is not None:
             try:
                 original_dtype = bridge_unprocessed.cfg.dtype
-                needs_upcast = original_dtype not in (torch.float32, torch.float64)
+                needs_upcast = dtype == torch.float32 and original_dtype not in (torch.float32, torch.float64)
                 # Snapshot registered buffers before the round-trip.  HF's
                 # RotaryEmbedding recomputes inv_freq during the float32 forward
                 # pass, and the downcast back to bfloat16 would produce different
@@ -1360,28 +1373,29 @@ def run_benchmark_suite(
                 if verbose:
                     print(f"✗ Generation benchmark failed: {e}\n")
 
-            # Phase 4: Text Quality (runs in Phase 2 memory window)
-            # Skip for masked LMs (e.g., BERT) which aren't designed for causal generation.
-            if should_run_phase(4) and not is_masked_lm_model(
-                model_name, trust_remote_code=trust_remote_code
-            ):
-                try:
-                    if verbose:
-                        print("\n2. Text Quality Benchmark (Phase 4)")
-                    text_quality_result = benchmark_text_quality(
-                        bridge_unprocessed,
-                        test_text,
-                        max_new_tokens=50,
-                        scoring_model_name="gpt2-medium",
-                        pass_threshold=85.0,
-                        device=device,
-                    )
-                    text_quality_result.phase = 4
-                    add_result(text_quality_result)
-                    gc.collect()
-                except Exception as e:
-                    if verbose:
-                        print(f"✗ Text quality benchmark failed: {e}\n")
+
+    # Phase 4: Text Quality (independent of Phase 2, only needs bridge_unprocessed)
+    # Skip for masked LMs (e.g., BERT) which aren't designed for causal generation.
+    if should_run_phase(4) and bridge_unprocessed and not is_masked_lm_model(
+        model_name, trust_remote_code=trust_remote_code
+    ):
+        try:
+            if verbose:
+                print("\n2. Text Quality Benchmark (Phase 4)")
+            text_quality_result = benchmark_text_quality(
+                bridge_unprocessed,
+                test_text,
+                max_new_tokens=50,
+                scoring_model_name="gpt2",
+                pass_threshold=85.0,
+                device=device,
+            )
+            text_quality_result.phase = 4
+            add_result(text_quality_result)
+            gc.collect()
+        except Exception as e:
+            if verbose:
+                print(f"✗ Text quality benchmark failed: {e}\n")
 
     # Match bridge's default_prepend_bos setting in HookedTransformer.
     ht_prepend_bos = None
@@ -1418,12 +1432,12 @@ def run_benchmark_suite(
         if verbose:
             print("2. Running Unprocessed Model Comparison Benchmarks\n")
 
-        # Upcast bfloat16/float16 models to float32 for Phase 2 comparison.
-        # bfloat16 matmul can produce dtype mismatches when internal ops promote
-        # to float32 (e.g., OLMoE MoE routing). Phase 3 already handles this
-        # via the restore_dtype_after_equivalence pattern.
+        # When dtype==float32 (default) but the model natively loaded in
+        # reduced precision, upcast for maximum benchmark accuracy.  When the
+        # user explicitly requested bfloat16/float16, honour that — run the
+        # entire comparison in the requested precision.
         phase2_restore_dtype = None
-        if bridge_dtype in (torch.bfloat16, torch.float16):
+        if dtype == torch.float32 and bridge_dtype in (torch.bfloat16, torch.float16):
             try:
                 bridge_unprocessed.to(torch.float32)
                 if ht_model_unprocessed is not None:
@@ -1501,9 +1515,10 @@ def run_benchmark_suite(
     ht_model_processed = None
 
     # Reuse the Phase 1 bridge instance and process weights in-place.
-    # For reduced-precision models, upcast to float32 BEFORE processing so
-    # weight operations avoid bf16 quantization round-trips. The bridge is
-    # downcast back to native dtype after the equivalence comparison.
+    # When dtype==float32 (default) and the model natively uses reduced
+    # precision, upcast before processing to avoid bf16 quantization
+    # round-trips.  When the user explicitly requested bfloat16/float16,
+    # process weights in the requested precision — no upcast.
     phase3_native_dtype = None  # Set if we upcast; used to restore later
     if bridge_unprocessed is not None:
         try:
@@ -1511,9 +1526,8 @@ def run_benchmark_suite(
                 print("Processing weights on existing bridge (reusing Phase 1 instance)...")
             bridge_processed = bridge_unprocessed
             bridge_unprocessed = None  # Transfer ownership
-            # Upcast to float32 before processing to avoid bf16 quantization loss.
             phase3_native_dtype = bridge_processed.cfg.dtype
-            if phase3_native_dtype not in (torch.float32, torch.float64):
+            if dtype == torch.float32 and phase3_native_dtype not in (torch.float32, torch.float64):
                 bridge_processed.to(torch.float32)
                 if verbose:
                     print(f"  (upcast from {phase3_native_dtype} to float32 before processing)")
@@ -1608,11 +1622,10 @@ def run_benchmark_suite(
             print("\n" + format_results(results))
         return results
 
-    # Use the bridge's current dtype for HT so both models are in the same
-    # precision.  When the bridge was upcast to float32 for weight processing,
-    # bridge_dtype still holds the *original* dtype (e.g. bfloat16).  The HT
-    # reference must match the bridge's actual dtype for a fair comparison.
-    phase3_ht_dtype = bridge_processed.cfg.dtype if bridge_processed is not None else bridge_dtype
+    # Load HT in the same dtype that was requested for the benchmark.
+    # This ensures a fair comparison — both bridge and HT operate in
+    # the same precision throughout.
+    phase3_ht_dtype = dtype
 
     if use_ht_reference:
         try:
@@ -1640,14 +1653,8 @@ def run_benchmark_suite(
         if verbose:
             print("Running Phase 3 benchmarks...\n")
 
-        # Don't restore native dtype for Phase 3.  Processed-weight models
-        # naturally operate in float32 — both HT and bridge process weights
-        # in float32.  Downcasting to bfloat16 after float32 processing is
-        # an unusual workflow that introduces precision loss: the bridge's
-        # float32 weights have only bfloat16 precision (loaded in bf16 then
-        # upcast), while HT's float32 weights have full precision (loaded in
-        # f32).  When both are downcast to bfloat16, tiny float32 rounding
-        # differences cross bfloat16 boundaries and accumulate through layers.
+        # Phase 3 runs in the requested dtype end-to-end.  Both bridge and HT
+        # operate in the same precision — no dtype restoration needed.
         phase3_results = run_comparison_benchmarks(
             bridge_model=bridge_processed,
             reference_model=ht_model_processed,

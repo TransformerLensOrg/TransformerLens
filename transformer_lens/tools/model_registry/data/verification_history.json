@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-02-24T13:39:05.944263",
+  "last_updated": "2026-02-24T18:02:08.713532",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -7178,6 +7178,236 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/pythia-70m-deduped",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Qwen/Qwen3-0.6B",
+      "architecture_id": "Qwen3ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "google/gemma-3-270m",
+      "architecture_id": "Gemma3ForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "meta-llama/Llama-2-7b-hf",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P3=81.8% but required tests failed: logits_equivalence \u2014 Scalars differ: 0.000000 vs -0.015625",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/pythia-70m-deduped",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/pythia-70m-deduped",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P2=71.4% < 75.0% (failed: loss_equivalence, hook_functionality, critical_forward_ho \u2014 Scalars differ: 5.875000 vs 5.812500",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/pythia-70m-deduped",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P2=71.4% < 75.0% (failed: loss_equivalence, hook_functionality, critical_forward_ho \u2014 Scalars differ: 5.875000 vs 5.812500",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/pythia-70m-deduped",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/pythia-70m-deduped",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P2=71.4% < 75.0% (failed: loss_equivalence, hook_functionality, critical_forward_ho \u2014 Scalars differ: 5.968750 vs 5.875000",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/pythia-70m-deduped",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/pythia-70m-deduped",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P4=0.0% < 50.0% (failed: text_quality) \u2014 Text quality score: 77.3/100 (avg perplexity: 30.4) \u2014 generated text may be incoherent",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/pythia-70m-deduped",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P4=0.0% < 50.0% (failed: text_quality) \u2014 Text quality score: 77.3/100 (avg perplexity: 30.4) \u2014 generated text may be incoherent",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/pythia-70m-deduped",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed with issues: P4=77.3% (failed: text_quality)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "samadpls/t5-base-grammar-checker",
+      "architecture_id": "T5ForConditionalGeneration",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P4=4.1% < 50.0% (failed: text_quality) \u2014 Text quality score: 4.1/100 (avg perplexity: 3.4) \u2014 generated text may be incoherent",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/pythia-70m-deduped",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed with issues: P4=77.5% (failed: text_quality)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "fxmarty/tiny-random-GemmaForCausalLM",
+      "architecture_id": "GemmaForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P3=89.5% but required tests failed: logits_equivalence \u2014 Text quality score: 68.7/100 (avg perplexity: 776.1) \u2014 generated text may be incoherent",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "fxmarty/tiny-random-GemmaForCausalLM",
+      "architecture_id": "GemmaForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P3=89.5% but required tests failed: logits_equivalence \u2014 Text quality score: 68.7/100 (avg perplexity: 776.1) \u2014 generated text may be incoherent",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "fxmarty/tiny-random-GemmaForCausalLM",
+      "architecture_id": "GemmaForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P3=89.5% but required tests failed: logits_equivalence \u2014 Text quality score: 68.7/100 (avg perplexity: 776.1) \u2014 generated text may be incoherent",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "sshleifer/tiny-gpt2",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P3=89.5% but required tests failed: logits_equivalence; P4=6.8% < 50.0% (failed: te \u2014 Text quality score: 6.8/100 (avg perplexity: 372419.9) \u2014 generated text may be incoherent",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/pythia-70m-seed2",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P3=89.5% but required tests failed: logits_equivalence, loss_equivalence \u2014 Text quality score: 77.0/100 (avg perplexity: 327.9) \u2014 generated text may be incoherent",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/pythia-70m-seed3",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P3=89.5% but required tests failed: logits_equivalence, loss_equivalence \u2014 Text quality score: 68.8/100 (avg perplexity: 743.0) \u2014 generated text may be incoherent",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/pythia-160m-seed5",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P3=89.5% but required tests failed: logits_equivalence, loss_equivalence \u2014 Tensors differ: max_diff=3.625000, mean_rel=0.024780",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/pythia-410m-seed1",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-24",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: Can't load the model for 'EleutherAI/pythia-410m-seed1'. If you were trying to load it from 'https://hug",
       "invalidated": false,
       "invalidation_reason": null
     }
