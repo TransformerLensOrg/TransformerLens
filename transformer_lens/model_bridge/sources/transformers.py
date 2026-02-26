@@ -11,8 +11,8 @@ import warnings
 import torch
 from transformers import (
     AutoConfig,
-    AutoModel,
     AutoModelForCausalLM,
+    AutoModelForMaskedLM,
     AutoModelForSeq2SeqLM,
     AutoTokenizer,
     PreTrainedTokenizerBase,
@@ -139,6 +139,12 @@ def map_default_transformer_lens_config(hf_config):
         tl_config.sliding_window = hf_config.sliding_window
     if getattr(hf_config, "use_parallel_residual", False):
         tl_config.parallel_attn_mlp = True
+    # GPT-J has a parallel attention+MLP architecture (both read from same ln_1
+    # output) but doesn't set use_parallel_residual in its HF config. Detect it
+    # by architecture class so fold_ln correctly folds ln1 into BOTH attn and MLP.
+    arch_classes = getattr(hf_config, "architectures", []) or []
+    if any(a in ("GPTJForCausalLM",) for a in arch_classes):
+        tl_config.parallel_attn_mlp = True
     tl_config.default_prepend_bos = True
     return tl_config
 
@@ -227,7 +233,7 @@ def get_hf_model_class_for_architecture(architecture: str):
     if architecture in seq2seq_architectures:
         return AutoModelForSeq2SeqLM
     elif architecture in masked_lm_architectures:
-        return AutoModel
+        return AutoModelForMaskedLM
     else:
         return AutoModelForCausalLM
 
@@ -261,17 +267,36 @@ def boot(
             )
             model_name = official_name
             break
+    # Pass HF token for gated model access (e.g. meta-llama/*)
+    _hf_token = os.environ.get("HF_TOKEN", "") or None
     hf_config = AutoConfig.from_pretrained(
-        model_name, output_attentions=True, trust_remote_code=trust_remote_code
+        model_name,
+        output_attentions=True,
+        trust_remote_code=trust_remote_code,
+        token=_hf_token,
     )
     if hf_config_overrides:
         hf_config.__dict__.update(hf_config_overrides)
     tl_config = map_default_transformer_lens_config(hf_config)
     architecture = determine_architecture_from_hf_config(hf_config)
-    bridge_config = TransformerBridgeConfig.from_dict(tl_config.__dict__)
+    config_dict = dict(tl_config.__dict__)
+    # HF configs may remap attribute names via attribute_map (e.g., MixtralConfig maps
+    # `num_experts` -> `num_local_experts`). Explicitly restore the TL name so that
+    # TransformerBridgeConfig.from_dict receives the expected key.
+    if "num_local_experts" in config_dict and "num_experts" not in config_dict:
+        config_dict["num_experts"] = config_dict["num_local_experts"]
+    bridge_config = TransformerBridgeConfig.from_dict(config_dict)
     bridge_config.architecture = architecture
     bridge_config.model_name = model_name
     bridge_config.dtype = dtype
+    # Preserve HF-specific config attributes that adapters may need
+    if getattr(hf_config, "is_gated_act", False):
+        bridge_config.is_gated_act = True
+    # OPT-350m: word_embed_proj_dim != hidden_size means the model uses
+    # project_in/project_out instead of final_layer_norm.
+    word_embed_proj_dim = getattr(hf_config, "word_embed_proj_dim", None)
+    if word_embed_proj_dim is not None:
+        bridge_config.word_embed_proj_dim = word_embed_proj_dim
     adapter = ArchitectureAdapterFactory.select_architecture_adapter(bridge_config)
     if device is None:
         device = get_device()
@@ -283,10 +308,17 @@ def boot(
     if not hasattr(hf_config, "pad_token_id") or "pad_token_id" not in hf_config.__dict__:
         hf_config.pad_token_id = getattr(hf_config, "eos_token_id", None)
     model_kwargs = {"config": hf_config, "torch_dtype": dtype}
+    if _hf_token:
+        model_kwargs["token"] = _hf_token
     if trust_remote_code:
         model_kwargs["trust_remote_code"] = True
     if hasattr(adapter.cfg, "attn_implementation") and adapter.cfg.attn_implementation is not None:
         model_kwargs["attn_implementation"] = adapter.cfg.attn_implementation
+    else:
+        # Default to "eager" — the Bridge uses output_attentions for hooks,
+        # which requires eager attention.  This also ensures numerical parity
+        # with benchmarks that compare Bridge vs HF reference (both use eager).
+        model_kwargs["attn_implementation"] = "eager"
     adapter.prepare_loading(model_name, model_kwargs)
     if not load_weights:
         from_config_kwargs = {}
@@ -298,6 +330,10 @@ def boot(
         hf_model = model_class.from_pretrained(model_name, **model_kwargs)
         if device is not None:
             hf_model = hf_model.to(device)
+        # Ensure all parameters match the requested dtype. Some architectures
+        # (e.g., MoE models) retain native bfloat16 weights even when
+        # torch_dtype is specified during from_pretrained().
+        hf_model = hf_model.to(dtype=dtype)
     adapter.prepare_model(hf_model)
     tokenizer = tokenizer
     default_padding_side = getattr(adapter.cfg, "default_padding_side", None)
@@ -383,7 +419,123 @@ def setup_tokenizer(tokenizer, default_padding_side=None):
         tokenizer.pad_token = tokenizer.eos_token
     if tokenizer.bos_token is None:
         tokenizer.bos_token = tokenizer.eos_token
+
+    # Ensure special token strings resolve to valid IDs.  Some tokenizers
+    # (e.g. ChemGPT's SMILES vocabulary) don't contain the default fallback
+    # strings, leaving pad_token_id as None.  HF's padding logic then crashes
+    # with "TypeError: '<' not supported between instances of 'NoneType' and 'int'".
+    if tokenizer.pad_token is not None and tokenizer.pad_token_id is None:
+        tokenizer.add_special_tokens({"pad_token": tokenizer.pad_token})
+    if tokenizer.eos_token is not None and tokenizer.eos_token_id is None:
+        tokenizer.add_special_tokens({"eos_token": tokenizer.eos_token})
+    if tokenizer.bos_token is not None and tokenizer.bos_token_id is None:
+        tokenizer.add_special_tokens({"bos_token": tokenizer.bos_token})
+
     return tokenizer
 
 
+def list_supported_models(
+    architecture: str | None = None,
+    verified_only: bool = False,
+) -> list[str]:
+    """List all models supported by TransformerLens.
+
+    This function provides convenient access to the model registry API
+    for discovering which HuggingFace models can be loaded.
+
+    Args:
+        architecture: Filter by architecture ID (e.g., "GPT2LMHeadModel").
+            If None, returns all supported models.
+        verified_only: If True, only return models that have been verified
+            to work with TransformerLens.
+
+    Returns:
+        List of model IDs (e.g., ["gpt2", "gpt2-medium", ...])
+
+    Example:
+        >>> from transformer_lens.model_bridge.sources.transformers import list_supported_models
+        >>> models = list_supported_models()
+        >>> gpt2_models = list_supported_models(architecture="GPT2LMHeadModel")
+    """
+    try:
+        from transformer_lens.tools.model_registry import api
+
+        models = api.get_supported_models(architecture=architecture, verified_only=verified_only)
+        return [m.model_id for m in models]
+    except ImportError:
+        return []
+    except Exception:
+        return []
+
+
+def check_model_support(model_id: str) -> dict:
+    """Check if a model is supported and get detailed support info.
+
+    This function provides detailed information about a model's compatibility
+    with TransformerLens, including architecture type and verification status.
+
+    Args:
+        model_id: The HuggingFace model ID to check (e.g., "gpt2")
+
+    Returns:
+        Dictionary with support information:
+        - is_supported: bool - Whether the model is supported
+        - architecture_id: str | None - The architecture type if supported
+        - verified: bool - Whether the model has been verified to work
+        - suggestion: str | None - Suggested alternative if not supported
+
+    Example:
+        >>> from transformer_lens.model_bridge.sources.transformers import check_model_support  # doctest: +SKIP
+        >>> info = check_model_support("openai-community/gpt2")  # doctest: +SKIP
+        >>> info["is_supported"]  # doctest: +SKIP
+        True
+    """
+    try:
+        from transformer_lens.tools.model_registry import api
+
+        is_supported = api.is_model_supported(model_id)
+
+        if is_supported:
+            model_info = api.get_model_info(model_id)
+            return {
+                "is_supported": True,
+                "architecture_id": model_info.architecture_id,
+                "status": model_info.status,
+                "verified_date": (
+                    model_info.verified_date.isoformat() if model_info.verified_date else None
+                ),
+                "suggestion": None,
+            }
+        else:
+            suggestion = api.suggest_similar_model(model_id)
+            return {
+                "is_supported": False,
+                "architecture_id": None,
+                "verified": False,
+                "verified_date": None,
+                "suggestion": suggestion,
+            }
+    except ImportError:
+        return {
+            "is_supported": None,
+            "architecture_id": None,
+            "verified": False,
+            "verified_date": None,
+            "suggestion": None,
+            "error": "Model registry not available",
+        }
+    except Exception as e:
+        return {
+            "is_supported": None,
+            "architecture_id": None,
+            "verified": False,
+            "verified_date": None,
+            "suggestion": None,
+            "error": str(e),
+        }
+
+
+# Attach functions to TransformerBridge as static methods
 setattr(TransformerBridge, "boot_transformers", staticmethod(boot))
+setattr(TransformerBridge, "list_supported_models", staticmethod(list_supported_models))
+setattr(TransformerBridge, "check_model_support", staticmethod(check_model_support))

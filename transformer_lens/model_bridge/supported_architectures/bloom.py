@@ -35,34 +35,29 @@ class BloomArchitectureAdapter(ArchitectureAdapter):
         self.cfg.attn_only = False
 
         self.cfg.default_prepend_bos = False
+        # After split_qkv_matrix, Q/K/V are individual [n_heads*d_head, d_model] weights.
+        # Convert to TL format [n_heads, d_model, d_head].
         self.weight_processing_conversions = {
             "blocks.{i}.attn.q": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
-                    "(three n h) m -> three n m h",
-                    three=3,
+                    "(n h) m -> n m h",
                     n=self.cfg.n_heads,
                 ),
-                source_key="transformer.h.{i}.self_attention.query_key_value.weight",
             ),
             "blocks.{i}.attn.k": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
-                    "(three n h) m -> three n m h",
-                    three=3,
+                    "(n h) m -> n m h",
                     n=self.cfg.n_heads,
                 ),
-                source_key="transformer.h.{i}.self_attention.query_key_value.weight",
             ),
             "blocks.{i}.attn.v": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
-                    "(three n h) m -> three n m h",
-                    three=3,
+                    "(n h) m -> n m h",
                     n=self.cfg.n_heads,
                 ),
-                source_key="transformer.h.{i}.self_attention.query_key_value.weight",
             ),
             "blocks.{i}.attn.o": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("m (n h) -> n h m", n=self.cfg.n_heads),
-                source_key="transformer.h.{i}.self_attention.dense.weight",
             ),
         }
 
@@ -118,41 +113,40 @@ class BloomArchitectureAdapter(ArchitectureAdapter):
         # Keep mypy happy
         assert isinstance(qkv_weights, torch.Tensor)
 
-        # We want to split weights into [d_model, n_heads * d_head] for each of Q, K, V
-        W_split = qkv_weights.T.reshape(self.cfg.d_model, 3, self.cfg.n_heads * self.cfg.d_head)
+        # Bloom QKV weights are interleaved: [Q0,K0,V0, Q1,K1,V1, ...]
+        # i.e. layout is (n_heads, 3, d_head), not (3, n_heads*d_head).
+        # Reshape to [d_model, n_heads, 3, d_head] to correctly deinterleave.
+        W_split = qkv_weights.T.reshape(self.cfg.d_model, self.cfg.n_heads, 3, self.cfg.d_head)
 
-        W_Q, W_K, W_V = W_split[:, 0, :], W_split[:, 1, :], W_split[:, 2, :]
+        # W_Q/K/V shape: [d_model, n_heads, d_head]
+        W_Q, W_K, W_V = W_split[..., 0, :], W_split[..., 1, :], W_split[..., 2, :]
 
         qkv_bias = original_attention_component.query_key_value.bias
 
         # Keep mypy happy
         assert isinstance(qkv_bias, torch.Tensor)
 
-        # Reshape to [3, n_heads * d_head] to split by Q, K, V
-        qkv_bias = qkv_bias.reshape(3, self.cfg.n_heads * self.cfg.d_head)
+        # Same interleaved layout for bias: reshape to [n_heads, 3, d_head]
+        qkv_bias = qkv_bias.reshape(self.cfg.n_heads, 3, self.cfg.d_head)
 
-        b_Q, b_K, b_V = qkv_bias[0, :], qkv_bias[1, :], qkv_bias[2, :]
+        # b_Q/K/V shape: [n_heads, d_head]
+        b_Q, b_K, b_V = qkv_bias[:, 0, :], qkv_bias[:, 1, :], qkv_bias[:, 2, :]
 
         # Create nn.Linear modules
-        # W_Q, W_K, W_V shapes are [d_model, n_heads * d_head]
-        # nn.Linear expects weight shape [out_features, in_features]
-        # So for Linear(d_model, n_heads * d_head), weight should be [n_heads * d_head, d_model]
-        W_Q_transformation = torch.nn.Linear(W_Q.shape[0], W_Q.shape[1], bias=True)
-        W_Q_transformation.weight = torch.nn.Parameter(
-            W_Q.T
-        )  # Transpose to [n_heads * d_head, d_model]
-        W_Q_transformation.bias = torch.nn.Parameter(b_Q)
+        # W_Q shape is [d_model, n_heads, d_head] -> flatten to [d_model, n_heads*d_head]
+        # nn.Linear expects weight shape [out_features, in_features] = [n_heads*d_head, d_model]
+        d_out = self.cfg.n_heads * self.cfg.d_head
 
-        W_K_transformation = torch.nn.Linear(W_K.shape[0], W_K.shape[1], bias=True)
-        W_K_transformation.weight = torch.nn.Parameter(
-            W_K.T
-        )  # Transpose to [n_heads * d_head, d_model]
-        W_K_transformation.bias = torch.nn.Parameter(b_K)
+        W_Q_transformation = torch.nn.Linear(self.cfg.d_model, d_out, bias=True)
+        W_Q_transformation.weight = torch.nn.Parameter(W_Q.reshape(self.cfg.d_model, d_out).T)
+        W_Q_transformation.bias = torch.nn.Parameter(b_Q.reshape(d_out))
 
-        W_V_transformation = torch.nn.Linear(W_V.shape[0], W_V.shape[1], bias=True)
-        W_V_transformation.weight = torch.nn.Parameter(
-            W_V.T
-        )  # Transpose to [n_heads * d_head, d_model]
-        W_V_transformation.bias = torch.nn.Parameter(b_V)
+        W_K_transformation = torch.nn.Linear(self.cfg.d_model, d_out, bias=True)
+        W_K_transformation.weight = torch.nn.Parameter(W_K.reshape(self.cfg.d_model, d_out).T)
+        W_K_transformation.bias = torch.nn.Parameter(b_K.reshape(d_out))
+
+        W_V_transformation = torch.nn.Linear(self.cfg.d_model, d_out, bias=True)
+        W_V_transformation.weight = torch.nn.Parameter(W_V.reshape(self.cfg.d_model, d_out).T)
+        W_V_transformation.bias = torch.nn.Parameter(b_V.reshape(d_out))
 
         return W_Q_transformation, W_K_transformation, W_V_transformation

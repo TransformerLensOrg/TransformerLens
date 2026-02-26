@@ -35,6 +35,13 @@ from transformer_lens.model_bridge.generalized_components.bloom_attention import
     BloomAttentionBridge,
 )
 from transformer_lens.model_bridge.generalized_components.bloom_mlp import BloomMLPBridge
+from transformer_lens.model_bridge.generalized_components.siglip_vision_encoder import (
+    SiglipVisionEncoderBridge,
+    SiglipVisionEncoderLayerBridge,
+)
+from transformer_lens.model_bridge.generalized_components.vision_projection import (
+    VisionProjectionBridge,
+)
 
 __all__ = [
     "AttentionBridge",
@@ -59,4 +66,7 @@ __all__ = [
     "SymbolicBridge",
     "UnembeddingBridge",
     "T5BlockBridge",
+    "SiglipVisionEncoderBridge",
+    "SiglipVisionEncoderLayerBridge",
+    "VisionProjectionBridge",
 ]

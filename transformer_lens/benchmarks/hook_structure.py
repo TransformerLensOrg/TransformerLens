@@ -1,8 +1,7 @@
-"""Hook structure validation benchmarks - cross-model compatible.
+"""Hook structure validation benchmarks.
 
-This module provides structure-only validation of hooks that can work across
-different model architectures. It checks hook existence, registration, firing,
-and shape compatibility without comparing activation values.
+This module provides structure-only validation of hooks. It checks hook existence,
+registration, firing, and shape compatibility without comparing activation values.
 """
 
 from typing import Dict, Optional
@@ -14,100 +13,11 @@ from transformer_lens.benchmarks.utils import BenchmarkResult, BenchmarkSeverity
 from transformer_lens.model_bridge import TransformerBridge
 
 
-def validate_hook_shape_compatibility(
-    target_shape: tuple,
-    reference_shape: tuple,
-    hook_name: str,
-    cross_model: bool = False,
-) -> tuple[bool, Optional[str]]:
-    """Validate that hook shapes have compatible structure across different models.
-
-    This allows comparing hooks from different models (e.g., Llama vs GPT-2) by checking
-    structural compatibility rather than exact shape matching.
-
-    Args:
-        target_shape: Shape of the tensor from the target model
-        reference_shape: Shape of the tensor from the reference model
-        hook_name: Name of the hook (for error messages)
-        cross_model: If True, skip sequence dimension checks (different tokenizers
-            produce different token counts for the same text)
-
-    Returns:
-        Tuple of (is_compatible, error_message)
-        - is_compatible: True if shapes are structurally compatible
-        - error_message: None if compatible, otherwise description of incompatibility
-    """
-    # For GQA (Grouped Query Attention) models, k/v hooks may have different ranks
-    # GPT-2: (batch, seq, n_heads, d_head) = 4D
-    # Gemma/Llama with GQA: (batch, seq, d_head) = 3D (heads are already collapsed)
-    # This is expected and fine - both are valid attention representations
-    gqa_attention_hooks = ["hook_q", "hook_k", "hook_v", "hook_z"]
-    is_gqa_hook = any(pattern in hook_name for pattern in gqa_attention_hooks)
-
-    # Attention pattern hooks have shape [batch, n_heads, seq_q, seq_k]
-    # Different models can have different numbers of heads
-    is_attention_pattern_hook = "hook_pattern" in hook_name or "hook_attn_scores" in hook_name
-
-    # Same rank (number of dimensions) is required, except for GQA attention hooks
-    if len(target_shape) != len(reference_shape):
-        if is_gqa_hook:
-            # For GQA hooks, different ranks are okay - just verify batch and sequence dims match
-            if len(target_shape) >= 2 and len(reference_shape) >= 2:
-                if target_shape[0] != reference_shape[0]:
-                    return (
-                        False,
-                        f"Batch dimension mismatch: {target_shape[0]} vs {reference_shape[0]}",
-                    )
-                if not cross_model and target_shape[1] != reference_shape[1]:
-                    return (
-                        False,
-                        f"Sequence dimension mismatch: {target_shape[1]} vs {reference_shape[1]}",
-                    )
-                # Rank mismatch is fine for GQA - different attention implementations
-                return True, None
-            else:
-                return False, f"Invalid tensor rank: {len(target_shape)} or {len(reference_shape)}"
-        return False, f"Rank mismatch: {len(target_shape)} vs {len(reference_shape)}"
-
-    # For each dimension, check compatibility
-    for i, (target_dim, ref_dim) in enumerate(zip(target_shape, reference_shape)):
-        if i == 0:  # Batch dimension
-            # Should be same (both use same test input)
-            if target_dim != ref_dim:
-                return False, f"Batch dimension mismatch: {target_dim} vs {ref_dim}"
-        elif i == 1:  # Usually sequence dimension, but n_heads for attention patterns
-            if is_attention_pattern_hook:
-                # For attention patterns: [batch, n_heads, seq_q, seq_k]
-                # Dimension 1 is n_heads, which can differ between models
-                # Just verify it's valid
-                if target_dim <= 0 or ref_dim <= 0:
-                    return False, f"Invalid n_heads dimension: {target_dim} vs {ref_dim}"
-            else:
-                # For other hooks, dimension 1 is sequence
-                # Cross-model references may tokenize differently, so skip this check
-                if not cross_model and target_dim != ref_dim:
-                    return False, f"Sequence dimension mismatch: {target_dim} vs {ref_dim}"
-        elif i >= 2 and is_attention_pattern_hook:
-            # For attention patterns, dimensions 2 and 3 are seq_q and seq_k
-            # Cross-model references may tokenize differently
-            if not cross_model and target_dim != ref_dim:
-                return False, f"Sequence dimension mismatch: {target_dim} vs {ref_dim}"
-        else:  # Model-specific dimensions (d_model, n_heads, d_head, etc.)
-            # Can differ between models - just verify it's valid
-            if target_dim <= 0:
-                return False, f"Invalid dimension {i}: {target_dim} <= 0"
-            if ref_dim <= 0:
-                return False, f"Invalid reference dimension {i}: {ref_dim} <= 0"
-
-    return True, None
-
-
 def benchmark_forward_hooks_structure(
     bridge: TransformerBridge,
     test_text: str,
     reference_model: Optional[HookedTransformer] = None,
     prepend_bos: Optional[bool] = None,
-    cross_model: bool = False,
 ) -> BenchmarkResult:
     """Benchmark forward hooks for structural correctness (existence, firing, shapes).
 
@@ -115,14 +25,13 @@ def benchmark_forward_hooks_structure(
     - All reference hooks exist in bridge
     - Hooks can be registered
     - Hooks fire during forward pass
-    - Hook tensor shapes are compatible (allows cross-model comparison)
+    - Hook tensor shapes are compatible
 
     Args:
         bridge: TransformerBridge model to test
         test_text: Input text for testing
         reference_model: Optional HookedTransformer for comparison
         prepend_bos: Whether to prepend BOS token. If None, uses model default.
-        cross_model: If True, uses relaxed shape matching for cross-model comparison
 
     Returns:
         BenchmarkResult with structural validation details
@@ -228,25 +137,6 @@ def benchmark_forward_hooks_structure(
                 handle.remove()
 
         # CRITICAL CHECK: Bridge must have all hooks that reference has
-        # In cross-model mode, filter out expected architectural differences
-        if cross_model and missing_from_bridge:
-            expected_missing_patterns = [
-                "hook_pos_embed",
-                "attn.hook_q",
-                "attn.hook_k",
-                "attn.hook_v",
-                "hook_q_input",
-                "hook_k_input",
-                "hook_v_input",
-                "attn.hook_attn_scores",
-                "attn.hook_pattern",
-            ]
-            missing_from_bridge = [
-                h
-                for h in missing_from_bridge
-                if not any(pattern in h for pattern in expected_missing_patterns)
-            ]
-
         if missing_from_bridge:
             return BenchmarkResult(
                 name="forward_hooks_structure",
@@ -282,19 +172,10 @@ def benchmark_forward_hooks_structure(
             bridge_tensor = bridge_activations[hook_name]
             reference_tensor = reference_activations[hook_name]
 
-            if cross_model:
-                # Use relaxed shape matching for cross-model comparison
-                is_compatible, error_msg = validate_hook_shape_compatibility(
-                    bridge_tensor.shape, reference_tensor.shape, hook_name, cross_model=True
+            if bridge_tensor.shape != reference_tensor.shape:
+                shape_mismatches.append(
+                    f"{hook_name}: Shape {bridge_tensor.shape} vs {reference_tensor.shape}"
                 )
-                if not is_compatible:
-                    shape_mismatches.append(f"{hook_name}: {error_msg}")
-            else:
-                # Exact shape matching for same-model comparison
-                if bridge_tensor.shape != reference_tensor.shape:
-                    shape_mismatches.append(
-                        f"{hook_name}: Shape {bridge_tensor.shape} vs {reference_tensor.shape}"
-                    )
 
         if shape_mismatches:
             return BenchmarkResult(
@@ -305,17 +186,15 @@ def benchmark_forward_hooks_structure(
                     "total_hooks": len(common_hooks),
                     "shape_mismatches": len(shape_mismatches),
                     "sample_mismatches": shape_mismatches[:5],
-                    "cross_model": cross_model,
                 },
                 passed=False,
             )
 
-        ref_type = "cross-model reference" if cross_model else "same-model reference"
         return BenchmarkResult(
             name="forward_hooks_structure",
             severity=BenchmarkSeverity.INFO,
-            message=f"All {len(common_hooks)} forward hooks structurally compatible ({ref_type})",
-            details={"hook_count": len(common_hooks), "cross_model": cross_model},
+            message=f"All {len(common_hooks)} forward hooks structurally compatible",
+            details={"hook_count": len(common_hooks)},
         )
 
     except Exception as e:
@@ -332,7 +211,6 @@ def benchmark_backward_hooks_structure(
     test_text: str,
     reference_model: Optional[HookedTransformer] = None,
     prepend_bos: Optional[bool] = None,
-    cross_model: bool = False,
 ) -> BenchmarkResult:
     """Benchmark backward hooks for structural correctness (existence, firing, shapes).
 
@@ -340,14 +218,13 @@ def benchmark_backward_hooks_structure(
     - All reference backward hooks exist in bridge
     - Hooks can be registered
     - Hooks fire during backward pass
-    - Gradient tensor shapes are compatible (allows cross-model comparison)
+    - Gradient tensor shapes are compatible
 
     Args:
         bridge: TransformerBridge model to test
         test_text: Input text for testing
         reference_model: Optional HookedTransformer for comparison
         prepend_bos: Whether to prepend BOS token. If None, uses model default.
-        cross_model: If True, uses relaxed shape matching for cross-model comparison
 
     Returns:
         BenchmarkResult with structural validation details
@@ -479,25 +356,6 @@ def benchmark_backward_hooks_structure(
                 handle.remove()
 
         # CRITICAL CHECK: Bridge must have all backward hooks that reference has
-        # In cross-model mode, filter out expected architectural differences
-        if cross_model and missing_from_bridge:
-            expected_missing_patterns = [
-                "hook_pos_embed",
-                "attn.hook_q",
-                "attn.hook_k",
-                "attn.hook_v",
-                "hook_q_input",
-                "hook_k_input",
-                "hook_v_input",
-                "attn.hook_attn_scores",
-                "attn.hook_pattern",
-            ]
-            missing_from_bridge = [
-                h
-                for h in missing_from_bridge
-                if not any(pattern in h for pattern in expected_missing_patterns)
-            ]
-
         if missing_from_bridge:
             return BenchmarkResult(
                 name="backward_hooks_structure",
@@ -533,19 +391,10 @@ def benchmark_backward_hooks_structure(
             bridge_grad = bridge_grads[hook_name]
             reference_grad = reference_grads[hook_name]
 
-            if cross_model:
-                # Use relaxed shape matching for cross-model comparison
-                is_compatible, error_msg = validate_hook_shape_compatibility(
-                    bridge_grad.shape, reference_grad.shape, hook_name, cross_model=True
+            if bridge_grad.shape != reference_grad.shape:
+                shape_mismatches.append(
+                    f"{hook_name}: Shape {bridge_grad.shape} vs {reference_grad.shape}"
                 )
-                if not is_compatible:
-                    shape_mismatches.append(f"{hook_name}: {error_msg}")
-            else:
-                # Exact shape matching for same-model comparison
-                if bridge_grad.shape != reference_grad.shape:
-                    shape_mismatches.append(
-                        f"{hook_name}: Shape {bridge_grad.shape} vs {reference_grad.shape}"
-                    )
 
         if shape_mismatches:
             return BenchmarkResult(
@@ -556,17 +405,15 @@ def benchmark_backward_hooks_structure(
                     "total_hooks": len(common_hooks),
                     "shape_mismatches": len(shape_mismatches),
                     "sample_mismatches": shape_mismatches[:5],
-                    "cross_model": cross_model,
                 },
                 passed=False,
             )
 
-        ref_type = "cross-model reference" if cross_model else "same-model reference"
         return BenchmarkResult(
             name="backward_hooks_structure",
             severity=BenchmarkSeverity.INFO,
-            message=f"All {len(common_hooks)} backward hooks structurally compatible ({ref_type})",
-            details={"hook_count": len(common_hooks), "cross_model": cross_model},
+            message=f"All {len(common_hooks)} backward hooks structurally compatible",
+            details={"hook_count": len(common_hooks)},
         )
 
     except Exception as e:
@@ -583,7 +430,6 @@ def benchmark_activation_cache_structure(
     test_text: str,
     reference_model: Optional[HookedTransformer] = None,
     prepend_bos: Optional[bool] = None,
-    cross_model: bool = False,
 ) -> BenchmarkResult:
     """Benchmark activation cache for structural correctness (keys, shapes).
 
@@ -597,7 +443,6 @@ def benchmark_activation_cache_structure(
         test_text: Input text for testing
         reference_model: Optional HookedTransformer for comparison
         prepend_bos: Whether to prepend BOS token. If None, uses model default.
-        cross_model: If True, uses relaxed shape matching for cross-model comparison
 
     Returns:
         BenchmarkResult with structural validation details
@@ -639,30 +484,6 @@ def benchmark_activation_cache_structure(
         # Check for missing keys
         missing_keys = ref_keys - bridge_keys
 
-        # Filter out expected missing hooks in cross-model mode
-        if cross_model and missing_keys:
-            # In cross-model mode, some hooks are expected to be missing due to architectural differences
-            # - hook_pos_embed: rotary models don't have positional embeddings
-            # - hook_q/k/v: fused QKV architectures (maintain_native_attention)
-            # - hook_attn_scores/pattern: native attention doesn't expose these
-            expected_missing_patterns = [
-                "hook_pos_embed",
-                "attn.hook_q",
-                "attn.hook_k",
-                "attn.hook_v",
-                "hook_q_input",
-                "hook_k_input",
-                "hook_v_input",
-                "attn.hook_attn_scores",
-                "attn.hook_pattern",
-            ]
-            actual_missing = [
-                k
-                for k in missing_keys
-                if not any(pattern in k for pattern in expected_missing_patterns)
-            ]
-            missing_keys = set(actual_missing)
-
         if missing_keys:
             return BenchmarkResult(
                 name="activation_cache_structure",
@@ -684,19 +505,8 @@ def benchmark_activation_cache_structure(
             bridge_tensor = bridge_cache[key]
             ref_tensor = ref_cache[key]
 
-            if cross_model:
-                # Use relaxed shape matching for cross-model comparison
-                is_compatible, error_msg = validate_hook_shape_compatibility(
-                    bridge_tensor.shape, ref_tensor.shape, key, cross_model=True
-                )
-                if not is_compatible:
-                    shape_mismatches.append(f"{key}: {error_msg}")
-            else:
-                # Exact shape matching for same-model comparison
-                if bridge_tensor.shape != ref_tensor.shape:
-                    shape_mismatches.append(
-                        f"{key}: Shape {bridge_tensor.shape} vs {ref_tensor.shape}"
-                    )
+            if bridge_tensor.shape != ref_tensor.shape:
+                shape_mismatches.append(f"{key}: Shape {bridge_tensor.shape} vs {ref_tensor.shape}")
 
         if shape_mismatches:
             return BenchmarkResult(
@@ -707,17 +517,15 @@ def benchmark_activation_cache_structure(
                     "total_keys": len(common_keys),
                     "shape_mismatches": len(shape_mismatches),
                     "sample_mismatches": shape_mismatches[:5],
-                    "cross_model": cross_model,
                 },
                 passed=False,
             )
 
-        ref_type = "cross-model reference" if cross_model else "same-model reference"
         return BenchmarkResult(
             name="activation_cache_structure",
             severity=BenchmarkSeverity.INFO,
-            message=f"All {len(common_keys)} cache entries structurally compatible ({ref_type})",
-            details={"cache_size": len(common_keys), "cross_model": cross_model},
+            message=f"All {len(common_keys)} cache entries structurally compatible",
+            details={"cache_size": len(common_keys)},
         )
 
     except Exception as e:

@@ -161,6 +161,18 @@ class AttentionBridge(GeneralizedComponent):
             cos = torch.ones(1, seq_len, rotary_ndims, device=device, dtype=dtype)
             sin = torch.zeros(1, seq_len, rotary_ndims, device=device, dtype=dtype)
             inputs["position_embeddings"] = (cos, sin)
+        # For models with internal rotary embeddings (e.g., GPT-J), the HF attention
+        # forward expects position_ids to index into embed_positions. Models using
+        # requires_position_embeddings get (cos, sin) tuples instead.
+        if (
+            self.config
+            and hasattr(self.config, "positional_embedding_type")
+            and self.config.positional_embedding_type == "rotary"
+            and not self.requires_position_embeddings
+        ):
+            inputs["position_ids"] = (
+                torch.arange(seq_len, device=device).unsqueeze(0).expand(batch_size, -1)
+            )
         if self.requires_attention_mask:
             if self.attention_mask_4d:
                 # Generate 4D attention mask [batch, 1, tgt_len, src_len] for models like OPT
@@ -320,8 +332,6 @@ class AttentionBridge(GeneralizedComponent):
             ):
                 hooked = hooked.to(dtype=target_dtype)
             args = (hooked,) + args[1:]
-            kwargs["hidden_states"] = args[0]
-            args = args[1:]
         output = self.original_component(*args, **kwargs)
         if isinstance(output, tuple) and len(output) >= 2:
             # output[0] is attention output

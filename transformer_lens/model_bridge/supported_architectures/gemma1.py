@@ -40,18 +40,20 @@ class Gemma1ArchitectureAdapter(ArchitectureAdapter):
         self.cfg.gated_mlp = True
         self.cfg.attn_only = False
 
-        # Gemma models were not trained with BOS tokens
-        self.cfg.default_prepend_bos = False
+        # Gemma models use BOS tokens (tokenizer prepends BOS by default)
+        # Matches HookedTransformer behavior (default_prepend_bos = True)
+        self.cfg.default_prepend_bos = True
         self.cfg.uses_rms_norm = True
         # Gemma models use (1.0 + weight) in RMSNorm instead of just weight
         # See: https://github.com/huggingface/transformers/pull/29402
         self.cfg.rmsnorm_uses_offset = True
 
         self.weight_processing_conversions = {
-            # Note: Gemma1 scales embeddings by sqrt(d_model) in the forward pass.
-            # This is handled in setup_hook_compatibility() which applies the scaling
-            # to hook_embed output at runtime, matching HuggingFace's behavior.
-            # We do NOT scale the stored weights here.
+            # NOTE: Gemma1 scales embeddings by sqrt(d_model) at RUNTIME in
+            # GemmaModel.forward(). We must NOT pre-scale embed weights here
+            # because that would cause double-scaling (pre-scale + runtime).
+            # The runtime hook_conversion in setup_hook_compatibility() handles
+            # scaling the hook output so it matches HookedTransformer's behavior.
             #
             # Attention weight conversions
             "blocks.{i}.attn.q.weight": ParamProcessingConversion(
