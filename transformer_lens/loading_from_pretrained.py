@@ -68,7 +68,25 @@ NEED_REMOTE_CODE_MODELS = (
     "microsoft/phi-2",
     "microsoft/Phi-3-mini-4k-instruct",
     "microsoft/phi-4",
+    "apple/OpenELM",
 )
+
+
+def _get_rope_theta(hf_config: Any, default: float = 10000.0) -> float:
+    """Extract rope_theta from a HuggingFace config, handling both old and new formats.
+
+    In transformers v5+, rope_theta moved from a top-level attribute to
+    hf_config.rope_parameters['rope_theta'].
+    """
+    # Try direct attribute first (transformers < 5.0)
+    rope_theta = getattr(hf_config, "rope_theta", None)
+    if rope_theta is not None:
+        return rope_theta
+    # Try rope_parameters dict (transformers >= 5.0)
+    rope_params = getattr(hf_config, "rope_parameters", None)
+    if rope_params is not None and isinstance(rope_params, dict):
+        return rope_params.get("rope_theta", default)
+    return default
 
 
 def make_model_alias_map() -> dict[str, str]:
@@ -548,7 +566,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "window_size": hf_config.sliding_window,  # None if no sliding window was used
             "attn_types": ["local"] * hf_config.num_hidden_layers if use_local_attn else None,
             "eps": hf_config.rms_norm_eps,
-            "rotary_base": hf_config.rope_theta,
+            "rotary_base": _get_rope_theta(hf_config),
             "n_key_value_heads": hf_config.num_key_value_heads,
             "use_local_attn": use_local_attn,
             "normalization_type": "RMS",
@@ -568,7 +586,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "act_fn": hf_config.hidden_act,
             "normalization_type": "RMS",
             "positional_embedding_type": "rotary",
-            "rotary_base": hf_config.rope_theta,
+            "rotary_base": _get_rope_theta(hf_config),
             "window_size": hf_config.sliding_window,  # This is None, as no sliding window was used
             "attn_types": ["global"] * 32,
             "eps": hf_config.rms_norm_eps,
@@ -680,7 +698,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "initializer_range": hf_config.initializer_range,
             "normalization_type": "RMS",
             "positional_embedding_type": "rotary",
-            "rotary_base": int(hf_config.rope_theta),
+            "rotary_base": int(_get_rope_theta(hf_config)),
             "rotary_adjacent_pairs": False,
             "rotary_dim": hf_config.hidden_size // hf_config.num_attention_heads,
             "tokenizer_prepends_bos": True,
@@ -712,7 +730,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "initializer_range": hf_config.initializer_range,
             "normalization_type": "RMS",
             "positional_embedding_type": "rotary",
-            "rotary_base": int(hf_config.rope_theta),
+            "rotary_base": int(_get_rope_theta(hf_config)),
             "rotary_adjacent_pairs": False,
             "rotary_dim": hf_config.head_dim
             if hasattr(hf_config, "head_dim") and hf_config.head_dim > 0
@@ -740,7 +758,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "normalization_type": "LN",
             "positional_embedding_type": "rotary",
             "trust_remote_code": True,
-            "rotary_base": hf_config.rope_theta,
+            "rotary_base": _get_rope_theta(hf_config),
             "use_attn_scale": True,
             "parallel_attn_mlp": True,
         }
@@ -767,7 +785,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "normalization_type": "RMS",
             "positional_embedding_type": "rotary",
             "trust_remote_code": True,
-            "rotary_base": hf_config.rope_theta,
+            "rotary_base": _get_rope_theta(hf_config),
             "use_attn_scale": True,
             "gated_mlp": True,
             "parallel_attn_mlp": False,
@@ -1448,7 +1466,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "initializer_range": hf_config.initializer_range,
             "normalization_type": "RMS",
             "positional_embedding_type": "rotary",
-            "rotary_base": getattr(hf_config, "rope_theta", 500000.0),
+            "rotary_base": _get_rope_theta(hf_config, default=500000.0),
             "gated_mlp": True,
             "tie_word_embeddings": hf_config.tie_word_embeddings,
         }
@@ -1485,11 +1503,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "experts_per_token": hf_config.num_experts_per_tok,
             "norm_topk_prob": hf_config.norm_topk_prob,
             "n_key_value_heads": hf_config.num_key_value_heads,
-            "rotary_base": getattr(
-                hf_config,
-                "rope_theta",
-                hf_config.rope_parameters.get("rope_theta", 10000.0),
-            ),
+            "rotary_base": _get_rope_theta(hf_config),
             "tie_word_embeddings": hf_config.tie_word_embeddings,
             "initializer_range": hf_config.initializer_range,
             "positional_embedding_type": "rotary",
@@ -1505,7 +1519,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "d_mlp": hf_config.d_ff,
             "d_vocab": hf_config.vocab_size,
             "n_layers": hf_config.num_layers,
-            "n_ctx": hf_config.max_length,
+            "n_ctx": getattr(hf_config, "max_length", None) or hf_config.n_positions,
             "eps": hf_config.layer_norm_epsilon,
             "act_fn": hf_config.feed_forward_proj,
             "positional_embedding_type": "relative_positional_bias",
@@ -1717,7 +1731,10 @@ def get_pretrained_model_config(
         cfg_dict["load_in_4bit"] = hf_cfg.get("quantization_config", {}).get("load_in_4bit", False)
         cfg_dict["d_vocab"] = hf_cfg.get("vocab_size", cfg_dict["d_vocab"])
         if cfg_dict["original_architecture"] == "Qwen2ForCausalLM":
-            cfg_dict["rotary_base"] = hf_cfg.get("rope_theta", cfg_dict["rotary_base"])
+            rope_params = hf_cfg.get("rope_parameters", {}) or {}
+            cfg_dict["rotary_base"] = hf_cfg.get(
+                "rope_theta", rope_params.get("rope_theta", cfg_dict["rotary_base"])
+            )
     if first_n_layers is not None:
         cfg_dict["n_layers"] = first_n_layers
 

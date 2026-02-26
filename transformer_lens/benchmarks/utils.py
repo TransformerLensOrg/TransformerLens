@@ -6,6 +6,20 @@ from typing import Any, Collection, Dict, List, Optional, Union
 
 import torch
 
+# Prefixes used by tiny/random test models that produce degenerate weights and
+# should be skipped for certain benchmarks (centering, generation, etc.).
+TINY_TEST_MODEL_PATTERNS = (
+    "tiny-random",
+    "trl-internal-testing/tiny",
+    "peft-internal-testing/tiny",
+)
+
+
+def is_tiny_test_model(model_name: str) -> bool:
+    """Check if a model name belongs to a tiny/random test model."""
+    return any(pattern in model_name for pattern in TINY_TEST_MODEL_PATTERNS)
+
+
 # Hook patterns that bridge models inherently don't have because they use HF's
 # native implementation rather than reimplementing attention/MLP internals.
 BRIDGE_EXPECTED_MISSING_PATTERNS = [
@@ -33,6 +47,13 @@ BRIDGE_EXPECTED_MISSING_PATTERNS = [
     "mlp.hook_experts",
     "mlp.hook_expert_indices",
     "mlp.hook_expert_weights",
+    # Parallel attention+MLP architectures (GPT-J, GPT-NeoX): HF has a single
+    # shared layer norm (ln_1), while HT creates a virtual ln2 that shares weights
+    # with ln1. The Bridge only wraps the actual HF ln_1, so ln2 hooks don't exist.
+    # These patterns only match "missing" hooks when ln2 is absent from the Bridge;
+    # for non-parallel architectures, the Bridge HAS ln2 and these won't be missing.
+    "ln2.hook_scale",
+    "ln2.hook_normalized",
 ]
 
 

@@ -139,6 +139,12 @@ def map_default_transformer_lens_config(hf_config):
         tl_config.sliding_window = hf_config.sliding_window
     if getattr(hf_config, "use_parallel_residual", False):
         tl_config.parallel_attn_mlp = True
+    # GPT-J has a parallel attention+MLP architecture (both read from same ln_1
+    # output) but doesn't set use_parallel_residual in its HF config. Detect it
+    # by architecture class so fold_ln correctly folds ln1 into BOTH attn and MLP.
+    arch_classes = getattr(hf_config, "architectures", []) or []
+    if any(a in ("GPTJForCausalLM",) for a in arch_classes):
+        tl_config.parallel_attn_mlp = True
     tl_config.default_prepend_bos = True
     return tl_config
 
@@ -261,8 +267,13 @@ def boot(
             )
             model_name = official_name
             break
+    # Pass HF token for gated model access (e.g. meta-llama/*)
+    _hf_token = os.environ.get("HF_TOKEN", "") or None
     hf_config = AutoConfig.from_pretrained(
-        model_name, output_attentions=True, trust_remote_code=trust_remote_code
+        model_name,
+        output_attentions=True,
+        trust_remote_code=trust_remote_code,
+        token=_hf_token,
     )
     if hf_config_overrides:
         hf_config.__dict__.update(hf_config_overrides)
@@ -281,6 +292,11 @@ def boot(
     # Preserve HF-specific config attributes that adapters may need
     if getattr(hf_config, "is_gated_act", False):
         bridge_config.is_gated_act = True
+    # OPT-350m: word_embed_proj_dim != hidden_size means the model uses
+    # project_in/project_out instead of final_layer_norm.
+    word_embed_proj_dim = getattr(hf_config, "word_embed_proj_dim", None)
+    if word_embed_proj_dim is not None:
+        bridge_config.word_embed_proj_dim = word_embed_proj_dim
     adapter = ArchitectureAdapterFactory.select_architecture_adapter(bridge_config)
     if device is None:
         device = get_device()
@@ -292,10 +308,17 @@ def boot(
     if not hasattr(hf_config, "pad_token_id") or "pad_token_id" not in hf_config.__dict__:
         hf_config.pad_token_id = getattr(hf_config, "eos_token_id", None)
     model_kwargs = {"config": hf_config, "torch_dtype": dtype}
+    if _hf_token:
+        model_kwargs["token"] = _hf_token
     if trust_remote_code:
         model_kwargs["trust_remote_code"] = True
     if hasattr(adapter.cfg, "attn_implementation") and adapter.cfg.attn_implementation is not None:
         model_kwargs["attn_implementation"] = adapter.cfg.attn_implementation
+    else:
+        # Default to "eager" — the Bridge uses output_attentions for hooks,
+        # which requires eager attention.  This also ensures numerical parity
+        # with benchmarks that compare Bridge vs HF reference (both use eager).
+        model_kwargs["attn_implementation"] = "eager"
     adapter.prepare_loading(model_name, model_kwargs)
     if not load_weights:
         from_config_kwargs = {}
@@ -392,6 +415,18 @@ def setup_tokenizer(tokenizer, default_padding_side=None):
         tokenizer.pad_token = tokenizer.eos_token
     if tokenizer.bos_token is None:
         tokenizer.bos_token = tokenizer.eos_token
+
+    # Ensure special token strings resolve to valid IDs.  Some tokenizers
+    # (e.g. ChemGPT's SMILES vocabulary) don't contain the default fallback
+    # strings, leaving pad_token_id as None.  HF's padding logic then crashes
+    # with "TypeError: '<' not supported between instances of 'NoneType' and 'int'".
+    if tokenizer.pad_token is not None and tokenizer.pad_token_id is None:
+        tokenizer.add_special_tokens({"pad_token": tokenizer.pad_token})
+    if tokenizer.eos_token is not None and tokenizer.eos_token_id is None:
+        tokenizer.add_special_tokens({"eos_token": tokenizer.eos_token})
+    if tokenizer.bos_token is not None and tokenizer.bos_token_id is None:
+        tokenizer.add_special_tokens({"bos_token": tokenizer.bos_token})
+
     return tokenizer
 
 

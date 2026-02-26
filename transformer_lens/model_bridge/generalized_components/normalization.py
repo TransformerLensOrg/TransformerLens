@@ -116,11 +116,17 @@ class NormalizationBridge(GeneralizedComponent):
                 eps_value: float | torch.Tensor = getattr(self.config, "eps", 1e-05)
             else:
                 eps_value = eps_tensor
+            variance = x_centered.pow(2).mean(-1, keepdim=True)
             if isinstance(eps_value, torch.Tensor):
-                scale = (x_centered.pow(2).mean(-1, keepdim=True) + eps_value).sqrt()
+                inv_rms = torch.rsqrt(variance + eps_value)
+                scale = (variance + eps_value).sqrt()
             else:
-                scale = (x_centered.pow(2).mean(-1, keepdim=True) + float(eps_value)).sqrt()
-            x_normalized = x_centered / scale
+                inv_rms = torch.rsqrt(variance + float(eps_value))
+                scale = (variance + float(eps_value)).sqrt()
+            # Use rsqrt for x_normalized to match HF's actual computation path
+            # (LlamaRMSNorm uses x * rsqrt(variance + eps)). Keep scale as sqrt
+            # for hook_scale (denominator convention used by HookedTransformer).
+            x_normalized = x_centered * inv_rms
         _ = self.hook_scale(scale)
         _ = self.hook_normalized(x_normalized)
         input_dtype = x.dtype

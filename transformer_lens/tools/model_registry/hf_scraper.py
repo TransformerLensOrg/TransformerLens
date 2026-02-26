@@ -34,6 +34,7 @@ from pathlib import Path
 from typing import Optional
 
 from . import HF_SUPPORTED_ARCHITECTURES
+from .registry_io import is_quantized_model
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -230,6 +231,11 @@ def scrape_all_models(
 
                     if max_models and scanned > max_models:
                         break
+
+                    # Skip quantized models (AWQ, GPTQ, GGUF, bnb, FP8, etc.)
+                    # TransformerLens requires full-precision weights.
+                    if is_quantized_model(model.id):
+                        continue
 
                     # Extract architecture from inline config (no extra API call)
                     arch = _extract_architecture(model)
