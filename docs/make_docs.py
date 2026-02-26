@@ -763,7 +763,10 @@ hide-toc: true
 # TransformerBridge Models
 
 The TransformerBridge provides automatic model compatibility for HuggingFace models
-across supported architectures.
+across supported architectures. The models are categorized by architecture, and you
+can search and filter them using the interactive table below. As time goes on, we will
+continue to verify and test the text quality of additional models. Note, text quality is tested
+for English, and may not be the same for other languages.
 
 ```{raw} html
 <style>

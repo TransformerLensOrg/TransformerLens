@@ -270,35 +270,61 @@ def estimate_model_params(model_id: str) -> int:
 
 
 def estimate_benchmark_memory_gb(
-    n_params: int, dtype: str = "float32", phases: Optional[list[int]] = None
+    n_params: int,
+    dtype: str = "float32",
+    phases: Optional[list[int]] = None,
+    conserve_memory: bool = False,
 ) -> float:
     """Estimate peak memory needed for benchmark suite.
 
-    The multiplier depends on which phases are selected:
-    - Phases 1-3 may have up to 3 model copies simultaneously
-      (HF reference + Bridge + HookedTransformer) → 3.5x
-    - Phase 4 alone only needs 1 Bridge + GPT-2 scorer (~500MB) → 1.3x
-    - Phase 4 combined with 1-3 uses the full 3.5x estimate
+    Phases run sequentially, so peak memory is the maximum of any single phase,
+    not the sum. The multiplier represents how many model copies exist at peak:
+
+    Phase 1 (conserve_memory=True):  Bridge only (uses bridge.original_model
+        as reference) → 1.0x model + overhead
+    Phase 1 (conserve_memory=False): Briefly loads HF ref + Bridge → 2.0x peak
+    Phase 2: Bridge + HookedTransformer (separate copy) → 2.0x model + overhead
+    Phase 3: Same as Phase 2 (processed versions) → 2.0x model + overhead
+    Phase 4: Bridge + GPT-2 scorer (~500MB) → ~1.0x model + 0.5 GB
 
     Args:
         n_params: Number of model parameters
         dtype: Data type for memory calculation
         phases: Which phases will be run (None = all phases)
+        conserve_memory: Whether --conserve-memory mode is enabled
 
     Returns:
         Estimated peak memory in GB
     """
     bytes_per_param = {"float32": 4, "float16": 2, "bfloat16": 2}
     bpp = bytes_per_param.get(dtype, 4)
+    model_size_gb = n_params * bpp / (1024**3)
 
-    if phases and all(p >= 4 for p in phases):
-        # Phase 4+ only: single model copy + GPT-2 scorer overhead
-        multiplier = 1.3
-    else:
-        # Full suite or phases 1-3: up to 3 model copies + overhead
-        multiplier = 3.5
+    # GPT-2 scorer overhead (loaded during Phase 4)
+    gpt2_overhead_gb = 0.5
 
-    return n_params * bpp * multiplier / (1024**3)
+    # Activation/framework overhead as a fraction of model size
+    overhead_fraction = 0.2
+
+    # Determine peak memory across all requested phases
+    phase_peaks = []
+
+    if phases is None:
+        phases = [1, 2, 3, 4]
+
+    for p in phases:
+        if p == 1:
+            copies = 1.0 if conserve_memory else 2.0
+            phase_peaks.append(model_size_gb * copies * (1 + overhead_fraction))
+        elif p in (2, 3):
+            # Bridge + HookedTransformer = 2 full model copies
+            copies = 2.0
+            phase_peaks.append(model_size_gb * copies * (1 + overhead_fraction))
+        elif p == 4:
+            # Bridge + GPT-2 scorer
+            phase_peaks.append(model_size_gb * (1 + overhead_fraction) + gpt2_overhead_gb)
+
+    return max(phase_peaks) if phase_peaks else model_size_gb
 
 
 def get_available_memory_gb(device: str) -> float:
@@ -737,7 +763,9 @@ def verify_models(
             continue
 
         # Step 2: Check memory
-        estimated_mem = estimate_benchmark_memory_gb(n_params, dtype, phases=phases)
+        estimated_mem = estimate_benchmark_memory_gb(
+            n_params, dtype, phases=phases, conserve_memory=conserve_memory
+        )
         candidate.estimated_memory_gb = estimated_mem
         if not quiet:
             print(
@@ -996,6 +1024,7 @@ def _print_dry_run(
     dtype: str,
     max_memory_gb: float,
     phases: Optional[list[int]] = None,
+    conserve_memory: bool = False,
 ) -> None:
     """Print what would be tested in a dry run."""
     print(f"\nDry run: {len(candidates)} models would be tested")
@@ -1016,7 +1045,9 @@ def _print_dry_run(
         for c in models:
             try:
                 n_params = estimate_model_params(c.model_id)
-                mem = estimate_benchmark_memory_gb(n_params, dtype, phases=phases)
+                mem = estimate_benchmark_memory_gb(
+                    n_params, dtype, phases=phases, conserve_memory=conserve_memory
+                )
                 status = "OK" if mem <= max_memory_gb else "SKIP (too large)"
                 if mem > max_memory_gb:
                     skippable += 1
@@ -1249,7 +1280,13 @@ Examples:
 
     # Dry run
     if args.dry_run:
-        _print_dry_run(candidates, args.dtype, max_memory_gb, phases=args.phases)
+        _print_dry_run(
+            candidates,
+            args.dtype,
+            max_memory_gb,
+            phases=args.phases,
+            conserve_memory=args.conserve_memory,
+        )
         return
 
     # Install graceful interrupt handler (Ctrl+C stops between models)
