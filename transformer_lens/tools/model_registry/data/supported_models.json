@@ -8,7 +8,7 @@
   },
   "total_architectures": 25,
   "total_models": 4908,
-  "total_verified": 445,
+  "total_verified": 446,
   "models": [
     {
       "architecture_id": "Qwen2ForCausalLM",
@@ -3542,14 +3542,14 @@
     {
       "architecture_id": "LlamaForCausalLM",
       "model_id": "codellama/CodeLlama-7b-Instruct-hf",
-      "status": 2,
-      "verified_date": "2026-02-24",
+      "status": 1,
+      "verified_date": "2026-02-25",
       "metadata": null,
-      "note": "Estimated 86.1 GB exceeds 78.0 GB limit",
-      "phase1_score": null,
+      "note": "Core verification completed",
+      "phase1_score": 100.0,
       "phase2_score": null,
       "phase3_score": null,
-      "phase4_score": null
+      "phase4_score": 97.8
     },
     {
       "architecture_id": "LlamaForCausalLM",

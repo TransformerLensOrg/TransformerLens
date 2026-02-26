@@ -631,8 +631,8 @@ def run_benchmark_suite(
     phases: list[int] | None = None,
     trust_remote_code: bool = False,
     conserve_memory: bool = False,
-    scoring_model: "PreTrainedModel | None" = None,
-    scoring_tokenizer: "PreTrainedTokenizerBase | None" = None,
+    scoring_model: PreTrainedModel | None = None,
+    scoring_tokenizer: PreTrainedTokenizerBase | None = None,
 ) -> List[BenchmarkResult]:
     """Run comprehensive benchmark suite for TransformerBridge.
 
