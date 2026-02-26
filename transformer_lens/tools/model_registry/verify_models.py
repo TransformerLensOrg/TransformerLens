@@ -269,23 +269,36 @@ def estimate_model_params(model_id: str) -> int:
     return n_params
 
 
-def estimate_benchmark_memory_gb(n_params: int, dtype: str = "float32") -> float:
+def estimate_benchmark_memory_gb(
+    n_params: int, dtype: str = "float32", phases: Optional[list[int]] = None
+) -> float:
     """Estimate peak memory needed for benchmark suite.
 
-    During benchmarks, up to 3 model copies may be in memory simultaneously
-    (HF reference + Bridge + HookedTransformer), plus overhead for activations.
+    The multiplier depends on which phases are selected:
+    - Phases 1-3 may have up to 3 model copies simultaneously
+      (HF reference + Bridge + HookedTransformer) → 3.5x
+    - Phase 4 alone only needs 1 Bridge + GPT-2 scorer (~500MB) → 1.3x
+    - Phase 4 combined with 1-3 uses the full 3.5x estimate
 
     Args:
         n_params: Number of model parameters
         dtype: Data type for memory calculation
+        phases: Which phases will be run (None = all phases)
 
     Returns:
         Estimated peak memory in GB
     """
     bytes_per_param = {"float32": 4, "float16": 2, "bfloat16": 2}
     bpp = bytes_per_param.get(dtype, 4)
-    # 3.5x multiplier: 3 model copies + activation/gradient overhead
-    return n_params * bpp * 3.5 / (1024**3)
+
+    if phases and all(p >= 4 for p in phases):
+        # Phase 4+ only: single model copy + GPT-2 scorer overhead
+        multiplier = 1.3
+    else:
+        # Full suite or phases 1-3: up to 3 model copies + overhead
+        multiplier = 3.5
+
+    return n_params * bpp * multiplier / (1024**3)
 
 
 def get_available_memory_gb(device: str) -> float:
@@ -468,6 +481,10 @@ def _check_phase_scores(
       1. Its overall score is below the minimum threshold, OR
       2. Any of its required tests (per _REQUIRED_PHASE_TESTS) failed.
 
+    Phase 4 (text quality) is excluded — it is a quality metric, not a
+    correctness check.  Low text quality is surfaced in the verification
+    note via _build_verified_note() but never causes a model to fail.
+
     Returns an error message if any phase fails, or None if all phases pass.
     The message includes the names of failed tests.
     """
@@ -476,6 +493,11 @@ def _check_phase_scores(
     failing_phases: list[str] = []
     for phase, score in sorted(phase_scores.items()):
         if score is None:
+            continue
+
+        # Phase 4 is a quality metric, not a pass/fail check — skip it here.
+        # Low text quality is reported in the note by _build_verified_note().
+        if phase == 4:
             continue
 
         # Check 1: overall score threshold
@@ -514,31 +536,49 @@ def _build_verified_note(
     phase_scores: dict[int, Optional[float]],
     all_results: list,
 ) -> str:
-    """Build a verification note, including failed test names for any phase < 100%."""
+    """Build a verification note summarizing phase scores.
+
+    Phase 4 (text quality) is excluded from the score summary since it's a
+    quality metric, not a pass/fail comparison. It only contributes a "low
+    text quality" flag when below threshold.
+    """
     from transformer_lens.benchmarks.utils import BenchmarkSeverity
 
-    parts: list[str] = []
-    all_perfect = True
+    issue_parts: list[str] = []
+    low_text_quality = False
 
     for phase in sorted(phase_scores):
         score = phase_scores[phase]
         if score is None:
             continue
+        # Phase 4 is a quality score, not a pass/fail comparison — don't
+        # include it in the normal score summary.
+        if phase == 4:
+            threshold = _MIN_PHASE_SCORES.get(4, _DEFAULT_MIN_PHASE_SCORE)
+            if score < threshold:
+                low_text_quality = True
+            continue
+
         if score < 100.0:
-            all_perfect = False
             failed_tests = [
                 r.name
                 for r in all_results
                 if r.phase == phase and not r.passed and r.severity != BenchmarkSeverity.SKIPPED
             ]
             if failed_tests:
-                parts.append(f"P{phase}={score}% (failed: {', '.join(failed_tests)})")
+                issue_parts.append(f"P{phase}={score}% (failed: {', '.join(failed_tests)})")
             else:
-                parts.append(f"P{phase}={score}%")
+                issue_parts.append(f"P{phase}={score}%")
 
-    if all_perfect:
-        return "Benchmark passed"
-    return f"Benchmark passed with issues: {'; '.join(parts)}"
+    if issue_parts and low_text_quality:
+        return (
+            f"Full verification completed with issues, low text quality: {'; '.join(issue_parts)}"
+        )
+    if issue_parts:
+        return f"Full verification completed with issues: {'; '.join(issue_parts)}"
+    if low_text_quality:
+        return "Full verification completed with issues, low text quality"
+    return "Full verification completed"
 
 
 def _clear_hf_cache(quiet: bool = False) -> None:
@@ -624,6 +664,22 @@ def verify_models(
     if phases is None:
         phases = [1, 2, 3, 4]
 
+    # Pre-load the GPT-2 scoring model for Phase 4 so it persists across all
+    # models in the batch instead of being loaded and destroyed for each one.
+    _scoring_model = None
+    _scoring_tokenizer = None
+    if 4 in phases:
+        try:
+            from transformer_lens.benchmarks.text_quality import _load_scoring_model
+
+            _scoring_model, _scoring_tokenizer = _load_scoring_model("gpt2", device)
+            if not quiet:
+                print("Pre-loaded GPT-2 scoring model for Phase 4")
+        except Exception as e:
+            if not quiet:
+                print(f"Warning: Could not pre-load GPT-2 scorer: {e}")
+                print("  Phase 4 will load its own scorer per model.")
+
     total = len(candidates)
     for i, candidate in enumerate(candidates, 1):
         # Check for graceful interrupt between models
@@ -681,7 +737,7 @@ def verify_models(
             continue
 
         # Step 2: Check memory
-        estimated_mem = estimate_benchmark_memory_gb(n_params, dtype)
+        estimated_mem = estimate_benchmark_memory_gb(n_params, dtype, phases=phases)
         candidate.estimated_memory_gb = estimated_mem
         if not quiet:
             print(
@@ -737,6 +793,8 @@ def verify_models(
                 phases=phases,
                 conserve_memory=conserve_memory,
                 trust_remote_code=needs_remote_code,
+                scoring_model=_scoring_model,
+                scoring_tokenizer=_scoring_tokenizer,
             )
         except Exception as e:
             error_msg = str(e)
@@ -777,15 +835,78 @@ def verify_models(
         is_partial_run = set(phases) != {1, 2, 3, 4}
 
         if is_partial_run and phase_scores:
-            if not quiet:
-                score_parts = [f"P{p}={s}%" for p, s in sorted(phase_scores.items())]
-                print(f"  Partial phase update: {', '.join(score_parts)}")
-            update_model_status(
-                model_id,
-                arch,
-                phase_scores=phase_scores,
-            )
-            progress.verified.append(model_id)
+            # Only write scores for phases that were actually requested.
+            # Bridge load failures can produce Phase 1-tagged error results
+            # even during Phase 4-only runs — don't let those corrupt
+            # existing scores for unrequested phases.
+            filtered_scores = {p: s for p, s in phase_scores.items() if p in phases}
+            if filtered_scores:
+                if not quiet:
+                    score_parts = [f"P{p}={s}%" for p, s in sorted(filtered_scores.items())]
+                    print(f"  Partial phase update: {', '.join(score_parts)}")
+
+                # Phase 1+4 "core verification" gets custom notes and status
+                is_core_verification = set(phases) == {1, 4}
+                partial_status = None
+                partial_note = None
+
+                if is_core_verification:
+                    p1 = filtered_scores.get(1)
+                    p4 = filtered_scores.get(4)
+                    p1_pass = p1 is not None and p1 >= _MIN_PHASE_SCORES.get(
+                        1, _DEFAULT_MIN_PHASE_SCORE
+                    )
+                    p4_pass = p4 is not None and p4 >= _MIN_PHASE_SCORES.get(
+                        4, _DEFAULT_MIN_PHASE_SCORE
+                    )
+
+                    if p1_pass and p4_pass:
+                        partial_status = STATUS_VERIFIED
+                        partial_note = "Core verification completed"
+                    elif p1_pass:
+                        partial_status = STATUS_VERIFIED
+                        partial_note = (
+                            "Core verification passed, but text quality poor. Needs review"
+                        )
+                    else:
+                        # P1 failed — build a descriptive failure note
+                        partial_status = STATUS_FAILED
+                        if error_msg:
+                            partial_note = f"CORE FAILED: {error_msg[:200]}"
+                        else:
+                            # Score-based failure — include details
+                            from transformer_lens.benchmarks.utils import (
+                                BenchmarkSeverity,
+                            )
+
+                            failed_tests = [
+                                r.name
+                                for r in all_results
+                                if r.phase == 1
+                                and not r.passed
+                                and r.severity != BenchmarkSeverity.SKIPPED
+                            ]
+                            tests_str = ", ".join(failed_tests) if failed_tests else "unknown"
+                            partial_note = f"CORE FAILED: P1={p1}% (failed: {tests_str})"
+
+                    if not quiet:
+                        print(f"  {partial_note}")
+
+                update_model_status(
+                    model_id,
+                    arch,
+                    status=partial_status,
+                    phase_scores=filtered_scores,
+                    note=partial_note,
+                )
+                if partial_status == STATUS_FAILED:
+                    progress.failed.append(model_id)
+                else:
+                    progress.verified.append(model_id)
+            else:
+                if not quiet:
+                    print(f"  No results for requested phases {phases} — skipping update")
+                progress.skipped.append(model_id)
         elif final_status == STATUS_VERIFIED:
             if not quiet:
                 print(
@@ -861,10 +982,21 @@ def verify_models(
 
         _save_checkpoint(progress)
 
+    # Clean up pre-loaded scoring model
+    if _scoring_model is not None:
+        del _scoring_model
+        del _scoring_tokenizer
+        gc.collect()
+
     return progress
 
 
-def _print_dry_run(candidates: list[ModelCandidate], dtype: str, max_memory_gb: float) -> None:
+def _print_dry_run(
+    candidates: list[ModelCandidate],
+    dtype: str,
+    max_memory_gb: float,
+    phases: Optional[list[int]] = None,
+) -> None:
     """Print what would be tested in a dry run."""
     print(f"\nDry run: {len(candidates)} models would be tested")
     print(f"Memory limit: {max_memory_gb:.1f} GB | Dtype: {dtype}")
@@ -884,7 +1016,7 @@ def _print_dry_run(candidates: list[ModelCandidate], dtype: str, max_memory_gb: 
         for c in models:
             try:
                 n_params = estimate_model_params(c.model_id)
-                mem = estimate_benchmark_memory_gb(n_params, dtype)
+                mem = estimate_benchmark_memory_gb(n_params, dtype, phases=phases)
                 status = "OK" if mem <= max_memory_gb else "SKIP (too large)"
                 if mem > max_memory_gb:
                     skippable += 1
@@ -1033,8 +1165,9 @@ Examples:
     parser.add_argument(
         "--model",
         type=str,
+        nargs="+",
         default=None,
-        help="Verify a single model by its HuggingFace model ID. "
+        help="Verify one or more models by HuggingFace model ID. "
         "Looks up architecture from the registry automatically.",
     )
 
@@ -1079,21 +1212,25 @@ Examples:
             _save_checkpoint(progress)
             print(f"  Cleared {len(failed_set)} failed models for retry")
 
-    # Select models — either a single --model or the normal batch selection
+    # Select models — either --model list or the normal batch selection
     if args.model:
-        # Look up architecture from the registry
+        # Look up architecture for each model from the registry
         registry_data = load_supported_models_raw()
-        arch_id = None
-        for entry in registry_data.get("models", []):
-            if entry["model_id"] == args.model:
-                arch_id = entry["architecture_id"]
-                break
-        if arch_id is None:
-            print(f"Model '{args.model}' not found in supported_models.json")
-            print("Tip: use the exact model_id as listed in the registry.")
+        candidates = []
+        for model_id in args.model:
+            arch_id = None
+            for entry in registry_data.get("models", []):
+                if entry["model_id"] == model_id:
+                    arch_id = entry["architecture_id"]
+                    break
+            if arch_id is None:
+                print(f"Model '{model_id}' not found in supported_models.json, skipping")
+                continue
+            candidates.append(ModelCandidate(model_id=model_id, architecture_id=arch_id))
+        if not candidates:
+            print("No valid models found in registry")
             return
-        candidates = [ModelCandidate(model_id=args.model, architecture_id=arch_id)]
-        print(f"Single-model mode: {args.model} ({arch_id})")
+        print(f"Model list mode: {len(candidates)} model(s)")
     else:
         candidates = select_models_for_verification(
             per_arch=args.per_arch,
@@ -1112,7 +1249,7 @@ Examples:
 
     # Dry run
     if args.dry_run:
-        _print_dry_run(candidates, args.dtype, max_memory_gb)
+        _print_dry_run(candidates, args.dtype, max_memory_gb, phases=args.phases)
         return
 
     # Install graceful interrupt handler (Ctrl+C stops between models)

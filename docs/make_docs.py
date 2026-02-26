@@ -861,13 +861,17 @@ across supported architectures.
 }
 #bt-root .bt-pag .bt-ellip { padding: 4px 6px; color: var(--color-foreground-muted, #999); }
 #bt-root .bt-empty { text-align: center; padding: 40px 20px; color: var(--color-foreground-muted, #999); }
+#bt-root thead th[data-sort] { cursor: pointer; user-select: none; }
+#bt-root thead th[data-sort]::after { content: ' \\25B2\\25BC'; font-size: 9px; opacity: 0.3; margin-left: 4px; }
+#bt-root thead th[data-sort].bt-asc::after { content: ' \\25B2'; opacity: 0.8; }
+#bt-root thead th[data-sort].bt-desc::after { content: ' \\25BC'; opacity: 0.8; }
 </style>
 
 <div id="bt-root">
   <div class="bt-controls">
-    <input type="text" id="btSearch" placeholder="Search by model name...">
+    <input type="text" id="btSearch" placeholder="Search by model name or organization...">
     <select id="btArch"><option value="">All Architectures</option></select>
-    <select id="btPrefix"><option value="">All Prefixes</option></select>
+    <select id="btPrefix"><option value="">All Organizations</option></select>
     <select id="btStatus"><option value="">All Statuses</option><option value="1">Verified</option><option value="0">Unverified</option><option value="2">Skipped</option><option value="3">Failed</option></select>
     <span class="bt-count" id="btCount"></span>
   </div>
@@ -875,15 +879,16 @@ across supported architectures.
     <table>
       <thead><tr>
         <th class="bt-rn">#</th>
-        <th>Model</th>
-        <th>Architecture</th>
-        <th>Status</th>
-        <th title="English language generation quality scored out of 100. Scores for non-English models may be invalid.">Text Quality</th>
-        <th>Verified Date</th>
+        <th data-sort="org">Organization</th>
+        <th data-sort="name">Model Name</th>
+        <th data-sort="arch">Architecture</th>
+        <th data-sort="status">Status</th>
+        <th data-sort="score" title="English language generation quality scored out of 100. Scores for non-English models may be invalid.">Text Quality</th>
+        <th data-sort="date">Verified Date</th>
         <th>Note</th>
         <th></th>
       </tr></thead>
-      <tbody id="btBody"><tr><td colspan="8" class="bt-empty">Loading models...</td></tr></tbody>
+      <tbody id="btBody"><tr><td colspan="9" class="bt-empty">Loading models...</td></tr></tbody>
     </table>
   </div>
   <div class="bt-pag" id="btPag"></div>
@@ -891,10 +896,10 @@ across supported architectures.
 
 <script>
 (function() {
-    const PS = 25, COLS = 8;
+    const PS = 25, COLS = 9;
     const SM = {0:'Unverified',1:'Verified',2:'Skipped',3:'Failed'};
     const cfgCache = {};
-    let all=[], filt=[], pg=1, dt=null;
+    let all=[], filt=[], pg=1, dt=null, sortCol='', sortDir='asc';
 
     /* Fields to extract from HuggingFace config.json, with beautified labels.
        Each entry: [label, ...candidate keys to try in order].
@@ -1061,6 +1066,10 @@ across supported architectures.
         const i = modelId.indexOf('/');
         return i > 0 ? modelId.slice(0, i) : '';
     }
+    function getModelName(modelId) {
+        const i = modelId.indexOf('/');
+        return i > 0 ? modelId.slice(i + 1) : modelId;
+    }
 
     function populatePrefixFilter() {
         const arch = document.getElementById('btArch').value;
@@ -1072,7 +1081,7 @@ across supported architectures.
         });
         const sel = document.getElementById('btPrefix');
         const cur = sel.value;
-        sel.innerHTML = '<option value="">All Prefixes</option>';
+        sel.innerHTML = '<option value="">All Organizations</option>';
         Object.keys(pc).sort().forEach(p => {
             const o = document.createElement('option');
             o.value = p; o.textContent = p + ' (' + pc[p] + ')';
@@ -1096,6 +1105,13 @@ across supported architectures.
                 sel.appendChild(o);
             });
             populatePrefixFilter();
+            /* Restore state from URL params */
+            const up = new URLSearchParams(location.search);
+            if (up.get('q')) document.getElementById('btSearch').value = up.get('q');
+            if (up.get('arch')) document.getElementById('btArch').value = up.get('arch');
+            if (up.get('org')) { populatePrefixFilter(); document.getElementById('btPrefix').value = up.get('org'); }
+            if (up.has('status')) document.getElementById('btStatus').value = up.get('status');
+            if (up.get('sort')) { sortCol = up.get('sort'); sortDir = up.get('dir') || 'asc'; updateSortHeaders(); }
             apply();
         } catch(e) {
             document.getElementById('btBody').innerHTML =
@@ -1115,11 +1131,61 @@ across supported architectures.
             if (sv !== '' && m.status !== +sv) return false;
             return true;
         });
-        pg = 1; render(); pag(); count();
+        sortFilt();
+        pg = 1; render(); pag(); count(); syncUrl();
     }
 
     function esc(str) { const d=document.createElement('div'); d.textContent=str; return d.innerHTML; }
     function scoreClass(v) { return v >= 70 ? ' bt-score-high' : v >= 40 ? ' bt-score-mid' : ' bt-score-low'; }
+
+    /* Sort accessor: returns a comparable value for each sort key */
+    function sortVal(m, key) {
+        switch(key) {
+            case 'org': return getPrefix(m.model_id).toLowerCase();
+            case 'name': return getModelName(m.model_id).toLowerCase();
+            case 'arch': return m.architecture_id.toLowerCase();
+            case 'status': return m.status;
+            case 'score': return m.phase4_score;
+            case 'date': return m.verified_date || '';
+            default: return '';
+        }
+    }
+    function sortFilt() {
+        if (!sortCol) return;
+        const dir = sortDir === 'desc' ? -1 : 1;
+        const isNum = (sortCol === 'status' || sortCol === 'score');
+        filt.sort((a, b) => {
+            let va = sortVal(a, sortCol), vb = sortVal(b, sortCol);
+            /* nulls/empty always last */
+            const aN = (va === null || va === undefined || va === '');
+            const bN = (vb === null || vb === undefined || vb === '');
+            if (aN && bN) return 0;
+            if (aN) return 1;
+            if (bN) return -1;
+            if (isNum) return (va - vb) * dir;
+            return String(va).localeCompare(String(vb)) * dir;
+        });
+    }
+    function updateSortHeaders() {
+        document.querySelectorAll('#bt-root th[data-sort]').forEach(th => {
+            th.classList.remove('bt-asc', 'bt-desc');
+            if (th.dataset.sort === sortCol) th.classList.add(sortDir === 'desc' ? 'bt-desc' : 'bt-asc');
+        });
+    }
+    function syncUrl() {
+        const p = new URLSearchParams();
+        const s = document.getElementById('btSearch').value.trim();
+        const a = document.getElementById('btArch').value;
+        const pf = document.getElementById('btPrefix').value;
+        const sv = document.getElementById('btStatus').value;
+        if (s) p.set('q', s);
+        if (a) p.set('arch', a);
+        if (pf) p.set('org', pf);
+        if (sv !== '') p.set('status', sv);
+        if (sortCol) { p.set('sort', sortCol); p.set('dir', sortDir); }
+        const qs = p.toString();
+        history.replaceState(null, '', qs ? '?' + qs : location.pathname);
+    }
     function cleanNote(note) {
         if (!note) return '';
         // "Benchmark passed with issues: P1=50.0% ..." → "Benchmark passed with issues"
@@ -1144,9 +1210,12 @@ across supported architectures.
         }
         tb.innerHTML = pm.map((m,i) => {
             const id = esc(m.model_id);
+            const org = esc(getPrefix(m.model_id));
+            const name = esc(getModelName(m.model_id));
             return '<tr data-model="'+id+'">' +
             '<td class="bt-rn">'+(st+i+1)+'</td>' +
-            '<td><a href="https://huggingface.co/'+id+'" target="_blank" rel="noopener">'+id+'</a></td>' +
+            '<td>'+org+'</td>' +
+            '<td><a href="https://huggingface.co/'+id+'" target="_blank" rel="noopener">'+name+'</a></td>' +
             '<td>'+esc(m.architecture_id)+'</td>' +
             '<td><span class="bt-badge bt-s'+m.status+'">'+SM[m.status]+'</span></td>' +
             '<td>'+(m.phase4_score != null ? '<span class="bt-score'+scoreClass(m.phase4_score)+'">'+m.phase4_score.toFixed(1)+'</span>' : '<span class="bt-muted">&mdash;</span>')+'</td>' +
@@ -1204,6 +1273,14 @@ across supported architectures.
     document.getElementById('btArch').addEventListener('change', () => { populatePrefixFilter(); apply(); });
     document.getElementById('btPrefix').addEventListener('change', apply);
     document.getElementById('btStatus').addEventListener('change', apply);
+    document.querySelectorAll('#bt-root th[data-sort]').forEach(th => {
+        th.addEventListener('click', () => {
+            const key = th.dataset.sort;
+            if (sortCol === key) { sortDir = sortDir === 'asc' ? 'desc' : 'asc'; }
+            else { sortCol = key; sortDir = 'asc'; }
+            updateSortHeaders(); sortFilt(); pg = 1; render(); pag(); count(); syncUrl();
+        });
+    });
     init();
 })();
 </script>

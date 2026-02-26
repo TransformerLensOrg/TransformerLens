@@ -89,6 +89,12 @@
             white-space: nowrap;
         }
 
+        tbody td:last-child {
+            white-space: normal;
+            max-width: 350px;
+            font-size: 12px;
+        }
+
         tbody tr:hover {
             background: #f8f8ff;
         }
@@ -130,6 +136,12 @@
         .score-mid { color: #856404; }
         .score-low { color: #721c24; }
         .muted { color: #999; }
+
+        /* Sortable headers */
+        thead th[data-sort] { cursor: pointer; user-select: none; }
+        thead th[data-sort]::after { content: ' \25B2\25BC'; font-size: 9px; opacity: 0.3; margin-left: 4px; }
+        thead th[data-sort].sort-asc::after { content: ' \25B2'; opacity: 0.8; }
+        thead th[data-sort].sort-desc::after { content: ' \25BC'; opacity: 0.8; }
 
         /* Pagination */
         .pagination {
@@ -204,7 +216,7 @@
 </head>
 <body>
     <div class="controls">
-        <input type="text" id="searchInput" placeholder="Search by model name...">
+        <input type="text" id="searchInput" placeholder="Search by model name or organization...">
         <select id="archFilter">
             <option value="">All Architectures</option>
         </select>
@@ -220,14 +232,16 @@
             <thead>
                 <tr>
                     <th class="row-num">#</th>
-                    <th>Model ID</th>
-                    <th>Architecture</th>
-                    <th>Status</th>
-                    <th title="English language generation quality scored out of 100. Scores for non-English models may be invalid.">Text Quality</th>
+                    <th data-sort="org">Organization</th>
+                    <th data-sort="name">Model Name</th>
+                    <th data-sort="arch">Architecture</th>
+                    <th data-sort="status">Status</th>
+                    <th data-sort="score" title="English language generation quality scored out of 100. Scores for non-English models may be invalid.">Text Quality</th>
+                    <th data-sort="note">Note</th>
                 </tr>
             </thead>
             <tbody id="tableBody">
-                <tr><td colspan="5" class="loading">Loading models...</td></tr>
+                <tr><td colspan="7" class="loading">Loading models...</td></tr>
             </tbody>
         </table>
     </div>
@@ -235,13 +249,72 @@
     <div class="pagination" id="pagination"></div>
 
     <script>
-        const PAGE_SIZE = 25;
+        const PAGE_SIZE = 25, COLS = 7;
         const STATUS_MAP = { 0: 'Unverified', 1: 'Verified', 2: 'Skipped', 3: 'Failed' };
 
         let allModels = [];
         let filteredModels = [];
         let currentPage = 1;
         let debounceTimer = null;
+        let sortCol = '', sortDir = 'asc';
+
+        function getPrefix(id) { const i = id.indexOf('/'); return i > 0 ? id.slice(0, i) : ''; }
+        function getModelName(id) { const i = id.indexOf('/'); return i > 0 ? id.slice(i + 1) : id; }
+        function scoreClass(v) { return v >= 70 ? ' score-high' : v >= 40 ? ' score-mid' : ' score-low'; }
+
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        function sortVal(m, key) {
+            switch(key) {
+                case 'org': return getPrefix(m.model_id).toLowerCase();
+                case 'name': return getModelName(m.model_id).toLowerCase();
+                case 'arch': return m.architecture_id.toLowerCase();
+                case 'status': return m.status;
+                case 'score': return m.phase4_score;
+                case 'note': return (m.note || '').toLowerCase();
+                default: return '';
+            }
+        }
+
+        function sortFiltered() {
+            if (!sortCol) return;
+            const dir = sortDir === 'desc' ? -1 : 1;
+            const isNum = (sortCol === 'status' || sortCol === 'score');
+            filteredModels.sort((a, b) => {
+                let va = sortVal(a, sortCol), vb = sortVal(b, sortCol);
+                const aN = (va === null || va === undefined || va === '');
+                const bN = (vb === null || vb === undefined || vb === '');
+                if (aN && bN) return 0;
+                if (aN) return 1;
+                if (bN) return -1;
+                if (isNum) return (va - vb) * dir;
+                return String(va).localeCompare(String(vb)) * dir;
+            });
+        }
+
+        function updateSortHeaders() {
+            document.querySelectorAll('th[data-sort]').forEach(th => {
+                th.classList.remove('sort-asc', 'sort-desc');
+                if (th.dataset.sort === sortCol) th.classList.add(sortDir === 'desc' ? 'sort-desc' : 'sort-asc');
+            });
+        }
+
+        function syncUrl() {
+            const p = new URLSearchParams();
+            const s = document.getElementById('searchInput').value.trim();
+            const a = document.getElementById('archFilter').value;
+            const h = document.getElementById('hideUnverified').checked;
+            if (s) p.set('q', s);
+            if (a) p.set('arch', a);
+            if (h) p.set('hide', '1');
+            if (sortCol) { p.set('sort', sortCol); p.set('dir', sortDir); }
+            const qs = p.toString();
+            history.replaceState(null, '', qs ? '?' + qs : location.pathname);
+        }
 
         async function init() {
             try {
@@ -249,10 +322,16 @@
                 const data = await response.json();
                 allModels = data.models;
                 populateArchFilter(allModels);
+                /* Restore state from URL params */
+                const up = new URLSearchParams(location.search);
+                if (up.get('q')) document.getElementById('searchInput').value = up.get('q');
+                if (up.get('arch')) document.getElementById('archFilter').value = up.get('arch');
+                if (up.get('hide') === '1') document.getElementById('hideUnverified').checked = true;
+                if (up.get('sort')) { sortCol = up.get('sort'); sortDir = up.get('dir') || 'asc'; updateSortHeaders(); }
                 applyFilters();
             } catch (err) {
                 document.getElementById('tableBody').innerHTML =
-                    '<tr><td colspan="5" class="empty-state">Failed to load model data.</td></tr>';
+                    '<tr><td colspan="' + COLS + '" class="empty-state">Failed to load model data.</td></tr>';
             }
         }
 
@@ -282,10 +361,12 @@
                 return true;
             });
 
+            sortFiltered();
             currentPage = 1;
             renderTable();
             renderPagination();
             updateCount();
+            syncUrl();
         }
 
         function renderTable() {
@@ -294,21 +375,25 @@
             const pageModels = filteredModels.slice(start, start + PAGE_SIZE);
 
             if (pageModels.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No models match your filters.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="' + COLS + '" class="empty-state">No models match your filters.</td></tr>';
                 return;
             }
 
             tbody.innerHTML = pageModels.map((m, i) => {
                 const rowNum = start + i + 1;
                 const hfLink = 'https://huggingface.co/' + m.model_id;
+                const org = escapeHtml(getPrefix(m.model_id));
+                const name = escapeHtml(getModelName(m.model_id));
                 const statusClass = 'status-' + m.status;
                 const statusText = STATUS_MAP[m.status] || 'Unknown';
                 return '<tr>' +
                     '<td class="row-num">' + rowNum + '</td>' +
-                    '<td><a href="' + hfLink + '" target="_blank" rel="noopener">' + escapeHtml(m.model_id) + '</a></td>' +
+                    '<td>' + org + '</td>' +
+                    '<td><a href="' + hfLink + '" target="_blank" rel="noopener">' + name + '</a></td>' +
                     '<td>' + escapeHtml(m.architecture_id) + '</td>' +
                     '<td><span class="status-badge ' + statusClass + '">' + statusText + '</span></td>' +
                     '<td>' + (m.phase4_score != null ? '<span class="score' + scoreClass(m.phase4_score) + '">' + m.phase4_score.toFixed(1) + '</span>' : '<span class="muted">&mdash;</span>') + '</td>' +
+                    '<td>' + (m.note ? escapeHtml(m.note) : '<span class="muted">&mdash;</span>') + '</td>' +
                     '</tr>';
             }).join('');
         }
@@ -377,21 +462,22 @@
             el.textContent = 'Showing ' + filteredModels.length + ' of ' + allModels.length + ' models';
         }
 
-        function scoreClass(v) { return v >= 70 ? ' score-high' : v >= 40 ? ' score-mid' : ' score-low'; }
-
-        function escapeHtml(str) {
-            const div = document.createElement('div');
-            div.textContent = str;
-            return div.innerHTML;
-        }
-
-        // Event listeners with debounce for search
+        // Event listeners
         document.getElementById('searchInput').addEventListener('input', () => {
             clearTimeout(debounceTimer);
             debounceTimer = setTimeout(applyFilters, 200);
         });
         document.getElementById('archFilter').addEventListener('change', applyFilters);
         document.getElementById('hideUnverified').addEventListener('change', applyFilters);
+        document.querySelectorAll('th[data-sort]').forEach(th => {
+            th.addEventListener('click', () => {
+                const key = th.dataset.sort;
+                if (sortCol === key) { sortDir = sortDir === 'asc' ? 'desc' : 'asc'; }
+                else { sortCol = key; sortDir = 'asc'; }
+                updateSortHeaders(); sortFiltered();
+                currentPage = 1; renderTable(); renderPagination(); updateCount(); syncUrl();
+            });
+        });
 
         init();
     </script>

@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-02-24T18:02:08.713532",
+  "last_updated": "2026-02-25T08:05:33.770204",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -7408,6 +7408,26 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: Can't load the model for 'EleutherAI/pythia-410m-seed1'. If you were trying to load it from 'https://hug",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/pythia-70m-deduped",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-25",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed with issues: P4=94.0%",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/pythia-70m-deduped",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-02-25",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Benchmark passed: P4=94.0%",
       "invalidated": false,
       "invalidation_reason": null
     }
