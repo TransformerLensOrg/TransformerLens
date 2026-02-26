@@ -330,6 +330,10 @@ def boot(
         hf_model = model_class.from_pretrained(model_name, **model_kwargs)
         if device is not None:
             hf_model = hf_model.to(device)
+        # Ensure all parameters match the requested dtype. Some architectures
+        # (e.g., MoE models) retain native bfloat16 weights even when
+        # torch_dtype is specified during from_pretrained().
+        hf_model = hf_model.to(dtype=dtype)
     adapter.prepare_model(hf_model)
     tokenizer = tokenizer
     default_padding_side = getattr(adapter.cfg, "default_padding_side", None)
