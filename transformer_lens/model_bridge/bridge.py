@@ -2171,8 +2171,36 @@ class TransformerBridge(nn.Module):
         """
         return self.to(torch.device("mps"))
 
-    def add_hook(self, name: str, hook_fn, dir="fwd", is_permanent=False):
-        """Add a hook to a specific component."""
+    def add_hook(
+        self,
+        name: Union[str, Callable[[str], bool]],
+        hook_fn,
+        dir="fwd",
+        is_permanent=False,
+    ):
+        """Add a hook to a specific component or to all components matching a filter.
+
+        Args:
+            name: Either a string hook point name (e.g. "blocks.0.attn.hook_q")
+                or a callable filter ``(str) -> bool`` that is applied to every
+                hook point name; the hook is added to each point where the filter
+                returns True.
+            hook_fn: The hook function ``(activation, hook) -> activation | None``.
+            dir: Hook direction, ``"fwd"`` or ``"bwd"``.
+            is_permanent: If True the hook survives ``reset_hooks()`` calls.
+        """
+        if callable(name) and not isinstance(name, str):
+            hook_dict = self.hook_dict
+            seen_hooks: set[int] = set()
+            for hook_name, hook_point in hook_dict.items():
+                if name(hook_name):
+                    hook_id = id(hook_point)
+                    if hook_id in seen_hooks:
+                        continue
+                    seen_hooks.add(hook_id)
+                    hook_point.add_hook(hook_fn, dir=dir, is_permanent=is_permanent)
+            return
+
         component = self
         parts = name.split(".")
         for part in parts[:-1]:
