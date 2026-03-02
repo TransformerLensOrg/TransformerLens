@@ -105,6 +105,19 @@ class JointQKVAttentionBridge(AttentionBridge):
         self._reference_model: Optional[Any] = None
         self._layer_idx: Optional[int] = None
 
+    def state_dict(self, *args: Any, **kwargs: Any) -> Dict[str, Any]:
+        """Return state dict excluding stale combined QKV entries.
+
+        After splitting, the q/k/v LinearBridges hold the authoritative weights.
+        The original qkv LinearBridge remains registered in _modules (so
+        self.qkv is still accessible) but its parameters are stale copies of
+        the pre-split combined weight. Excluding them prevents weight processing
+        steps from accidentally reading unprocessed combined weights.
+        """
+        sd = super().state_dict(*args, **kwargs)
+        qkv_prefix = "qkv."
+        return {k: v for k, v in sd.items() if not k.startswith(qkv_prefix)}
+
     def _create_qkv_conversion_rule(self) -> BaseTensorConversion:
         """Create the appropriate conversion rule for the individual q, k, and v matrices.
 
