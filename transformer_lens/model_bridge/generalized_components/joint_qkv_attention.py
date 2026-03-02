@@ -115,8 +115,15 @@ class JointQKVAttentionBridge(AttentionBridge):
         steps from accidentally reading unprocessed combined weights.
         """
         sd = super().state_dict(*args, **kwargs)
-        qkv_prefix = "qkv."
-        return {k: v for k, v in sd.items() if not k.startswith(qkv_prefix)}
+        # PyTorch passes a `prefix` kwarg (e.g. "blocks.0.attn.") when
+        # collecting state dicts from child modules into a shared destination.
+        # Use it to build the fully-qualified qkv prefix to delete.
+        prefix = kwargs.get("prefix", "")
+        qkv_prefix = prefix + "qkv."
+        keys_to_remove = [k for k in sd if k.startswith(qkv_prefix)]
+        for k in keys_to_remove:
+            del sd[k]
+        return sd
 
     def _create_qkv_conversion_rule(self) -> BaseTensorConversion:
         """Create the appropriate conversion rule for the individual q, k, and v matrices.

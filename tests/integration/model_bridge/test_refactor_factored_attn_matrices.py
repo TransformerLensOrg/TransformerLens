@@ -36,9 +36,7 @@ def reference_ht(model_name, device):
     )
 
 
-def test_refactor_factored_attn_matrices_loss_matches(
-    model_name, device, test_text, reference_ht
-):
+def test_refactor_factored_attn_matrices_loss_matches(model_name, device, test_text, reference_ht):
     """Bridge with refactor_factored_attn_matrices should match HookedTransformer."""
     ref_loss = reference_ht(test_text, return_type="loss")
 
@@ -56,9 +54,7 @@ def test_refactor_factored_attn_matrices_loss_matches(
     )
 
 
-def test_refactor_factored_attn_matrices_logits_match(
-    model_name, device, test_text, reference_ht
-):
+def test_refactor_factored_attn_matrices_logits_match(model_name, device, test_text, reference_ht):
     """Bridge logits should closely match HookedTransformer logits after refactoring."""
     tokens = reference_ht.to_tokens(test_text)
     ref_logits = reference_ht(tokens)
@@ -68,9 +64,9 @@ def test_refactor_factored_attn_matrices_logits_match(
     bridge_logits = bridge(tokens)
 
     # Check shapes match
-    assert ref_logits.shape == bridge_logits.shape, (
-        f"Shape mismatch: ref={ref_logits.shape}, bridge={bridge_logits.shape}"
-    )
+    assert (
+        ref_logits.shape == bridge_logits.shape
+    ), f"Shape mismatch: ref={ref_logits.shape}, bridge={bridge_logits.shape}"
 
     # Check values are close
     max_diff = (ref_logits - bridge_logits).abs().max().item()

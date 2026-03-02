@@ -92,9 +92,7 @@ class QKVSplitRearrangeConversion(BaseTensorConversion):
             )
         if input_value.ndim == 2:
             # Bias in TL format [n_heads, d_head] -> [n_heads*d_head]
-            return einops.rearrange(
-                input_value, "n h -> (n h)", **self.axes_lengths
-            )
+            return einops.rearrange(input_value, "n h -> (n h)", **self.axes_lengths)
         return input_value
 
 
