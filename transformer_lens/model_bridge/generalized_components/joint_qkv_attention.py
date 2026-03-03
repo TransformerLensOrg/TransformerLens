@@ -105,25 +105,25 @@ class JointQKVAttentionBridge(AttentionBridge):
         self._reference_model: Optional[Any] = None
         self._layer_idx: Optional[int] = None
 
-    def state_dict(self, *args: Any, **kwargs: Any) -> Dict[str, Any]:
-        """Return state dict excluding stale combined QKV entries.
+        # After splitting, the q/k/v LinearBridges hold the authoritative weights.
+        # The original qkv LinearBridge remains registered in _modules (so
+        # self.qkv is still accessible) but its parameters are stale copies of
+        # the pre-split combined weight. This hook excludes them from state_dict
+        # so weight processing steps never read unprocessed combined weights.
+        self._register_state_dict_hook(JointQKVAttentionBridge._filter_qkv_state_dict)
 
-        After splitting, the q/k/v LinearBridges hold the authoritative weights.
-        The original qkv LinearBridge remains registered in _modules (so
-        self.qkv is still accessible) but its parameters are stale copies of
-        the pre-split combined weight. Excluding them prevents weight processing
-        steps from accidentally reading unprocessed combined weights.
-        """
-        sd = super().state_dict(*args, **kwargs)
-        # PyTorch passes a `prefix` kwarg (e.g. "blocks.0.attn.") when
-        # collecting state dicts from child modules into a shared destination.
-        # Use it to build the fully-qualified qkv prefix to delete.
-        prefix = kwargs.get("prefix", "")
+    @staticmethod
+    def _filter_qkv_state_dict(
+        module: torch.nn.Module,
+        state_dict: Dict[str, Any],
+        prefix: str,
+        local_metadata: Dict[str, Any],
+    ) -> None:
+        """State dict hook that removes stale combined QKV entries."""
         qkv_prefix = prefix + "qkv."
-        keys_to_remove = [k for k in sd if k.startswith(qkv_prefix)]
+        keys_to_remove = [k for k in state_dict if k.startswith(qkv_prefix)]
         for k in keys_to_remove:
-            del sd[k]
-        return sd
+            del state_dict[k]
 
     def _create_qkv_conversion_rule(self) -> BaseTensorConversion:
         """Create the appropriate conversion rule for the individual q, k, and v matrices.
