@@ -384,7 +384,6 @@ class TransformerBridge(nn.Module):
         all_aliases = {**self.hook_aliases, **component_aliases}
         if not all_aliases:
             return
-        aliased_hook_ids = set()
         for alias_name, target in all_aliases.items():
             if isinstance(target, list):
                 for single_target in target:
@@ -392,11 +391,6 @@ class TransformerBridge(nn.Module):
                         target_hook = resolve_alias(self, alias_name, {alias_name: single_target})
                         if target_hook is not None:
                             hooks[alias_name] = target_hook
-                            if isinstance(target_hook, HookPoint):
-                                hook_id = id(target_hook)
-                                if hook_id not in aliased_hook_ids:
-                                    target_hook.name = alias_name
-                                    aliased_hook_ids.add(hook_id)
                             break
                     except AttributeError:
                         continue
@@ -405,11 +399,6 @@ class TransformerBridge(nn.Module):
                     target_hook = resolve_alias(self, alias_name, {alias_name: target})
                     if target_hook is not None:
                         hooks[alias_name] = target_hook
-                        if isinstance(target_hook, HookPoint):
-                            hook_id = id(target_hook)
-                            if hook_id not in aliased_hook_ids:
-                                target_hook.name = alias_name
-                                aliased_hook_ids.add(hook_id)
                 except AttributeError:
                     continue
 
@@ -1288,6 +1277,12 @@ class TransformerBridge(nn.Module):
                 else:
                     kwargs["decoder_input_ids"] = input_ids
 
+            # Ensure pos_embed hook captures full batch dimension.
+            # HF models may generate position_ids with batch=1 as an optimization;
+            # PosEmbedBridge uses this to expand its output to match.
+            if hasattr(self, "pos_embed"):
+                self.pos_embed._current_batch_size = input_ids.shape[0]
+
             original_tl_cache = past_kv_cache
             output = self.original_model(input_ids, **kwargs)
             if (
@@ -1465,21 +1460,26 @@ class TransformerBridge(nn.Module):
         hooks: List[Tuple[HookPoint, str]] = []
         visited: set[int] = set()
 
+        # Extract cache device early so make_cache_hook can capture it.
+        # Default None means .to(None) which is a no-op — tensors stay on
+        # their current device, matching HookedRootModule's default behavior.
+        cache_device = kwargs.pop("device", None)
+
         def make_cache_hook(name: str):
             def cache_hook(tensor: torch.Tensor, *, hook: Any) -> torch.Tensor:
                 if tensor is None:
                     cache[name] = None
                 elif isinstance(tensor, torch.Tensor):
-                    cache[name] = tensor.detach().cpu()
+                    cache[name] = tensor.detach().to(cache_device)
                 elif isinstance(tensor, tuple):
                     if len(tensor) > 0 and isinstance(tensor[0], torch.Tensor):
-                        cache[name] = tensor[0].detach().cpu()
+                        cache[name] = tensor[0].detach().to(cache_device)
                     else:
                         pass
                 else:
                     try:
                         if hasattr(tensor, "detach"):
-                            cache[name] = tensor.detach().cpu()
+                            cache[name] = tensor.detach().to(cache_device)
                     except:
                         pass
                 return tensor
@@ -1535,14 +1535,13 @@ class TransformerBridge(nn.Module):
                     hook_dict[block_hook_name].add_hook(stop_hook)
                     hooks.append((hook_dict[block_hook_name], block_hook_name))
         filtered_kwargs = kwargs.copy()
-        target_device = filtered_kwargs.pop("device", None)
-        if target_device is not None:
-            self.original_model = self.original_model.to(target_device)
+        if cache_device is not None:
+            self.original_model = self.original_model.to(cache_device)
             if processed_args and isinstance(processed_args[0], torch.Tensor):
-                processed_args = [processed_args[0].to(target_device)] + list(processed_args[1:])
+                processed_args = [processed_args[0].to(cache_device)] + list(processed_args[1:])
             for key, value in filtered_kwargs.items():
                 if isinstance(value, torch.Tensor):
-                    filtered_kwargs[key] = value.to(target_device)
+                    filtered_kwargs[key] = value.to(cache_device)
         try:
             if "output_attentions" not in filtered_kwargs:
                 filtered_kwargs["output_attentions"] = True
