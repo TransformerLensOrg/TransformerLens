@@ -1288,6 +1288,12 @@ class TransformerBridge(nn.Module):
                 else:
                     kwargs["decoder_input_ids"] = input_ids
 
+            # Ensure pos_embed hook captures full batch dimension.
+            # HF models may generate position_ids with batch=1 as an optimization;
+            # PosEmbedBridge uses this to expand its output to match.
+            if hasattr(self, "pos_embed"):
+                self.pos_embed._current_batch_size = input_ids.shape[0]
+
             original_tl_cache = past_kv_cache
             output = self.original_model(input_ids, **kwargs)
             if (
