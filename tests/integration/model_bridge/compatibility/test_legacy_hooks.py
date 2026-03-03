@@ -64,6 +64,7 @@ class TestLegacyHookCompatibility:
             "blocks.0.attn.hook_z",
             "blocks.0.attn.hook_attn_scores",
             "blocks.0.attn.hook_pattern",
+            "blocks.0.attn.hook_result",
             # MLP hooks
             "blocks.0.mlp.hook_pre",
             "blocks.0.mlp.hook_post",
