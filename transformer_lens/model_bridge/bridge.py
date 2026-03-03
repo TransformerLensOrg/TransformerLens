@@ -384,7 +384,6 @@ class TransformerBridge(nn.Module):
         all_aliases = {**self.hook_aliases, **component_aliases}
         if not all_aliases:
             return
-        aliased_hook_ids = set()
         for alias_name, target in all_aliases.items():
             if isinstance(target, list):
                 for single_target in target:
@@ -392,11 +391,6 @@ class TransformerBridge(nn.Module):
                         target_hook = resolve_alias(self, alias_name, {alias_name: single_target})
                         if target_hook is not None:
                             hooks[alias_name] = target_hook
-                            if isinstance(target_hook, HookPoint):
-                                hook_id = id(target_hook)
-                                if hook_id not in aliased_hook_ids:
-                                    target_hook.name = alias_name
-                                    aliased_hook_ids.add(hook_id)
                             break
                     except AttributeError:
                         continue
@@ -405,11 +399,6 @@ class TransformerBridge(nn.Module):
                     target_hook = resolve_alias(self, alias_name, {alias_name: target})
                     if target_hook is not None:
                         hooks[alias_name] = target_hook
-                        if isinstance(target_hook, HookPoint):
-                            hook_id = id(target_hook)
-                            if hook_id not in aliased_hook_ids:
-                                target_hook.name = alias_name
-                                aliased_hook_ids.add(hook_id)
                 except AttributeError:
                     continue
 

@@ -28,7 +28,6 @@ class AttentionBridge(GeneralizedComponent):
     """
 
     hook_aliases = {
-        "hook_result": "hook_out",
         "hook_q": "q.hook_out",
         "hook_k": "k.hook_out",
         "hook_v": "v.hook_out",
