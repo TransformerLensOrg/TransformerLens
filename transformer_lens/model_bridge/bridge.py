@@ -206,8 +206,6 @@ class TransformerBridge(nn.Module):
                                 for part in single_target.split("."):
                                     target_obj = getattr(target_obj, part)
                                 object.__setattr__(self, alias_name, target_obj)
-                                if isinstance(target_obj, HookPoint):
-                                    target_obj.name = alias_name
                                 break
                             except AttributeError:
                                 continue
@@ -216,8 +214,6 @@ class TransformerBridge(nn.Module):
                         for part in target_path.split("."):
                             target_obj = getattr(target_obj, part)
                         object.__setattr__(self, alias_name, target_obj)
-                        if isinstance(target_obj, HookPoint):
-                            target_obj.name = alias_name
                 except AttributeError:
                     pass
 
@@ -405,6 +401,11 @@ class TransformerBridge(nn.Module):
     def _scan_existing_hooks(self, module: nn.Module, prefix: str = "") -> None:
         """Scan existing modules for hooks and add them to registry."""
         visited = set()
+        # Track which HookPoint objects have already been named so that
+        # alias entries (from get_hooks() in compatibility mode) do not
+        # overwrite the canonical name.  get_hooks() returns canonical
+        # entries first, so the first name assigned is always canonical.
+        named_hook_ids: set = set()
 
         def scan_module(mod: nn.Module, path: str = "") -> None:
             obj_id = id(mod)
@@ -417,7 +418,10 @@ class TransformerBridge(nn.Module):
                     hooks_dict = cast(Dict[str, HookPoint], component_hooks)
                     for hook_name, hook in hooks_dict.items():
                         full_name = f"{path}.{hook_name}" if path else hook_name
-                        hook.name = full_name
+                        hook_id = id(hook)
+                        if hook_id not in named_hook_ids:
+                            hook.name = full_name
+                            named_hook_ids.add(hook_id)
                         self._hook_registry[full_name] = hook
             for attr_name in dir(mod):
                 if attr_name.startswith("_"):
@@ -448,7 +452,10 @@ class TransformerBridge(nn.Module):
                     continue
                 name = f"{path}.{attr_name}" if path else attr_name
                 if isinstance(attr, HookPoint):
-                    attr.name = name
+                    hook_id = id(attr)
+                    if hook_id not in named_hook_ids:
+                        attr.name = name
+                        named_hook_ids.add(hook_id)
                     self._hook_registry[name] = attr
             for child_name, child_module in mod.named_children():
                 if (
