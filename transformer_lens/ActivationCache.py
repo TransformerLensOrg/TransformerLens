@@ -750,11 +750,11 @@ class ActivationCache:
             # Default to the residual stream immediately pre unembed
             layer = self.model.cfg.n_layers
 
-        if "blocks.0.attn.hook_result" not in self.cache_dict:
-            print(
-                "Tried to stack head results when they weren't cached. Computing head results now"
-            )
-            self.compute_head_results()
+        # Always call compute_head_results() – it handles idempotency
+        # (returns early for valid 4D data) and also cleans up any stale 3D
+        # entries that TransformerBridge's hook_result alias may have placed
+        # in the cache.
+        self.compute_head_results()
 
         components: Any = []
         labels = []
