@@ -69,5 +69,23 @@ class PosEmbedBridge(GeneralizedComponent):
             first_arg = self.hook_in(args[0])
             args = (first_arg,) + args[1:]
         output = self.original_component(*args, **kwargs)
+
+        # HF models may return pos embeddings with batch=1 as an optimization.
+        # Expand to match the actual batch size so hooks capture the correct shape.
+        batch_size = getattr(self, "_current_batch_size", None)
+
+        # Read-and-clear: only expand for the forward pass that set the batch size
+        # (prevents stale values from affecting HF generate() steps).
+        if batch_size is not None:
+            self._current_batch_size = None
+        if (
+            batch_size is not None
+            and batch_size > 1
+            and isinstance(output, torch.Tensor)
+            and output.ndim >= 1
+            and output.shape[0] == 1
+        ):
+            output = output.expand(batch_size, *[-1] * (output.ndim - 1))
+
         output = self.hook_out(output)
         return output

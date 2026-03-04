@@ -202,6 +202,10 @@ def generic_activation_patch(
 
     # A generic patching hook - for each index, it applies the patch_setter appropriately to patch the activation
     def patching_hook(corrupted_activation, hook, index, clean_activation):
+        # Clone to break autograd view chain before inplace modification.
+        # Without this, TransformerBridge's HookPoint identity forward creates
+        # a view that conflicts with inplace ops in the patch setters.
+        corrupted_activation = corrupted_activation.clone()
         return patch_setter(corrupted_activation, index, clean_activation)
 
     # Iterate over every list of indices, and make the appropriate patch!
