@@ -2,6 +2,7 @@
 
 from typing import Any
 
+import einops
 import torch
 
 from transformer_lens.conversion_utils.conversion_steps import (
@@ -26,14 +27,21 @@ from transformer_lens.model_bridge.generalized_components import (
 
 
 class QKVSplitRearrangeConversion(BaseTensorConversion):
-    """Custom conversion that splits QKV tensor and then rearranges."""
+    """Custom conversion that splits QKV tensor and then rearranges.
+
+    Handles two input formats:
+    - Combined QKV tensor (from HuggingFace): one dimension is ~3x the other.
+      Splits into Q/K/V parts, then rearranges to TL format.
+    - Already-split tensor (from bridge state dict): nn.Linear format
+      [n_heads*d_head, d_model]. Rearranges directly to TL format.
+    """
 
     def __init__(self, qkv_index: int, rearrange_pattern: str, **axes_lengths):
         """Initialize the conversion.
 
         Args:
             qkv_index: Index of Q (0), K (1), or V (2) in the QKV tensor
-            rearrange_pattern: Einops pattern for rearrangement
+            rearrange_pattern: Einops pattern for rearrangement (Conv1D format)
             **axes_lengths: Additional axes lengths for einops
         """
         super().__init__()
@@ -41,26 +49,51 @@ class QKVSplitRearrangeConversion(BaseTensorConversion):
         self.rearrange_pattern = rearrange_pattern
         self.axes_lengths = axes_lengths
 
+    def _is_combined_qkv(self, tensor: torch.Tensor) -> bool:
+        """Check if a tensor is a combined QKV tensor vs already-split."""
+        if tensor.ndim == 2:
+            d0, d1 = tensor.shape
+            return d1 > d0 * 2 or d0 > d1 * 2
+        if tensor.ndim == 1:
+            n = self.axes_lengths.get("n", 1)
+            # Combined bias has 3x the expected individual size
+            return tensor.shape[0] % 3 == 0 and tensor.shape[0] > n * 3
+        return False
+
     def handle_conversion(self, input_value: torch.Tensor, *full_context) -> torch.Tensor:
         """Split QKV tensor and rearrange the selected part."""
-        # Determine the split dimension based on tensor shape
+        if not self._is_combined_qkv(input_value):
+            # Already-split tensor in nn.Linear format [n_heads*d_head, d_model].
+            # The original rearrange_pattern is "d_model (n h) -> n d_model h"
+            # (Conv1D format). For nn.Linear format, the dims are transposed:
+            return einops.rearrange(
+                input_value, "(n h) d_model -> n d_model h", **self.axes_lengths
+            )
+
+        # Combined QKV tensor — split then rearrange
         if len(input_value.shape) == 2:
             # Weight tensor: [d_model, 3*d_model] -> split along dim=1
-            split_dim = 1
+            split_dim = 1 if input_value.shape[1] > input_value.shape[0] else 0
         elif len(input_value.shape) == 1:
             # Bias tensor: [3*n_heads*d_head] -> split along dim=0
             split_dim = 0
         else:
             raise ValueError(f"Unexpected tensor shape: {input_value.shape}")
 
-        # Split the QKV tensor
         qkv_parts = torch.tensor_split(input_value, 3, dim=split_dim)
         selected_part = qkv_parts[self.qkv_index]
-
-        # Apply rearrangement
-        import einops
-
         return einops.rearrange(selected_part, self.rearrange_pattern, **self.axes_lengths)
+
+    def revert(self, input_value: torch.Tensor, *full_context) -> torch.Tensor:
+        """Revert from TL format [n_heads, d_model, d_head] to nn.Linear format."""
+        if input_value.ndim == 3:
+            return einops.rearrange(
+                input_value, "n d_model h -> (n h) d_model", **self.axes_lengths
+            )
+        if input_value.ndim == 2:
+            # Bias in TL format [n_heads, d_head] -> [n_heads*d_head]
+            return einops.rearrange(input_value, "n h -> (n h)", **self.axes_lengths)
+        return input_value
 
 
 class GPT2ArchitectureAdapter(ArchitectureAdapter):
@@ -182,7 +215,6 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
                     "attn": JointQKVAttentionBridge(
                         name="attn",
                         config=self.cfg,
-                        split_qkv_matrix=self.split_qkv_matrix,
                         submodules={
                             "qkv": LinearBridge(name="c_attn"),
                             "o": LinearBridge(name="c_proj"),
@@ -201,52 +233,3 @@ class GPT2ArchitectureAdapter(ArchitectureAdapter):
             "ln_final": NormalizationBridge(name="transformer.ln_f", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head"),
         }
-
-    def split_qkv_matrix(
-        self, original_attention_component: Any
-    ) -> tuple[torch.nn.Module, torch.nn.Module, torch.nn.Module]:
-        """Split the QKV matrix into separate linear transformations.
-
-        Args:
-            attention_component: The original attention layer component
-        Returns:
-            Tuple of nn.Linear modules for Q, K, and V transformations (output 3D tensors)
-        """
-
-        # Keep mypy happy
-        assert original_attention_component is not None
-        assert original_attention_component.c_attn is not None
-
-        qkv_weights = original_attention_component.c_attn.weight
-
-        # Keep mypy happy
-        assert isinstance(qkv_weights, torch.Tensor)
-
-        # Original qkv_weights shape: [d_model, 3 * d_model]
-        # Split into three equal parts along dimension 1 to get Q, K, V weights
-        W_Q, W_K, W_V = torch.tensor_split(qkv_weights, 3, dim=1)
-
-        qkv_bias = original_attention_component.c_attn.bias
-
-        # Keep mypy happy
-        assert isinstance(qkv_bias, torch.Tensor)
-
-        # Original qkv_bias shape: [3 * n_head * d_head]
-        # Reshape to [3, n_head * d_head] to split by Q, K, V
-        qkv_bias = qkv_bias.reshape(3, self.cfg.n_heads * self.cfg.d_head)
-        b_Q, b_K, b_V = qkv_bias[0, :], qkv_bias[1, :], qkv_bias[2, :]
-
-        # Create plain nn.Linear modules that output 3D tensors [batch, seq, d_model]
-        W_Q_transformation = torch.nn.Linear(W_Q.shape[0], W_Q.shape[1], bias=True)
-        W_Q_transformation.weight = torch.nn.Parameter(W_Q.T)
-        W_Q_transformation.bias = torch.nn.Parameter(b_Q)
-
-        W_K_transformation = torch.nn.Linear(W_K.shape[0], W_K.shape[1], bias=True)
-        W_K_transformation.weight = torch.nn.Parameter(W_K.T)
-        W_K_transformation.bias = torch.nn.Parameter(b_K)
-
-        W_V_transformation = torch.nn.Linear(W_V.shape[0], W_V.shape[1], bias=True)
-        W_V_transformation.weight = torch.nn.Parameter(W_V.T)
-        W_V_transformation.bias = torch.nn.Parameter(b_V)
-
-        return W_Q_transformation, W_K_transformation, W_V_transformation

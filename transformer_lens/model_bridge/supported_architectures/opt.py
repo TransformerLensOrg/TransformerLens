@@ -12,9 +12,9 @@ from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
     LinearBridge,
-    MLPBridge,
     NormalizationBridge,
     PosEmbedBridge,
+    SymbolicBridge,
     UnembeddingBridge,
 )
 
@@ -36,40 +36,26 @@ class OptArchitectureAdapter(ArchitectureAdapter):
         # OPT models were trained with BOS tokens (inherits default_prepend_bos = True)
 
         self.weight_processing_conversions = {
-            "embed.e": "model.decoder.embed_tokens.weight",
-            "pos_embed.pos": "model.decoder.embed_positions.weight",
-            "blocks.{i}.ln1.w": "model.decoder.layers.{i}.self_attn_layer_norm.weight",
-            "blocks.{i}.ln1.b": "model.decoder.layers.{i}.self_attn_layer_norm.bias",
-            "blocks.{i}.attn.q": ParamProcessingConversion(
+            "blocks.{i}.attn.q.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
-                source_key="model.decoder.layers.{i}.self_attn.q_proj.weight",
             ),
-            "blocks.{i}.attn.k": ParamProcessingConversion(
+            "blocks.{i}.attn.k.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
-                source_key="model.decoder.layers.{i}.self_attn.k_proj.weight",
             ),
-            "blocks.{i}.attn.v": ParamProcessingConversion(
+            "blocks.{i}.attn.v.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
-                source_key="model.decoder.layers.{i}.self_attn.v_proj.weight",
             ),
-            "blocks.{i}.attn.o": ParamProcessingConversion(
+            "blocks.{i}.attn.o.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("m (n h) -> n h m", n=self.cfg.n_heads),
-                source_key="model.decoder.layers.{i}.self_attn.out_proj.weight",
             ),
-            "blocks.{i}.attn.b_Q": "model.decoder.layers.{i}.self_attn.q_proj.bias",
-            "blocks.{i}.attn.b_K": "model.decoder.layers.{i}.self_attn.k_proj.bias",
-            "blocks.{i}.attn.b_V": "model.decoder.layers.{i}.self_attn.v_proj.bias",
-            "blocks.{i}.attn.b_O": "model.decoder.layers.{i}.self_attn.out_proj.bias",
-            "blocks.{i}.ln2.w": "model.decoder.layers.{i}.final_layer_norm.weight",
-            "blocks.{i}.ln2.b": "model.decoder.layers.{i}.final_layer_norm.bias",
-            "blocks.{i}.mlp.in": "model.decoder.layers.{i}.fc1.weight",
-            "blocks.{i}.mlp.b_in": "model.decoder.layers.{i}.fc1.bias",
-            "blocks.{i}.mlp.out": "model.decoder.layers.{i}.fc2.weight",
-            "blocks.{i}.mlp.b_out": "model.decoder.layers.{i}.fc2.bias",
-            "ln_final.w": "model.decoder.final_layer_norm.weight",
-            "ln_final.b": "model.decoder.final_layer_norm.bias",
-            "unembed.u": "lm_head.weight",
         }
+
+        # OPT-350m is uniquely the only OPT size where word_embed_proj_dim (512)
+        # != hidden_size (1024).  It uses project_in/project_out linear layers
+        # instead of a final_layer_norm.  Detect this and conditionally include
+        # ln_final only when the model actually has one.
+        word_embed_proj_dim = getattr(self.cfg, "word_embed_proj_dim", self.cfg.d_model)
+        has_final_layer_norm = word_embed_proj_dim == self.cfg.d_model
 
         self.component_mapping = {
             "embed": EmbeddingBridge(name="model.decoder.embed_tokens"),
@@ -81,6 +67,8 @@ class OptArchitectureAdapter(ArchitectureAdapter):
                     "attn": AttentionBridge(
                         name="self_attn",
                         config=self.cfg,
+                        requires_attention_mask=True,  # OPT requires attention_mask
+                        attention_mask_4d=True,  # OPT expects 4D mask [batch, 1, tgt_len, src_len]
                         submodules={
                             "q": LinearBridge(name="q_proj"),
                             "k": LinearBridge(name="k_proj"),
@@ -89,9 +77,10 @@ class OptArchitectureAdapter(ArchitectureAdapter):
                         },
                     ),
                     "ln2": NormalizationBridge(name="final_layer_norm", config=self.cfg),
-                    "mlp": MLPBridge(
-                        name=None,  # No MLP container; fc1/fc2 are on block
-                        config=self.cfg,  # Pass config for activation function
+                    # OPT has fc1/fc2 directly on the block, not in an MLP container.
+                    # Use SymbolicBridge to maintain TransformerLens structure while
+                    # correctly mapping to the underlying architecture.
+                    "mlp": SymbolicBridge(
                         submodules={
                             "in": LinearBridge(name="fc1"),
                             "out": LinearBridge(name="fc2"),
@@ -99,6 +88,9 @@ class OptArchitectureAdapter(ArchitectureAdapter):
                     ),
                 },
             ),
-            "ln_final": NormalizationBridge(name="model.decoder.final_layer_norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head"),
         }
+        if has_final_layer_norm:
+            self.component_mapping["ln_final"] = NormalizationBridge(
+                name="model.decoder.final_layer_norm", config=self.cfg
+            )

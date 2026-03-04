@@ -530,26 +530,34 @@ class ActivationCache:
         if not isinstance(batch_slice, Slice):
             batch_slice = Slice(batch_slice)
 
-        if isinstance(tokens, str):
-            tokens = torch.as_tensor(self.model.to_single_token(tokens))
+        # Convert tokens to tensor for shape checking, but pass original to tokens_to_residual_directions
+        tokens_for_shape_check = tokens
 
-        elif isinstance(tokens, int):
-            tokens = torch.as_tensor(tokens)
+        if isinstance(tokens_for_shape_check, str):
+            tokens_for_shape_check = torch.as_tensor(
+                self.model.to_single_token(tokens_for_shape_check)
+            )
+        elif isinstance(tokens_for_shape_check, int):
+            tokens_for_shape_check = torch.as_tensor(tokens_for_shape_check)
 
         logit_directions = self.model.tokens_to_residual_directions(tokens)
 
         if incorrect_tokens is not None:
-            if isinstance(incorrect_tokens, str):
-                incorrect_tokens = torch.as_tensor(self.model.to_single_token(incorrect_tokens))
+            # Convert incorrect_tokens to tensor for shape checking, but pass original to tokens_to_residual_directions
+            incorrect_tokens_for_shape_check = incorrect_tokens
 
-            elif isinstance(incorrect_tokens, int):
-                incorrect_tokens = torch.as_tensor(incorrect_tokens)
+            if isinstance(incorrect_tokens_for_shape_check, str):
+                incorrect_tokens_for_shape_check = torch.as_tensor(
+                    self.model.to_single_token(incorrect_tokens_for_shape_check)
+                )
+            elif isinstance(incorrect_tokens_for_shape_check, int):
+                incorrect_tokens_for_shape_check = torch.as_tensor(incorrect_tokens_for_shape_check)
 
-            if tokens.shape != incorrect_tokens.shape:
+            if tokens_for_shape_check.shape != incorrect_tokens_for_shape_check.shape:
                 raise ValueError(
                     f"tokens and incorrect_tokens must have the same shape! \
-                        (tokens.shape={tokens.shape}, \
-                        incorrect_tokens.shape={incorrect_tokens.shape})"
+                        (tokens.shape={tokens_for_shape_check.shape}, \
+                        incorrect_tokens.shape={incorrect_tokens_for_shape_check.shape})"
                 )
 
             # If incorrect_tokens was provided, take the logit difference
@@ -669,9 +677,25 @@ class ActivationCache:
         Intended use is to enable use_attn_results when running and caching the model, but this can
         be useful if you forget.
         """
-        if "blocks.0.attn.hook_result" in self.cache_dict:
-            logging.warning("Tried to compute head results when they were already cached")
-            return
+        # If valid 4D per-head results already exist (from forward pass with
+        # use_attn_result=True, or from a prior compute_head_results() call),
+        # return early to preserve idempotency.
+        #
+        # TransformerBridge may populate hook_result with a 3D combined-output
+        # tensor (from the hook_result → hook_out alias).  We detect these
+        # wrong-shape entries by checking ndim and remove them before
+        # recomputing the correct 4D per-head results from z and W_O.
+        first_key = "blocks.0.attn.hook_result"
+        if first_key in self.cache_dict:
+            val = self.cache_dict[first_key]
+            if isinstance(val, torch.Tensor) and val.ndim >= 4:
+                logging.warning("Tried to compute head results when they were already cached")
+                return
+            # Stale 3D entries exist — remove them before recomputing
+            for layer in range(self.model.cfg.n_layers):
+                key = f"blocks.{layer}.attn.hook_result"
+                if key in self.cache_dict:
+                    del self.cache_dict[key]
         for layer in range(self.model.cfg.n_layers):
             # Note that we haven't enabled set item on this object so we need to edit the underlying
             # cache_dict directly.
@@ -726,11 +750,11 @@ class ActivationCache:
             # Default to the residual stream immediately pre unembed
             layer = self.model.cfg.n_layers
 
-        if "blocks.0.attn.hook_result" not in self.cache_dict:
-            print(
-                "Tried to stack head results when they weren't cached. Computing head results now"
-            )
-            self.compute_head_results()
+        # Always call compute_head_results() – it handles idempotency
+        # (returns early for valid 4D data) and also cleans up any stale 3D
+        # entries that TransformerBridge's hook_result alias may have placed
+        # in the cache.
+        self.compute_head_results()
 
         components: Any = []
         labels = []

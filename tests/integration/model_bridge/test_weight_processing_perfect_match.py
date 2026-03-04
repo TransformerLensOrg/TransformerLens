@@ -127,10 +127,9 @@ def test_perfect_ablation_match():
         print("\n🎉🎉🎉 PERFECT MATCH ACHIEVED! 🎉🎉🎉")
         print("The corrected processing matches HookedTransformer exactly!")
         print("This solution can be applied to TransformerBridge for perfect ablation matching.")
-        return True
     else:
         print("\n⚠️  Not quite perfect yet, but very close!")
-        return False
+        pytest.fail("Not quite perfect yet, but very close!")
 
 
 if __name__ == "__main__":

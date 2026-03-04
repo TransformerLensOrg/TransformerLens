@@ -2,6 +2,8 @@
 
 import torch
 
+from transformer_lens.loading_from_pretrained import get_pretrained_model_config
+
 
 def get_weight_conversion_field_set(weights: dict) -> str:
     """Creates a formatted string showing how weights are mapped between frameworks.
@@ -70,7 +72,5 @@ def model_info(model_name):
         model_name (str): Name of the pretrained model to analyze
                             (e.g., 'gpt2', 'bert-base-uncased', etc.)
     """
-    from transformer_lens.loading_from_pretrained import get_pretrained_model_config
-
     cfg = get_pretrained_model_config(model_name)
     model_info_cfg(cfg)

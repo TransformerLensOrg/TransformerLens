@@ -4,6 +4,7 @@ This module provides the bridge components that wrap remote model components and
 a consistent interface for accessing their weights and performing operations.
 """
 import re
+from contextlib import contextmanager
 from functools import lru_cache
 from typing import (
     TYPE_CHECKING,
@@ -20,6 +21,7 @@ from typing import (
     overload,
 )
 
+import einops
 import numpy as np
 import torch
 from torch import nn
@@ -29,18 +31,21 @@ from transformer_lens.ActivationCache import ActivationCache
 from transformer_lens.cache.key_value_cache import TransformerLensKeyValueCache
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookPoint
+from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
+from transformer_lens.model_bridge.component_setup import set_original_components
+from transformer_lens.model_bridge.exceptions import StopAtLayerException
+from transformer_lens.model_bridge.generalized_components.base import (
+    GeneralizedComponent,
+)
+from transformer_lens.model_bridge.get_params_util import get_bridge_params
+from transformer_lens.utilities.aliases import resolve_alias
+from transformer_lens.utilities.devices import move_to_and_update_config
+from transformer_lens.utilities.lm_utils import lm_cross_entropy_loss
+
+if TYPE_CHECKING:
+    from transformer_lens.ActivationCache import ActivationCache
 
 _BLOCK_PATTERN = re.compile("blocks\\.(\\d+)")
-
-
-class StopAtLayerException(Exception):
-    """Exception to stop forward pass at a specific layer."""
-
-    def __init__(self, tensor, layer_idx):
-        self.tensor = tensor
-        self.layer_idx = layer_idx
-        self.layer_output = tensor
-        super().__init__(f"Stopped at layer {layer_idx}")
 
 
 def build_alias_to_canonical_map(hook_dict, prefix=""):
@@ -71,18 +76,6 @@ def build_alias_to_canonical_map(hook_dict, prefix=""):
     return aliases
 
 
-from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
-from transformer_lens.model_bridge.component_setup import set_original_components
-from transformer_lens.model_bridge.generalized_components.base import (
-    GeneralizedComponent,
-)
-from transformer_lens.model_bridge.get_params_util import get_bridge_params
-from transformer_lens.utilities.aliases import resolve_alias
-
-if TYPE_CHECKING:
-    from transformer_lens.ActivationCache import ActivationCache
-
-
 class TransformerBridge(nn.Module):
     """Bridge between HuggingFace and TransformerLens models.
 
@@ -92,7 +85,9 @@ class TransformerBridge(nn.Module):
     """
 
     hook_aliases: Dict[str, Union[str, List[str]]] = {
-        "hook_embed": "embed.hook_out",
+        # Prefer embed_ln.hook_out (post-LN) when available, matching HT's convention
+        # for models with post-embedding LayerNorm (e.g., Bloom, BERT)
+        "hook_embed": ["embed_ln.hook_out", "embed.hook_out"],
         "hook_pos_embed": ["pos_embed.hook_out", "rotary_emb.hook_out"],
         "hook_unembed": "unembed.hook_out",
     }
@@ -153,6 +148,7 @@ class TransformerBridge(nn.Module):
         dtype: torch.dtype = torch.float32,
         tokenizer: Optional[Any] = None,
         load_weights: bool = True,
+        trust_remote_code: bool = False,
     ) -> "TransformerBridge":
         """Boot a model from HuggingFace (alias for sources.transformers.boot).
 
@@ -163,6 +159,7 @@ class TransformerBridge(nn.Module):
             dtype: The dtype to use for the model.
             tokenizer: Optional pre-initialized tokenizer to use; if not provided one will be created.
             load_weights: If False, load model without weights (on meta device) for config inspection only.
+            trust_remote_code: Whether to trust remote code for custom model architectures.
 
         Returns:
             The bridge to the loaded model.
@@ -176,6 +173,7 @@ class TransformerBridge(nn.Module):
             dtype=dtype,
             tokenizer=tokenizer,
             load_weights=load_weights,
+            trust_remote_code=trust_remote_code,
         )
 
     @property
@@ -208,8 +206,6 @@ class TransformerBridge(nn.Module):
                                 for part in single_target.split("."):
                                     target_obj = getattr(target_obj, part)
                                 object.__setattr__(self, alias_name, target_obj)
-                                if isinstance(target_obj, HookPoint):
-                                    target_obj.name = alias_name
                                 break
                             except AttributeError:
                                 continue
@@ -218,8 +214,6 @@ class TransformerBridge(nn.Module):
                         for part in target_path.split("."):
                             target_obj = getattr(target_obj, part)
                         object.__setattr__(self, alias_name, target_obj)
-                        if isinstance(target_obj, HookPoint):
-                            target_obj.name = alias_name
                 except AttributeError:
                     pass
 
@@ -238,8 +232,6 @@ class TransformerBridge(nn.Module):
         This allows property aliases (W_Q, W_K, W_V) to return 3D format for
         HookedTransformer compatibility while keeping 2D format for calculations.
         """
-        import einops
-        import torch
 
         n_heads = self.cfg.n_heads
         d_head = self.cfg.d_head
@@ -388,7 +380,6 @@ class TransformerBridge(nn.Module):
         all_aliases = {**self.hook_aliases, **component_aliases}
         if not all_aliases:
             return
-        aliased_hook_ids = set()
         for alias_name, target in all_aliases.items():
             if isinstance(target, list):
                 for single_target in target:
@@ -396,11 +387,6 @@ class TransformerBridge(nn.Module):
                         target_hook = resolve_alias(self, alias_name, {alias_name: single_target})
                         if target_hook is not None:
                             hooks[alias_name] = target_hook
-                            if isinstance(target_hook, HookPoint):
-                                hook_id = id(target_hook)
-                                if hook_id not in aliased_hook_ids:
-                                    target_hook.name = alias_name
-                                    aliased_hook_ids.add(hook_id)
                             break
                     except AttributeError:
                         continue
@@ -409,17 +395,17 @@ class TransformerBridge(nn.Module):
                     target_hook = resolve_alias(self, alias_name, {alias_name: target})
                     if target_hook is not None:
                         hooks[alias_name] = target_hook
-                        if isinstance(target_hook, HookPoint):
-                            hook_id = id(target_hook)
-                            if hook_id not in aliased_hook_ids:
-                                target_hook.name = alias_name
-                                aliased_hook_ids.add(hook_id)
                 except AttributeError:
                     continue
 
     def _scan_existing_hooks(self, module: nn.Module, prefix: str = "") -> None:
         """Scan existing modules for hooks and add them to registry."""
         visited = set()
+        # Track which HookPoint objects have already been named so that
+        # alias entries (from get_hooks() in compatibility mode) do not
+        # overwrite the canonical name.  get_hooks() returns canonical
+        # entries first, so the first name assigned is always canonical.
+        named_hook_ids: set = set()
 
         def scan_module(mod: nn.Module, path: str = "") -> None:
             obj_id = id(mod)
@@ -432,7 +418,10 @@ class TransformerBridge(nn.Module):
                     hooks_dict = cast(Dict[str, HookPoint], component_hooks)
                     for hook_name, hook in hooks_dict.items():
                         full_name = f"{path}.{hook_name}" if path else hook_name
-                        hook.name = full_name
+                        hook_id = id(hook)
+                        if hook_id not in named_hook_ids:
+                            hook.name = full_name
+                            named_hook_ids.add(hook_id)
                         self._hook_registry[full_name] = hook
             for attr_name in dir(mod):
                 if attr_name.startswith("_"):
@@ -463,7 +452,10 @@ class TransformerBridge(nn.Module):
                     continue
                 name = f"{path}.{attr_name}" if path else attr_name
                 if isinstance(attr, HookPoint):
-                    attr.name = name
+                    hook_id = id(attr)
+                    if hook_id not in named_hook_ids:
+                        attr.name = name
+                        named_hook_ids.add(hook_id)
                     self._hook_registry[name] = attr
             for child_name, child_module in mod.named_children():
                 if (
@@ -629,17 +621,21 @@ class TransformerBridge(nn.Module):
 
         apply_fn_to_all_components(self, set_compatibility_mode)
         self.clear_hook_registry()
-        if not no_processing:
-            self.process_weights(
-                fold_ln=fold_ln,
-                center_writing_weights=center_writing_weights,
-                center_unembed=center_unembed,
-                fold_value_biases=fold_value_biases,
-                refactor_factored_attn_matrices=refactor_factored_attn_matrices,
-            )
-        self._initialize_hook_registry()
-        self._setup_hook_compatibility()
-        self._register_all_aliases_recursive()
+        try:
+            if not no_processing:
+                self.process_weights(
+                    fold_ln=fold_ln,
+                    center_writing_weights=center_writing_weights,
+                    center_unembed=center_unembed,
+                    fold_value_biases=fold_value_biases,
+                    refactor_factored_attn_matrices=refactor_factored_attn_matrices,
+                )
+        finally:
+            # Always re-initialize hooks even if weight processing fails,
+            # so the bridge remains usable for downstream tests.
+            self._initialize_hook_registry()
+            self._setup_hook_compatibility()
+            self._register_all_aliases_recursive()
 
     def _setup_hook_compatibility(self) -> None:
         """Setup hook compatibility transformations to match HookedTransformer behavior.
@@ -702,7 +698,6 @@ class TransformerBridge(nn.Module):
 
         if verbose:
             print(f"Processing weights for {self.cfg.model_name}...")
-        import torch
 
         if verbose:
             print("  Extracting state dict from existing model...")
@@ -726,7 +721,8 @@ class TransformerBridge(nn.Module):
         if adapter and hasattr(adapter, "preprocess_weights"):
             state_dict = adapter.preprocess_weights(state_dict)
 
-        # Use unified ProcessWeights.process_weights() like HookedTransformer does
+        # Use unified ProcessWeights.process_weights() like HookedTransformer does.
+        # Float32 upcasting for precision is handled centrally in process_weights().
         if verbose:
             print("  Processing weights (fold_ln, center_writing_weights, etc.)...")
         state_dict = ProcessWeights.process_weights(
@@ -740,7 +736,29 @@ class TransformerBridge(nn.Module):
             adapter=adapter,
         )
 
-        # print("new", state_dict.keys())
+        # Normalize any remaining HF-prefix keys to TL format.
+        # Some architectures (e.g., OPT with SymbolicBridge) produce state dict keys
+        # with HF prefixes (model.decoder.layers.0.mlp.in.weight) instead of TL prefixes
+        # (blocks.0.mlp.in.weight). distribute_weights_to_components uses TL prefixes
+        # for routing, so we normalize all keys here.
+        import re
+
+        hf_to_tl_prefix = {}
+        for tl_name, (remote_path, _component) in self.real_components.items():
+            if remote_path and remote_path != tl_name:
+                hf_to_tl_prefix[remote_path] = tl_name
+
+        normalized_state_dict = {}
+        for key, value in state_dict.items():
+            new_key = key
+            for hf_prefix, tl_prefix in hf_to_tl_prefix.items():
+                if key.startswith(hf_prefix + "."):
+                    suffix = key[len(hf_prefix) + 1 :]
+                    new_key = f"{tl_prefix}.{suffix}"
+                    break
+            normalized_state_dict[new_key] = value
+        state_dict = normalized_state_dict
+
         if verbose:
             print("  Distributing weights to generalized components...")
         ProcessWeights.distribute_weights_to_components(
@@ -817,6 +835,15 @@ class TransformerBridge(nn.Module):
             truncation=truncate,
             max_length=self.cfg.n_ctx if truncate else None,
         )["input_ids"]
+        # Strip trailing EOS tokens that some tokenizers auto-append
+        # (e.g., OLMo's GPTNeoXTokenizer appends <|endoftext|> to all inputs)
+        if (
+            getattr(self.cfg, "tokenizer_appends_eos", False)
+            and self.tokenizer.eos_token_id is not None
+        ):
+            # Remove trailing EOS from each sequence, but keep at least 1 token
+            while tokens.shape[-1] > 1 and (tokens[:, -1] == self.tokenizer.eos_token_id).all():
+                tokens = tokens[:, :-1]
         if not prepend_bos and tokenizer_prepends_bos:
             tokens = utils.get_tokens_with_bos_removed(self.tokenizer, tokens)
         if move_to_device:
@@ -901,7 +928,11 @@ class TransformerBridge(nn.Module):
             tokens = torch.tensor(tokens_np)
         else:
             raise ValueError(f"Invalid input type to to_str_tokens: {type(input)}")
-        str_tokens = self.tokenizer.batch_decode(tokens, clean_up_tokenization_spaces=False)
+        # In transformers v5, batch_decode treats a flat list as a single sequence,
+        # not individual token IDs, so would return a single string. To maintain backward
+        # compatibility with v4, we wrap each token to decode them individually.
+        tokens_list = [[int(t)] for t in tokens.tolist()]
+        str_tokens = self.tokenizer.batch_decode(tokens_list, clean_up_tokenization_spaces=False)
         return str_tokens
 
     def to_single_token(self, string: str) -> int:
@@ -1090,17 +1121,73 @@ class TransformerBridge(nn.Module):
     def OV(self):
         return FactoredMatrix(self.W_V, self.W_O)
 
+    def parameters(self, recurse: bool = True) -> Iterator[nn.Parameter]:
+        """Returns parameters following standard PyTorch semantics.
+
+        This method delegates to the underlying HuggingFace model's parameters().
+        For TransformerLens-style parameter generator, use tl_parameters() instead.
+
+        Args:
+            recurse: If True, yields parameters of this module and all submodules
+
+        Returns:
+            Iterator of nn.Parameter objects
+        """
+        return self.original_model.parameters(recurse=recurse)
+
     def named_parameters(
         self, prefix: str = "", recurse: bool = True, remove_duplicate: bool = True
-    ) -> Iterator[Tuple[str, torch.nn.Parameter]]:
-        """Return named parameters in the same format as TransformerLens.
+    ) -> Iterator[tuple[str, nn.Parameter]]:
+        """Returns named parameters following standard PyTorch semantics.
 
-        This ensures compatibility with tools like SVDInterpreter that expect
-        parameter names like 'blocks.0.attn.W_Q' instead of the raw model names.
+        This method delegates to the underlying HuggingFace model's named_parameters().
+        For TransformerLens-style generator, use tl_named_parameters() instead.
+
+        Args:
+            prefix: Prefix to prepend to all parameter names
+            recurse: If True, yields parameters of this module and all submodules
+            remove_duplicate: If True, removes duplicate parameters
+
+        Returns:
+            Iterator of (name, parameter) tuples
         """
-        params_dict = self.get_params()
-        for name, param in params_dict.items():
-            yield (name, param)
+        return self.original_model.named_parameters(prefix, recurse, remove_duplicate)
+
+    def tl_parameters(self) -> dict[str, torch.Tensor]:
+        """Returns TransformerLens-style parameter dictionary.
+
+        Parameter names follow TransformerLens conventions (e.g., 'blocks.0.attn.W_Q') and may
+        include processed weights (non-leaf tensors). This format is expected by SVDInterpreter
+        among other analysis tools.
+
+        Returns:
+            Dictionary mapping TransformerLens parameter names to tensors
+
+        Example:
+            >>> bridge = TransformerBridge.boot_transformers("gpt2")
+            >>> tl_params = bridge.tl_parameters()
+            >>> W_Q = tl_params["blocks.0.attn.W_Q"]  # Shape: [n_heads, d_model, d_head]
+        """
+        return self.get_params()
+
+    def tl_named_parameters(self) -> Iterator[tuple[str, torch.Tensor]]:
+        """Returns iterator of TransformerLens-style named parameters.
+
+        This provides the same parameters as tl_parameters() but as an iterator
+        for consistency with PyTorch's named_parameters() API pattern.
+
+        Returns:
+            Iterator of (name, tensor) tuples with TransformerLens naming conventions
+
+        Example:
+            >>> bridge = TransformerBridge.boot_transformers("gpt2")
+            >>> for name, param in bridge.tl_named_parameters():
+            ...     if "attn.W_Q" in name:
+            ...         print(f"{name}: {param.shape}")  # doctest: +ELLIPSIS
+            blocks.0.attn.W_Q: torch.Size([12, 768, 64])
+            ...
+        """
+        return iter(self.get_params().items())
 
     def forward(
         self,
@@ -1131,7 +1218,6 @@ class TransformerBridge(nn.Module):
         Returns:
             Model output based on return_type
         """
-        from transformer_lens.model_bridge.exceptions import StopAtLayerException
 
         # Set stop_at_layer flag on all blocks if requested
         if stop_at_layer is not None and hasattr(self, "blocks"):
@@ -1175,9 +1261,36 @@ class TransformerBridge(nn.Module):
                 kwargs["use_cache"] = True
             elif "use_past_kv_cache" in kwargs and kwargs["use_past_kv_cache"]:
                 kwargs["use_cache"] = True
+            # For encoder-decoder models (T5, BART, etc.), auto-generate
+            # decoder_input_ids if not explicitly provided. Uses the standard
+            # right-shift pattern: prepend decoder_start_token_id, drop last token.
+            if (
+                "decoder_input_ids" not in kwargs
+                and hasattr(self.original_model, "config")
+                and getattr(self.original_model.config, "is_encoder_decoder", False)
+            ):
+                decoder_start_token_id = getattr(
+                    self.original_model.config, "decoder_start_token_id", None
+                )
+                if decoder_start_token_id is not None:
+                    shifted = input_ids[:, :-1]
+                    start_tokens = torch.full(
+                        (input_ids.shape[0], 1),
+                        decoder_start_token_id,
+                        dtype=input_ids.dtype,
+                        device=input_ids.device,
+                    )
+                    kwargs["decoder_input_ids"] = torch.cat([start_tokens, shifted], dim=1)
+                else:
+                    kwargs["decoder_input_ids"] = input_ids
+
+            # Ensure pos_embed hook captures full batch dimension.
+            # HF models may generate position_ids with batch=1 as an optimization;
+            # PosEmbedBridge uses this to expand its output to match.
+            if hasattr(self, "pos_embed"):
+                self.pos_embed._current_batch_size = input_ids.shape[0]
+
             original_tl_cache = past_kv_cache
-            if return_type in ["loss", "both"]:
-                kwargs["labels"] = input_ids
             output = self.original_model(input_ids, **kwargs)
             if (
                 original_tl_cache is not None
@@ -1215,16 +1328,18 @@ class TransformerBridge(nn.Module):
             if return_type == "logits":
                 return logits
             elif return_type == "loss":
-                if hasattr(output, "loss") and output.loss is not None:
-                    return output.loss
-                else:
-                    return self.loss_fn(logits, input_ids, per_token=loss_per_token)
+                # Always use self.loss_fn for consistency with HT's formula
+                # (log_softmax + gather).  HF's output.loss uses F.cross_entropy
+                # which gives different results in bfloat16.
+                assert isinstance(
+                    logits, torch.Tensor
+                ), f"Expected logits tensor, got {type(logits)}"
+                return self.loss_fn(logits, input_ids, per_token=loss_per_token)
             elif return_type == "both":
-                loss = None  # type: ignore[operator]
-                if hasattr(output, "loss") and output.loss is not None:
-                    loss = output.loss
-                else:
-                    loss = self.loss_fn(logits, input_ids, per_token=loss_per_token)
+                assert isinstance(
+                    logits, torch.Tensor
+                ), f"Expected logits tensor, got {type(logits)}"
+                loss = self.loss_fn(logits, input_ids, per_token=loss_per_token)
                 return (logits, loss)
             elif return_type is None:
                 return None
@@ -1255,13 +1370,21 @@ class TransformerBridge(nn.Module):
         return None
 
     def loss_fn(
-        self, logits: torch.Tensor, tokens: torch.Tensor, per_token: bool = False
+        self,
+        logits: torch.Tensor,
+        tokens: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        per_token: bool = False,
     ) -> torch.Tensor:
         """Calculate cross-entropy loss.
+
+        Uses the same formula as HookedTransformer (log_softmax + gather) to ensure
+        numerically identical results when logits match.
 
         Args:
             logits: Model logits
             tokens: Target tokens
+            attention_mask: Optional attention mask for padding
             per_token: Whether to return per-token loss
 
         Returns:
@@ -1269,17 +1392,7 @@ class TransformerBridge(nn.Module):
         """
         if tokens.device != logits.device:
             tokens = tokens.to(logits.device)
-        target_tokens = tokens[:, 1:].contiguous()
-        pred_logits = logits[:, :-1]
-        loss = torch.nn.functional.cross_entropy(
-            pred_logits.reshape(-1, pred_logits.size(-1)),
-            target_tokens.reshape(-1),
-            reduction="none",
-        )
-        if per_token:
-            return loss.reshape(target_tokens.shape)
-        else:
-            return loss.mean()
+        return lm_cross_entropy_loss(logits, tokens, attention_mask, per_token)
 
     @overload
     def run_with_cache(
@@ -1354,21 +1467,26 @@ class TransformerBridge(nn.Module):
         hooks: List[Tuple[HookPoint, str]] = []
         visited: set[int] = set()
 
+        # Extract cache device early so make_cache_hook can capture it.
+        # Default None means .to(None) which is a no-op — tensors stay on
+        # their current device, matching HookedRootModule's default behavior.
+        cache_device = kwargs.pop("device", None)
+
         def make_cache_hook(name: str):
             def cache_hook(tensor: torch.Tensor, *, hook: Any) -> torch.Tensor:
                 if tensor is None:
                     cache[name] = None
                 elif isinstance(tensor, torch.Tensor):
-                    cache[name] = tensor.detach().cpu()
+                    cache[name] = tensor.detach().to(cache_device)
                 elif isinstance(tensor, tuple):
                     if len(tensor) > 0 and isinstance(tensor[0], torch.Tensor):
-                        cache[name] = tensor[0].detach().cpu()
+                        cache[name] = tensor[0].detach().to(cache_device)
                     else:
                         pass
                 else:
                     try:
                         if hasattr(tensor, "detach"):
-                            cache[name] = tensor.detach().cpu()
+                            cache[name] = tensor.detach().to(cache_device)
                     except:
                         pass
                 return tensor
@@ -1414,7 +1532,7 @@ class TransformerBridge(nn.Module):
             last_layer_to_process = stop_at_layer - 1
 
             def stop_hook(tensor: torch.Tensor, *, hook: Any) -> torch.Tensor:
-                raise StopAtLayerException(tensor, stop_at_layer)
+                raise StopAtLayerException(tensor)
 
             if stop_at_layer >= 0 and stop_at_layer < len(self.blocks):
                 # Stop at the beginning of the specified block, not at the end of the previous block
@@ -1424,14 +1542,13 @@ class TransformerBridge(nn.Module):
                     hook_dict[block_hook_name].add_hook(stop_hook)
                     hooks.append((hook_dict[block_hook_name], block_hook_name))
         filtered_kwargs = kwargs.copy()
-        target_device = filtered_kwargs.pop("device", None)
-        if target_device is not None:
-            self.original_model = self.original_model.to(target_device)
+        if cache_device is not None:
+            self.original_model = self.original_model.to(cache_device)
             if processed_args and isinstance(processed_args[0], torch.Tensor):
-                processed_args = [processed_args[0].to(target_device)] + list(processed_args[1:])
+                processed_args = [processed_args[0].to(cache_device)] + list(processed_args[1:])
             for key, value in filtered_kwargs.items():
                 if isinstance(value, torch.Tensor):
-                    filtered_kwargs[key] = value.to(target_device)
+                    filtered_kwargs[key] = value.to(cache_device)
         try:
             if "output_attentions" not in filtered_kwargs:
                 filtered_kwargs["output_attentions"] = True
@@ -1477,8 +1594,6 @@ class TransformerBridge(nn.Module):
                 elif target_name in cache and alias_name not in cache:
                     cache[alias_name] = cache[target_name]
         if return_cache_object:
-            from transformer_lens.ActivationCache import ActivationCache
-
             activation_cache = ActivationCache(cache, self, has_batch_dim=True)
             if remove_batch_dim:
                 activation_cache.remove_batch_dim()
@@ -1555,7 +1670,7 @@ class TransformerBridge(nn.Module):
             last_layer_to_process = stop_at_layer - 1
 
             def stop_hook(tensor: torch.Tensor, *, hook: Any) -> torch.Tensor:
-                raise StopAtLayerException(tensor, stop_at_layer)
+                raise StopAtLayerException(tensor)
 
             if stop_at_layer >= 0 and stop_at_layer < len(self.blocks):
                 # Stop at the beginning of the specified block, not at the end of the previous block
@@ -1631,12 +1746,16 @@ class TransformerBridge(nn.Module):
         top_p: Optional[float] = None,
         temperature: float = 1.0,
         freq_penalty: float = 0.0,
+        repetition_penalty: float = 1.0,
         use_past_kv_cache: bool = True,
         prepend_bos: Optional[bool] = None,
         padding_side: Optional[str] = None,
         return_type: Optional[str] = "input",
         verbose: bool = True,
-    ) -> Union[str, List[str], torch.Tensor]:
+        output_logits: bool = False,
+    ) -> str | list[str] | torch.Tensor | Any:  # Any for transformers.utils.ModelOutput
+        # Using Any due to beartype's forward reference resolution limitations.
+        # See: https://github.com/beartype/beartype/issues/546
         """Sample tokens from the model.
 
         Sample tokens from the model until the model outputs eos_token or max_new_tokens is reached.
@@ -1652,25 +1771,26 @@ class TransformerBridge(nn.Module):
             top_p: Probability mass to sample from. If 1.0, sample from all tokens
             temperature: Temperature for sampling. Higher values will make the model more random
             freq_penalty: Frequency penalty for sampling - how much to penalise previous tokens
+            repetition_penalty: HuggingFace-style repetition penalty. Values > 1.0 discourage
+                repetition by dividing positive logits and multiplying negative logits for
+                previously seen tokens. Default 1.0 (no penalty).
             use_past_kv_cache: Not used in Bridge (kept for API compatibility)
             prepend_bos: Not used in Bridge (kept for API compatibility)
             padding_side: Not used in Bridge (kept for API compatibility)
             return_type: The type of output to return - 'input', 'str', or 'tokens'
             verbose: Not used in Bridge (kept for API compatibility)
+            output_logits: If True, return a ModelOutput with sequences and logits tuple
 
         Returns:
-            Generated sequence as string, list of strings, or tensor depending on input type and return_type
+            Generated sequence as string, list of strings, or tensor depending on input type and return_type.
+            If output_logits=True, returns a ModelOutput-like object with 'sequences' and 'logits' attributes.
         """
-        # Convert input to tokens
+        # Convert input to tokens using to_tokens() for consistent special token handling
         if isinstance(input, str):
-            input_tokens = self.tokenizer(
-                input, return_tensors="pt", padding=False, truncation=False
-            )["input_ids"].to(self.cfg.device)
+            input_tokens = self.to_tokens(input, move_to_device=True, truncate=False)
             input_type = "str"
         elif isinstance(input, list):
-            input_tokens = self.tokenizer(
-                input, return_tensors="pt", padding=True, truncation=False
-            )["input_ids"].to(self.cfg.device)
+            input_tokens = self.to_tokens(input, move_to_device=True, truncate=False)
             input_type = "list"
         else:
             input_tokens = input.to(self.cfg.device)
@@ -1709,6 +1829,9 @@ class TransformerBridge(nn.Module):
         # Track which sequences have finished
         finished_sequences = torch.zeros(batch_size, dtype=torch.bool, device=self.cfg.device)
 
+        # Optionally collect logits at each generation step for downstream tooling/tests
+        logits_seq_list: list[torch.Tensor] | None = [] if output_logits else None
+
         # Generate tokens
         current_tokens = input_tokens.clone()
         sampled_tokens_list = []
@@ -1719,6 +1842,10 @@ class TransformerBridge(nn.Module):
                 logits = self(current_tokens, return_type="logits")
                 final_logits = logits[:, -1, :]
 
+                # Collect logits if requested
+                if logits_seq_list is not None:
+                    logits_seq_list.append(final_logits.clone())
+
                 # Sample next token
                 if do_sample:
                     sampled_tokens = utils.sample_logits(
@@ -1727,10 +1854,16 @@ class TransformerBridge(nn.Module):
                         top_p=top_p,
                         temperature=temperature,
                         freq_penalty=freq_penalty,
+                        repetition_penalty=repetition_penalty,
                         tokens=current_tokens,
                     ).to(self.cfg.device)
                 else:
-                    sampled_tokens = final_logits.argmax(-1).to(self.cfg.device)
+                    sampled_tokens = utils.sample_logits(
+                        final_logits,
+                        temperature=0.0,
+                        repetition_penalty=repetition_penalty,
+                        tokens=current_tokens,
+                    ).to(self.cfg.device)
 
                 sampled_tokens_list.append(sampled_tokens.unsqueeze(1))
 
@@ -1755,6 +1888,33 @@ class TransformerBridge(nn.Module):
         sampled_tokens = torch.cat(sampled_tokens_list, dim=1)
         output_tokens = torch.cat([input_tokens, sampled_tokens], dim=1)
 
+        # Return ModelOutput if output_logits was requested
+        if output_logits and logits_seq_list is not None:
+            from transformers.utils import ModelOutput  # type: ignore
+
+            def _logits_to_tuple(logits_list: list[torch.Tensor]) -> tuple[torch.Tensor, ...]:
+                assert logits_list is not None
+                # Convert list of [batch, vocab] tensors to tuple
+                return tuple(logits_list)
+
+            try:
+                from transformers.generation.utils import GenerateDecoderOnlyOutput
+
+                # Return a HF-compatible ModelOutput structure
+                # GenerateDecoderOnlyOutput expects: sequences, scores (optional), logits (optional)
+                return GenerateDecoderOnlyOutput(
+                    sequences=cast(torch.LongTensor, output_tokens),
+                    # HF's type hint says tuple[FloatTensor] but should be tuple[FloatTensor, ...]
+                    # (variable-length tuple with one element per generated token)
+                    logits=_logits_to_tuple(logits_seq_list),  # type: ignore[arg-type]
+                )
+            except (ImportError, AttributeError):
+                # Fallback if GenerateDecoderOnlyOutput not available in this transformers version
+                return ModelOutput(
+                    sequences=output_tokens,
+                    logits=_logits_to_tuple(logits_seq_list),
+                )
+
         # Format output
         if return_type == "str":
             if input_type == "str":
@@ -1768,16 +1928,220 @@ class TransformerBridge(nn.Module):
         else:  # return_type == "tokens"
             return output_tokens
 
+    def hf_generate(
+        self,
+        input: str | list[str] | torch.Tensor = "",
+        max_new_tokens: int = 10,
+        stop_at_eos: bool = True,
+        eos_token_id: int | None = None,
+        do_sample: bool = True,
+        top_k: int | None = None,
+        top_p: float | None = None,
+        temperature: float = 1.0,
+        use_past_kv_cache: bool = True,
+        return_type: str | None = "input",
+        **generation_kwargs,
+    ) -> str | list[str] | torch.Tensor | Any:  # Any for HF ModelOutput types
+        # Using Any due to beartype's forward reference resolution limitations.
+        # See: https://github.com/beartype/beartype/issues/546
+        """Generate text using the underlying HuggingFace model with full HF API support.
+
+        This method provides direct access to HuggingFace's generation API, forwarding all
+        generation parameters (including output_scores, output_logits, output_attentions,
+        output_hidden_states) directly to the underlying HF model. Use this when you need
+        full HuggingFace generation features not supported by the standard generate() method.
+
+        For standard generation compatible with HookedTransformer, use generate() instead.
+
+        Args:
+            input: Text string, list of strings, or tensor of tokens
+            max_new_tokens: Maximum number of tokens to generate
+            stop_at_eos: If True, stop generating tokens when the model outputs eos_token
+            eos_token_id: The token ID to use for end of sentence
+            do_sample: If True, sample from the model's output distribution
+            top_k: Number of tokens to sample from
+            top_p: Probability mass to sample from
+            temperature: Temperature for sampling
+            use_past_kv_cache: If True, use KV caching for faster generation
+            return_type: The type of output to return - 'input', 'str', or 'tokens'
+            **generation_kwargs: Additional HuggingFace generation parameters including:
+                - output_scores: Return generation scores
+                - output_logits: Return generation logits
+                - output_attentions: Return attention weights
+                - output_hidden_states: Return hidden states
+                - return_dict_in_generate: Return ModelOutput object
+                - And any other HF generation parameters
+
+        Returns:
+            Generated sequence as string, list of strings, tensor, or HF ModelOutput
+            depending on input type, return_type, and generation_kwargs.
+
+        Example::
+
+            # Get full HF ModelOutput with logits and attentions
+            from transformer_lens import HookedTransformer
+            model = HookedTransformer.from_pretrained("tiny-stories-1M")
+            result = model.hf_generate(
+                "Hello world",
+                max_new_tokens=5,
+                output_logits=True,
+                output_attentions=True,
+                return_dict_in_generate=True
+            )
+            print(result.sequences)  # Generated tokens
+            print(result.logits)  # Logits for each generation step
+            print(result.attentions)  # Attention weights
+        """
+        # Handle string input by tokenizing it
+        if isinstance(input, str):
+            inputs = self.tokenizer(input, return_tensors="pt", padding=False, truncation=False).to(
+                self.cfg.device
+            )
+            input_ids = inputs["input_ids"]
+            input_type = "str"
+        elif isinstance(input, list):
+            inputs = self.tokenizer(input, return_tensors="pt", padding=True, truncation=False).to(
+                self.cfg.device
+            )
+            input_ids = inputs["input_ids"]
+            input_type = "list"
+        else:
+            input_ids = input
+            if input_ids.device != self.cfg.device:
+                input_ids = input_ids.to(self.cfg.device)
+            input_type = "tokens"
+
+        # Build generation_kwargs from explicit args and kwargs
+        generation_kwargs = dict(generation_kwargs) if generation_kwargs is not None else {}
+        generation_kwargs.update(
+            {
+                "max_new_tokens": max_new_tokens,
+                "do_sample": do_sample,
+                "temperature": temperature,
+                "pad_token_id": self.tokenizer.eos_token_id,
+            }
+        )
+
+        if top_k is not None:
+            generation_kwargs["top_k"] = top_k
+        if top_p is not None:
+            generation_kwargs["top_p"] = top_p
+        if eos_token_id is not None:
+            generation_kwargs["eos_token_id"] = eos_token_id
+        elif stop_at_eos and self.tokenizer.eos_token_id is not None:
+            generation_kwargs["eos_token_id"] = self.tokenizer.eos_token_id
+
+        if use_past_kv_cache:
+            generation_kwargs["use_cache"] = True
+
+        # HF dict flags that trigger ModelOutput returns
+        hf_dict_flags = (
+            "output_scores",
+            "output_logits",
+            "output_attentions",
+            "output_hidden_states",
+        )
+
+        # If any HF-style output flags are provided, ensure return_dict_in_generate is set
+        any_flag_set = False
+        for f in hf_dict_flags:
+            if generation_kwargs.get(f) is not None:
+                generation_kwargs[f] = bool(generation_kwargs[f])
+                any_flag_set = True
+
+        if any_flag_set:
+            generation_kwargs.setdefault("return_dict_in_generate", True)
+
+        # Generate using the original HuggingFace model
+        with torch.no_grad():
+            outputs = self.original_model.generate(input_ids, **generation_kwargs)  # type: ignore[operator]
+
+        # Check if output is a ModelOutput
+        try:
+            from transformers.utils import ModelOutput  # type: ignore
+
+            is_model_output = isinstance(outputs, ModelOutput)
+        except Exception:
+            is_model_output = False
+
+        # Return based on return_type and input format
+        if return_type == "input" or return_type is None:
+            if input_type == "str":
+                # Decode the full output back to string
+                if is_model_output and hasattr(outputs, "sequences"):
+                    return self.tokenizer.decode(outputs.sequences[0], skip_special_tokens=True)
+                return self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+            elif input_type == "list":
+                # Decode each sequence in the batch
+                if is_model_output and hasattr(outputs, "sequences"):
+                    return [
+                        self.tokenizer.decode(seq, skip_special_tokens=True)
+                        for seq in outputs.sequences
+                    ]
+                return [self.tokenizer.decode(seq, skip_special_tokens=True) for seq in outputs]
+            else:
+                # Return the full token sequence including input
+                return outputs
+        elif return_type == "tokens":
+            return outputs
+        else:
+            # For other return types, default to the decoded text
+            if input_type == "str":
+                if is_model_output and hasattr(outputs, "sequences"):
+                    return self.tokenizer.decode(outputs.sequences[0], skip_special_tokens=True)
+                return self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+            elif input_type == "list":
+                if is_model_output and hasattr(outputs, "sequences"):
+                    return [
+                        self.tokenizer.decode(seq, skip_special_tokens=True)
+                        for seq in outputs.sequences
+                    ]
+                return [self.tokenizer.decode(seq, skip_special_tokens=True) for seq in outputs]
+            else:
+                return outputs
+
     def to(self, *args, **kwargs) -> "TransformerBridge":
-        """Move model to device or change dtype.
+        """Move model to device and/or change dtype.
 
         Args:
             args: Positional arguments for nn.Module.to
             kwargs: Keyword arguments for nn.Module.to
+            print_details: Whether to print details about device/dtype changes (default: True)
 
         Returns:
             Self for chaining
         """
+        # Extract print_details if provided
+        print_details = kwargs.pop("print_details", True)
+
+        # Handle both device and dtype changes
+        # torch.nn.Module.to() supports: to(device), to(dtype), to(device, dtype),
+        # to(device=...), to(dtype=...), to(device=..., dtype=...)
+        target_device, target_dtype = None, None
+
+        if len(args) >= 1:
+            first_arg = args[0]
+            if isinstance(first_arg, (torch.device, str)):
+                target_device = first_arg
+            elif isinstance(first_arg, torch.dtype):
+                target_dtype = first_arg
+        if len(args) >= 2:
+            second_arg = args[1]
+            if isinstance(second_arg, torch.dtype):
+                target_dtype = second_arg
+
+        # these override positional args
+        if "device" in kwargs:
+            target_device = kwargs["device"]
+        if "dtype" in kwargs:
+            target_dtype = kwargs["dtype"]
+
+        if target_device is not None:
+            move_to_and_update_config(self, target_device, print_details)
+        if target_dtype is not None:
+            move_to_and_update_config(self, target_dtype, print_details)
+
+        # Move the original model with all original args/kwargs (with print_details removed)
         self.original_model = self.original_model.to(*args, **kwargs)
         return self
 
@@ -1813,8 +2177,36 @@ class TransformerBridge(nn.Module):
         """
         return self.to(torch.device("mps"))
 
-    def add_hook(self, name: str, hook_fn, dir="fwd", is_permanent=False):
-        """Add a hook to a specific component."""
+    def add_hook(
+        self,
+        name: Union[str, Callable[[str], bool]],
+        hook_fn,
+        dir="fwd",
+        is_permanent=False,
+    ):
+        """Add a hook to a specific component or to all components matching a filter.
+
+        Args:
+            name: Either a string hook point name (e.g. "blocks.0.attn.hook_q")
+                or a callable filter ``(str) -> bool`` that is applied to every
+                hook point name; the hook is added to each point where the filter
+                returns True.
+            hook_fn: The hook function ``(activation, hook) -> activation | None``.
+            dir: Hook direction, ``"fwd"`` or ``"bwd"``.
+            is_permanent: If True the hook survives ``reset_hooks()`` calls.
+        """
+        if callable(name) and not isinstance(name, str):
+            hook_dict = self.hook_dict
+            seen_hooks: set[int] = set()
+            for hook_name, hook_point in hook_dict.items():
+                if name(hook_name):
+                    hook_id = id(hook_point)
+                    if hook_id in seen_hooks:
+                        continue
+                    seen_hooks.add(hook_id)
+                    hook_point.add_hook(hook_fn, dir=dir, is_permanent=is_permanent)
+            return
+
         component = self
         parts = name.split(".")
         for part in parts[:-1]:
@@ -1858,7 +2250,6 @@ class TransformerBridge(nn.Module):
             with model.hooks(fwd_hooks=[("hook_embed", my_hook)]):
                 output = model("Hello world")
         """
-        from contextlib import contextmanager
 
         @contextmanager
         def _hooks_context():
@@ -2157,3 +2548,7 @@ class TransformerBridge(nn.Module):
             ValueError: If configuration is inconsistent (e.g., cfg.n_layers != len(blocks))
         """
         return get_bridge_params(self)
+
+    # NOTE: list_supported_models and check_model_support are attached to this class
+    # dynamically by transformer_lens.model_bridge.sources.transformers module.
+    # These are HuggingFace-specific methods that belong in the transformers source module.
