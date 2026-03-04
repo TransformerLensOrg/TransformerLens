@@ -149,6 +149,7 @@ class TransformerBridge(nn.Module):
         tokenizer: Optional[Any] = None,
         load_weights: bool = True,
         trust_remote_code: bool = False,
+        model_class: Optional[type] = None,
     ) -> "TransformerBridge":
         """Boot a model from HuggingFace (alias for sources.transformers.boot).
 
@@ -160,6 +161,8 @@ class TransformerBridge(nn.Module):
             tokenizer: Optional pre-initialized tokenizer to use; if not provided one will be created.
             load_weights: If False, load model without weights (on meta device) for config inspection only.
             trust_remote_code: Whether to trust remote code for custom model architectures.
+            model_class: Optional HuggingFace model class to use instead of the default
+                auto-detected class (e.g., BertForNextSentencePrediction).
 
         Returns:
             The bridge to the loaded model.
@@ -174,6 +177,7 @@ class TransformerBridge(nn.Module):
             tokenizer=tokenizer,
             load_weights=load_weights,
             trust_remote_code=trust_remote_code,
+            model_class=model_class,
         )
 
     @property
@@ -1206,7 +1210,7 @@ class TransformerBridge(nn.Module):
 
         Args:
             input: Input to the model
-            return_type: Type of output to return ('logits', 'loss', 'both', None)
+            return_type: Type of output to return ('logits', 'loss', 'both', 'predictions', None)
             loss_per_token: Whether to return loss per token
             prepend_bos: Whether to prepend BOS token
             padding_side: Which side to pad on
@@ -1341,6 +1345,26 @@ class TransformerBridge(nn.Module):
                 ), f"Expected logits tensor, got {type(logits)}"
                 loss = self.loss_fn(logits, input_ids, per_token=loss_per_token)
                 return (logits, loss)
+            elif return_type == "predictions":
+                assert (
+                    self.tokenizer is not None
+                ), "Must have a tokenizer to use return_type='predictions'"
+                if logits.shape[-1] == 2:
+                    # Next Sentence Prediction — 2-class output
+                    logprobs = logits.log_softmax(dim=-1)
+                    predictions = [
+                        "The sentences are sequential",
+                        "The sentences are NOT sequential",
+                    ]
+                    return predictions[logprobs.argmax(dim=-1).item()]
+                else:
+                    # Masked Language Modeling — decode [MASK] tokens
+                    logprobs = logits[input_ids == self.tokenizer.mask_token_id].log_softmax(dim=-1)
+                    predictions = self.tokenizer.decode(logprobs.argmax(dim=-1))
+                    if " " in predictions:
+                        predictions = predictions.split(" ")
+                        predictions = [f"Prediction {i}: {p}" for i, p in enumerate(predictions)]
+                    return predictions
             elif return_type is None:
                 return None
             else:
