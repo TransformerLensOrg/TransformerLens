@@ -136,7 +136,6 @@ class BertArchitectureAdapter(ArchitectureAdapter):
         """
         if hasattr(hf_model, "cls") and hasattr(hf_model.cls, "seq_relationship"):
             # NSP model — swap head components
-            self.component_mapping["unembed"] = UnembeddingBridge(
-                name="cls.seq_relationship"
-            )
+            assert self.component_mapping is not None
+            self.component_mapping["unembed"] = UnembeddingBridge(name="cls.seq_relationship")
             self.component_mapping.pop("ln_final", None)

@@ -1359,16 +1359,11 @@ class TransformerBridge(nn.Module):
                     return predictions[logprobs.argmax(dim=-1).item()]
                 else:
                     # Masked Language Modeling — decode [MASK] tokens
-                    logprobs = logits[
-                        input_ids == self.tokenizer.mask_token_id
-                    ].log_softmax(dim=-1)
+                    logprobs = logits[input_ids == self.tokenizer.mask_token_id].log_softmax(dim=-1)
                     predictions = self.tokenizer.decode(logprobs.argmax(dim=-1))
                     if " " in predictions:
                         predictions = predictions.split(" ")
-                        predictions = [
-                            f"Prediction {i}: {p}"
-                            for i, p in enumerate(predictions)
-                        ]
+                        predictions = [f"Prediction {i}: {p}" for i, p in enumerate(predictions)]
                     return predictions
             elif return_type is None:
                 return None

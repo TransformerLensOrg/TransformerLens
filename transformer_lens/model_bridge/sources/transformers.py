@@ -246,7 +246,7 @@ def boot(
     tokenizer: PreTrainedTokenizerBase | None = None,
     load_weights: bool = True,
     trust_remote_code: bool = False,
-    model_class: type | None = None,
+    model_class: Any | None = None,
 ) -> TransformerBridge:
     """Boot a model from HuggingFace.
 
