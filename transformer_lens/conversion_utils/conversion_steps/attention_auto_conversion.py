@@ -9,10 +9,10 @@ from typing import Any, Dict, Optional
 import einops
 import torch
 
-from .base_hook_conversion import BaseHookConversion
+from .base_tensor_conversion import BaseTensorConversion
 
 
-class AttentionAutoConversion(BaseHookConversion):
+class AttentionAutoConversion(BaseTensorConversion):
     """Handles bidirectional conversions for attention hook inputs (activation tensors).
 
     Converts tensors to match HookedTransformer format and can revert them back

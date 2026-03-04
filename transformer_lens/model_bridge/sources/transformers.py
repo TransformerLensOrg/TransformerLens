@@ -2,25 +2,36 @@
 
 This module provides functionality to load and convert models from HuggingFace to TransformerLens format.
 """
-
+import contextlib
 import copy
 import logging
 import os
+import warnings
+from typing import Any
 
 import torch
 from transformers import (
     AutoConfig,
-    AutoModel,
     AutoModelForCausalLM,
+    AutoModelForMaskedLM,
     AutoModelForSeq2SeqLM,
     AutoTokenizer,
     PreTrainedTokenizerBase,
 )
 
 from transformer_lens.config import TransformerBridgeConfig
+from transformer_lens.factories.architecture_adapter_factory import (
+    SUPPORTED_ARCHITECTURES,
+    ArchitectureAdapterFactory,
+)
 from transformer_lens.model_bridge.bridge import TransformerBridge
 from transformer_lens.supported_models import MODEL_ALIASES
 from transformer_lens.utils import get_device, get_tokenizer_with_bos
+
+# Suppress transformers warnings that go to stderr
+# This prevents notebook tests from failing due to unexpected stderr output
+warnings.filterwarnings("ignore", message=".*generation flags.*not valid.*")
+logging.getLogger("transformers").setLevel(logging.ERROR)
 
 
 def map_default_transformer_lens_config(hf_config):
@@ -36,101 +47,106 @@ def map_default_transformer_lens_config(hf_config):
         A copy of hf_config with additional TransformerLens fields
     """
     tl_config = copy.deepcopy(hf_config)
-
-    # Map d_model (hidden dimension)
-    if hasattr(hf_config, "n_embd"):  # GPT2-style
+    if hasattr(hf_config, "n_embd"):
         tl_config.d_model = hf_config.n_embd
-    elif hasattr(hf_config, "hidden_size"):  # LLaMA/BERT-style
+    elif hasattr(hf_config, "hidden_size"):
         tl_config.d_model = hf_config.hidden_size
-    elif hasattr(hf_config, "d_model"):  # T5-style
+    elif hasattr(hf_config, "model_dim"):
+        tl_config.d_model = hf_config.model_dim
+    elif hasattr(hf_config, "d_model"):
         tl_config.d_model = hf_config.d_model
-
-    # Map number of attention heads
-    if hasattr(hf_config, "n_head"):  # GPT2-style
+    if hasattr(hf_config, "n_head"):
         tl_config.n_heads = hf_config.n_head
-    elif hasattr(hf_config, "num_attention_heads"):  # LLaMA/BERT-style
+    elif hasattr(hf_config, "num_attention_heads"):
         tl_config.n_heads = hf_config.num_attention_heads
-    elif hasattr(hf_config, "num_heads"):  # T5-style
+    elif hasattr(hf_config, "num_heads"):
         tl_config.n_heads = hf_config.num_heads
-
-    # Map number of key-value heads for GQA models
+    elif hasattr(hf_config, "num_query_heads") and isinstance(hf_config.num_query_heads, list):
+        tl_config.n_heads = max(hf_config.num_query_heads)
     if hasattr(hf_config, "num_key_value_heads") and hf_config.num_key_value_heads is not None:
-        # Only set if different from n_heads (i.e., actually using GQA)
-        # Convert to Python int/float to avoid Tensor boolean comparison issues
         try:
-            # Handle both Tensor and numeric types
             num_kv_heads = hf_config.num_key_value_heads
-            if hasattr(num_kv_heads, "item"):  # Tensor
+            # Handle per-layer lists (e.g., OpenELM) by taking the max
+            if isinstance(num_kv_heads, list):
+                num_kv_heads = max(num_kv_heads)
+            if hasattr(num_kv_heads, "item"):
                 num_kv_heads = num_kv_heads.item()
             num_kv_heads = int(num_kv_heads)
-
             num_heads = tl_config.n_heads
-            if hasattr(num_heads, "item"):  # Tensor
+            if hasattr(num_heads, "item"):
                 num_heads = num_heads.item()
             num_heads = int(num_heads)
-
             if num_kv_heads != num_heads:
                 tl_config.n_key_value_heads = num_kv_heads
         except (TypeError, ValueError, AttributeError):
-            # If conversion fails, skip GQA mapping
             pass
-
-    # Map number of layers
-    if hasattr(hf_config, "n_layer"):  # GPT2-style
+    elif hasattr(hf_config, "num_kv_heads") and hf_config.num_kv_heads is not None:
+        try:
+            num_kv_heads = hf_config.num_kv_heads
+            if isinstance(num_kv_heads, list):
+                num_kv_heads = max(num_kv_heads)
+            if hasattr(num_kv_heads, "item"):
+                num_kv_heads = num_kv_heads.item()
+            num_kv_heads = int(num_kv_heads)
+            num_heads = tl_config.n_heads
+            if hasattr(num_heads, "item"):
+                num_heads = num_heads.item()
+            num_heads = int(num_heads)
+            if num_kv_heads != num_heads:
+                tl_config.n_key_value_heads = num_kv_heads
+        except (TypeError, ValueError, AttributeError):
+            pass
+    if hasattr(hf_config, "n_layer"):
         tl_config.n_layers = hf_config.n_layer
-    elif hasattr(hf_config, "num_hidden_layers"):  # LLaMA/BERT-style
+    elif hasattr(hf_config, "num_hidden_layers"):
         tl_config.n_layers = hf_config.num_hidden_layers
-    elif hasattr(hf_config, "num_layers"):  # T5-style
+    elif hasattr(hf_config, "num_transformer_layers"):
+        tl_config.n_layers = hf_config.num_transformer_layers
+    elif hasattr(hf_config, "num_layers"):
         tl_config.n_layers = hf_config.num_layers
-
-    # Map vocabulary size
     if hasattr(hf_config, "vocab_size"):
         tl_config.d_vocab = hf_config.vocab_size
-
-    # Map context length
-    if hasattr(hf_config, "n_positions"):  # GPT2-style
+    if hasattr(hf_config, "n_positions"):
         tl_config.n_ctx = hf_config.n_positions
-    elif hasattr(hf_config, "max_position_embeddings"):  # LLaMA/BERT-style
+    elif hasattr(hf_config, "max_position_embeddings"):
         tl_config.n_ctx = hf_config.max_position_embeddings
-    elif hasattr(hf_config, "max_length"):  # Some models
+    elif hasattr(hf_config, "max_context_length"):
+        tl_config.n_ctx = hf_config.max_context_length
+    elif hasattr(hf_config, "max_length"):
         tl_config.n_ctx = hf_config.max_length
-
-    # Map MLP dimension
-    if hasattr(hf_config, "n_inner"):  # GPT2 explicit
+    elif hasattr(hf_config, "seq_length"):
+        tl_config.n_ctx = hf_config.seq_length
+    else:
+        # Models like Bloom use ALiBi (no positional embeddings) and have no
+        # context length field. Default to 2048 as a reasonable fallback.
+        tl_config.n_ctx = 2048
+    if hasattr(hf_config, "n_inner"):
         tl_config.d_mlp = hf_config.n_inner
-    elif hasattr(hf_config, "intermediate_size"):  # BERT/LLaMA-style
+    elif hasattr(hf_config, "intermediate_size"):
         tl_config.d_mlp = hf_config.intermediate_size
-    elif hasattr(tl_config, "d_model"):  # Default to 4x for GPT2-style
+    elif hasattr(tl_config, "d_model"):
         tl_config.d_mlp = getattr(hf_config, "n_inner", 4 * tl_config.d_model)
-
-    # Map head dimension (prefer calculation from d_model // n_heads over explicit head_dim)
-    # This ensures correctness for models with incorrect head_dim in HF config (e.g., Gemma-3)
-    if hasattr(tl_config, "d_model") and hasattr(tl_config, "n_heads"):
-        # Calculate d_head from d_model and n_heads
-        tl_config.d_head = tl_config.d_model // tl_config.n_heads
-    elif hasattr(hf_config, "head_dim") and hf_config.head_dim is not None:
-        # Fallback to explicit head_dim from HF config if calculation not possible
+    if hasattr(hf_config, "head_dim") and hf_config.head_dim is not None:
         tl_config.d_head = hf_config.head_dim
-
-    # Set activation function
+    elif hasattr(tl_config, "d_model") and hasattr(tl_config, "n_heads"):
+        tl_config.d_head = tl_config.d_model // tl_config.n_heads
     if hasattr(hf_config, "activation_function"):
         tl_config.act_fn = hf_config.activation_function
-
-    # Set number of experts
     if hasattr(hf_config, "num_local_experts"):
         tl_config.num_experts = hf_config.num_local_experts
-
-    # Set number of experts per token
     if hasattr(hf_config, "num_experts_per_tok"):
         tl_config.experts_per_token = hf_config.num_experts_per_tok
-
-    # Set sliding window size for models with local attention
     if hasattr(hf_config, "sliding_window") and hf_config.sliding_window is not None:
         tl_config.sliding_window = hf_config.sliding_window
-
-    # Set common defaults for transformer models
+    if getattr(hf_config, "use_parallel_residual", False):
+        tl_config.parallel_attn_mlp = True
+    # GPT-J has a parallel attention+MLP architecture (both read from same ln_1
+    # output) but doesn't set use_parallel_residual in its HF config. Detect it
+    # by architecture class so fold_ln correctly folds ln1 into BOTH attn and MLP.
+    arch_classes = getattr(hf_config, "architectures", []) or []
+    if any(a in ("GPTJForCausalLM",) for a in arch_classes):
+        tl_config.parallel_attn_mlp = True
     tl_config.default_prepend_bos = True
-
     return tl_config
 
 
@@ -146,22 +162,13 @@ def determine_architecture_from_hf_config(hf_config):
     Raises:
         ValueError: If architecture cannot be determined
     """
-    # Try to get architecture from various config fields
     architectures = []
-
-    # Check original_architecture first (highest priority)
     if hasattr(hf_config, "original_architecture"):
         architectures.append(hf_config.original_architecture)
-
-    # Check architectures list
     if hasattr(hf_config, "architectures") and hf_config.architectures:
         architectures.extend(hf_config.architectures)
-
-    # Try to map model_type to architecture name
     if hasattr(hf_config, "model_type"):
         model_type = hf_config.model_type
-
-        # Common mappings from model_type to architecture
         model_type_mappings = {
             "gpt2": "GPT2LMHeadModel",
             "llama": "LlamaForCausalLM",
@@ -180,27 +187,19 @@ def determine_architecture_from_hf_config(hf_config):
             "phi3": "Phi3ForCausalLM",
             "qwen": "QwenForCausalLM",
             "qwen2": "Qwen2ForCausalLM",
+            "qwen3": "Qwen3ForCausalLM",
+            "openelm": "OpenELMForCausalLM",
+            "stablelm": "StableLmForCausalLM",
             "t5": "T5ForConditionalGeneration",
         }
-
         if model_type in model_type_mappings:
             architectures.append(model_type_mappings[model_type])
 
-    # Import here to avoid circular import
-    from transformer_lens.factories.architecture_adapter_factory import (
-        SUPPORTED_ARCHITECTURES,
-    )
-
-    # Return the first supported architecture
     for arch in architectures:
         if arch in SUPPORTED_ARCHITECTURES:
             return arch
-
     raise ValueError(
-        f"Could not determine supported architecture from config. "
-        f"Available architectures: {list(SUPPORTED_ARCHITECTURES.keys())}, "
-        f"Config architectures: {architectures}, "
-        f"Model type: {getattr(hf_config, 'model_type', None)}"
+        f"Could not determine supported architecture from config. Available architectures: {list(SUPPORTED_ARCHITECTURES.keys())}, Config architectures: {architectures}, Model type: {getattr(hf_config, 'model_type', None)}"
     )
 
 
@@ -216,7 +215,6 @@ def get_hf_model_class_for_architecture(architecture: str):
     Raises:
         ValueError: If architecture is not recognized
     """
-    # Encoder-decoder models (seq2seq)
     seq2seq_architectures = {
         "T5ForConditionalGeneration",
         "BartForConditionalGeneration",
@@ -226,8 +224,6 @@ def get_hf_model_class_for_architecture(architecture: str):
         "BlenderbotForConditionalGeneration",
         "BlenderbotSmallForConditionalGeneration",
     }
-
-    # Masked language models (BERT-style)
     masked_lm_architectures = {
         "BertForMaskedLM",
         "RobertaForMaskedLM",
@@ -235,17 +231,11 @@ def get_hf_model_class_for_architecture(architecture: str):
         "AlbertForMaskedLM",
         "ElectraForMaskedLM",
     }
-
-    # Causal language models (GPT-style) - this is the default
-    # Includes: GPT2, LLaMA, Mistral, Mixtral, Gemma, etc.
-
     if architecture in seq2seq_architectures:
         return AutoModelForSeq2SeqLM
     elif architecture in masked_lm_architectures:
-        # For now, use AutoModel for masked LM since they may need special handling
-        return AutoModel
+        return AutoModelForMaskedLM
     else:
-        # Default to causal LM for GPT-style models
         return AutoModelForCausalLM
 
 
@@ -255,6 +245,9 @@ def boot(
     device: str | torch.device | None = None,
     dtype: torch.dtype = torch.float32,
     tokenizer: PreTrainedTokenizerBase | None = None,
+    load_weights: bool = True,
+    trust_remote_code: bool = False,
+    model_class: Any | None = None,
 ) -> TransformerBridge:
     """Boot a model from HuggingFace.
 
@@ -264,17 +257,14 @@ def boot(
         device: The device to use. If None, will be determined automatically.
         dtype: The dtype to use for the model.
         tokenizer: Optional pre-initialized tokenizer to use; if not provided one will be created.
+        load_weights: If False, load model without weights (on meta device) for config inspection only.
+        model_class: Optional HuggingFace model class to use instead of the default auto-detected
+            class. When the class name matches a key in SUPPORTED_ARCHITECTURES, the corresponding
+            adapter is selected automatically (e.g., BertForNextSentencePrediction).
 
     Returns:
         The bridge to the loaded model.
     """
-    # Lazy import to avoid circular import
-    from transformer_lens.factories.architecture_adapter_factory import (
-        ArchitectureAdapterFactory,
-    )
-
-    # MODEL_ALIASES is a dict of {official_name: [alias1, alias2, ...]}
-    # Check if model_name that the user passed is an alias, and if so, use the official name
     for official_name, aliases in MODEL_ALIASES.items():
         if model_name in aliases:
             logging.warning(
@@ -282,95 +272,131 @@ def boot(
             )
             model_name = official_name
             break
-
-    hf_config = AutoConfig.from_pretrained(model_name, output_attentions=True)
-
-    # Apply config variables to hf_config before selecting adapter
+    # Pass HF token for gated model access (e.g. meta-llama/*)
+    _hf_token = os.environ.get("HF_TOKEN", "") or None
+    hf_config = AutoConfig.from_pretrained(
+        model_name,
+        output_attentions=True,
+        trust_remote_code=trust_remote_code,
+        token=_hf_token,
+    )
     if hf_config_overrides:
         hf_config.__dict__.update(hf_config_overrides)
-
-    # Apply HuggingFace to TransformerLens config mapping
     tl_config = map_default_transformer_lens_config(hf_config)
-
     architecture = determine_architecture_from_hf_config(hf_config)
-
-    # Convert to TransformerBridgeConfig with unified architecture
-    bridge_config = TransformerBridgeConfig.from_dict(tl_config.__dict__)
+    config_dict = dict(tl_config.__dict__)
+    # HF configs may remap attribute names via attribute_map (e.g., MixtralConfig maps
+    # `num_experts` -> `num_local_experts`). Explicitly restore the TL name so that
+    # TransformerBridgeConfig.from_dict receives the expected key.
+    if "num_local_experts" in config_dict and "num_experts" not in config_dict:
+        config_dict["num_experts"] = config_dict["num_local_experts"]
+    bridge_config = TransformerBridgeConfig.from_dict(config_dict)
     bridge_config.architecture = architecture
-    bridge_config.model_name = model_name  # Set the actual model name instead of default "custom"
-    bridge_config.dtype = dtype  # Set the dtype from the boot parameter
-
+    bridge_config.model_name = model_name
+    bridge_config.dtype = dtype
+    # Preserve HF-specific config attributes that adapters may need
+    if getattr(hf_config, "is_gated_act", False):
+        bridge_config.is_gated_act = True
+    # OPT-350m: word_embed_proj_dim != hidden_size means the model uses
+    # project_in/project_out instead of final_layer_norm.
+    word_embed_proj_dim = getattr(hf_config, "word_embed_proj_dim", None)
+    if word_embed_proj_dim is not None:
+        bridge_config.word_embed_proj_dim = word_embed_proj_dim
     adapter = ArchitectureAdapterFactory.select_architecture_adapter(bridge_config)
-
-    # No device specified by user, use the best available device for the current system
     if device is None:
         device = get_device()
-
-    # Add device information to the config
     adapter.cfg.device = str(device)
-
-    # Determine the correct HuggingFace model class based on architecture
-    model_class = get_hf_model_class_for_architecture(architecture)
-
-    # Prepare model loading kwargs
-    model_kwargs = {
-        "config": hf_config,
-        "torch_dtype": dtype,
-    }
-
-    # Add attn_implementation if specified in config
-    # This allows architectures to specify their preferred attention implementation
-    # (e.g., 'sdpa' for Scaled Dot Product Attention, 'eager' for basic implementation)
+    if model_class is None:
+        model_class = get_hf_model_class_for_architecture(architecture)
+    # Ensure pad_token_id exists on HF config. Transformers v5 raises AttributeError
+    # for missing config attributes (instead of returning None), which crashes models
+    # like Phi-1 that access config.pad_token_id during __init__.
+    if not hasattr(hf_config, "pad_token_id") or "pad_token_id" not in hf_config.__dict__:
+        hf_config.pad_token_id = getattr(hf_config, "eos_token_id", None)
+    model_kwargs = {"config": hf_config, "torch_dtype": dtype}
+    if _hf_token:
+        model_kwargs["token"] = _hf_token
+    if trust_remote_code:
+        model_kwargs["trust_remote_code"] = True
     if hasattr(adapter.cfg, "attn_implementation") and adapter.cfg.attn_implementation is not None:
         model_kwargs["attn_implementation"] = adapter.cfg.attn_implementation
-
-    # Load the model from HuggingFace using the appropriate model class
-    hf_model = model_class.from_pretrained(model_name, **model_kwargs)
-
-    # Move model to device
-    if device is not None:
-        hf_model = hf_model.to(device)  # type: ignore
-
-    # Load the tokenizer
+    else:
+        # Default to "eager" — the Bridge uses output_attentions for hooks,
+        # which requires eager attention.  This also ensures numerical parity
+        # with benchmarks that compare Bridge vs HF reference (both use eager).
+        model_kwargs["attn_implementation"] = "eager"
+    adapter.prepare_loading(model_name, model_kwargs)
+    if not load_weights:
+        from_config_kwargs = {}
+        if trust_remote_code:
+            from_config_kwargs["trust_remote_code"] = True
+        with contextlib.redirect_stdout(None):
+            hf_model = model_class.from_config(hf_config, **from_config_kwargs)
+    else:
+        hf_model = model_class.from_pretrained(model_name, **model_kwargs)
+        if device is not None:
+            hf_model = hf_model.to(device)
+        # Ensure all parameters match the requested dtype. Some architectures
+        # (e.g., MoE models) retain native bfloat16 weights even when
+        # torch_dtype is specified during from_pretrained().
+        hf_model = hf_model.to(dtype=dtype)
+    adapter.prepare_model(hf_model)
     tokenizer = tokenizer
     default_padding_side = getattr(adapter.cfg, "default_padding_side", None)
     use_fast = getattr(adapter.cfg, "use_fast", True)
-
     if tokenizer is not None:
         tokenizer = setup_tokenizer(tokenizer, default_padding_side=default_padding_side)
     else:
         huggingface_token = os.environ.get("HF_TOKEN", "")
-        tokenizer = setup_tokenizer(
-            AutoTokenizer.from_pretrained(
-                model_name,
+        token_arg = huggingface_token if len(huggingface_token) > 0 else None
+        # Determine tokenizer source: use adapter's tokenizer_name if the model
+        # doesn't ship its own tokenizer (e.g., OpenELM uses LLaMA tokenizer)
+        tokenizer_source = model_name
+        if hasattr(adapter.cfg, "tokenizer_name") and adapter.cfg.tokenizer_name is not None:
+            tokenizer_source = adapter.cfg.tokenizer_name
+        # Try to load tokenizer with add_bos_token=True first
+        # (encoder-decoder models like T5 don't have BOS tokens and will raise ValueError)
+        try:
+            base_tokenizer = AutoTokenizer.from_pretrained(
+                tokenizer_source,
                 add_bos_token=True,
                 use_fast=use_fast,
-                token=huggingface_token if len(huggingface_token) > 0 else None,
-            ),
+                token=token_arg,
+                trust_remote_code=trust_remote_code,
+            )
+        except ValueError:
+            # Model doesn't have a BOS token, load without add_bos_token
+            base_tokenizer = AutoTokenizer.from_pretrained(
+                tokenizer_source,
+                use_fast=use_fast,
+                token=token_arg,
+                trust_remote_code=trust_remote_code,
+            )
+        tokenizer = setup_tokenizer(
+            base_tokenizer,
             default_padding_side=default_padding_side,
         )
-
-    # Set tokenizer_prepends_bos configuration
     if tokenizer is not None:
-        adapter.cfg.tokenizer_prepends_bos = len(tokenizer.encode("")) > 0
-
-    # Create the bridge
-    bridge = TransformerBridge(
-        hf_model,
-        adapter,
-        tokenizer,
-    )
-
-    # Note: enable_compatibility_mode() is available to apply folding if needed
-    # This should be called manually when folding is desired
-
+        # Detect whether the tokenizer auto-prepends BOS or auto-appends EOS.
+        # We encode a non-empty test string and check the first/last tokens.
+        # Using encode("") is unreliable because setup_tokenizer may set
+        # bos_token = eos_token, making them indistinguishable.
+        encoded_test = tokenizer.encode("a")
+        adapter.cfg.tokenizer_prepends_bos = (
+            len(encoded_test) > 1
+            and tokenizer.bos_token_id is not None
+            and encoded_test[0] == tokenizer.bos_token_id
+        )
+        adapter.cfg.tokenizer_appends_eos = (
+            len(encoded_test) > 1
+            and tokenizer.eos_token_id is not None
+            and encoded_test[-1] == tokenizer.eos_token_id
+        )
+    bridge = TransformerBridge(hf_model, adapter, tokenizer)
     return bridge
 
 
-def setup_tokenizer(
-    tokenizer,
-    default_padding_side=None,
-):
+def setup_tokenizer(tokenizer, default_padding_side=None):
     """Set's up the tokenizer.
 
     Args:
@@ -381,30 +407,18 @@ def setup_tokenizer(
     assert isinstance(
         tokenizer, PreTrainedTokenizerBase
     ), f"{type(tokenizer)} is not a supported tokenizer, please use PreTrainedTokenizer or PreTrainedTokenizerFast"
-
     assert default_padding_side in [
         "right",
         "left",
         None,
     ], f"padding_side must be 'right', 'left' or 'None', got {default_padding_side}"
-
-    # Use a tokenizer that is initialized with add_bos_token=True as the default tokenizer.
-    # Such a tokenizer should be set as the default tokenizer because the tokenization of some
-    # tokenizers like LlamaTokenizer are different when bos token is automatically/manually
-    # prepended, and add_bos_token cannot be dynamically controlled after initialization
-    # (https://github.com/huggingface/transformers/issues/25886).
     tokenizer_with_bos = get_tokenizer_with_bos(tokenizer)
     tokenizer = tokenizer_with_bos
-    assert tokenizer is not None  # keep mypy happy
-
-    # If user passes default_padding_side explicitly, use that value
+    assert tokenizer is not None
     if default_padding_side is not None:
         tokenizer.padding_side = default_padding_side
-    # If not, then use the tokenizer's default padding side
-    # If the tokenizer doesn't have a default padding side, use the global default "right"
     if tokenizer.padding_side is None:
         tokenizer.padding_side = "right"
-
     if tokenizer.eos_token is None:
         tokenizer.eos_token = "<|endoftext|>"
     if tokenizer.pad_token is None:
@@ -412,7 +426,122 @@ def setup_tokenizer(
     if tokenizer.bos_token is None:
         tokenizer.bos_token = tokenizer.eos_token
 
+    # Ensure special token strings resolve to valid IDs.  Some tokenizers
+    # (e.g. ChemGPT's SMILES vocabulary) don't contain the default fallback
+    # strings, leaving pad_token_id as None.  HF's padding logic then crashes
+    # with "TypeError: '<' not supported between instances of 'NoneType' and 'int'".
+    if tokenizer.pad_token is not None and tokenizer.pad_token_id is None:
+        tokenizer.add_special_tokens({"pad_token": tokenizer.pad_token})
+    if tokenizer.eos_token is not None and tokenizer.eos_token_id is None:
+        tokenizer.add_special_tokens({"eos_token": tokenizer.eos_token})
+    if tokenizer.bos_token is not None and tokenizer.bos_token_id is None:
+        tokenizer.add_special_tokens({"bos_token": tokenizer.bos_token})
+
     return tokenizer
 
 
+def list_supported_models(
+    architecture: str | None = None,
+    verified_only: bool = False,
+) -> list[str]:
+    """List all models supported by TransformerLens.
+
+    This function provides convenient access to the model registry API
+    for discovering which HuggingFace models can be loaded.
+
+    Args:
+        architecture: Filter by architecture ID (e.g., "GPT2LMHeadModel").
+            If None, returns all supported models.
+        verified_only: If True, only return models that have been verified
+            to work with TransformerLens.
+
+    Returns:
+        List of model IDs (e.g., ["gpt2", "gpt2-medium", ...])
+
+    Example:
+        >>> from transformer_lens.model_bridge.sources.transformers import list_supported_models
+        >>> models = list_supported_models()
+        >>> gpt2_models = list_supported_models(architecture="GPT2LMHeadModel")
+    """
+    try:
+        from transformer_lens.tools.model_registry import api
+
+        models = api.get_supported_models(architecture=architecture, verified_only=verified_only)
+        return [m.model_id for m in models]
+    except ImportError:
+        return []
+    except Exception:
+        return []
+
+
+def check_model_support(model_id: str) -> dict:
+    """Check if a model is supported and get detailed support info.
+
+    This function provides detailed information about a model's compatibility
+    with TransformerLens, including architecture type and verification status.
+
+    Args:
+        model_id: The HuggingFace model ID to check (e.g., "gpt2")
+
+    Returns:
+        Dictionary with support information:
+        - is_supported: bool - Whether the model is supported
+        - architecture_id: str | None - The architecture type if supported
+        - verified: bool - Whether the model has been verified to work
+        - suggestion: str | None - Suggested alternative if not supported
+
+    Example:
+        >>> from transformer_lens.model_bridge.sources.transformers import check_model_support  # doctest: +SKIP
+        >>> info = check_model_support("openai-community/gpt2")  # doctest: +SKIP
+        >>> info["is_supported"]  # doctest: +SKIP
+        True
+    """
+    try:
+        from transformer_lens.tools.model_registry import api
+
+        is_supported = api.is_model_supported(model_id)
+
+        if is_supported:
+            model_info = api.get_model_info(model_id)
+            return {
+                "is_supported": True,
+                "architecture_id": model_info.architecture_id,
+                "status": model_info.status,
+                "verified_date": (
+                    model_info.verified_date.isoformat() if model_info.verified_date else None
+                ),
+                "suggestion": None,
+            }
+        else:
+            suggestion = api.suggest_similar_model(model_id)
+            return {
+                "is_supported": False,
+                "architecture_id": None,
+                "verified": False,
+                "verified_date": None,
+                "suggestion": suggestion,
+            }
+    except ImportError:
+        return {
+            "is_supported": None,
+            "architecture_id": None,
+            "verified": False,
+            "verified_date": None,
+            "suggestion": None,
+            "error": "Model registry not available",
+        }
+    except Exception as e:
+        return {
+            "is_supported": None,
+            "architecture_id": None,
+            "verified": False,
+            "verified_date": None,
+            "suggestion": None,
+            "error": str(e),
+        }
+
+
+# Attach functions to TransformerBridge as static methods
 setattr(TransformerBridge, "boot_transformers", staticmethod(boot))
+setattr(TransformerBridge, "list_supported_models", staticmethod(list_supported_models))
+setattr(TransformerBridge, "check_model_support", staticmethod(check_model_support))

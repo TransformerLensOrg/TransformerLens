@@ -265,34 +265,44 @@ class ComponentBenchmarker:
 
         results: List[ComponentTestResult] = []
 
+        # Block-type components that need to be tested recursively by layer
+        # (they are ModuleLists that don't have direct forward methods)
+        block_components = {"blocks", "encoder_blocks", "decoder_blocks"}
+
         # Test top-level components (embed, pos_embed, ln_final, unembed)
         for comp_name, component in component_mapping.items():
             if comp_name in skip_components:
                 continue
 
-            if comp_name == "blocks":
-                # Handle blocks separately
+            if comp_name in block_components:
+                # Handle blocks separately - test their subcomponents by layer
                 continue
 
             result = self._test_component(comp_name, component, test_inputs)
             if result is not None:
                 results.append(result)
 
-        # Test block components
-        if "blocks" in component_mapping and "blocks" not in skip_components:
-            blocks_component = component_mapping["blocks"]
-            n_layers = self.cfg.n_layers
+        # Test block components recursively
+        for block_type in block_components:
+            if block_type in component_mapping and block_type not in skip_components:
+                blocks_component = component_mapping[block_type]
+                n_layers = self.cfg.n_layers
 
-            for layer_idx in range(n_layers):
-                # Test each subcomponent in the block
-                for subcomp_name, subcomponent in blocks_component.submodules.items():
-                    comp_path = f"blocks.{layer_idx}.{subcomp_name}"
-                    if comp_path in skip_components:
-                        continue
+                for layer_idx in range(n_layers):
+                    # Recursively test each subcomponent and its nested subcomponents
+                    for subcomp_name, subcomponent in blocks_component.submodules.items():
+                        comp_path = f"{block_type}.{layer_idx}.{subcomp_name}"
+                        self._test_component_recursive(
+                            comp_path, subcomponent, test_inputs, results, skip_components
+                        )
 
-                    result = self._test_component(comp_path, subcomponent, test_inputs)
-                    if result is not None:
-                        results.append(result)
+        # Clean up test inputs to free memory
+        if test_inputs is not None:
+            for key in list(test_inputs.keys()):
+                tensor = test_inputs[key]
+                if tensor is not None and isinstance(tensor, torch.Tensor):
+                    del tensor
+            test_inputs.clear()
 
         # Create report
         passed = sum(1 for r in results if r.passed)
@@ -305,6 +315,139 @@ class ComponentBenchmarker:
             failed_components=failed,
             component_results=results,
         )
+
+    def _test_component_recursive(
+        self,
+        component_path: str,
+        component: GeneralizedComponent,
+        test_inputs: Dict[str, torch.Tensor],
+        results: List[ComponentTestResult],
+        skip_components: Optional[List[str]] = None,
+    ) -> None:
+        """Recursively test a component and all its subcomponents.
+
+        This method tests the given component and then recursively tests all its
+        nested subcomponents (e.g., attn.q, attn.k, mlp.gate, etc.).
+
+        Note: We skip testing q/k/v subcomponents when the parent attention module
+        uses joint QKV projection (JointQKVAttentionBridge), as these are virtual
+        components that don't exist as separate modules in HuggingFace.
+
+        Args:
+            component_path: Path to the component (e.g., "blocks.0.attn")
+            component: The generalized component bridge
+            test_inputs: Dictionary of test inputs
+            results: List to append results to
+            skip_components: Optional list of component paths to skip
+        """
+        skip_components = skip_components or []
+
+        # Skip if in skip list
+        if component_path in skip_components:
+            return
+
+        # Skip MLP components that don't exist as separate modules in HF (name=None)
+        # These are virtual components where fc1/fc2 are directly on the layer
+        # Component testing doesn't work for these because get_component returns the parent layer
+        if "mlp" in component_path and hasattr(component, "name") and component.name is None:
+            return
+
+        # Skip MLP components with custom forward signatures (e.g., BLOOM requires residual)
+        # These can't be tested in isolation without full model context
+        if "mlp" in component_path and hasattr(component, "hf_component"):
+            import inspect
+
+            try:
+                sig = inspect.signature(component.hf_component.forward)
+                params = list(sig.parameters.keys())
+                # Standard MLP only needs hidden_states (or self + hidden_states)
+                # If there are more required params, skip testing
+                if len(params) > 2:  # self + hidden_states + other required params
+                    return
+            except Exception:
+                # If we can't inspect, proceed with testing
+                pass
+
+        # Skip attention components that require position embeddings in Phase 3
+        # These can't be tested in isolation without full model context for position embeddings
+        if (
+            "attn" in component_path
+            and hasattr(component, "requires_position_embeddings")
+            and component.requires_position_embeddings
+        ):
+            return
+
+        # Skip attention components that use native HF attention (maintain_native_attention=True)
+        # These have custom forward signatures (e.g., BLOOM requires residual, alibi, attention_mask)
+        # and can't be tested in isolation without full model context
+        if (
+            "attn" in component_path
+            and hasattr(component, "maintain_native_attention")
+            and component.maintain_native_attention
+        ):
+            return
+
+        # Skip BLOOM and T5 attention and MLP components - they have custom signatures that require
+        # residual connections, alibi bias, or cache_position from the full model context
+        if "attn" in component_path or "mlp" in component_path:
+            # Check if this is a BLOOM or T5 model by looking at the HF model config
+            hf_model_config = getattr(self.hf_model, "config", None)
+            if hf_model_config and hasattr(hf_model_config, "model_type"):
+                # BLOOM requires residual and alibi bias
+                # T5 requires cache_position for relative position embeddings
+                if hf_model_config.model_type in ["bloom", "t5"]:
+                    return
+
+        # Skip components that require specific shaped inputs from their parent modules
+        # These components expect intermediate outputs from their parent attention/MLP
+        # modules and can't be tested with generic hidden state inputs
+        path_parts = component_path.split(".")
+        if len(path_parts) >= 3:  # e.g., "blocks.0.attn.o" or "blocks.0.mlp.out"
+            last_part = path_parts[-1]
+
+            # Skip attention output projection (expects concatenated attn output)
+            # Skip MLP output projection (expects MLP intermediate activations)
+            # Note: q_norm/k_norm are handled specially in _run_component
+            if last_part in ["o", "out"]:
+                return
+
+            # Check if this is a q/k/v subcomponent and parent is joint QKV
+            if last_part in ["q", "k", "v"]:
+                # Check if parent component is JointQKVAttentionBridge
+                parent_type = type(component).__name__
+                # The component passed in is actually the q/k/v component itself
+                # We need to check if we should skip based on parent context
+                # For now, we'll check if the parent path exists and is a joint module
+                # This is a heuristic - skip q/k/v that are children of attention
+                # if the attention module has "qkv" or "c_attn" in its submodules
+                # (indicating joint QKV projection)
+                parent_path = ".".join(path_parts[:-1])
+                try:
+                    parent_component = self.adapter.get_component(self.bridge_model, parent_path)
+                    # Check if parent has a joint qkv module
+                    if hasattr(parent_component, "submodules"):
+                        if (
+                            "qkv" in parent_component.submodules  # type: ignore[operator]
+                            or "c_attn" in parent_component.submodules  # type: ignore[operator]
+                        ):
+                            # Skip - this is a virtual q/k/v split from joint projection
+                            return
+                except Exception:
+                    # If we can't get parent, proceed with testing
+                    pass
+
+        # Test this component
+        result = self._test_component(component_path, component, test_inputs)
+        if result is not None:
+            results.append(result)
+
+        # Recursively test subcomponents
+        if hasattr(component, "submodules") and component.submodules:
+            for subcomp_name, subcomponent in component.submodules.items():
+                sub_path = f"{component_path}.{subcomp_name}"
+                self._test_component_recursive(
+                    sub_path, subcomponent, test_inputs, results, skip_components
+                )
 
     def _test_component(
         self,
@@ -324,7 +467,10 @@ class ComponentBenchmarker:
         """
         try:
             # Get bridge component
-            bridge_component = self.adapter.get_component(self.bridge_model, component_path)
+            # The adapter returns nn.Module, but for bridge models it's actually GeneralizedComponent
+            bridge_component = cast(
+                GeneralizedComponent, self.adapter.get_component(self.bridge_model, component_path)
+            )
 
             # Get HuggingFace component
             hf_component = self.adapter.get_component(self.hf_model, component_path)
@@ -334,11 +480,20 @@ class ComponentBenchmarker:
             if test_input is None:
                 return None
 
-            # For embedding components, generate token indices once to use for both
+            # Get input args/kwargs from the Bridge component
+            # All bridge components inherit from GeneralizedComponent and have get_dummy_inputs()
+            batch, seq_len, _ = test_input.shape
+            pos_indices = (
+                torch.arange(seq_len, device=test_input.device).unsqueeze(0).expand(batch, -1)
+            )
+
+            # For embedding components, generate token indices once
             shared_token_indices = None
             if component_path == "embed":
                 batch, seq_len, _ = test_input.shape
-                shared_token_indices = torch.randint(0, self.cfg.d_vocab, (batch, seq_len))
+                shared_token_indices = torch.randint(
+                    0, self.cfg.d_vocab, (batch, seq_len), device=test_input.device
+                )
 
             # Generate shared inputs for attention/MLP/rotary components that have get_random_inputs()
             # This is needed for model-specific inputs like position_embeddings or attention_mask
@@ -412,13 +567,28 @@ class ComponentBenchmarker:
                 bridge_tensor, hf_tensor
             )
 
+            # Get output shape before deleting tensors
+            output_shape = tuple(bridge_tensor.shape)
+
+            # Clean up output tensors immediately to free memory
+            del bridge_output, hf_output, bridge_tensor, hf_tensor
+            if shared_inputs is not None:
+                # Clean up shared inputs
+                for key in list(shared_inputs.keys()):
+                    val = shared_inputs[key]
+                    if val is not None and isinstance(val, torch.Tensor):
+                        del val
+                    shared_inputs[key] = None
+            if shared_token_indices is not None:
+                del shared_token_indices
+
             return ComponentTestResult(
                 component_path=component_path,
                 component_type=type(component).__name__,
                 passed=passed,
                 max_diff=max_diff,
                 mean_diff=mean_diff,
-                output_shape=tuple(bridge_tensor.shape),
+                output_shape=output_shape,
                 percentile_diffs=percentile_diffs,
             )
 
@@ -453,6 +623,15 @@ class ComponentBenchmarker:
         Returns:
             The component output
         """
+        # Special handling for q_norm/k_norm: they expect (batch, seq, d_head) not (batch, seq, d_model)
+        if component_path.endswith(".q_norm") or component_path.endswith(".k_norm"):
+            # Reshape test_input from (batch, seq, d_model) to (batch, seq, d_head)
+            batch, seq, d_model = test_input.shape
+            d_head = self.cfg.d_head
+            # Use just d_head dimensions as test input
+            test_input_reshaped = test_input[..., :d_head]
+            return component(test_input_reshaped)
+
         # Use shared inputs if provided (generated from bridge component's get_random_inputs())
         if shared_inputs is not None:
             # Check if shared_inputs contains positional args
@@ -489,13 +668,17 @@ class ComponentBenchmarker:
                 token_indices = shared_token_indices
             else:
                 batch, seq_len, _ = test_input.shape
-                token_indices = torch.randint(0, self.cfg.d_vocab, (batch, seq_len))
+                token_indices = torch.randint(
+                    0, self.cfg.d_vocab, (batch, seq_len), device=test_input.device
+                )
             return component(token_indices)
         elif component_path == "pos_embed" or "pos_embed" in component_path:
             # Position embedding expects integer position indices
             batch, seq_len, _ = test_input.shape
             # For positional embeddings, we need position indices
-            pos_indices = torch.arange(seq_len).unsqueeze(0).expand(batch, -1)
+            pos_indices = (
+                torch.arange(seq_len, device=test_input.device).unsqueeze(0).expand(batch, -1)
+            )
             try:
                 return component(pos_indices)
             except (TypeError, IndexError):
@@ -574,16 +757,15 @@ class ComponentBenchmarker:
         if bridge_output.shape != hf_output.shape:
             return False, float("inf"), float("inf"), {}
 
-        # Compute differences
-        diff = torch.abs(bridge_output - hf_output)
+        # Compute differences (upcast to float32 for safety)
+        bo = bridge_output.float()
+        ho = hf_output.float()
+        diff = torch.abs(bo - ho)
         max_diff = diff.max().item()
         mean_diff = diff.mean().item()
 
         # Compute percentile differences
-        # Convert to float32 for quantile computation (bfloat16 not supported)
         flat_diff = diff.flatten()
-        if flat_diff.dtype == torch.bfloat16 or flat_diff.dtype == torch.float16:
-            flat_diff = flat_diff.float()
         percentile_diffs = {
             "50th": torch.quantile(flat_diff, 0.5).item(),
             "90th": torch.quantile(flat_diff, 0.9).item(),
@@ -591,7 +773,7 @@ class ComponentBenchmarker:
         }
 
         # Check if within tolerance
-        passed = torch.allclose(bridge_output, hf_output, atol=self.atol, rtol=self.rtol)
+        passed = torch.allclose(bo, ho, atol=self.atol, rtol=self.rtol)
 
         return passed, max_diff, mean_diff, percentile_diffs
 

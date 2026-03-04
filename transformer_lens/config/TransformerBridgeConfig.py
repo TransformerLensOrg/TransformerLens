@@ -22,9 +22,11 @@ class TransformerBridgeConfig(TransformerLensConfig):
         d_head: int,
         n_layers: int,
         n_ctx: int,
+        n_heads: int = -1,  # Add n_heads to signature so it's not filtered out by from_dict
         d_vocab: int = -1,
         architecture: Optional[str] = None,
         tokenizer_prepends_bos: bool = True,
+        tokenizer_appends_eos: bool = False,
         default_padding_side: Optional[str] = None,
         # HookedTransformerConfig compatibility fields
         model_name: str = "custom",
@@ -63,7 +65,7 @@ class TransformerBridgeConfig(TransformerLensConfig):
         gated_mlp: bool = False,
         dtype: Optional[torch.dtype] = torch.float32,
         post_embedding_ln: bool = False,
-        rotary_base: int = 10000,
+        rotary_base: int | float = 10000,
         trust_remote_code: bool = False,
         rotary_adjacent_pairs: bool = False,
         load_in_4bit: bool = False,
@@ -82,7 +84,14 @@ class TransformerBridgeConfig(TransformerLensConfig):
         NTK_by_parts_high_freq_factor: float = 4.0,
         NTK_by_parts_factor: float = 8.0,
         eps_attr: str = "eps",
+        rmsnorm_uses_offset: bool = False,
         attn_implementation: Optional[str] = None,
+        # Multimodal configuration
+        is_multimodal: bool = False,
+        vision_hidden_size: Optional[int] = None,
+        vision_num_layers: Optional[int] = None,
+        vision_num_heads: Optional[int] = None,
+        mm_tokens_per_image: Optional[int] = None,
         **kwargs,
     ):
         """Initialize TransformerBridgeConfig."""
@@ -92,6 +101,7 @@ class TransformerBridgeConfig(TransformerLensConfig):
             n_layers=n_layers,
             n_ctx=n_ctx,
             d_vocab=d_vocab,
+            n_heads=n_heads,
             **kwargs,
         )
 
@@ -100,6 +110,7 @@ class TransformerBridgeConfig(TransformerLensConfig):
 
         # Tokenizer configuration
         self.tokenizer_prepends_bos = tokenizer_prepends_bos
+        self.tokenizer_appends_eos = tokenizer_appends_eos
         self.default_padding_side = default_padding_side
 
         # Attention weight processing configuration
@@ -142,7 +153,7 @@ class TransformerBridgeConfig(TransformerLensConfig):
         self.gated_mlp = gated_mlp
         self.dtype = dtype if dtype is not None else torch.float32
         self.post_embedding_ln = post_embedding_ln
-        self.rotary_base = rotary_base
+        self.rotary_base = int(rotary_base)
         self.trust_remote_code = trust_remote_code
         self.rotary_adjacent_pairs = rotary_adjacent_pairs
         self.load_in_4bit = load_in_4bit
@@ -161,7 +172,14 @@ class TransformerBridgeConfig(TransformerLensConfig):
         self.NTK_by_parts_high_freq_factor = NTK_by_parts_high_freq_factor
         self.NTK_by_parts_factor = NTK_by_parts_factor
         self.eps_attr = eps_attr
+        self.rmsnorm_uses_offset = rmsnorm_uses_offset
         self.attn_implementation = attn_implementation
+        # Multimodal configuration
+        self.is_multimodal = is_multimodal
+        self.vision_hidden_size = vision_hidden_size
+        self.vision_num_layers = vision_num_layers
+        self.vision_num_heads = vision_num_heads
+        self.mm_tokens_per_image = mm_tokens_per_image
 
         self.__post_init__()
 
@@ -180,3 +198,8 @@ class TransformerBridgeConfig(TransformerLensConfig):
         # Call parent's __post_init__ after our validation
         if hasattr(super(), "__post_init__"):
             super().__post_init__()
+
+    @property
+    def head_dim(self) -> int:
+        """Alias for d_head to match HuggingFace config naming convention."""
+        return self.d_head

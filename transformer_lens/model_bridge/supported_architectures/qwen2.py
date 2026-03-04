@@ -2,18 +2,19 @@
 
 from typing import Any
 
-from transformer_lens.conversion_utils.conversion_steps import (
-    HookConversionSet,
-    RearrangeHookConversion,
+from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorConversion
+from transformer_lens.conversion_utils.param_processing_conversion import (
+    ParamProcessingConversion,
 )
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
-    AttentionBridge,
     BlockBridge,
     EmbeddingBridge,
     LinearBridge,
     MLPBridge,
+    PositionEmbeddingsAttentionBridge,
     RMSNormalizationBridge,
+    RotaryEmbeddingBridge,
     UnembeddingBridge,
 )
 
@@ -44,52 +45,46 @@ class Qwen2ArchitectureAdapter(ArchitectureAdapter):
         """Initialize the Qwen2 architecture adapter."""
         super().__init__(cfg)
 
-        self.cfg.default_prepend_bos = False
+        # Set config variables for weight processing
+        self.cfg.normalization_type = "RMS"
+        self.cfg.positional_embedding_type = "rotary"
+        self.cfg.final_rms = True
         self.cfg.gated_mlp = True
+        self.cfg.attn_only = False
+
+        self.cfg.default_prepend_bos = False
         self.cfg.uses_rms_norm = True
 
-        self.conversion_rules = HookConversionSet(
-            {
-                "embed.e": "model.embed_tokens.weight",
-                "blocks.{i}.ln1.w": "model.layers.{i}.input_layernorm.weight",
-                "blocks.{i}.ln2.w": "model.layers.{i}.post_attention_layernorm.weight",
-                "blocks.{i}.attn.q": (
-                    "model.layers.{i}.self_attn.q_proj.weight",
-                    RearrangeHookConversion("(n h) m -> n m h", n=self.cfg.n_heads),
+        self.weight_processing_conversions = {
+            "blocks.{i}.attn.q.weight": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
+            ),
+            "blocks.{i}.attn.k.weight": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion(
+                    "(n h) m -> n m h",
+                    n=getattr(self.cfg, "n_key_value_heads", self.cfg.n_heads),
                 ),
-                "blocks.{i}.attn.k": (
-                    "model.layers.{i}.self_attn.k_proj.weight",
-                    RearrangeHookConversion(
-                        "(n h) m -> n m h",
-                        n=getattr(self.cfg, "num_key_value_heads", self.cfg.n_heads),
-                    ),
+            ),
+            "blocks.{i}.attn.v.weight": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion(
+                    "(n h) m -> n m h",
+                    n=getattr(self.cfg, "n_key_value_heads", self.cfg.n_heads),
                 ),
-                "blocks.{i}.attn.v": (
-                    "model.layers.{i}.self_attn.v_proj.weight",
-                    RearrangeHookConversion(
-                        "(n h) m -> n m h",
-                        n=getattr(self.cfg, "num_key_value_heads", self.cfg.n_heads),
-                    ),
-                ),
-                "blocks.{i}.attn.o": (
-                    "model.layers.{i}.self_attn.o_proj.weight",
-                    RearrangeHookConversion("m (n h) -> n h m", n=self.cfg.n_heads),
-                ),
-                "blocks.{i}.mlp.in": "model.layers.{i}.mlp.up_proj.weight.T",
-                "blocks.{i}.mlp.gate": "model.layers.{i}.mlp.gate_proj.weight",
-                "blocks.{i}.mlp.out": "model.layers.{i}.mlp.down_proj.weight",
-                "ln_final.w": "model.norm.weight",
-                "unembed.u": "lm_head.weight",
-            }
-        )
+            ),
+            "blocks.{i}.attn.o.weight": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion("m (n h) -> n h m", n=self.cfg.n_heads),
+            ),
+        }
         self.component_mapping = {
             "embed": EmbeddingBridge(name="model.embed_tokens"),
+            "rotary_emb": RotaryEmbeddingBridge(name="model.rotary_emb"),
             "blocks": BlockBridge(
                 name="model.layers",
+                config=self.cfg,
                 submodules={
                     "ln1": RMSNormalizationBridge(name="input_layernorm", config=self.cfg),
                     "ln2": RMSNormalizationBridge(name="post_attention_layernorm", config=self.cfg),
-                    "attn": AttentionBridge(
+                    "attn": PositionEmbeddingsAttentionBridge(
                         name="self_attn",
                         config=self.cfg,
                         submodules={
@@ -98,9 +93,12 @@ class Qwen2ArchitectureAdapter(ArchitectureAdapter):
                             "v": LinearBridge(name="v_proj"),
                             "o": LinearBridge(name="o_proj"),
                         },
+                        requires_attention_mask=True,
+                        requires_position_embeddings=True,
                     ),
                     "mlp": MLPBridge(
                         name="mlp",
+                        config=self.cfg,
                         submodules={
                             "gate": LinearBridge(name="gate_proj"),
                             "in": LinearBridge(name="up_proj"),
@@ -110,5 +108,29 @@ class Qwen2ArchitectureAdapter(ArchitectureAdapter):
                 },
             ),
             "ln_final": RMSNormalizationBridge(name="model.norm", config=self.cfg),
-            "unembed": UnembeddingBridge(name="lm_head"),
+            "unembed": UnembeddingBridge(name="lm_head", config=self.cfg),
         }
+
+    def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
+        """Set up rotary embedding references for Qwen2 component testing.
+
+        Qwen2 uses RoPE (Rotary Position Embeddings). We set the rotary_emb reference
+        on all attention bridge instances for component testing.
+
+        Args:
+            hf_model: The HuggingFace Qwen2 model instance
+            bridge_model: The TransformerBridge model (if available, set rotary_emb on actual instances)
+        """
+        # Get rotary embedding instance from the model
+        rotary_emb = hf_model.model.rotary_emb
+
+        # Set rotary_emb on actual bridge instances in bridge_model if available
+        if bridge_model is not None and hasattr(bridge_model, "blocks"):
+            # Set on each layer's actual attention bridge instance
+            for block in bridge_model.blocks:
+                if hasattr(block, "attn"):
+                    block.attn.set_rotary_emb(rotary_emb)
+
+        # Also set on the template for get_generalized_component() calls
+        attn_bridge = self.get_generalized_component("blocks.0.attn")
+        attn_bridge.set_rotary_emb(rotary_emb)

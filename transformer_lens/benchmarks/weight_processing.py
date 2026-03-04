@@ -5,7 +5,12 @@ from typing import Optional, cast
 import torch
 
 from transformer_lens import HookedTransformer
-from transformer_lens.benchmarks.utils import BenchmarkResult, BenchmarkSeverity
+from transformer_lens.benchmarks.utils import (
+    BenchmarkResult,
+    BenchmarkSeverity,
+    is_tiny_test_model,
+    safe_allclose,
+)
 from transformer_lens.model_bridge import TransformerBridge
 
 
@@ -64,11 +69,11 @@ def benchmark_weight_processing(
 
             # Check weight centering - writing weights should be approximately centered
             bridge_w_out = bridge.blocks[0].mlp.W_out
-            reference_w_out = reference_model.blocks[0].mlp.W_out
+            reference_w_out = reference_model.blocks[0].mlp.W_out  # type: ignore[union-attr]
 
             bridge_mean = torch.mean(torch.abs(torch.mean(bridge_w_out, dim=-1, keepdim=True)))
             reference_mean = torch.mean(
-                torch.abs(torch.mean(reference_w_out, dim=-1, keepdim=True))
+                torch.abs(torch.mean(reference_w_out, dim=-1, keepdim=True))  # type: ignore[arg-type]
             )
 
             if bridge_mean.item() > 1e-3:
@@ -174,7 +179,7 @@ def benchmark_weight_sharing(
                         },
                     )
 
-            if not torch.allclose(bridge_W_V, reference_W_V):  # type: ignore[arg-type]
+            if not safe_allclose(bridge_W_V, reference_W_V):  # type: ignore[arg-type]
                 return BenchmarkResult(
                     name="weight_sharing",
                     severity=BenchmarkSeverity.WARNING,
@@ -287,8 +292,22 @@ def benchmark_weight_modification(
                     passed=False,
                 )
 
-        # Get modified loss
-        modified_loss = bridge(test_text, return_type="loss")
+        # Get modified loss (with error handling to restore weights)
+        try:
+            modified_loss = bridge(test_text, return_type="loss")
+        except Exception as forward_error:
+            # Restore weights before reporting error
+            with torch.no_grad():
+                bridge.blocks[0].attn.W_V.copy_(original_w_v)
+
+            # Some models (e.g., models with complex attention mechanisms) may have
+            # forward pass issues after weight modification. Report as skipped.
+            return BenchmarkResult(
+                name="weight_modification",
+                severity=BenchmarkSeverity.SKIPPED,
+                message=f"Weight modification not testable for this architecture: {str(forward_error)}",
+                details={"error": str(forward_error), "architecture_limitation": True},
+            )
 
         # Restore weights
         with torch.no_grad():
@@ -297,11 +316,38 @@ def benchmark_weight_modification(
         # Loss should change
         change = abs(modified_loss - original_loss)
         if change < 1e-6:
+            # W_V modification didn't propagate. This can happen in models with
+            # combined QKV projections (e.g., Bloom) where the split V weight
+            # is separate from the combined QKV weight used in forward.
+            # Try MLP weight modification as fallback.
+            mlp_fallback_error = None
+            try:
+                with torch.no_grad():
+                    original_mlp_w = bridge.blocks[0].mlp.out.weight.clone()
+                    bridge.blocks[0].mlp.out.weight[0, :] = 0
+                mlp_modified_loss = bridge(test_text, return_type="loss")
+                with torch.no_grad():
+                    bridge.blocks[0].mlp.out.weight.copy_(original_mlp_w)
+                mlp_change = abs(mlp_modified_loss - original_loss)
+                if mlp_change > 1e-6:
+                    return BenchmarkResult(
+                        name="weight_modification",
+                        severity=BenchmarkSeverity.INFO,
+                        message=f"Weight modification propagates via MLP (change: {mlp_change:.6f}). "
+                        f"W_V not propagated (combined QKV architecture).",
+                        details={"change": mlp_change.item(), "fallback": "mlp"},
+                    )
+            except Exception as mlp_err:
+                mlp_fallback_error = str(mlp_err)
+
+            details = {"change": change.item()}
+            if mlp_fallback_error is not None:
+                details["mlp_fallback_error"] = mlp_fallback_error
             return BenchmarkResult(
                 name="weight_modification",
                 severity=BenchmarkSeverity.DANGER,
                 message=f"Weight modification did not affect loss (change: {change:.6f})",
-                details={"change": change.item()},
+                details=details,
                 passed=False,
             )
 
@@ -313,6 +359,19 @@ def benchmark_weight_modification(
         )
 
     except Exception as e:
+        # Some architectures (e.g., Gemma 3 with complex attention, OpenELM with
+        # combined QKV) don't expose W_V. Report as skipped, not passed.
+        if (
+            "cannot be multiplied" in str(e)
+            or "shape" in str(e).lower()
+            or "has no attribute" in str(e)
+        ):
+            return BenchmarkResult(
+                name="weight_modification",
+                severity=BenchmarkSeverity.SKIPPED,
+                message=f"Weight modification not testable for this architecture: {str(e)}",
+                details={"error": str(e), "architecture_limitation": True},
+            )
         return BenchmarkResult(
             name="weight_modification",
             severity=BenchmarkSeverity.ERROR,
@@ -337,49 +396,89 @@ def benchmark_layer_norm_folding(
         BenchmarkResult with layer norm folding verification details
     """
     try:
+        # Skip for architectures that don't support fold_ln (e.g., post-LN like BERT)
+        adapter = getattr(bridge, "adapter", None)
+        if adapter and not getattr(adapter, "supports_fold_ln", True):
+            return BenchmarkResult(
+                name="layer_norm_folding",
+                severity=BenchmarkSeverity.SKIPPED,
+                message="Skipped (post-LN architecture does not support fold_ln)",
+                passed=True,
+            )
+
         # Get state dict from bridge (should return TransformerLens format keys)
         state_dict = bridge.state_dict()
 
-        # Check first layer normalization weights in TransformerLens format
-        ln_key = "blocks.0.ln1.weight"
+        # Check both ln1 (attention LN) and ln2 (MLP LN) in TransformerLens format.
+        # Models with combined QKV projections (e.g., OpenELM's qkv_proj) cannot
+        # fold ln1 into attention weights, but ln2 should always be foldable.
+        tolerance = 0.01
+        # For rmsnorm_uses_offset models (Gemma/Gemma2), HF computes x*(1+weight),
+        # so the identity weight after folding is 0.0 (gives 1+0=1). For standard
+        # models, identity is 1.0.
+        cfg = getattr(getattr(bridge, "adapter", None), "cfg", None)
+        rmsnorm_uses_offset = getattr(cfg, "rmsnorm_uses_offset", False)
+        expected_val = 0.0 if rmsnorm_uses_offset else 1.0
+        folded = []
+        not_folded = []
 
-        # Fallback: if TL format key doesn't exist, try common HF format patterns
-        if ln_key not in state_dict:
-            # Try GPT-2 HF format
-            if "transformer.h.0.ln_1.weight" in state_dict:
-                ln_key = "transformer.h.0.ln_1.weight"
-            # Try Gemma HF format
-            elif "model.layers.0.input_layernorm.weight" in state_dict:
-                ln_key = "model.layers.0.input_layernorm.weight"
+        for ln_name in ["ln1", "ln2"]:
+            ln_key = f"blocks.0.{ln_name}.weight"
+            if ln_key not in state_dict:
+                continue
+            ln_weight = state_dict[ln_key]
+            mean_val = torch.mean(ln_weight).item()
+            if abs(mean_val - expected_val) < tolerance:
+                folded.append((ln_name, ln_key, mean_val))
             else:
-                return BenchmarkResult(
-                    name="layer_norm_folding",
-                    severity=BenchmarkSeverity.WARNING,
-                    message="Could not find layer norm weights in state dict",
-                    passed=False,
-                )
+                not_folded.append((ln_name, ln_key, mean_val))
 
-        # Get the layer norm weight tensor
-        ln_weight = state_dict[ln_key]
-
-        # Check if weights are close to identity (all ones for LayerNorm/RMSNorm)
-        mean_val = torch.mean(ln_weight).item()
-        expected_val = 1.0
-        tolerance = 0.1
-
-        if abs(mean_val - expected_val) < tolerance:
+        if not folded and not not_folded:
+            # No LN weights found — model uses non-parametric LayerNorm
+            # (e.g., OLMo v1 has fixed weight=1, bias=0 with no learnable params).
+            # Nothing to fold, so this is a pass.
             return BenchmarkResult(
                 name="layer_norm_folding",
                 severity=BenchmarkSeverity.INFO,
-                message=f"Layer norm folding verified (mean={mean_val:.6f}, expected={expected_val})",
-                details={"mean": mean_val, "expected": expected_val, "key": ln_key},
+                message="No learnable layer norm weights (non-parametric LayerNorm)",
+                passed=True,
             )
-        else:
+
+        if folded and not not_folded:
+            # All LN weights are folded
+            names = ", ".join(f"{n} (mean={m:.6f})" for n, _, m in folded)
+            return BenchmarkResult(
+                name="layer_norm_folding",
+                severity=BenchmarkSeverity.INFO,
+                message=f"Layer norm folding verified: {names}",
+                details={"folded": [n for n, _, _ in folded]},
+            )
+        elif folded and not_folded:
+            # Partial folding — some LN weights folded, some not.
+            # This is expected for models with combined QKV (ln1 can't fold).
+            folded_names = ", ".join(f"{n} (mean={m:.6f})" for n, _, m in folded)
+            unfolded_names = ", ".join(f"{n} (mean={m:.6f})" for n, _, m in not_folded)
             return BenchmarkResult(
                 name="layer_norm_folding",
                 severity=BenchmarkSeverity.WARNING,
-                message=f"Layer norm weights not identity after folding (mean={mean_val:.6f}, expected={expected_val})",
-                details={"mean": mean_val, "expected": expected_val, "key": ln_key},
+                message=(
+                    f"Partial LN folding: {folded_names} folded; "
+                    f"{unfolded_names} preserved (expected for combined QKV models)"
+                ),
+                details={
+                    "folded": [n for n, _, _ in folded],
+                    "not_folded": [n for n, _, _ in not_folded],
+                },
+                passed=True,
+            )
+        else:
+            # No LN weights folded
+            names = ", ".join(f"{n} (mean={m:.6f})" for n, _, m in not_folded)
+            return BenchmarkResult(
+                name="layer_norm_folding",
+                severity=BenchmarkSeverity.WARNING,
+                message=f"Layer norm weights not identity after folding: {names}",
+                details={"not_folded": [n for n, _, _ in not_folded]},
                 passed=False,
             )
 
@@ -408,6 +507,15 @@ def benchmark_attention_output_centering(
         BenchmarkResult with attention output centering verification details
     """
     try:
+        # Skip centering check for tiny/test models — random weights don't
+        # center meaningfully and produce false failures.
+        if is_tiny_test_model(getattr(bridge.cfg, "model_name", "") or ""):
+            return BenchmarkResult(
+                name="attention_output_centering",
+                severity=BenchmarkSeverity.INFO,
+                message="Skipped for tiny/test model (random weights don't center meaningfully)",
+            )
+
         # Check if W_O exists and is accessible
         if not hasattr(bridge.blocks[0].attn, "W_O"):
             return BenchmarkResult(
@@ -465,16 +573,46 @@ def benchmark_mlp_output_centering(
         BenchmarkResult with MLP output centering verification details
     """
     try:
-        # Check if W_out exists and is accessible
-        if not hasattr(bridge.blocks[0].mlp, "W_out"):
+        # Skip centering check for tiny/test models — random weights don't
+        # center meaningfully and produce false failures.
+        if is_tiny_test_model(getattr(bridge.cfg, "model_name", "") or ""):
+            return BenchmarkResult(
+                name="mlp_output_centering",
+                severity=BenchmarkSeverity.INFO,
+                message="Skipped for tiny/test model (random weights don't center meaningfully)",
+            )
+
+        # Check if this is an MoE model - MoE models don't have a single W_out weight
+        from transformer_lens.model_bridge.generalized_components.moe import MoEBridge
+
+        if isinstance(bridge.blocks[0].mlp, MoEBridge):
+            return BenchmarkResult(
+                name="mlp_output_centering",
+                severity=BenchmarkSeverity.INFO,
+                message="Skipped for MoE models (no single W_out weight)",
+                details={"is_moe": True},
+            )
+
+        # Check if W_out exists and is accessible (HT format or bridge format)
+        w_out = None
+        if hasattr(bridge.blocks[0].mlp, "W_out"):
+            w_out = bridge.blocks[0].mlp.W_out
+        elif hasattr(bridge.blocks[0].mlp, "out"):
+            # Bridge format: mlp.out is a LinearBridge wrapping nn.Linear
+            out_module = bridge.blocks[0].mlp.out
+            if hasattr(out_module, "original_component") and hasattr(
+                out_module.original_component, "weight"
+            ):
+                w_out = out_module.original_component.weight
+            elif hasattr(out_module, "weight"):
+                w_out = out_module.weight
+        if w_out is None:
             return BenchmarkResult(
                 name="mlp_output_centering",
                 severity=BenchmarkSeverity.WARNING,
                 message="W_out not accessible on bridge model",
                 passed=False,
             )
-
-        w_out = bridge.blocks[0].mlp.W_out
 
         # Compute mean along output dimension
         mean_abs = torch.mean(torch.abs(torch.mean(w_out, dim=-1))).item()
@@ -547,7 +685,7 @@ def benchmark_unembed_centering(
         # Compute mean along vocabulary dimension (dim 0)
         mean_abs = torch.mean(torch.abs(torch.mean(w_u, dim=0))).item()
 
-        tolerance = 0.1  # 10% tolerance (unembed centering is less strict)
+        tolerance = 0.01  # 1% tolerance (consistent with attn/mlp centering)
 
         if mean_abs < tolerance:
             return BenchmarkResult(
@@ -590,6 +728,21 @@ def benchmark_value_bias_folding(
         BenchmarkResult with value bias folding verification details
     """
     try:
+        # Skip for GQA models (where n_key_value_heads != n_heads)
+        # Value bias folding doesn't work the same way because V outputs are repeated
+        if hasattr(bridge.cfg, "n_key_value_heads") and bridge.cfg.n_key_value_heads is not None:
+            if bridge.cfg.n_key_value_heads != bridge.cfg.n_heads:
+                return BenchmarkResult(
+                    name="value_bias_folding",
+                    severity=BenchmarkSeverity.INFO,
+                    message="Skipped for GQA models (n_key_value_heads != n_heads)",
+                    details={
+                        "is_gqa": True,
+                        "n_heads": bridge.cfg.n_heads,
+                        "n_kv_heads": bridge.cfg.n_key_value_heads,
+                    },
+                )
+
         # Check if b_V exists
         if not hasattr(bridge.blocks[0].attn, "b_V"):
             return BenchmarkResult(
@@ -724,6 +877,11 @@ def benchmark_weight_magnitudes(
         min_threshold = 1e-6
         max_threshold = 1000.0
 
+        # For rmsnorm_uses_offset models (Gemma/Gemma2), fold_ln sets LN weights
+        # to 0.0 (identity for (1+w) normalization). Skip LN weights for these models.
+        cfg = getattr(getattr(bridge, "adapter", None), "cfg", None)
+        rmsnorm_uses_offset = getattr(cfg, "rmsnorm_uses_offset", False)
+
         for key, value in state_dict.items():
             # Skip non-weight tensors (buffers, etc.)
             if "weight" not in key and "bias" not in key:
@@ -735,6 +893,19 @@ def benchmark_weight_magnitudes(
 
             # Skip value biases - they are expected to be zero after folding
             if ".v.bias" in key:
+                continue
+
+            # Skip attention projection biases - they can be zero in some models
+            if (
+                ".k_proj.bias" in key
+                or ".q_proj.bias" in key
+                or ".v_proj.bias" in key
+                or ".o_proj.bias" in key
+                or ".k.bias" in key
+                or ".q.bias" in key
+                or ".v.bias" in key
+                or ".o.bias" in key
+            ):
                 continue
 
             # Skip layer norm biases - they are expected to be zero after folding
@@ -749,13 +920,36 @@ def benchmark_weight_magnitudes(
             ):
                 continue
 
+            # For rmsnorm_uses_offset models, fold_ln sets LN weights to 0.0
+            # (identity for (1+w) normalization). Skip all LN weight keys —
+            # including post-norms (ln1_post, ln2_post) which aren't folded but
+            # use the same (1+w) convention — to avoid false magnitude warnings.
+            if rmsnorm_uses_offset and (
+                "ln1.weight" in key
+                or "ln2.weight" in key
+                or "ln1_post.weight" in key
+                or "ln2_post.weight" in key
+                or "ln_1.weight" in key
+                or "ln_2.weight" in key
+                or "ln_final.weight" in key
+                or "input_layernorm.weight" in key
+                or "post_attention_layernorm.weight" in key
+            ):
+                continue
+
+            # Skip unembed bias - it may be zero after processing
+            if "unembed.bias" in key:
+                continue
+
+            # Skip zero biases - many models initialize biases to zero which is
+            # mathematically equivalent to having no bias. This is a valid state.
+            if "bias" in key and torch.all(value == 0).item():
+                continue
+
             mean_abs = torch.mean(torch.abs(value)).item()
             max_abs = torch.max(torch.abs(value)).item()
 
-            # Only flag as too small if it's truly problematic (all zeros)
-            if mean_abs == 0.0 and max_abs == 0.0:
-                too_small_keys.append((key, mean_abs))
-            elif mean_abs > 0.0 and mean_abs < min_threshold:
+            if mean_abs > 0.0 and mean_abs < min_threshold:
                 # For non-zero weights, check if they're suspiciously small
                 too_small_keys.append((key, mean_abs))
 

@@ -5,21 +5,24 @@ from typing import Any
 import torch
 
 from transformer_lens.conversion_utils.conversion_steps import (
-    HookConversionSet,
-    RearrangeHookConversion,
-    SplitHookConversion,
+    RearrangeTensorConversion,
+    SplitTensorConversion,
 )
-from transformer_lens.conversion_utils.conversion_steps.chain_hook_conversion import (
-    ChainHookConversion,
+from transformer_lens.conversion_utils.conversion_steps.chain_tensor_conversion import (
+    ChainTensorConversion,
+)
+from transformer_lens.conversion_utils.param_processing_conversion import (
+    ParamProcessingConversion,
 )
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
-    JointQKVAttentionBridge,
+    JointQKVPositionEmbeddingsAttentionBridge,
     LinearBridge,
     MLPBridge,
     NormalizationBridge,
+    RotaryEmbeddingBridge,
     UnembeddingBridge,
 )
 
@@ -34,121 +37,116 @@ class NeoxArchitectureAdapter(ArchitectureAdapter):
             cfg: The configuration object.
         """
         super().__init__(cfg)
-        # Note: We DON'T set default_prepend_bos to match HookedTransformer's default behavior
-        # NeoX/Pythia models use rotary position embeddings
-        self.cfg.positional_embedding_type = "rotary"
 
-        self.conversion_rules = HookConversionSet(
-            {
-                "embed.e": "gpt_neox.embed_in.weight",
-                "blocks.{i}.ln1.w": "gpt_neox.layers.{i}.input_layernorm.weight",
-                "blocks.{i}.ln1.b": "gpt_neox.layers.{i}.input_layernorm.bias",
-                "blocks.{i}.ln2.w": "gpt_neox.layers.{i}.post_attention_layernorm.weight",
-                "blocks.{i}.ln2.b": "gpt_neox.layers.{i}.post_attention_layernorm.bias",
-                "blocks.{i}.attn.q": (
-                    "gpt_neox.layers.{i}.attention.query_key_value.weight",
-                    ChainHookConversion(
-                        [
-                            SplitHookConversion(0, 3),
-                            RearrangeHookConversion(
-                                "(head d_head) d_model -> head d_model d_head",
-                                head=self.cfg.n_heads,
-                                d_head=self.cfg.d_model // self.cfg.n_heads,
-                            ),
-                        ]
-                    ),
+        # Set config variables for weight processing
+        self.cfg.normalization_type = "LN"
+        self.cfg.positional_embedding_type = "rotary"
+        self.cfg.final_rms = False
+        self.cfg.gated_mlp = False
+        self.cfg.attn_only = False
+
+        # NeoX/Pythia models were not trained with BOS tokens
+        self.cfg.default_prepend_bos = False
+
+        self.weight_processing_conversions = {
+            "blocks.{i}.attn.q": ParamProcessingConversion(
+                tensor_conversion=ChainTensorConversion(
+                    [
+                        SplitTensorConversion(0, 3),
+                        RearrangeTensorConversion(
+                            "(head d_head) d_model -> head d_model d_head",
+                            head=self.cfg.n_heads,
+                            d_head=self.cfg.d_model // self.cfg.n_heads,
+                        ),
+                    ]
                 ),
-                "blocks.{i}.attn.k": (
-                    "gpt_neox.layers.{i}.attention.query_key_value.weight",
-                    ChainHookConversion(
-                        [
-                            SplitHookConversion(1, 3),
-                            RearrangeHookConversion(
-                                "(head d_head) d_model -> head d_model d_head",
-                                head=self.cfg.n_heads,
-                                d_head=self.cfg.d_model // self.cfg.n_heads,
-                            ),
-                        ]
-                    ),
+                source_key="gpt_neox.layers.{i}.attention.query_key_value.weight",
+            ),
+            "blocks.{i}.attn.k": ParamProcessingConversion(
+                tensor_conversion=ChainTensorConversion(
+                    [
+                        SplitTensorConversion(1, 3),
+                        RearrangeTensorConversion(
+                            "(head d_head) d_model -> head d_model d_head",
+                            head=self.cfg.n_heads,
+                            d_head=self.cfg.d_model // self.cfg.n_heads,
+                        ),
+                    ]
                 ),
-                "blocks.{i}.attn.v": (
-                    "gpt_neox.layers.{i}.attention.query_key_value.weight",
-                    ChainHookConversion(
-                        [
-                            SplitHookConversion(2, 3),
-                            RearrangeHookConversion(
-                                "(head d_head) d_model -> head d_model d_head",
-                                head=self.cfg.n_heads,
-                                d_head=self.cfg.d_model // self.cfg.n_heads,
-                            ),
-                        ]
-                    ),
+                source_key="gpt_neox.layers.{i}.attention.query_key_value.weight",
+            ),
+            "blocks.{i}.attn.v": ParamProcessingConversion(
+                tensor_conversion=ChainTensorConversion(
+                    [
+                        SplitTensorConversion(2, 3),
+                        RearrangeTensorConversion(
+                            "(head d_head) d_model -> head d_model d_head",
+                            head=self.cfg.n_heads,
+                            d_head=self.cfg.d_model // self.cfg.n_heads,
+                        ),
+                    ]
                 ),
-                "blocks.{i}.attn.b_Q": (
-                    "gpt_neox.layers.{i}.attention.query_key_value.bias",
-                    ChainHookConversion(
-                        [
-                            SplitHookConversion(0, 3),
-                            RearrangeHookConversion(
-                                "(head d_head) -> head d_head",
-                                head=self.cfg.n_heads,
-                            ),
-                        ]
-                    ),
+                source_key="gpt_neox.layers.{i}.attention.query_key_value.weight",
+            ),
+            "blocks.{i}.attn.b_Q": ParamProcessingConversion(
+                tensor_conversion=ChainTensorConversion(
+                    [
+                        SplitTensorConversion(0, 3),
+                        RearrangeTensorConversion(
+                            "(head d_head) -> head d_head",
+                            head=self.cfg.n_heads,
+                        ),
+                    ]
                 ),
-                "blocks.{i}.attn.b_K": (
-                    "gpt_neox.layers.{i}.attention.query_key_value.bias",
-                    ChainHookConversion(
-                        [
-                            SplitHookConversion(1, 3),
-                            RearrangeHookConversion(
-                                "(head d_head) -> head d_head",
-                                head=self.cfg.n_heads,
-                            ),
-                        ]
-                    ),
+                source_key="gpt_neox.layers.{i}.attention.query_key_value.bias",
+            ),
+            "blocks.{i}.attn.b_K": ParamProcessingConversion(
+                tensor_conversion=ChainTensorConversion(
+                    [
+                        SplitTensorConversion(1, 3),
+                        RearrangeTensorConversion(
+                            "(head d_head) -> head d_head",
+                            head=self.cfg.n_heads,
+                        ),
+                    ]
                 ),
-                "blocks.{i}.attn.b_V": (
-                    "gpt_neox.layers.{i}.attention.query_key_value.bias",
-                    ChainHookConversion(
-                        [
-                            SplitHookConversion(2, 3),
-                            RearrangeHookConversion(
-                                "(head d_head) -> head d_head",
-                                head=self.cfg.n_heads,
-                            ),
-                        ]
-                    ),
+                source_key="gpt_neox.layers.{i}.attention.query_key_value.bias",
+            ),
+            "blocks.{i}.attn.b_V": ParamProcessingConversion(
+                tensor_conversion=ChainTensorConversion(
+                    [
+                        SplitTensorConversion(2, 3),
+                        RearrangeTensorConversion(
+                            "(head d_head) -> head d_head",
+                            head=self.cfg.n_heads,
+                        ),
+                    ]
                 ),
-                "blocks.{i}.attn.o": (
-                    "gpt_neox.layers.{i}.attention.dense.weight",
-                    RearrangeHookConversion("d_model (head d_head) -> head d_head d_model"),
+                source_key="gpt_neox.layers.{i}.attention.query_key_value.bias",
+            ),
+            "blocks.{i}.attn.o": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion(
+                    "d_model (head d_head) -> head d_head d_model",
+                    head=self.cfg.n_heads,
+                    d_head=self.cfg.d_model // self.cfg.n_heads,
                 ),
-                "blocks.{i}.attn.b_O": "gpt_neox.layers.{i}.attention.dense.bias",
-                "blocks.{i}.mlp.in": "gpt_neox.layers.{i}.mlp.dense_h_to_4h.weight",
-                "blocks.{i}.mlp.b_in": "gpt_neox.layers.{i}.mlp.dense_h_to_4h.bias",
-                "blocks.{i}.mlp.out": "gpt_neox.layers.{i}.mlp.dense_4h_to_h.weight",
-                "blocks.{i}.mlp.b_out": "gpt_neox.layers.{i}.mlp.dense_4h_to_h.bias",
-                "ln_final.w": "gpt_neox.final_layer_norm.weight",
-                "ln_final.b": "gpt_neox.final_layer_norm.bias",
-                "unembed.u": "embed_out.weight",
-            }
-        )
+                source_key="gpt_neox.layers.{i}.attention.dense.weight",
+            ),
+        }
 
         self.component_mapping = {
             "embed": EmbeddingBridge(name="gpt_neox.embed_in"),
-            "rotary_emb": EmbeddingBridge(name="gpt_neox.rotary_emb"),
+            "rotary_emb": RotaryEmbeddingBridge(name="gpt_neox.rotary_emb"),
             "blocks": BlockBridge(
                 name="gpt_neox.layers",
                 submodules={
                     "ln1": NormalizationBridge(name="input_layernorm", config=self.cfg),
                     "ln2": NormalizationBridge(name="post_attention_layernorm", config=self.cfg),
-                    "attn": JointQKVAttentionBridge(
+                    "attn": JointQKVPositionEmbeddingsAttentionBridge(
                         name="attention",
                         config=self.cfg,
                         split_qkv_matrix=self.split_qkv_matrix,
-                        requires_attention_mask=True,  # GPTNeoX/Pythia requires attention_mask
-                        requires_position_embeddings=True,  # GPTNeoX/Pythia requires position_embeddings (rotary)
+                        requires_attention_mask=True,  # GPTNeoX/StableLM requires attention_mask
                         submodules={
                             "qkv": LinearBridge(name="query_key_value"),
                             "o": LinearBridge(name="dense"),
@@ -171,49 +169,82 @@ class NeoxArchitectureAdapter(ArchitectureAdapter):
         self, original_attention_component: Any
     ) -> tuple[torch.nn.Linear, torch.nn.Linear, torch.nn.Linear]:
         """Split the QKV matrix into separate linear transformations.
+
+        GPT-NeoX/StableLM uses an interleaved QKV format where the weights are stored as
+        [Q_h0, K_h0, V_h0, Q_h1, K_h1, V_h1, ...] - i.e., Q, K, V are interleaved per head.
+
+        The weight shape is [n_heads * 3 * d_head, d_model] and the output is reshaped
+        by HuggingFace as [batch, seq, n_heads, 3*d_head] then split on the last dim.
+
         Args:
-            attention_component: The original attention layer component
+            original_attention_component: The original attention layer component
+
         Returns:
             Tuple of nn.Linear modules for Q, K, and V transformations
         """
-
-        # Keep mypy happy
         assert original_attention_component is not None
         assert original_attention_component.query_key_value is not None
 
         qkv_weights = original_attention_component.query_key_value.weight
-
-        # Keep mypy happy
         assert isinstance(qkv_weights, torch.Tensor)
 
-        # Original qkv_weights shape: [3 * d_model, d_model] -> Transposed to [d_model, 3 * d_model]
-        # Split into three equal parts along dimension 1 to get Q, K, V weights
-        W_Q, W_K, W_V = torch.tensor_split(qkv_weights.T, 3, dim=1)
+        n_heads = self.cfg.n_heads
+        d_head = self.cfg.d_head
+        d_model = self.cfg.d_model
 
+        # Weight shape: [n_heads * 3 * d_head, d_model]
+        # Reshape to [n_heads, 3 * d_head, d_model] to access Q, K, V per head
+        W_reshaped = qkv_weights.view(n_heads, 3 * d_head, d_model)
+
+        # Extract Q, K, V weights for all heads and flatten back
+        W_Q = W_reshaped[:, :d_head, :].reshape(n_heads * d_head, d_model)
+        W_K = W_reshaped[:, d_head : 2 * d_head, :].reshape(n_heads * d_head, d_model)
+        W_V = W_reshaped[:, 2 * d_head :, :].reshape(n_heads * d_head, d_model)
+
+        # Handle bias - same interleaved format
         qkv_bias = original_attention_component.query_key_value.bias
-
-        # Keep mypy happy
         assert isinstance(qkv_bias, torch.Tensor)
 
-        # Original qkv_bias shape: [n_heads * 3 * d_head]
-        # Reshape to [3, n_heads * d_head] to split by Q, K, V
-        qkv_bias = qkv_bias.reshape(3, self.cfg.n_heads * self.cfg.d_head)
-        b_Q, b_K, b_V = qkv_bias[0, :], qkv_bias[1, :], qkv_bias[2, :]
+        # Bias shape: [n_heads * 3 * d_head]
+        # Reshape to [n_heads, 3 * d_head] to access Q, K, V per head
+        b_reshaped = qkv_bias.view(n_heads, 3 * d_head)
+        b_Q = b_reshaped[:, :d_head].reshape(n_heads * d_head)
+        b_K = b_reshaped[:, d_head : 2 * d_head].reshape(n_heads * d_head)
+        b_V = b_reshaped[:, 2 * d_head :].reshape(n_heads * d_head)
 
         # Create nn.Linear modules
-        # After tensor_split, W_Q, W_K, W_V shapes are [d_model, d_model] ([in_features, out_features])
-        # nn.Linear expects weight shape [out_features, in_features]
-        # So we need to transpose the weights
-        W_Q_transformation = torch.nn.Linear(W_Q.shape[0], W_Q.shape[1], bias=True)
-        W_Q_transformation.weight = torch.nn.Parameter(W_Q.T)
+        # Weight shape for nn.Linear is [out_features, in_features]
+        W_Q_transformation = torch.nn.Linear(d_model, n_heads * d_head, bias=True)
+        W_Q_transformation.weight = torch.nn.Parameter(W_Q)
         W_Q_transformation.bias = torch.nn.Parameter(b_Q)
 
-        W_K_transformation = torch.nn.Linear(W_K.shape[0], W_K.shape[1], bias=True)
-        W_K_transformation.weight = torch.nn.Parameter(W_K.T)
+        W_K_transformation = torch.nn.Linear(d_model, n_heads * d_head, bias=True)
+        W_K_transformation.weight = torch.nn.Parameter(W_K)
         W_K_transformation.bias = torch.nn.Parameter(b_K)
 
-        W_V_transformation = torch.nn.Linear(W_V.shape[0], W_V.shape[1], bias=True)
-        W_V_transformation.weight = torch.nn.Parameter(W_V.T)
+        W_V_transformation = torch.nn.Linear(d_model, n_heads * d_head, bias=True)
+        W_V_transformation.weight = torch.nn.Parameter(W_V)
         W_V_transformation.bias = torch.nn.Parameter(b_V)
 
         return W_Q_transformation, W_K_transformation, W_V_transformation
+
+    def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
+        """Set up rotary embedding references for GPT-NeoX/StableLM component testing.
+
+        GPT-NeoX models use RoPE (Rotary Position Embeddings) which need to be
+        set on all attention bridge instances for component testing.
+
+        Args:
+            hf_model: The HuggingFace GPT-NeoX model instance
+            bridge_model: The TransformerBridge model (if available, set rotary_emb on actual instances)
+        """
+        # Get rotary embedding instance from model level
+        # In GPT-NeoX/StableLM, rotary_emb is at the model level
+        rotary_emb = hf_model.gpt_neox.rotary_emb
+
+        # Set rotary_emb on actual bridge instances in bridge_model if available
+        if bridge_model is not None and hasattr(bridge_model, "blocks"):
+            # Set on each layer's actual attention bridge instance
+            for block in bridge_model.blocks:
+                if hasattr(block, "attn"):
+                    block.attn.set_rotary_emb(rotary_emb)

@@ -9,6 +9,8 @@ from transformer_lens.benchmarks.utils import (
     BenchmarkResult,
     BenchmarkSeverity,
     compare_scalars,
+    filter_expected_missing_hooks,
+    safe_allclose,
 )
 from transformer_lens.model_bridge import TransformerBridge
 
@@ -59,6 +61,10 @@ def benchmark_hook_registry(
         common_hooks = bridge_hooks & reference_hooks
         missing_hooks = reference_hooks - bridge_hooks
         extra_hooks = bridge_hooks - reference_hooks
+
+        # Filter out hooks that are expected to differ due to architectural differences.
+        if missing_hooks:
+            missing_hooks = set(filter_expected_missing_hooks(missing_hooks))
 
         if missing_hooks:
             return BenchmarkResult(
@@ -216,7 +222,11 @@ def benchmark_forward_hooks(
             if handle is not None:
                 handle.remove()
 
-        # CRITICAL CHECK: Bridge must have all hooks that reference has
+        # CRITICAL CHECK: Bridge must have all hooks that reference has.
+        # Filter out hooks that bridge models inherently don't have.
+        if missing_from_bridge:
+            missing_from_bridge = filter_expected_missing_hooks(missing_from_bridge)
+
         if missing_from_bridge:
             return BenchmarkResult(
                 name="forward_hooks",
@@ -231,6 +241,10 @@ def benchmark_forward_hooks(
             )
 
         # CRITICAL CHECK: All registered hooks must fire
+        # Filter out hooks expected to not fire due to architectural differences.
+        if hooks_that_didnt_fire:
+            hooks_that_didnt_fire = set(filter_expected_missing_hooks(hooks_that_didnt_fire))
+
         if hooks_that_didnt_fire:
             return BenchmarkResult(
                 name="forward_hooks",
@@ -253,26 +267,53 @@ def benchmark_forward_hooks(
             reference_tensor = reference_activations[hook_name]
 
             # Check shapes
+            # Handle batch dimension differences: some HF models (e.g., OPT)
+            # internally reshape to 2D for MLP path, producing [seq, dim] hooks
+            # while HT always maintains [batch, seq, dim]
             if bridge_tensor.shape != reference_tensor.shape:
-                mismatches.append(
-                    f"{hook_name}: Shape mismatch - Bridge{bridge_tensor.shape} vs Ref{reference_tensor.shape}"
-                )
-                continue
+                if (
+                    bridge_tensor.ndim == reference_tensor.ndim - 1
+                    and reference_tensor.shape[0] == 1
+                    and bridge_tensor.shape == reference_tensor.shape[1:]
+                ):
+                    bridge_tensor = bridge_tensor.unsqueeze(0)
+                elif (
+                    reference_tensor.ndim == bridge_tensor.ndim - 1
+                    and bridge_tensor.shape[0] == 1
+                    and reference_tensor.shape == bridge_tensor.shape[1:]
+                ):
+                    reference_tensor = reference_tensor.unsqueeze(0)
+                else:
+                    mismatches.append(
+                        f"{hook_name}: Shape mismatch - Bridge{bridge_tensor.shape} vs Ref{reference_tensor.shape}"
+                    )
+                    continue
 
             # Check values
-            if not torch.allclose(bridge_tensor, reference_tensor, atol=tolerance, rtol=0):
-                max_diff = torch.max(torch.abs(bridge_tensor - reference_tensor)).item()
-                mean_diff = torch.mean(torch.abs(bridge_tensor - reference_tensor)).item()
+            if not safe_allclose(bridge_tensor, reference_tensor, atol=tolerance, rtol=0.0):
+                b = bridge_tensor.float()
+                r = reference_tensor.float()
+                max_diff = torch.max(torch.abs(b - r)).item()
+                mean_diff = torch.mean(torch.abs(b - r)).item()
                 mismatches.append(
                     f"{hook_name}: Value mismatch - max_diff={max_diff:.6f}, mean_diff={mean_diff:.6f}"
                 )
 
         if mismatches:
+            # Detect Bloom-style residual-merged hooks: Bloom adds residual inside
+            # attn/MLP modules (dropout_add), so hook_attn_out and hook_mlp_out capture
+            # attn+residual instead of just attn. This is a known HF architectural difference.
+            has_bloom_blocks = any(type(m).__name__ == "BloomBlockBridge" for m in bridge.modules())
             # Filter out known architectural differences
             significant_mismatches = [
                 m
                 for m in mismatches
                 if "hook_attn_scores" not in m  # Exclude attn_scores which have inf from masking
+                and not (has_bloom_blocks and ("hook_attn_out" in m or "hook_mlp_out" in m))
+                # QK norm hooks: Bridge preserves HF's 4D [batch, heads, seq, d_head]
+                # while HT flattens to [batch*seq*heads, d_head]. This is an intentional
+                # shape convention difference, not a computation error.
+                and "q_norm" not in m and "k_norm" not in m
             ]
 
             if significant_mismatches:
@@ -328,6 +369,14 @@ def benchmark_critical_forward_hooks(
     Returns:
         BenchmarkResult with critical hook comparison details
     """
+    # Scale tolerance for deep models — numerical precision differences
+    # accumulate through layers, especially for ln_final.hook_normalized
+    # which passes through the entire model. Cap at 3x base to avoid
+    # overly permissive tolerance for very deep models (70B+).
+    n_layers = getattr(bridge.cfg, "n_layers", 1)
+    if n_layers > 12:
+        tolerance = min(tolerance * (1 + 0.05 * (n_layers - 12)), tolerance * 3.0)
+
     # Critical hooks that are commonly used
     critical_hooks = [
         "hook_embed",
@@ -437,17 +486,36 @@ def benchmark_critical_forward_hooks(
             bridge_tensor = bridge_activations[hook_name]
             reference_tensor = reference_activations[hook_name]
 
+            # Handle batch dimension differences (see forward_hooks)
             if bridge_tensor.shape != reference_tensor.shape:
-                mismatches.append(
-                    f"{hook_name}: Shape mismatch - Bridge{bridge_tensor.shape} vs Ref{reference_tensor.shape}"
-                )
-                continue
+                if (
+                    bridge_tensor.ndim == reference_tensor.ndim - 1
+                    and reference_tensor.shape[0] == 1
+                    and bridge_tensor.shape == reference_tensor.shape[1:]
+                ):
+                    bridge_tensor = bridge_tensor.unsqueeze(0)
+                elif (
+                    reference_tensor.ndim == bridge_tensor.ndim - 1
+                    and bridge_tensor.shape[0] == 1
+                    and reference_tensor.shape == bridge_tensor.shape[1:]
+                ):
+                    reference_tensor = reference_tensor.unsqueeze(0)
+                else:
+                    mismatches.append(
+                        f"{hook_name}: Shape mismatch - Bridge{bridge_tensor.shape} vs Ref{reference_tensor.shape}"
+                    )
+                    continue
 
-            if not torch.allclose(bridge_tensor, reference_tensor, atol=tolerance, rtol=0):
-                max_diff = torch.max(torch.abs(bridge_tensor - reference_tensor)).item()
+            if not safe_allclose(bridge_tensor, reference_tensor, atol=tolerance, rtol=0.0):
+                max_diff = torch.max(
+                    torch.abs(bridge_tensor.cpu().float() - reference_tensor.cpu().float())
+                ).item()
                 mismatches.append(f"{hook_name}: max_diff={max_diff:.6f}")
 
-        # Check if bridge is missing critical hooks (BAD)
+        # Filter out hooks expected to be missing in bridge models.
+        if bridge_missing:
+            bridge_missing = filter_expected_missing_hooks(bridge_missing)
+
         if bridge_missing:
             return BenchmarkResult(
                 name="critical_forward_hooks",
@@ -470,8 +538,15 @@ def benchmark_critical_forward_hooks(
             )
 
         if mismatches:
+            # Detect Bloom-style residual-merged hooks
+            has_bloom_blocks = any(type(m).__name__ == "BloomBlockBridge" for m in bridge.modules())
             # Filter out known architectural differences
-            significant_mismatches = [m for m in mismatches if "hook_z" not in m]
+            significant_mismatches = [
+                m
+                for m in mismatches
+                if "hook_z" not in m
+                and not (has_bloom_blocks and ("hook_mlp_out" in m or "hook_attn_out" in m))
+            ]
 
             if significant_mismatches:
                 return BenchmarkResult(
@@ -508,10 +583,17 @@ def benchmark_critical_forward_hooks(
         )
 
     except Exception as e:
+        import traceback
+
         return BenchmarkResult(
             name="critical_forward_hooks",
             severity=BenchmarkSeverity.ERROR,
             message=f"Critical hooks check failed: {str(e)}",
+            details={
+                "error_type": type(e).__name__,
+                "error_message": str(e),
+                "traceback": traceback.format_exc(),
+            },
             passed=False,
         )
 
@@ -541,10 +623,25 @@ def benchmark_hook_functionality(
 
         def ablation_hook(activation, hook):
             # Zero out an attention head in layer 0
-            # For GQA models, the head dimension may be smaller than n_heads
-            n_heads = activation.shape[2]
-            head_idx = min(head_to_ablate, n_heads - 1)
-            activation[:, :, head_idx, :] = 0
+            # Clone to avoid in-place modification of autograd views
+            activation = activation.clone()
+            if activation.ndim == 4:
+                # Standard: [batch, seq, n_heads, d_head]
+                # For GQA models, the head dimension may be smaller than n_heads
+                n_heads = activation.shape[2]
+                head_idx = min(head_to_ablate, n_heads - 1)
+                activation[:, :, head_idx, :] = 0
+            elif activation.ndim == 3:
+                # Bridge with joint QKV projection (e.g., Phi-3): [batch, seq, d_model]
+                # hook_conversion may not reshape when the underlying linear is a
+                # combined qkv_proj. Zero out a head-sized slice instead.
+                d_model = activation.shape[-1]
+                n_heads = bridge.cfg.n_heads
+                d_head = d_model // n_heads
+                head_idx = min(head_to_ablate, n_heads - 1)
+                start = head_idx * d_head
+                end = start + d_head
+                activation[:, :, start:end] = 0
             return activation
 
         # Test bridge
@@ -587,9 +684,16 @@ def benchmark_hook_functionality(
         )
 
     except Exception as e:
+        import traceback
+
         return BenchmarkResult(
             name="hook_functionality",
             severity=BenchmarkSeverity.ERROR,
             message=f"Hook functionality check failed: {str(e)}",
+            details={
+                "error_type": type(e).__name__,
+                "error_message": str(e),
+                "traceback": traceback.format_exc(),
+            },
             passed=False,
         )

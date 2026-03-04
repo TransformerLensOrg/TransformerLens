@@ -3,7 +3,11 @@
 from typing import Optional
 
 from transformer_lens import HookedTransformer
-from transformer_lens.benchmarks.utils import BenchmarkResult, BenchmarkSeverity
+from transformer_lens.benchmarks.utils import (
+    BenchmarkResult,
+    BenchmarkSeverity,
+    is_tiny_test_model,
+)
 from transformer_lens.model_bridge import TransformerBridge
 
 
@@ -25,6 +29,12 @@ def benchmark_generation(
         BenchmarkResult with generation details
     """
     try:
+        if is_tiny_test_model(getattr(bridge.cfg, "model_name", "") or ""):
+            return BenchmarkResult(
+                name="generation",
+                severity=BenchmarkSeverity.INFO,
+                message="Skipped for tiny/test model (random weights produce degenerate generation)",
+            )
         output = bridge.generate(test_text, max_new_tokens=max_new_tokens)
 
         if not isinstance(output, str):
@@ -35,22 +45,37 @@ def benchmark_generation(
                 passed=False,
             )
 
-        if len(output) <= len(test_text):
+        # Check token count instead of character count to handle whitespace-only generation
+        input_tokens = bridge.to_tokens(test_text)
+        output_tokens = bridge.to_tokens(output)
+
+        # Strip leading BOS token if present for fair comparison
+        input_len = input_tokens.shape[-1]
+        output_len = output_tokens.shape[-1]
+
+        if output_len <= input_len:
             return BenchmarkResult(
                 name="generation",
                 severity=BenchmarkSeverity.DANGER,
-                message="Generated text is not longer than input",
-                details={"input_len": len(test_text), "output_len": len(output)},
+                message="Generated text has no new tokens",
+                details={
+                    "input_tokens": input_len,
+                    "output_tokens": output_len,
+                    "input_chars": len(test_text),
+                    "output_chars": len(output),
+                },
                 passed=False,
             )
 
         return BenchmarkResult(
             name="generation",
             severity=BenchmarkSeverity.INFO,
-            message=f"Generation successful: {len(test_text)} -> {len(output)} chars",
+            message=f"Generation successful: {input_len} -> {output_len} tokens ({len(test_text)} -> {len(output)} chars)",
             details={
-                "input_len": len(test_text),
-                "output_len": len(output),
+                "input_tokens": input_len,
+                "output_tokens": output_len,
+                "input_chars": len(test_text),
+                "output_chars": len(output),
                 "max_new_tokens": max_new_tokens,
             },
         )
@@ -85,6 +110,13 @@ def benchmark_generation_with_kv_cache(
         BenchmarkResult with generation details
     """
     try:
+        if is_tiny_test_model(getattr(bridge.cfg, "model_name", "") or ""):
+            return BenchmarkResult(
+                name="generation_with_kv_cache",
+                severity=BenchmarkSeverity.INFO,
+                message="Skipped for tiny/test model (random weights produce degenerate generation)",
+            )
+
         # Generate with KV cache (should be enabled by default for max_new_tokens > 1)
         output = bridge.generate(
             test_text,
@@ -135,6 +167,13 @@ def benchmark_multiple_generation_calls(
         BenchmarkResult with multiple generation details
     """
     try:
+        if is_tiny_test_model(getattr(bridge.cfg, "model_name", "") or ""):
+            return BenchmarkResult(
+                name="multiple_generation_calls",
+                severity=BenchmarkSeverity.INFO,
+                message="Skipped for tiny/test model (random weights produce degenerate generation)",
+            )
+
         outputs = []
         for prompt in test_prompts:
             output = bridge.generate(
