@@ -223,7 +223,7 @@ jobs:
       fail-fast: false
       matrix:
         notebook:
-          # - "Activation_Patching_in_TL_Demo"
+          - "Activation_Patching_in_TL_Demo"
           # - "Attribution_Patching_Demo"
           - "ARENA_Content"
           - "BERT"
