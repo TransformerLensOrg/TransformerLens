@@ -105,6 +105,26 @@ class JointQKVAttentionBridge(AttentionBridge):
         self._reference_model: Optional[Any] = None
         self._layer_idx: Optional[int] = None
 
+        # After splitting, the q/k/v LinearBridges hold the authoritative weights.
+        # The original qkv LinearBridge remains registered in _modules (so
+        # self.qkv is still accessible) but its parameters are stale copies of
+        # the pre-split combined weight. This hook excludes them from state_dict
+        # so weight processing steps never read unprocessed combined weights.
+        self._register_state_dict_hook(JointQKVAttentionBridge._filter_qkv_state_dict)
+
+    @staticmethod
+    def _filter_qkv_state_dict(
+        module: torch.nn.Module,
+        state_dict: Dict[str, Any],
+        prefix: str,
+        local_metadata: Dict[str, Any],
+    ) -> None:
+        """State dict hook that removes stale combined QKV entries."""
+        qkv_prefix = prefix + "qkv."
+        keys_to_remove = [k for k in state_dict if k.startswith(qkv_prefix)]
+        for k in keys_to_remove:
+            del state_dict[k]
+
     def _create_qkv_conversion_rule(self) -> BaseTensorConversion:
         """Create the appropriate conversion rule for the individual q, k, and v matrices.
 

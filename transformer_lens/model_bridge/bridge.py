@@ -149,6 +149,7 @@ class TransformerBridge(nn.Module):
         tokenizer: Optional[Any] = None,
         load_weights: bool = True,
         trust_remote_code: bool = False,
+        model_class: Optional[type] = None,
     ) -> "TransformerBridge":
         """Boot a model from HuggingFace (alias for sources.transformers.boot).
 
@@ -160,6 +161,8 @@ class TransformerBridge(nn.Module):
             tokenizer: Optional pre-initialized tokenizer to use; if not provided one will be created.
             load_weights: If False, load model without weights (on meta device) for config inspection only.
             trust_remote_code: Whether to trust remote code for custom model architectures.
+            model_class: Optional HuggingFace model class to use instead of the default
+                auto-detected class (e.g., BertForNextSentencePrediction).
 
         Returns:
             The bridge to the loaded model.
@@ -174,6 +177,7 @@ class TransformerBridge(nn.Module):
             tokenizer=tokenizer,
             load_weights=load_weights,
             trust_remote_code=trust_remote_code,
+            model_class=model_class,
         )
 
     @property
@@ -206,8 +210,6 @@ class TransformerBridge(nn.Module):
                                 for part in single_target.split("."):
                                     target_obj = getattr(target_obj, part)
                                 object.__setattr__(self, alias_name, target_obj)
-                                if isinstance(target_obj, HookPoint):
-                                    target_obj.name = alias_name
                                 break
                             except AttributeError:
                                 continue
@@ -216,8 +218,6 @@ class TransformerBridge(nn.Module):
                         for part in target_path.split("."):
                             target_obj = getattr(target_obj, part)
                         object.__setattr__(self, alias_name, target_obj)
-                        if isinstance(target_obj, HookPoint):
-                            target_obj.name = alias_name
                 except AttributeError:
                     pass
 
@@ -384,7 +384,6 @@ class TransformerBridge(nn.Module):
         all_aliases = {**self.hook_aliases, **component_aliases}
         if not all_aliases:
             return
-        aliased_hook_ids = set()
         for alias_name, target in all_aliases.items():
             if isinstance(target, list):
                 for single_target in target:
@@ -392,11 +391,6 @@ class TransformerBridge(nn.Module):
                         target_hook = resolve_alias(self, alias_name, {alias_name: single_target})
                         if target_hook is not None:
                             hooks[alias_name] = target_hook
-                            if isinstance(target_hook, HookPoint):
-                                hook_id = id(target_hook)
-                                if hook_id not in aliased_hook_ids:
-                                    target_hook.name = alias_name
-                                    aliased_hook_ids.add(hook_id)
                             break
                     except AttributeError:
                         continue
@@ -405,17 +399,17 @@ class TransformerBridge(nn.Module):
                     target_hook = resolve_alias(self, alias_name, {alias_name: target})
                     if target_hook is not None:
                         hooks[alias_name] = target_hook
-                        if isinstance(target_hook, HookPoint):
-                            hook_id = id(target_hook)
-                            if hook_id not in aliased_hook_ids:
-                                target_hook.name = alias_name
-                                aliased_hook_ids.add(hook_id)
                 except AttributeError:
                     continue
 
     def _scan_existing_hooks(self, module: nn.Module, prefix: str = "") -> None:
         """Scan existing modules for hooks and add them to registry."""
         visited = set()
+        # Track which HookPoint objects have already been named so that
+        # alias entries (from get_hooks() in compatibility mode) do not
+        # overwrite the canonical name.  get_hooks() returns canonical
+        # entries first, so the first name assigned is always canonical.
+        named_hook_ids: set = set()
 
         def scan_module(mod: nn.Module, path: str = "") -> None:
             obj_id = id(mod)
@@ -428,7 +422,10 @@ class TransformerBridge(nn.Module):
                     hooks_dict = cast(Dict[str, HookPoint], component_hooks)
                     for hook_name, hook in hooks_dict.items():
                         full_name = f"{path}.{hook_name}" if path else hook_name
-                        hook.name = full_name
+                        hook_id = id(hook)
+                        if hook_id not in named_hook_ids:
+                            hook.name = full_name
+                            named_hook_ids.add(hook_id)
                         self._hook_registry[full_name] = hook
             for attr_name in dir(mod):
                 if attr_name.startswith("_"):
@@ -459,7 +456,10 @@ class TransformerBridge(nn.Module):
                     continue
                 name = f"{path}.{attr_name}" if path else attr_name
                 if isinstance(attr, HookPoint):
-                    attr.name = name
+                    hook_id = id(attr)
+                    if hook_id not in named_hook_ids:
+                        attr.name = name
+                        named_hook_ids.add(hook_id)
                     self._hook_registry[name] = attr
             for child_name, child_module in mod.named_children():
                 if (
@@ -1210,7 +1210,7 @@ class TransformerBridge(nn.Module):
 
         Args:
             input: Input to the model
-            return_type: Type of output to return ('logits', 'loss', 'both', None)
+            return_type: Type of output to return ('logits', 'loss', 'both', 'predictions', None)
             loss_per_token: Whether to return loss per token
             prepend_bos: Whether to prepend BOS token
             padding_side: Which side to pad on
@@ -1288,6 +1288,12 @@ class TransformerBridge(nn.Module):
                 else:
                     kwargs["decoder_input_ids"] = input_ids
 
+            # Ensure pos_embed hook captures full batch dimension.
+            # HF models may generate position_ids with batch=1 as an optimization;
+            # PosEmbedBridge uses this to expand its output to match.
+            if hasattr(self, "pos_embed"):
+                self.pos_embed._current_batch_size = input_ids.shape[0]
+
             original_tl_cache = past_kv_cache
             output = self.original_model(input_ids, **kwargs)
             if (
@@ -1339,6 +1345,26 @@ class TransformerBridge(nn.Module):
                 ), f"Expected logits tensor, got {type(logits)}"
                 loss = self.loss_fn(logits, input_ids, per_token=loss_per_token)
                 return (logits, loss)
+            elif return_type == "predictions":
+                assert (
+                    self.tokenizer is not None
+                ), "Must have a tokenizer to use return_type='predictions'"
+                if logits.shape[-1] == 2:
+                    # Next Sentence Prediction — 2-class output
+                    logprobs = logits.log_softmax(dim=-1)
+                    predictions = [
+                        "The sentences are sequential",
+                        "The sentences are NOT sequential",
+                    ]
+                    return predictions[logprobs.argmax(dim=-1).item()]
+                else:
+                    # Masked Language Modeling — decode [MASK] tokens
+                    logprobs = logits[input_ids == self.tokenizer.mask_token_id].log_softmax(dim=-1)
+                    predictions = self.tokenizer.decode(logprobs.argmax(dim=-1))
+                    if " " in predictions:
+                        predictions = predictions.split(" ")
+                        predictions = [f"Prediction {i}: {p}" for i, p in enumerate(predictions)]
+                    return predictions
             elif return_type is None:
                 return None
             else:
@@ -1465,21 +1491,26 @@ class TransformerBridge(nn.Module):
         hooks: List[Tuple[HookPoint, str]] = []
         visited: set[int] = set()
 
+        # Extract cache device early so make_cache_hook can capture it.
+        # Default None means .to(None) which is a no-op — tensors stay on
+        # their current device, matching HookedRootModule's default behavior.
+        cache_device = kwargs.pop("device", None)
+
         def make_cache_hook(name: str):
             def cache_hook(tensor: torch.Tensor, *, hook: Any) -> torch.Tensor:
                 if tensor is None:
                     cache[name] = None
                 elif isinstance(tensor, torch.Tensor):
-                    cache[name] = tensor.detach().cpu()
+                    cache[name] = tensor.detach().to(cache_device)
                 elif isinstance(tensor, tuple):
                     if len(tensor) > 0 and isinstance(tensor[0], torch.Tensor):
-                        cache[name] = tensor[0].detach().cpu()
+                        cache[name] = tensor[0].detach().to(cache_device)
                     else:
                         pass
                 else:
                     try:
                         if hasattr(tensor, "detach"):
-                            cache[name] = tensor.detach().cpu()
+                            cache[name] = tensor.detach().to(cache_device)
                     except:
                         pass
                 return tensor
@@ -1535,14 +1566,13 @@ class TransformerBridge(nn.Module):
                     hook_dict[block_hook_name].add_hook(stop_hook)
                     hooks.append((hook_dict[block_hook_name], block_hook_name))
         filtered_kwargs = kwargs.copy()
-        target_device = filtered_kwargs.pop("device", None)
-        if target_device is not None:
-            self.original_model = self.original_model.to(target_device)
+        if cache_device is not None:
+            self.original_model = self.original_model.to(cache_device)
             if processed_args and isinstance(processed_args[0], torch.Tensor):
-                processed_args = [processed_args[0].to(target_device)] + list(processed_args[1:])
+                processed_args = [processed_args[0].to(cache_device)] + list(processed_args[1:])
             for key, value in filtered_kwargs.items():
                 if isinstance(value, torch.Tensor):
-                    filtered_kwargs[key] = value.to(target_device)
+                    filtered_kwargs[key] = value.to(cache_device)
         try:
             if "output_attentions" not in filtered_kwargs:
                 filtered_kwargs["output_attentions"] = True
@@ -2171,8 +2201,36 @@ class TransformerBridge(nn.Module):
         """
         return self.to(torch.device("mps"))
 
-    def add_hook(self, name: str, hook_fn, dir="fwd", is_permanent=False):
-        """Add a hook to a specific component."""
+    def add_hook(
+        self,
+        name: Union[str, Callable[[str], bool]],
+        hook_fn,
+        dir="fwd",
+        is_permanent=False,
+    ):
+        """Add a hook to a specific component or to all components matching a filter.
+
+        Args:
+            name: Either a string hook point name (e.g. "blocks.0.attn.hook_q")
+                or a callable filter ``(str) -> bool`` that is applied to every
+                hook point name; the hook is added to each point where the filter
+                returns True.
+            hook_fn: The hook function ``(activation, hook) -> activation | None``.
+            dir: Hook direction, ``"fwd"`` or ``"bwd"``.
+            is_permanent: If True the hook survives ``reset_hooks()`` calls.
+        """
+        if callable(name) and not isinstance(name, str):
+            hook_dict = self.hook_dict
+            seen_hooks: set[int] = set()
+            for hook_name, hook_point in hook_dict.items():
+                if name(hook_name):
+                    hook_id = id(hook_point)
+                    if hook_id in seen_hooks:
+                        continue
+                    seen_hooks.add(hook_id)
+                    hook_point.add_hook(hook_fn, dir=dir, is_permanent=is_permanent)
+            return
+
         component = self
         parts = name.split(".")
         for part in parts[:-1]:
