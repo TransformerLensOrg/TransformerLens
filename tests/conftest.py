@@ -2,6 +2,8 @@
 
 import gc
 import random
+import tempfile
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -49,3 +51,10 @@ def pytest_sessionfinish(session, exitstatus):
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
     gc.collect()
+
+
+@pytest.fixture
+def temp_dir():
+    """Create a temporary directory for test files."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        yield Path(tmpdir)

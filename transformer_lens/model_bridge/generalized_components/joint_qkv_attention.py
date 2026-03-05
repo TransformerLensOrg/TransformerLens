@@ -42,7 +42,7 @@ class JointQKVAttentionBridge(AttentionBridge):
         self,
         name: str,
         config: Any,
-        split_qkv_matrix: Callable,
+        split_qkv_matrix: Optional[Callable] = None,
         submodules: Optional[Dict[str, GeneralizedComponent]] = None,
         qkv_conversion_rule: Optional[BaseTensorConversion] = None,
         attn_conversion_rule: Optional[BaseTensorConversion] = None,
@@ -55,7 +55,8 @@ class JointQKVAttentionBridge(AttentionBridge):
         Args:
             name: The name of this component
             config: Model configuration (required for auto-conversion detection)
-            split_qkv_matrix: Function to split the qkv matrix into q, k, and v linear transformations
+            split_qkv_matrix: Optional function to split the qkv matrix into q, k, and v linear transformations.
+                            If None, uses the default implementation that splits a combined c_attn weight/bias.
             submodules: Dictionary of submodules to register (e.g., q_proj, k_proj, etc.)
             qkv_conversion_rule: Optional conversion rule for the individual q, k, and v matrices to convert their output shapes to HookedTransformer format. If None, uses default RearrangeTensorConversion
             attn_conversion_rule: Optional conversion rule. Passed to parent AttentionBridge. If None, AttentionAutoConversion will be used
@@ -73,7 +74,9 @@ class JointQKVAttentionBridge(AttentionBridge):
             requires_position_embeddings=requires_position_embeddings,
             requires_attention_mask=requires_attention_mask,
         )
-        self.split_qkv_matrix = split_qkv_matrix
+        self.split_qkv_matrix = (
+            split_qkv_matrix if split_qkv_matrix is not None else self._default_split_qkv_matrix
+        )
         if qkv_conversion_rule is not None:
             self.qkv_conversion_rule = qkv_conversion_rule
         else:
@@ -101,6 +104,26 @@ class JointQKVAttentionBridge(AttentionBridge):
 
         self._reference_model: Optional[Any] = None
         self._layer_idx: Optional[int] = None
+
+        # After splitting, the q/k/v LinearBridges hold the authoritative weights.
+        # The original qkv LinearBridge remains registered in _modules (so
+        # self.qkv is still accessible) but its parameters are stale copies of
+        # the pre-split combined weight. This hook excludes them from state_dict
+        # so weight processing steps never read unprocessed combined weights.
+        self._register_state_dict_hook(JointQKVAttentionBridge._filter_qkv_state_dict)
+
+    @staticmethod
+    def _filter_qkv_state_dict(
+        module: torch.nn.Module,
+        state_dict: Dict[str, Any],
+        prefix: str,
+        local_metadata: Dict[str, Any],
+    ) -> None:
+        """State dict hook that removes stale combined QKV entries."""
+        qkv_prefix = prefix + "qkv."
+        keys_to_remove = [k for k in state_dict if k.startswith(qkv_prefix)]
+        for k in keys_to_remove:
+            del state_dict[k]
 
     def _create_qkv_conversion_rule(self) -> BaseTensorConversion:
         """Create the appropriate conversion rule for the individual q, k, and v matrices.
@@ -146,6 +169,91 @@ class JointQKVAttentionBridge(AttentionBridge):
 
         return ConditionalRearrangeConversion(self.config.n_heads)
 
+    def _default_split_qkv_matrix(
+        self, original_attention_component: Any
+    ) -> tuple[torch.nn.Module, torch.nn.Module, torch.nn.Module]:
+        """Default implementation to split the QKV matrix into separate linear transformations.
+
+        This uses the 'qkv' submodule defined in component_mapping to find the combined QKV weights.
+        Assumes combined QKV weights in the format [d_model, 3 * d_model] for weights
+        and [3 * n_head * d_head] for bias.
+
+        Args:
+            original_attention_component: The original attention layer component
+        Returns:
+            Tuple of nn.Linear modules for Q, K, and V transformations
+        """
+        assert self.config is not None
+        assert original_attention_component is not None
+
+        # Get the combined QKV component using the 'qkv' submodule name
+        if "qkv" not in self.submodules:
+            raise ValueError(
+                f"No 'qkv' submodule found in JointQKVAttentionBridge. "
+                f"Please define a 'qkv' submodule or provide a custom split_qkv_matrix function."
+            )
+
+        # Get the actual qkv component name from the bridge
+        qkv_bridge = self.submodules["qkv"]
+        qkv_name = qkv_bridge.name
+
+        # Ensure qkv_name is not None
+        if qkv_name is None:
+            raise ValueError(
+                "qkv bridge name is None. " "Please provide a custom split_qkv_matrix function."
+            )
+
+        # Navigate to the component using the name
+        if not hasattr(original_attention_component, qkv_name):
+            raise ValueError(
+                f"Cannot find '{qkv_name}' in attention component. "
+                f"Available attributes: {dir(original_attention_component)}. "
+                f"Please provide a custom split_qkv_matrix function."
+            )
+
+        qkv_component = getattr(original_attention_component, qkv_name)
+
+        qkv_weights = qkv_component.weight
+        assert isinstance(qkv_weights, torch.Tensor)
+
+        # Original qkv_weights shape: [d_model, 3 * d_model]
+        # Split into three equal parts along dimension 1 to get Q, K, V weights
+        q_weight, k_weight, v_weight = torch.tensor_split(qkv_weights, 3, dim=1)
+
+        # Handle bias if it exists
+        has_bias = hasattr(qkv_component, "bias") and qkv_component.bias is not None
+        q_bias: torch.Tensor | None
+        k_bias: torch.Tensor | None
+        v_bias: torch.Tensor | None
+        if has_bias:
+            qkv_bias = qkv_component.bias
+            assert isinstance(qkv_bias, torch.Tensor)
+
+            # Original qkv_bias shape: [3 * n_head * d_head]
+            # Reshape to [3, n_head * d_head] to split by Q, K, V
+            qkv_bias = qkv_bias.reshape(3, self.config.n_heads * self.config.d_head)
+            q_bias, k_bias, v_bias = qkv_bias[0, :], qkv_bias[1, :], qkv_bias[2, :]
+        else:
+            q_bias = k_bias = v_bias = None
+
+        # Create plain nn.Linear modules that output 3D tensors [batch, seq, d_model]
+        q_linear = torch.nn.Linear(q_weight.shape[0], q_weight.shape[1], bias=has_bias)
+        q_linear.weight = torch.nn.Parameter(q_weight.T)
+        if has_bias and q_bias is not None:
+            q_linear.bias = torch.nn.Parameter(q_bias)
+
+        k_linear = torch.nn.Linear(k_weight.shape[0], k_weight.shape[1], bias=has_bias)
+        k_linear.weight = torch.nn.Parameter(k_weight.T)
+        if has_bias and k_bias is not None:
+            k_linear.bias = torch.nn.Parameter(k_bias)
+
+        v_linear = torch.nn.Linear(v_weight.shape[0], v_weight.shape[1], bias=has_bias)
+        v_linear.weight = torch.nn.Parameter(v_weight.T)
+        if has_bias and v_bias is not None:
+            v_linear.bias = torch.nn.Parameter(v_bias)
+
+        return q_linear, k_linear, v_linear
+
     def set_original_component(self, original_component: torch.nn.Module) -> None:
         """Set the original component that this bridge wraps and initialize LinearBridges for q, k, v, and o transformations.
 
@@ -153,6 +261,17 @@ class JointQKVAttentionBridge(AttentionBridge):
             original_component: The original attention layer to wrap
         """
         super().set_original_component(original_component)
+
+        # Capture layer index from HF attention component (e.g. GPT2Attention.layer_idx)
+        if hasattr(original_component, "layer_idx"):
+            layer_idx: int = getattr(original_component, "layer_idx")
+            self._layer_idx = layer_idx
+
+        # Capture HF-specific attention flags for faithful reconstruction
+        self._reorder_and_upcast_attn = getattr(
+            original_component, "reorder_and_upcast_attn", False
+        )
+
         q_transformation, k_transformation, v_transformation = self.split_qkv_matrix(
             original_component
         )
@@ -264,8 +383,29 @@ class JointQKVAttentionBridge(AttentionBridge):
             v = v.transpose(1, 2)
         else:
             raise ValueError(f"Unexpected Q tensor shape: {q.shape}. Expected 3D or 4D tensor.")
+
+        # Build attention scale matching HF's GPT2Attention behavior:
+        # 1. Standard 1/sqrt(d_head) scaling
+        # 2. Optional 1/(layer_idx + 1) scaling (scale_attn_by_inverse_layer_idx)
         scale = head_dim ** (-0.5)
-        attn_scores = torch.matmul(q, k.transpose(-2, -1)) * scale
+        if (
+            hasattr(self.config, "scale_attn_by_inverse_layer_idx")
+            and self.config.scale_attn_by_inverse_layer_idx
+            and self._layer_idx is not None
+        ):
+            scale /= float(self._layer_idx + 1)
+
+        # When reorder_and_upcast_attn is True, HF computes attention in float32
+        # using torch.baddbmm for numerical stability. Mirror that behavior here.
+        reorder_and_upcast = getattr(self, "_reorder_and_upcast_attn", False)
+        if reorder_and_upcast:
+            # Upcast Q/K to float32 for matmul, then apply combined scale
+            q_f32 = q.to(torch.float32)
+            k_f32 = k.to(torch.float32)
+            attn_scores = torch.matmul(q_f32, k_f32.transpose(-2, -1)) * scale
+        else:
+            attn_scores = torch.matmul(q, k.transpose(-2, -1)) * scale
+
         causal_mask = torch.tril(torch.ones(seq_len, seq_len, device=q.device))
         attn_scores = attn_scores.masked_fill(causal_mask == 0, float("-inf"))
         attention_mask = kwargs.get("attention_mask", None)
@@ -276,7 +416,14 @@ class JointQKVAttentionBridge(AttentionBridge):
                 attention_mask = attention_mask[..., :seq_len, :]
             attn_scores = attn_scores + attention_mask
         attn_scores = self.hook_attn_scores(attn_scores)
-        attn_weights = torch.nn.functional.softmax(attn_scores, dim=-1)
+
+        # Softmax in float32 when upcast mode is active, then cast back
+        if reorder_and_upcast:
+            attn_weights = torch.nn.functional.softmax(attn_scores, dim=-1)
+            attn_weights = attn_weights.to(v.dtype)
+        else:
+            attn_weights = torch.nn.functional.softmax(attn_scores, dim=-1)
+
         if hasattr(original_component, "attn_dropout"):
             attn_weights = original_component.attn_dropout(attn_weights)  # type: ignore[operator]
         attn_weights = self.hook_pattern(attn_weights)

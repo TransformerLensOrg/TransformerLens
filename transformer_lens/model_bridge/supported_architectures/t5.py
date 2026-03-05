@@ -1,11 +1,12 @@
 """T5 architecture adapter."""
 
-from typing import Any
+from typing import Any, Union
 
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
     EmbeddingBridge,
+    GatedMLPBridge,
     LinearBridge,
     MLPBridge,
     PosEmbedBridge,
@@ -23,6 +24,9 @@ class T5ArchitectureAdapter(ArchitectureAdapter):
     - Encoder stack (self-attention + FFN)
     - Decoder stack (self-attention + cross-attention + FFN)
     - Language modeling head
+
+    Supports both standard T5 (DenseReluDense with wi/wo) and gated variants
+    like Flan-T5 (T5DenseGatedActDense with wi_0/wi_1/wo).
     """
 
     def __init__(self, cfg: Any) -> None:
@@ -37,42 +41,51 @@ class T5ArchitectureAdapter(ArchitectureAdapter):
         self.cfg.normalization_type = "LN"
         self.cfg.positional_embedding_type = "relative_positional_bias"
         self.cfg.final_rms = False
-        self.cfg.gated_mlp = False
         self.cfg.attn_only = False
 
-        self.weight_processing_conversions = {
-            # Shared embeddings
-            "embed.e": "shared.weight",
-            # Encoder components
-            "pos_embed.pos": "encoder.block.0.layer.0.SelfAttention.relative_attention_bias.weight",
-            "encoder_blocks.{i}.ln1.w": "encoder.block.{i}.layer.0.layer_norm.weight",
-            "encoder_blocks.{i}.attn.q": "encoder.block.{i}.layer.0.SelfAttention.q.weight",
-            "encoder_blocks.{i}.attn.k": "encoder.block.{i}.layer.0.SelfAttention.k.weight",
-            "encoder_blocks.{i}.attn.v": "encoder.block.{i}.layer.0.SelfAttention.v.weight",
-            "encoder_blocks.{i}.attn.o": "encoder.block.{i}.layer.0.SelfAttention.o.weight",
-            "encoder_blocks.{i}.ln2.w": "encoder.block.{i}.layer.1.layer_norm.weight",
-            "encoder_blocks.{i}.mlp.in": "encoder.block.{i}.layer.1.DenseReluDense.wi.weight",
-            "encoder_blocks.{i}.mlp.out": "encoder.block.{i}.layer.1.DenseReluDense.wo.weight",
-            "encoder_ln_final.w": "encoder.final_layer_norm.weight",
-            # Decoder components
-            "decoder_pos_embed.pos": "decoder.block.0.layer.0.SelfAttention.relative_attention_bias.weight",
-            "decoder_blocks.{i}.ln1.w": "decoder.block.{i}.layer.0.layer_norm.weight",
-            "decoder_blocks.{i}.self_attn.q": "decoder.block.{i}.layer.0.SelfAttention.q.weight",
-            "decoder_blocks.{i}.self_attn.k": "decoder.block.{i}.layer.0.SelfAttention.k.weight",
-            "decoder_blocks.{i}.self_attn.v": "decoder.block.{i}.layer.0.SelfAttention.v.weight",
-            "decoder_blocks.{i}.self_attn.o": "decoder.block.{i}.layer.0.SelfAttention.o.weight",
-            "decoder_blocks.{i}.ln2.w": "decoder.block.{i}.layer.1.layer_norm.weight",
-            "decoder_blocks.{i}.cross_attn.q": "decoder.block.{i}.layer.1.EncDecAttention.q.weight",
-            "decoder_blocks.{i}.cross_attn.k": "decoder.block.{i}.layer.1.EncDecAttention.k.weight",
-            "decoder_blocks.{i}.cross_attn.v": "decoder.block.{i}.layer.1.EncDecAttention.v.weight",
-            "decoder_blocks.{i}.cross_attn.o": "decoder.block.{i}.layer.1.EncDecAttention.o.weight",
-            "decoder_blocks.{i}.ln3.w": "decoder.block.{i}.layer.2.layer_norm.weight",
-            "decoder_blocks.{i}.mlp.in": "decoder.block.{i}.layer.2.DenseReluDense.wi.weight",
-            "decoder_blocks.{i}.mlp.out": "decoder.block.{i}.layer.2.DenseReluDense.wo.weight",
-            "decoder_ln_final.w": "decoder.final_layer_norm.weight",
-            # Language modeling head
-            "unembed.u": "lm_head.weight",
-        }
+        # Detect gated MLP variant (Flan-T5 uses T5DenseGatedActDense)
+        is_gated = getattr(cfg, "is_gated_act", False)
+        self.cfg.gated_mlp = is_gated
+
+        self.weight_processing_conversions = {}
+
+        # Build MLP bridge based on whether the model uses gated FFN
+        encoder_mlp: Union[GatedMLPBridge, MLPBridge]
+        decoder_mlp: Union[GatedMLPBridge, MLPBridge]
+        if is_gated:
+            encoder_mlp = GatedMLPBridge(
+                name="layer.1.DenseReluDense",
+                config=self.cfg,
+                submodules={
+                    "gate": LinearBridge(name="wi_0"),
+                    "in": LinearBridge(name="wi_1"),
+                    "out": LinearBridge(name="wo"),
+                },
+            )
+            decoder_mlp = GatedMLPBridge(
+                name="layer.2.DenseReluDense",
+                config=self.cfg,
+                submodules={
+                    "gate": LinearBridge(name="wi_0"),
+                    "in": LinearBridge(name="wi_1"),
+                    "out": LinearBridge(name="wo"),
+                },
+            )
+        else:
+            encoder_mlp = MLPBridge(
+                name="layer.1.DenseReluDense",
+                submodules={
+                    "in": LinearBridge(name="wi"),
+                    "out": LinearBridge(name="wo"),
+                },
+            )
+            decoder_mlp = MLPBridge(
+                name="layer.2.DenseReluDense",
+                submodules={
+                    "in": LinearBridge(name="wi"),
+                    "out": LinearBridge(name="wo"),
+                },
+            )
 
         self.component_mapping = {
             # Shared embeddings
@@ -99,13 +112,7 @@ class T5ArchitectureAdapter(ArchitectureAdapter):
                         },
                     ),
                     "ln2": RMSNormalizationBridge(name="layer.1.layer_norm", config=self.cfg),
-                    "mlp": MLPBridge(
-                        name="layer.1.DenseReluDense",
-                        submodules={
-                            "in": LinearBridge(name="wi"),
-                            "out": LinearBridge(name="wo"),
-                        },
-                    ),
+                    "mlp": encoder_mlp,
                 },
             ),
             # Encoder final layer norm
@@ -145,13 +152,7 @@ class T5ArchitectureAdapter(ArchitectureAdapter):
                         },
                     ),
                     "ln3": RMSNormalizationBridge(name="layer.2.layer_norm", config=self.cfg),
-                    "mlp": MLPBridge(
-                        name="layer.2.DenseReluDense",
-                        submodules={
-                            "in": LinearBridge(name="wi"),
-                            "out": LinearBridge(name="wo"),
-                        },
-                    ),
+                    "mlp": decoder_mlp,
                 },
             ),
             # Decoder final layer norm

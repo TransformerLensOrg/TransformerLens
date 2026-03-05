@@ -14,6 +14,7 @@ from transformer_lens.model_bridge.generalized_components import (
     LinearBridge,
     MLPBridge,
     RMSNormalizationBridge,
+    RotaryEmbeddingBridge,
     UnembeddingBridge,
 )
 
@@ -44,39 +45,27 @@ class MistralArchitectureAdapter(ArchitectureAdapter):
         self.cfg.uses_rms_norm = True
 
         self.weight_processing_conversions = {
-            "embed.e": "model.embed_tokens.weight",
-            "blocks.{i}.ln1.w": "model.layers.{i}.input_layernorm.weight",
-            "blocks.{i}.ln2.w": "model.layers.{i}.post_attention_layernorm.weight",
-            "blocks.{i}.attn.q": ParamProcessingConversion(
+            "blocks.{i}.attn.q.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
-                source_key="model.layers.{i}.self_attn.q_proj.weight",
             ),
-            "blocks.{i}.attn.k": ParamProcessingConversion(
+            "blocks.{i}.attn.k.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
                     "(n h) m -> n m h", n=self.cfg.n_key_value_heads
                 ),
-                source_key="model.layers.{i}.self_attn.k_proj.weight",
             ),
-            "blocks.{i}.attn.v": ParamProcessingConversion(
+            "blocks.{i}.attn.v.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
                     "(n h) m -> n m h", n=self.cfg.n_key_value_heads
                 ),
-                source_key="model.layers.{i}.self_attn.v_proj.weight",
             ),
-            "blocks.{i}.attn.o": ParamProcessingConversion(
+            "blocks.{i}.attn.o.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("m (n h) -> n h m", n=self.cfg.n_heads),
-                source_key="model.layers.{i}.self_attn.o_proj.weight",
             ),
-            "blocks.{i}.mlp.in": "model.layers.{i}.mlp.up_proj.weight.T",
-            "blocks.{i}.mlp.gate": "model.layers.{i}.mlp.gate_proj.weight.T",
-            "blocks.{i}.mlp.out": "model.layers.{i}.mlp.down_proj.weight.T",
-            "ln_final.w": "model.norm.weight",
-            "unembed.u": "lm_head.weight.T",  # Not shared with embedding
         }
 
         self.component_mapping = {
             "embed": EmbeddingBridge(name="model.embed_tokens"),
-            "rotary_emb": EmbeddingBridge(name="model.rotary_emb"),
+            "rotary_emb": RotaryEmbeddingBridge(name="model.rotary_emb", config=self.cfg),
             "blocks": BlockBridge(
                 name="model.layers",
                 submodules={
@@ -85,6 +74,8 @@ class MistralArchitectureAdapter(ArchitectureAdapter):
                     "attn": AttentionBridge(
                         name="self_attn",
                         config=self.cfg,
+                        requires_position_embeddings=True,
+                        requires_attention_mask=True,
                         submodules={
                             "q": LinearBridge(name="q_proj"),
                             "k": LinearBridge(name="k_proj"),

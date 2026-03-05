@@ -2,7 +2,6 @@ import math
 
 import pytest
 import torch
-from beartype.roar import BeartypeCallHintParamViolation
 
 from transformer_lens import HookedTransformer
 from transformer_lens.head_detector import (
@@ -350,8 +349,19 @@ def test_detect_head_with_cache(error_measure: ErrorMeasure, expected: torch.Ten
 
 
 def test_detect_head_with_invalid_head_name():
-    with pytest.raises(BeartypeCallHintParamViolation) as e:
+    with pytest.raises(Exception) as e:
         detect_head(model, test_regular_sequence, "test")
+    # Type checking can be done by jaxtyping (TypeCheckError) or beartype (BeartypeCallHintParamViolation)
+    exc_name = type(e.value).__name__
+    exc_msg = str(e.value).lower()
+    assert "TypeCheckError" in exc_name or "Beartype" in exc_name
+    # Check for meaningful error message (different formats for different type checkers)
+    assert (
+        "type-check" in exc_msg
+        or "vector_type" in exc_msg
+        or "detection_pattern" in exc_msg
+        or "violates type" in exc_msg
+    )
 
 
 def test_detect_head_with_zero_sequence_length():

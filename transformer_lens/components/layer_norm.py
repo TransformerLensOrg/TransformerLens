@@ -2,6 +2,7 @@
 
 This module contains all the component :class:`LayerNorm`.
 """
+
 from typing import Dict, Optional, Union
 
 import torch

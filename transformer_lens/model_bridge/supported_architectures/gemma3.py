@@ -3,7 +3,14 @@
 
 from typing import Any
 
-from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorConversion
+from transformer_lens.conversion_utils.conversion_steps import (
+    ArithmeticTensorConversion,
+    RearrangeTensorConversion,
+    TransposeTensorConversion,
+)
+from transformer_lens.conversion_utils.conversion_steps.arithmetic_tensor_conversion import (
+    OperationTypes,
+)
 from transformer_lens.conversion_utils.param_processing_conversion import (
     ParamProcessingConversion,
 )
@@ -33,6 +40,9 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
 
         self.cfg.uses_rms_norm = True
         self.cfg.normalization_type = "RMS"
+        # Gemma models use (1.0 + weight) in RMSNorm instead of just weight
+        # See: https://github.com/huggingface/transformers/pull/29402
+        self.cfg.rmsnorm_uses_offset = True
 
         # Gemma 3 uses rotary positional embeddings (dual RoPE)
         self.cfg.positional_embedding_type = "rotary"
@@ -42,19 +52,16 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
         self.cfg.attn_implementation = "eager"
 
         self.weight_processing_conversions = {
-            # Gemma3 scales embeddings by sqrt(d_model)
-            "embed": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion(
-                    "d_vocab d_model -> d_vocab d_model",
-                    scale=self.cfg.d_model**0.5,
-                ),
-                source_key="model.embed_tokens.weight",
-            ),
-            # Q/K/V weight conversions (using canonical W_Q/W_K/W_V naming)
+            # Note: Gemma3 scales embeddings by sqrt(d_model) in the forward pass.
+            # This is handled in setup_hook_compatibility() which applies the scaling
+            # to hook_embed output at runtime, matching HuggingFace's behavior.
+            # We do NOT scale the stored weights here.
+            #
+            # Q/K/V weight conversions
             "blocks.{i}.attn.q.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
             ),
-            "blocks.{i}.attn.W_K": ParamProcessingConversion(
+            "blocks.{i}.attn.k.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
                     "(n h) m -> n m h",
                     n=getattr(
@@ -77,6 +84,44 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
             "blocks.{i}.attn.o.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("m (n h) -> n h m", n=self.cfg.n_heads),
             ),
+            # RMSNorm weight conversions - Gemma adds 1.0 to weights before applying
+            # See: https://github.com/huggingface/transformers/pull/29402
+            "blocks.{i}.ln1.weight": ParamProcessingConversion(
+                tensor_conversion=ArithmeticTensorConversion(OperationTypes.ADDITION, 1.0),
+            ),
+            "blocks.{i}.ln1_post.weight": ParamProcessingConversion(
+                tensor_conversion=ArithmeticTensorConversion(OperationTypes.ADDITION, 1.0),
+            ),
+            "blocks.{i}.ln2.weight": ParamProcessingConversion(
+                tensor_conversion=ArithmeticTensorConversion(OperationTypes.ADDITION, 1.0),
+            ),
+            "blocks.{i}.ln2_post.weight": ParamProcessingConversion(
+                tensor_conversion=ArithmeticTensorConversion(OperationTypes.ADDITION, 1.0),
+            ),
+            "ln_final.weight": ParamProcessingConversion(
+                tensor_conversion=ArithmeticTensorConversion(OperationTypes.ADDITION, 1.0),
+            ),
+            # Gemma-3 also has q_norm and k_norm in attention
+            "blocks.{i}.attn.q_norm.weight": ParamProcessingConversion(
+                tensor_conversion=ArithmeticTensorConversion(OperationTypes.ADDITION, 1.0),
+            ),
+            "blocks.{i}.attn.k_norm.weight": ParamProcessingConversion(
+                tensor_conversion=ArithmeticTensorConversion(OperationTypes.ADDITION, 1.0),
+            ),
+            # MLP weight conversions - transpose from [out, in] to [in, out]
+            "blocks.{i}.mlp.gate.weight": ParamProcessingConversion(
+                tensor_conversion=TransposeTensorConversion(),
+            ),
+            "blocks.{i}.mlp.in.weight": ParamProcessingConversion(
+                tensor_conversion=TransposeTensorConversion(),
+            ),
+            "blocks.{i}.mlp.out.weight": ParamProcessingConversion(
+                tensor_conversion=TransposeTensorConversion(),
+            ),
+            # Unembed weight conversion - transpose from [vocab, d_model] to [d_model, vocab]
+            "unembed.weight": ParamProcessingConversion(
+                tensor_conversion=TransposeTensorConversion(),
+            ),
             # Note: Gemma-3 does NOT have biases on attention projections (q/k/v/o_proj.bias are all None)
             # No bias conversions needed
         }
@@ -84,10 +129,7 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
         # Set up component mapping with actual bridge instances
         self.component_mapping = {
             "embed": EmbeddingBridge(name="model.embed_tokens"),
-            "rotary_emb_local": RotaryEmbeddingBridge(
-                name="model.rotary_emb_local", config=self.cfg
-            ),
-            "rotary_emb": RotaryEmbeddingBridge(name="model.rotary_emb", config=self.cfg),
+            "rotary_emb": RotaryEmbeddingBridge(name="model.rotary_emb"),
             "blocks": BlockBridge(
                 name="model.layers",
                 submodules={
@@ -129,6 +171,24 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
             "unembed": UnembeddingBridge(name="lm_head"),
         }
 
+    def setup_hook_compatibility(self, bridge: Any) -> None:
+        """Setup hook compatibility for Gemma3 models.
+
+        Unlike Gemma1/Gemma2, Gemma3 uses Gemma3TextScaledWordEmbedding which
+        scales embeddings by sqrt(d_model) INSIDE the embedding layer's forward().
+        Therefore we do NOT need a hook_conversion — the embed.hook_out already
+        captures the scaled output. Adding a conversion would double-scale.
+
+        (Gemma1/Gemma2 scale in GemmaModel.forward() AFTER the embedding layer,
+        so their adapters correctly use EmbeddingScaleConversion to match HT.)
+
+        Args:
+            bridge: The TransformerBridge instance
+        """
+        # No embed scaling conversion needed — Gemma3TextScaledWordEmbedding
+        # already applies sqrt(d_model) scaling in its forward() method.
+        pass
+
     def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
         """Set up rotary embedding references and native autograd for Gemma-3 component testing.
 
@@ -150,8 +210,8 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
             hf_model: The HuggingFace Gemma-3 model instance
             bridge_model: The TransformerBridge model (if available, set rotary_emb on actual instances)
         """
-        # Get rotary embedding instances from the model
-        rotary_emb_local = hf_model.model.rotary_emb_local  # Used by 22/26 layers
+        # Get the shared rotary embedding from the model (contains both global and local RoPE)
+        rotary_emb = hf_model.model.rotary_emb
 
         # Force HF model to use "eager" attention to match bridge implementation
         # Bridge uses "eager" to support output_attentions for hook compatibility
@@ -170,7 +230,7 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
             # Set on each layer's actual attention bridge instance
             for block in bridge_model.blocks:
                 if hasattr(block, "attn"):
-                    block.attn.set_rotary_emb(rotary_emb_local)
+                    block.attn.set_rotary_emb(rotary_emb)
 
                     # Enable native autograd for q_norm/k_norm to match HF exactly
                     if hasattr(block.attn, "original_component"):
@@ -182,4 +242,4 @@ class Gemma3ArchitectureAdapter(ArchitectureAdapter):
 
         # Also set on the template for get_generalized_component() calls
         attn_bridge = self.get_generalized_component("blocks.0.attn")
-        attn_bridge.set_rotary_emb(rotary_emb_local)
+        attn_bridge.set_rotary_emb(rotary_emb)
