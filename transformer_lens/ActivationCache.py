@@ -133,12 +133,18 @@ class ActivationCache:
             The ActivationCache with the batch dimension removed.
         """
         if self.has_batch_dim:
+            # Check that the batch size is actually 1. Some tensors may lack a
+            # batch dimension entirely (e.g., T5 relative position biases shaped
+            # [n_heads, seq_len, ...]) — these are skipped rather than squeezed.
+            has_batch_1 = any(v.size(0) == 1 for v in self.cache_dict.values())
             for key in self.cache_dict:
-                assert (
-                    self.cache_dict[key].size(0) == 1
-                ), f"Cannot remove batch dimension from cache with batch size > 1, \
-                    for key {key} with shape {self.cache_dict[key].shape}"
-                self.cache_dict[key] = self.cache_dict[key][0]
+                if self.cache_dict[key].size(0) == 1:
+                    self.cache_dict[key] = self.cache_dict[key][0]
+                else:
+                    assert has_batch_1, (
+                        f"Cannot remove batch dimension from cache with batch size > 1, "
+                        f"for key {key} with shape {self.cache_dict[key].shape}"
+                    )
             self.has_batch_dim = False
         else:
             logging.warning("Tried removing batch dimension after already having removed it.")

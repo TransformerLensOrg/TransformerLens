@@ -1195,27 +1195,24 @@ class ProcessWeights:
             except ValueError:
                 mlp_W_out_key = None
                 mlp_b_out_key = None
-            if attn_W_O_key not in state_dict:
-                raise KeyError(
-                    f"Expected attention W_O key '{attn_W_O_key}' not found in state_dict for layer {l}. Available keys: {list(state_dict.keys())[:10]}..."
+            if attn_W_O_key in state_dict:
+                attn_W_O = ProcessWeights.convert_tensor_to_tl_format(
+                    attn_W_O_key, state_dict, state_dict.get(attn_W_O_key), cfg, adapter, l
                 )
-            attn_W_O = ProcessWeights.convert_tensor_to_tl_format(
-                attn_W_O_key, state_dict, state_dict.get(attn_W_O_key), cfg, adapter, l
-            )
-            assert attn_W_O is not None, f"Attention W_O not found at key {attn_W_O_key}"
-            attn_W_O = attn_W_O - attn_W_O.mean(-1, keepdim=True)
-            state_dict[attn_W_O_key] = ProcessWeights.convert_tensor_to_hf_format(
-                attn_W_O_key, attn_W_O, cfg, adapter, l
-            )
-            if attn_b_O_key in state_dict:
-                attn_b_O = ProcessWeights.convert_tensor_to_tl_format(
-                    attn_b_O_key, state_dict, state_dict.get(attn_b_O_key), cfg, adapter, l
+                assert attn_W_O is not None, f"Attention W_O not found at key {attn_W_O_key}"
+                attn_W_O = attn_W_O - attn_W_O.mean(-1, keepdim=True)
+                state_dict[attn_W_O_key] = ProcessWeights.convert_tensor_to_hf_format(
+                    attn_W_O_key, attn_W_O, cfg, adapter, l
                 )
-                assert attn_b_O is not None, f"Attention b_O not found at key {attn_b_O_key}"
-                attn_b_O = attn_b_O - attn_b_O.mean()
-                state_dict[attn_b_O_key] = ProcessWeights.convert_tensor_to_hf_format(
-                    attn_b_O_key, attn_b_O, cfg, adapter, l
-                )
+                if attn_b_O_key in state_dict:
+                    attn_b_O = ProcessWeights.convert_tensor_to_tl_format(
+                        attn_b_O_key, state_dict, state_dict.get(attn_b_O_key), cfg, adapter, l
+                    )
+                    assert attn_b_O is not None, f"Attention b_O not found at key {attn_b_O_key}"
+                    attn_b_O = attn_b_O - attn_b_O.mean()
+                    state_dict[attn_b_O_key] = ProcessWeights.convert_tensor_to_hf_format(
+                        attn_b_O_key, attn_b_O, cfg, adapter, l
+                    )
             if not getattr(cfg, "attn_only", False):
                 is_moe = getattr(cfg, "num_experts", None) is not None and cfg.num_experts > 0
                 if is_moe:
@@ -1282,11 +1279,7 @@ class ProcessWeights:
                             ] = ProcessWeights.convert_tensor_to_hf_format(
                                 expert_b_out_key, expert_b_out, cfg, adapter, l
                             )
-                elif mlp_W_out_key is not None:
-                    if mlp_W_out_key not in state_dict:
-                        raise KeyError(
-                            f"Expected MLP W_out key '{mlp_W_out_key}' not found in state_dict for layer {l}. Available keys: {list(state_dict.keys())[:10]}..."
-                        )
+                elif mlp_W_out_key is not None and mlp_W_out_key in state_dict:
                     mlp_W_out = ProcessWeights.convert_tensor_to_tl_format(
                         mlp_W_out_key, state_dict, state_dict.get(mlp_W_out_key), cfg, adapter, l
                     )
