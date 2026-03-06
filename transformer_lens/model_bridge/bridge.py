@@ -1228,6 +1228,15 @@ class TransformerBridge(nn.Module):
             for block in self.blocks:
                 block._stop_at_layer_idx = stop_at_layer
 
+        # Map HookedEncoderDecoder-style kwargs to HF-compatible names
+        if "decoder_input" in kwargs:
+            kwargs["decoder_input_ids"] = kwargs.pop("decoder_input")
+        if "one_zero_attention_mask" in kwargs:
+            if attention_mask is None:
+                attention_mask = kwargs.pop("one_zero_attention_mask")
+            else:
+                kwargs.pop("one_zero_attention_mask")
+
         try:
             if isinstance(input, (str, list)):
                 input_ids = self.to_tokens(
@@ -1856,14 +1865,39 @@ class TransformerBridge(nn.Module):
         # Optionally collect logits at each generation step for downstream tooling/tests
         logits_seq_list: list[torch.Tensor] | None = [] if output_logits else None
 
+        # Detect encoder-decoder models (T5, BART, etc.)
+        is_encoder_decoder = hasattr(self.original_model, "config") and getattr(
+            self.original_model.config, "is_encoder_decoder", False
+        )
+
         # Generate tokens
         current_tokens = input_tokens.clone()
         sampled_tokens_list = []
 
+        # For encoder-decoder models, keep encoder input fixed and grow decoder input
+        if is_encoder_decoder:
+            encoder_input = input_tokens.clone()
+            decoder_start_token_id = getattr(
+                self.original_model.config, "decoder_start_token_id", 0
+            )
+            decoder_tokens = torch.full(
+                (batch_size, 1),
+                decoder_start_token_id,
+                dtype=input_tokens.dtype,
+                device=self.cfg.device,
+            )
+
         for _ in range(max_new_tokens):
             # Get logits for next token
             with torch.no_grad():
-                logits = self(current_tokens, return_type="logits")
+                if is_encoder_decoder:
+                    logits = self(
+                        encoder_input,
+                        return_type="logits",
+                        decoder_input=decoder_tokens,
+                    )
+                else:
+                    logits = self(current_tokens, return_type="logits")
                 final_logits = logits[:, -1, :]
 
                 # Collect logits if requested
@@ -1879,14 +1913,14 @@ class TransformerBridge(nn.Module):
                         temperature=temperature,
                         freq_penalty=freq_penalty,
                         repetition_penalty=repetition_penalty,
-                        tokens=current_tokens,
+                        tokens=decoder_tokens if is_encoder_decoder else current_tokens,
                     ).to(self.cfg.device)
                 else:
                     sampled_tokens = utils.sample_logits(
                         final_logits,
                         temperature=0.0,
                         repetition_penalty=repetition_penalty,
-                        tokens=current_tokens,
+                        tokens=decoder_tokens if is_encoder_decoder else current_tokens,
                     ).to(self.cfg.device)
 
                 sampled_tokens_list.append(sampled_tokens.unsqueeze(1))
@@ -1902,7 +1936,10 @@ class TransformerBridge(nn.Module):
                     )
 
                 # Append sampled token to current sequence
-                current_tokens = torch.cat([current_tokens, sampled_tokens.unsqueeze(1)], dim=1)
+                if is_encoder_decoder:
+                    decoder_tokens = torch.cat([decoder_tokens, sampled_tokens.unsqueeze(1)], dim=1)
+                else:
+                    current_tokens = torch.cat([current_tokens, sampled_tokens.unsqueeze(1)], dim=1)
 
                 # Early stopping if all sequences finished
                 if stop_at_eos and finished_sequences.all():
@@ -1910,7 +1947,10 @@ class TransformerBridge(nn.Module):
 
         # Concatenate all sampled tokens
         sampled_tokens = torch.cat(sampled_tokens_list, dim=1)
-        output_tokens = torch.cat([input_tokens, sampled_tokens], dim=1)
+        if is_encoder_decoder:
+            output_tokens = decoder_tokens
+        else:
+            output_tokens = torch.cat([input_tokens, sampled_tokens], dim=1)
 
         # Return ModelOutput if output_logits was requested
         if output_logits and logits_seq_list is not None:
