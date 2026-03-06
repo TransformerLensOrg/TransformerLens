@@ -82,8 +82,9 @@ class BertArchitectureAdapter(ArchitectureAdapter):
         }
 
         # Set up component mapping
-        # The bridge loads BertForMaskedLM, so core model paths need the 'bert.' prefix.
-        # The MLM head (cls.predictions) is at the top level of BertForMaskedLM.
+        # Core model paths use the 'bert.' prefix. The head components (unembed,
+        # ln_final) are set to MLM defaults here and adjusted in prepare_model()
+        # if the actual HF model is a different task variant (e.g., NSP).
         self.component_mapping = {
             "embed": EmbeddingBridge(name="bert.embeddings.word_embeddings"),
             "pos_embed": PosEmbedBridge(name="bert.embeddings.position_embeddings"),
@@ -125,3 +126,16 @@ class BertArchitectureAdapter(ArchitectureAdapter):
                 name="cls.predictions.transform.LayerNorm", config=self.cfg
             ),
         }
+
+    def prepare_model(self, hf_model: Any) -> None:
+        """Adjust component mapping based on the actual HF model variant.
+
+        BertForMaskedLM has cls.predictions (MLM head).
+        BertForNextSentencePrediction has cls.seq_relationship (NSP head)
+        and no MLM-specific LayerNorm.
+        """
+        if hasattr(hf_model, "cls") and hasattr(hf_model.cls, "seq_relationship"):
+            # NSP model — swap head components
+            assert self.component_mapping is not None
+            self.component_mapping["unembed"] = UnembeddingBridge(name="cls.seq_relationship")
+            self.component_mapping.pop("ln_final", None)

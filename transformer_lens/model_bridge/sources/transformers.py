@@ -7,6 +7,7 @@ import copy
 import logging
 import os
 import warnings
+from typing import Any
 
 import torch
 from transformers import (
@@ -246,6 +247,7 @@ def boot(
     tokenizer: PreTrainedTokenizerBase | None = None,
     load_weights: bool = True,
     trust_remote_code: bool = False,
+    model_class: Any | None = None,
 ) -> TransformerBridge:
     """Boot a model from HuggingFace.
 
@@ -256,6 +258,9 @@ def boot(
         dtype: The dtype to use for the model.
         tokenizer: Optional pre-initialized tokenizer to use; if not provided one will be created.
         load_weights: If False, load model without weights (on meta device) for config inspection only.
+        model_class: Optional HuggingFace model class to use instead of the default auto-detected
+            class. When the class name matches a key in SUPPORTED_ARCHITECTURES, the corresponding
+            adapter is selected automatically (e.g., BertForNextSentencePrediction).
 
     Returns:
         The bridge to the loaded model.
@@ -301,7 +306,8 @@ def boot(
     if device is None:
         device = get_device()
     adapter.cfg.device = str(device)
-    model_class = get_hf_model_class_for_architecture(architecture)
+    if model_class is None:
+        model_class = get_hf_model_class_for_architecture(architecture)
     # Ensure pad_token_id exists on HF config. Transformers v5 raises AttributeError
     # for missing config attributes (instead of returning None), which crashes models
     # like Phi-1 that access config.pad_token_id during __init__.

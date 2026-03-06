@@ -5,4 +5,5 @@ def pytest_collectstart(collector):
             "text/html",
             "application/javascript",
             "application/vnd.plotly.v1+json",  # Plotly
+            "application/vnd.jupyter.widget-view+json",  # Jupyter widgets (random model_id)
         )
