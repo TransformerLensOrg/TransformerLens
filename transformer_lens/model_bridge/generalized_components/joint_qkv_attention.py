@@ -354,15 +354,30 @@ class JointQKVAttentionBridge(AttentionBridge):
             raise ValueError(f"Unexpected Q tensor shape: {q.shape}. Expected 3D or 4D tensor.")
         scale = head_dim ** (-0.5)
         attn_scores = torch.matmul(q, k.transpose(-2, -1)) * scale
-        causal_mask = torch.tril(torch.ones(seq_len, seq_len, device=q.device))
-        attn_scores = attn_scores.masked_fill(causal_mask == 0, float("-inf"))
         attention_mask = kwargs.get("attention_mask", None)
         if attention_mask is not None:
+            # HF's 4D attention mask already includes causal masking, so we use
+            # it instead of the simple tril causal mask to properly handle both
+            # causal and padding masking.
             if attention_mask.shape[-1] != seq_len:
                 attention_mask = attention_mask[..., :seq_len]
             if attention_mask.shape[-2] != seq_len:
                 attention_mask = attention_mask[..., :seq_len, :]
+            # Convert boolean masks (True=attend, False=mask) to additive float
+            # masks (0.0=attend, min_dtype=mask). Using min_dtype rather than
+            # -inf avoids NaN from softmax on fully-masked (padding) rows.
+            if attention_mask.dtype == torch.bool:
+                min_dtype = torch.finfo(attn_scores.dtype).min
+                attention_mask = torch.where(
+                    attention_mask,
+                    torch.zeros((), dtype=attn_scores.dtype, device=attn_scores.device),
+                    torch.full((), min_dtype, dtype=attn_scores.dtype, device=attn_scores.device),
+                )
             attn_scores = attn_scores + attention_mask
+        else:
+            # Fallback: simple causal mask when no HF mask is provided
+            causal_mask = torch.tril(torch.ones(seq_len, seq_len, device=q.device))
+            attn_scores = attn_scores.masked_fill(causal_mask == 0, float("-inf"))
         attn_scores = self.hook_attn_scores(attn_scores)
         attn_weights = torch.nn.functional.softmax(attn_scores, dim=-1)
         if hasattr(original_component, "attn_dropout"):
