@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import Optional, Union
 
+import math
 import torch
 from torch import nn
 
@@ -129,7 +130,7 @@ def get_device_for_block_index(
         This will be removed in 3.0
     """
     assert cfg.device is not None
-    layers_per_device = cfg.n_layers // cfg.n_devices
+    layers_per_device = math.ceil(cfg.n_layers / cfg.n_devices)
     if device is None:
         device = cfg.device
     device = torch.device(device)
