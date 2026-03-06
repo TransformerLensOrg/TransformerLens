@@ -116,7 +116,7 @@ def test_mmlu_eval_single_subject(model):
     Test MMLU evaluation on a single subject with a small number of samples.
     Uses a small model and few samples for fast CI execution.
     """
-    results = mmlu_eval(model, subjects="abstract_algebra", num_samples=5, device="cpu")
+    results = mmlu_eval(model, subjects="abstract_algebra", num_samples=5)
     assert "accuracy" in results
     assert "num_correct" in results
     assert "num_total" in results
@@ -132,7 +132,7 @@ def test_mmlu_eval_multiple_subjects(model):
     Test MMLU evaluation on multiple subjects.
     """
     subjects = ["abstract_algebra", "anatomy"]
-    results = mmlu_eval(model, subjects=subjects, num_samples=3, device="cpu")
+    results = mmlu_eval(model, subjects=subjects, num_samples=3)
     assert results["num_total"] == 6  # 3 samples per subject
     assert len(results["subject_scores"]) == 2
     assert all(subject in results["subject_scores"] for subject in subjects)

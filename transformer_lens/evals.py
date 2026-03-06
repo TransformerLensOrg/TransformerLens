@@ -497,7 +497,6 @@ def mmlu_eval(
     subjects: Optional[Union[str, List[str]]] = None,
     split: str = "test",
     num_samples: Optional[int] = None,
-    device: str = "cuda",
 ):
     """Evaluate a model on the MMLU benchmark.
 
@@ -518,7 +517,6 @@ def mmlu_eval(
             string, or a list of subjects. See :const:`MMLU_SUBJECTS` for valid names.
         split: Which split to use - "test", "validation", or "dev". Default is "test".
         num_samples: Optional limit on number of samples per subject. If None, uses all samples.
-        device: Device to run evaluation on. Default is "cuda".
 
     Returns:
         Dictionary containing:
@@ -535,7 +533,7 @@ def mmlu_eval(
         >>> from transformer_lens.evals import mmlu_eval
 
         >>> model = HookedTransformer.from_pretrained("gpt2-small")  # doctest: +SKIP
-        >>> results = mmlu_eval(model, subjects="abstract_algebra", num_samples=10, device="cpu")  # doctest: +SKIP
+        >>> results = mmlu_eval(model, subjects="abstract_algebra", num_samples=10)  # doctest: +SKIP
         >>> print(f"Accuracy: {results['accuracy']:.2%}")  # doctest: +SKIP
     """
     if tokenizer is None:
@@ -587,7 +585,7 @@ def mmlu_eval(
         prompt += "Answer:"
 
         # Tokenize the prompt
-        tokens = tokenizer.encode(prompt, return_tensors="pt").to(device)
+        tokens = tokenizer.encode(prompt, return_tensors="pt").to(model.cfg.device)
 
         # Get logits
         logits = model(tokens, return_type="logits")
