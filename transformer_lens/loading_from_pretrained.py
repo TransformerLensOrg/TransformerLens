@@ -28,6 +28,7 @@ from transformer_lens.pretrained.weight_conversions import (
     convert_bloom_weights,
     convert_coder_weights,
     convert_gemma_weights,
+    convert_gpt_oss_weights,
     convert_gpt2_weights,
     convert_gptj_weights,
     convert_llama_weights,
@@ -192,6 +193,7 @@ OFFICIAL_MODEL_NAMES = [
     "mistralai/Mistral-Nemo-Base-2407",
     "mistralai/Mixtral-8x7B-v0.1",
     "mistralai/Mixtral-8x7B-Instruct-v0.1",
+    "openai/gpt-oss-20b",
     "bigscience/bloom-560m",
     "bigscience/bloom-1b1",
     "bigscience/bloom-1b7",
@@ -663,6 +665,7 @@ MODEL_ALIASES = {
         "mixtral-instruct",
         "mixtral-8x7b-instruct",
     ],
+    "openai/gpt-oss-20b": ["gpt-oss-20b", "gpt-oss"],
     "bigscience/bloom-560m": ["bloom-560m"],
     "bigscience/bloom-1b1": ["bloom-1b1"],
     "bigscience/bloom-1b7": ["bloom-1b7"],
@@ -1280,6 +1283,28 @@ def convert_hf_model_config(model_name: str, **kwargs: Any):
             "gated_mlp": True,
             "use_local_attn": False,
             "rotary_dim": hf_config.hidden_size // hf_config.num_attention_heads,
+            "num_experts": hf_config.num_local_experts,
+            "experts_per_token": hf_config.num_experts_per_tok,
+        }
+    elif architecture == "GptOssForCausalLM":
+        cfg_dict = {
+            "dtype": torch.bfloat16,
+            "d_model": hf_config.hidden_size,
+            "d_head": hf_config.head_dim,
+            "n_heads": hf_config.num_attention_heads,
+            "d_mlp": hf_config.intermediate_size,
+            "n_layers": hf_config.num_hidden_layers,
+            "n_ctx": hf_config.max_position_embeddings,
+            "d_vocab": hf_config.vocab_size,
+            "act_fn": hf_config.hidden_act,
+            "normalization_type": "RMS",
+            "positional_embedding_type": "rotary",
+            "rotary_base": hf_config.rope_theta,
+            "eps": hf_config.rms_norm_eps,
+            "n_key_value_heads": hf_config.num_key_value_heads,
+            "gated_mlp": True,
+            "use_local_attn": False,
+            "rotary_dim": hf_config.head_dim,
             "num_experts": hf_config.num_local_experts,
             "experts_per_token": hf_config.num_experts_per_tok,
         }
@@ -2379,6 +2404,8 @@ def get_pretrained_state_dict(
             state_dict = convert_mistral_weights(hf_model, cfg)
         elif cfg.original_architecture == "MixtralForCausalLM":
             state_dict = convert_mixtral_weights(hf_model, cfg)
+        elif cfg.original_architecture == "GptOssForCausalLM":
+            state_dict = convert_gpt_oss_weights(hf_model, cfg)
         elif cfg.original_architecture == "BloomForCausalLM":
             state_dict = convert_bloom_weights(hf_model, cfg)
         elif cfg.original_architecture == "GPT2LMHeadCustomModel":
