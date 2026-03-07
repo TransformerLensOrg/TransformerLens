@@ -80,7 +80,9 @@ class GptOssMoE(CanBeUsedAsMLP):
 
         self.experts = nn.ModuleList([GptOssExpert(self.cfg) for _ in range(self.num_experts)])
         # GPT-OSS router has bias (unlike Mixtral)
-        self.W_gate = nn.Linear(self.cfg.d_model, self.cfg.num_experts, bias=True, dtype=self.cfg.dtype)
+        self.W_gate = nn.Linear(
+            self.cfg.d_model, self.cfg.num_experts, bias=True, dtype=self.cfg.dtype
+        )
 
         self.hook_expert_weights = HookPoint()
         self.hook_expert_indices = HookPoint()
@@ -116,7 +118,9 @@ class GptOssMoE(CanBeUsedAsMLP):
                 continue
 
             current_state = x[top_x]
-            current_hidden_states = expert_layer(current_state) * routing_weights[top_x, expert_idx, None]
+            current_hidden_states = (
+                expert_layer(current_state) * routing_weights[top_x, expert_idx, None]
+            )
             results.index_add_(0, top_x, current_hidden_states.to(x.dtype))
 
         return results.reshape(batch, pos, d_model)

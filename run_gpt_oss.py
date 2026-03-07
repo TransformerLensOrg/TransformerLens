@@ -40,6 +40,7 @@ def get_model_path():
     # Not cached — download
     print("Model not found in cache. Downloading...")
     from huggingface_hub import snapshot_download
+
     return Path(snapshot_download("openai/gpt-oss-20b"))
 
 
@@ -100,8 +101,12 @@ def load_layer_weights(l, cfg, index, model_path):
     o_w = gt(f"{prefix}.self_attn.o_proj.weight")
 
     state_dict[f"blocks.{l}.attn.W_Q"] = einops.rearrange(q_w, "(n h) m -> n m h", n=cfg.n_heads)
-    state_dict[f"blocks.{l}.attn._W_K"] = einops.rearrange(k_w, "(n h) m -> n m h", n=cfg.n_key_value_heads)
-    state_dict[f"blocks.{l}.attn._W_V"] = einops.rearrange(v_w, "(n h) m -> n m h", n=cfg.n_key_value_heads)
+    state_dict[f"blocks.{l}.attn._W_K"] = einops.rearrange(
+        k_w, "(n h) m -> n m h", n=cfg.n_key_value_heads
+    )
+    state_dict[f"blocks.{l}.attn._W_V"] = einops.rearrange(
+        v_w, "(n h) m -> n m h", n=cfg.n_key_value_heads
+    )
     state_dict[f"blocks.{l}.attn.W_O"] = einops.rearrange(o_w, "m (n h) -> n h m", n=cfg.n_heads)
     del q_w, k_w, v_w, o_w
 
@@ -119,8 +124,12 @@ def load_layer_weights(l, cfg, index, model_path):
         )
     else:
         state_dict[f"blocks.{l}.attn.b_Q"] = torch.zeros(cfg.n_heads, cfg.d_head, dtype=cfg.dtype)
-        state_dict[f"blocks.{l}.attn._b_K"] = torch.zeros(cfg.n_key_value_heads, cfg.d_head, dtype=cfg.dtype)
-        state_dict[f"blocks.{l}.attn._b_V"] = torch.zeros(cfg.n_key_value_heads, cfg.d_head, dtype=cfg.dtype)
+        state_dict[f"blocks.{l}.attn._b_K"] = torch.zeros(
+            cfg.n_key_value_heads, cfg.d_head, dtype=cfg.dtype
+        )
+        state_dict[f"blocks.{l}.attn._b_V"] = torch.zeros(
+            cfg.n_key_value_heads, cfg.d_head, dtype=cfg.dtype
+        )
 
     o_bias_key = f"{prefix}.self_attn.o_proj.bias"
     if o_bias_key in wmap:
@@ -157,9 +166,13 @@ def load_layer_weights(l, cfg, index, model_path):
     # gate_up_proj shape: [num_experts, hidden_size, 2*expert_dim]
     # Even columns -> gate, Odd columns -> up
     for e in range(cfg.num_experts):
-        state_dict[f"blocks.{l}.mlp.experts.{e}.W_gate.weight"] = gate_up_proj[e, :, ::2].T.contiguous()
+        state_dict[f"blocks.{l}.mlp.experts.{e}.W_gate.weight"] = gate_up_proj[
+            e, :, ::2
+        ].T.contiguous()
         state_dict[f"blocks.{l}.mlp.experts.{e}.W_gate.bias"] = gate_up_bias[e, ::2].contiguous()
-        state_dict[f"blocks.{l}.mlp.experts.{e}.W_in.weight"] = gate_up_proj[e, :, 1::2].T.contiguous()
+        state_dict[f"blocks.{l}.mlp.experts.{e}.W_in.weight"] = gate_up_proj[
+            e, :, 1::2
+        ].T.contiguous()
         state_dict[f"blocks.{l}.mlp.experts.{e}.W_in.bias"] = gate_up_bias[e, 1::2].contiguous()
         state_dict[f"blocks.{l}.mlp.experts.{e}.W_out.weight"] = down_proj[e].T.contiguous()
         state_dict[f"blocks.{l}.mlp.experts.{e}.W_out.bias"] = down_bias[e].contiguous()
@@ -170,11 +183,20 @@ def load_layer_weights(l, cfg, index, model_path):
 
 def main():
     import argparse
+
     parser = argparse.ArgumentParser(description="Load GPT-OSS-20B into TransformerLens")
-    parser.add_argument("--layers", type=int, default=24,
-                        help="Number of layers to load (default: 24, use fewer to save memory)")
-    parser.add_argument("--prompt", type=str, default=None,
-                        help="Custom prompt to test (default: built-in test prompts)")
+    parser.add_argument(
+        "--layers",
+        type=int,
+        default=24,
+        help="Number of layers to load (default: 24, use fewer to save memory)",
+    )
+    parser.add_argument(
+        "--prompt",
+        type=str,
+        default=None,
+        help="Custom prompt to test (default: built-in test prompts)",
+    )
     args = parser.parse_args()
 
     print("=" * 60)
@@ -182,6 +204,7 @@ def main():
     print("=" * 60)
 
     import psutil
+
     ram = psutil.virtual_memory()
     print(f"\nPyTorch: {torch.__version__}")
     print(f"MPS: {torch.backends.mps.is_available()}")
