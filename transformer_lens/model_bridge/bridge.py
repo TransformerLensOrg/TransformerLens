@@ -703,6 +703,19 @@ class TransformerBridge(nn.Module):
         if verbose:
             print(f"Processing weights for {self.cfg.model_name}...")
 
+        # Disable center_unembed when logit soft capping is active.
+        # Soft capping applies tanh(logits/cap)*cap which is NOT invariant to
+        # constant shifts, so centering the unembed would change model output.
+        if center_unembed and getattr(self.cfg, "output_logits_soft_cap", -1.0) > 0.0:
+            import logging
+
+            logging.warning(
+                "center_unembed=True is incompatible with logit softcapping "
+                "(output_logits_soft_cap=%.1f). Disabling center_unembed.",
+                self.cfg.output_logits_soft_cap,
+            )
+            center_unembed = False
+
         if verbose:
             print("  Extracting state dict from existing model...")
         state_dict = self.state_dict()
@@ -2487,7 +2500,12 @@ class TransformerBridge(nn.Module):
         # Map top-level components
         for tl_name, component in component_mapping.items():
             if component.name and tl_name != "blocks":
-                attr_to_hf[tl_name] = component.name
+                # Skip when the TL name appears as a suffix of the HF path
+                # (e.g., tl_name="project_in", name="model.decoder.project_in").
+                # The raw state dict already uses the full HF path, so replacing
+                # "project_in" with "model.decoder.project_in" would double it.
+                if tl_name != component.name and not component.name.endswith("." + tl_name):
+                    attr_to_hf[tl_name] = component.name
 
         # Map block-level components (ln1, ln2, attn, mlp)
         blocks_component = component_mapping.get("blocks")

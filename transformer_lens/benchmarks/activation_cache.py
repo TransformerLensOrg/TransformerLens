@@ -59,7 +59,17 @@ def benchmark_run_with_cache(
 
         # Verify cache contains expected keys
         cache_keys = list(cache.keys())
-        expected_patterns = ["embed", "ln_final", "unembed"]
+        expected_patterns = ["embed", "unembed"]
+        # Only expect ln_final if the architecture defines it (e.g., OPT-350m
+        # has no final_layer_norm).  Check the adapter's component_mapping rather
+        # than hasattr on the bridge so we test the spec, not the runtime state.
+        has_ln_final = (
+            hasattr(bridge, "adapter")
+            and bridge.adapter.component_mapping
+            and "ln_final" in bridge.adapter.component_mapping
+        )
+        if has_ln_final:
+            expected_patterns.append("ln_final")
 
         missing_patterns = []
         for pattern in expected_patterns:

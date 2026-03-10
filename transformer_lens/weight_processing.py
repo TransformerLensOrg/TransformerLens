@@ -643,26 +643,50 @@ class ProcessWeights:
         if has_ln and ln2_w is not None:
             # MoE layers: fold ln2 into router gate and each expert's W_in/W_gate
             if getattr(cfg, "num_experts", None) is not None and cfg.num_experts > 0:
+                # Track whether we successfully folded into expert weights.
+                # If expert weights aren't in the state dict (e.g., Bridge wraps
+                # the entire MoE module and doesn't expose per-expert params),
+                # we must NOT set ln2 to identity — doing so would silently drop
+                # the ln2 scaling from expert computation.
+                expert_fold_count = 0
+                expected_expert_folds = cfg.num_experts * 2  # W_in + W_gate per expert
+
                 # Fold into router gate
-                router_key = f"blocks.{layer}.mlp.W_gate.weight"
+                router_key = ProcessWeights._resolve_state_dict_key(
+                    state_dict, f"blocks.{layer}.mlp.W_gate.weight", layer
+                )
                 if router_key in state_dict:
                     state_dict[router_key] = state_dict[router_key] * ln2_w[None, :]
                 # Fold into each expert's W_in and W_gate (SwiGLU gate)
                 for e in range(cfg.num_experts):
                     for suffix in ("W_in.weight", "W_gate.weight"):
-                        key = f"blocks.{layer}.mlp.experts.{e}.{suffix}"
+                        key = ProcessWeights._resolve_state_dict_key(
+                            state_dict,
+                            f"blocks.{layer}.mlp.experts.{e}.{suffix}",
+                            layer,
+                        )
                         if key in state_dict:
                             state_dict[key] = state_dict[key] * ln2_w[None, :]
-                # Set ln2.w to identity (skip for parallel override — ln1 already identity)
-                if ln2_w_key is not None:
-                    state_dict[ln2_w_key] = torch.ones_like(ln2_w)
-                    alternate_ln2_w_key = (
-                        ln2_w_key.replace("ln_2", "ln2")
-                        if "ln_2" in ln2_w_key
-                        else ln2_w_key.replace("ln2", "ln_2")
-                    )
-                    if alternate_ln2_w_key != ln2_w_key and alternate_ln2_w_key in state_dict:
-                        state_dict[alternate_ln2_w_key] = torch.ones_like(ln2_w)
+                            expert_fold_count += 1
+
+                # Only set ln2.w to identity if we actually folded into expert weights.
+                # If expert weights weren't found (Bridge MoE path), keep ln2 intact
+                # so the scaling is preserved during the native HF forward pass.
+                if expert_fold_count > 0:
+                    if ln2_w_key is not None:
+                        state_dict[ln2_w_key] = torch.ones_like(ln2_w)
+                        alternate_ln2_w_key = (
+                            ln2_w_key.replace("ln_2", "ln2")
+                            if "ln_2" in ln2_w_key
+                            else ln2_w_key.replace("ln2", "ln_2")
+                        )
+                        if alternate_ln2_w_key != ln2_w_key and alternate_ln2_w_key in state_dict:
+                            state_dict[alternate_ln2_w_key] = torch.ones_like(ln2_w)
+                else:
+                    # Expert weights not in state dict — undo the router gate fold
+                    # to keep everything consistent (ln2 is NOT set to identity).
+                    if router_key in state_dict:
+                        state_dict[router_key] = state_dict[router_key] / ln2_w[None, :]
                 return state_dict
 
             mlp_W_in = ProcessWeights.convert_tensor_to_tl_format(
@@ -1230,8 +1254,11 @@ class ProcessWeights:
                                 break
                         if expert_W_out_key is None and adapter:
                             try:
-                                expert_W_out_key = ProcessWeights._get_param_key(
+                                candidate = ProcessWeights._get_param_key(
                                     f"blocks.{l}.mlp.experts.{e}.W_out", adapter
+                                )
+                                expert_W_out_key = ProcessWeights._resolve_state_dict_key(
+                                    state_dict, candidate, l
                                 )
                             except ValueError:
                                 pass
@@ -1261,6 +1288,16 @@ class ProcessWeights:
                             if pattern in state_dict:
                                 expert_b_out_key = pattern
                                 break
+                        if expert_b_out_key is None and adapter:
+                            try:
+                                candidate = ProcessWeights._get_param_key(
+                                    f"blocks.{l}.mlp.experts.{e}.b_out", adapter
+                                )
+                                expert_b_out_key = ProcessWeights._resolve_state_dict_key(
+                                    state_dict, candidate, l
+                                )
+                            except ValueError:
+                                pass
                         if expert_b_out_key and expert_b_out_key in state_dict:
                             expert_b_out = ProcessWeights.convert_tensor_to_tl_format(
                                 expert_b_out_key,
@@ -1478,6 +1515,19 @@ class ProcessWeights:
                     state_dict[b_V_key] = ProcessWeights.convert_tensor_to_hf_format(
                         b_V_key, new_b_V, cfg, adapter, layer
                     )
+                elif is_split_format and len(b_V.shape) == 1 and len(W_O.shape) == 3:
+                    # Split bias [n_heads * d_head] with W_O already in TL format [n_heads, d_head, d_model]
+                    n_heads = cfg.n_heads
+                    d_head = cfg.d_head
+                    b_V_reshaped = b_V.reshape(n_heads, d_head)
+                    if getattr(cfg, "n_key_value_heads", None) is not None:
+                        b_V_reshaped = torch.repeat_interleave(
+                            b_V_reshaped, dim=0, repeats=cfg.n_heads // cfg.n_key_value_heads
+                        )
+                    folded_b_O = b_O_original + (b_V_reshaped[:, :, None] * W_O).sum([0, 1])
+                    state_dict[b_V_key] = ProcessWeights.convert_tensor_to_hf_format(
+                        b_V_key, torch.zeros_like(b_V), cfg, adapter, layer
+                    )
                 elif len(b_V.shape) == 2 and len(W_O.shape) == 3:
                     b_V_original_shape = b_V.shape
                     if getattr(cfg, "n_key_value_heads", None) is not None:
@@ -1587,6 +1637,15 @@ class ProcessWeights:
                 # models with combined QKV projections (e.g., OpenELM's qkv_proj) may
                 # not be able to fold attention LN — setting ln1.w=1.0 without folding
                 # destroys the RMS scaling.
+        # Skip center_writing_weights for adapters that don't support it (e.g.,
+        # post-LN architectures where centering embeddings doesn't cancel through
+        # the subsequent projection layer).
+        if (
+            center_writing_weights
+            and adapter
+            and not getattr(adapter, "supports_center_writing_weights", True)
+        ):
+            center_writing_weights = False
         if center_writing_weights:
             if getattr(cfg, "normalization_type", "LN") in ["LN", "LNPre"] and (
                 not getattr(cfg, "final_rms", False)

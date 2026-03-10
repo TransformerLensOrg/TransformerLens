@@ -223,6 +223,31 @@ class ComponentBenchmarker:
         self.adapter = adapter
         self.cfg = cfg
 
+        # Ensure both models use the same dtype for fair comparison.
+        # main_benchmark.py upcasts the HF model to float32 but may leave
+        # the bridge in bfloat16.  Detect the mismatch and upcast the bridge
+        # to match, so test inputs and both models agree on precision.
+        self._bridge_was_upcast = False
+        self._bridge_original_dtype: Optional[torch.dtype] = None
+        try:
+            hf_dtype = next(hf_model.parameters()).dtype
+        except StopIteration:
+            hf_dtype = torch.float32
+        try:
+            bridge_dtype = next(bridge_model.parameters()).dtype
+        except StopIteration:
+            bridge_dtype = torch.float32
+        if hf_dtype != bridge_dtype:
+            # Upcast to the higher-precision dtype
+            target = hf_dtype if hf_dtype.itemsize >= bridge_dtype.itemsize else bridge_dtype
+            if bridge_dtype != target:
+                self._bridge_original_dtype = bridge_dtype
+                bridge_model.to(target)
+                self._bridge_was_upcast = True
+            if hf_dtype != target:
+                hf_model.to(target)
+        self.test_dtype = hf_dtype if hf_dtype.itemsize >= bridge_dtype.itemsize else bridge_dtype
+
         # Adjust tolerances based on dtype for reduced precision formats
         model_dtype = getattr(cfg, "dtype", torch.float32)
         if model_dtype == torch.bfloat16:
@@ -308,13 +333,19 @@ class ComponentBenchmarker:
         passed = sum(1 for r in results if r.passed)
         failed = sum(1 for r in results if not r.passed)
 
-        return BenchmarkReport(
+        report = BenchmarkReport(
             model_name=getattr(self.cfg, "model_name", "unknown"),
             total_components=len(results),
             passed_components=passed,
             failed_components=failed,
             component_results=results,
         )
+
+        # Restore bridge to its original dtype if we upcast it
+        if self._bridge_was_upcast and self._bridge_original_dtype is not None:
+            self.bridge_model.to(self._bridge_original_dtype)
+
+        return report
 
     def _test_component_recursive(
         self,
@@ -692,12 +723,27 @@ class ComponentBenchmarker:
                 except AttributeError:
                     # Skip this component
                     raise ValueError("Cannot test pos_embed - unclear interface")
+        elif component_path == "project_in":
+            # OPT-350m project_in: Linear(word_embed_proj_dim -> d_model)
+            # Test input is d_model but project_in expects word_embed_proj_dim.
+            word_embed_proj_dim = getattr(self.cfg, "word_embed_proj_dim", None)
+            if word_embed_proj_dim is not None and word_embed_proj_dim != self.cfg.d_model:
+                test_input = test_input[..., :word_embed_proj_dim]
+            return component(test_input)
         elif (
             component_path == "unembed"
             or "unembed" in component_path
             or "lm_head" in component_path
         ):
-            # Unembedding expects [batch, seq, d_model] input
+            # Unembedding may expect word_embed_proj_dim (e.g., OPT-350m: 512)
+            # instead of d_model (1024) when the model uses a project_out layer.
+            word_embed_proj_dim = getattr(self.cfg, "word_embed_proj_dim", None)
+            if (
+                word_embed_proj_dim is not None
+                and word_embed_proj_dim != self.cfg.d_model
+                and test_input.shape[-1] != word_embed_proj_dim
+            ):
+                test_input = test_input[..., :word_embed_proj_dim]
             return component(test_input)
         else:
             # Standard components (MLP, LayerNorm, etc.)
@@ -732,9 +778,13 @@ class ComponentBenchmarker:
         seq_len = 8
         d_model = self.cfg.d_model
 
-        # Use dtype from config (matches HF model's dtype)
-        dtype = getattr(self.cfg, "dtype", torch.float32)
-        device = next(self.hf_model.parameters()).device
+        # Use the common test dtype determined in __init__ (both models are
+        # guaranteed to be in this dtype after the upcast reconciliation).
+        dtype = self.test_dtype
+        try:
+            device = next(self.hf_model.parameters()).device
+        except StopIteration:
+            device = torch.device("cpu")
 
         return {
             "hidden_states": torch.randn(batch_size, seq_len, d_model, dtype=dtype, device=device),

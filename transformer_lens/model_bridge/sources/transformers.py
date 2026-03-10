@@ -302,6 +302,20 @@ def boot(
     word_embed_proj_dim = getattr(hf_config, "word_embed_proj_dim", None)
     if word_embed_proj_dim is not None:
         bridge_config.word_embed_proj_dim = word_embed_proj_dim
+    # OPT-350m uses post-norm (do_layer_norm_before=False) where LN is applied
+    # AFTER the residual add. This breaks fold_ln assumptions (pre-norm only).
+    do_layer_norm_before = getattr(hf_config, "do_layer_norm_before", None)
+    if do_layer_norm_before is not None:
+        bridge_config.do_layer_norm_before = do_layer_norm_before
+    # Gemma2 uses logit softcapping (tanh-based capping of output logits and
+    # attention scores).  Propagate HF field names to TL field names so that
+    # adapters and weight processing can detect and apply them.
+    final_logit_softcapping = getattr(hf_config, "final_logit_softcapping", None)
+    if final_logit_softcapping is not None:
+        bridge_config.output_logits_soft_cap = float(final_logit_softcapping)
+    attn_logit_softcapping = getattr(hf_config, "attn_logit_softcapping", None)
+    if attn_logit_softcapping is not None:
+        bridge_config.attn_scores_soft_cap = float(attn_logit_softcapping)
     adapter = ArchitectureAdapterFactory.select_architecture_adapter(bridge_config)
     if device is None:
         device = get_device()

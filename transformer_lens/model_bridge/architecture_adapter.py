@@ -2,7 +2,7 @@
 
 This module contains the base class for architecture adapters that map between different model architectures.
 """
-from typing import Any, Dict, cast
+from typing import Any, Dict, Optional, cast
 
 import einops
 import torch
@@ -637,10 +637,26 @@ class ArchitectureAdapter:
                             if hf_subpath is not None and subkey.startswith(hf_subpath + "."):
                                 param = subkey[len(hf_subpath) + 1 :]
                                 return f"blocks.{layer_idx}.{tl_subname}.{param}"
+                            # SymbolicBridge (name=None): the state dict key already
+                            # uses bridge submodule names (e.g., "mlp.in.weight")
+                            # instead of HF names (e.g., "fc1.weight"). Match directly
+                            # against the bridge submodule name.
+                            if hf_subpath is None and subkey.startswith(tl_subname + "."):
+                                param = subkey[len(tl_subname) + 1 :]
+                                return f"blocks.{layer_idx}.{tl_subname}.{param}"
                             if hasattr(subcomponent, "submodules"):
                                 for tl_nested_name, nested_comp in subcomponent.submodules.items():
-                                    hf_nested_path = f"{hf_subpath}.{nested_comp.name}"
-                                    if subkey.startswith(hf_nested_path + "."):
+                                    if hf_subpath is not None:
+                                        hf_nested_path: Optional[
+                                            str
+                                        ] = f"{hf_subpath}.{nested_comp.name}"
+                                    else:
+                                        # SymbolicBridge: nested components exist directly
+                                        # on the block (e.g., OPT fc1/fc2)
+                                        hf_nested_path = nested_comp.name
+                                    if hf_nested_path is not None and subkey.startswith(
+                                        hf_nested_path + "."
+                                    ):
                                         param = subkey[len(hf_nested_path) + 1 :]
                                         return f"blocks.{layer_idx}.{tl_subname}.{tl_nested_name}.{param}"
         return hf_key

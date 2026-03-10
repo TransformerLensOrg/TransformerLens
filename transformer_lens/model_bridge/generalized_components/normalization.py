@@ -73,8 +73,11 @@ class NormalizationBridge(GeneralizedComponent):
                     hidden_states.pow(2).mean(-1, keepdim=True) + getattr(self.config, "eps", 1e-05)
                 ).sqrt()
             )
-            dtype = getattr(self.config, "dtype", input_dtype)
-            hidden_states = self.hook_normalized(hidden_states / scale).to(dtype)
+            hidden_states = self.hook_normalized(hidden_states / scale)
+            # Apply weight (and bias for LayerNorm) in float32, then cast back
+            # to the original input dtype.  Casting before weight/bias (the old
+            # behavior) loses precision and diverges from HF's fused F.layer_norm
+            # which applies weight+bias before the output cast.
             if uses_rms_norm:
                 hidden_states = hidden_states * self.weight
             else:
@@ -84,7 +87,7 @@ class NormalizationBridge(GeneralizedComponent):
                     and self.original_component.bias is not None
                 ):
                     hidden_states = hidden_states + cast(torch.Tensor, self.original_component.bias)
-            result = hidden_states
+            result = hidden_states.to(input_dtype)
         output = self.hook_out(result)
         return output
 

@@ -99,8 +99,16 @@ class BertArchitectureAdapter(ArchitectureAdapter):
                     "hook_mlp_in": "mlp.in.hook_in",
                 },
                 submodules={
-                    "ln1": NormalizationBridge(name="attention.output.LayerNorm", config=self.cfg),
-                    "ln2": NormalizationBridge(name="output.LayerNorm", config=self.cfg),
+                    "ln1": NormalizationBridge(
+                        name="attention.output.LayerNorm",
+                        config=self.cfg,
+                        use_native_layernorm_autograd=True,
+                    ),
+                    "ln2": NormalizationBridge(
+                        name="output.LayerNorm",
+                        config=self.cfg,
+                        use_native_layernorm_autograd=True,
+                    ),
                     "attn": AttentionBridge(
                         name="attention",
                         config=self.cfg,
@@ -123,7 +131,9 @@ class BertArchitectureAdapter(ArchitectureAdapter):
             ),
             "unembed": UnembeddingBridge(name="cls.predictions.decoder"),
             "ln_final": NormalizationBridge(
-                name="cls.predictions.transform.LayerNorm", config=self.cfg
+                name="cls.predictions.transform.LayerNorm",
+                config=self.cfg,
+                use_native_layernorm_autograd=True,
             ),
         }
 
