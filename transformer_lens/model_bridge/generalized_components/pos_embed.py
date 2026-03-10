@@ -70,12 +70,10 @@ class PosEmbedBridge(GeneralizedComponent):
             args = (first_arg,) + args[1:]
         output = self.original_component(*args, **kwargs)
 
-        # HF models may return pos embeddings with batch=1 as an optimization.
-        # Expand to match the actual batch size so hooks capture the correct shape.
+        # Expand batch=1 pos embeddings to match actual batch size for hooks.
         batch_size = getattr(self, "_current_batch_size", None)
 
-        # Read-and-clear: only expand for the forward pass that set the batch size
-        # (prevents stale values from affecting HF generate() steps).
+        # Read-and-clear to avoid stale values during generate() steps.
         if batch_size is not None:
             self._current_batch_size = None
         if (

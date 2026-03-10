@@ -74,10 +74,7 @@ class NormalizationBridge(GeneralizedComponent):
                 ).sqrt()
             )
             hidden_states = self.hook_normalized(hidden_states / scale)
-            # Apply weight (and bias for LayerNorm) in float32, then cast back
-            # to the original input dtype.  Casting before weight/bias (the old
-            # behavior) loses precision and diverges from HF's fused F.layer_norm
-            # which applies weight+bias before the output cast.
+            # Apply weight/bias in float32 before casting back (matches HF precision).
             if uses_rms_norm:
                 hidden_states = hidden_states * self.weight
             else:

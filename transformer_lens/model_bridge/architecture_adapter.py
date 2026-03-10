@@ -637,10 +637,7 @@ class ArchitectureAdapter:
                             if hf_subpath is not None and subkey.startswith(hf_subpath + "."):
                                 param = subkey[len(hf_subpath) + 1 :]
                                 return f"blocks.{layer_idx}.{tl_subname}.{param}"
-                            # SymbolicBridge (name=None): the state dict key already
-                            # uses bridge submodule names (e.g., "mlp.in.weight")
-                            # instead of HF names (e.g., "fc1.weight"). Match directly
-                            # against the bridge submodule name.
+                            # SymbolicBridge (name=None): keys use bridge names directly.
                             if hf_subpath is None and subkey.startswith(tl_subname + "."):
                                 param = subkey[len(tl_subname) + 1 :]
                                 return f"blocks.{layer_idx}.{tl_subname}.{param}"
@@ -651,8 +648,7 @@ class ArchitectureAdapter:
                                             str
                                         ] = f"{hf_subpath}.{nested_comp.name}"
                                     else:
-                                        # SymbolicBridge: nested components exist directly
-                                        # on the block (e.g., OPT fc1/fc2)
+                                        # SymbolicBridge: no container prefix
                                         hf_nested_path = nested_comp.name
                                     if hf_nested_path is not None and subkey.startswith(
                                         hf_nested_path + "."

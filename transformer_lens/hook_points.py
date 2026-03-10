@@ -243,12 +243,9 @@ class HookPoint(nn.Module):
             pt_handle = self.register_forward_hook(full_hook, prepend=prepend)
             visible_hooks = self.fwd_hooks
         elif dir == "bwd":
-            # Avoid register_full_backward_hook which wraps the module output in
-            # a BackwardHookFunctionBackward view.  Downstream in-place operations
-            # (e.g. OLMo's query_states.clamp_()) would then trigger PyTorch's
-            # "view modified inplace" error.  Instead, register a forward hook
-            # that attaches tensor.register_hook() during each forward pass —
-            # this captures the same gradients without creating any views.
+            # Use tensor-level grad hooks instead of register_full_backward_hook
+            # to avoid BackwardHookFunctionBackward views that break downstream
+            # in-place ops (e.g. OLMo's query_states.clamp_()).
             def _bwd_via_tensor_hook(
                 _module: torch.nn.Module,
                 _input: Any,

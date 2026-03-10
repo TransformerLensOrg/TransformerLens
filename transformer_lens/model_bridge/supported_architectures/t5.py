@@ -37,8 +37,7 @@ class T5ArchitectureAdapter(ArchitectureAdapter):
         """
         super().__init__(cfg)
 
-        # T5 uses T5LayerNorm (RMSNorm: no bias, no centering).
-        # Disable fold_ln so weight processing does not corrupt weights.
+        # T5 RMSNorm: disable fold_ln to avoid corrupting weights.
         self.supports_fold_ln = False
 
         # Set config variables for weight processing

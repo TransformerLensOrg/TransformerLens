@@ -405,10 +405,7 @@ class TransformerBridge(nn.Module):
     def _scan_existing_hooks(self, module: nn.Module, prefix: str = "") -> None:
         """Scan existing modules for hooks and add them to registry."""
         visited = set()
-        # Track which HookPoint objects have already been named so that
-        # alias entries (from get_hooks() in compatibility mode) do not
-        # overwrite the canonical name.  get_hooks() returns canonical
-        # entries first, so the first name assigned is always canonical.
+        # Prevent alias entries from overwriting canonical HookPoint names.
         named_hook_ids: set = set()
 
         def scan_module(mod: nn.Module, path: str = "") -> None:
@@ -703,9 +700,7 @@ class TransformerBridge(nn.Module):
         if verbose:
             print(f"Processing weights for {self.cfg.model_name}...")
 
-        # Disable center_unembed when logit soft capping is active.
-        # Soft capping applies tanh(logits/cap)*cap which is NOT invariant to
-        # constant shifts, so centering the unembed would change model output.
+        # Soft capping (tanh) is not translation-invariant; centering would change output.
         if center_unembed and getattr(self.cfg, "output_logits_soft_cap", -1.0) > 0.0:
             import logging
 
@@ -1310,9 +1305,7 @@ class TransformerBridge(nn.Module):
                 else:
                     kwargs["decoder_input_ids"] = input_ids
 
-            # Ensure pos_embed hook captures full batch dimension.
-            # HF models may generate position_ids with batch=1 as an optimization;
-            # PosEmbedBridge uses this to expand its output to match.
+            # Tell PosEmbedBridge to expand batch=1 position_ids to full batch.
             if hasattr(self, "pos_embed"):
                 self.pos_embed._current_batch_size = input_ids.shape[0]
 
@@ -1513,9 +1506,7 @@ class TransformerBridge(nn.Module):
         hooks: List[Tuple[HookPoint, str]] = []
         visited: set[int] = set()
 
-        # Extract cache device early so make_cache_hook can capture it.
-        # Default None means .to(None) which is a no-op — tensors stay on
-        # their current device, matching HookedRootModule's default behavior.
+        # None → no-op .to(None), tensors stay on their current device.
         cache_device = kwargs.pop("device", None)
 
         def make_cache_hook(name: str):
@@ -2500,10 +2491,7 @@ class TransformerBridge(nn.Module):
         # Map top-level components
         for tl_name, component in component_mapping.items():
             if component.name and tl_name != "blocks":
-                # Skip when the TL name appears as a suffix of the HF path
-                # (e.g., tl_name="project_in", name="model.decoder.project_in").
-                # The raw state dict already uses the full HF path, so replacing
-                # "project_in" with "model.decoder.project_in" would double it.
+                # Skip if TL name is already a suffix of the HF path (avoids doubling).
                 if tl_name != component.name and not component.name.endswith("." + tl_name):
                     attr_to_hf[tl_name] = component.name
 

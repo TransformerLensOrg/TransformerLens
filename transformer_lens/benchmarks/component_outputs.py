@@ -223,10 +223,7 @@ class ComponentBenchmarker:
         self.adapter = adapter
         self.cfg = cfg
 
-        # Ensure both models use the same dtype for fair comparison.
-        # main_benchmark.py upcasts the HF model to float32 but may leave
-        # the bridge in bfloat16.  Detect the mismatch and upcast the bridge
-        # to match, so test inputs and both models agree on precision.
+        # Reconcile dtypes: upcast both models to the higher-precision dtype.
         self._bridge_was_upcast = False
         self._bridge_original_dtype: Optional[torch.dtype] = None
         try:
@@ -724,8 +721,7 @@ class ComponentBenchmarker:
                     # Skip this component
                     raise ValueError("Cannot test pos_embed - unclear interface")
         elif component_path == "project_in":
-            # OPT-350m project_in: Linear(word_embed_proj_dim -> d_model)
-            # Test input is d_model but project_in expects word_embed_proj_dim.
+            # project_in expects word_embed_proj_dim, not d_model.
             word_embed_proj_dim = getattr(self.cfg, "word_embed_proj_dim", None)
             if word_embed_proj_dim is not None and word_embed_proj_dim != self.cfg.d_model:
                 test_input = test_input[..., :word_embed_proj_dim]
@@ -735,8 +731,7 @@ class ComponentBenchmarker:
             or "unembed" in component_path
             or "lm_head" in component_path
         ):
-            # Unembedding may expect word_embed_proj_dim (e.g., OPT-350m: 512)
-            # instead of d_model (1024) when the model uses a project_out layer.
+            # Unembed may expect word_embed_proj_dim (e.g., OPT-350m project_out).
             word_embed_proj_dim = getattr(self.cfg, "word_embed_proj_dim", None)
             if (
                 word_embed_proj_dim is not None
@@ -778,8 +773,7 @@ class ComponentBenchmarker:
         seq_len = 8
         d_model = self.cfg.d_model
 
-        # Use the common test dtype determined in __init__ (both models are
-        # guaranteed to be in this dtype after the upcast reconciliation).
+        # Use the reconciled dtype from __init__.
         dtype = self.test_dtype
         try:
             device = next(self.hf_model.parameters()).device

@@ -35,10 +35,7 @@ class OptArchitectureAdapter(ArchitectureAdapter):
 
         # OPT models were trained with BOS tokens (inherits default_prepend_bos = True)
 
-        # OPT-350m uses post-norm (do_layer_norm_before=False): LN is applied
-        # AFTER the residual add.  fold_ln and center_writing_weights assume
-        # pre-norm (LN before attention/MLP) and produce wrong results for
-        # post-norm.  Disable them for post-norm variants.
+        # Post-norm: disable fold_ln and center_writing_weights (pre-norm only).
         is_post_norm = not getattr(self.cfg, "do_layer_norm_before", True)
         if is_post_norm:
             self.supports_fold_ln = False
@@ -113,8 +110,7 @@ class OptArchitectureAdapter(ArchitectureAdapter):
                 config=self.cfg,
                 use_native_layernorm_autograd=True,
             )
-        # OPT-350m uses project_in/project_out to bridge word_embed_proj_dim and
-        # hidden_size.  Add them as components so the Bridge can wrap and hook them.
+        # project_in/project_out bridge word_embed_proj_dim <-> hidden_size.
         if not has_final_layer_norm:
             self.component_mapping["project_in"] = LinearBridge(name="model.decoder.project_in")
             self.component_mapping["project_out"] = LinearBridge(name="model.decoder.project_out")

@@ -105,11 +105,7 @@ class JointQKVAttentionBridge(AttentionBridge):
         self._reference_model: Optional[Any] = None
         self._layer_idx: Optional[int] = None
 
-        # After splitting, the q/k/v LinearBridges hold the authoritative weights.
-        # The original qkv LinearBridge remains registered in _modules (so
-        # self.qkv is still accessible) but its parameters are stale copies of
-        # the pre-split combined weight. This hook excludes them from state_dict
-        # so weight processing steps never read unprocessed combined weights.
+        # Exclude stale qkv combined weights from state_dict after splitting.
         self._register_state_dict_hook(JointQKVAttentionBridge._filter_qkv_state_dict)
 
     @staticmethod

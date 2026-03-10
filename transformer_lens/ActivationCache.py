@@ -133,9 +133,7 @@ class ActivationCache:
             The ActivationCache with the batch dimension removed.
         """
         if self.has_batch_dim:
-            # Check that the batch size is actually 1. Some tensors may lack a
-            # batch dimension entirely (e.g., T5 relative position biases shaped
-            # [n_heads, seq_len, ...]) — these are skipped rather than squeezed.
+            # Some tensors lack a batch dim (e.g., T5 position biases) — skip those.
             has_batch_1 = any(v.size(0) == 1 for v in self.cache_dict.values())
             for key in self.cache_dict:
                 if self.cache_dict[key].size(0) == 1:
@@ -683,14 +681,9 @@ class ActivationCache:
         Intended use is to enable use_attn_results when running and caching the model, but this can
         be useful if you forget.
         """
-        # If valid 4D per-head results already exist (from forward pass with
-        # use_attn_result=True, or from a prior compute_head_results() call),
-        # return early to preserve idempotency.
-        #
-        # TransformerBridge may populate hook_result with a 3D combined-output
-        # tensor (from the hook_result → hook_out alias).  We detect these
-        # wrong-shape entries by checking ndim and remove them before
-        # recomputing the correct 4D per-head results from z and W_O.
+        # Return early if valid 4D per-head results already exist.
+        # TransformerBridge may place 3D combined-output tensors under
+        # hook_result (via alias); detect and replace those with proper 4D.
         first_key = "blocks.0.attn.hook_result"
         if first_key in self.cache_dict:
             val = self.cache_dict[first_key]
@@ -756,10 +749,7 @@ class ActivationCache:
             # Default to the residual stream immediately pre unembed
             layer = self.model.cfg.n_layers
 
-        # Always call compute_head_results() – it handles idempotency
-        # (returns early for valid 4D data) and also cleans up any stale 3D
-        # entries that TransformerBridge's hook_result alias may have placed
-        # in the cache.
+        # Idempotent; also cleans up stale 3D hook_result entries from Bridge.
         self.compute_head_results()
 
         components: Any = []

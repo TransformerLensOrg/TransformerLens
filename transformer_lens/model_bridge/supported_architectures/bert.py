@@ -82,9 +82,7 @@ class BertArchitectureAdapter(ArchitectureAdapter):
         }
 
         # Set up component mapping
-        # Core model paths use the 'bert.' prefix. The head components (unembed,
-        # ln_final) are set to MLM defaults here and adjusted in prepare_model()
-        # if the actual HF model is a different task variant (e.g., NSP).
+        # MLM defaults; prepare_model() adjusts for other task heads (e.g., NSP).
         self.component_mapping = {
             "embed": EmbeddingBridge(name="bert.embeddings.word_embeddings"),
             "pos_embed": PosEmbedBridge(name="bert.embeddings.position_embeddings"),

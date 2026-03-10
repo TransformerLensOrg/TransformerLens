@@ -63,9 +63,7 @@ class QKVSplitRearrangeConversion(BaseTensorConversion):
     def handle_conversion(self, input_value: torch.Tensor, *full_context) -> torch.Tensor:
         """Split QKV tensor and rearrange the selected part."""
         if not self._is_combined_qkv(input_value):
-            # Already-split tensor in nn.Linear format [n_heads*d_head, d_model].
-            # The original rearrange_pattern is "d_model (n h) -> n d_model h"
-            # (Conv1D format). For nn.Linear format, the dims are transposed:
+            # Already-split nn.Linear format — transpose rearrange pattern:
             return einops.rearrange(
                 input_value, "(n h) d_model -> n d_model h", **self.axes_lengths
             )

@@ -643,11 +643,8 @@ class ProcessWeights:
         if has_ln and ln2_w is not None:
             # MoE layers: fold ln2 into router gate and each expert's W_in/W_gate
             if getattr(cfg, "num_experts", None) is not None and cfg.num_experts > 0:
-                # Track whether we successfully folded into expert weights.
-                # If expert weights aren't in the state dict (e.g., Bridge wraps
-                # the entire MoE module and doesn't expose per-expert params),
-                # we must NOT set ln2 to identity — doing so would silently drop
-                # the ln2 scaling from expert computation.
+                # Track folds; skip setting ln2 to identity if expert weights
+                # aren't in the state dict (Bridge MoE wraps the whole module).
                 expert_fold_count = 0
                 expected_expert_folds = cfg.num_experts * 2  # W_in + W_gate per expert
 
@@ -669,9 +666,7 @@ class ProcessWeights:
                             state_dict[key] = state_dict[key] * ln2_w[None, :]
                             expert_fold_count += 1
 
-                # Only set ln2.w to identity if we actually folded into expert weights.
-                # If expert weights weren't found (Bridge MoE path), keep ln2 intact
-                # so the scaling is preserved during the native HF forward pass.
+                # Only set ln2 to identity if we actually folded into expert weights.
                 if expert_fold_count > 0:
                     if ln2_w_key is not None:
                         state_dict[ln2_w_key] = torch.ones_like(ln2_w)
@@ -683,8 +678,7 @@ class ProcessWeights:
                         if alternate_ln2_w_key != ln2_w_key and alternate_ln2_w_key in state_dict:
                             state_dict[alternate_ln2_w_key] = torch.ones_like(ln2_w)
                 else:
-                    # Expert weights not in state dict — undo the router gate fold
-                    # to keep everything consistent (ln2 is NOT set to identity).
+                    # No expert weights found — undo router gate fold for consistency.
                     if router_key in state_dict:
                         state_dict[router_key] = state_dict[router_key] / ln2_w[None, :]
                 return state_dict
@@ -1637,9 +1631,7 @@ class ProcessWeights:
                 # models with combined QKV projections (e.g., OpenELM's qkv_proj) may
                 # not be able to fold attention LN — setting ln1.w=1.0 without folding
                 # destroys the RMS scaling.
-        # Skip center_writing_weights for adapters that don't support it (e.g.,
-        # post-LN architectures where centering embeddings doesn't cancel through
-        # the subsequent projection layer).
+        # Some adapters (e.g., post-LN) don't support center_writing_weights.
         if (
             center_writing_weights
             and adapter
