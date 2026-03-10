@@ -24,6 +24,7 @@ from transformers import (
 import transformer_lens.utils as utils
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.pretrained.weight_conversions import (
+    convert_apertus_weights,
     convert_bert_weights,
     convert_bloom_weights,
     convert_coder_weights,
@@ -245,6 +246,8 @@ OFFICIAL_MODEL_NAMES = [
     "microsoft/phi-2",
     "microsoft/Phi-3-mini-4k-instruct",
     "microsoft/phi-4",
+    "swiss-ai/Apertus-8B-2509",
+    "swiss-ai/Apertus-8B-Instruct-2509",
     "google/gemma-2b",
     "google/gemma-7b",
     "google/gemma-2b-it",
@@ -701,6 +704,8 @@ MODEL_ALIASES = {
     "microsoft/phi-2": ["phi-2"],
     "microsoft/Phi-3-mini-4k-instruct": ["phi-3"],
     "microsoft/phi-4": ["phi-4"],
+    "swiss-ai/Apertus-8B-2509": ["apertus-8b", "apertus"],
+    "swiss-ai/Apertus-8B-Instruct-2509": ["apertus-8b-instruct", "apertus-instruct"],
     "google/gemma-2b": ["gemma-2b"],
     "google/gemma-7b": ["gemma-7b"],
     "google/gemma-2b-it": ["gemma-2b-it"],
@@ -742,6 +747,7 @@ NEED_REMOTE_CODE_MODELS = (
     "microsoft/phi-2",
     "microsoft/Phi-3-mini-4k-instruct",
     "microsoft/phi-4",
+    "swiss-ai/Apertus-",
 )
 
 
@@ -1436,6 +1442,43 @@ def convert_hf_model_config(model_name: str, **kwargs: Any):
             "parallel_attn_mlp": False,
             "rotary_dim": hf_config.hidden_size // hf_config.num_attention_heads,
         }
+    elif architecture == "ApertusForCausalLM":
+        n_heads = hf_config.num_attention_heads
+        d_head = hf_config.hidden_size // n_heads
+        num_kv_heads = getattr(hf_config, "num_key_value_heads", n_heads)
+        n_kv_heads = num_kv_heads if num_kv_heads != n_heads else None
+        cfg_dict = {
+            "d_model": hf_config.hidden_size,
+            "d_head": d_head,
+            "n_heads": n_heads,
+            "n_key_value_heads": n_kv_heads,
+            "d_mlp": hf_config.intermediate_size,
+            "n_layers": hf_config.num_hidden_layers,
+            "n_ctx": hf_config.max_position_embeddings,
+            "eps": hf_config.rms_norm_eps,
+            "d_vocab": hf_config.vocab_size,
+            "act_fn": hf_config.hidden_act,
+            "normalization_type": "RMS",
+            "positional_embedding_type": "rotary",
+            "rotary_dim": d_head,
+            "rotary_base": getattr(hf_config, "rope_theta", None),
+            "gated_mlp": False,
+            "final_rms": True,
+            "use_qk_norm": getattr(hf_config, "qk_norm", False),
+        }
+        rope_scaling = getattr(hf_config, "rope_scaling", None)
+        if rope_scaling:
+            rope_type = (rope_scaling.get("type") or rope_scaling.get("rope_type") or "").lower()
+        else:
+            rope_type = ""
+        if rope_type == "llama3":
+            cfg_dict["use_NTK_by_parts_rope"] = True
+            cfg_dict["NTK_original_ctx_len"] = rope_scaling.get(
+                "original_max_position_embeddings", hf_config.max_position_embeddings
+            )
+            cfg_dict["NTK_by_parts_low_freq_factor"] = rope_scaling.get("low_freq_factor", 1.0)
+            cfg_dict["NTK_by_parts_high_freq_factor"] = rope_scaling.get("high_freq_factor", 4.0)
+            cfg_dict["NTK_by_parts_factor"] = rope_scaling.get("factor", 1.0)
 
     elif official_model_name.startswith("google/gemma-2b"):
         # Architecture for Gemma 2b and Gemma 2b Instruct models
@@ -1986,6 +2029,8 @@ def get_pretrained_state_dict(
             state_dict = convert_gemma_weights(hf_model, cfg)
         elif cfg.original_architecture == "Gemma2ForCausalLM":
             state_dict = convert_gemma_weights(hf_model, cfg)
+        elif cfg.original_architecture == "ApertusForCausalLM":
+            state_dict = convert_apertus_weights(hf_model, cfg)
         else:
             raise ValueError(
                 f"Loading weights from the architecture is not currently supported: {cfg.original_architecture}, generated from model name {cfg.model_name}. Feel free to open an issue on GitHub to request this feature."

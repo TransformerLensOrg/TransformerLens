@@ -17,6 +17,7 @@ from transformer_lens.factories.activation_function_factory import (
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.utilities.activation_functions import ActivationFunction
+from transformer_lens.utils import XIELU
 
 
 class CanBeUsedAsMLP(nn.Module):
@@ -65,7 +66,10 @@ class CanBeUsedAsMLP(nn.Module):
             ValueError: If the configure activation function is not supported.
         """
 
-        self.act_fn = ActivationFunctionFactory.pick_activation_function(self.cfg)
+        if self.cfg.act_fn == "xielu":
+            self.act_fn = XIELU()
+        else:
+            self.act_fn = ActivationFunctionFactory.pick_activation_function(self.cfg)
 
         if self.cfg.is_layer_norm_activation():
             self.hook_mid = HookPoint()
