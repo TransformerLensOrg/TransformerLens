@@ -1,11 +1,14 @@
-RUN := uv run
+TL_UV_ACTIVE ?= 0
+ACTIVE_FLAG := $(if $(filter 1 true TRUE yes YES on ON,$(TL_UV_ACTIVE)), --active,)
+RUN := uv run$(ACTIVE_FLAG)
+UV_SYNC := uv sync$(ACTIVE_FLAG)
 
 # Rerun args for flaky tests (httpx timeouts during HF Hub downloads)
 # Remove this line when no longer needed
 RERUN_ARGS := --reruns 2 --reruns-delay 5
 
 dep:
-	uv sync
+	$(UV_SYNC)
 
 format:
 	$(RUN) pycln --all . --exclude "__init__.py"
@@ -59,12 +62,12 @@ notebook-test:
 	$(RUN) pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/Grokking_Demo.ipynb $(RERUN_ARGS)
 
 test:
-	make unit-test
-	make integration-test
-	make acceptance-test
-	make benchmark-test
-	make docstring-test
-	make notebook-test
+	$(MAKE) unit-test
+	$(MAKE) integration-test
+	$(MAKE) acceptance-test
+	$(MAKE) benchmark-test
+	$(MAKE) docstring-test
+	$(MAKE) notebook-test
 
 docs-hot-reload:
 	$(RUN) docs-hot-reload
