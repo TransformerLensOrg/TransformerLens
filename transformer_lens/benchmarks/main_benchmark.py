@@ -875,6 +875,52 @@ def run_benchmark_suite(
             except Exception:
                 pass
 
+        # TransformerBridge-specific cleanup: the bridge stores the HF model
+        # in __dict__["original_model"] (not as an nn.Module child), plus
+        # real_components, _hook_registry, adapter, and tokenizer.  Without
+        # clearing these, the HF model and all its tensors survive GC.
+        _is_bridge = hasattr(model, "real_components") and hasattr(model, "_hook_registry")
+        if _is_bridge and hasattr(model, "original_model"):
+            try:
+                orig = model.__dict__.get("original_model")
+                if orig is not None:
+                    # Clear the HF model's own modules/params
+                    if hasattr(orig, "_modules"):
+                        orig._modules.clear()
+                    if hasattr(orig, "_parameters"):
+                        orig._parameters.clear()
+                    if hasattr(orig, "_buffers"):
+                        orig._buffers.clear()
+                model.__dict__["original_model"] = None
+            except Exception:
+                pass
+        if _is_bridge:
+            if hasattr(model, "real_components"):
+                try:
+                    model.real_components.clear()
+                except Exception:
+                    pass
+            if hasattr(model, "_hook_registry"):
+                try:
+                    model._hook_registry.clear()
+                except Exception:
+                    pass
+            if hasattr(model, "_hook_cache") and model._hook_cache is not None:
+                try:
+                    model._hook_cache = None
+                except Exception:
+                    pass
+            if hasattr(model, "adapter"):
+                try:
+                    model.adapter = None
+                except Exception:
+                    pass
+            if hasattr(model, "tokenizer"):
+                try:
+                    model.tokenizer = None
+                except Exception:
+                    pass
+
         # Break circular references to help GC
         if hasattr(model, "_modules"):
             # Clear each submodule's __dict__ to break circular references
@@ -918,6 +964,11 @@ def run_benchmark_suite(
             torch.cuda.empty_cache()
             torch.cuda.synchronize()
         if device == "mps" and hasattr(torch, "mps") and hasattr(torch.mps, "empty_cache"):
+            # Double sync-clear cycle: MPS sometimes needs this to fully
+            # release driver memory pages back to the OS
+            torch.mps.synchronize()
+            torch.mps.empty_cache()
+            gc.collect()
             torch.mps.synchronize()
             torch.mps.empty_cache()
 
@@ -945,8 +996,29 @@ def run_benchmark_suite(
         print(f"{'='*80}\n")
 
     bridge_unprocessed = None
+    bridge_processed = None
+    ht_model_processed = None
     hf_model = None
     phase1_reference = PhaseReferenceData()
+
+    def _cleanup_all_models():
+        """Emergency cleanup of all models — called on unhandled exceptions."""
+        nonlocal bridge_unprocessed, bridge_processed, ht_model_processed, hf_model
+        for model, name in [
+            (hf_model, "HuggingFace model"),
+            (bridge_unprocessed, "TransformerBridge (unprocessed)"),
+            (bridge_processed, "TransformerBridge (processed)"),
+            (ht_model_processed, "HookedTransformer (processed)"),
+        ]:
+            if model is not None:
+                try:
+                    cleanup_model(model, f"{name} (emergency cleanup)")
+                except Exception:
+                    pass
+        hf_model = None
+        bridge_unprocessed = None
+        bridge_processed = None
+        ht_model_processed = None
 
     # Load bridge without weights first to detect attn_implementation and dtype
     if verbose:
@@ -1108,6 +1180,10 @@ def run_benchmark_suite(
         if verbose:
             print(f"✗ Failed to load TransformerBridge: {str(e)}")
             print(f"\nStack trace:\n{error_trace}")
+        # Clean up HF model before early return to prevent memory leak
+        if hf_model is not None:
+            cleanup_model(hf_model, "HuggingFace model (early cleanup)")
+            hf_model = None
         return results
 
     # Run Phase 1 benchmarks
@@ -1828,6 +1904,28 @@ def run_benchmark_suite(
                             f"(after: {cp['memory_mb']:.1f} MB)"
                         )
             print("=" * 80)
+
+    # Final safety net: clean up any models that survived the normal flow
+    # (e.g. if a phase was skipped, an exception was caught, or cleanup was missed)
+    _cleanup_all_models()
+
+    # Clear static/module-level caches that hold references to model tensors
+    # and prevent garbage collection between models in batch runs.
+    try:
+        TransformerBridge._compute_hook_aliases_cached.cache_clear()
+    except Exception:
+        pass
+
+    # Clear phase1_reference tensors
+    if phase1_reference is not None:
+        phase1_reference.hf_logits = None
+        phase1_reference.hf_loss = None
+
+    # Final GC + MPS flush
+    gc.collect()
+    if device == "mps" and hasattr(torch, "mps") and hasattr(torch.mps, "empty_cache"):
+        torch.mps.synchronize()
+        torch.mps.empty_cache()
 
     return results
 

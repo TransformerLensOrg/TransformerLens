@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-03-10T16:26:35.208675",
+  "last_updated": "2026-03-11T14:14:39.290043",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -9295,6 +9295,356 @@
       "model_id": "allenai/OLMo-1B-0724-hf",
       "architecture_id": "OlmoForCausalLM",
       "verified_date": "2026-03-10",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "digitous/Javelin-R",
+      "architecture_id": "GPTJForCausalLM",
+      "verified_date": "2026-03-11",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "digitous/Javalion-GPTJ",
+      "architecture_id": "GPTJForCausalLM",
+      "verified_date": "2026-03-11",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "KoboldAI/GPT-J-6B-Janeway",
+      "architecture_id": "GPTJForCausalLM",
+      "verified_date": "2026-03-11",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "digitous/Janin-GPTJ",
+      "architecture_id": "GPTJForCausalLM",
+      "verified_date": "2026-03-11",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "digitous/Javalion-R",
+      "architecture_id": "GPTJForCausalLM",
+      "verified_date": "2026-03-11",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "anhnv125/pygmalion-6b-roleplay",
+      "architecture_id": "GPTJForCausalLM",
+      "verified_date": "2026-03-11",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "KoboldAI/GPT-J-6B-Adventure",
+      "architecture_id": "GPTJForCausalLM",
+      "verified_date": "2026-03-11",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "togethercomputer/GPT-JT-6B-v0",
+      "architecture_id": "GPTJForCausalLM",
+      "verified_date": "2026-03-11",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "togethercomputer/GPT-JT-Moderation-6B",
+      "architecture_id": "GPTJForCausalLM",
+      "verified_date": "2026-03-11",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "KoboldAI/PPO_Pygway-6b-Mix",
+      "architecture_id": "GPTJForCausalLM",
+      "verified_date": "2026-03-11",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "pszemraj/pythia-31m-KI_v1-2048-scratch",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-03-11",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "klosax/pythia-70m-deduped-step44k-92bt",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-03-11",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "pszemraj/pythia-31m-simplewiki-scratch-bf16",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-03-11",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "lamini/lamini_docs_finetuned",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-03-11",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EssentialAI/rnj-1-instruct",
+      "architecture_id": "Gemma3ForCausalLM",
+      "verified_date": "2026-03-11",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EssentialAI/rnj-1-instruct",
+      "architecture_id": "Gemma3ForCausalLM",
+      "verified_date": "2026-03-11",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "klosax/pythia-160m-deduped-step92k-193bt",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-03-11",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Fredithefish/CrimsonPajama",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-03-11",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Fredithefish/RedPajama-INCITE-Chat-3B-ShareGPT-11K",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-03-11",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Fredithefish/RedPajama-INCITE-Chat-3B-Instruction-Tuning-with-GPT-4",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-03-11",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Fredithefish/ScarletPajama-3B-HF",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-03-11",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "mncai/SGPT-1.3B-insurance-epoch10",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-03-11",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Fredithefish/Guanaco-3B-Uncensored",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-03-11",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Rallio67/3B-redpajama-conditional-alpha",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-03-11",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "BreadAi/StoryPy",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-03-11",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "BreadAi/gpt-Youtube",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-03-11",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/pythia-410m-seed3",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-03-11",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "ewof/koishi-instruct-3b",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-03-11",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "BreadAi/MusePy-1-2",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-03-11",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "BreadAi/gpt-YA-1-1_160M",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-03-11",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "gghfez/gemma-3-4b-novision",
+      "architecture_id": "Gemma3ForCausalLM",
+      "verified_date": "2026-03-11",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "MBZUAI-Paris/Nile-Chat-4B",
+      "architecture_id": "Gemma3ForCausalLM",
+      "verified_date": "2026-03-11",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "yousefg/MaximusLLM",
+      "architecture_id": "Gemma3ForCausalLM",
+      "verified_date": "2026-03-11",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: You set `ignore_mismatched_sizes` to `False`, thus raising an error. For details look at the above repor",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "onnx-community/gemma-3-270m-it-ONNX",
+      "architecture_id": "Gemma3ForCausalLM",
+      "verified_date": "2026-03-11",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: onnx-community/gemma-3-270m-it-ONNX does not appear to have a file named pytorch_model.bin or model.safe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "jakobhuss/pii-extractor-gemma-3-270m-it",
+      "architecture_id": "Gemma3ForCausalLM",
+      "verified_date": "2026-03-11",
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Full verification completed",

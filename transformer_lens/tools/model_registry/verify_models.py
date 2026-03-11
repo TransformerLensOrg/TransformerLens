@@ -278,14 +278,18 @@ def estimate_benchmark_memory_gb(
     """Estimate peak memory needed for benchmark suite.
 
     Phases run sequentially, so peak memory is the maximum of any single phase,
-    not the sum. The multiplier represents how many model copies exist at peak:
+    not the sum.  The multiplier represents how many model copies exist at peak.
+
+    Measured peaks (from memory_diagnostic.py on 7B fp32 model):
 
     Phase 1 (conserve_memory=True):  Bridge only (uses bridge.original_model
-        as reference) → 1.0x model + overhead
-    Phase 1 (conserve_memory=False): Briefly loads HF ref + Bridge → 2.0x peak
-    Phase 2: Bridge + HookedTransformer (separate copy) → 2.0x model + overhead
-    Phase 3: Same as Phase 2 (processed versions) → 2.0x model + overhead
-    Phase 4: Bridge + GPT-2 scorer (~500MB) → ~1.0x model + 0.5 GB
+        as reference) → ~1.2x model
+    Phase 1 (conserve_memory=False): Briefly loads HF ref + Bridge → ~2.2x peak
+    Phase 2: Bridge + HookedTransformer (separate copy) → ~2.2x model
+    Phase 3: process_weights creates new params while old ones still exist on
+        device, plus original_model is still held → ~2.3x model.  Backward
+        pass adds gradients → ~3.5x peak.
+    Phase 4: Bridge + GPT-2 scorer (~500MB) → ~1.2x model + 0.5 GB
 
     Args:
         n_params: Number of model parameters
@@ -316,10 +320,18 @@ def estimate_benchmark_memory_gb(
         if p == 1:
             copies = 1.0 if conserve_memory else 2.0
             phase_peaks.append(model_size_gb * copies * (1 + overhead_fraction))
-        elif p in (2, 3):
+        elif p == 2:
             # Bridge + HookedTransformer = 2 full model copies
             copies = 2.0
             phase_peaks.append(model_size_gb * copies * (1 + overhead_fraction))
+        elif p == 3:
+            # Phase 3 is the most memory-intensive: process_weights creates
+            # new parameters while old ones + original_model still exist on
+            # device (~2.3x), then backward pass adds gradients (~3.5x peak).
+            # Weight processing now happens on CPU to reduce GPU driver bloat,
+            # but the backward pass still needs ~3.5x on device.
+            copies = 3.5
+            phase_peaks.append(model_size_gb * copies)
         elif p == 4:
             # Bridge + GPT-2 scorer
             phase_peaks.append(model_size_gb * (1 + overhead_fraction) + gpt2_overhead_gb)
@@ -980,8 +992,11 @@ def verify_models(
             )
             progress.failed.append(model_id)
 
-        # Post-model cleanup
-        gc.collect()
+        # Post-model cleanup — aggressive memory reclamation
+        # Multiple GC passes to break circular references (PyTorch modules are
+        # heavily circular: parent -> child -> parent via _modules dict)
+        for _ in range(3):
+            gc.collect()
         try:
             import torch
 
@@ -989,32 +1004,71 @@ def verify_models(
                 torch.cuda.empty_cache()
                 torch.cuda.synchronize()
             if hasattr(torch, "mps") and hasattr(torch.mps, "empty_cache"):
+                # Synchronize first to ensure all GPU ops complete, then clear
                 torch.mps.synchronize()
                 torch.mps.empty_cache()
+                # Second pass: MPS sometimes needs a sync-clear-sync cycle
+                # to fully release driver memory pages
+                gc.collect()
+                torch.mps.synchronize()
+                torch.mps.empty_cache()
+
+            # Clear static/module-level caches that accumulate across models
+            # and prevent garbage collection of model tensors.
+            try:
+                from transformer_lens.model_bridge.bridge import TransformerBridge
+                TransformerBridge._compute_hook_aliases_cached.cache_clear()
+            except Exception:
+                pass
+
+            # Clear HuggingFace internal caches that hold config/model references
+            try:
+                from transformers import AutoModel, AutoModelForCausalLM
+                for auto_cls in (AutoModel, AutoModelForCausalLM):
+                    if hasattr(auto_cls, "_model_mapping") and hasattr(auto_cls._model_mapping, "_extra_content"):
+                        auto_cls._model_mapping._extra_content.clear()
+            except Exception:
+                pass
+
+            # Clear torch's MPS graph cache (can hold compiled graph references)
+            if device == "mps" and hasattr(torch, "_C") and hasattr(torch._C, "_mps_emptyCache"):
+                try:
+                    torch._C._mps_emptyCache()
+                except Exception:
+                    pass
 
             # Log MPS memory state for debugging long runs
             if device == "mps" and not quiet and hasattr(torch.mps, "current_allocated_memory"):
                 alloc_mb = torch.mps.current_allocated_memory() / (1024 * 1024)
                 driver_mb = torch.mps.driver_allocated_memory() / (1024 * 1024)
                 print(f"  MPS memory: {alloc_mb:.0f} MB allocated, " f"{driver_mb:.0f} MB driver")
+                # Warn if driver memory is accumulating dangerously
+                if driver_mb > max_memory_gb * 1024 * 0.8:
+                    print(f"  ⚠ Driver memory at {driver_mb/1024:.1f} GB "
+                          f"({driver_mb/(max_memory_gb*1024)*100:.0f}% of limit)")
         except ImportError:
             pass
 
-        # Brief pause to let the OS and MPS reclaim memory between models
+        # Pause to let the OS and MPS reclaim memory between models.
+        # MPS driver memory release is asynchronous — longer pause for large models.
         if device in ("mps", "cuda"):
-            time.sleep(3)
+            time.sleep(5)
 
         # Periodically clear the HuggingFace cache to prevent disk exhaustion
-        if i % 50 == 0:
+        # (every 5 models instead of 50 — large models can fill disk quickly)
+        if i % 5 == 0:
             _clear_hf_cache(quiet)
 
         _save_checkpoint(progress)
 
-    # Clean up pre-loaded scoring model
+    # Clean up pre-loaded scoring model (also runs on crash via except below)
     if _scoring_model is not None:
         del _scoring_model
         del _scoring_tokenizer
         gc.collect()
+        if device == "mps" and hasattr(torch, "mps") and hasattr(torch.mps, "empty_cache"):
+            torch.mps.synchronize()
+            torch.mps.empty_cache()
 
     return progress
 
