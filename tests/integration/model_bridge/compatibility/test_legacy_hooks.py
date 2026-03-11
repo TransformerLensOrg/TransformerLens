@@ -139,7 +139,14 @@ class TestLegacyHookCompatibility:
     def test_cache_hook_equality_with_hooked_transformer(
         self, transformer_bridge, hooked_transformer, prompt, expected_hooks
     ):
-        """Test that TransformerBridge cache values match HookedTransformer cache values."""
+        """Test that TransformerBridge cache values match HookedTransformer cache values.
+
+        Raw attention-score caches intentionally use different masked sentinels:
+        HookedTransformer stores ``-inf`` for masked causal positions, while
+        TransformerBridge preserves HuggingFace's finite additive mask
+        representation using ``torch.finfo(dtype).min``. The unmasked scores and
+        resulting attention pattern should still match exactly.
+        """
         _, bridge_cache = transformer_bridge.run_with_cache(prompt)
         _, hooked_transformer_cache = hooked_transformer.run_with_cache(prompt)
 
@@ -157,11 +164,33 @@ class TestLegacyHookCompatibility:
                 f"TransformerBridge shape {bridge_activation.shape}"
             )
 
-            # Allow for some numerical differences due to different implementations
-            # Use nanmean to handle -inf values in attention scores (which produce nan when subtracted)
-            mean_abs_diff = torch.nanmean(
-                torch.abs(hooked_transformer_activation - bridge_activation)
-            )
+            if hook == "blocks.0.attn.hook_attn_scores":
+                masked_positions = torch.isinf(hooked_transformer_activation)
+                unmasked_positions = ~masked_positions
+
+                assert torch.allclose(
+                    hooked_transformer_activation[unmasked_positions],
+                    bridge_activation[unmasked_positions],
+                    atol=0,
+                    rtol=0,
+                ), "Unmasked attention scores should match exactly"
+
+                masked_bridge_values = bridge_activation[masked_positions]
+                min_dtype = torch.finfo(bridge_activation.dtype).min
+
+                assert masked_positions.any(), "Expected causal masking in attention scores"
+                assert torch.isfinite(masked_bridge_values).all(), (
+                    "TransformerBridge should keep masked attention scores finite "
+                    "to mirror HuggingFace additive masking semantics"
+                )
+                assert torch.all(masked_bridge_values == min_dtype), (
+                    "Masked TransformerBridge attention scores should use dtype min "
+                    "instead of HookedTransformer's -inf sentinel"
+                )
+                continue
+
+            # Remaining legacy-compatible hooks are finite on this prompt, mean abs diff suffices
+            mean_abs_diff = torch.abs(hooked_transformer_activation - bridge_activation).mean()
             assert mean_abs_diff < 0.5, (
                 f"Hook {hook} does not match between HookedTransformer and TransformerBridge. "
                 f"Mean absolute difference: {mean_abs_diff}"
