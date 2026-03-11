@@ -219,6 +219,7 @@ jobs:
   notebook-checks:
     name: Notebook Checks
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -240,6 +241,12 @@ jobs:
           - "T5"
     steps:
       - uses: actions/checkout@v3
+      - name: Add swap space
+        run: |
+          sudo fallocate -l 8G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
       - name: Install uv
         uses: astral-sh/setup-uv@v6
         with:
