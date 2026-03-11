@@ -252,7 +252,16 @@ class HookPoint(nn.Module):
                 output: Any,
             ) -> None:
                 if isinstance(output, Tensor) and output.requires_grad:
-                    output.register_hook(lambda grad: full_hook(_module, _input, (grad,)))
+
+                    def _grad_hook(grad: Tensor) -> Any:
+                        result = full_hook(_module, _input, (grad,))
+                        # full_hook may return a tuple (register_full_backward_hook
+                        # convention) but tensor hooks expect Tensor or None.
+                        if isinstance(result, tuple):
+                            return result[0]
+                        return result
+
+                    output.register_hook(_grad_hook)
 
             if isinstance(hook, partial):
                 _bwd_via_tensor_hook.__name__ = f"partial({hook.func.__repr__()},...)"
