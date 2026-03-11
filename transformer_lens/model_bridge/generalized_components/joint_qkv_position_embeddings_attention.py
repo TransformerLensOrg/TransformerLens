@@ -195,7 +195,7 @@ class JointQKVPositionEmbeddingsAttentionBridge(JointQKVAttentionBridge):
     def _reconstruct_attention(
         self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, **kwargs
     ) -> tuple:
-        """Manual attention computation with rotary position embeddings.
+        """Manual attention reconstruction with rotary position embeddings.
 
         This overrides the parent class to apply rotary embeddings to Q and K
         before computing attention scores.

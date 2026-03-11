@@ -169,8 +169,8 @@ class JointQKVAttentionBridge(AttentionBridge):
         # Get the combined QKV component using the 'qkv' submodule name
         if "qkv" not in self.submodules:
             raise ValueError(
-                f"No 'qkv' submodule found in JointQKVAttentionBridge. "
-                f"Please define a 'qkv' submodule or provide a custom split_qkv_matrix function."
+                "No 'qkv' submodule found in JointQKVAttentionBridge. "
+                "Please define a 'qkv' submodule or provide a custom split_qkv_matrix function."
             )
 
         # Get the actual qkv component name from the bridge
@@ -331,7 +331,7 @@ class JointQKVAttentionBridge(AttentionBridge):
     def _reconstruct_attention(
         self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, **kwargs
     ) -> tuple:
-        """Manual attention computation as fallback using TransformerLens computation logic."""
+        """Manual attention reconstruction used by the bridge after splitting fused QKV projections."""
         original_component = self.original_component
         assert original_component is not None
         assert self.config is not None
@@ -375,7 +375,7 @@ class JointQKVAttentionBridge(AttentionBridge):
                 )
             attn_scores = attn_scores + attention_mask
         else:
-            # Fallback: simple causal mask when no HF mask is provided
+            # Use a simple causal mask only when HF has not supplied one.
             causal_mask = torch.tril(torch.ones(seq_len, seq_len, device=q.device))
             attn_scores = attn_scores.masked_fill(causal_mask == 0, float("-inf"))
         attn_scores = self.hook_attn_scores(attn_scores)
