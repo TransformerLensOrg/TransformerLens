@@ -243,6 +243,8 @@ jobs:
       - uses: actions/checkout@v3
       - name: Add swap space
         run: |
+          sudo swapoff /swapfile 2>/dev/null || true
+          sudo rm -f /swapfile
           sudo fallocate -l 8G /swapfile
           sudo chmod 600 /swapfile
           sudo mkswap /swapfile
