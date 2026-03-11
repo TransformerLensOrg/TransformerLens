@@ -105,10 +105,10 @@ class JointQKVAttentionBridge(AttentionBridge):
         self._reference_model: Optional[Any] = None
         self._layer_idx: Optional[int] = None
 
-        # After splitting, the q/k/v LinearBridges hold the authoritative weights.
-        # The original combined qkv bridge remains registered for access, but its
-        # parameters are stale copies of the pre-split weight and should not be
-        # re-read during compatibility-mode weight processing.
+    # After splitting, the q/k/v LinearBridges hold the authoritative weights.
+    # The original combined qkv bridge remains registered for access, but its
+    # parameters are stale copies of the pre-split weight and should not be
+    # re-read during compatibility-mode weight processing.
         self._register_state_dict_hook(JointQKVAttentionBridge._filter_qkv_state_dict)
 
     @staticmethod
@@ -261,10 +261,12 @@ class JointQKVAttentionBridge(AttentionBridge):
         """
         super().set_original_component(original_component)
 
+        # Capture layer index from HF attention component (e.g. GPT2Attention.layer_idx)
         if hasattr(original_component, "layer_idx"):
             layer_idx: int = getattr(original_component, "layer_idx")
             self._layer_idx = layer_idx
 
+        # Capture HF-specific attention flags for faithful reconstruction
         self._reorder_and_upcast_attn = getattr(
             original_component, "reorder_and_upcast_attn", False
         )
@@ -381,6 +383,9 @@ class JointQKVAttentionBridge(AttentionBridge):
         else:
             raise ValueError(f"Unexpected Q tensor shape: {q.shape}. Expected 3D or 4D tensor.")
 
+        # Build attention scale matching HF's GPT2Attention behavior:
+        # 1. Standard 1/sqrt(d_head) scaling
+        # 2. Optional 1/(layer_idx + 1) scaling (scale_attn_by_inverse_layer_idx)
         scale = head_dim ** (-0.5)
         if (
             hasattr(self.config, "scale_attn_by_inverse_layer_idx")
@@ -397,7 +402,6 @@ class JointQKVAttentionBridge(AttentionBridge):
             q_scores = q
             k_scores = k
         attn_scores = torch.matmul(q_scores, k_scores.transpose(-2, -1)) * scale
-
         attention_mask = kwargs.get("attention_mask", None)
         use_direct_hf_mask = attention_mask is not None and attention_mask.ndim >= 4
         if not use_direct_hf_mask:
@@ -422,6 +426,7 @@ class JointQKVAttentionBridge(AttentionBridge):
 
         attn_scores = self.hook_attn_scores(attn_scores)
 
+        # Softmax in float32 when upcast mode is active, then cast back
         if reorder_and_upcast:
             attn_weights = torch.nn.functional.softmax(attn_scores, dim=-1)
             attn_weights = attn_weights.to(v.dtype)

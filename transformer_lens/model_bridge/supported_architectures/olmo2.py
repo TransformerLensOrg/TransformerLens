@@ -136,6 +136,12 @@ class Olmo2ArchitectureAdapter(ArchitectureAdapter):
                         },
                     ),
                 },
+                # Post-norm override: ln2 is post_feedforward_layernorm applied AFTER
+                # MLP, so "ln2.hook_in" captures the MLP output (wrong mid-point).
+                # The true residual mid-point (between attention and MLP) is mlp.hook_in.
+                hook_alias_overrides={
+                    "hook_resid_mid": "mlp.hook_in",
+                },
             ),
             "ln_final": RMSNormalizationBridge(name="model.norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head", config=self.cfg),

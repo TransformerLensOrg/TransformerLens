@@ -35,6 +35,12 @@ class OptArchitectureAdapter(ArchitectureAdapter):
 
         # OPT models were trained with BOS tokens (inherits default_prepend_bos = True)
 
+        # Post-norm: disable fold_ln and center_writing_weights (pre-norm only).
+        is_post_norm = not getattr(self.cfg, "do_layer_norm_before", True)
+        if is_post_norm:
+            self.supports_fold_ln = False
+            self.supports_center_writing_weights = False
+
         self.weight_processing_conversions = {
             "blocks.{i}.attn.q.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
@@ -50,13 +56,24 @@ class OptArchitectureAdapter(ArchitectureAdapter):
             ),
         }
 
+        # OPT-350m is uniquely the only OPT size where word_embed_proj_dim (512)
+        # != hidden_size (1024).  It uses project_in/project_out linear layers
+        # instead of a final_layer_norm.  Detect this and conditionally include
+        # ln_final only when the model actually has one.
+        word_embed_proj_dim = getattr(self.cfg, "word_embed_proj_dim", self.cfg.d_model)
+        has_final_layer_norm = word_embed_proj_dim == self.cfg.d_model
+
         self.component_mapping = {
             "embed": EmbeddingBridge(name="model.decoder.embed_tokens"),
             "pos_embed": PosEmbedBridge(name="model.decoder.embed_positions"),
             "blocks": BlockBridge(
                 name="model.decoder.layers",
                 submodules={
-                    "ln1": NormalizationBridge(name="self_attn_layer_norm", config=self.cfg),
+                    "ln1": NormalizationBridge(
+                        name="self_attn_layer_norm",
+                        config=self.cfg,
+                        use_native_layernorm_autograd=True,
+                    ),
                     "attn": AttentionBridge(
                         name="self_attn",
                         config=self.cfg,
@@ -69,7 +86,11 @@ class OptArchitectureAdapter(ArchitectureAdapter):
                             "o": LinearBridge(name="out_proj"),
                         },
                     ),
-                    "ln2": NormalizationBridge(name="final_layer_norm", config=self.cfg),
+                    "ln2": NormalizationBridge(
+                        name="final_layer_norm",
+                        config=self.cfg,
+                        use_native_layernorm_autograd=True,
+                    ),
                     # OPT has fc1/fc2 directly on the block, not in an MLP container.
                     # Use SymbolicBridge to maintain TransformerLens structure while
                     # correctly mapping to the underlying architecture.
@@ -81,6 +102,15 @@ class OptArchitectureAdapter(ArchitectureAdapter):
                     ),
                 },
             ),
-            "ln_final": NormalizationBridge(name="model.decoder.final_layer_norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head"),
         }
+        if has_final_layer_norm:
+            self.component_mapping["ln_final"] = NormalizationBridge(
+                name="model.decoder.final_layer_norm",
+                config=self.cfg,
+                use_native_layernorm_autograd=True,
+            )
+        # project_in/project_out bridge word_embed_proj_dim <-> hidden_size.
+        if not has_final_layer_norm:
+            self.component_mapping["project_in"] = LinearBridge(name="model.decoder.project_in")
+            self.component_mapping["project_out"] = LinearBridge(name="model.decoder.project_out")

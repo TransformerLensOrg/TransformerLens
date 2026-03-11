@@ -29,8 +29,8 @@ from transformer_lens.model_bridge.generalized_components import (
 class QKVSplitRearrangeConversion(BaseTensorConversion):
     """Custom conversion that splits QKV tensor and then rearranges.
 
-    Handles both the original combined GPT-2 Conv1D qkv tensors and already-split
-    q/k/v tensors emitted by the bridge during compatibility-mode processing.
+        Handles both the original combined GPT-2 Conv1D qkv tensors and already-split
+        q/k/v tensors emitted by the bridge during compatibility-mode processing.
     """
 
     def __init__(self, qkv_index: int, rearrange_pattern: str, **axes_lengths):
@@ -38,7 +38,7 @@ class QKVSplitRearrangeConversion(BaseTensorConversion):
 
         Args:
             qkv_index: Index of Q (0), K (1), or V (2) in the QKV tensor
-            rearrange_pattern: Einops pattern for rearrangement
+            rearrange_pattern: Einops pattern for rearrangement (Conv1D format)
             **axes_lengths: Additional axes lengths for einops
         """
         super().__init__()
@@ -47,12 +47,13 @@ class QKVSplitRearrangeConversion(BaseTensorConversion):
         self.axes_lengths = axes_lengths
 
     def _is_combined_qkv(self, tensor: torch.Tensor) -> bool:
-        """Return whether a tensor still contains combined QKV values."""
+        """Check if a tensor is a combined QKV tensor vs already-split."""
         if tensor.ndim == 2:
             dim0, dim1 = tensor.shape
             return dim1 > dim0 * 2 or dim0 > dim1 * 2
         if tensor.ndim == 1:
             n_heads = self.axes_lengths.get("n", 1)
+            # Combined bias has 3x the expected individual size.
             return tensor.shape[0] % 3 == 0 and tensor.shape[0] > n_heads * 3
         return False
 

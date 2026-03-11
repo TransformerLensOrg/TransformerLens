@@ -7,6 +7,7 @@ import copy
 import logging
 import os
 import warnings
+from typing import Any
 
 import torch
 from transformers import (
@@ -139,6 +140,12 @@ def map_default_transformer_lens_config(hf_config):
         tl_config.sliding_window = hf_config.sliding_window
     if getattr(hf_config, "use_parallel_residual", False):
         tl_config.parallel_attn_mlp = True
+    # GPT-J has a parallel attention+MLP architecture (both read from same ln_1
+    # output) but doesn't set use_parallel_residual in its HF config. Detect it
+    # by architecture class so fold_ln correctly folds ln1 into BOTH attn and MLP.
+    arch_classes = getattr(hf_config, "architectures", []) or []
+    if any(a in ("GPTJForCausalLM",) for a in arch_classes):
+        tl_config.parallel_attn_mlp = True
     tl_config.default_prepend_bos = True
     return tl_config
 
@@ -240,6 +247,7 @@ def boot(
     tokenizer: PreTrainedTokenizerBase | None = None,
     load_weights: bool = True,
     trust_remote_code: bool = False,
+    model_class: Any | None = None,
 ) -> TransformerBridge:
     """Boot a model from HuggingFace.
 
@@ -250,6 +258,9 @@ def boot(
         dtype: The dtype to use for the model.
         tokenizer: Optional pre-initialized tokenizer to use; if not provided one will be created.
         load_weights: If False, load model without weights (on meta device) for config inspection only.
+        model_class: Optional HuggingFace model class to use instead of the default auto-detected
+            class. When the class name matches a key in SUPPORTED_ARCHITECTURES, the corresponding
+            adapter is selected automatically (e.g., BertForNextSentencePrediction).
 
     Returns:
         The bridge to the loaded model.
@@ -261,8 +272,13 @@ def boot(
             )
             model_name = official_name
             break
+    # Pass HF token for gated model access (e.g. meta-llama/*)
+    _hf_token = os.environ.get("HF_TOKEN", "") or None
     hf_config = AutoConfig.from_pretrained(
-        model_name, output_attentions=True, trust_remote_code=trust_remote_code
+        model_name,
+        output_attentions=True,
+        trust_remote_code=trust_remote_code,
+        token=_hf_token,
     )
     if hf_config_overrides:
         hf_config.__dict__.update(hf_config_overrides)
@@ -281,21 +297,45 @@ def boot(
     # Preserve HF-specific config attributes that adapters may need
     if getattr(hf_config, "is_gated_act", False):
         bridge_config.is_gated_act = True
+    # OPT-350m: word_embed_proj_dim != hidden_size means the model uses
+    # project_in/project_out instead of final_layer_norm.
+    word_embed_proj_dim = getattr(hf_config, "word_embed_proj_dim", None)
+    if word_embed_proj_dim is not None:
+        bridge_config.word_embed_proj_dim = word_embed_proj_dim
+    # OPT post-norm breaks fold_ln assumptions (pre-norm only).
+    do_layer_norm_before = getattr(hf_config, "do_layer_norm_before", None)
+    if do_layer_norm_before is not None:
+        bridge_config.do_layer_norm_before = do_layer_norm_before
+    # Propagate Gemma2 logit/attn softcapping config from HF to TL fields.
+    final_logit_softcapping = getattr(hf_config, "final_logit_softcapping", None)
+    if final_logit_softcapping is not None:
+        bridge_config.output_logits_soft_cap = float(final_logit_softcapping)
+    attn_logit_softcapping = getattr(hf_config, "attn_logit_softcapping", None)
+    if attn_logit_softcapping is not None:
+        bridge_config.attn_scores_soft_cap = float(attn_logit_softcapping)
     adapter = ArchitectureAdapterFactory.select_architecture_adapter(bridge_config)
     if device is None:
         device = get_device()
     adapter.cfg.device = str(device)
-    model_class = get_hf_model_class_for_architecture(architecture)
+    if model_class is None:
+        model_class = get_hf_model_class_for_architecture(architecture)
     # Ensure pad_token_id exists on HF config. Transformers v5 raises AttributeError
     # for missing config attributes (instead of returning None), which crashes models
     # like Phi-1 that access config.pad_token_id during __init__.
     if not hasattr(hf_config, "pad_token_id") or "pad_token_id" not in hf_config.__dict__:
         hf_config.pad_token_id = getattr(hf_config, "eos_token_id", None)
     model_kwargs = {"config": hf_config, "torch_dtype": dtype}
+    if _hf_token:
+        model_kwargs["token"] = _hf_token
     if trust_remote_code:
         model_kwargs["trust_remote_code"] = True
     if hasattr(adapter.cfg, "attn_implementation") and adapter.cfg.attn_implementation is not None:
         model_kwargs["attn_implementation"] = adapter.cfg.attn_implementation
+    else:
+        # Default to "eager" — the Bridge uses output_attentions for hooks,
+        # which requires eager attention.  This also ensures numerical parity
+        # with benchmarks that compare Bridge vs HF reference (both use eager).
+        model_kwargs["attn_implementation"] = "eager"
     adapter.prepare_loading(model_name, model_kwargs)
     if not load_weights:
         from_config_kwargs = {}
@@ -307,6 +347,10 @@ def boot(
         hf_model = model_class.from_pretrained(model_name, **model_kwargs)
         if device is not None:
             hf_model = hf_model.to(device)
+        # Ensure all parameters match the requested dtype. Some architectures
+        # (e.g., MoE models) retain native bfloat16 weights even when
+        # torch_dtype is specified during from_pretrained().
+        hf_model = hf_model.to(dtype=dtype)
     adapter.prepare_model(hf_model)
     tokenizer = tokenizer
     default_padding_side = getattr(adapter.cfg, "default_padding_side", None)
@@ -392,6 +436,18 @@ def setup_tokenizer(tokenizer, default_padding_side=None):
         tokenizer.pad_token = tokenizer.eos_token
     if tokenizer.bos_token is None:
         tokenizer.bos_token = tokenizer.eos_token
+
+    # Ensure special token strings resolve to valid IDs.  Some tokenizers
+    # (e.g. ChemGPT's SMILES vocabulary) don't contain the default fallback
+    # strings, leaving pad_token_id as None.  HF's padding logic then crashes
+    # with "TypeError: '<' not supported between instances of 'NoneType' and 'int'".
+    if tokenizer.pad_token is not None and tokenizer.pad_token_id is None:
+        tokenizer.add_special_tokens({"pad_token": tokenizer.pad_token})
+    if tokenizer.eos_token is not None and tokenizer.eos_token_id is None:
+        tokenizer.add_special_tokens({"eos_token": tokenizer.eos_token})
+    if tokenizer.bos_token is not None and tokenizer.bos_token_id is None:
+        tokenizer.add_special_tokens({"bos_token": tokenizer.bos_token})
+
     return tokenizer
 
 

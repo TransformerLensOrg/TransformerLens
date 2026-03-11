@@ -140,8 +140,16 @@ class NeoxArchitectureAdapter(ArchitectureAdapter):
             "blocks": BlockBridge(
                 name="gpt_neox.layers",
                 submodules={
-                    "ln1": NormalizationBridge(name="input_layernorm", config=self.cfg),
-                    "ln2": NormalizationBridge(name="post_attention_layernorm", config=self.cfg),
+                    "ln1": NormalizationBridge(
+                        name="input_layernorm",
+                        config=self.cfg,
+                        use_native_layernorm_autograd=True,
+                    ),
+                    "ln2": NormalizationBridge(
+                        name="post_attention_layernorm",
+                        config=self.cfg,
+                        use_native_layernorm_autograd=True,
+                    ),
                     "attn": JointQKVPositionEmbeddingsAttentionBridge(
                         name="attention",
                         config=self.cfg,
@@ -161,7 +169,11 @@ class NeoxArchitectureAdapter(ArchitectureAdapter):
                     ),
                 },
             ),
-            "ln_final": NormalizationBridge(name="gpt_neox.final_layer_norm", config=self.cfg),
+            "ln_final": NormalizationBridge(
+                name="gpt_neox.final_layer_norm",
+                config=self.cfg,
+                use_native_layernorm_autograd=True,
+            ),
             "unembed": UnembeddingBridge(name="embed_out"),
         }
 

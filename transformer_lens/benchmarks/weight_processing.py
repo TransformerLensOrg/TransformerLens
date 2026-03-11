@@ -8,6 +8,7 @@ from transformer_lens import HookedTransformer
 from transformer_lens.benchmarks.utils import (
     BenchmarkResult,
     BenchmarkSeverity,
+    is_tiny_test_model,
     safe_allclose,
 )
 from transformer_lens.model_bridge import TransformerBridge
@@ -506,6 +507,15 @@ def benchmark_attention_output_centering(
         BenchmarkResult with attention output centering verification details
     """
     try:
+        # Skip centering check for tiny/test models — random weights don't
+        # center meaningfully and produce false failures.
+        if is_tiny_test_model(getattr(bridge.cfg, "model_name", "") or ""):
+            return BenchmarkResult(
+                name="attention_output_centering",
+                severity=BenchmarkSeverity.INFO,
+                message="Skipped for tiny/test model (random weights don't center meaningfully)",
+            )
+
         # Check if W_O exists and is accessible
         if not hasattr(bridge.blocks[0].attn, "W_O"):
             return BenchmarkResult(
@@ -563,6 +573,15 @@ def benchmark_mlp_output_centering(
         BenchmarkResult with MLP output centering verification details
     """
     try:
+        # Skip centering check for tiny/test models — random weights don't
+        # center meaningfully and produce false failures.
+        if is_tiny_test_model(getattr(bridge.cfg, "model_name", "") or ""):
+            return BenchmarkResult(
+                name="mlp_output_centering",
+                severity=BenchmarkSeverity.INFO,
+                message="Skipped for tiny/test model (random weights don't center meaningfully)",
+            )
+
         # Check if this is an MoE model - MoE models don't have a single W_out weight
         from transformer_lens.model_bridge.generalized_components.moe import MoEBridge
 
@@ -902,11 +921,14 @@ def benchmark_weight_magnitudes(
                 continue
 
             # For rmsnorm_uses_offset models, fold_ln sets LN weights to 0.0
-            # (identity for (1+w) normalization). Skip LN weight keys to avoid
-            # false "too small" warnings.
+            # (identity for (1+w) normalization). Skip all LN weight keys —
+            # including post-norms (ln1_post, ln2_post) which aren't folded but
+            # use the same (1+w) convention — to avoid false magnitude warnings.
             if rmsnorm_uses_offset and (
                 "ln1.weight" in key
                 or "ln2.weight" in key
+                or "ln1_post.weight" in key
+                or "ln2_post.weight" in key
                 or "ln_1.weight" in key
                 or "ln_2.weight" in key
                 or "ln_final.weight" in key

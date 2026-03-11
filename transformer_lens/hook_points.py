@@ -243,7 +243,31 @@ class HookPoint(nn.Module):
             pt_handle = self.register_forward_hook(full_hook, prepend=prepend)
             visible_hooks = self.fwd_hooks
         elif dir == "bwd":
-            pt_handle = self.register_full_backward_hook(full_hook, prepend=prepend)
+            # Use tensor-level grad hooks instead of register_full_backward_hook
+            # to avoid BackwardHookFunctionBackward views that break downstream
+            # in-place ops (e.g. OLMo's query_states.clamp_()).
+            def _bwd_via_tensor_hook(
+                _module: torch.nn.Module,
+                _input: Any,
+                output: Any,
+            ) -> None:
+                if isinstance(output, Tensor) and output.requires_grad:
+
+                    def _grad_hook(grad: Tensor) -> Any:
+                        result = full_hook(_module, _input, (grad,))
+                        # full_hook may return a tuple (register_full_backward_hook
+                        # convention) but tensor hooks expect Tensor or None.
+                        if isinstance(result, tuple):
+                            return result[0]
+                        return result
+
+                    output.register_hook(_grad_hook)
+
+            if isinstance(hook, partial):
+                _bwd_via_tensor_hook.__name__ = f"partial({hook.func.__repr__()},...)"
+            else:
+                _bwd_via_tensor_hook.__name__ = hook.__repr__()
+            pt_handle = self.register_forward_hook(_bwd_via_tensor_hook, prepend=prepend)
             visible_hooks = self.bwd_hooks
         else:
             raise ValueError(f"Invalid direction {dir}")
