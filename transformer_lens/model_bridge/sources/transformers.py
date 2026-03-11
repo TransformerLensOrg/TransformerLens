@@ -7,6 +7,7 @@ import copy
 import logging
 import os
 import warnings
+from typing import Any
 
 import torch
 from transformers import (
@@ -246,6 +247,7 @@ def boot(
     tokenizer: PreTrainedTokenizerBase | None = None,
     load_weights: bool = True,
     trust_remote_code: bool = False,
+    model_class: Any | None = None,
 ) -> TransformerBridge:
     """Boot a model from HuggingFace.
 
@@ -256,6 +258,9 @@ def boot(
         dtype: The dtype to use for the model.
         tokenizer: Optional pre-initialized tokenizer to use; if not provided one will be created.
         load_weights: If False, load model without weights (on meta device) for config inspection only.
+        model_class: Optional HuggingFace model class to use instead of the default auto-detected
+            class. When the class name matches a key in SUPPORTED_ARCHITECTURES, the corresponding
+            adapter is selected automatically (e.g., BertForNextSentencePrediction).
 
     Returns:
         The bridge to the loaded model.
@@ -297,11 +302,23 @@ def boot(
     word_embed_proj_dim = getattr(hf_config, "word_embed_proj_dim", None)
     if word_embed_proj_dim is not None:
         bridge_config.word_embed_proj_dim = word_embed_proj_dim
+    # OPT post-norm breaks fold_ln assumptions (pre-norm only).
+    do_layer_norm_before = getattr(hf_config, "do_layer_norm_before", None)
+    if do_layer_norm_before is not None:
+        bridge_config.do_layer_norm_before = do_layer_norm_before
+    # Propagate Gemma2 logit/attn softcapping config from HF to TL fields.
+    final_logit_softcapping = getattr(hf_config, "final_logit_softcapping", None)
+    if final_logit_softcapping is not None:
+        bridge_config.output_logits_soft_cap = float(final_logit_softcapping)
+    attn_logit_softcapping = getattr(hf_config, "attn_logit_softcapping", None)
+    if attn_logit_softcapping is not None:
+        bridge_config.attn_scores_soft_cap = float(attn_logit_softcapping)
     adapter = ArchitectureAdapterFactory.select_architecture_adapter(bridge_config)
     if device is None:
         device = get_device()
     adapter.cfg.device = str(device)
-    model_class = get_hf_model_class_for_architecture(architecture)
+    if model_class is None:
+        model_class = get_hf_model_class_for_architecture(architecture)
     # Ensure pad_token_id exists on HF config. Transformers v5 raises AttributeError
     # for missing config attributes (instead of returning None), which crashes models
     # like Phi-1 that access config.pad_token_id during __init__.

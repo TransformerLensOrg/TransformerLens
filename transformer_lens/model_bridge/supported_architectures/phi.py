@@ -73,7 +73,11 @@ class PhiArchitectureAdapter(ArchitectureAdapter):
             "blocks": BlockBridge(
                 name="model.layers",
                 submodules={
-                    "ln1": NormalizationBridge(name="input_layernorm", config=self.cfg),
+                    "ln1": NormalizationBridge(
+                        name="input_layernorm",
+                        config=self.cfg,
+                        use_native_layernorm_autograd=True,
+                    ),
                     "attn": PositionEmbeddingsAttentionBridge(
                         name="self_attn",
                         config=self.cfg,
@@ -95,7 +99,11 @@ class PhiArchitectureAdapter(ArchitectureAdapter):
                     ),
                 },
             ),
-            "ln_final": NormalizationBridge(name="model.final_layernorm", config=self.cfg),
+            "ln_final": NormalizationBridge(
+                name="model.final_layernorm",
+                config=self.cfg,
+                use_native_layernorm_autograd=True,
+            ),
             "unembed": UnembeddingBridge(name="lm_head"),
         }
 
