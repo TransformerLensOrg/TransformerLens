@@ -27,7 +27,11 @@ from transformer_lens.model_bridge.generalized_components import (
 
 
 class QKVSplitRearrangeConversion(BaseTensorConversion):
-    """Custom conversion that splits QKV tensor and then rearranges."""
+    """Custom conversion that splits QKV tensor and then rearranges.
+
+    Handles both the original combined GPT-2 Conv1D qkv tensors and already-split
+    q/k/v tensors emitted by the bridge during compatibility-mode processing.
+    """
 
     def __init__(self, qkv_index: int, rearrange_pattern: str, **axes_lengths):
         """Initialize the conversion.
@@ -42,24 +46,47 @@ class QKVSplitRearrangeConversion(BaseTensorConversion):
         self.rearrange_pattern = rearrange_pattern
         self.axes_lengths = axes_lengths
 
+    def _is_combined_qkv(self, tensor: torch.Tensor) -> bool:
+        """Return whether a tensor still contains combined QKV values."""
+        if tensor.ndim == 2:
+            dim0, dim1 = tensor.shape
+            return dim1 > dim0 * 2 or dim0 > dim1 * 2
+        if tensor.ndim == 1:
+            n_heads = self.axes_lengths.get("n", 1)
+            return tensor.shape[0] % 3 == 0 and tensor.shape[0] > n_heads * 3
+        return False
+
     def handle_conversion(self, input_value: torch.Tensor, *full_context) -> torch.Tensor:
         """Split QKV tensor and rearrange the selected part."""
-        # Determine the split dimension based on tensor shape
+        if not self._is_combined_qkv(input_value):
+            return einops.rearrange(
+                input_value,
+                "(n h) d_model -> n d_model h",
+                **self.axes_lengths,
+            )
+
         if len(input_value.shape) == 2:
-            # Weight tensor: [d_model, 3*d_model] -> split along dim=1
-            split_dim = 1
+            split_dim = 1 if input_value.shape[1] > input_value.shape[0] else 0
         elif len(input_value.shape) == 1:
-            # Bias tensor: [3*n_heads*d_head] -> split along dim=0
             split_dim = 0
         else:
             raise ValueError(f"Unexpected tensor shape: {input_value.shape}")
 
-        # Split the QKV tensor
         qkv_parts = torch.tensor_split(input_value, 3, dim=split_dim)
         selected_part = qkv_parts[self.qkv_index]
-
-        # Apply rearrangement
         return einops.rearrange(selected_part, self.rearrange_pattern, **self.axes_lengths)
+
+    def revert(self, input_value: torch.Tensor, *full_context) -> torch.Tensor:
+        """Convert TL-format split q/k/v tensors back to nn.Linear layout."""
+        if input_value.ndim == 3:
+            return einops.rearrange(
+                input_value,
+                "n d_model h -> (n h) d_model",
+                **self.axes_lengths,
+            )
+        if input_value.ndim == 2:
+            return einops.rearrange(input_value, "n h -> (n h)", **self.axes_lengths)
+        return input_value
 
 
 class GPT2ArchitectureAdapter(ArchitectureAdapter):

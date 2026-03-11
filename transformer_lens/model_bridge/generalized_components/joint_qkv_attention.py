@@ -105,6 +105,25 @@ class JointQKVAttentionBridge(AttentionBridge):
         self._reference_model: Optional[Any] = None
         self._layer_idx: Optional[int] = None
 
+        # After splitting, the q/k/v LinearBridges hold the authoritative weights.
+        # The original combined qkv bridge remains registered for access, but its
+        # parameters are stale copies of the pre-split weight and should not be
+        # re-read during compatibility-mode weight processing.
+        self._register_state_dict_hook(JointQKVAttentionBridge._filter_qkv_state_dict)
+
+    @staticmethod
+    def _filter_qkv_state_dict(
+        module: torch.nn.Module,
+        state_dict: Dict[str, Any],
+        prefix: str,
+        local_metadata: Dict[str, Any],
+    ) -> None:
+        """Remove stale combined qkv entries from state_dict output."""
+        qkv_prefix = prefix + "qkv."
+        keys_to_remove = [key for key in state_dict if key.startswith(qkv_prefix)]
+        for key in keys_to_remove:
+            del state_dict[key]
+
     def _create_qkv_conversion_rule(self) -> BaseTensorConversion:
         """Create the appropriate conversion rule for the individual q, k, and v matrices.
 
@@ -241,6 +260,15 @@ class JointQKVAttentionBridge(AttentionBridge):
             original_component: The original attention layer to wrap
         """
         super().set_original_component(original_component)
+
+        if hasattr(original_component, "layer_idx"):
+            layer_idx: int = getattr(original_component, "layer_idx")
+            self._layer_idx = layer_idx
+
+        self._reorder_and_upcast_attn = getattr(
+            original_component, "reorder_and_upcast_attn", False
+        )
+
         q_transformation, k_transformation, v_transformation = self.split_qkv_matrix(
             original_component
         )
@@ -352,20 +380,35 @@ class JointQKVAttentionBridge(AttentionBridge):
             v = v.transpose(1, 2)
         else:
             raise ValueError(f"Unexpected Q tensor shape: {q.shape}. Expected 3D or 4D tensor.")
+
         scale = head_dim ** (-0.5)
-        attn_scores = torch.matmul(q, k.transpose(-2, -1)) * scale
+        if (
+            hasattr(self.config, "scale_attn_by_inverse_layer_idx")
+            and self.config.scale_attn_by_inverse_layer_idx
+            and self._layer_idx is not None
+        ):
+            scale /= float(self._layer_idx + 1)
+
+        reorder_and_upcast = getattr(self, "_reorder_and_upcast_attn", False)
+        if reorder_and_upcast:
+            q_scores = q.to(torch.float32)
+            k_scores = k.to(torch.float32)
+        else:
+            q_scores = q
+            k_scores = k
+        attn_scores = torch.matmul(q_scores, k_scores.transpose(-2, -1)) * scale
+
         attention_mask = kwargs.get("attention_mask", None)
+        use_direct_hf_mask = attention_mask is not None and attention_mask.ndim >= 4
+        if not use_direct_hf_mask:
+            causal_mask = torch.tril(torch.ones(seq_len, seq_len, device=q.device))
+            attn_scores = attn_scores.masked_fill(causal_mask == 0, float("-inf"))
+
         if attention_mask is not None:
-            # HF's 4D attention mask already includes causal masking, so we use
-            # it instead of the simple tril causal mask to properly handle both
-            # causal and padding masking.
             if attention_mask.shape[-1] != seq_len:
                 attention_mask = attention_mask[..., :seq_len]
             if attention_mask.shape[-2] != seq_len:
                 attention_mask = attention_mask[..., :seq_len, :]
-            # Convert boolean masks (True=attend, False=mask) to additive float
-            # masks (0.0=attend, min_dtype=mask). Using min_dtype rather than
-            # -inf avoids NaN from softmax on fully-masked (padding) rows.
             if attention_mask.dtype == torch.bool:
                 min_dtype = torch.finfo(attn_scores.dtype).min
                 attention_mask = torch.where(
@@ -373,13 +416,18 @@ class JointQKVAttentionBridge(AttentionBridge):
                     torch.zeros((), dtype=attn_scores.dtype, device=attn_scores.device),
                     torch.full((), min_dtype, dtype=attn_scores.dtype, device=attn_scores.device),
                 )
+            else:
+                attention_mask = attention_mask.to(dtype=attn_scores.dtype)
             attn_scores = attn_scores + attention_mask
-        else:
-            # Use a simple causal mask only when HF has not supplied one.
-            causal_mask = torch.tril(torch.ones(seq_len, seq_len, device=q.device))
-            attn_scores = attn_scores.masked_fill(causal_mask == 0, float("-inf"))
+
         attn_scores = self.hook_attn_scores(attn_scores)
-        attn_weights = torch.nn.functional.softmax(attn_scores, dim=-1)
+
+        if reorder_and_upcast:
+            attn_weights = torch.nn.functional.softmax(attn_scores, dim=-1)
+            attn_weights = attn_weights.to(v.dtype)
+        else:
+            attn_weights = torch.nn.functional.softmax(attn_scores, dim=-1)
+
         if hasattr(original_component, "attn_dropout"):
             attn_weights = original_component.attn_dropout(attn_weights)  # type: ignore[operator]
         attn_weights = self.hook_pattern(attn_weights)
