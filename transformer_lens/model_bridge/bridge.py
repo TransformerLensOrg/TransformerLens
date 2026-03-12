@@ -138,6 +138,7 @@ class TransformerBridge(nn.Module):
         self._register_all_aliases_recursive()
         self._setup_hook_compatibility()
         self._initialize_hooks_to_cache()
+        self.processor = None
 
     @classmethod
     def boot_transformers(
@@ -1212,6 +1213,7 @@ class TransformerBridge(nn.Module):
         attention_mask: Optional[torch.Tensor] = None,
         start_at_layer: Optional[int] = None,
         stop_at_layer: Optional[int] = None,
+        pixel_values: Optional[torch.Tensor] = None,
         **kwargs,
     ) -> Any:
         """Forward pass through the model.
@@ -1225,6 +1227,9 @@ class TransformerBridge(nn.Module):
             past_kv_cache: Optional TransformerLensKeyValueCache for generation
             start_at_layer: Layer to start forward pass from
             stop_at_layer: Layer to stop forward pass at
+            pixel_values: Optional image tensor for multimodal models (e.g., LLaVA, Gemma3).
+                The tensor is passed directly to the underlying HuggingFace model.
+                Only valid when cfg.is_multimodal is True.
             **kwargs: Additional arguments passed to model
 
         Returns:
@@ -1308,6 +1313,15 @@ class TransformerBridge(nn.Module):
             # Tell PosEmbedBridge to expand batch=1 position_ids to full batch.
             if hasattr(self, "pos_embed"):
                 self.pos_embed._current_batch_size = input_ids.shape[0]
+
+            # Handle pixel_values for multimodal models
+            if pixel_values is not None:
+                if not getattr(self.cfg, "is_multimodal", False):
+                    raise ValueError(
+                        "pixel_values can only be passed to multimodal models "
+                        "(cfg.is_multimodal must be True)"
+                    )
+                kwargs["pixel_values"] = pixel_values
 
             original_tl_cache = past_kv_cache
             output = self.original_model(input_ids, **kwargs)
@@ -1790,6 +1804,7 @@ class TransformerBridge(nn.Module):
         return_type: Optional[str] = "input",
         verbose: bool = True,
         output_logits: bool = False,
+        pixel_values: Optional[torch.Tensor] = None,
     ) -> str | list[str] | torch.Tensor | Any:  # Any for transformers.utils.ModelOutput
         # Using Any due to beartype's forward reference resolution limitations.
         # See: https://github.com/beartype/beartype/issues/546
@@ -1817,6 +1832,9 @@ class TransformerBridge(nn.Module):
             return_type: The type of output to return - 'input', 'str', or 'tokens'
             verbose: Not used in Bridge (kept for API compatibility)
             output_logits: If True, return a ModelOutput with sequences and logits tuple
+            pixel_values: Optional image tensor for multimodal models. Only passed on the
+                first generation step (the vision encoder processes the image once, then
+                embeddings are part of the token sequence for subsequent steps).
 
         Returns:
             Generated sequence as string, list of strings, or tensor depending on input type and return_type.
@@ -1891,7 +1909,7 @@ class TransformerBridge(nn.Module):
                 device=self.cfg.device,
             )
 
-        for _ in range(max_new_tokens):
+        for gen_step_idx in range(max_new_tokens):
             # Get logits for next token
             with torch.no_grad():
                 if is_encoder_decoder:
@@ -1901,7 +1919,12 @@ class TransformerBridge(nn.Module):
                         decoder_input=decoder_tokens,
                     )
                 else:
-                    logits = self(current_tokens, return_type="logits")
+                    forward_kwargs: Dict[str, Any] = {}
+                    # Pass pixel_values only on the first step — the vision encoder
+                    # processes the image once, embedding it into the token sequence.
+                    if gen_step_idx == 0 and pixel_values is not None:
+                        forward_kwargs["pixel_values"] = pixel_values
+                    logits = self(current_tokens, return_type="logits", **forward_kwargs)
                 final_logits = logits[:, -1, :]
 
                 # Collect logits if requested
@@ -2008,6 +2031,7 @@ class TransformerBridge(nn.Module):
         temperature: float = 1.0,
         use_past_kv_cache: bool = True,
         return_type: str | None = "input",
+        pixel_values: torch.Tensor | None = None,
         **generation_kwargs,
     ) -> str | list[str] | torch.Tensor | Any:  # Any for HF ModelOutput types
         # Using Any due to beartype's forward reference resolution limitations.
@@ -2099,6 +2123,9 @@ class TransformerBridge(nn.Module):
         elif stop_at_eos and self.tokenizer.eos_token_id is not None:
             generation_kwargs["eos_token_id"] = self.tokenizer.eos_token_id
 
+        if pixel_values is not None:
+            generation_kwargs["pixel_values"] = pixel_values
+
         if use_past_kv_cache:
             generation_kwargs["use_cache"] = True
 
@@ -2167,6 +2194,42 @@ class TransformerBridge(nn.Module):
                 return [self.tokenizer.decode(seq, skip_special_tokens=True) for seq in outputs]
             else:
                 return outputs
+
+    def prepare_multimodal_inputs(
+        self,
+        text: Union[str, List[str]],
+        images: Optional[Any] = None,
+    ) -> Dict[str, torch.Tensor]:
+        """Prepare multimodal inputs using the model's processor.
+
+        Converts text and images into model-ready tensors (input_ids, pixel_values,
+        attention_mask, etc.) using the HuggingFace processor loaded during boot().
+
+        Args:
+            text: Text prompt(s), typically containing image placeholder tokens
+                (e.g., "<image>" for LLaVA).
+            images: PIL Image or list of PIL Images to process. Pass None for
+                text-only inputs on a multimodal model.
+
+        Returns:
+            Dictionary with 'input_ids', 'pixel_values', 'attention_mask', etc.
+            All tensors are moved to the model's device.
+
+        Raises:
+            ValueError: If model is not multimodal or processor is not available.
+        """
+        if not getattr(self.cfg, "is_multimodal", False):
+            raise ValueError(
+                "prepare_multimodal_inputs() requires a multimodal model "
+                "(cfg.is_multimodal must be True)"
+            )
+        if self.processor is None:
+            raise ValueError(
+                "No processor available. Load model with boot_transformers() or "
+                "set bridge.processor = AutoProcessor.from_pretrained(...) manually."
+            )
+        inputs = self.processor(text=text, images=images, return_tensors="pt")
+        return {k: v.to(self.cfg.device) if hasattr(v, "to") else v for k, v in inputs.items()}
 
     def to(self, *args, **kwargs) -> "TransformerBridge":
         """Move model to device and/or change dtype.
