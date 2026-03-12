@@ -32,7 +32,6 @@ from transformer_lens.model_bridge.types import (
     RemotePath,
     TransformerLensPath,
 )
-import transformer_lens.model_bridge.sources.transformers
 
 __all__ = [
     "ArchitectureAdapter",

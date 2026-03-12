@@ -21,9 +21,11 @@ from transformer_lens.model_bridge.supported_architectures.gemma3 import (
 from transformer_lens.model_bridge.supported_architectures.gpt2 import (
     GPT2ArchitectureAdapter,
 )
-from transformer_lens.model_bridge.supported_architectures.gpt_oss import GPTOSSArchitectureAdapter
 from transformer_lens.model_bridge.supported_architectures.gpt2_lm_head_custom import (
     Gpt2LmHeadCustomArchitectureAdapter,
+)
+from transformer_lens.model_bridge.supported_architectures.gpt_oss import (
+    GPTOSSArchitectureAdapter,
 )
 from transformer_lens.model_bridge.supported_architectures.gptj import (
     GptjArchitectureAdapter,
@@ -102,6 +104,7 @@ __all__ = [
     "Gemma2ArchitectureAdapter",
     "Gemma3ArchitectureAdapter",
     "GPT2ArchitectureAdapter",
+    "GPTOSSArchitectureAdapter",
     "Gpt2LmHeadCustomArchitectureAdapter",
     "GptjArchitectureAdapter",
     "LlamaArchitectureAdapter",

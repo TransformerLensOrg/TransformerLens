@@ -209,7 +209,6 @@ def _patch_olmo_inplace_clamp(hf_model: Any) -> None:
         return
 
     import functools
-    import types
 
     patched = 0
     for layer in hf_model.model.layers:

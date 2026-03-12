@@ -1,6 +1,5 @@
 """OLMoE (Mixture of Experts) architecture adapter."""
 
-import logging
 from typing import Any
 
 from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorConversion
