@@ -433,3 +433,49 @@ class TestInitXavier:
         x_new = nn.Parameter(torch.empty(2, d_model, 137))
         utils.init_xavier_normal_(x_new)
         assert torch.allclose(x_new, x, rtol=1e-2)
+
+class TestTokenizeAndConcatenate:
+    """Tests for tokenize_and_concatenate utility function."""
+
+    def test_no_split_tokens_across_chunks(self):
+        """
+        Regression test for issue #1133.
+        tokenize_and_concatenate previously split text into chunks by character
+        count, which could cut words in half and produce token pairs that would
+        never occur in naturally tokenized text. This test verifies that all
+        tokens in the output also appear consecutively in a clean tokenization
+        of the same text, confirming no artificial token pairs were introduced.
+        """
+        from datasets import Dataset
+        from transformers import AutoTokenizer
+
+        tokenizer = AutoTokenizer.from_pretrained("gpt2")
+
+        # Construct text where character-based splitting would cut mid-word.
+        # Repeating a long word many times ensures a chunk boundary falls inside it.
+        text = "Military " * 500
+        dataset = Dataset.from_dict({"text": [text]})
+
+        result = utils.tokenize_and_concatenate(
+            dataset,
+            tokenizer,
+            streaming=False,
+            max_length=64,
+            add_bos_token=False,
+        )
+
+        # Tokenize the same text cleanly in one shot (no chunking)
+        clean_tokens = tokenizer(text, return_tensors="np")["input_ids"].flatten()
+
+        # Build a set of all consecutive pairs from the clean tokenization
+        clean_pairs = set(zip(clean_tokens[:-1], clean_tokens[1:]))
+
+        # Every consecutive pair in our output must exist in the clean pairs
+        output_tokens = result["tokens"].numpy().flatten()
+        for i in range(len(output_tokens) - 1):
+            pair = (output_tokens[i], output_tokens[i + 1])
+            assert pair in clean_pairs, (
+                f"Token pair {pair} found in tokenize_and_concatenate output "
+                f"but never occurs in natural tokenization. "
+                f"This indicates a word was split across chunk boundaries."
+            )
