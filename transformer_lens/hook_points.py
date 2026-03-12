@@ -243,31 +243,27 @@ class HookPoint(nn.Module):
             pt_handle = self.register_forward_hook(full_hook, prepend=prepend)
             visible_hooks = self.fwd_hooks
         elif dir == "bwd":
-            # Use tensor-level grad hooks instead of register_full_backward_hook
-            # to avoid BackwardHookFunctionBackward views that break downstream
-            # in-place ops (e.g. OLMo's query_states.clamp_()).
-            def _bwd_via_tensor_hook(
-                _module: torch.nn.Module,
-                _input: Any,
-                output: Any,
-            ) -> None:
-                if isinstance(output, Tensor) and output.requires_grad:
-
-                    def _grad_hook(grad: Tensor) -> Any:
-                        result = full_hook(_module, _input, (grad,))
-                        # full_hook may return a tuple (register_full_backward_hook
-                        # convention) but tensor hooks expect Tensor or None.
-                        if isinstance(result, tuple):
-                            return result[0]
-                        return result
-
-                    output.register_hook(_grad_hook)
+            # register_full_backward_hook signature:
+            #   hook(module, grad_input, grad_output) -> tuple(Tensor) | None
+            # The return value replaces grad_input.  full_hook returns a bare
+            # Tensor (or None), so we wrap it in a tuple for PyTorch.
+            def _bwd_hook_wrapper(
+                module: torch.nn.Module,
+                grad_input: Any,
+                grad_output: Any,
+            ):
+                result = full_hook(module, grad_input, grad_output)
+                if result is None:
+                    return None
+                if isinstance(result, tuple):
+                    return result
+                return (result,)
 
             if isinstance(hook, partial):
-                _bwd_via_tensor_hook.__name__ = f"partial({hook.func.__repr__()},...)"
+                _bwd_hook_wrapper.__name__ = f"partial({hook.func.__repr__()},...)"
             else:
-                _bwd_via_tensor_hook.__name__ = hook.__repr__()
-            pt_handle = self.register_forward_hook(_bwd_via_tensor_hook, prepend=prepend)
+                _bwd_hook_wrapper.__name__ = hook.__repr__()
+            pt_handle = self.register_full_backward_hook(_bwd_hook_wrapper, prepend=prepend)
             visible_hooks = self.bwd_hooks
         else:
             raise ValueError(f"Invalid direction {dir}")
