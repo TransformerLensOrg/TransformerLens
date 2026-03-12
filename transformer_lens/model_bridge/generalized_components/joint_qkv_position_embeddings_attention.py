@@ -239,26 +239,11 @@ class JointQKVPositionEmbeddingsAttentionBridge(JointQKVAttentionBridge):
         attn_scores = torch.matmul(q, k.transpose(-2, -1)) * scale
 
         attention_mask = kwargs.get("attention_mask", None)
-        if attention_mask is not None:
-            # HF's 4D attention mask already includes causal masking, so use
-            # it directly instead of layering a second tril mask on top.
-            if attention_mask.shape[-1] != seq_len:
-                attention_mask = attention_mask[..., :seq_len]
-            if attention_mask.shape[-2] != seq_len:
-                attention_mask = attention_mask[..., :seq_len, :]
-            if attention_mask.dtype == torch.bool:
-                min_dtype = torch.finfo(attn_scores.dtype).min
-                attention_mask = torch.where(
-                    attention_mask,
-                    torch.zeros((), dtype=attn_scores.dtype, device=attn_scores.device),
-                    torch.full((), min_dtype, dtype=attn_scores.dtype, device=attn_scores.device),
-                )
-            attn_scores = attn_scores + attention_mask
-        else:
-            causal_mask = torch.tril(torch.ones(seq_len, seq_len, device=q.device))
-            attn_scores = attn_scores.masked_fill(
-                causal_mask == 0, torch.finfo(attn_scores.dtype).min
-            )
+        attn_scores = self._apply_reconstruct_attention_mask(
+            attn_scores=attn_scores,
+            attention_mask=attention_mask,
+            seq_len=seq_len,
+        )
 
         # Apply hook to attention scores
         attn_scores = self.hook_attn_scores(attn_scores)

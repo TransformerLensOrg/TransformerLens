@@ -53,6 +53,40 @@ class TestJointQKVAttention:
         )
         return q, k, v
 
+    def _assert_non_4d_mask_preserves_causality(
+        self,
+        bridge,
+        *,
+        position_embeddings: tuple[torch.Tensor, torch.Tensor] | None = None,
+    ) -> None:
+        q, k, v = self._make_reconstruct_attention_qkv()
+        boolean_mask = torch.tensor([[True, True, False]])
+        additive_mask = self._make_additive_mask(boolean_mask, q.dtype)
+        reconstruct_kwargs = {}
+        if position_embeddings is not None:
+            reconstruct_kwargs["position_embeddings"] = position_embeddings
+
+        bool_output, bool_pattern = bridge._reconstruct_attention(
+            q.clone(),
+            k.clone(),
+            v.clone(),
+            attention_mask=boolean_mask,
+            **reconstruct_kwargs,
+        )
+        additive_output, additive_pattern = bridge._reconstruct_attention(
+            q.clone(),
+            k.clone(),
+            v.clone(),
+            attention_mask=additive_mask,
+            **reconstruct_kwargs,
+        )
+
+        assert torch.allclose(bool_output, additive_output)
+        assert torch.allclose(bool_pattern, additive_pattern)
+        assert torch.all(bool_pattern[:, :, 0, 1:] == 0)
+        assert torch.all(bool_pattern[:, :, 1, 2] == 0)
+        assert torch.all(bool_pattern[..., 2] == 0)
+
     def test_q_hook_out_mutation_applied_in_forward_pass(self):
         """Test that mutations made to q.hook_out are applied in the forward pass result."""
 
@@ -406,3 +440,48 @@ class TestJointQKVAttention:
         assert torch.isfinite(bool_pattern).all()
         assert torch.allclose(bool_output, additive_output)
         assert torch.allclose(bool_pattern, additive_pattern)
+
+    def test_reconstruct_attention_non_4d_mask_preserves_causality(self):
+        """Non-4D masks should still receive the local causal mask in the base bridge."""
+
+        class TestConfig:
+            n_heads = 2
+            d_model = 4
+
+        class MockOriginalAttention(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.attn_dropout = torch.nn.Identity()
+
+        bridge = JointQKVAttentionBridge(name="qkv", config=TestConfig())
+        bridge.add_module("_original_component", MockOriginalAttention())
+
+        self._assert_non_4d_mask_preserves_causality(bridge)
+
+    def test_rotary_reconstruct_attention_non_4d_mask_preserves_causality(self):
+        """Rotary joint-QKV attention should match base masking semantics for non-4D masks."""
+
+        from transformer_lens.model_bridge.generalized_components.joint_qkv_position_embeddings_attention import (
+            JointQKVPositionEmbeddingsAttentionBridge,
+        )
+
+        class TestConfig:
+            n_heads = 2
+            d_model = 4
+
+        class MockOriginalAttention(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.attn_dropout = torch.nn.Identity()
+
+        bridge = JointQKVPositionEmbeddingsAttentionBridge(name="qkv", config=TestConfig())
+        bridge.add_module("_original_component", MockOriginalAttention())
+        position_embeddings = (
+            torch.ones(1, 3, 2, dtype=torch.float32),
+            torch.zeros(1, 3, 2, dtype=torch.float32),
+        )
+
+        self._assert_non_4d_mask_preserves_causality(
+            bridge,
+            position_embeddings=position_embeddings,
+        )

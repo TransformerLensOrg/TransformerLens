@@ -355,6 +355,45 @@ class JointQKVAttentionBridge(AttentionBridge):
             raise ValueError("No input tensor found in args or kwargs")
         return self.hook_in(input_tensor)
 
+    def _apply_reconstruct_attention_mask(
+        self,
+        attn_scores: torch.Tensor,
+        attention_mask: torch.Tensor | None,
+        seq_len: int,
+    ) -> torch.Tensor:
+        """Apply causal and optional attention masking to reconstructed scores.
+
+        HuggingFace-style 4D masks already encode causal semantics, so they are
+        treated as authoritative. Lower-rank masks do not, so the local causal
+        mask is still applied before adding the caller-provided padding mask.
+        """
+        min_dtype = torch.finfo(attn_scores.dtype).min
+        use_direct_hf_mask = attention_mask is not None and attention_mask.ndim >= 4
+        if not use_direct_hf_mask:
+            causal_mask = torch.tril(
+                torch.ones(seq_len, seq_len, device=attn_scores.device, dtype=torch.bool)
+            )
+            attn_scores = attn_scores.masked_fill(~causal_mask, min_dtype)
+
+        if attention_mask is None:
+            return attn_scores
+
+        if attention_mask.shape[-1] != seq_len:
+            attention_mask = attention_mask[..., :seq_len]
+        if attention_mask.ndim >= 3 and attention_mask.shape[-2] != seq_len:
+            attention_mask = attention_mask[..., :seq_len, :]
+
+        if attention_mask.dtype == torch.bool:
+            attention_mask = torch.where(
+                attention_mask,
+                torch.zeros((), dtype=attn_scores.dtype, device=attn_scores.device),
+                torch.full((), min_dtype, dtype=attn_scores.dtype, device=attn_scores.device),
+            )
+        else:
+            attention_mask = attention_mask.to(dtype=attn_scores.dtype)
+
+        return attn_scores + attention_mask
+
     def _reconstruct_attention(
         self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, **kwargs
     ) -> tuple:
@@ -402,28 +441,11 @@ class JointQKVAttentionBridge(AttentionBridge):
             k_scores = k
         attn_scores = torch.matmul(q_scores, k_scores.transpose(-2, -1)) * scale
         attention_mask = kwargs.get("attention_mask", None)
-        use_direct_hf_mask = attention_mask is not None and attention_mask.ndim >= 4
-        if not use_direct_hf_mask:
-            causal_mask = torch.tril(torch.ones(seq_len, seq_len, device=q.device))
-            attn_scores = attn_scores.masked_fill(
-                causal_mask == 0, torch.finfo(attn_scores.dtype).min
-            )
-
-        if attention_mask is not None:
-            if attention_mask.shape[-1] != seq_len:
-                attention_mask = attention_mask[..., :seq_len]
-            if attention_mask.shape[-2] != seq_len:
-                attention_mask = attention_mask[..., :seq_len, :]
-            if attention_mask.dtype == torch.bool:
-                min_dtype = torch.finfo(attn_scores.dtype).min
-                attention_mask = torch.where(
-                    attention_mask,
-                    torch.zeros((), dtype=attn_scores.dtype, device=attn_scores.device),
-                    torch.full((), min_dtype, dtype=attn_scores.dtype, device=attn_scores.device),
-                )
-            else:
-                attention_mask = attention_mask.to(dtype=attn_scores.dtype)
-            attn_scores = attn_scores + attention_mask
+        attn_scores = self._apply_reconstruct_attention_mask(
+            attn_scores=attn_scores,
+            attention_mask=attention_mask,
+            seq_len=seq_len,
+        )
 
         attn_scores = self.hook_attn_scores(attn_scores)
 
