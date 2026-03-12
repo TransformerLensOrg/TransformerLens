@@ -8,7 +8,7 @@
   },
   "total_architectures": 27,
   "total_models": 4924,
-  "total_verified": 582,
+  "total_verified": 583,
   "models": [
     {
       "architecture_id": "Qwen2ForCausalLM",
@@ -63940,15 +63940,15 @@
     {
       "architecture_id": "Gemma3ForConditionalGeneration",
       "model_id": "google/gemma-3-12b-pt",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-03-12",
       "metadata": null,
-      "note": null,
+      "note": "Core verification completed",
       "phase1_score": 100.0,
       "phase2_score": null,
       "phase3_score": null,
-      "phase4_score": 94.8,
-      "phase7_score": null
+      "phase4_score": 95.7,
+      "phase7_score": 100.0
     },
     {
       "architecture_id": "Gemma3ForConditionalGeneration",
