@@ -256,7 +256,9 @@ class JointQKVPositionEmbeddingsAttentionBridge(JointQKVAttentionBridge):
             attn_scores = attn_scores + attention_mask
         else:
             causal_mask = torch.tril(torch.ones(seq_len, seq_len, device=q.device))
-            attn_scores = attn_scores.masked_fill(causal_mask == 0, torch.finfo(attn_scores.dtype).min)
+            attn_scores = attn_scores.masked_fill(
+                causal_mask == 0, torch.finfo(attn_scores.dtype).min
+            )
 
         # Apply hook to attention scores
         attn_scores = self.hook_attn_scores(attn_scores)

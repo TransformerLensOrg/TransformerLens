@@ -405,7 +405,9 @@ class JointQKVAttentionBridge(AttentionBridge):
         use_direct_hf_mask = attention_mask is not None and attention_mask.ndim >= 4
         if not use_direct_hf_mask:
             causal_mask = torch.tril(torch.ones(seq_len, seq_len, device=q.device))
-            attn_scores = attn_scores.masked_fill(causal_mask == 0, torch.finfo(attn_scores.dtype).min)
+            attn_scores = attn_scores.masked_fill(
+                causal_mask == 0, torch.finfo(attn_scores.dtype).min
+            )
 
         if attention_mask is not None:
             if attention_mask.shape[-1] != seq_len:
