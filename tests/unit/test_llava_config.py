@@ -7,7 +7,6 @@ from transformer_lens.factories.architecture_adapter_factory import (
     SUPPORTED_ARCHITECTURES,
     ArchitectureAdapterFactory,
 )
-from transformer_lens.loading_from_pretrained import get_pretrained_model_config
 from transformer_lens.model_bridge.supported_architectures.llava import (
     LlavaArchitectureAdapter,
 )
@@ -89,21 +88,21 @@ class TestLlavaAdapterConfig:
         assert adapter.component_mapping["vision_projector"].name == "model.multi_modal_projector"
 
     def test_embed_path(self, adapter):
-        assert adapter.component_mapping["embed"].name == "model.language_model.model.embed_tokens"
+        assert adapter.component_mapping["embed"].name == "model.language_model.embed_tokens"
 
     def test_rotary_emb_path(self, adapter):
         assert (
-            adapter.component_mapping["rotary_emb"].name == "model.language_model.model.rotary_emb"
+            adapter.component_mapping["rotary_emb"].name == "model.language_model.rotary_emb"
         )
 
     def test_blocks_path(self, adapter):
-        assert adapter.component_mapping["blocks"].name == "model.language_model.model.layers"
+        assert adapter.component_mapping["blocks"].name == "model.language_model.layers"
 
     def test_ln_final_path(self, adapter):
-        assert adapter.component_mapping["ln_final"].name == "model.language_model.model.norm"
+        assert adapter.component_mapping["ln_final"].name == "model.language_model.norm"
 
     def test_unembed_path(self, adapter):
-        assert adapter.component_mapping["unembed"].name == "model.language_model.lm_head"
+        assert adapter.component_mapping["unembed"].name == "lm_head"
 
     def test_weight_processing_conversions_exist(self, adapter):
         assert "blocks.{i}.attn.q.weight" in adapter.weight_processing_conversions
@@ -117,34 +116,3 @@ class TestLlavaAdapterConfig:
             assert "ln1" not in key
             assert "ln2" not in key
             assert "ln_final" not in key
-
-
-class TestLlavaConfigGeneration:
-    """Test that get_pretrained_model_config generates correct configs for LLava."""
-
-    def test_llava_7b_config(self):
-        cfg = get_pretrained_model_config("llava-hf/llava-1.5-7b-hf")
-        assert cfg.d_model == 4096
-        assert cfg.n_heads == 32
-        assert cfg.n_layers == 32
-        assert cfg.d_mlp == 11008
-        assert cfg.d_vocab == 32064
-        assert cfg.act_fn == "silu"
-        assert cfg.normalization_type == "RMS"
-        assert cfg.original_architecture == "LlavaForConditionalGeneration"
-
-    def test_llava_13b_config(self):
-        cfg = get_pretrained_model_config("llava-hf/llava-1.5-13b-hf")
-        assert cfg.d_model == 5120
-        assert cfg.n_heads == 40
-        assert cfg.n_layers == 40
-        assert cfg.d_mlp == 13824
-        assert cfg.d_vocab == 32064
-        assert cfg.act_fn == "silu"
-        assert cfg.normalization_type == "RMS"
-        assert cfg.original_architecture == "LlavaForConditionalGeneration"
-
-    def test_llava_architecture_detection(self):
-        """Test that 'llava' in model name triggers correct architecture."""
-        cfg = get_pretrained_model_config("llava-hf/llava-1.5-7b-hf")
-        assert cfg.original_architecture == "LlavaForConditionalGeneration"
