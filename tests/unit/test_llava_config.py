@@ -91,9 +91,7 @@ class TestLlavaAdapterConfig:
         assert adapter.component_mapping["embed"].name == "model.language_model.embed_tokens"
 
     def test_rotary_emb_path(self, adapter):
-        assert (
-            adapter.component_mapping["rotary_emb"].name == "model.language_model.rotary_emb"
-        )
+        assert adapter.component_mapping["rotary_emb"].name == "model.language_model.rotary_emb"
 
     def test_blocks_path(self, adapter):
         assert adapter.component_mapping["blocks"].name == "model.language_model.layers"
