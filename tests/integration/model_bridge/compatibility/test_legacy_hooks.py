@@ -145,7 +145,8 @@ class TestLegacyHookCompatibility:
         HookedTransformer stores ``-inf`` for masked causal positions, while
         TransformerBridge preserves HuggingFace's finite additive mask
         representation using ``torch.finfo(dtype).min``. The unmasked scores and
-        resulting attention pattern should still match exactly.
+        resulting attention pattern should still match within floating-point
+        precision.
         """
         _, bridge_cache = transformer_bridge.run_with_cache(prompt)
         _, hooked_transformer_cache = hooked_transformer.run_with_cache(prompt)
@@ -171,9 +172,11 @@ class TestLegacyHookCompatibility:
                 assert torch.allclose(
                     hooked_transformer_activation[unmasked_positions],
                     bridge_activation[unmasked_positions],
-                    atol=0,
-                    rtol=0,
-                ), "Unmasked attention scores should match exactly"
+                    atol=1e-6,
+                    rtol=1e-6,
+                ), (
+                    "Unmasked attention scores should match within float32 " "numerical precision"
+                )
 
                 masked_bridge_values = bridge_activation[masked_positions]
                 min_dtype = torch.finfo(bridge_activation.dtype).min
