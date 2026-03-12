@@ -47,8 +47,15 @@ def benchmark_all_components(
             rtol=rtol,
         )
 
+        # Skip vision components for multimodal models — they require image
+        # inputs that isolated text-based component testing cannot provide.
+        # Vision components are validated separately in Phase 7.
+        skip_components = []
+        if getattr(bridge.cfg, "is_multimodal", False):
+            skip_components = ["vision_encoder", "vision_projector"]
+
         # Run comprehensive benchmark
-        report = benchmarker.benchmark_all_components()
+        report = benchmarker.benchmark_all_components(skip_components=skip_components)
 
         # Convert to BenchmarkResult format
         if report.failed_components == 0:

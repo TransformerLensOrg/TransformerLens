@@ -1,8 +1,9 @@
-"""SigLIP Vision Encoder bridge component.
+"""CLIP Vision Encoder bridge component.
 
-This module contains the bridge component for SigLIP vision encoder layers
-used in multimodal models like Gemma 3 and MedGemma.
+This module contains the bridge component for CLIP vision encoder layers
+used in multimodal models like LLava.
 """
+
 from typing import Any, Dict, Optional
 
 import torch
@@ -16,14 +17,14 @@ from transformer_lens.model_bridge.generalized_components.normalization import (
 )
 
 
-class SiglipVisionEncoderLayerBridge(GeneralizedComponent):
-    """Bridge for a single SigLIP encoder layer.
+class CLIPVisionEncoderLayerBridge(GeneralizedComponent):
+    """Bridge for a single CLIP encoder layer.
 
-    SigLIP encoder layers have:
+    CLIP encoder layers have:
     - layer_norm1: LayerNorm
-    - self_attn: SiglipAttention
+    - self_attn: CLIPAttention
     - layer_norm2: LayerNorm
-    - mlp: SiglipMLP
+    - mlp: CLIPMLP
     """
 
     is_list_item: bool = True
@@ -42,7 +43,7 @@ class SiglipVisionEncoderLayerBridge(GeneralizedComponent):
         config: Optional[Any] = None,
         submodules: Optional[Dict[str, GeneralizedComponent]] = None,
     ):
-        """Initialize the SigLIP encoder layer bridge.
+        """Initialize the CLIP encoder layer bridge.
 
         Args:
             name: The name of this component (e.g., "encoder.layers")
@@ -83,13 +84,14 @@ class SiglipVisionEncoderLayerBridge(GeneralizedComponent):
         return output
 
 
-class SiglipVisionEncoderBridge(GeneralizedComponent):
-    """Bridge for the complete SigLIP vision encoder.
+class CLIPVisionEncoderBridge(GeneralizedComponent):
+    """Bridge for the complete CLIP vision encoder.
 
-    The SigLIP vision tower consists of:
-    - vision_model.embeddings: Patch + position embeddings
+    The CLIP vision tower consists of:
+    - vision_model.embeddings: Patch + position + CLS token embeddings
+    - vision_model.pre_layrnorm: LayerNorm before encoder layers
     - vision_model.encoder.layers[]: Stack of encoder layers
-    - post_layernorm: Final layer norm
+    - vision_model.post_layernorm: Final layer norm
 
     This bridge wraps the entire vision tower to provide hooks for
     interpretability of the vision processing pipeline.
@@ -106,16 +108,17 @@ class SiglipVisionEncoderBridge(GeneralizedComponent):
         config: Optional[Any] = None,
         submodules: Optional[Dict[str, GeneralizedComponent]] = None,
     ):
-        """Initialize the SigLIP vision encoder bridge.
+        """Initialize the CLIP vision encoder bridge.
 
         Args:
             name: The name of this component (e.g., "vision_tower")
             config: Optional configuration object
             submodules: Dictionary of submodules to register
         """
-        default_submodules = {
+        default_submodules: Dict[str, GeneralizedComponent] = {
             "embeddings": GeneralizedComponent(name="vision_model.embeddings"),
-            "encoder_layers": SiglipVisionEncoderLayerBridge(name="vision_model.encoder.layers"),
+            "pre_layernorm": NormalizationBridge(name="vision_model.pre_layrnorm", config=config),
+            "encoder_layers": CLIPVisionEncoderLayerBridge(name="vision_model.encoder.layers"),
             "post_layernorm": NormalizationBridge(
                 name="vision_model.post_layernorm", config=config
             ),

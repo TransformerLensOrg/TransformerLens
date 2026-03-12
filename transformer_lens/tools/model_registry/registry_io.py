@@ -165,7 +165,7 @@ def update_model_status(
                     date.today().isoformat() if status != STATUS_UNVERIFIED else None
                 )
                 entry["note"] = note
-            for phase_num in (1, 2, 3, 4):
+            for phase_num in (1, 2, 3, 4, 7):
                 key = f"phase{phase_num}_score"
                 if phase_num in phase_scores:
                     entry[key] = phase_scores[phase_num]
@@ -186,6 +186,7 @@ def update_model_status(
                 "phase2_score": phase_scores.get(2),
                 "phase3_score": phase_scores.get(3),
                 "phase4_score": phase_scores.get(4),
+                "phase7_score": phase_scores.get(7),
             }
         )
         updated = True
