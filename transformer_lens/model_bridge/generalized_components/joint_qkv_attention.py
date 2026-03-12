@@ -105,10 +105,7 @@ class JointQKVAttentionBridge(AttentionBridge):
         self._reference_model: Optional[Any] = None
         self._layer_idx: Optional[int] = None
 
-    # After splitting, the q/k/v LinearBridges hold the authoritative weights.
-    # The original combined qkv bridge remains registered for access, but its
-    # parameters are stale copies of the pre-split weight and should not be
-    # re-read during compatibility-mode weight processing.
+        # Exclude stale qkv combined weights from state_dict after splitting.
         self._register_state_dict_hook(JointQKVAttentionBridge._filter_qkv_state_dict)
 
     @staticmethod
@@ -118,11 +115,11 @@ class JointQKVAttentionBridge(AttentionBridge):
         prefix: str,
         local_metadata: Dict[str, Any],
     ) -> None:
-        """Remove stale combined qkv entries from state_dict output."""
+        """State dict hook that removes stale combined QKV entries."""
         qkv_prefix = prefix + "qkv."
-        keys_to_remove = [key for key in state_dict if key.startswith(qkv_prefix)]
-        for key in keys_to_remove:
-            del state_dict[key]
+        keys_to_remove = [k for k in state_dict if k.startswith(qkv_prefix)]
+        for k in keys_to_remove:
+            del state_dict[k]
 
     def _create_qkv_conversion_rule(self) -> BaseTensorConversion:
         """Create the appropriate conversion rule for the individual q, k, and v matrices.
@@ -394,6 +391,8 @@ class JointQKVAttentionBridge(AttentionBridge):
         ):
             scale /= float(self._layer_idx + 1)
 
+        # When reorder_and_upcast_attn is True, HF computes attention in float32
+        # using torch.baddbmm for numerical stability. Mirror that behavior here.
         reorder_and_upcast = getattr(self, "_reorder_and_upcast_attn", False)
         if reorder_and_upcast:
             q_scores = q.to(torch.float32)

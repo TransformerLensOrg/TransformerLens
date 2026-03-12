@@ -29,8 +29,11 @@ from transformer_lens.model_bridge.generalized_components import (
 class QKVSplitRearrangeConversion(BaseTensorConversion):
     """Custom conversion that splits QKV tensor and then rearranges.
 
-        Handles both the original combined GPT-2 Conv1D qkv tensors and already-split
-        q/k/v tensors emitted by the bridge during compatibility-mode processing.
+    Handles two input formats:
+    - Combined QKV tensor (from HuggingFace): one dimension is ~3x the other.
+      Splits into Q/K/V parts, then rearranges to TL format.
+    - Already-split tensor (from bridge state dict): nn.Linear format
+      [n_heads*d_head, d_model]. Rearranges directly to TL format.
     """
 
     def __init__(self, qkv_index: int, rearrange_pattern: str, **axes_lengths):
@@ -49,26 +52,28 @@ class QKVSplitRearrangeConversion(BaseTensorConversion):
     def _is_combined_qkv(self, tensor: torch.Tensor) -> bool:
         """Check if a tensor is a combined QKV tensor vs already-split."""
         if tensor.ndim == 2:
-            dim0, dim1 = tensor.shape
-            return dim1 > dim0 * 2 or dim0 > dim1 * 2
+            d0, d1 = tensor.shape
+            return d1 > d0 * 2 or d0 > d1 * 2
         if tensor.ndim == 1:
-            n_heads = self.axes_lengths.get("n", 1)
-            # Combined bias has 3x the expected individual size.
-            return tensor.shape[0] % 3 == 0 and tensor.shape[0] > n_heads * 3
+            n = self.axes_lengths.get("n", 1)
+            # Combined bias has 3x the expected individual size
+            return tensor.shape[0] % 3 == 0 and tensor.shape[0] > n * 3
         return False
 
     def handle_conversion(self, input_value: torch.Tensor, *full_context) -> torch.Tensor:
         """Split QKV tensor and rearrange the selected part."""
         if not self._is_combined_qkv(input_value):
+            # Already-split nn.Linear format — transpose rearrange pattern:
             return einops.rearrange(
-                input_value,
-                "(n h) d_model -> n d_model h",
-                **self.axes_lengths,
+                input_value, "(n h) d_model -> n d_model h", **self.axes_lengths
             )
 
+        # Combined QKV tensor — split then rearrange
         if len(input_value.shape) == 2:
+            # Weight tensor: [d_model, 3*d_model] -> split along dim=1
             split_dim = 1 if input_value.shape[1] > input_value.shape[0] else 0
         elif len(input_value.shape) == 1:
+            # Bias tensor: [3*n_heads*d_head] -> split along dim=0
             split_dim = 0
         else:
             raise ValueError(f"Unexpected tensor shape: {input_value.shape}")
@@ -78,14 +83,13 @@ class QKVSplitRearrangeConversion(BaseTensorConversion):
         return einops.rearrange(selected_part, self.rearrange_pattern, **self.axes_lengths)
 
     def revert(self, input_value: torch.Tensor, *full_context) -> torch.Tensor:
-        """Convert TL-format split q/k/v tensors back to nn.Linear layout."""
+        """Revert from TL format [n_heads, d_model, d_head] to nn.Linear format."""
         if input_value.ndim == 3:
             return einops.rearrange(
-                input_value,
-                "n d_model h -> (n h) d_model",
-                **self.axes_lengths,
+                input_value, "n d_model h -> (n h) d_model", **self.axes_lengths
             )
         if input_value.ndim == 2:
+            # Bias in TL format [n_heads, d_head] -> [n_heads*d_head]
             return einops.rearrange(input_value, "n h -> (n h)", **self.axes_lengths)
         return input_value
 
