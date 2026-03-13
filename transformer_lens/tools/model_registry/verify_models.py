@@ -538,9 +538,7 @@ def _check_phase_scores(
             # unavailable and no tests ran.  This is a verification failure,
             # not something to silently skip.
             if phase == 7:
-                failing_phases.append(
-                    f"P7=NULL (multimodal tests skipped — processor unavailable)"
-                )
+                failing_phases.append(f"P7=NULL (multimodal tests skipped — processor unavailable)")
             continue
 
         # Phase 4 is a quality metric, not a pass/fail check — skip it here.

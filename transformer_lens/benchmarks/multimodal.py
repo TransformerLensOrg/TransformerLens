@@ -141,7 +141,9 @@ def benchmark_multimodal_forward(
             details={
                 "logits_shape": list(logits.shape),
                 "input_ids_shape": list(input_ids.shape),
-                "pixel_values_shape": list(pixel_values.shape) if pixel_values is not None else None,
+                "pixel_values_shape": list(pixel_values.shape)
+                if pixel_values is not None
+                else None,
             },
         )
 

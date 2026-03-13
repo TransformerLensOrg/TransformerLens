@@ -279,7 +279,6 @@ def _fixup_custom_model(hf_model) -> None:
             hf_model.lm_head = lm_head
 
 
-
 def run_comparison_benchmarks(
     bridge_model: TransformerBridge,
     reference_model: Optional[HookedTransformer],
