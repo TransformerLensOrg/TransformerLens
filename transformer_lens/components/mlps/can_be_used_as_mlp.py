@@ -1,9 +1,10 @@
 """Can Be Used as MLP component.
 
 This module serves as the base for everything within TransformerLens that can be used like an MLP.
-This does not necessarily mean that every component extending this class will be an MLP, but 
+This does not necessarily mean that every component extending this class will be an MLP, but
 everything extending this class can be used interchangeably for an MLP.
 """
+
 from typing import Dict, Optional, Union
 
 import torch

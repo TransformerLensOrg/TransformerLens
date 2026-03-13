@@ -165,6 +165,18 @@ def test_override_or_use_default_value():
     assert utils.override_or_use_default_value(default_flag=False) == False
 
 
+def test_is_library_available():
+    # Checking libraries that are definitely included in dependencies
+    assert utils.is_library_available("torch") is True
+    assert utils.is_library_available("numpy") is True
+
+    # Check the standard library (sys is always loaded)
+    assert utils.is_library_available("sys") is True
+
+    # Checking a library that obviously doesn't exist
+    assert utils.is_library_available("completely_fake_library_name_123") is False
+
+
 class TestAttentionMask:
     prompts = [
         "Hello world!",
