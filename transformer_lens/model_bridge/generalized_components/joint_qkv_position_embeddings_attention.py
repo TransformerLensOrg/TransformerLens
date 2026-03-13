@@ -195,7 +195,7 @@ class JointQKVPositionEmbeddingsAttentionBridge(JointQKVAttentionBridge):
     def _reconstruct_attention(
         self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, **kwargs
     ) -> tuple:
-        """Manual attention computation with rotary position embeddings.
+        """Manual attention reconstruction with rotary position embeddings.
 
         This overrides the parent class to apply rotary embeddings to Q and K
         before computing attention scores.
@@ -238,18 +238,12 @@ class JointQKVPositionEmbeddingsAttentionBridge(JointQKVAttentionBridge):
         scale = head_dim ** (-0.5)
         attn_scores = torch.matmul(q, k.transpose(-2, -1)) * scale
 
-        # Apply causal mask
-        causal_mask = torch.tril(torch.ones(seq_len, seq_len, device=q.device))
-        attn_scores = attn_scores.masked_fill(causal_mask == 0, float("-inf"))
-
-        # Apply attention mask if provided
         attention_mask = kwargs.get("attention_mask", None)
-        if attention_mask is not None:
-            if attention_mask.shape[-1] != seq_len:
-                attention_mask = attention_mask[..., :seq_len]
-            if attention_mask.shape[-2] != seq_len:
-                attention_mask = attention_mask[..., :seq_len, :]
-            attn_scores = attn_scores + attention_mask
+        attn_scores = self._apply_reconstruct_attention_mask(
+            attn_scores=attn_scores,
+            attention_mask=attention_mask,
+            seq_len=seq_len,
+        )
 
         # Apply hook to attention scores
         attn_scores = self.hook_attn_scores(attn_scores)
