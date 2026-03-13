@@ -1805,6 +1805,7 @@ class TransformerBridge(nn.Module):
         verbose: bool = True,
         output_logits: bool = False,
         pixel_values: Optional[torch.Tensor] = None,
+        **multimodal_kwargs,
     ) -> str | list[str] | torch.Tensor | Any:  # Any for transformers.utils.ModelOutput
         # Using Any due to beartype's forward reference resolution limitations.
         # See: https://github.com/beartype/beartype/issues/546
@@ -1920,10 +1921,15 @@ class TransformerBridge(nn.Module):
                     )
                 else:
                     forward_kwargs: Dict[str, Any] = {}
-                    # Pass pixel_values only on the first step — the vision encoder
-                    # processes the image once, embedding it into the token sequence.
-                    if gen_step_idx == 0 and pixel_values is not None:
-                        forward_kwargs["pixel_values"] = pixel_values
+                    # Pass multimodal inputs only on the first step — the vision
+                    # encoder processes the image once, embedding it into the
+                    # token sequence.  This includes pixel_values plus any extra
+                    # processor outputs (e.g. image_sizes for LlavaNext).
+                    if gen_step_idx == 0:
+                        if pixel_values is not None:
+                            forward_kwargs["pixel_values"] = pixel_values
+                        if multimodal_kwargs:
+                            forward_kwargs.update(multimodal_kwargs)
                     logits = self(current_tokens, return_type="logits", **forward_kwargs)
                 final_logits = logits[:, -1, :]
 

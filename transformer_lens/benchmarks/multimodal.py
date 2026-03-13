@@ -31,7 +31,9 @@ def _create_test_image():
 def _prepare_test_inputs(bridge: TransformerBridge):
     """Prepare multimodal test inputs using the bridge's processor.
 
-    Returns (input_ids, pixel_values, prompt) or (None, None, None) on failure.
+    Returns (input_ids, extra_kwargs, prompt) where extra_kwargs is a dict
+    containing pixel_values and any other processor outputs (e.g. image_sizes
+    for LlavaNext).  Returns (None, None, None) on failure.
     """
     if bridge.processor is None:
         return None, None, None
@@ -51,8 +53,19 @@ def _prepare_test_inputs(bridge: TransformerBridge):
     try:
         inputs = bridge.processor(text=prompt, images=image, return_tensors="pt")
         input_ids = inputs["input_ids"].to(bridge.cfg.device)
-        pixel_values = inputs["pixel_values"].to(bridge.cfg.device)
-        return input_ids, pixel_values, prompt
+
+        # Collect all extra kwargs the model's forward() may need
+        # (pixel_values, image_sizes, pixel_attention_mask, etc.)
+        extra_kwargs = {}
+        for key, val in inputs.items():
+            if key == "input_ids":
+                continue
+            if hasattr(val, "to"):
+                extra_kwargs[key] = val.to(bridge.cfg.device)
+            else:
+                extra_kwargs[key] = val
+
+        return input_ids, extra_kwargs, prompt
     except Exception:
         return None, None, None
 
@@ -88,7 +101,7 @@ def benchmark_multimodal_forward(
             message="Skipped for tiny/test model",
         )
 
-    input_ids, pixel_values, prompt = _prepare_test_inputs(bridge)
+    input_ids, extra_kwargs, prompt = _prepare_test_inputs(bridge)
     if input_ids is None:
         return BenchmarkResult(
             name="multimodal_forward",
@@ -98,7 +111,7 @@ def benchmark_multimodal_forward(
 
     try:
         with torch.no_grad():
-            logits = bridge.forward(input_ids, pixel_values=pixel_values, return_type="logits")
+            logits = bridge.forward(input_ids, return_type="logits", **extra_kwargs)
 
         if logits is None:
             return BenchmarkResult(
@@ -120,6 +133,7 @@ def benchmark_multimodal_forward(
                 passed=False,
             )
 
+        pixel_values = extra_kwargs.get("pixel_values")
         return BenchmarkResult(
             name="multimodal_forward",
             severity=BenchmarkSeverity.INFO,
@@ -127,7 +141,7 @@ def benchmark_multimodal_forward(
             details={
                 "logits_shape": list(logits.shape),
                 "input_ids_shape": list(input_ids.shape),
-                "pixel_values_shape": list(pixel_values.shape),
+                "pixel_values_shape": list(pixel_values.shape) if pixel_values is not None else None,
             },
         )
 
@@ -173,7 +187,7 @@ def benchmark_multimodal_generation(
             message="Skipped for tiny/test model",
         )
 
-    input_ids, pixel_values, prompt = _prepare_test_inputs(bridge)
+    input_ids, extra_kwargs, prompt = _prepare_test_inputs(bridge)
     if input_ids is None:
         return BenchmarkResult(
             name="multimodal_generation",
@@ -185,8 +199,8 @@ def benchmark_multimodal_generation(
         output = bridge.generate(
             input_ids,
             max_new_tokens=max_new_tokens,
-            pixel_values=pixel_values,
             return_type="tokens",
+            **extra_kwargs,
         )
 
         if not isinstance(output, torch.Tensor):
@@ -264,7 +278,7 @@ def benchmark_multimodal_cache(
             message="Skipped for tiny/test model",
         )
 
-    input_ids, pixel_values, prompt = _prepare_test_inputs(bridge)
+    input_ids, extra_kwargs, prompt = _prepare_test_inputs(bridge)
     if input_ids is None:
         return BenchmarkResult(
             name="multimodal_cache",
@@ -274,7 +288,7 @@ def benchmark_multimodal_cache(
 
     try:
         with torch.no_grad():
-            logits, cache = bridge.run_with_cache(input_ids, pixel_values=pixel_values)
+            logits, cache = bridge.run_with_cache(input_ids, **extra_kwargs)
 
         if cache is None or len(cache) == 0:
             return BenchmarkResult(

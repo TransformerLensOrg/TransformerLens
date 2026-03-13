@@ -112,6 +112,8 @@ NO_HT_COMPARISON_ARCHITECTURES = [
     "Gemma3ForCausalLM",
     "Gemma3ForConditionalGeneration",
     "LlavaForConditionalGeneration",
+    "LlavaNextForConditionalGeneration",
+    "LlavaOnevisionForConditionalGeneration",
 ]
 
 
@@ -188,6 +190,8 @@ def _is_multimodal_model(model_name: str, trust_remote_code: bool = False) -> bo
     """Check if a model is a multimodal (vision-language) model."""
     MULTIMODAL_ARCHITECTURES = [
         "LlavaForConditionalGeneration",
+        "LlavaNextForConditionalGeneration",
+        "LlavaOnevisionForConditionalGeneration",
         "Gemma3ForConditionalGeneration",
     ]
     try:
@@ -273,6 +277,7 @@ def _fixup_custom_model(hf_model) -> None:
             lm_head = torch.nn.Linear(embed.embedding_dim, embed.num_embeddings, bias=False)
             lm_head.weight = embed.weight
             hf_model.lm_head = lm_head
+
 
 
 def run_comparison_benchmarks(
@@ -1117,6 +1122,11 @@ def run_benchmark_suite(
         bridge_unprocessed = TransformerBridge.boot_transformers(model_name, device=device, dtype=bridge_dtype, trust_remote_code=trust_remote_code)  # type: ignore[attr-defined]
         if verbose:
             print("✓ TransformerBridge loaded (unprocessed)\n")
+        # Apply the adapter's prepare_model() to the HF reference model so
+        # both bridge and reference have the same fixups (e.g., weight tying).
+        # This keeps model-specific logic in the adapter, not the benchmark.
+        if hf_model is not None and hasattr(bridge_unprocessed, "adapter"):
+            bridge_unprocessed.adapter.prepare_model(hf_model)
     except Exception as e:
         import traceback
 
