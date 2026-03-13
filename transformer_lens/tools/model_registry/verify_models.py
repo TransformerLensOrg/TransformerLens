@@ -497,6 +497,8 @@ _DEFAULT_MIN_PHASE_SCORE = 50.0
 # benchmarks) as part of core verification.
 _MULTIMODAL_ARCHITECTURES = {
     "LlavaForConditionalGeneration",
+    "LlavaNextForConditionalGeneration",
+    "LlavaOnevisionForConditionalGeneration",
     "Gemma3ForConditionalGeneration",
 }
 
@@ -532,6 +534,11 @@ def _check_phase_scores(
     failing_phases: list[str] = []
     for phase, score in sorted(phase_scores.items()):
         if score is None:
+            # Phase 7 (multimodal) with a NULL score means the processor was
+            # unavailable and no tests ran.  This is a verification failure,
+            # not something to silently skip.
+            if phase == 7:
+                failing_phases.append(f"P7=NULL (multimodal tests skipped — processor unavailable)")
             continue
 
         # Phase 4 is a quality metric, not a pass/fail check — skip it here.
@@ -910,36 +917,37 @@ def verify_models(
                         4, _DEFAULT_MIN_PHASE_SCORE
                     )
 
-                    # For multimodal, also require Phase 7 to pass.
-                    # If P7 was requested but all tests were skipped (e.g., no
-                    # processor for a community model), treat it as a soft pass
-                    # rather than a failure.
+                    # For multimodal, Phase 7 is required.  A score below 75%
+                    # or a missing score (NULL — processor unavailable) both
+                    # count as failures.
                     p7_pass = True
-                    p7_skipped = False
                     if is_multimodal:
                         p7 = filtered_scores.get(7)
                         if p7 is not None:
                             p7_pass = p7 >= _MIN_PHASE_SCORES.get(7, _DEFAULT_MIN_PHASE_SCORE)
-                        elif 7 in phases:
-                            # Phase 7 requested but no score — all tests skipped
-                            p7_skipped = True
                         else:
-                            # Phase 7 not even requested
+                            # Phase 7 score is NULL — either not requested or
+                            # all tests were skipped (no processor).  Either
+                            # way, multimodal verification is incomplete.
                             p7_pass = False
 
-                    if p1_pass and p4_pass and p7_pass and not p7_skipped:
+                    if p1_pass and p4_pass and p7_pass:
                         partial_status = STATUS_VERIFIED
                         partial_note = "Core verification completed"
-                    elif p1_pass and p4_pass and p7_skipped:
-                        partial_status = STATUS_VERIFIED
-                        partial_note = (
-                            "Core verification completed (multimodal tests skipped — no processor)"
-                        )
                     elif p1_pass and p4_pass and not p7_pass:
-                        partial_status = STATUS_VERIFIED
-                        partial_note = (
-                            "Core verification passed, but multimodal tests failed. Needs review"
-                        )
+                        p7_score = filtered_scores.get(7)
+                        if p7_score is None:
+                            partial_status = STATUS_FAILED
+                            partial_note = (
+                                "Core verification failed: multimodal tests skipped "
+                                "(processor unavailable)"
+                            )
+                        else:
+                            partial_status = STATUS_FAILED
+                            partial_note = (
+                                f"Core verification failed: multimodal tests "
+                                f"scored {p7_score}% (requires >= 75%)"
+                            )
                     elif p1_pass:
                         partial_status = STATUS_VERIFIED
                         partial_note = (

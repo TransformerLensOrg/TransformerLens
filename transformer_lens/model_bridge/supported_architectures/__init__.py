@@ -39,6 +39,12 @@ from transformer_lens.model_bridge.supported_architectures.llama import (
 from transformer_lens.model_bridge.supported_architectures.llava import (
     LlavaArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.llava_next import (
+    LlavaNextArchitectureAdapter,
+)
+from transformer_lens.model_bridge.supported_architectures.llava_onevision import (
+    LlavaOnevisionArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.mingpt import (
     MingptArchitectureAdapter,
 )
@@ -116,6 +122,8 @@ __all__ = [
     "GptjArchitectureAdapter",
     "LlamaArchitectureAdapter",
     "LlavaArchitectureAdapter",
+    "LlavaNextArchitectureAdapter",
+    "LlavaOnevisionArchitectureAdapter",
     "MingptArchitectureAdapter",
     "MistralArchitectureAdapter",
     "MixtralArchitectureAdapter",

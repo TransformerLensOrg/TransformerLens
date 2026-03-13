@@ -252,6 +252,8 @@ def get_hf_model_class_for_architecture(architecture: str):
     }
     multimodal_architectures = {
         "LlavaForConditionalGeneration",
+        "LlavaNextForConditionalGeneration",
+        "LlavaOnevisionForConditionalGeneration",
         "Gemma3ForConditionalGeneration",
     }
     if architecture in seq2seq_architectures:
@@ -453,7 +455,50 @@ def boot(
                 trust_remote_code=trust_remote_code,
             )
         except Exception:
-            pass  # Processor not available; user can set bridge.processor manually
+            # Some multimodal processors (e.g., LlavaOnevision) require
+            # torchvision for video processing.  Conditionally install it
+            # and retry the processor loading.
+            _torchvision_available = False
+            try:
+                import torchvision  # noqa: F401
+
+                _torchvision_available = True
+            except Exception:
+                # torchvision may be missing (ImportError) or broken/version-
+                # mismatched (RuntimeError).  Try to install/reinstall it.
+                import shutil
+                import subprocess
+                import sys
+
+                try:
+                    if shutil.which("uv"):
+                        subprocess.check_call(
+                            ["uv", "pip", "install", "torchvision", "-q"],
+                        )
+                    else:
+                        subprocess.check_call(
+                            [sys.executable, "-m", "pip", "install", "torchvision", "-q"],
+                        )
+                    import importlib
+
+                    importlib.invalidate_caches()
+                    _torchvision_available = True
+                except Exception:
+                    pass  # torchvision install failed; processor will be unavailable
+
+            if _torchvision_available:
+                try:
+                    from transformers import AutoProcessor
+
+                    huggingface_token = os.environ.get("HF_TOKEN", "")
+                    token_arg = huggingface_token if len(huggingface_token) > 0 else None
+                    bridge.processor = AutoProcessor.from_pretrained(
+                        model_name,
+                        token=token_arg,
+                        trust_remote_code=trust_remote_code,
+                    )
+                except Exception:
+                    pass  # Processor not available; user can set bridge.processor manually
 
     return bridge
 

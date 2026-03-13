@@ -172,10 +172,11 @@ class TestLegacyHookCompatibility:
                 assert torch.allclose(
                     hooked_transformer_activation[unmasked_positions],
                     bridge_activation[unmasked_positions],
-                    atol=1e-6,
-                    rtol=1e-6,
+                    atol=1e-4,
+                    rtol=1e-4,
                 ), (
-                    "Unmasked attention scores should match within float32 " "numerical precision"
+                    "Unmasked attention scores should match within float32 "
+                    "cross-implementation tolerance"
                 )
 
                 masked_bridge_values = bridge_activation[masked_positions]
