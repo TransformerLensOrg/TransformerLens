@@ -1,10 +1,7 @@
 """LLava-NeXT architecture adapter.
 
-LlavaNextForConditionalGeneration shares the same module hierarchy as
-LlavaForConditionalGeneration (vision_tower, multi_modal_projector,
-language_model, lm_head).  The differences — dynamic high-res image
-tiling and an image_newline parameter — are handled internally by the
-HuggingFace forward() and are transparent to the bridge.
+Same module hierarchy as base LLava; high-res tiling differences are
+handled internally by HuggingFace's forward().
 """
 
 from transformer_lens.model_bridge.supported_architectures.llava import (

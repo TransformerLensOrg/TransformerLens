@@ -1,11 +1,7 @@
 """LLava-OneVision architecture adapter.
 
-LlavaOnevisionForConditionalGeneration shares the same module hierarchy
-as LlavaForConditionalGeneration (vision_tower, multi_modal_projector,
-language_model, lm_head).  The differences — SigLIP vision encoder,
-Qwen2 language backbone, anyres tiling, and video support — are either
-handled dynamically by the base adapter (vision encoder selection) or
-internally by HuggingFace's forward().
+Same module hierarchy as base LLava; SigLIP encoder and Qwen2 backbone
+are handled dynamically by the base adapter and HuggingFace's forward().
 """
 
 from typing import Any
@@ -19,12 +15,10 @@ class LlavaOnevisionArchitectureAdapter(LlavaArchitectureAdapter):
     """Architecture adapter for LLaVA-OneVision models."""
 
     def prepare_model(self, hf_model: Any) -> None:
-        """Fix weight tying for LlavaOnevision models.
+        """Fix weight tying when text_config and top-level config disagree.
 
-        Some LlavaOnevision checkpoints (e.g. llava-onevision-qwen2-0.5b-ov-hf)
-        have tie_word_embeddings=True in the text config but False at the top level.
-        This causes lm_head.weight to be randomly initialized instead of tied to
-        embed_tokens. We detect and fix this by copying embed weights to lm_head.
+        Some checkpoints have tie_word_embeddings=True in text_config but False
+        at the top level, leaving lm_head randomly initialized.
         """
         if not hasattr(hf_model, "lm_head") or not hasattr(hf_model, "model"):
             return
