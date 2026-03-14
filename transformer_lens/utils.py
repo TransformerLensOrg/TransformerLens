@@ -374,10 +374,15 @@ def tokenize_and_concatenate(
         chunk_length = (len(full_text) - 1) // num_chunks + 1
         chunks = []
         start = 0
+        lookahead = chunk_length // 10
         for i in range(num_chunks):
             end = min(start + chunk_length, len(full_text))
-            # Advance end to the next whitespace boundary to avoid splitting mid-token
-            while end < len(full_text) and not full_text[end].isspace():
+            # Advance end to the next whitespace boundary to avoid splitting mid-token.
+            # Lookahead is bounded so pathological inputs (e.g. no whitespace) degrade
+            # gracefully to character-based splitting rather than consuming the rest of
+            # the string.
+            boundary = min(end + lookahead, len(full_text))
+            while end < boundary and not full_text[end].isspace():
                 end += 1
             chunks.append(full_text[start:end])
             start = end
