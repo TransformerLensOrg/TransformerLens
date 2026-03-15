@@ -2159,7 +2159,14 @@ def get_pretrained_model_config(
         cfg_dict["n_layers"] = first_n_layers
 
     if n_ctx is not None:
-        # User explicitly overrode the context length
+        default_n_ctx = cfg_dict.get("n_ctx")
+        if default_n_ctx is not None and n_ctx > default_n_ctx:
+            logging.warning(
+                f"You are setting n_ctx={n_ctx} which is larger than this model's "
+                f"default context length of {default_n_ctx}. The model was not "
+                f"trained on sequences this long and may produce unreliable results. "
+                f"Ensure you have sufficient memory for this context length."
+            )
         cfg_dict["n_ctx"] = n_ctx
 
     cfg = HookedTransformerConfig.from_dict(cfg_dict)
