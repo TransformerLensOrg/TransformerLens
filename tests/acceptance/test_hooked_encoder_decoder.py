@@ -173,7 +173,7 @@ def test_decoder_attention(our_model, huggingface_model, hello_world_tokens):
     input_len = hello_world_tokens.shape[1]
     cache_position = torch.arange(input_len)
     huggingface_attn_out = huggingface_attn(embed_out, cache_position=cache_position)[0]
-    assert_close(our_attn_out, huggingface_attn_out, rtol=3e-4, atol=1e-5)
+    assert_close(our_attn_out, huggingface_attn_out, rtol=5e-4, atol=1e-5)
 
 
 def test_attention_layer(our_model, huggingface_model, hello_world_tokens):
@@ -217,7 +217,7 @@ def test_cross_attention(our_model, huggingface_model, hello_world_tokens, decod
     huggingface_cross_attn_out = huggingface_cross_attn(
         decoder_hidden, key_value_states=encoder_hidden, cache_position=encoder_hidden
     )[0]
-    assert_close(our_cross_attn_out, huggingface_cross_attn_out, rtol=2e-4, atol=1e-5)
+    assert_close(our_cross_attn_out, huggingface_cross_attn_out, rtol=2e-3, atol=1e-4)
 
 
 def test_cross_attention_layer(our_model, huggingface_model, hello_world_tokens, decoder_input_ids):

@@ -24,7 +24,7 @@ from jaxtyping import Float, Int
 from typing_extensions import Literal
 
 import transformer_lens.utils as utils
-from transformer_lens.utils import Slice, SliceInput
+from transformer_lens.utils import Slice, SliceInput, warn_if_mps
 
 
 class ActivationCache:
@@ -205,6 +205,7 @@ class ActivationCache:
                 DeprecationWarning,
             )
 
+        warn_if_mps(device)
         self.cache_dict = {key: value.to(device) for key, value in self.cache_dict.items()}
 
         if move_model:
@@ -443,8 +444,13 @@ class ActivationCache:
         components_list = [pos_slice.apply(c, dim=-2) for c in components_list]
         components = torch.stack(components_list, dim=0)
         if apply_ln:
+            recompute_ln = layer == self.model.cfg.n_layers
             components = self.apply_ln_to_stack(
-                components, layer, pos_slice=pos_slice, mlp_input=mlp_input
+                components,
+                layer,
+                pos_slice=pos_slice,
+                mlp_input=mlp_input,
+                recompute_ln=recompute_ln,
             )
         if return_labels:
             return components, labels
@@ -524,26 +530,34 @@ class ActivationCache:
         if not isinstance(batch_slice, Slice):
             batch_slice = Slice(batch_slice)
 
-        if isinstance(tokens, str):
-            tokens = torch.as_tensor(self.model.to_single_token(tokens))
+        # Convert tokens to tensor for shape checking, but pass original to tokens_to_residual_directions
+        tokens_for_shape_check = tokens
 
-        elif isinstance(tokens, int):
-            tokens = torch.as_tensor(tokens)
+        if isinstance(tokens_for_shape_check, str):
+            tokens_for_shape_check = torch.as_tensor(
+                self.model.to_single_token(tokens_for_shape_check)
+            )
+        elif isinstance(tokens_for_shape_check, int):
+            tokens_for_shape_check = torch.as_tensor(tokens_for_shape_check)
 
         logit_directions = self.model.tokens_to_residual_directions(tokens)
 
         if incorrect_tokens is not None:
-            if isinstance(incorrect_tokens, str):
-                incorrect_tokens = torch.as_tensor(self.model.to_single_token(incorrect_tokens))
+            # Convert incorrect_tokens to tensor for shape checking, but pass original to tokens_to_residual_directions
+            incorrect_tokens_for_shape_check = incorrect_tokens
 
-            elif isinstance(incorrect_tokens, int):
-                incorrect_tokens = torch.as_tensor(incorrect_tokens)
+            if isinstance(incorrect_tokens_for_shape_check, str):
+                incorrect_tokens_for_shape_check = torch.as_tensor(
+                    self.model.to_single_token(incorrect_tokens_for_shape_check)
+                )
+            elif isinstance(incorrect_tokens_for_shape_check, int):
+                incorrect_tokens_for_shape_check = torch.as_tensor(incorrect_tokens_for_shape_check)
 
-            if tokens.shape != incorrect_tokens.shape:
+            if tokens_for_shape_check.shape != incorrect_tokens_for_shape_check.shape:
                 raise ValueError(
                     f"tokens and incorrect_tokens must have the same shape! \
-                        (tokens.shape={tokens.shape}, \
-                        incorrect_tokens.shape={incorrect_tokens.shape})"
+                        (tokens.shape={tokens_for_shape_check.shape}, \
+                        incorrect_tokens.shape={incorrect_tokens_for_shape_check.shape})"
                 )
 
             # If incorrect_tokens was provided, take the logit difference
@@ -944,6 +958,7 @@ class ActivationCache:
         pos_slice: Union[Slice, SliceInput] = None,
         batch_slice: Union[Slice, SliceInput] = None,
         has_batch_dim: bool = True,
+        recompute_ln: bool = False,
     ) -> Float[torch.Tensor, "num_components *batch_and_pos_dims_out d_model"]:
         """Apply Layer Norm to a Stack.
 
@@ -955,6 +970,10 @@ class ActivationCache:
         The layernorm scale is global across the entire residual stream for each layer, batch
         element and position, which is why we need to use the cached scale factors rather than just
         applying a new LayerNorm.
+
+        When recompute_ln=True and the target layer is the final layer (unembed), each
+        component is normalized using stats recomputed from that component; use this for logit lens
+        analysis. When recompute_ln=False, a single cached scale is used for all components.
 
         If the model does not use LayerNorm or RMSNorm, it returns the residual stack unchanged.
 
@@ -978,6 +997,9 @@ class ActivationCache:
                 The slice to take on the batch dimension. Defaults to None, do nothing.
             has_batch_dim:
                 Whether residual_stack has a batch dimension.
+            recompute_ln:
+                If True and target layer is the unembed (final layer), apply the final layer norm
+                to each component with statistics recomputed from that component. Defaults to False.
 
         """
         if self.model.cfg.normalization_type not in ["LN", "LNPre", "RMS", "RMSPre"]:
@@ -995,6 +1017,22 @@ class ActivationCache:
         if has_batch_dim:
             # Apply batch slice to the stack
             residual_stack = batch_slice.apply(residual_stack, dim=1)
+
+        # Logit lens: apply final layer norm to each component with recomputed statistics
+        if recompute_ln and layer == self.model.cfg.n_layers and hasattr(self.model, "ln_final"):
+            ln_final = self.model.ln_final
+            had_pos_dim = residual_stack.ndim == 4
+            results = []
+            for i in range(residual_stack.shape[0]):
+                x = residual_stack[i]
+                # ln_final expects (batch, pos, d_model); ensure pos dim present
+                if x.ndim == 2:
+                    x = x.unsqueeze(1)
+                out = ln_final(x)
+                if not had_pos_dim:
+                    out = out.squeeze(1)
+                results.append(out)
+            return torch.stack(results, dim=0)
 
         # Center the stack onlny if the model uses LayerNorm
         if self.model.cfg.normalization_type in ["LN", "LNPre"]:
