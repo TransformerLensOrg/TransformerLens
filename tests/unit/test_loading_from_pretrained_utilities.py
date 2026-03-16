@@ -57,3 +57,34 @@ def test_fill_missing_keys_no_missing_keys():
     filled_state_dict = fill_missing_keys(model, default_state_dict)
 
     assert filled_state_dict == default_state_dict
+
+
+def test_n_ctx_override_reduces_context():
+    """
+    n_ctx override should work when reducing below the model default.
+    Uses a minimal HookedTransformerConfig directly — no model loading needed.
+    Fixes #1006.
+    """
+    from transformer_lens.loading_from_pretrained import get_pretrained_model_config
+
+    cfg = get_pretrained_model_config("gpt2", n_ctx=256)
+    assert cfg.n_ctx == 256, f"Expected n_ctx=256, got {cfg.n_ctx}"
+
+
+@mock.patch("logging.warning")
+def test_n_ctx_override_larger_than_default_warns(mock_warning: mock.MagicMock):
+    """
+    A warning should be issued when n_ctx exceeds the model's default.
+    GPT-2 default n_ctx is 1024 — requesting 2048 should trigger the warning.
+    Fixes #1006.
+    """
+    from transformer_lens.loading_from_pretrained import get_pretrained_model_config
+
+    cfg = get_pretrained_model_config("gpt2", n_ctx=2048)
+    assert cfg.n_ctx == 2048, f"Expected n_ctx=2048, got {cfg.n_ctx}"
+    mock_warning.assert_any_call(
+        "You are setting n_ctx=2048 which is larger than this model's "
+        "default context length of 1024. The model was not "
+        "trained on sequences this long and may produce unreliable results. "
+        "Ensure you have sufficient memory for this context length."
+    )
