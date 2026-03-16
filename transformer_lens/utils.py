@@ -95,7 +95,11 @@ def clear_huggingface_cache():
     None
     """
     print("Deleting Hugging Face cache directory and all its contents.")
-    shutil.rmtree(CACHE_DIR)
+    # ignore_errors=True: this is CI-only best-effort disk cleanup; the HuggingFace
+    # cache may still have background writes (lock files, .incomplete blobs) in
+    # flight after model deletion, causing transient ENOENT/ENOTEMPTY races.
+    # A partial deletion is acceptable — it doesn't affect test correctness.
+    shutil.rmtree(CACHE_DIR, ignore_errors=True)
 
 
 def print_gpu_mem(step_name: str = ""):

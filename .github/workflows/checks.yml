@@ -174,7 +174,7 @@ jobs:
       - name: Install dependencies
         run: |
           poetry check --lock
-          poetry install --with dev,jupyter
+          poetry install --with dev,jupyter,demo
       - name: Install pandoc
         uses: awalsh128/cache-apt-pkgs-action@latest
         with:
