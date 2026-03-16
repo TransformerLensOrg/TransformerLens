@@ -93,7 +93,7 @@ class HookPoint(nn.Module):
             module_input: Any,
             module_output: Any,
         ):
-            # For a backwards hook, module_output is a tuple of (grad,) 
+            # For a backwards hook, module_output is a tuple of (grad,)
             hook_arg = module_output[0] if dir == "bwd" else module_output
             result = hook(hook_arg, hook=self)
             if dir == "bwd" and result is not None:
