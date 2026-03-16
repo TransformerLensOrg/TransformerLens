@@ -1028,7 +1028,10 @@ def get_device():
         major_version = int(torch.__version__.split(".")[0])
         if major_version >= 2:
             # Auto-select MPS if PyTorch is at or above the known-safe version
-            if _MPS_MIN_SAFE_TORCH_VERSION is not None and _torch_version_tuple() >= _MPS_MIN_SAFE_TORCH_VERSION:
+            if (
+                _MPS_MIN_SAFE_TORCH_VERSION is not None
+                and _torch_version_tuple() >= _MPS_MIN_SAFE_TORCH_VERSION
+            ):
                 return torch.device("mps")
             if os.environ.get("TRANSFORMERLENS_ALLOW_MPS", "") == "1":
                 return torch.device("mps")
@@ -1066,7 +1069,10 @@ def warn_if_mps(device):
     if isinstance(device, torch.device):
         device = device.type
     if isinstance(device, str) and device == "mps":
-        if _MPS_MIN_SAFE_TORCH_VERSION is not None and _torch_version_tuple() >= _MPS_MIN_SAFE_TORCH_VERSION:
+        if (
+            _MPS_MIN_SAFE_TORCH_VERSION is not None
+            and _torch_version_tuple() >= _MPS_MIN_SAFE_TORCH_VERSION
+        ):
             return
         if os.environ.get("TRANSFORMERLENS_ALLOW_MPS", "") != "1":
             _mps_warned = True
