@@ -66,40 +66,6 @@ class HookedAudioEncoder(HookedRootModule):
 
         self.blocks = nn.ModuleList([BertBlock(self.cfg) for _ in range(self.cfg.n_layers)])
 
-        if model_name.endswith("-ft") and use_ctc:
-            # fine-tuned model (has CTC head)
-            use_ctc = True
-            processor = AutoProcessor.from_pretrained(
-                model_name
-            )  # builds input_values + attention_mask
-        else:
-            # pretraining-only model (no CTC)
-            use_ctc = False
-            processor = AutoFeatureExtractor.from_pretrained(model_name)
-
-        if model_name.endswith("-ft") and use_ctc:
-            hubert_model = HubertForCTC.from_pretrained(model_name)
-        elif "wav2vec2" in model_name:
-            hubert_model = Wav2Vec2Model.from_pretrained(model_name)
-        else:
-            hubert_model = HubertModel.from_pretrained(model_name)
-
-        if move_to_device:
-            if self.cfg.device is None:
-                raise ValueError("Cannot move to device when device is None")
-            hubert_model.to(self.cfg.device)
-
-        hubert_model.eval()
-        self.processor = processor
-        if use_ctc:
-            self.hubert_model = hubert_model.hubert
-            self.lm_head = hubert_model.lm_head
-            for p in self.lm_head.parameters():
-                p.requires_grad = False
-        else:
-            self.hubert_model = hubert_model
-            self.lm_head = None
-
         if move_to_device:
             if self.cfg.device is None:
                 raise ValueError("Cannot move to device when device is None")
@@ -455,9 +421,41 @@ class HookedAudioEncoder(HookedRootModule):
             official_model_name, cfg, hf_model, dtype=dtype, **from_pretrained_kwargs
         )
 
-        model = cls(cfg, move_to_device=False, model_name=official_model_name, use_ctc=use_ctc)
-
+        model = cls(cfg, move_to_device=False, model_name=official_model_name)
         model.load_state_dict(state_dict, strict=False)
+        
+        if official_model_name.endswith("-ft") and use_ctc:
+            # fine-tuned model (has CTC head)
+            use_ctc = True
+            model.processor = AutoProcessor.from_pretrained(
+                official_model_name
+            )
+        else:
+            # pretraining-only model (no CTC)
+            use_ctc = False
+            model.processor = AutoFeatureExtractor.from_pretrained(official_model_name)
+
+        if official_model_name.endswith("-ft") and use_ctc:
+            hubert_model = HubertForCTC.from_pretrained(official_model_name)
+        elif "wav2vec2" in model_name:
+            hubert_model = Wav2Vec2Model.from_pretrained(official_model_name)
+        else:
+            hubert_model = HubertModel.from_pretrained(official_model_name)
+
+        if move_to_device:
+            if self.cfg.device is None:
+                raise ValueError("Cannot move to device when device is None")
+            hubert_model.to(self.cfg.device)
+
+        hubert_model.eval()
+        if use_ctc:
+            model.hubert_model = hubert_model.hubert
+            model.lm_head = hubert_model.lm_head
+            for p in model.lm_head.parameters():
+                p.requires_grad = False
+        else:
+            model.hubert_model = hubert_model
+            model.lm_head = None
 
         if move_to_device:
             model.to(cfg.device)
