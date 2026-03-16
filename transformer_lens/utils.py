@@ -95,14 +95,11 @@ def clear_huggingface_cache():
     None
     """
     print("Deleting Hugging Face cache directory and all its contents.")
-
-    def _onerror(func, path, excinfo):
-        # HuggingFace .incomplete files are transient and may vanish between
-        # scandir and unlink; ignore those and re-raise everything else.
-        if not issubclass(excinfo[0], FileNotFoundError):
-            raise excinfo[1].with_traceback(excinfo[2])
-
-    shutil.rmtree(CACHE_DIR, onerror=_onerror)
+    # ignore_errors=True: this is CI-only best-effort disk cleanup; the HuggingFace
+    # cache may still have background writes (lock files, .incomplete blobs) in
+    # flight after model deletion, causing transient ENOENT/ENOTEMPTY races.
+    # A partial deletion is acceptable — it doesn't affect test correctness.
+    shutil.rmtree(CACHE_DIR, ignore_errors=True)
 
 
 def print_gpu_mem(step_name: str = ""):
