@@ -382,12 +382,25 @@ def tokenize_and_concatenate(
             if not full_text.strip():
                 return {"tokens": np.array([], dtype=np.int64)}
 
-            # Divide into 20 chunks of ~ equal length
+            # Divide into 20 chunks of ~ equal length, splitting at whitespace
+            # boundaries to avoid cutting words in half (which creates token pairs
+            # that would never occur in naturally tokenized text - see issue #1133)
             num_chunks = 20
             chunk_length = (len(full_text) - 1) // num_chunks + 1
-            chunks = [
-                full_text[i * chunk_length : (i + 1) * chunk_length] for i in range(num_chunks)
-            ]
+            chunks = []
+            start = 0
+            lookahead = chunk_length // 10
+            for i in range(num_chunks):
+                end = min(start + chunk_length, len(full_text))
+                # Advance end to the next whitespace boundary to avoid splitting mid-token.
+                # Lookahead is bounded so pathological inputs (e.g. no whitespace) degrade
+                # gracefully to character-based splitting rather than consuming the rest of
+                # the string.
+                boundary = min(end + lookahead, len(full_text))
+                while end < boundary and not full_text[end].isspace():
+                    end += 1
+                chunks.append(full_text[start:end])
+                start = end
             # Tokenize the chunks in parallel. Uses NumPy because HuggingFace map doesn't want tensors returned
             tokens = tokenizer(chunks, return_tensors="np", padding=True)["input_ids"].flatten()
             # Drop padding tokens
