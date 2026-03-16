@@ -8,7 +8,13 @@ def convert_gpt2_weights(gpt2, cfg: HookedTransformerConfig):
     state_dict = {}
 
     state_dict["embed.W_E"] = gpt2.transformer.wte.weight
-    state_dict["pos_embed.W_pos"] = gpt2.transformer.wpe.weight
+
+    # Trim positional embeddings to n_ctx if the pretrained weights have more
+    # positions than the model expects.
+    pos_embed = gpt2.transformer.wpe.weight
+    if pos_embed.shape[0] > cfg.n_ctx:
+        pos_embed = pos_embed[: cfg.n_ctx, :]
+    state_dict["pos_embed.W_pos"] = pos_embed
 
     for l in range(cfg.n_layers):
         state_dict[f"blocks.{l}.ln1.w"] = gpt2.transformer.h[l].ln_1.weight

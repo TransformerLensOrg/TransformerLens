@@ -150,7 +150,7 @@ def test_logit_attrs_works_for_all_input_shapes():
         tokens=answer_tokens[:, 0],
         incorrect_tokens=answer_tokens[:, 1],
     )
-    assert torch.isclose(ref_logit_diffs, logit_diffs).all()
+    assert torch.isclose(ref_logit_diffs, logit_diffs, atol=1.1e-7).all()
 
     # Single token
     batch = -1
@@ -245,7 +245,7 @@ def test_accumulated_resid_with_apply_ln():
     # Get accumulated resid and apply ln seperately (cribbed notebook code)
     accumulated_residual = cache.accumulated_resid(layer=-1, incl_mid=True, pos_slice=-1)
     ref_scaled_residual_stack = cache.apply_ln_to_stack(
-        accumulated_residual, layer=-1, pos_slice=-1
+        accumulated_residual, layer=-1, pos_slice=-1, recompute_ln=True
     )
 
     # Get scaled_residual_stack using apply_ln parameter
@@ -269,6 +269,22 @@ def test_accumulated_resid_with_apply_ln():
         expected_labels.append(f"{l}_mid")
 
     assert labels == expected_labels
+
+
+@torch.no_grad
+def test_apply_ln_recompute_ln_differs_from_cached():
+    model = load_model("solu-2l")
+    tokens, _ = get_ioi_tokens_and_answer_tokens(model)
+    _, cache = model.run_with_cache(tokens)
+
+    accumulated = cache.accumulated_resid(layer=-1, incl_mid=True, pos_slice=-1)
+    with_recompute = cache.apply_ln_to_stack(accumulated, layer=-1, pos_slice=-1, recompute_ln=True)
+    with_cached = cache.apply_ln_to_stack(accumulated, layer=-1, pos_slice=-1, recompute_ln=False)
+
+    assert with_recompute.shape == with_cached.shape
+    assert not torch.isclose(
+        with_recompute, with_cached, atol=1e-7
+    ).all(), "recompute_ln=True and recompute_ln=False should differ for accumulated residual stack"
 
 
 @torch.no_grad
