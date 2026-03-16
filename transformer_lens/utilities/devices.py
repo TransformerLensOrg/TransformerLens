@@ -12,6 +12,7 @@ import torch
 from torch import nn
 
 import transformer_lens
+from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 AvailableDeviceMemory = list[tuple[int, int]]
 """
@@ -83,11 +84,11 @@ def get_best_available_cuda_device(max_devices: Optional[int] = None) -> torch.d
     return torch.device("cuda", sorted_devices[0][0])
 
 
-def get_best_available_device(cfg: "transformer_lens.HookedTransformerConfig") -> torch.device:
+def get_best_available_device(cfg: HookedTransformerConfig) -> torch.device:
     """Gets the best available device to be used based on the passed in arguments
 
     Args:
-        device (Union[torch.device, str]): Either the existing torch device or the string identifier
+        cfg (HookedTransformerConfig): Model and device configuration.
 
     Returns:
         torch.device: The best available device
@@ -103,7 +104,7 @@ def get_best_available_device(cfg: "transformer_lens.HookedTransformerConfig") -
 
 def get_device_for_block_index(
     index: int,
-    cfg: "transformer_lens.HookedTransformerConfig",
+    cfg: HookedTransformerConfig,
     device: Optional[Union[torch.device, str]] = None,
 ):
     """
@@ -150,11 +151,15 @@ def move_to_and_update_config(
     """
     Wrapper around `to` that also updates `model.cfg`.
     """
+    from transformer_lens.utils import warn_if_mps
+
     if isinstance(device_or_dtype, torch.device):
+        warn_if_mps(device_or_dtype)
         model.cfg.device = device_or_dtype.type
         if print_details:
             print("Moving model to device: ", model.cfg.device)
     elif isinstance(device_or_dtype, str):
+        warn_if_mps(device_or_dtype)
         model.cfg.device = device_or_dtype
         if print_details:
             print("Moving model to device: ", model.cfg.device)

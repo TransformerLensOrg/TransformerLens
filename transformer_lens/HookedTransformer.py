@@ -1099,6 +1099,7 @@ class HookedTransformer(HookedRootModule):
         return self.to(torch.device("cpu"))
 
     def mps(self: T) -> T:
+        """Warning: MPS may produce silently incorrect results. See #1178."""
         return self.to(torch.device("mps"))
 
     def move_model_modules_to_device(self):
@@ -1134,6 +1135,7 @@ class HookedTransformer(HookedRootModule):
         default_padding_side: Literal["left", "right"] = "right",
         dtype="float32",
         first_n_layers: Optional[int] = None,
+        n_ctx: Optional[int] = None,
         **from_pretrained_kwargs,
     ) -> T:
         """Load in a Pretrained Model.
@@ -1273,6 +1275,12 @@ class HookedTransformer(HookedRootModule):
             default_padding_side: Which side to pad on when tokenizing. Defaults to
                 "right".
             first_n_layers: If specified, only load the first n layers of the model.
+            n_ctx: If specified, override the default context length for the model.
+                This is particularly useful for models with very large default context lengths
+                (e.g., Gemma 3 models support up to 32K-131K) to reduce memory usage on consumer
+                hardware. The default context lengths for Gemma 3 models are set to 8K for safe
+                loading. Pass n_ctx=16384, n_ctx=32768, etc. to use larger context windows if
+                you have sufficient memory.
         """
         if model_name.lower().startswith("t5"):
             raise RuntimeError(
@@ -1336,6 +1344,7 @@ class HookedTransformer(HookedRootModule):
             default_prepend_bos=default_prepend_bos,
             dtype=dtype,
             first_n_layers=first_n_layers,
+            n_ctx=n_ctx,
             **from_pretrained_kwargs,
         )
 
@@ -2004,7 +2013,7 @@ class HookedTransformer(HookedRootModule):
 
     def set_use_split_qkv_input(self, use_split_qkv_input: bool):
         """
-        Toggles whether to allow editing of inputs to each attention head.
+        Toggles whether to allow editing of the separate Q, K, and V inputs to each attention head.
         """
         self.cfg.use_split_qkv_input = use_split_qkv_input
 
@@ -2303,11 +2312,13 @@ class HookedTransformer(HookedRootModule):
                             top_p=top_p,
                             temperature=temperature,
                             freq_penalty=freq_penalty,
-                            tokens=torch.cat(
-                                (input_tokens, torch.cat(sampled_tokens_list, dim=1)), dim=1
-                            )
-                            if "sampled_tokens" in locals()
-                            else input_tokens,
+                            tokens=(
+                                torch.cat(
+                                    (input_tokens, torch.cat(sampled_tokens_list, dim=1)), dim=1
+                                )
+                                if "sampled_tokens" in locals()
+                                else input_tokens
+                            ),
                         ).to(devices.get_device_for_block_index(0, self.cfg))
                     else:
                         sampled_tokens = utils.sample_logits(

@@ -38,7 +38,7 @@ from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookedRootModule, HookPoint
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.utilities import devices
-from transformer_lens.utils import sample_logits
+from transformer_lens.utils import sample_logits, warn_if_mps
 
 T = TypeVar("T", bound="HookedEncoderDecoder")
 
@@ -535,6 +535,8 @@ class HookedEncoderDecoder(HookedRootModule):
         return self.to("cpu")
 
     def mps(self: T) -> T:
+        """Warning: MPS may produce silently incorrect results. See #1178."""
+        warn_if_mps("mps")
         return self.to(torch.device("mps"))
 
     @classmethod

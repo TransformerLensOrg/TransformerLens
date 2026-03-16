@@ -6,11 +6,15 @@ This module contains varied utility functions used throughout the library.
 from __future__ import annotations
 
 import collections.abc
+import importlib.util
 import inspect
 import json
+import logging
 import os
 import re
 import shutil
+import sys
+import warnings
 from copy import deepcopy
 from typing import Any, List, Optional, Tuple, Union, cast
 
@@ -32,6 +36,15 @@ from transformer_lens.FactoredMatrix import FactoredMatrix
 
 CACHE_DIR = constants.HUGGINGFACE_HUB_CACHE
 USE_DEFAULT_VALUE = None
+
+
+def is_library_available(name: str) -> bool:
+    """
+    Checks if a library is installed in the current environment without importing it.
+    Prevents crash or segmentation fault.
+    """
+
+    return name in sys.modules or importlib.util.find_spec(name) is not None
 
 
 def select_compatible_kwargs(
@@ -84,7 +97,11 @@ def clear_huggingface_cache():
     None
     """
     print("Deleting Hugging Face cache directory and all its contents.")
-    shutil.rmtree(CACHE_DIR)
+    # ignore_errors=True: this is CI-only best-effort disk cleanup; the HuggingFace
+    # cache may still have background writes (lock files, .incomplete blobs) in
+    # flight after model deletion, causing transient ENOENT/ENOTEMPTY races.
+    # A partial deletion is acceptable — it doesn't affect test correctness.
+    shutil.rmtree(CACHE_DIR, ignore_errors=True)
 
 
 def print_gpu_mem(step_name: str = ""):
@@ -170,7 +187,7 @@ def lm_accuracy(
 
 
 def gelu_new(
-    input: Float[torch.Tensor, "batch pos d_mlp"]
+    input: Float[torch.Tensor, "batch pos d_mlp"],
 ) -> Float[torch.Tensor, "batch pos d_mlp"]:
     # Implementation of GeLU used by GPT2 - subtly different from PyTorch's
     return (
@@ -181,7 +198,7 @@ def gelu_new(
 
 
 def gelu_fast(
-    input: Float[torch.Tensor, "batch pos d_mlp"]
+    input: Float[torch.Tensor, "batch pos d_mlp"],
 ) -> Float[torch.Tensor, "batch pos d_mlp"]:
     return 0.5 * input * (1.0 + torch.tanh(input * 0.7978845608 * (1.0 + 0.044715 * input * input)))
 
@@ -337,65 +354,98 @@ def tokenize_and_concatenate(
         Dataset: Returns the tokenized dataset, as a dataset of tensors, with a single column called "tokens"
     """
     dataset = keep_single_column(dataset, column_name)
-    if tokenizer.pad_token is None:
+    has_pad_token = tokenizer.pad_token is not None
+    if not has_pad_token:
         # We add a padding token, purely to implement the tokenizer. This will be removed before inputting tokens to the model, so we do not need to increment d_vocab in the model.
         tokenizer.add_special_tokens({"pad_token": "<PAD>"})
-    # Define the length to chop things up into - leaving space for a bos_token if required
-    if add_bos_token:
-        seq_len = max_length - 1
-    else:
-        seq_len = max_length
 
-    def tokenize_function(examples: dict[str, list[str]]) -> dict[str, np.ndarray]:
-        text = examples[column_name]
-        # Concatenate it all into an enormous string, separated by eos_tokens
-        assert tokenizer.eos_token is not None, "Tokenizer must have an EOS token."
-        full_text = tokenizer.eos_token.join(text)
-
-        # Handle the case when full_text is empty
-        if not full_text.strip():
-            return {"tokens": np.array([], dtype=np.int64)}
-
-        # Divide into 20 chunks of ~ equal length
-        num_chunks = 20
-        chunk_length = (len(full_text) - 1) // num_chunks + 1
-        chunks = [full_text[i * chunk_length : (i + 1) * chunk_length] for i in range(num_chunks)]
-        # Tokenize the chunks in parallel. Uses NumPy because HuggingFace map doesn't want tensors returned
-        tokens = tokenizer(chunks, return_tensors="np", padding=True)["input_ids"].flatten()
-        # Drop padding tokens
-        tokens = tokens[tokens != tokenizer.pad_token_id]
-        num_tokens = len(tokens)
-
-        # Handle cases where num_tokens is less than seq_len
-        if num_tokens < seq_len:
-            num_batches = 1
-            # Pad tokens if necessary
-            tokens = tokens[:seq_len]
-            if len(tokens) < seq_len:
-                padding_length = seq_len - len(tokens)
-                padding = np.full(padding_length, tokenizer.pad_token_id)
-                tokens = np.concatenate([tokens, padding], axis=0)
-        else:
-            num_batches = num_tokens // seq_len
-            # Drop the final tokens if not enough to make a full sequence
-            tokens = tokens[: seq_len * num_batches]
-
-        tokens = einops.rearrange(
-            tokens, "(batch seq) -> batch seq", batch=num_batches, seq=seq_len
-        )
+    # Suppress the "sequence length longer than maximum" warning during chunked tokenization.
+    _deprecation_warnings_saved = None
+    if hasattr(tokenizer, "deprecation_warnings"):
+        _deprecation_warnings_saved = tokenizer.deprecation_warnings.copy()
+        tokenizer.deprecation_warnings[
+            "sequence-length-is-longer-than-the-specified-maximum"
+        ] = False
+    try:
+        # Define the length to chop things up into - leaving space for a bos_token if required
         if add_bos_token:
-            prefix = np.full((num_batches, 1), tokenizer.bos_token_id)
-            tokens = np.concatenate([prefix, tokens], axis=1)
-        return {"tokens": tokens}
+            seq_len = max_length - 1
+        else:
+            seq_len = max_length
 
-    tokenized_dataset = dataset.map(
-        tokenize_function,
-        batched=True,
-        num_proc=(num_proc if not streaming else None),
-        remove_columns=[column_name],
-    )
-    tokenized_dataset.set_format(type="torch", columns=["tokens"])
-    return tokenized_dataset
+        def tokenize_function(examples: Any) -> dict[str, np.ndarray]:
+            # datasets.map() may pass a LazyBatch, not a plain dict; accept dict-like batches
+            text = examples[column_name]
+            # Concatenate it all into an enormous string, separated by eos_tokens
+            assert tokenizer.eos_token is not None, "Tokenizer must have an EOS token."
+            full_text = tokenizer.eos_token.join(text)
+
+            # Handle the case when full_text is empty
+            if not full_text.strip():
+                return {"tokens": np.array([], dtype=np.int64)}
+
+            # Divide into 20 chunks of ~ equal length, splitting at whitespace
+            # boundaries to avoid cutting words in half (which creates token pairs
+            # that would never occur in naturally tokenized text - see issue #1133)
+            num_chunks = 20
+            chunk_length = (len(full_text) - 1) // num_chunks + 1
+            chunks = []
+            start = 0
+            lookahead = chunk_length // 10
+            for i in range(num_chunks):
+                end = min(start + chunk_length, len(full_text))
+                # Advance end to the next whitespace boundary to avoid splitting mid-token.
+                # Lookahead is bounded so pathological inputs (e.g. no whitespace) degrade
+                # gracefully to character-based splitting rather than consuming the rest of
+                # the string.
+                boundary = min(end + lookahead, len(full_text))
+                while end < boundary and not full_text[end].isspace():
+                    end += 1
+                chunks.append(full_text[start:end])
+                start = end
+            # Tokenize the chunks in parallel. Uses NumPy because HuggingFace map doesn't want tensors returned
+            tokens = tokenizer(chunks, return_tensors="np", padding=True)["input_ids"].flatten()
+            # Drop padding tokens
+            tokens = tokens[tokens != tokenizer.pad_token_id]
+            num_tokens = len(tokens)
+
+            # Handle cases where num_tokens is less than seq_len
+            if num_tokens < seq_len:
+                num_batches = 1
+                # Pad tokens if necessary
+                tokens = tokens[:seq_len]
+                if len(tokens) < seq_len:
+                    padding_length = seq_len - len(tokens)
+                    padding_id = (
+                        tokenizer.eos_token_id if not has_pad_token else tokenizer.pad_token_id
+                    )
+                    padding = np.full(padding_length, padding_id)
+                    tokens = np.concatenate([tokens, padding], axis=0)
+            else:
+                num_batches = num_tokens // seq_len
+                # Drop the final tokens if not enough to make a full sequence
+                tokens = tokens[: seq_len * num_batches]
+
+            tokens = einops.rearrange(
+                tokens, "(batch seq) -> batch seq", batch=num_batches, seq=seq_len
+            )
+            if add_bos_token:
+                prefix = np.full((num_batches, 1), tokenizer.bos_token_id)
+                tokens = np.concatenate([prefix, tokens], axis=1)
+            return {"tokens": tokens}
+
+        tokenized_dataset = dataset.map(
+            tokenize_function,
+            batched=True,
+            num_proc=(num_proc if not streaming else None),
+            remove_columns=[column_name],
+        )
+        tokenized_dataset.set_format(type="torch", columns=["tokens"])
+        return tokenized_dataset
+    finally:
+        if _deprecation_warnings_saved is not None:
+            tokenizer.deprecation_warnings.clear()
+            tokenizer.deprecation_warnings.update(_deprecation_warnings_saved)
 
 
 def sample_logits(
@@ -992,12 +1042,65 @@ def get_device():
     if torch.cuda.is_available():
         return torch.device("cuda")
     if torch.backends.mps.is_available() and torch.backends.mps.is_built():
-        # Parse the PyTorch version to check if it's below version 2.0
         major_version = int(torch.__version__.split(".")[0])
         if major_version >= 2:
-            return torch.device("mps")
+            # Auto-select MPS if PyTorch is at or above the known-safe version
+            if (
+                _MPS_MIN_SAFE_TORCH_VERSION is not None
+                and _torch_version_tuple() >= _MPS_MIN_SAFE_TORCH_VERSION
+            ):
+                return torch.device("mps")
+            if os.environ.get("TRANSFORMERLENS_ALLOW_MPS", "") == "1":
+                return torch.device("mps")
+            logging.info(
+                "MPS device available but not auto-selected due to known correctness issues "
+                "(PyTorch %s). Set TRANSFORMERLENS_ALLOW_MPS=1 to override. See: "
+                "https://github.com/TransformerLensOrg/TransformerLens/issues/1178",
+                torch.__version__,
+            )
 
     return torch.device("cpu")
+
+
+_mps_warned = False
+
+# MPS silent correctness issues are known in PyTorch <= 2.7.
+# Bump this when a PyTorch release ships verified MPS fixes.
+_MPS_MIN_SAFE_TORCH_VERSION: tuple[int, ...] | None = None
+
+
+def _torch_version_tuple() -> tuple[int, ...]:
+    """Parse torch.__version__ into a comparable tuple, ignoring pre-release suffixes."""
+    return tuple(int(x) for x in torch.__version__.split("+")[0].split(".")[:2])
+
+
+def warn_if_mps(device):
+    """Emit a one-time warning if device is MPS and TRANSFORMERLENS_ALLOW_MPS is not set.
+
+    Automatically suppressed when the installed PyTorch version meets or exceeds
+    _MPS_MIN_SAFE_TORCH_VERSION (currently unset — no version is considered safe yet).
+    """
+    global _mps_warned
+    if _mps_warned:
+        return
+    if isinstance(device, torch.device):
+        device = device.type
+    if isinstance(device, str) and device == "mps":
+        if (
+            _MPS_MIN_SAFE_TORCH_VERSION is not None
+            and _torch_version_tuple() >= _MPS_MIN_SAFE_TORCH_VERSION
+        ):
+            return
+        if os.environ.get("TRANSFORMERLENS_ALLOW_MPS", "") != "1":
+            _mps_warned = True
+            warnings.warn(
+                "MPS backend may produce silently incorrect results (PyTorch "
+                f"{torch.__version__}). "
+                "Set TRANSFORMERLENS_ALLOW_MPS=1 to suppress this warning. "
+                "See: https://github.com/TransformerLensOrg/TransformerLens/issues/1178",
+                UserWarning,
+                stacklevel=2,
+            )
 
 
 def override_or_use_default_value(

@@ -17,7 +17,7 @@ import torch.nn as nn
 import torch.utils.hooks as hooks
 from torch import Tensor
 
-from transformer_lens.utils import Slice, SliceInput
+from transformer_lens.utils import Slice, SliceInput, warn_if_mps
 
 
 @dataclass
@@ -466,6 +466,8 @@ class HookedRootModule(nn.Module):
         Returns:
             cache (dict): The cache where activations will be stored.
         """
+        if device is not None:
+            warn_if_mps(device)
         if cache is None:
             cache = {}
 
@@ -586,6 +588,8 @@ class HookedRootModule(nn.Module):
             fwd_hooks (list): The forward hooks.
             bwd_hooks (list): The backward hooks. Empty if incl_bwd is False.
         """
+        if device is not None:
+            warn_if_mps(device)
         if cache is None:
             cache = {}
 
