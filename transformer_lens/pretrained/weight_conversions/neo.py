@@ -8,7 +8,14 @@ def convert_neo_weights(neo, cfg: HookedTransformerConfig):
     state_dict = {}
 
     state_dict["embed.W_E"] = neo.transformer.wte.weight
-    state_dict["pos_embed.W_pos"] = neo.transformer.wpe.weight
+
+    # Trim positional embeddings to n_ctx if the pretrained weights have more
+    # positions than the model expects (e.g. TinyStories models were trained with
+    # seq_len=512 but the HuggingFace config reports max_position_embeddings=2048).
+    pos_embed = neo.transformer.wpe.weight
+    if pos_embed.shape[0] > cfg.n_ctx:
+        pos_embed = pos_embed[: cfg.n_ctx, :]
+    state_dict["pos_embed.W_pos"] = pos_embed
 
     for l in range(cfg.n_layers):
         state_dict[f"blocks.{l}.ln1.w"] = neo.transformer.h[l].ln_1.weight
