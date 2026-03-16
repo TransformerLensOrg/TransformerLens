@@ -96,13 +96,13 @@ def clear_huggingface_cache():
     """
     print("Deleting Hugging Face cache directory and all its contents.")
 
-    def _onexc(func, path, exc):
+    def _onerror(func, path, excinfo):
         # HuggingFace .incomplete files are transient and may vanish between
         # scandir and unlink; ignore those and re-raise everything else.
-        if not isinstance(exc, FileNotFoundError):
-            raise exc
+        if not issubclass(excinfo[0], FileNotFoundError):
+            raise excinfo[1].with_traceback(excinfo[2])
 
-    shutil.rmtree(CACHE_DIR, onexc=_onexc)
+    shutil.rmtree(CACHE_DIR, onerror=_onerror)
 
 
 def print_gpu_mem(step_name: str = ""):
