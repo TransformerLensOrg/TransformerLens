@@ -34,5 +34,4 @@ class BertPooler(nn.Module):
         first_token_tensor = resid[:, 0]
         pooled_output = torch.matmul(first_token_tensor, self.W) + self.b
         pooled_output = self.hook_pooler_out(self.activation(pooled_output))
-        # pooled_output = self.hook_pooler_out(pooled_output)
         return pooled_output
