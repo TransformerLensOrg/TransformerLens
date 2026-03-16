@@ -131,8 +131,8 @@ def test_remove_einsum_from_complex_attn_linear():
 
 
 @pytest.mark.skipif(
-    not torch.backends.mps.is_available() and torch.__version__ != "2.8.0",
-    reason="Issue with F.linear issue exclusive to mps and PyTorch 2.8"
+    not torch.backends.mps.is_available() or torch.__version__ != "2.8.0",
+    reason="Issue with F.linear issue exclusive to mps and PyTorch 2.8\n"
     "https://github.com/pytorch/pytorch/issues/161640",
 )
 def test_cpu_mps_outputs_match():
