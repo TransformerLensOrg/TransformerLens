@@ -56,19 +56,33 @@ def convert_hubert_weights(hf_model, cfg: HookedTransformerConfig):
 
         # weights are Linear modules: weight shape (out, in)  => same convention as Bert conversion
         # reshape to Transformer-Lens expected shapes using einops
-        state_dict[f"blocks.{l}.attn.W_Q"] = einops.rearrange(q_w.weight, "(i h) m -> i m h", i=n_heads)
+        state_dict[f"blocks.{l}.attn.W_Q"] = einops.rearrange(
+            q_w.weight, "(i h) m -> i m h", i=n_heads
+        )
         if q_w.bias is not None:
-            state_dict[f"blocks.{l}.attn.b_Q"] = einops.rearrange(q_w.bias, "(i h) -> i h", i=n_heads)
+            state_dict[f"blocks.{l}.attn.b_Q"] = einops.rearrange(
+                q_w.bias, "(i h) -> i h", i=n_heads
+            )
 
-        state_dict[f"blocks.{l}.attn.W_K"] = einops.rearrange(k_w.weight, "(i h) m -> i m h", i=n_heads)
+        state_dict[f"blocks.{l}.attn.W_K"] = einops.rearrange(
+            k_w.weight, "(i h) m -> i m h", i=n_heads
+        )
         if k_w.bias is not None:
-            state_dict[f"blocks.{l}.attn.b_K"] = einops.rearrange(k_w.bias, "(i h) -> i h", i=n_heads)
+            state_dict[f"blocks.{l}.attn.b_K"] = einops.rearrange(
+                k_w.bias, "(i h) -> i h", i=n_heads
+            )
 
-        state_dict[f"blocks.{l}.attn.W_V"] = einops.rearrange(v_w.weight, "(i h) m -> i m h", i=n_heads)
+        state_dict[f"blocks.{l}.attn.W_V"] = einops.rearrange(
+            v_w.weight, "(i h) m -> i m h", i=n_heads
+        )
         if v_w.bias is not None:
-            state_dict[f"blocks.{l}.attn.b_V"] = einops.rearrange(v_w.bias, "(i h) -> i h", i=n_heads)
+            state_dict[f"blocks.{l}.attn.b_V"] = einops.rearrange(
+                v_w.bias, "(i h) -> i h", i=n_heads
+            )
 
-        state_dict[f"blocks.{l}.attn.W_O"] = einops.rearrange(o_w.weight, "m (i h) -> i h m", i=n_heads)
+        state_dict[f"blocks.{l}.attn.W_O"] = einops.rearrange(
+            o_w.weight, "m (i h) -> i h m", i=n_heads
+        )
         if o_w.bias is not None:
             state_dict[f"blocks.{l}.attn.b_O"] = o_w.bias
 
@@ -90,13 +104,25 @@ def convert_hubert_weights(hf_model, cfg: HookedTransformerConfig):
 
         # --- Feed-forward / MLP ---
         # HuBERT uses `feed_forward` which contains intermediate_dense and output_dense
-        ff = getattr(layer, "feed_forward", None) or getattr(layer, "feedforward", None) or getattr(layer, "ff", None)
+        ff = (
+            getattr(layer, "feed_forward", None)
+            or getattr(layer, "feedforward", None)
+            or getattr(layer, "ff", None)
+        )
         if ff is None:
             raise AttributeError(f"Layer {l} has no feed_forward/ff attribute")
 
         # Many implementations name them intermediate_dense and output_dense
-        fc1 = getattr(ff, "intermediate_dense", None) or getattr(ff, "fc1", None) or getattr(ff, "linear1", None)
-        fc2 = getattr(ff, "output_dense", None) or getattr(ff, "fc2", None) or getattr(ff, "linear2", None)
+        fc1 = (
+            getattr(ff, "intermediate_dense", None)
+            or getattr(ff, "fc1", None)
+            or getattr(ff, "linear1", None)
+        )
+        fc2 = (
+            getattr(ff, "output_dense", None)
+            or getattr(ff, "fc2", None)
+            or getattr(ff, "linear2", None)
+        )
 
         if fc1 is None or fc2 is None:
             raise AttributeError(f"Could not find FFN dense layers in layer {l}: {ff}")

@@ -11,11 +11,14 @@ SAMPLE_RATE = 16000
 DURATION_S = 1.0
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
+
 def make_sine(sr=SAMPLE_RATE, duration=DURATION_S, freq=440.0, amp=0.1):
-    t = np.linspace(0, duration, int(sr*duration), endpoint=False, dtype=np.float32)
+    t = np.linspace(0, duration, int(sr * duration), endpoint=False, dtype=np.float32)
     return amp * np.sin(2 * math.pi * freq * t)
 
+
 audio_model = HookedAudioEncoder.from_pretrained("facebook/hubert-base-ls960", device="cuda")
+
 
 def main():
     # --- Build a 1s test waveform ---
@@ -26,9 +29,13 @@ def main():
     # --- Convert to frames using your helper (you provided to_frames) ---
     # IMPORTANT: use the same sampling_rate you used during training/FT (16k typical)
     try:
-        frames, frame_mask = audio_model.to_frames(raw_batch, sampling_rate=SAMPLE_RATE, move_to_device=True)
+        frames, frame_mask = audio_model.to_frames(
+            raw_batch, sampling_rate=SAMPLE_RATE, move_to_device=True
+        )
     except NameError:
-        raise RuntimeError("Replace `audio_model` with your model/wrapper instance that implements to_frames().")
+        raise RuntimeError(
+            "Replace `audio_model` with your model/wrapper instance that implements to_frames()."
+        )
 
     # frames shape expected: (batch, frames, hidden)  ; frame_mask: (batch, frames)  (1/0)
     print("frames.shape:", tuple(frames.shape))
@@ -37,23 +44,31 @@ def main():
 
     # --- Run with cache to inspect attention pattern ---
     # remove_batch_dim=True makes cached activations shaped like (pos, ...) for easier visualization (like LLaMA example)
-    logits, cache = audio_model.run_with_cache(frames, one_zero_attention_mask=frame_mask, remove_batch_dim=True)
+    logits, cache = audio_model.run_with_cache(
+        frames, one_zero_attention_mask=frame_mask, remove_batch_dim=True
+    )
 
     # Picking a layer and head for visualization
     layer_to_visualize = 0
     # act name for attention pattern — this is the same helper you used earlier
-    pattern_name = utils.get_act_name("pattern", layer_to_visualize)  # e.g. "pattern_0" depending on utils
+    pattern_name = utils.get_act_name(
+        "pattern", layer_to_visualize
+    )  # e.g. "pattern_0" depending on utils
     # some implementations store pattern as (layer, "attn") tuple; utils.get_act_name helps avoid mistakes
 
     # Extract attention pattern. Adapt this extraction if your cache key structure differs:
     try:
-        attention_pattern = cache[pattern_name]   # expected shape: (pos, pos, n_heads) or (pos, n_heads, pos) depending on implementation
+        attention_pattern = cache[
+            pattern_name
+        ]  # expected shape: (pos, pos, n_heads) or (pos, n_heads, pos) depending on implementation
     except Exception:
         # fallback: try tuple-key style
         try:
             attention_pattern = cache["pattern", layer_to_visualize, "attn"]
         except Exception as exc:
-            raise RuntimeError(f"Couldn't find attention pattern in cache. Keys: {list(cache.keys())}") from exc
+            raise RuntimeError(
+                f"Couldn't find attention pattern in cache. Keys: {list(cache.keys())}"
+            ) from exc
 
     # Build human-friendly "tokens" for frames (e.g. frame indices as strings)
     n_frames = attention_pattern.shape[0]
@@ -98,13 +113,17 @@ def main():
         # hooks: list of (act_name, hook_fn) tuples for run_with_hooks
         if hooks is None:
             # run_with_cache to gather activations
-            cache = audio_model.run_with_cache(frames, one_zero_attention_mask=frame_mask, remove_batch_dim=True)
+            cache = audio_model.run_with_cache(
+                frames, one_zero_attention_mask=frame_mask, remove_batch_dim=True
+            )
             out = audio_model.run_with_hooks(frames, fwd_hooks=[])
             # NOTE: if your API returns outputs directly from run_with_cache, adapt as needed.
         else:
             # run with hooks and also capture cache
             # run_with_hooks typically returns output (or logits) and optionally a cache depending on your implementation
-            out = audio_model.run_with_hooks(frames, fwd_hooks=hooks, one_zero_attention_mask=frame_mask)
+            out = audio_model.run_with_hooks(
+                frames, fwd_hooks=hooks, one_zero_attention_mask=frame_mask
+            )
             # If return_type="both" isn't supported, you can run run_with_cache and run_with_hooks separately.
         # Try to extract CTC logits from `out` first
         logits = None
@@ -133,7 +152,9 @@ def main():
             last_layer = audio_model.cfg.n_layers - 1
             resid_name = utils.get_act_name("resid_post", last_layer)
             # get cache from run_with_cache (we ran above)
-            cache = audio_model.run_with_cache(frames, one_zero_attention_mask=frame_mask, remove_batch_dim=True)
+            cache = audio_model.run_with_cache(
+                frames, one_zero_attention_mask=frame_mask, remove_batch_dim=True
+            )
             resid = cache[resid_name]  # e.g. (pos, d) or (batch,pos,d)
             # mean-pool across pos dimension
             if resid.ndim == 3:
@@ -144,10 +165,14 @@ def main():
                 raise RuntimeError("Unexpected resid_post shape")
             return pooled, None, cache
         except Exception as e:
-            raise RuntimeError("Couldn't extract logits or resid_post; adapt the extraction to your model's output format.") from e
+            raise RuntimeError(
+                "Couldn't extract logits or resid_post; adapt the extraction to your model's output format."
+            ) from e
 
     # Get baseline representation
-    baseline_repr, baseline_logits, baseline_cache = run_and_get_repr(frames, frame_mask, hooks=None)
+    baseline_repr, baseline_logits, baseline_cache = run_and_get_repr(
+        frames, frame_mask, hooks=None
+    )
     print("Baseline representation shape:", tuple(baseline_repr.shape))
 
     # --- Run with ablation hook and get representation ---
@@ -167,8 +192,13 @@ def main():
         print("Sample argmax token ids (ablated): ", a_ids[0][:40].cpu().numpy().tolist())
 
     print("Done. Interpret the results:")
-    print(" - A large drop in cosine similarity (or large change in argmax tokens / increase in loss) means the ablated head mattered.")
-    print(" - If ablation causes little change, that head may be redundant or not used for this example.")
+    print(
+        " - A large drop in cosine similarity (or large change in argmax tokens / increase in loss) means the ablated head mattered."
+    )
+    print(
+        " - If ablation causes little change, that head may be redundant or not used for this example."
+    )
+
 
 if __name__ == "__main__":
     # create/instantiate your model here: replace the placeholder below

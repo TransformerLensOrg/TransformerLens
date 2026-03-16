@@ -26,12 +26,17 @@ BATCH_SIZE = 1
 TOKENIZER_NAME = "facebook/hubert-large-ls960-ft"
 # ------------------
 
+
 def make_sine(frequency=440.0, sr=SAMPLE_RATE, duration=DURATION_S, amplitude=0.1):
-    t = np.linspace(0, duration, int(sr*duration), endpoint=False, dtype=np.float32)
+    t = np.linspace(0, duration, int(sr * duration), endpoint=False, dtype=np.float32)
     return amplitude * np.sin(2 * math.pi * frequency * t)
 
+
 def has_lm_head(model):
-    return any(name.endswith("lm_head") or name == "lm_head" for name, _ in model.named_children()) or hasattr(model, "lm_head")
+    return any(
+        name.endswith("lm_head") or name == "lm_head" for name, _ in model.named_children()
+    ) or hasattr(model, "lm_head")
+
 
 def try_get_lm_head(model):
     if hasattr(model, "lm_head"):
@@ -41,6 +46,7 @@ def try_get_lm_head(model):
         if name.endswith("lm_head") or name == "lm_head":
             return module
     return None
+
 
 def print_param_info(module, prefix=""):
     if module is None:
@@ -54,6 +60,7 @@ def print_param_info(module, prefix=""):
             print(prefix + f" weight.shape = {tuple(module.weight.shape)}")
         except Exception:
             pass
+
 
 if __name__ == "__main__":
     model = HookedAudioEncoder.from_pretrained("facebook/hubert-large-ls960-ft")
@@ -70,7 +77,9 @@ if __name__ == "__main__":
     print_param_info(try_get_lm_head(model), prefix="  ")
 
     # Forward pass with use_ctc=True (some model APIs accept it directly, some do not).
-    print("\nCalling forward(..., use_ctc=True) -- if that fails, will set attribute and call without arg")
+    print(
+        "\nCalling forward(..., use_ctc=True) -- if that fails, will set attribute and call without arg"
+    )
     logits = None
     forward_exc = None
     try:
@@ -79,7 +88,9 @@ if __name__ == "__main__":
     except TypeError as e:
         # forward signature may not accept use_ctc param; try setting attribute on model and call
         forward_exc = e
-        print("Direct forward(..., use_ctc=True) failed with TypeError - will try setting model.use_ctc = True and calling forward(x).")
+        print(
+            "Direct forward(..., use_ctc=True) failed with TypeError - will try setting model.use_ctc = True and calling forward(x)."
+        )
         try:
             if hasattr(model, "use_ctc"):
                 model.use_ctc = True
@@ -120,7 +131,10 @@ if __name__ == "__main__":
     print_param_info(lm, prefix="  ")
 
     if logits is None:
-        print("\nCould not automatically extract logits from the model output. The model returned:", type(out))
+        print(
+            "\nCould not automatically extract logits from the model output. The model returned:",
+            type(out),
+        )
         # if out is tensor-like but not torch tensor, attempt conversion
         if hasattr(out, "numpy"):
             try:
@@ -134,7 +148,10 @@ if __name__ == "__main__":
         print("logits shape:", tuple(logits.shape))
         # typical CTC logits shape: (batch, time, vocab_size) or (batch, seq_len, vocab)
         try:
-            print("stats: min=%.6g max=%.6g mean=%.6g" % (logits.min().item(), logits.max().item(), logits.mean().item()))
+            print(
+                "stats: min=%.6g max=%.6g mean=%.6g"
+                % (logits.min().item(), logits.max().item(), logits.mean().item())
+            )
         except Exception:
             pass
         assert torch.isfinite(logits).all(), "Found NaNs/Infs in logits!"
@@ -151,6 +168,7 @@ if __name__ == "__main__":
             if TOKENIZER_NAME is not None:
                 try:
                     from transformers import AutoTokenizer
+
                     tok = AutoTokenizer.from_pretrained(TOKENIZER_NAME)
                     # For many CTC tokenizers, you need to collapse repeats and remove blank token id (often id=0 or tok.pad_token_id)
                     # Here we do a naive collapse+remove assuming blank token is tokenizer.pad_token_id or tokenizer.pad_token_id==tok.pad_token_id
@@ -222,11 +240,18 @@ if __name__ == "__main__":
         else:
             print("❌ Gradient test FAILED: no gradients found in transformer blocks.")
 
-
     print("\n=== DONE ===")
     print("Interpretation notes:")
-    print(" - If lm_head appears AFTER calling forward(use_ctc=True) and logits shape looks like (B, T, V),")
-    print("   then your forward-path is constructing/attaching an lm_head and producing CTC logits.")
-    print(" - If lm_head parameters have finite gradients after loss.backward(), the head is hooked into the graph.")
-    print(" - If you want a numeric golden-check, instantiate a HF Hubert/Wav2Vec2 CTC model and compare pooled logits/ids (optional).")
+    print(
+        " - If lm_head appears AFTER calling forward(use_ctc=True) and logits shape looks like (B, T, V),"
+    )
+    print(
+        "   then your forward-path is constructing/attaching an lm_head and producing CTC logits."
+    )
+    print(
+        " - If lm_head parameters have finite gradients after loss.backward(), the head is hooked into the graph."
+    )
+    print(
+        " - If you want a numeric golden-check, instantiate a HF Hubert/Wav2Vec2 CTC model and compare pooled logits/ids (optional)."
+    )
     print(model.named_parameters())
