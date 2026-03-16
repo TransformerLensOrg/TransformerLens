@@ -2013,6 +2013,12 @@ def convert_hf_model_config(model_name: str, **kwargs: Any):
     cfg_dict["tokenizer_name"] = official_model_name
     if kwargs.get("trust_remote_code", False):
         cfg_dict["trust_remote_code"] = True
+    # TinyStories models were trained with seq_len=512, but the HuggingFace config
+    # reports max_position_embeddings=2048. Override n_ctx so the positional embedding
+    # weights are trimmed during weight conversion.
+    # See: https://github.com/TransformerLensOrg/TransformerLens/issues/492
+    if official_model_name.startswith("roneneldan/TinyStories"):
+        cfg_dict["n_ctx"] = 512
     return cfg_dict
 
 
