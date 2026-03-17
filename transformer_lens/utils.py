@@ -34,7 +34,6 @@ from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 
 from transformer_lens.FactoredMatrix import FactoredMatrix
 
-
 CACHE_DIR = constants.HUGGINGFACE_HUB_CACHE
 USE_DEFAULT_VALUE = None
 
