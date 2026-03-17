@@ -242,7 +242,7 @@ def test_accumulated_resid_with_apply_ln():
     # Run the model and cache all activations
     _, cache = model.run_with_cache(tokens)
 
-    # Get accumulated resid and apply ln seperately (cribbed notebook code)
+    # Get accumulated resid and apply final ln seperately
     accumulated_residual = cache.accumulated_resid(layer=-1, incl_mid=True, pos_slice=-1)
     ref_scaled_residual_stack = cache.apply_ln_to_stack(
         accumulated_residual, layer=-1, pos_slice=-1, recompute_ln=True

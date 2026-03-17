@@ -9,10 +9,12 @@ import collections.abc
 import importlib.util
 import inspect
 import json
+import logging
 import os
 import re
 import shutil
 import sys
+import warnings
 from copy import deepcopy
 from typing import Any, List, Optional, Tuple, Union, cast
 
@@ -441,12 +443,25 @@ def tokenize_and_concatenate(
             if not full_text.strip():
                 return {"tokens": np.array([], dtype=np.int64)}
 
-            # Divide into 20 chunks of ~ equal length
+            # Divide into 20 chunks of ~ equal length, splitting at whitespace
+            # boundaries to avoid cutting words in half (which creates token pairs
+            # that would never occur in naturally tokenized text - see issue #1133)
             num_chunks = 20
             chunk_length = (len(full_text) - 1) // num_chunks + 1
-            chunks = [
-                full_text[i * chunk_length : (i + 1) * chunk_length] for i in range(num_chunks)
-            ]
+            chunks = []
+            start = 0
+            lookahead = chunk_length // 10
+            for i in range(num_chunks):
+                end = min(start + chunk_length, len(full_text))
+                # Advance end to the next whitespace boundary to avoid splitting mid-token.
+                # Lookahead is bounded so pathological inputs (e.g. no whitespace) degrade
+                # gracefully to character-based splitting rather than consuming the rest of
+                # the string.
+                boundary = min(end + lookahead, len(full_text))
+                while end < boundary and not full_text[end].isspace():
+                    end += 1
+                chunks.append(full_text[start:end])
+                start = end
             # Tokenize the chunks in parallel. Uses NumPy because HuggingFace map doesn't want tensors returned
             tokens = tokenizer(chunks, return_tensors="np", padding=True)["input_ids"].flatten()
             # Drop padding tokens
@@ -1086,12 +1101,65 @@ def get_device():
     if torch.cuda.is_available():
         return torch.device("cuda")
     if torch.backends.mps.is_available() and torch.backends.mps.is_built():
-        # Parse the PyTorch version to check if it's below version 2.0
         major_version = int(torch.__version__.split(".")[0])
         if major_version >= 2:
-            return torch.device("mps")
+            # Auto-select MPS if PyTorch is at or above the known-safe version
+            if (
+                _MPS_MIN_SAFE_TORCH_VERSION is not None
+                and _torch_version_tuple() >= _MPS_MIN_SAFE_TORCH_VERSION
+            ):
+                return torch.device("mps")
+            if os.environ.get("TRANSFORMERLENS_ALLOW_MPS", "") == "1":
+                return torch.device("mps")
+            logging.info(
+                "MPS device available but not auto-selected due to known correctness issues "
+                "(PyTorch %s). Set TRANSFORMERLENS_ALLOW_MPS=1 to override. See: "
+                "https://github.com/TransformerLensOrg/TransformerLens/issues/1178",
+                torch.__version__,
+            )
 
     return torch.device("cpu")
+
+
+_mps_warned = False
+
+# MPS silent correctness issues are known in PyTorch <= 2.7.
+# Bump this when a PyTorch release ships verified MPS fixes.
+_MPS_MIN_SAFE_TORCH_VERSION: tuple[int, ...] | None = None
+
+
+def _torch_version_tuple() -> tuple[int, ...]:
+    """Parse torch.__version__ into a comparable tuple, ignoring pre-release suffixes."""
+    return tuple(int(x) for x in torch.__version__.split("+")[0].split(".")[:2])
+
+
+def warn_if_mps(device):
+    """Emit a one-time warning if device is MPS and TRANSFORMERLENS_ALLOW_MPS is not set.
+
+    Automatically suppressed when the installed PyTorch version meets or exceeds
+    _MPS_MIN_SAFE_TORCH_VERSION (currently unset — no version is considered safe yet).
+    """
+    global _mps_warned
+    if _mps_warned:
+        return
+    if isinstance(device, torch.device):
+        device = device.type
+    if isinstance(device, str) and device == "mps":
+        if (
+            _MPS_MIN_SAFE_TORCH_VERSION is not None
+            and _torch_version_tuple() >= _MPS_MIN_SAFE_TORCH_VERSION
+        ):
+            return
+        if os.environ.get("TRANSFORMERLENS_ALLOW_MPS", "") != "1":
+            _mps_warned = True
+            warnings.warn(
+                "MPS backend may produce silently incorrect results (PyTorch "
+                f"{torch.__version__}). "
+                "Set TRANSFORMERLENS_ALLOW_MPS=1 to suppress this warning. "
+                "See: https://github.com/TransformerLensOrg/TransformerLens/issues/1178",
+                UserWarning,
+                stacklevel=2,
+            )
 
 
 def override_or_use_default_value(
