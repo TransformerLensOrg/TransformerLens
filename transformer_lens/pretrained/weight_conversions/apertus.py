@@ -21,12 +21,13 @@ def convert_apertus_weights(apertus, cfg: HookedTransformerConfig):
 
     n_kv_heads = cast(int, cfg.n_key_value_heads if using_gqa else cfg.n_heads)
 
-
     assert cfg.d_mlp is not None  # keep mypy happy
 
     for l in range(cfg.n_layers):
         state_dict[f"blocks.{l}.ln1.w"] = apertus.model.layers[l].attention_layernorm.weight
-        state_dict[f"blocks.{l}.ln1.b"] = torch.zeros(cfg.d_model, dtype=cfg.dtype, device=cfg.device)
+        state_dict[f"blocks.{l}.ln1.b"] = torch.zeros(
+            cfg.d_model, dtype=cfg.dtype, device=cfg.device
+        )
 
         W_Q = apertus.model.layers[l].self_attn.q_proj.weight
         W_K = apertus.model.layers[l].self_attn.k_proj.weight
@@ -71,7 +72,9 @@ def convert_apertus_weights(apertus, cfg: HookedTransformerConfig):
         )
 
         state_dict[f"blocks.{l}.ln2.w"] = apertus.model.layers[l].feedforward_layernorm.weight
-        state_dict[f"blocks.{l}.ln2.b"] = torch.zeros(cfg.d_model, dtype=cfg.dtype, device=cfg.device)
+        state_dict[f"blocks.{l}.ln2.b"] = torch.zeros(
+            cfg.d_model, dtype=cfg.dtype, device=cfg.device
+        )
 
         # in case of quantization,
         # parameters should stay as bitsandbytes.nn.modules.Params4bit
@@ -92,11 +95,11 @@ def convert_apertus_weights(apertus, cfg: HookedTransformerConfig):
         # Extract trainable activation parameters
         mlp = apertus.model.layers[l].mlp
         try:
-            if hasattr(mlp, 'act_fn'):
+            if hasattr(mlp, "act_fn"):
                 alpha_p = mlp.act_fn.alpha_p
                 alpha_n = mlp.act_fn.alpha_n
                 beta = mlp.act_fn.beta
-            elif hasattr(mlp, 'act'):
+            elif hasattr(mlp, "act"):
                 alpha_p = mlp.act.alpha_p
                 alpha_n = mlp.act.alpha_n
                 beta = mlp.act.beta
@@ -110,9 +113,15 @@ def convert_apertus_weights(apertus, cfg: HookedTransformerConfig):
         except AttributeError:
             # If parameters not found, use defaults
             print(f"Activation parameters not found in layer {l}, using defaults")
-            state_dict[f"blocks.{l}.mlp.act_fn.alpha_p"] = torch.tensor(0.8, dtype=cfg.dtype, device=cfg.device)
-            state_dict[f"blocks.{l}.mlp.act_fn.alpha_n"] = torch.tensor(0.8, dtype=cfg.dtype, device=cfg.device)
-            state_dict[f"blocks.{l}.mlp.act_fn.beta"] = torch.tensor(0.5, dtype=cfg.dtype, device=cfg.device)
+            state_dict[f"blocks.{l}.mlp.act_fn.alpha_p"] = torch.tensor(
+                0.8, dtype=cfg.dtype, device=cfg.device
+            )
+            state_dict[f"blocks.{l}.mlp.act_fn.alpha_n"] = torch.tensor(
+                0.8, dtype=cfg.dtype, device=cfg.device
+            )
+            state_dict[f"blocks.{l}.mlp.act_fn.beta"] = torch.tensor(
+                0.5, dtype=cfg.dtype, device=cfg.device
+            )
 
     state_dict["ln_final.w"] = apertus.model.norm.weight
     state_dict["ln_final.b"] = torch.zeros(cfg.d_model, dtype=cfg.dtype, device=cfg.device)

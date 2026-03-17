@@ -232,32 +232,41 @@ class XIELU(nn.Module):
     }
     where α_p, α_n, β are trainable parameters.
     """
-    def __init__(self, alpha_p_init: float = 0.8, alpha_n_init: float = 0.8, beta_init: float = 0.5, eps: float = -1e-6):
+
+    def __init__(
+        self,
+        alpha_p_init: float = 0.8,
+        alpha_n_init: float = 0.8,
+        beta_init: float = 0.5,
+        eps: float = -1e-6,
+    ):
         super().__init__()
         self.alpha_p = nn.Parameter(torch.tensor(alpha_p_init, dtype=torch.float32))
         self.alpha_n = nn.Parameter(torch.tensor(alpha_n_init, dtype=torch.float32))
         self.beta = nn.Parameter(torch.tensor(beta_init, dtype=torch.float32))
         self.eps = eps
 
-    def forward(self, input: Float[torch.Tensor, "batch pos d_mlp"]) -> Float[torch.Tensor, "batch pos d_mlp"]:
+    def forward(
+        self, input: Float[torch.Tensor, "batch pos d_mlp"]
+    ) -> Float[torch.Tensor, "batch pos d_mlp"]:
         return torch.where(
             input > 0,
-            self.alpha_p * input ** 2 + self.beta * input,
-            self.alpha_n * torch.expm1(torch.clamp_max(input, self.eps)) - self.alpha_n * input + self.beta * input
+            self.alpha_p * input**2 + self.beta * input,
+            self.alpha_n * torch.expm1(torch.clamp_max(input, self.eps))
+            - self.alpha_n * input
+            + self.beta * input,
         )
 
 
-def xielu(
-    input: Float[torch.Tensor, "batch pos d_mlp"]
-) -> Float[torch.Tensor, "batch pos d_mlp"]:
+def xielu(input: Float[torch.Tensor, "batch pos d_mlp"]) -> Float[torch.Tensor, "batch pos d_mlp"]:
     """
     xIELU activation function as described by
     https://arxiv.org/abs/2411.13010
 
     and original code in:
-    https://github.com/rubber-duck-debug/xielu 
+    https://github.com/rubber-duck-debug/xielu
 
-    Defined as 
+    Defined as
 
     f(x) = {
         α_p * x² + β * x,                                    if x > 0
@@ -270,11 +279,13 @@ def xielu(
     alpha_n: float = 0.8
     beta: float = 0.5
     eps: float = -1e-6
-    
+
     # The core calculation logic:
-    return torch.where(input > 0,
-                       alpha_p * input * input + beta * input,
-                       alpha_n * torch.expm1(torch.clamp_max(input, eps)) - alpha_n * input + beta * input)
+    return torch.where(
+        input > 0,
+        alpha_p * input * input + beta * input,
+        alpha_n * torch.expm1(torch.clamp_max(input, eps)) - alpha_n * input + beta * input,
+    )
 
 
 ACTIVATION_FN_DICT = {
@@ -421,9 +432,9 @@ def tokenize_and_concatenate(
     _deprecation_warnings_saved = None
     if hasattr(tokenizer, "deprecation_warnings"):
         _deprecation_warnings_saved = tokenizer.deprecation_warnings.copy()
-        tokenizer.deprecation_warnings[
-            "sequence-length-is-longer-than-the-specified-maximum"
-        ] = False
+        tokenizer.deprecation_warnings["sequence-length-is-longer-than-the-specified-maximum"] = (
+            False
+        )
     try:
         # Define the length to chop things up into - leaving space for a bos_token if required
         if add_bos_token:
