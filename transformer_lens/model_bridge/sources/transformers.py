@@ -342,6 +342,11 @@ def boot(
     attn_logit_softcapping = getattr(hf_config, "attn_logit_softcapping", None)
     if attn_logit_softcapping is not None:
         bridge_config.attn_scores_soft_cap = float(attn_logit_softcapping)
+    # Propagate position_embedding_type for Granite Hybrid models that use
+    # "nope" (no positional embeddings) instead of "rope" on some/all layers.
+    position_embedding_type = getattr(hf_config, "position_embedding_type", None)
+    if position_embedding_type is not None:
+        bridge_config.position_embedding_type = position_embedding_type
     # Propagate vision config for multimodal models so the adapter can
     # select the correct vision encoder bridge (CLIP vs SigLIP).
     if hasattr(hf_config, "vision_config") and hf_config.vision_config is not None:

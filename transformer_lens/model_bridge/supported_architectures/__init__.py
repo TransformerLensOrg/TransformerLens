@@ -21,6 +21,15 @@ from transformer_lens.model_bridge.supported_architectures.gemma3 import (
 from transformer_lens.model_bridge.supported_architectures.gemma3_multimodal import (
     Gemma3MultimodalArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.granite import (
+    GraniteArchitectureAdapter,
+)
+from transformer_lens.model_bridge.supported_architectures.granite_moe import (
+    GraniteMoeArchitectureAdapter,
+)
+from transformer_lens.model_bridge.supported_architectures.granite_moe_hybrid import (
+    GraniteMoeHybridArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.gpt2 import (
     GPT2ArchitectureAdapter,
 )
@@ -116,6 +125,9 @@ __all__ = [
     "Gemma2ArchitectureAdapter",
     "Gemma3ArchitectureAdapter",
     "Gemma3MultimodalArchitectureAdapter",
+    "GraniteArchitectureAdapter",
+    "GraniteMoeArchitectureAdapter",
+    "GraniteMoeHybridArchitectureAdapter",
     "GPT2ArchitectureAdapter",
     "GPTOSSArchitectureAdapter",
     "Gpt2LmHeadCustomArchitectureAdapter",
