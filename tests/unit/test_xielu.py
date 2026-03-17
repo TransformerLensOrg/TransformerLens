@@ -1,8 +1,8 @@
+import pytest
 import torch
 import torch.nn as nn
-import pytest
 
-from transformer_lens.utils import XIELU, xielu, ACTIVATION_FN_DICT
+from transformer_lens.utils import ACTIVATION_FN_DICT, XIELU, xielu
 
 
 class TestXIELUClass:
@@ -35,7 +35,7 @@ class TestXIELUClass:
     def test_positive_branch(self):
         """For x > 0: f(x) = alpha_p * x^2 + beta * x."""
         act = XIELU(alpha_p_init=1.0, alpha_n_init=1.0, beta_init=1.0)
-        x = torch.tensor([1.0, 2.0, 3.0])
+        x = torch.tensor([[[1.0, 2.0, 3.0]]])  # (1, 1, 3)
         expected = 1.0 * x ** 2 + 1.0 * x  # alpha_p * x^2 + beta * x
         torch.testing.assert_close(act(x), expected)
 
@@ -43,7 +43,7 @@ class TestXIELUClass:
         """For x <= 0: f(x) = alpha_n * (exp(clamp(x, eps)) - 1) - alpha_n * x + beta * x."""
         alpha_n, beta, eps = 1.0, 1.0, -1e-6
         act = XIELU(alpha_p_init=1.0, alpha_n_init=alpha_n, beta_init=beta, eps=eps)
-        x = torch.tensor([-1.0, -2.0, -3.0])
+        x = torch.tensor([[[-1.0, -2.0, -3.0]]])  # (1, 1, 3)
         expected = (
             alpha_n * torch.expm1(torch.clamp_max(x, eps))
             - alpha_n * x
@@ -54,7 +54,7 @@ class TestXIELUClass:
     def test_zero_input(self):
         """x = 0 falls into the negative branch."""
         act = XIELU(alpha_p_init=1.0, alpha_n_init=1.0, beta_init=1.0, eps=-1e-6)
-        x = torch.tensor([0.0])
+        x = torch.tensor([[[0.0]]])  # (1, 1, 1)
         expected = (
             1.0 * torch.expm1(torch.clamp_max(x, -1e-6))
             - 1.0 * x
@@ -64,7 +64,7 @@ class TestXIELUClass:
 
     def test_gradients_flow_through(self):
         act = XIELU()
-        x = torch.randn(4, 8, requires_grad=True)
+        x = torch.randn(4, 8, 16, requires_grad=True)
         out = act(x).sum()
         out.backward()
         assert x.grad is not None
@@ -86,13 +86,13 @@ class TestXIELUFunction:
 
     def test_positive_values(self):
         """For x > 0: f(x) = 0.8*x^2 + 0.5*x."""
-        x = torch.tensor([1.0, 2.0])
+        x = torch.tensor([[[1.0, 2.0]]])  # (1, 1, 2)
         expected = 0.8 * x ** 2 + 0.5 * x
         torch.testing.assert_close(xielu(x), expected)
 
     def test_negative_values(self):
         """For x <= 0: f(x) = 0.8*(exp(clamp(x,-1e-6))-1) - 0.8*x + 0.5*x."""
-        x = torch.tensor([-1.0, -2.0])
+        x = torch.tensor([[[-1.0, -2.0]]])  # (1, 1, 2)
         expected = (
             0.8 * torch.expm1(torch.clamp_max(x, -1e-6))
             - 0.8 * x
