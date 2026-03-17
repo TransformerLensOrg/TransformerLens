@@ -1542,6 +1542,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any):
         else:
             rope_type = ""
         if rope_type == "llama3":
+            assert rope_scaling is not None
             cfg_dict["use_NTK_by_parts_rope"] = True
             cfg_dict["NTK_original_ctx_len"] = rope_scaling.get(
                 "original_max_position_embeddings", hf_config.max_position_embeddings
