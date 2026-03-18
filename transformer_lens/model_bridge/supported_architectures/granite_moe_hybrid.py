@@ -81,7 +81,7 @@ class GraniteMoeHybridArchitectureAdapter(GraniteArchitectureAdapter):
         num_experts = getattr(self.cfg, "num_experts", None) or getattr(
             self.cfg, "num_local_experts", 0
         )
-        if num_experts > 0:
+        if num_experts and num_experts > 0:
             block_submodules["moe"] = MoEBridge(
                 name="block_sparse_moe",
                 config=self.cfg,
@@ -98,9 +98,7 @@ class GraniteMoeHybridArchitectureAdapter(GraniteArchitectureAdapter):
         }
 
         if self.cfg.positional_embedding_type == "rotary":
-            mapping["rotary_emb"] = RotaryEmbeddingBridge(
-                name="model.rotary_emb", config=self.cfg
-            )
+            mapping["rotary_emb"] = RotaryEmbeddingBridge(name="model.rotary_emb", config=self.cfg)
 
         return mapping
 
