@@ -76,7 +76,9 @@ class GraniteArchitectureAdapter(ArchitectureAdapter):
             return self.cfg.n_key_value_heads
         return self.cfg.n_heads
 
-    def _build_attn_weight_conversions(self, n_kv_heads: int) -> Dict[str, ParamProcessingConversion]:
+    def _build_attn_weight_conversions(
+        self, n_kv_heads: int
+    ) -> Dict[str, ParamProcessingConversion | str]:
         """Build weight processing conversions for attention projections."""
         return {
             "blocks.{i}.attn.q.weight": ParamProcessingConversion(

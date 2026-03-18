@@ -67,9 +67,7 @@ class MoEBridge(GeneralizedComponent):
         d_model = self.config.d_model if self.config and hasattr(self.config, "d_model") else 768
         # Use positional args to avoid parameter name mismatches across MoE implementations
         # (e.g., Mixtral uses "hidden_states", GraniteMoe uses "layer_input")
-        return {
-            "args": (torch.randn(batch_size, seq_len, d_model, device=device, dtype=dtype),)
-        }
+        return {"args": (torch.randn(batch_size, seq_len, d_model, device=device, dtype=dtype),)}
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         """Forward pass through the MoE bridge.

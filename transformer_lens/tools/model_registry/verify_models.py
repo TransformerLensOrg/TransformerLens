@@ -774,9 +774,7 @@ def verify_models(
             continue
 
         # Step 2: Check memory
-        estimated_mem = estimate_benchmark_memory_gb(
-            n_params, dtype, phases=phases
-        )
+        estimated_mem = estimate_benchmark_memory_gb(n_params, dtype, phases=phases)
         candidate.estimated_memory_gb = estimated_mem
         if not quiet:
             print(
@@ -1087,9 +1085,7 @@ def _print_dry_run(
         for c in models:
             try:
                 n_params = estimate_model_params(c.model_id)
-                mem = estimate_benchmark_memory_gb(
-                    n_params, dtype, phases=phases
-                )
+                mem = estimate_benchmark_memory_gb(n_params, dtype, phases=phases)
                 status = "OK" if mem <= max_memory_gb else "SKIP (too large)"
                 if mem > max_memory_gb:
                     skippable += 1
