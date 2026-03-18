@@ -80,7 +80,6 @@ def convert_apertus_weights(apertus, cfg: HookedTransformerConfig):
         )
 
         state_dict[f"blocks.{l}.ln2.w"] = apertus.model.layers[l].feedforward_layernorm.weight
-
         if not cfg.load_in_4bit:
             state_dict[f"blocks.{l}.mlp.W_in"] = apertus.model.layers[l].mlp.up_proj.weight.T
             state_dict[f"blocks.{l}.mlp.W_out"] = apertus.model.layers[l].mlp.down_proj.weight.T
