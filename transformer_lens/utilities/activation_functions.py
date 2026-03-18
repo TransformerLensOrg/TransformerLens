@@ -8,7 +8,7 @@ from typing import Callable, Dict
 import torch
 import torch.nn.functional as F
 
-from transformer_lens.utils import gelu_fast, gelu_new, solu
+from transformer_lens.utils import gelu_fast, gelu_new, solu, xielu
 
 # Convenient type for the format of each activation function
 ActivationFunction = Callable[..., torch.Tensor]
@@ -24,4 +24,5 @@ SUPPORTED_ACTIVATIONS: Dict[str, ActivationFunction] = {
     "relu": F.relu,
     "gelu": F.gelu,
     "gelu_pytorch_tanh": lambda tensor: F.gelu(tensor, approximate="tanh"),
+    "xielu": xielu,
 }
