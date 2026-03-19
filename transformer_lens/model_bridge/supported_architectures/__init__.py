@@ -3,6 +3,9 @@
 This module contains all the supported architecture adapters for different model architectures.
 """
 
+from transformer_lens.model_bridge.supported_architectures.apertus import (
+    ApertusArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.bert import (
     BertArchitectureAdapter,
 )
@@ -119,6 +122,7 @@ from transformer_lens.model_bridge.supported_architectures.t5 import (
 )
 
 __all__ = [
+    "ApertusArchitectureAdapter",
     "BertArchitectureAdapter",
     "BloomArchitectureAdapter",
     "Gemma1ArchitectureAdapter",

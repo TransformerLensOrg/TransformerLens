@@ -6,6 +6,7 @@ This module provides a factory for creating architecture adapters.
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.supported_architectures import (
+    ApertusArchitectureAdapter,
     BertArchitectureAdapter,
     BloomArchitectureAdapter,
     Gemma1ArchitectureAdapter,
@@ -47,6 +48,7 @@ from transformer_lens.model_bridge.supported_architectures import (
 
 # Export supported architectures
 SUPPORTED_ARCHITECTURES = {
+    "ApertusForCausalLM": ApertusArchitectureAdapter,
     "BertForMaskedLM": BertArchitectureAdapter,
     "BloomForCausalLM": BloomArchitectureAdapter,
     "GemmaForCausalLM": Gemma1ArchitectureAdapter,  # Default to Gemma1 as it's the original version

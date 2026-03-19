@@ -42,6 +42,7 @@ from .verification import VerificationHistory, VerificationRecord
 # Internal-only architectures (NanoGPT, MinGPT, NeelSoluOld, GPT2LMHeadCustomModel)
 # are excluded since they never appear on HuggingFace Hub.
 HF_SUPPORTED_ARCHITECTURES: set[str] = {
+    "ApertusForCausalLM",
     "BertForMaskedLM",
     "BloomForCausalLM",
     "GemmaForCausalLM",

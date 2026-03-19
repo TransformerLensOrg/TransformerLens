@@ -189,6 +189,7 @@ def determine_architecture_from_hf_config(hf_config):
     if hasattr(hf_config, "model_type"):
         model_type = hf_config.model_type
         model_type_mappings = {
+            "apertus": "ApertusForCausalLM",
             "gpt2": "GPT2LMHeadModel",
             "llama": "LlamaForCausalLM",
             "mistral": "MistralForCausalLM",
