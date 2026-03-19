@@ -1,65 +1,65 @@
 {
-  "generated_at": "2026-03-18",
+  "generated_at": "2026-03-19",
   "scan_info": {
-    "total_scanned": 3426,
+    "total_scanned": 3517,
     "task_filter": "text-generation",
     "min_downloads": 500,
-    "scan_duration_seconds": 2.4
+    "scan_duration_seconds": 2.7
   },
-  "total_unsupported_architectures": 253,
-  "total_unsupported_models": 1013,
+  "total_unsupported_architectures": 258,
+  "total_unsupported_models": 1031,
   "gaps": [
     {
       "architecture_id": "Qwen3MoeForCausalLM",
-      "total_models": 66,
+      "total_models": 68,
       "sample_models": [
         "Qwen/Qwen3-30B-A3B",
-        "Qwen/Qwen3-30B-A3B-Thinking-2507",
         "Qwen/Qwen3-30B-A3B-Instruct-2507",
+        "Qwen/Qwen3-30B-A3B-Thinking-2507",
         "Qwen/Qwen3-Coder-30B-A3B-Instruct",
         "Qwen/Qwen3-235B-A22B",
         "trl-internal-testing/tiny-Qwen3MoeForCausalLM",
         "Qwen/Qwen3-235B-A22B-Instruct-2507",
         "Qwen/Qwen3-Coder-480B-A35B-Instruct",
-        "nvidia/Qwen3-30B-A3B-NVFP4",
-        "NVFP4/Qwen3-30B-A3B-Instruct-2507-FP4"
+        "NVFP4/Qwen3-30B-A3B-Instruct-2507-FP4",
+        "nvidia/Qwen3-30B-A3B-NVFP4"
       ]
     },
     {
       "architecture_id": "DeepseekV3ForCausalLM",
-      "total_models": 51,
+      "total_models": 53,
       "sample_models": [
         "deepseek-ai/DeepSeek-R1",
-        "deepseek-ai/DeepSeek-V3",
         "deepseek-ai/DeepSeek-R1-0528",
+        "deepseek-ai/DeepSeek-V3",
         "deepseek-ai/DeepSeek-V3-0324",
         "nvidia/DeepSeek-R1-0528-NVFP4-v2",
         "deepseek-ai/DeepSeek-V3.1",
         "ai-sage/GigaChat3-10B-A1.8B",
         "trl-internal-testing/tiny-DeepseekV3ForCausalLM",
-        "trl-internal-testing/tiny-DeepseekV3ForCausalLM-0528",
-        "nvidia/DeepSeek-V3-0324-NVFP4"
+        "nvidia/DeepSeek-V3-0324-NVFP4",
+        "moonshotai/Kimi-K2-Instruct"
       ]
     },
     {
       "architecture_id": "Qwen3_5ForConditionalGeneration",
-      "total_models": 42,
+      "total_models": 46,
       "sample_models": [
         "Jackrong/Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled",
         "osoleve/Qwen3.5-27B-Text-NVFP4-MTP",
-        "nightmedia/Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-qx64-hi-mlx",
         "Tesslate/OmniCoder-9B",
-        "txn545/Qwen3.5-27B-NVFP4",
+        "nightmedia/Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-qx64-hi-mlx",
         "Jackrong/Qwen3.5-9B-Claude-4.6-Opus-Reasoning-Distilled",
-        "EganAI/qwen3.5-9b-terminal-merge",
+        "txn545/Qwen3.5-27B-NVFP4",
+        "mconcat/Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-NVFP4",
         "Jackrong/Qwen3.5-4B-Claude-4.6-Opus-Reasoning-Distilled",
-        "Jackrong/Qwen3.5-2B-Claude-4.6-Opus-Reasoning-Distilled",
-        "nightmedia/Qwen3.5-27B-Text"
+        "EganAI/qwen3.5-9b-terminal-merge",
+        "Jackrong/Qwen3.5-2B-Claude-4.6-Opus-Reasoning-Distilled"
       ]
     },
     {
       "architecture_id": "Qwen3NextForCausalLM",
-      "total_models": 37,
+      "total_models": 35,
       "sample_models": [
         "Qwen/Qwen3-Coder-Next",
         "Qwen/Qwen3-Next-80B-A3B-Instruct",
@@ -75,14 +75,14 @@
     },
     {
       "architecture_id": "FalconForCausalLM",
-      "total_models": 31,
+      "total_models": 32,
       "sample_models": [
         "tiiuae/falcon-7b",
         "tiiuae/falcon-7b-instruct",
         "tiiuae/falcon-40b-instruct",
         "tiiuae/falcon-40b",
-        "fxmarty/really-tiny-falcon-testing",
         "tiiuae/falcon-rw-1b",
+        "fxmarty/really-tiny-falcon-testing",
         "vilsonrodrigues/falcon-7b-instruct-sharded",
         "tiiuae/falcon-11B",
         "euclaise/falcon_1b_stage2",
@@ -91,44 +91,28 @@
     },
     {
       "architecture_id": "Qwen3_5MoeForConditionalGeneration",
-      "total_models": 27,
+      "total_models": 28,
       "sample_models": [
         "txn545/Qwen3.5-122B-A10B-NVFP4",
         "nvidia/Qwen3.5-397B-A17B-NVFP4",
         "txn545/Qwen3.5-35B-A3B-NVFP4",
         "RepublicOfKorokke/Qwen3.5-35B-A3B-mlx-lm-mxfp4",
         "nightmedia/Qwen3.5-35B-A3B-Text-qx64-hi-mlx",
+        "lukealonso/Qwen3.5-397B-A17B-NVFP4",
         "nightmedia/Qwen3.5-122B-A10B-Text-mxfp4-mlx",
         "olka-fi/Qwen3.5-122B-A10B-MXFP4",
-        "lukealonso/Qwen3.5-397B-A17B-NVFP4",
         "Jackrong/Qwen3.5-35B-A3B-Claude-4.6-Opus-Reasoning-Distilled",
         "NexVeridian/Qwen3.5-35B-A3B-3bit"
       ]
     },
     {
-      "architecture_id": "InternLM2ForCausalLM",
-      "total_models": 21,
-      "sample_models": [
-        "internlm/internlm2-chat-7b",
-        "internlm/internlm2_5-7b-chat",
-        "internlm/internlm2-7b",
-        "internlm/internlm2-20b",
-        "internlm/internlm2-base-7b",
-        "internlm/internlm2-chat-20b",
-        "internlm/internlm2-base-20b",
-        "chujiezheng/internlm2-chat-7b-ExPO",
-        "chujiezheng/internlm2-chat-20b-ExPO",
-        "AI4Chem/ChemLLM-7B-Chat-1_5-DPO"
-      ]
-    },
-    {
       "architecture_id": "Lfm2ForCausalLM",
-      "total_models": 19,
+      "total_models": 21,
       "sample_models": [
         "LiquidAI/LFM2-1.2B",
         "LiquidAI/LFM2.5-1.2B-Instruct",
-        "LiquidAI/LFM2-350M",
         "LiquidAI/LFM2.5-1.2B-Base",
+        "LiquidAI/LFM2-350M",
         "LiquidAI/LFM2.5-1.2B-Thinking",
         "LiquidAI/LFM2-2.6B",
         "LiquidAI/LFM2-2.6B-Exp",
@@ -138,14 +122,30 @@
       ]
     },
     {
+      "architecture_id": "InternLM2ForCausalLM",
+      "total_models": 19,
+      "sample_models": [
+        "internlm/internlm2-chat-7b",
+        "internlm/internlm2_5-7b-chat",
+        "internlm/internlm2-7b",
+        "internlm/internlm2-20b",
+        "internlm/internlm2-base-7b",
+        "internlm/internlm2-chat-20b",
+        "internlm/internlm2-base-20b",
+        "chujiezheng/internlm2-chat-20b-ExPO",
+        "chujiezheng/internlm2-chat-7b-ExPO",
+        "AI4Chem/ChemLLM-7B-Chat-1_5-DPO"
+      ]
+    },
+    {
       "architecture_id": "Glm4MoeForCausalLM",
-      "total_models": 17,
+      "total_models": 18,
       "sample_models": [
         "zai-org/GLM-4.5-Air",
         "zai-org/GLM-4.7",
         "trl-internal-testing/tiny-Glm4MoeForCausalLM",
-        "zai-org/GLM-4.6",
         "zai-org/GLM-4.5",
+        "zai-org/GLM-4.6",
         "Tengyunw/GLM-4.7-NVFP4",
         "Salyut1/GLM-4.7-NVFP4",
         "np-cr/testing-glm4-moe",
@@ -158,15 +158,15 @@
       "total_models": 17,
       "sample_models": [
         "ai21labs/AI21-Jamba-Mini-1.5",
-        "ai21labs/AI21-Jamba2-3B",
         "ai21labs/Jamba-tiny-random",
+        "ai21labs/AI21-Jamba2-3B",
         "ai21labs/AI21-Jamba-Reasoning-3B",
         "ai21labs/AI21-Jamba-Large-1.5",
         "ai21labs/AI21-Jamba-Mini-1.6",
         "ai21labs/AI21-Jamba-Large-1.6",
         "microsoft/Dayhoff-170m-GR",
         "ai21labs/Jamba-v0.1",
-        "microsoft/Dayhoff-170m-UR90"
+        "microsoft/Dayhoff-170M-GRS-112000"
       ]
     },
     {
@@ -191,30 +191,30 @@
       "sample_models": [
         "tiiuae/Falcon-H1-Tiny-90M-Instruct",
         "tiiuae/Falcon-H1-0.5B-Base",
-        "tiiuae/Falcon-H1-7B-Instruct",
         "tiiuae/Falcon-H1R-7B",
-        "tiiuae/Falcon-H1-34B-Instruct",
+        "tiiuae/Falcon-H1-7B-Instruct",
         "tiiuae/Falcon-H1-34B-Base",
+        "tiiuae/Falcon-H1-34B-Instruct",
         "tiiuae/Falcon-H1-1.5B-Base",
         "tiiuae/Falcon-H1-7B-Base",
         "tiiuae/Falcon-H1-3B-Base",
-        "tiiuae/Falcon-H1-1.5B-Instruct"
+        "tiiuae/Falcon-H1-1.5B-Deep-Base"
       ]
     },
     {
-      "architecture_id": "MiniMaxM2ForCausalLM",
+      "architecture_id": "NemotronHForCausalLM",
       "total_models": 15,
       "sample_models": [
-        "MiniMaxAI/MiniMax-M2.5",
-        "MiniMaxAI/MiniMax-M2",
-        "cerebras/MiniMax-M2.1-REAP-139B-A10B",
-        "MiniMaxAI/MiniMax-M2.1",
-        "cerebras/MiniMax-M2.5-REAP-139B-A10B",
-        "PrimeIntellect/MiniMax-M2.5-bf16",
-        "cerebras/MiniMax-M2.5-REAP-172B-A10B",
-        "saricles/MiniMax-M2.5-REAP-172B-A10B-NVFP4-GB10",
-        "amd/MiniMax-M2.1-MXFP4",
-        "aspctu/MiniMax-M2.5"
+        "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+        "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-NVFP4",
+        "nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4",
+        "nvidia/NVIDIA-Nemotron-Nano-9B-v2-Japanese",
+        "nvidia/NVIDIA-Nemotron-Nano-9B-v2",
+        "nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-BF16",
+        "unsloth/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4",
+        "OpenResearcher/OpenResearcher-30B-A3B",
+        "nvidia/NVIDIA-Nemotron-Nano-9B-v2-NVFP4",
+        "nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-Base-BF16"
       ]
     },
     {
@@ -228,25 +228,25 @@
         "ibm-granite/granite-20b-code-base-8k",
         "ibm-granite/granite-20b-code-instruct-8k",
         "HuggingFaceH4/starchat-beta",
-        "bigcode/starcoderbase-3b",
         "HuggingFaceH4/starchat-alpha",
-        "openchat/opencoderplus"
+        "LoupGarou/WizardCoder-Guanaco-15B-V1.1",
+        "Danielbrdz/CodeBarcenas-1b"
       ]
     },
     {
-      "architecture_id": "NemotronHForCausalLM",
+      "architecture_id": "MiniMaxM2ForCausalLM",
       "total_models": 14,
       "sample_models": [
-        "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
-        "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-NVFP4",
-        "nvidia/NVIDIA-Nemotron-Nano-9B-v2-Japanese",
-        "nvidia/NVIDIA-Nemotron-Nano-9B-v2",
-        "nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4",
-        "unsloth/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4",
-        "nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-BF16",
-        "OpenResearcher/OpenResearcher-30B-A3B",
-        "nvidia/NVIDIA-Nemotron-Nano-9B-v2-NVFP4",
-        "nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-Base-BF16"
+        "MiniMaxAI/MiniMax-M2.5",
+        "cerebras/MiniMax-M2.1-REAP-139B-A10B",
+        "MiniMaxAI/MiniMax-M2",
+        "MiniMaxAI/MiniMax-M2.1",
+        "cerebras/MiniMax-M2.5-REAP-139B-A10B",
+        "PrimeIntellect/MiniMax-M2.5-bf16",
+        "cerebras/MiniMax-M2.5-REAP-172B-A10B",
+        "saricles/MiniMax-M2.5-REAP-172B-A10B-NVFP4-GB10",
+        "aspctu/MiniMax-M2.5",
+        "amd/MiniMax-M2.1-MXFP4"
       ]
     },
     {
@@ -260,9 +260,25 @@
         "facebook/xglm-4.5B",
         "KoboldAI/fairseq-dense-125M",
         "KoboldAI/fairseq-dense-2.7B",
-        "KoboldAI/fairseq-dense-1.3B",
         "KoboldAI/fairseq-dense-355M",
+        "KoboldAI/fairseq-dense-1.3B",
         "KoboldAI/fairseq-dense-6.7B"
+      ]
+    },
+    {
+      "architecture_id": "Glm4MoeLiteForCausalLM",
+      "total_models": 13,
+      "sample_models": [
+        "zai-org/GLM-4.7-Flash",
+        "GadflyII/GLM-4.7-Flash-NVFP4",
+        "unsloth/GLM-4.7-Flash",
+        "GadflyII/GLM-4.7-Flash-MTP-NVFP4",
+        "Olafangensan/GLM-4.7-Flash-heretic",
+        "cerebras/GLM-4.7-Flash-REAP-23B-A3B",
+        "huihui-ai/Huihui-GLM-4.7-Flash-abliterated",
+        "TeichAI/GLM-4.7-Flash-Claude-Opus-4.5-High-Reasoning-Distill",
+        "Ex0bit/GLM-4.7-Flash-PRISM",
+        "MuXodious/GLM-4.7-Flash-absolute-heresy"
       ]
     },
     {
@@ -298,35 +314,19 @@
       ]
     },
     {
-      "architecture_id": "Glm4MoeLiteForCausalLM",
-      "total_models": 12,
-      "sample_models": [
-        "zai-org/GLM-4.7-Flash",
-        "GadflyII/GLM-4.7-Flash-NVFP4",
-        "unsloth/GLM-4.7-Flash",
-        "GadflyII/GLM-4.7-Flash-MTP-NVFP4",
-        "Olafangensan/GLM-4.7-Flash-heretic",
-        "huihui-ai/Huihui-GLM-4.7-Flash-abliterated",
-        "cerebras/GLM-4.7-Flash-REAP-23B-A3B",
-        "TeichAI/GLM-4.7-Flash-Claude-Opus-4.5-High-Reasoning-Distill",
-        "Ex0bit/GLM-4.7-Flash-PRISM",
-        "MuXodious/GLM-4.7-Flash-absolute-heresy"
-      ]
-    },
-    {
       "architecture_id": "DeepseekV2ForCausalLM",
       "total_models": 11,
       "sample_models": [
         "deepseek-ai/DeepSeek-V2-Lite-Chat",
         "deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct",
         "deepseek-ai/DeepSeek-V2-Lite",
-        "deepseek-ai/DeepSeek-V2.5",
         "deepseek-ai/DeepSeek-V2-Chat",
         "deepseek-ai/DeepSeek-Coder-V2-Instruct-0724",
         "deepseek-ai/DeepSeek-V2",
+        "deepseek-ai/DeepSeek-V2.5",
         "deepseek-ai/DeepSeek-Coder-V2-Instruct",
-        "deepseek-ai/DeepSeek-Coder-V2-Lite-Base",
-        "deepseek-ai/DeepSeek-V2-Chat-0628"
+        "deepseek-ai/DeepSeek-V2-Chat-0628",
+        "deepseek-ai/DeepSeek-Coder-V2-Lite-Base"
       ]
     },
     {
@@ -350,13 +350,13 @@
       "total_models": 10,
       "sample_models": [
         "google/t5gemma-s-s-prefixlm",
-        "google/t5gemma-b-b-ul2",
         "google/t5gemma-9b-9b-ul2",
+        "google/t5gemma-b-b-ul2",
         "google/t5gemma-2b-2b-ul2",
         "google/t5gemma-b-b-prefixlm",
         "google/t5gemma-9b-9b-ul2-it",
-        "google/t5gemma-9b-2b-ul2-it",
         "google/t5gemma-2b-2b-prefixlm",
+        "google/t5gemma-9b-2b-ul2-it",
         "google/t5gemma-l-l-prefixlm",
         "harshaljanjani/tiny-t5gemma-test"
       ]
@@ -379,7 +379,7 @@
     },
     {
       "architecture_id": "DeciLMForCausalLM",
-      "total_models": 10,
+      "total_models": 9,
       "sample_models": [
         "nvidia/Llama-3_3-Nemotron-Super-49B-v1_5",
         "nvidia/Llama-3_3-Nemotron-Super-49B-v1",
@@ -389,8 +389,22 @@
         "NewstaR/Porpoise-6b-instruct",
         "Danielbrdz/Barcenas-6b",
         "nvidia/Llama-3_1-Nemotron-Ultra-253B-v1",
-        "nvidia/Llama-3_1-Nemotron-51B-Instruct",
-        "nvidia/Llama-3_3-Nemotron-Super-49B-GenRM"
+        "nvidia/Llama-3_1-Nemotron-51B-Instruct"
+      ]
+    },
+    {
+      "architecture_id": "DFlashDraftModel",
+      "total_models": 9,
+      "sample_models": [
+        "z-lab/Qwen3-4B-DFlash-b16",
+        "z-lab/Qwen3-8B-DFlash-b16",
+        "z-lab/Qwen3.5-9B-DFlash",
+        "z-lab/gpt-oss-20b-DFlash",
+        "z-lab/gpt-oss-120b-DFlash",
+        "z-lab/LLaMA3.1-8B-Instruct-DFlash-UltraChat",
+        "z-lab/Qwen3.5-35B-A3B-DFlash",
+        "z-lab/Qwen3-Coder-30B-A3B-DFlash",
+        "z-lab/Qwen3.5-4B-DFlash"
       ]
     },
     {
@@ -436,40 +450,26 @@
       ]
     },
     {
-      "architecture_id": "DFlashDraftModel",
-      "total_models": 8,
-      "sample_models": [
-        "z-lab/Qwen3-4B-DFlash-b16",
-        "z-lab/Qwen3-8B-DFlash-b16",
-        "z-lab/Qwen3.5-9B-DFlash",
-        "z-lab/gpt-oss-20b-DFlash",
-        "z-lab/LLaMA3.1-8B-Instruct-DFlash-UltraChat",
-        "z-lab/gpt-oss-120b-DFlash",
-        "z-lab/Qwen3.5-35B-A3B-DFlash",
-        "z-lab/Qwen3-Coder-30B-A3B-DFlash"
-      ]
-    },
-    {
       "architecture_id": "Qwen3_5ForCausalLM",
       "total_models": 8,
       "sample_models": [
         "lukey03/Qwen3.5-9B-abliterated",
         "osoleve/Qwen3.5-9B-Base-Text-NVFP4",
-        "Green-eyedDevil/Monika-9B",
         "Phonsiri/Qwen3.5-9B-Thai-Law-Base",
+        "Green-eyedDevil/Monika-9B",
         "eerwitt/qwen-h-neurons-honest",
         "rahul7star/albeit",
-        "nahidstaq/html-section-retriever",
-        "nbeerbower/Huihui-Qwen3.5-9B-abliterated-Grimoire-ORPO"
+        "nbeerbower/Huihui-Qwen3.5-9B-abliterated-Grimoire-ORPO",
+        "nahidstaq/html-section-retriever"
       ]
     },
     {
       "architecture_id": "MPTForCausalLM",
       "total_models": 8,
       "sample_models": [
-        "echarlaix/tiny-mpt-random-remote-code",
         "anas-awadalla/mpt-7b",
         "wtang06/mpt-125m-c4",
+        "echarlaix/tiny-mpt-random-remote-code",
         "lightblue/japanese-mpt-7b",
         "vinai/PhoGPT-4B",
         "Nethermind/Mpt-Instruct-DotNet-S",
@@ -512,8 +512,21 @@
         "optimum-internal-testing/tiny-random-SmolLM3ForCausalLM",
         "onnx-internal-testing/tiny-random-SmolLM3ForCausalLM",
         "HuggingFaceTB/SmolLM3-3B-ONNX",
-        "toroe/SmolLM-3B-Science-ES",
-        "N-Bot-Int/SmolSam3-MEMGRPO"
+        "N-Bot-Int/SmolSam3-MEMGRPO",
+        "toroe/SmolLM-3B-Science-ES"
+      ]
+    },
+    {
+      "architecture_id": "ProGenForCausalLM",
+      "total_models": 7,
+      "sample_models": [
+        "hugohrban/progen2-base",
+        "hugohrban/progen2-small",
+        "hugohrban/progen2-medium",
+        "hugohrban/progen2-oas",
+        "hugohrban/progen2-small-mix7",
+        "hugohrban/progen2-large",
+        "hugohrban/progen2-xlarge"
       ]
     },
     {
@@ -553,15 +566,27 @@
       ]
     },
     {
-      "architecture_id": "ProGenForCausalLM",
+      "architecture_id": "NemotronForCausalLM",
       "total_models": 6,
       "sample_models": [
-        "hugohrban/progen2-small",
-        "hugohrban/progen2-base",
-        "hugohrban/progen2-medium",
-        "hugohrban/progen2-oas",
-        "hugohrban/progen2-xlarge",
-        "hugohrban/progen2-small-mix7"
+        "nvidia/Nemotron-Mini-4B-Instruct",
+        "nvidia/Minitron-8B-Base",
+        "badaoui/tiny-random-NemotronForCausalLM",
+        "nvidia/Minitron-4B-Base",
+        "thhaus/nemotron3-8b",
+        "dmvevents/Nemotron-Mini-4B-Instruct"
+      ]
+    },
+    {
+      "architecture_id": "HyenaDNAForCausalLM",
+      "total_models": 6,
+      "sample_models": [
+        "LongSafari/hyenadna-small-32k-seqlen-hf",
+        "LongSafari/hyenadna-tiny-1k-seqlen-hf",
+        "LongSafari/hyenadna-large-1m-seqlen-hf",
+        "LongSafari/hyenadna-medium-450k-seqlen-hf",
+        "LongSafari/hyenadna-medium-160k-seqlen-hf",
+        "LongSafari/hyenadna-tiny-1k-seqlen-d256-hf"
       ]
     },
     {
@@ -577,25 +602,13 @@
       ]
     },
     {
-      "architecture_id": "HyenaDNAForCausalLM",
-      "total_models": 6,
-      "sample_models": [
-        "LongSafari/hyenadna-small-32k-seqlen-hf",
-        "LongSafari/hyenadna-large-1m-seqlen-hf",
-        "LongSafari/hyenadna-medium-160k-seqlen-hf",
-        "LongSafari/hyenadna-medium-450k-seqlen-hf",
-        "LongSafari/hyenadna-tiny-1k-seqlen-hf",
-        "LongSafari/hyenadna-tiny-1k-seqlen-d256-hf"
-      ]
-    },
-    {
       "architecture_id": "LlavaLlamaModel",
       "total_models": 6,
       "sample_models": [
         "Efficient-Large-Model/VILA1.5-3b",
-        "Efficient-Large-Model/NVILA-15B",
         "Efficient-Large-Model/NVILA-Lite-8B",
         "Efficient-Large-Model/NVILA-8B",
+        "Efficient-Large-Model/NVILA-15B",
         "Efficient-Large-Model/VILA1.5-13b",
         "Efficient-Large-Model/Llama-3-VILA1.5-8B"
       ]
@@ -619,8 +632,8 @@
         "GSAI-ML/LLaDA-8B-Instruct",
         "GSAI-ML/LLaDA-8B-Base",
         "GSAI-ML/LLaDA-1.5",
-        "Fraser/LLaDA-8B-Base-gg2m",
-        "d3LLM/d3LLM_LLaDA"
+        "d3LLM/d3LLM_LLaDA",
+        "Fraser/LLaDA-8B-Base-gg2m"
       ]
     },
     {
@@ -632,6 +645,17 @@
         "tiiuae/falcon-mamba-7b",
         "tiiuae/falcon-mamba-7b-instruct",
         "tiiuae/Falcon3-Mamba-7B-Instruct"
+      ]
+    },
+    {
+      "architecture_id": "DreamModel",
+      "total_models": 5,
+      "sample_models": [
+        "Dream-org/Dream-v0-Instruct-7B",
+        "Dream-org/Dream-v0-Base-7B",
+        "Dream-org/Dream-Coder-v0-Instruct-7B",
+        "d3LLM/d3LLM_Dream",
+        "Dream-org/Dream-Coder-v0-Base-7B"
       ]
     },
     {
@@ -660,8 +684,8 @@
       "architecture_id": "Ernie4_5_MoeForCausalLM",
       "total_models": 5,
       "sample_models": [
-        "baidu/ERNIE-4.5-21B-A3B-Base-PT",
         "baidu/ERNIE-4.5-21B-A3B-PT",
+        "baidu/ERNIE-4.5-21B-A3B-Base-PT",
         "baidu/ERNIE-4.5-21B-A3B-Thinking",
         "baidu/ERNIE-4.5-300B-A47B-PT",
         "baidu/ERNIE-4.5-300B-A47B-Paddle"
@@ -712,25 +736,14 @@
       ]
     },
     {
-      "architecture_id": "NemotronForCausalLM",
-      "total_models": 5,
-      "sample_models": [
-        "nvidia/Minitron-8B-Base",
-        "nvidia/Nemotron-Mini-4B-Instruct",
-        "badaoui/tiny-random-NemotronForCausalLM",
-        "nvidia/Minitron-4B-Base",
-        "thhaus/nemotron3-8b"
-      ]
-    },
-    {
       "architecture_id": "HunYuanDenseV1ForCausalLM",
       "total_models": 5,
       "sample_models": [
         "tencent/Hunyuan-7B-Instruct",
         "tencent/Hunyuan-0.5B-Pretrain",
         "tencent/Hunyuan-4B-Instruct",
-        "tencent/Hunyuan-1.8B-Instruct",
-        "tencent/Hunyuan-0.5B-Instruct"
+        "tencent/Hunyuan-0.5B-Instruct",
+        "tencent/Hunyuan-1.8B-Instruct"
       ]
     },
     {
@@ -754,23 +767,13 @@
       ]
     },
     {
-      "architecture_id": "DreamModel",
+      "architecture_id": "Lfm2MoeForCausalLM",
       "total_models": 4,
       "sample_models": [
-        "Dream-org/Dream-v0-Instruct-7B",
-        "Dream-org/Dream-v0-Base-7B",
-        "Dream-org/Dream-Coder-v0-Instruct-7B",
-        "d3LLM/d3LLM_Dream"
-      ]
-    },
-    {
-      "architecture_id": "Step3p5ForCausalLM",
-      "total_models": 4,
-      "sample_models": [
-        "stepfun-ai/Step-3.5-Flash",
-        "tacos4me/Step-3.5-Flash-NVFP4",
-        "stepfun-ai/Step-3.5-Flash-Base",
-        "shieldstackllc/Step-3.5-Flash-REAP-128B-A11B-mlx-mixed-4-6"
+        "LiquidAI/LFM2-8B-A1B",
+        "LiquidAI/LFM2-24B-A2B",
+        "huihui-ai/Huihui-LFM2-24B-A2B-abliterated",
+        "huihui-ai/Huihui-LFM2-8B-A1B-abliterated"
       ]
     },
     {
@@ -788,8 +791,8 @@
       "total_models": 4,
       "sample_models": [
         "nvidia/gpt-oss-120b-Eagle3-short-context",
-        "nvidia/gpt-oss-120b-Eagle3-long-context",
         "taobao-mnn/Qwen3-VL-8B-Instruct-Eagle3",
+        "nvidia/gpt-oss-120b-Eagle3-long-context",
         "nvidia/gpt-oss-120b-Eagle3-throughput"
       ]
     },
@@ -859,8 +862,8 @@
       "sample_models": [
         "BAAI/AquilaChat2-7B",
         "katuni4ka/tiny-random-aquila2",
-        "katuni4ka/tiny-random-aquilachat",
-        "BAAI/Aquila2-34B"
+        "BAAI/Aquila2-34B",
+        "katuni4ka/tiny-random-aquilachat"
       ]
     },
     {
@@ -932,8 +935,17 @@
       "total_models": 3,
       "sample_models": [
         "zai-org/GLM-5",
-        "yujiepan/glm-5-tiny-random",
+        "nvidia/GLM-5-NVFP4",
         "cs2764/GLM-5_dq3-mlx"
+      ]
+    },
+    {
+      "architecture_id": "Step3p5ForCausalLM",
+      "total_models": 3,
+      "sample_models": [
+        "stepfun-ai/Step-3.5-Flash",
+        "tacos4me/Step-3.5-Flash-NVFP4",
+        "stepfun-ai/Step-3.5-Flash-Base"
       ]
     },
     {
@@ -968,8 +980,8 @@
       "total_models": 3,
       "sample_models": [
         "nvidia/Nemotron-Flash-3B",
-        "nvidia/Nemotron-Flash-1B",
-        "nvidia/Nemotron-Flash-3B-Instruct"
+        "nvidia/Nemotron-Flash-3B-Instruct",
+        "nvidia/Nemotron-Flash-1B"
       ]
     },
     {
@@ -979,6 +991,15 @@
         "RedHatAI/Mistral-Small-3.2-24B-Instruct-2506-NVFP4",
         "ArmGPT/ArmenianGPT-1.0-3B",
         "srs6901/SOLARized-GraniStral-14B_2102_YeAM-HCT_32QKV"
+      ]
+    },
+    {
+      "architecture_id": "Llama4ForConditionalGeneration",
+      "total_models": 3,
+      "sample_models": [
+        "RedHatAI/Llama-4-Scout-17B-16E-Instruct-NVFP4",
+        "yujiepan/llama-4-tiny-random",
+        "RedHatAI/Llama-4-Maverick-17B-128E-Instruct-NVFP4"
       ]
     },
     {
@@ -1004,8 +1025,8 @@
       "total_models": 3,
       "sample_models": [
         "trillionlabs/Tri-21B-Think",
-        "trillionlabs/Tri-21B-Think-Preview",
-        "trillionlabs/Tri-21B"
+        "trillionlabs/Tri-21B",
+        "trillionlabs/Tri-21B-Think-Preview"
       ]
     },
     {
@@ -1015,6 +1036,15 @@
         "HuggingFaceM4/idefics-80b-instruct",
         "HuggingFaceM4/idefics-9b",
         "HuggingFaceM4/idefics-9b-instruct"
+      ]
+    },
+    {
+      "architecture_id": "OLMoForCausalLM",
+      "total_models": 3,
+      "sample_models": [
+        "allenai/OLMo-1B",
+        "allenai/OLMo-7B-Instruct",
+        "allenai/OLMo-7B"
       ]
     },
     {
@@ -1070,19 +1100,19 @@
       ]
     },
     {
-      "architecture_id": "OpenAIGPTLMHeadModel",
-      "total_models": 2,
-      "sample_models": [
-        "openai-community/openai-gpt",
-        "lgaalves/gpt1"
-      ]
-    },
-    {
       "architecture_id": "HCXVisionV2ForCausalLM",
       "total_models": 2,
       "sample_models": [
         "naver-hyperclovax/HyperCLOVAX-SEED-Omni-8B",
         "naver-hyperclovax/HyperCLOVAX-SEED-Think-32B"
+      ]
+    },
+    {
+      "architecture_id": "OpenAIGPTLMHeadModel",
+      "total_models": 2,
+      "sample_models": [
+        "openai-community/openai-gpt",
+        "lgaalves/gpt1"
       ]
     },
     {
@@ -1110,11 +1140,11 @@
       ]
     },
     {
-      "architecture_id": "Lfm2MoeForCausalLM",
+      "architecture_id": "BartForConditionalGeneration",
       "total_models": 2,
       "sample_models": [
-        "LiquidAI/LFM2-8B-A1B",
-        "LiquidAI/LFM2-24B-A2B"
+        "KomeijiForce/bart-large-emojilm",
+        "Nargizi/screeve-lemmatizer"
       ]
     },
     {
@@ -1126,14 +1156,6 @@
       ]
     },
     {
-      "architecture_id": "DbrxForCausalLM",
-      "total_models": 2,
-      "sample_models": [
-        "trl-internal-testing/tiny-DbrxForCausalLM",
-        "katuni4ka/tiny-random-dbrx"
-      ]
-    },
-    {
       "architecture_id": "KimiLinearForCausalLM",
       "total_models": 2,
       "sample_models": [
@@ -1142,11 +1164,11 @@
       ]
     },
     {
-      "architecture_id": "BartForConditionalGeneration",
+      "architecture_id": "DbrxForCausalLM",
       "total_models": 2,
       "sample_models": [
-        "Nargizi/screeve-lemmatizer",
-        "KomeijiForce/bart-large-emojilm"
+        "trl-internal-testing/tiny-DbrxForCausalLM",
+        "katuni4ka/tiny-random-dbrx"
       ]
     },
     {
@@ -1174,14 +1196,6 @@
       ]
     },
     {
-      "architecture_id": "BailingMoeV2_5ForCausalLM",
-      "total_models": 2,
-      "sample_models": [
-        "inclusionAI/Ring-2.5-1T",
-        "inclusionAI/Ling-2.5-1T"
-      ]
-    },
-    {
       "architecture_id": "Phi3SmallForCausalLM",
       "total_models": 2,
       "sample_models": [
@@ -1193,8 +1207,8 @@
       "architecture_id": "MiniMaxM1ForCausalLM",
       "total_models": 2,
       "sample_models": [
-        "MiniMaxAI/MiniMax-M1-80k",
-        "MiniMaxAI/MiniMax-M1-40k"
+        "MiniMaxAI/MiniMax-M1-40k",
+        "MiniMaxAI/MiniMax-M1-80k"
       ]
     },
     {
@@ -1222,11 +1236,11 @@
       ]
     },
     {
-      "architecture_id": "Llama4ForConditionalGeneration",
+      "architecture_id": "InternVLChatModel",
       "total_models": 2,
       "sample_models": [
-        "RedHatAI/Llama-4-Scout-17B-16E-Instruct-NVFP4",
-        "yujiepan/llama-4-tiny-random"
+        "numind/NuExtract-2-4B-experimental",
+        "numind/NuExtract-2-8B-experimental"
       ]
     },
     {
@@ -1246,11 +1260,11 @@
       ]
     },
     {
-      "architecture_id": "InternVLChatModel",
+      "architecture_id": "XverseForCausalLM",
       "total_models": 2,
       "sample_models": [
-        "numind/NuExtract-2-4B-experimental",
-        "numind/NuExtract-2-8B-experimental"
+        "xverse/XVERSE-7B-Chat",
+        "katuni4ka/tiny-random-xverse"
       ]
     },
     {
@@ -1270,11 +1284,11 @@
       ]
     },
     {
-      "architecture_id": "XverseForCausalLM",
+      "architecture_id": "AXK1ForCausalLM",
       "total_models": 2,
       "sample_models": [
-        "xverse/XVERSE-7B-Chat",
-        "katuni4ka/tiny-random-xverse"
+        "skt/A.X-K1",
+        "thkim93/axk1-2layers"
       ]
     },
     {
@@ -1310,51 +1324,11 @@
       ]
     },
     {
-      "architecture_id": "Qwen3VLForConditionalGeneration",
-      "total_models": 2,
-      "sample_models": [
-        "RedHatAI/Qwen3-VL-32B-Instruct-NVFP4",
-        "Goekdeniz-Guelmez/Josiefied-Qwen3-VL-4B-Instruct-abliterated-beta-v1"
-      ]
-    },
-    {
       "architecture_id": "MolformerForCausalLM",
       "total_models": 2,
       "sample_models": [
         "ibm-research/GP-MoLFormer-Uniq",
         "ralyn/NPComposer-v2"
-      ]
-    },
-    {
-      "architecture_id": "Rwkv6ForCausalLM",
-      "total_models": 2,
-      "sample_models": [
-        "RWKV/v6-Finch-1B6-HF",
-        "RWKV/v6-Finch-14B-HF"
-      ]
-    },
-    {
-      "architecture_id": "OLMoForCausalLM",
-      "total_models": 2,
-      "sample_models": [
-        "allenai/OLMo-7B",
-        "allenai/OLMo-1B"
-      ]
-    },
-    {
-      "architecture_id": "BolmoForCausalLM",
-      "total_models": 2,
-      "sample_models": [
-        "allenai/Bolmo-7B",
-        "allenai/Bolmo-1B"
-      ]
-    },
-    {
-      "architecture_id": "Eagle3DraftModel",
-      "total_models": 2,
-      "sample_models": [
-        "RedHatAI/Qwen3-30B-A3B-Instruct-2507-speculator.eagle3",
-        "RedHatAI/Qwen3-235B-A22B-Instruct-2507-speculator.eagle3"
       ]
     },
     {
@@ -1371,6 +1345,22 @@
       "sample_models": [
         "anas-awadalla/mpt-1b-redpajama-200b",
         "anas-awadalla/mpt-1b-redpajama-200b-dolly"
+      ]
+    },
+    {
+      "architecture_id": "Eagle3DraftModel",
+      "total_models": 2,
+      "sample_models": [
+        "RedHatAI/Qwen3-30B-A3B-Instruct-2507-speculator.eagle3",
+        "RedHatAI/Qwen3-235B-A22B-Instruct-2507-speculator.eagle3"
+      ]
+    },
+    {
+      "architecture_id": "BolmoForCausalLM",
+      "total_models": 2,
+      "sample_models": [
+        "allenai/Bolmo-7B",
+        "allenai/Bolmo-1B"
       ]
     },
     {
@@ -1406,19 +1396,11 @@
       ]
     },
     {
-      "architecture_id": "BottleneckT5LMWithPerturb",
-      "total_models": 2,
-      "sample_models": [
-        "thesephist/contra-bottleneck-t5-base-wikipedia",
-        "thesephist/contra-bottleneck-t5-large-wikipedia"
-      ]
-    },
-    {
       "architecture_id": "ParamBharatGenForCausalLM",
       "total_models": 2,
       "sample_models": [
-        "bharatgenai/AyurParam",
-        "bharatgenai/Param-1-2.9B-Instruct"
+        "bharatgenai/Param-1-2.9B-Instruct",
+        "bharatgenai/AyurParam"
       ]
     },
     {
@@ -1438,19 +1420,19 @@
       ]
     },
     {
+      "architecture_id": "BottleneckT5LMWithPerturb",
+      "total_models": 2,
+      "sample_models": [
+        "thesephist/contra-bottleneck-t5-base-wikipedia",
+        "thesephist/contra-bottleneck-t5-large-wikipedia"
+      ]
+    },
+    {
       "architecture_id": "MptForCausalLM",
       "total_models": 2,
       "sample_models": [
         "team-lucid/mptk-1b",
         "explosion-testing/mpt-test"
-      ]
-    },
-    {
-      "architecture_id": "InstellaForCausalLM",
-      "total_models": 2,
-      "sample_models": [
-        "amd/Instella-3B",
-        "amd/Instella-3B-Instruct"
       ]
     },
     {
@@ -1525,13 +1507,6 @@
       ]
     },
     {
-      "architecture_id": "GPTRefactForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "refactai/Refact-1_6B-fim"
-      ]
-    },
-    {
       "architecture_id": "SarvamMoEForCausalLM",
       "total_models": 1,
       "sample_models": [
@@ -1546,10 +1521,10 @@
       ]
     },
     {
-      "architecture_id": "ExaoneMoEForCausalLM",
+      "architecture_id": "GPTRefactForCausalLM",
       "total_models": 1,
       "sample_models": [
-        "LGAI-EXAONE/K-EXAONE-236B-A23B"
+        "refactai/Refact-1_6B-fim"
       ]
     },
     {
@@ -1557,6 +1532,13 @@
       "total_models": 1,
       "sample_models": [
         "naver-hyperclovax/HyperCLOVAX-SEED-Think-14B"
+      ]
+    },
+    {
+      "architecture_id": "ExaoneMoEForCausalLM",
+      "total_models": 1,
+      "sample_models": [
+        "LGAI-EXAONE/K-EXAONE-236B-A23B"
       ]
     },
     {
@@ -1574,10 +1556,10 @@
       ]
     },
     {
-      "architecture_id": "JetNemotronForCausalLM",
+      "architecture_id": "BailingMoeV2_5ForCausalLM",
       "total_models": 1,
       "sample_models": [
-        "jet-ai/Jet-Nemotron-2B"
+        "inclusionAI/Ring-2.5-1T"
       ]
     },
     {
@@ -1588,10 +1570,10 @@
       ]
     },
     {
-      "architecture_id": "Grok1ModelForCausalLM",
+      "architecture_id": "JetNemotronForCausalLM",
       "total_models": 1,
       "sample_models": [
-        "hpcai-tech/grok-1"
+        "jet-ai/Jet-Nemotron-2B"
       ]
     },
     {
@@ -1602,17 +1584,17 @@
       ]
     },
     {
+      "architecture_id": "Grok1ModelForCausalLM",
+      "total_models": 1,
+      "sample_models": [
+        "hpcai-tech/grok-1"
+      ]
+    },
+    {
       "architecture_id": "Qwen3VLMoeForConditionalGeneration",
       "total_models": 1,
       "sample_models": [
         "RedHatAI/Qwen3-VL-235B-A22B-Instruct-NVFP4"
-      ]
-    },
-    {
-      "architecture_id": "Emu3ForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "BAAI/Emu3-Chat"
       ]
     },
     {
@@ -1623,6 +1605,13 @@
       ]
     },
     {
+      "architecture_id": "Emu3ForCausalLM",
+      "total_models": 1,
+      "sample_models": [
+        "BAAI/Emu3-Chat"
+      ]
+    },
+    {
       "architecture_id": "GRIN-MoE",
       "total_models": 1,
       "sample_models": [
@@ -1630,17 +1619,17 @@
       ]
     },
     {
-      "architecture_id": "MiniMaxForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "MiniMaxAI/MiniMax-Text-01-hf"
-      ]
-    },
-    {
       "architecture_id": "AV2TextForConditionalGeneration",
       "total_models": 1,
       "sample_models": [
         "nguyenvulebinh/AV-HuBERT-MuAViC-en"
+      ]
+    },
+    {
+      "architecture_id": "MiniMaxForCausalLM",
+      "total_models": 1,
+      "sample_models": [
+        "MiniMaxAI/MiniMax-Text-01-hf"
       ]
     },
     {
@@ -1672,6 +1661,13 @@
       ]
     },
     {
+      "architecture_id": "SarvamMLAForCausalLM",
+      "total_models": 1,
+      "sample_models": [
+        "sarvamai/sarvam-105b"
+      ]
+    },
+    {
       "architecture_id": "Plamo3ForCausalLM",
       "total_models": 1,
       "sample_models": [
@@ -1686,24 +1682,10 @@
       ]
     },
     {
-      "architecture_id": "SarvamMLAForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "sarvamai/sarvam-105b"
-      ]
-    },
-    {
       "architecture_id": "GraphT5TransformerForConditionalGeneration",
       "total_models": 1,
       "sample_models": [
         "haitengzhao/gimlet"
-      ]
-    },
-    {
-      "architecture_id": "CheXagentForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "StanfordAIMI/CheXagent-2-3b"
       ]
     },
     {
@@ -1728,10 +1710,10 @@
       ]
     },
     {
-      "architecture_id": "AXK1ForCausalLM",
+      "architecture_id": "CheXagentForCausalLM",
       "total_models": 1,
       "sample_models": [
-        "skt/A.X-K1"
+        "StanfordAIMI/CheXagent-2-3b"
       ]
     },
     {
@@ -1756,6 +1738,27 @@
       ]
     },
     {
+      "architecture_id": "Qwen3VLForConditionalGeneration",
+      "total_models": 1,
+      "sample_models": [
+        "RedHatAI/Qwen3-VL-32B-Instruct-NVFP4"
+      ]
+    },
+    {
+      "architecture_id": "Rwkv6ForCausalLM",
+      "total_models": 1,
+      "sample_models": [
+        "RWKV/v6-Finch-1B6-HF"
+      ]
+    },
+    {
+      "architecture_id": "CambrianQwenForCausalLM",
+      "total_models": 1,
+      "sample_models": [
+        "nyu-visionx/Scale-RAE-Qwen1.5B_DiT2.4B"
+      ]
+    },
+    {
       "architecture_id": "VaultGemmaForCausalLM",
       "total_models": 1,
       "sample_models": [
@@ -1774,13 +1777,6 @@
       "total_models": 1,
       "sample_models": [
         "openbmb/NOSA-8B"
-      ]
-    },
-    {
-      "architecture_id": "CambrianQwenForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "nyu-visionx/Scale-RAE-Qwen1.5B_DiT2.4B"
       ]
     },
     {
@@ -1819,13 +1815,6 @@
       ]
     },
     {
-      "architecture_id": "GeoChatLlamaForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "MBZUAI/geochat-7B"
-      ]
-    },
-    {
       "architecture_id": "RavenForCausalLM",
       "total_models": 1,
       "sample_models": [
@@ -1833,10 +1822,31 @@
       ]
     },
     {
+      "architecture_id": "GeoChatLlamaForCausalLM",
+      "total_models": 1,
+      "sample_models": [
+        "MBZUAI/geochat-7B"
+      ]
+    },
+    {
+      "architecture_id": "Param2MoEForCausalLM",
+      "total_models": 1,
+      "sample_models": [
+        "bharatgenai/Param2-17B-A2.4B-Thinking"
+      ]
+    },
+    {
       "architecture_id": "AprielForCausalLM",
       "total_models": 1,
       "sample_models": [
         "ServiceNow-AI/Apriel-5B-Instruct"
+      ]
+    },
+    {
+      "architecture_id": "PanguEmbeddedForCausalLM",
+      "total_models": 1,
+      "sample_models": [
+        "FreedomIntelligence/openPangu-Embedded-1B"
       ]
     },
     {
@@ -1861,52 +1871,10 @@
       ]
     },
     {
-      "architecture_id": "PanguEmbeddedForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "FreedomIntelligence/openPangu-Embedded-1B"
-      ]
-    },
-    {
-      "architecture_id": "Param2MoEForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "bharatgenai/Param2-17B-A2.4B-Thinking"
-      ]
-    },
-    {
       "architecture_id": "GiddForDiffusionLM",
       "total_models": 1,
       "sample_models": [
         "dvruette/gidd-unif-3b"
-      ]
-    },
-    {
-      "architecture_id": "TorchMultiOmicsModel",
-      "total_models": 1,
-      "sample_models": [
-        "InstaDeepAI/ChatNT"
-      ]
-    },
-    {
-      "architecture_id": "HGRNBitForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "ridger/MMfreeLM-370M"
-      ]
-    },
-    {
-      "architecture_id": "StableLMAlphaForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "stabilityai/stablelm-base-alpha-7b-v2"
-      ]
-    },
-    {
-      "architecture_id": "MiniMaxText01ForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "MiniMaxAI/MiniMax-Text-01"
       ]
     },
     {
@@ -1917,17 +1885,17 @@
       ]
     },
     {
-      "architecture_id": "LamedPhi3ForCausalLM",
+      "architecture_id": "StableLMAlphaForCausalLM",
       "total_models": 1,
       "sample_models": [
-        "GoodBaiBai88/M3D-LaMed-Phi-3-4B"
+        "stabilityai/stablelm-base-alpha-7b-v2"
       ]
     },
     {
-      "architecture_id": "Phi4FlashForCausalLM",
+      "architecture_id": "HGRNBitForCausalLM",
       "total_models": 1,
       "sample_models": [
-        "microsoft/Phi-4-mini-flash-reasoning"
+        "ridger/MMfreeLM-370M"
       ]
     },
     {
@@ -1938,24 +1906,24 @@
       ]
     },
     {
-      "architecture_id": "Kanana2VecModel",
+      "architecture_id": "MiniMaxText01ForCausalLM",
       "total_models": 1,
       "sample_models": [
-        "kakaocorp/kanana-nano-2.1b-embedding"
+        "MiniMaxAI/MiniMax-Text-01"
       ]
     },
     {
-      "architecture_id": "GPT3DevLMHeadModel",
+      "architecture_id": "LamedPhi3ForCausalLM",
       "total_models": 1,
       "sample_models": [
-        "k050506koch/GPT3-dev-350m-2805"
+        "GoodBaiBai88/M3D-LaMed-Phi-3-4B"
       ]
     },
     {
-      "architecture_id": "DeciCoderForCausalLM",
+      "architecture_id": "TorchMultiOmicsModel",
       "total_models": 1,
       "sample_models": [
-        "Deci/DeciCoder-1b"
+        "InstaDeepAI/ChatNT"
       ]
     },
     {
@@ -1966,10 +1934,24 @@
       ]
     },
     {
-      "architecture_id": "Qwen2ForSequenceClassification",
+      "architecture_id": "Phi4FlashForCausalLM",
       "total_models": 1,
       "sample_models": [
-        "nvidia/AceMath-7B-RM"
+        "microsoft/Phi-4-mini-flash-reasoning"
+      ]
+    },
+    {
+      "architecture_id": "DeciCoderForCausalLM",
+      "total_models": 1,
+      "sample_models": [
+        "Deci/DeciCoder-1b"
+      ]
+    },
+    {
+      "architecture_id": "GPT3DevLMHeadModel",
+      "total_models": 1,
+      "sample_models": [
+        "k050506koch/GPT3-dev-350m-2805"
       ]
     },
     {
@@ -1980,17 +1962,24 @@
       ]
     },
     {
-      "architecture_id": "LLaDAMoEModel",
+      "architecture_id": "Qwen2ForSequenceClassification",
       "total_models": 1,
       "sample_models": [
-        "inclusionAI/LLaDA-MoE-7B-A1B-Base"
+        "nvidia/AceMath-7B-RM"
       ]
     },
     {
-      "architecture_id": "DogeForCausalLM",
+      "architecture_id": "Kanana2VecModel",
       "total_models": 1,
       "sample_models": [
-        "SmallDoge/Doge-20M"
+        "kakaocorp/kanana-nano-2.1b-embedding"
+      ]
+    },
+    {
+      "architecture_id": "EchoForCausalLM",
+      "total_models": 1,
+      "sample_models": [
+        "ethicalabs/Echo-DSRN-486M-v0.7.6-SFT"
       ]
     },
     {
@@ -1998,6 +1987,13 @@
       "total_models": 1,
       "sample_models": [
         "sshleifer/tiny-ctrl"
+      ]
+    },
+    {
+      "architecture_id": "LLaDAMoEModel",
+      "total_models": 1,
+      "sample_models": [
+        "inclusionAI/LLaDA-MoE-7B-A1B-Base"
       ]
     },
     {
@@ -2022,10 +2018,10 @@
       ]
     },
     {
-      "architecture_id": "BD3LM",
+      "architecture_id": "DogeForCausalLM",
       "total_models": 1,
       "sample_models": [
-        "kuleshov-group/bd3lm-owt-block_size4"
+        "SmallDoge/Doge-20M"
       ]
     },
     {
@@ -2036,6 +2032,13 @@
       ]
     },
     {
+      "architecture_id": "GPT",
+      "total_models": 1,
+      "sample_models": [
+        "LH-Tech-AI/Apex-1.5-Coder-Instruct-350M"
+      ]
+    },
+    {
       "architecture_id": "GPT2CustomLMHeadModel",
       "total_models": 1,
       "sample_models": [
@@ -2043,10 +2046,10 @@
       ]
     },
     {
-      "architecture_id": "CircuitGPTForCausalLM",
+      "architecture_id": "SKTOmniForConditionalGeneration",
       "total_models": 1,
       "sample_models": [
-        "openai/circuit-sparsity"
+        "Shrijanagain/SKT_OMNI_SUPREME"
       ]
     },
     {
@@ -2057,10 +2060,24 @@
       ]
     },
     {
-      "architecture_id": "SpatialLMLlamaForCausalLM",
+      "architecture_id": "CircuitGPTForCausalLM",
       "total_models": 1,
       "sample_models": [
-        "manycore-research/SpatialLM1.1-Llama-1B"
+        "openai/circuit-sparsity"
+      ]
+    },
+    {
+      "architecture_id": "Qwen3TSForCausalLM",
+      "total_models": 1,
+      "sample_models": [
+        "bytedance-research/ChatTS-8B"
+      ]
+    },
+    {
+      "architecture_id": "ConditionalGPT",
+      "total_models": 1,
+      "sample_models": [
+        "c-bone/CrystaLLM-pi_bandgap"
       ]
     },
     {
@@ -2078,10 +2095,24 @@
       ]
     },
     {
-      "architecture_id": "ConditionalGPT",
+      "architecture_id": "BD3LM",
       "total_models": 1,
       "sample_models": [
-        "c-bone/CrystaLLM-pi_bandgap"
+        "kuleshov-group/bd3lm-owt-block_size4"
+      ]
+    },
+    {
+      "architecture_id": "AeroForConditionalGeneration",
+      "total_models": 1,
+      "sample_models": [
+        "lmms-lab/Aero-1-Audio"
+      ]
+    },
+    {
+      "architecture_id": "KORMoForCausalLM",
+      "total_models": 1,
+      "sample_models": [
+        "KORMo-Team/KORMo-10B-sft"
       ]
     },
     {
@@ -2106,13 +2137,6 @@
       ]
     },
     {
-      "architecture_id": "RecursiveLanguageModel",
-      "total_models": 1,
-      "sample_models": [
-        "Girinath11/recursive-language-model-198m"
-      ]
-    },
-    {
       "architecture_id": "PolyLMHeadModel",
       "total_models": 1,
       "sample_models": [
@@ -2120,17 +2144,17 @@
       ]
     },
     {
-      "architecture_id": "Qwen3TSForCausalLM",
+      "architecture_id": "RecursiveLanguageModel",
       "total_models": 1,
       "sample_models": [
-        "bytedance-research/ChatTS-8B"
+        "Girinath11/recursive-language-model-198m"
       ]
     },
     {
-      "architecture_id": "MegaForCausalLM",
+      "architecture_id": "SpatialLMLlamaForCausalLM",
       "total_models": 1,
       "sample_models": [
-        "BEE-spoke-data/mega-ar-126m-4k"
+        "manycore-research/SpatialLM1.1-Llama-1B"
       ]
     },
     {
@@ -2141,38 +2165,17 @@
       ]
     },
     {
+      "architecture_id": "MegaForCausalLM",
+      "total_models": 1,
+      "sample_models": [
+        "BEE-spoke-data/mega-ar-126m-4k"
+      ]
+    },
+    {
       "architecture_id": "SongGenMixedForConditionalGeneration",
       "total_models": 1,
       "sample_models": [
         "LiuZH-19/SongGen_mixed_pro"
-      ]
-    },
-    {
-      "architecture_id": "LlamaModel",
-      "total_models": 1,
-      "sample_models": [
-        "ngoan/NgoanYi"
-      ]
-    },
-    {
-      "architecture_id": "BertLMHeadModel",
-      "total_models": 1,
-      "sample_models": [
-        "dicta-il/BEREL_3.0"
-      ]
-    },
-    {
-      "architecture_id": "BailingMoeLinearV2ForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "inclusionAI/Ring-mini-linear-2.0"
-      ]
-    },
-    {
-      "architecture_id": "AeroForConditionalGeneration",
-      "total_models": 1,
-      "sample_models": [
-        "lmms-lab/Aero-1-Audio"
       ]
     },
     {
@@ -2183,17 +2186,24 @@
       ]
     },
     {
-      "architecture_id": "GLaMMForCausalLM",
+      "architecture_id": "LlamaModel",
       "total_models": 1,
       "sample_models": [
-        "MBZUAI/GLaMM-FullScope"
+        "ngoan/NgoanYi"
       ]
     },
     {
-      "architecture_id": "CambrianLlamaForCausalLM",
+      "architecture_id": "BailingMoeLinearV2ForCausalLM",
       "total_models": 1,
       "sample_models": [
-        "nyu-visionx/cambrian-8b"
+        "inclusionAI/Ring-mini-linear-2.0"
+      ]
+    },
+    {
+      "architecture_id": "BertLMHeadModel",
+      "total_models": 1,
+      "sample_models": [
+        "dicta-il/BEREL_3.0"
       ]
     },
     {
@@ -2204,10 +2214,17 @@
       ]
     },
     {
-      "architecture_id": "C3QwenForCausalLM",
+      "architecture_id": "Bagel",
       "total_models": 1,
       "sample_models": [
-        "liufanfanlff/C3-Context-Cascade-Compression"
+        "lmms-lab/BAGEL-7B-MoT-ver.LE"
+      ]
+    },
+    {
+      "architecture_id": "GLaMMForCausalLM",
+      "total_models": 1,
+      "sample_models": [
+        "MBZUAI/GLaMM-FullScope"
       ]
     },
     {
@@ -2218,17 +2235,17 @@
       ]
     },
     {
-      "architecture_id": "Bagel",
+      "architecture_id": "Qwen3OmniMoeThinkerForConditionalGeneration",
       "total_models": 1,
       "sample_models": [
-        "lmms-lab/BAGEL-7B-MoT-ver.LE"
+        "ngqtrung/Qwen3-Omni-Thinker-30B-Instruct"
       ]
     },
     {
-      "architecture_id": "KORMoForCausalLM",
+      "architecture_id": "C3QwenForCausalLM",
       "total_models": 1,
       "sample_models": [
-        "KORMo-Team/KORMo-10B-sft"
+        "liufanfanlff/C3-Context-Cascade-Compression"
       ]
     },
     {
@@ -2239,10 +2256,24 @@
       ]
     },
     {
-      "architecture_id": "KimiForCausalLM",
+      "architecture_id": "ErnieForCausalLM",
       "total_models": 1,
       "sample_models": [
-        "applexml/kimi-k2-poc2"
+        "mohitsha/tiny-ernie-random-remote-code"
+      ]
+    },
+    {
+      "architecture_id": "TransnormerForCausalLM",
+      "total_models": 1,
+      "sample_models": [
+        "OpenNLPLab/TransNormerLLM-385M"
+      ]
+    },
+    {
+      "architecture_id": "PKVGPT",
+      "total_models": 1,
+      "sample_models": [
+        "c-bone/CrystaLLM-pi_SLME"
       ]
     },
     {
@@ -2253,10 +2284,10 @@
       ]
     },
     {
-      "architecture_id": "ErnieForCausalLM",
+      "architecture_id": "OpenLMForCausalLM",
       "total_models": 1,
       "sample_models": [
-        "mohitsha/tiny-ernie-random-remote-code"
+        "nick11roberts/SL-discrep-chinchilla-rw-params5M_maxstep760-flop_1_25e16_step_767"
       ]
     },
     {
@@ -2271,6 +2302,13 @@
       "total_models": 1,
       "sample_models": [
         "nvidia/Hymba-1.5B-Instruct"
+      ]
+    },
+    {
+      "architecture_id": "LlamaMoEForCausalLM",
+      "total_models": 1,
+      "sample_models": [
+        "llama-moe/LLaMA-MoE-v1-3_5B-2_8"
       ]
     }
   ]

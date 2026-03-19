@@ -78,9 +78,11 @@ def benchmark_forward_pass(
         # MPS SDPA can produce different results with vs without gradient tracking)
         with torch.no_grad():
             if _is_audio and isinstance(test_input, torch.Tensor):
-                # Audio models: pass waveform directly, get hidden states
-                bridge_output_raw = bridge(test_input, return_type=None)
-                if hasattr(bridge_output_raw, "logits") and bridge_output_raw.logits is not None:
+                # Audio models: pass waveform, extract tensor from output
+                bridge_output_raw = bridge(test_input, return_type="logits")
+                if isinstance(bridge_output_raw, torch.Tensor):
+                    bridge_output = bridge_output_raw
+                elif hasattr(bridge_output_raw, "logits") and bridge_output_raw.logits is not None:
                     bridge_output = bridge_output_raw.logits
                 elif hasattr(bridge_output_raw, "last_hidden_state"):
                     bridge_output = bridge_output_raw.last_hidden_state

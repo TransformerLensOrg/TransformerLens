@@ -879,10 +879,17 @@ def verify_models(
         # model's overall status or note — those reflect the full
         # verification and should only be set by a complete run.
         is_multimodal = arch in _MULTIMODAL_ARCHITECTURES
-        # For multimodal models, Phase 7 is part of core verification.
-        # A full run is {1,2,3,4,7} for multimodal, {1,2,3,4} for text-only.
-        full_phases = {1, 2, 3, 4, 7} if is_multimodal else {1, 2, 3, 4}
-        core_required = {1, 4, 7} if is_multimodal else {1, 4}
+        is_audio = arch in _AUDIO_ARCHITECTURES
+        # Full/core phase sets depend on model type
+        if is_audio:
+            full_phases = {1, 8}
+            core_required = {1, 8}
+        elif is_multimodal:
+            full_phases = {1, 2, 3, 4, 7}
+            core_required = {1, 4, 7}
+        else:
+            full_phases = {1, 2, 3, 4}
+            core_required = {1, 4}
         is_partial_run = set(phases) != full_phases
 
         if is_partial_run and phase_scores:
@@ -920,12 +927,19 @@ def verify_models(
                         if p7 is not None:
                             p7_pass = p7 >= _MIN_PHASE_SCORES.get(7, _DEFAULT_MIN_PHASE_SCORE)
                         else:
-                            # Phase 7 score is NULL — either not requested or
-                            # all tests were skipped (no processor).  Either
-                            # way, multimodal verification is incomplete.
                             p7_pass = False
 
-                    if p1_pass and p4_pass and p7_pass:
+                    # For audio models, Phase 8 is required; Phase 4 is not applicable
+                    p8_pass = True
+                    if is_audio:
+                        p4_pass = True  # Audio models skip text quality
+                        p8 = filtered_scores.get(8)
+                        if p8 is not None:
+                            p8_pass = p8 >= _MIN_PHASE_SCORES.get(8, _DEFAULT_MIN_PHASE_SCORE)
+                        else:
+                            p8_pass = False
+
+                    if p1_pass and p4_pass and p7_pass and p8_pass:
                         partial_status = STATUS_VERIFIED
                         partial_note = "Core verification completed"
                     elif p1_pass and p4_pass and not p7_pass:
@@ -991,7 +1005,8 @@ def verify_models(
                 print(
                     f"  VERIFIED: P1={phase_scores.get(1)}%, "
                     f"P2={phase_scores.get(2)}%, P3={phase_scores.get(3)}%, "
-                    f"P4={phase_scores.get(4)}%, P7={phase_scores.get(7)}%"
+                    f"P4={phase_scores.get(4)}%, P7={phase_scores.get(7)}%, "
+                    f"P8={phase_scores.get(8)}%"
                 )
             update_model_status(
                 model_id,
@@ -1013,7 +1028,8 @@ def verify_models(
                     print(
                         f"  Partial scores saved: P1={phase_scores.get(1)}%, "
                         f"P2={phase_scores.get(2)}%, P3={phase_scores.get(3)}%, "
-                        f"P4={phase_scores.get(4)}%"
+                        f"P4={phase_scores.get(4)}%, P7={phase_scores.get(7)}%, "
+                        f"P8={phase_scores.get(8)}%"
                     )
             update_model_status(
                 model_id,

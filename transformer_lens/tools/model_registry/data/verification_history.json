@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-03-18T20:39:31.645578",
+  "last_updated": "2026-03-19T13:52:40.585159",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -10315,6 +10315,116 @@
       "model_id": "swiss-ai/Apertus-8B-Instruct-2509",
       "architecture_id": "ApertusForCausalLM",
       "verified_date": "2026-03-18",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "facebook/hubert-large-ls960-ft",
+      "architecture_id": "HubertForCTC",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "cannot access local variable '_is_audio' where it is not associated with a value",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "team-lucid/hubert-base-korean",
+      "architecture_id": "HubertModel",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "cannot access local variable '_is_audio' where it is not associated with a value",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "prj-beatrice/japanese-hubert-base-phoneme-ctc-v4",
+      "architecture_id": "HubertForCTC",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "cannot access local variable '_is_audio' where it is not associated with a value",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "utakumi/Hubert-kakeiken-W-incar",
+      "architecture_id": "HubertForCTC",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "cannot access local variable '_is_audio' where it is not associated with a value",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "facebook/hubert-large-ls960-ft",
+      "architecture_id": "HubertForCTC",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: all_components, forward_pass_logits) \u2014 3/197 components failed (3 critical)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "facebook/hubert-large-ls960-ft",
+      "architecture_id": "HubertForCTC",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "facebook/hubert-large-ls960-ft",
+      "architecture_id": "HubertForCTC",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "team-lucid/hubert-base-korean",
+      "architecture_id": "HubertModel",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "prj-beatrice/japanese-hubert-base-phoneme-ctc-v4",
+      "architecture_id": "HubertForCTC",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "utakumi/Hubert-kakeiken-W-incar",
+      "architecture_id": "HubertForCTC",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "facebook/hubert-large-ls960-ft",
+      "architecture_id": "HubertForCTC",
+      "verified_date": "2026-03-19",
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Full verification completed",

@@ -237,23 +237,22 @@ def is_audio_model(model_name: str, trust_remote_code: bool = False) -> bool:
 def get_auto_model_class(model_name: str, trust_remote_code: bool = False):
     """Determine the correct AutoModel class for a given model.
 
-    Some models (like T5) are encoder-decoder and need AutoModelForSeq2SeqLM
-    instead of AutoModelForCausalLM. Multimodal models (LLaVA, Gemma3) need
-    AutoModel to load the full vision+language architecture.
-
-    Args:
-        model_name: The HuggingFace model name or path
-
-    Returns:
-        The appropriate AutoModel class
+    Delegates to the bridge's get_hf_model_class_for_architecture() to stay
+    in sync with the model class used during bridge loading.
     """
-    if is_encoder_decoder_model(model_name, trust_remote_code=trust_remote_code):
-        return AutoModelForSeq2SeqLM
-    if _is_multimodal_model(model_name, trust_remote_code=trust_remote_code):
-        from transformers import AutoModelForImageTextToText
+    from transformer_lens.model_bridge.sources.transformers import (
+        determine_architecture_from_hf_config,
+        get_hf_model_class_for_architecture,
+    )
 
-        return AutoModelForImageTextToText
-    return AutoModelForCausalLM
+    try:
+        config = AutoConfig.from_pretrained(
+            model_name, trust_remote_code=trust_remote_code, token=_hf_token()
+        )
+        architecture = determine_architecture_from_hf_config(config)
+        return get_hf_model_class_for_architecture(architecture)
+    except Exception:
+        return AutoModelForCausalLM
 
 
 def _fixup_custom_model(hf_model) -> None:
@@ -1153,6 +1152,13 @@ def run_benchmark_suite(
             print(f"\nStack trace:\n{error_trace}")
         return results
 
+    # Detect audio model once for use across all phases
+    _is_audio = bridge_unprocessed is not None and getattr(
+        bridge_unprocessed.cfg, "is_audio_model", False
+    )
+    # Shared waveform for audio model benchmarks (consistent across HF capture and bridge forward)
+    _test_audio = torch.randn(1, 16000, device=device, dtype=dtype) if _is_audio else None
+
     # Run Phase 1 benchmarks
     if should_run_phase(1) and bridge_unprocessed:
         if verbose:
@@ -1179,18 +1185,14 @@ def run_benchmark_suite(
                 if verbose:
                     print(f"✗ Component benchmark failed: {e}\n")
 
-            # Capture HF reference logits using bridge.to_tokens() for
-            # consistent tokenization (BOS prepending, etc.).  Both models
-            # are still in memory so this is still within the 2.0x window.
-            _is_audio = getattr(bridge_unprocessed.cfg, "is_audio_model", False)
+            # Capture HF reference outputs. Both models are still in memory (2.0x window).
             if verbose:
                 print("Capturing HF reference outputs to CPU...")
             try:
                 if _is_audio:
-                    # Audio models: use synthetic waveform instead of text tokens
-                    test_audio = torch.randn(1, 16000, device=device, dtype=dtype)
+                    # Audio models: use the shared waveform for HF vs bridge comparison
                     with torch.no_grad():
-                        hf_out = hf_model(input_values=test_audio)
+                        hf_out = hf_model(input_values=_test_audio)
                         # Audio encoders output last_hidden_state, not logits
                         if hasattr(hf_out, "logits") and hf_out.logits is not None:
                             hf_saved_logits = hf_out.logits.detach().cpu().clone()
@@ -1202,7 +1204,6 @@ def run_benchmark_suite(
                             f"✓ Captured HF audio output {hf_saved_logits.shape}, "
                             f"loss=N/A (CTC requires labels)\n"
                         )
-                    del test_audio
                 else:
                     hf_tokens = bridge_unprocessed.to_tokens(test_text)
                     is_enc_dec = is_encoder_decoder_model(
@@ -1255,10 +1256,10 @@ def run_benchmark_suite(
         # matmul non-determinism can exceed the float32 default of 1e-3
         p1_atol = 1e-3 if dtype == torch.float32 else 5e-3
 
-        # For audio models, use a waveform tensor instead of text
+        # For audio models, reuse the waveform from HF reference capture
         _p1_input = test_text
         if _is_audio:
-            _p1_input = torch.randn(1, 16000, device=device, dtype=dtype)
+            _p1_input = _test_audio
 
         if hf_saved_logits is not None:
             # Full mode: use pre-captured HF logits (bridge only, 1.0x)

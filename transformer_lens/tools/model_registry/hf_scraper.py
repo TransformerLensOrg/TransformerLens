@@ -97,6 +97,9 @@ def _build_model_entry(model_id: str, architecture_id: str) -> dict:
         "phase1_score": None,
         "phase2_score": None,
         "phase3_score": None,
+        "phase4_score": None,
+        "phase7_score": None,
+        "phase8_score": None,
     }
 
 
