@@ -45,6 +45,9 @@ from transformer_lens.model_bridge.supported_architectures.granite_moe import (
 from transformer_lens.model_bridge.supported_architectures.granite_moe_hybrid import (
     GraniteMoeHybridArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.hubert import (
+    HubertArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.llama import (
     LlamaArchitectureAdapter,
 )
@@ -136,6 +139,7 @@ __all__ = [
     "GPTOSSArchitectureAdapter",
     "Gpt2LmHeadCustomArchitectureAdapter",
     "GptjArchitectureAdapter",
+    "HubertArchitectureAdapter",
     "LlamaArchitectureAdapter",
     "LlavaArchitectureAdapter",
     "LlavaNextArchitectureAdapter",

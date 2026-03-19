@@ -123,7 +123,7 @@ def map_default_transformer_lens_config(hf_config):
         tl_config.n_layers = source_config.num_transformer_layers
     elif hasattr(source_config, "num_layers"):
         tl_config.n_layers = source_config.num_layers
-    if hasattr(source_config, "vocab_size"):
+    if hasattr(source_config, "vocab_size") and isinstance(source_config.vocab_size, int):
         tl_config.d_vocab = source_config.vocab_size
     if hasattr(source_config, "n_positions"):
         tl_config.n_ctx = source_config.n_positions
@@ -151,6 +151,15 @@ def map_default_transformer_lens_config(hf_config):
         tl_config.d_head = tl_config.d_model // tl_config.n_heads
     if hasattr(source_config, "activation_function"):
         tl_config.act_fn = source_config.activation_function
+    elif hasattr(source_config, "hidden_act"):
+        tl_config.act_fn = source_config.hidden_act
+    # Layer norm / RMS norm epsilon — HF uses 3 different field names
+    if hasattr(source_config, "rms_norm_eps"):
+        tl_config.eps = source_config.rms_norm_eps
+    elif hasattr(source_config, "layer_norm_eps"):
+        tl_config.eps = source_config.layer_norm_eps
+    elif hasattr(source_config, "layer_norm_epsilon"):
+        tl_config.eps = source_config.layer_norm_epsilon
     if hasattr(source_config, "num_local_experts"):
         tl_config.num_experts = source_config.num_local_experts
     if hasattr(source_config, "num_experts_per_tok"):
@@ -191,6 +200,7 @@ def determine_architecture_from_hf_config(hf_config):
         model_type_mappings = {
             "apertus": "ApertusForCausalLM",
             "gpt2": "GPT2LMHeadModel",
+            "hubert": "HubertModel",
             "llama": "LlamaForCausalLM",
             "mistral": "MistralForCausalLM",
             "mixtral": "MixtralForCausalLM",
@@ -257,6 +267,12 @@ def get_hf_model_class_for_architecture(architecture: str):
         "LlavaOnevisionForConditionalGeneration",
         "Gemma3ForConditionalGeneration",
     }
+    audio_ctc_architectures = {
+        "HubertForCTC",
+    }
+    audio_base_architectures = {
+        "HubertModel",
+    }
     if architecture in seq2seq_architectures:
         return AutoModelForSeq2SeqLM
     elif architecture in masked_lm_architectures:
@@ -265,6 +281,14 @@ def get_hf_model_class_for_architecture(architecture: str):
         from transformers import AutoModelForImageTextToText
 
         return AutoModelForImageTextToText
+    elif architecture in audio_ctc_architectures:
+        from transformers import AutoModelForCTC
+
+        return AutoModelForCTC
+    elif architecture in audio_base_architectures:
+        from transformers import AutoModel
+
+        return AutoModel
     else:
         return AutoModelForCausalLM
 
@@ -398,7 +422,11 @@ def boot(
     tokenizer = tokenizer
     default_padding_side = getattr(adapter.cfg, "default_padding_side", None)
     use_fast = getattr(adapter.cfg, "use_fast", True)
-    if tokenizer is not None:
+    # Audio models use feature extractors, not text tokenizers
+    _is_audio = getattr(adapter.cfg, "is_audio_model", False)
+    if _is_audio and tokenizer is None:
+        tokenizer = None  # Skip tokenizer loading for audio models
+    elif tokenizer is not None:
         tokenizer = setup_tokenizer(tokenizer, default_padding_side=default_padding_side)
     else:
         huggingface_token = os.environ.get("HF_TOKEN", "")
@@ -505,6 +533,21 @@ def boot(
                     )
                 except Exception:
                     pass  # Processor not available; user can set bridge.processor manually
+
+    # Load feature extractor for audio models (needed for audio preprocessing)
+    if getattr(adapter.cfg, "is_audio_model", False):
+        try:
+            from transformers import AutoFeatureExtractor
+
+            huggingface_token = os.environ.get("HF_TOKEN", "")
+            token_arg = huggingface_token if len(huggingface_token) > 0 else None
+            bridge.processor = AutoFeatureExtractor.from_pretrained(
+                model_name,
+                token=token_arg,
+                trust_remote_code=trust_remote_code,
+            )
+        except Exception:
+            pass  # Feature extractor not available; user can set bridge.processor manually
 
     return bridge
 

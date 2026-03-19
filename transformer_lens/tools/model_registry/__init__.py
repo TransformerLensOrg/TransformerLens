@@ -58,6 +58,8 @@ HF_SUPPORTED_ARCHITECTURES: set[str] = {
     "GPTNeoForCausalLM",
     "OpenELMForCausalLM",
     "GPTNeoXForCausalLM",
+    "HubertForCTC",
+    "HubertModel",
     "LlamaForCausalLM",
     "LlavaForConditionalGeneration",
     "LlavaNextForConditionalGeneration",
