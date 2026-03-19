@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-03-11T19:25:24.974031",
+  "last_updated": "2026-03-18T20:39:31.645578",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -10275,6 +10275,46 @@
       "model_id": "cssupport/t5-small-awesome-text-to-sql",
       "architecture_id": "T5ForConditionalGeneration",
       "verified_date": "2026-03-11",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "tiny-random/apertus",
+      "architecture_id": "ApertusForCausalLM",
+      "verified_date": "2026-03-18",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "unsloth/Apertus-8B-Instruct-2509",
+      "architecture_id": "ApertusForCausalLM",
+      "verified_date": "2026-03-18",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "swiss-ai/Apertus-8B-2509",
+      "architecture_id": "ApertusForCausalLM",
+      "verified_date": "2026-03-18",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "swiss-ai/Apertus-8B-Instruct-2509",
+      "architecture_id": "ApertusForCausalLM",
+      "verified_date": "2026-03-18",
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Full verification completed",
