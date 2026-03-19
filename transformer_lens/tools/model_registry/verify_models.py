@@ -27,7 +27,6 @@ import argparse
 import gc
 import json
 import logging
-import os
 import re
 import signal
 import time
@@ -176,8 +175,11 @@ def estimate_model_params(model_id: str) -> int:
     from transformer_lens.loading_from_pretrained import NEED_REMOTE_CODE_MODELS
 
     trust_remote_code = any(model_id.startswith(prefix) for prefix in NEED_REMOTE_CODE_MODELS)
-    _token = os.environ.get("HF_TOKEN", "") or None
-    config = AutoConfig.from_pretrained(model_id, trust_remote_code=trust_remote_code, token=_token)
+    from transformer_lens.utilities.hf_utils import get_hf_token
+
+    config = AutoConfig.from_pretrained(
+        model_id, trust_remote_code=trust_remote_code, token=get_hf_token()
+    )
 
     # For multimodal models (LLaVA, Gemma3 multimodal), the language model config
     # is nested under text_config. Fall through to the top-level config otherwise.
@@ -489,12 +491,7 @@ _DEFAULT_MIN_PHASE_SCORE = 50.0
 
 # Architectures that include a vision encoder and require Phase 7 (multimodal
 # benchmarks) as part of core verification.
-_MULTIMODAL_ARCHITECTURES = {
-    "LlavaForConditionalGeneration",
-    "LlavaNextForConditionalGeneration",
-    "LlavaOnevisionForConditionalGeneration",
-    "Gemma3ForConditionalGeneration",
-}
+from transformer_lens.utilities.architectures import classify_architecture
 
 _AUDIO_ARCHITECTURES = {
     "HubertForCTC",
@@ -878,9 +875,8 @@ def verify_models(
         # only update the phase scores that were run.  Don't change the
         # model's overall status or note — those reflect the full
         # verification and should only be set by a complete run.
-        is_multimodal = arch in _MULTIMODAL_ARCHITECTURES
-        is_audio = arch in _AUDIO_ARCHITECTURES
-        # Full/core phase sets depend on model type
+        is_multimodal = classify_architecture(arch) == "multimodal"
+        is_audio = classify_architecture(arch) == "audio"
         if is_audio:
             full_phases = {1, 8}
             core_required = {1, 8}
