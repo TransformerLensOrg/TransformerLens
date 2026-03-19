@@ -12,23 +12,15 @@ Phase 7: Multimodal Tests (only for multimodal models with pixel_values support)
 """
 
 import gc
-import os
 from typing import Dict, List, Optional, Union
 
 import torch
 from transformers import (
     AutoConfig,
     AutoModelForCausalLM,
-    AutoModelForSeq2SeqLM,
     PreTrainedModel,
     PreTrainedTokenizerBase,
 )
-
-
-def _hf_token() -> Optional[str]:
-    """Get HuggingFace token from environment for gated model access."""
-    return os.environ.get("HF_TOKEN", "") or None
-
 
 from transformer_lens import HookedTransformer
 from transformer_lens.benchmarks.activation_cache import (
@@ -83,123 +75,24 @@ from transformer_lens.factories.architecture_adapter_factory import (
 )
 from transformer_lens.model_bridge import TransformerBridge
 
-# Architecture names that indicate encoder-decoder models
-ENCODER_DECODER_ARCHITECTURES = [
-    "T5ForConditionalGeneration",
-    "BartForConditionalGeneration",
-    "MBartForConditionalGeneration",
-    "MT5ForConditionalGeneration",
-    "PegasusForConditionalGeneration",
-    "BlenderbotForConditionalGeneration",
-    "MarianMTModel",
-]
-
-# Architecture names that indicate masked language models (not suited for text generation)
-MASKED_LM_ARCHITECTURES = [
-    "BertForMaskedLM",
-    "RobertaForMaskedLM",
-    "AlbertForMaskedLM",
-    "DistilBertForMaskedLM",
-    "ElectraForMaskedLM",
-]
-
-# Architectures where the Bridge intentionally uses different hook shapes than
-# HookedTransformer. These models skip Phase 2/3 (HT comparison) because the
-# Bridge preserves HuggingFace's native tensor layouts for interpretability
-# (e.g., 4D [batch, heads, seq, d_head] QK norm hooks) rather than matching
-# HT's flattened convention. Phase 1 (HF comparison) remains the gold standard.
-NO_HT_COMPARISON_ARCHITECTURES = [
-    "Gemma3ForCausalLM",
-    "Gemma3ForConditionalGeneration",
-    "LlavaForConditionalGeneration",
-    "LlavaNextForConditionalGeneration",
-    "LlavaOnevisionForConditionalGeneration",
-]
-
-
-def is_masked_lm_model(model_name: str, trust_remote_code: bool = False) -> bool:
-    """Check if a model is a masked language model (not suited for text generation).
-
-    Args:
-        model_name: The HuggingFace model name or path
-        trust_remote_code: Whether to trust remote code for custom architectures.
-
-    Returns:
-        True if the model is a masked LM (like BERT), False otherwise
-    """
-    try:
-        config = AutoConfig.from_pretrained(
-            model_name, trust_remote_code=trust_remote_code, token=_hf_token()
-        )
-        architectures = getattr(config, "architectures", []) or []
-        return any(arch in MASKED_LM_ARCHITECTURES for arch in architectures)
-    except Exception:
-        return False
-
-
-def is_encoder_decoder_model(model_name: str, trust_remote_code: bool = False) -> bool:
-    """Check if a model is an encoder-decoder architecture.
-
-    Args:
-        model_name: The HuggingFace model name or path
-        trust_remote_code: Whether to trust remote code for custom architectures.
-
-    Returns:
-        True if the model is encoder-decoder (like T5), False otherwise
-    """
-    try:
-        config = AutoConfig.from_pretrained(
-            model_name, trust_remote_code=trust_remote_code, token=_hf_token()
-        )
-        # Check config attribute first
-        if getattr(config, "is_encoder_decoder", False):
-            return True
-        # Fallback to architecture check
-        architectures = getattr(config, "architectures", []) or []
-        return any(arch in ENCODER_DECODER_ARCHITECTURES for arch in architectures)
-    except Exception:
-        return False
+# Architecture classification — single source of truth in utilities.architectures
+from transformer_lens.utilities.architectures import (
+    NO_HT_COMPARISON_ARCHITECTURES,
+    get_architectures_for_config,
+    is_encoder_decoder_model,
+    is_masked_lm_model,
+)
+from transformer_lens.utilities.hf_utils import get_hf_token as _hf_token
 
 
 def should_skip_ht_comparison(model_name: str, trust_remote_code: bool = False) -> bool:
-    """Check if a model's architecture should skip HookedTransformer comparison.
-
-    Some architectures (e.g., Gemma3) intentionally use different hook tensor
-    layouts in the Bridge than HookedTransformer. For these models, Phase 1
-    (Bridge vs HuggingFace) is the gold standard; Phase 2/3 HT comparisons
-    are skipped since shape differences are by design, not bugs.
-
-    Args:
-        model_name: The HuggingFace model name or path
-        trust_remote_code: Whether to trust remote code for custom architectures.
-
-    Returns:
-        True if the model should skip HT comparison, False otherwise
-    """
+    """Benchmark-specific: skip Phase 2/3 for architectures with different hook shapes."""
     try:
         config = AutoConfig.from_pretrained(
             model_name, trust_remote_code=trust_remote_code, token=_hf_token()
         )
-        architectures = getattr(config, "architectures", []) or []
+        architectures = get_architectures_for_config(config)
         return any(arch in NO_HT_COMPARISON_ARCHITECTURES for arch in architectures)
-    except Exception:
-        return False
-
-
-def _is_multimodal_model(model_name: str, trust_remote_code: bool = False) -> bool:
-    """Check if a model is a multimodal (vision-language) model."""
-    MULTIMODAL_ARCHITECTURES = [
-        "LlavaForConditionalGeneration",
-        "LlavaNextForConditionalGeneration",
-        "LlavaOnevisionForConditionalGeneration",
-        "Gemma3ForConditionalGeneration",
-    ]
-    try:
-        config = AutoConfig.from_pretrained(
-            model_name, token=_hf_token(), trust_remote_code=trust_remote_code
-        )
-        architectures = getattr(config, "architectures", []) or []
-        return any(arch in MULTIMODAL_ARCHITECTURES for arch in architectures)
     except Exception:
         return False
 
@@ -207,23 +100,21 @@ def _is_multimodal_model(model_name: str, trust_remote_code: bool = False) -> bo
 def get_auto_model_class(model_name: str, trust_remote_code: bool = False):
     """Determine the correct AutoModel class for a given model.
 
-    Some models (like T5) are encoder-decoder and need AutoModelForSeq2SeqLM
-    instead of AutoModelForCausalLM. Multimodal models (LLaVA, Gemma3) need
-    AutoModel to load the full vision+language architecture.
-
-    Args:
-        model_name: The HuggingFace model name or path
-
-    Returns:
-        The appropriate AutoModel class
+    Delegates to the bridge's architecture detection for consistency.
     """
-    if is_encoder_decoder_model(model_name, trust_remote_code=trust_remote_code):
-        return AutoModelForSeq2SeqLM
-    if _is_multimodal_model(model_name, trust_remote_code=trust_remote_code):
-        from transformers import AutoModelForImageTextToText
+    from transformer_lens.model_bridge.sources.transformers import (
+        determine_architecture_from_hf_config,
+        get_hf_model_class_for_architecture,
+    )
 
-        return AutoModelForImageTextToText
-    return AutoModelForCausalLM
+    try:
+        config = AutoConfig.from_pretrained(
+            model_name, trust_remote_code=trust_remote_code, token=_hf_token()
+        )
+        architecture = determine_architecture_from_hf_config(config)
+        return get_hf_model_class_for_architecture(architecture)
+    except Exception:
+        return AutoModelForCausalLM
 
 
 def _fixup_custom_model(hf_model) -> None:

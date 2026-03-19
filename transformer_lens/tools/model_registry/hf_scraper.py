@@ -27,7 +27,6 @@ Usage:
 import argparse
 import json
 import logging
-import os
 import time
 from datetime import date, datetime
 from pathlib import Path
@@ -140,8 +139,9 @@ def scrape_all_models(
             "Install it with: pip install huggingface_hub"
         )
 
-    token = os.environ.get("HF_TOKEN", None)
-    api = HfApi(token=token)
+    from transformer_lens.utilities.hf_utils import get_hf_token
+
+    api = HfApi(token=get_hf_token())
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 

@@ -224,44 +224,21 @@ def determine_architecture_from_hf_config(hf_config):
 
 
 def get_hf_model_class_for_architecture(architecture: str):
-    """Determine the correct HuggingFace AutoModel class to use for loading.
+    """Determine the correct HuggingFace AutoModel class for loading.
 
-    Args:
-        architecture: The architecture name (e.g., "GPT2LMHeadModel", "T5ForConditionalGeneration")
-
-    Returns:
-        The appropriate HuggingFace AutoModel class to use
-
-    Raises:
-        ValueError: If architecture is not recognized
+    Uses centralized architecture sets from utilities.architectures.
     """
-    seq2seq_architectures = {
-        "T5ForConditionalGeneration",
-        "BartForConditionalGeneration",
-        "MBartForConditionalGeneration",
-        "MarianMTModel",
-        "PegasusForConditionalGeneration",
-        "BlenderbotForConditionalGeneration",
-        "BlenderbotSmallForConditionalGeneration",
-    }
-    masked_lm_architectures = {
-        "BertForMaskedLM",
-        "RobertaForMaskedLM",
-        "DistilBertForMaskedLM",
-        "AlbertForMaskedLM",
-        "ElectraForMaskedLM",
-    }
-    multimodal_architectures = {
-        "LlavaForConditionalGeneration",
-        "LlavaNextForConditionalGeneration",
-        "LlavaOnevisionForConditionalGeneration",
-        "Gemma3ForConditionalGeneration",
-    }
-    if architecture in seq2seq_architectures:
+    from transformer_lens.utilities.architectures import (
+        MASKED_LM_ARCHITECTURES,
+        MULTIMODAL_ARCHITECTURES,
+        SEQ2SEQ_ARCHITECTURES,
+    )
+
+    if architecture in SEQ2SEQ_ARCHITECTURES:
         return AutoModelForSeq2SeqLM
-    elif architecture in masked_lm_architectures:
+    elif architecture in MASKED_LM_ARCHITECTURES:
         return AutoModelForMaskedLM
-    elif architecture in multimodal_architectures:
+    elif architecture in MULTIMODAL_ARCHITECTURES:
         from transformers import AutoModelForImageTextToText
 
         return AutoModelForImageTextToText
@@ -303,7 +280,9 @@ def boot(
             model_name = official_name
             break
     # Pass HF token for gated model access (e.g. meta-llama/*)
-    _hf_token = os.environ.get("HF_TOKEN", "") or None
+    from transformer_lens.utilities.hf_utils import get_hf_token
+
+    _hf_token = get_hf_token()
     hf_config = AutoConfig.from_pretrained(
         model_name,
         output_attentions=True,
@@ -401,8 +380,7 @@ def boot(
     if tokenizer is not None:
         tokenizer = setup_tokenizer(tokenizer, default_padding_side=default_padding_side)
     else:
-        huggingface_token = os.environ.get("HF_TOKEN", "")
-        token_arg = huggingface_token if len(huggingface_token) > 0 else None
+        token_arg = get_hf_token()
         # Determine tokenizer source: use adapter's tokenizer_name if the model
         # doesn't ship its own tokenizer (e.g., OpenELM uses LLaMA tokenizer)
         tokenizer_source = model_name
