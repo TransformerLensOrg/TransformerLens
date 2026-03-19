@@ -1,14 +1,14 @@
 {
-  "generated_at": "2026-03-17",
+  "generated_at": "2026-03-18",
   "scan_info": {
-    "total_scanned": 4221,
+    "total_scanned": 3426,
     "task_filter": "text-generation",
     "min_downloads": 500,
-    "scan_duration_seconds": 2.6
+    "scan_duration_seconds": 2.4
   },
-  "total_architectures": 32,
-  "total_models": 5745,
-  "total_verified": 666,
+  "total_architectures": 33,
+  "total_models": 5764,
+  "total_verified": 673,
   "models": [
     {
       "architecture_id": "Qwen2ForCausalLM",
@@ -73154,6 +73154,222 @@
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": 93.4
+    },
+    {
+      "architecture_id": "LlamaForCausalLM",
+      "model_id": "deqing/llama-300M-v5-window_4",
+      "status": 0,
+      "verified_date": null,
+      "metadata": null,
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null
+    },
+    {
+      "architecture_id": "LlamaForCausalLM",
+      "model_id": "deqing/llama-300M-v5-base_7",
+      "status": 0,
+      "verified_date": null,
+      "metadata": null,
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null
+    },
+    {
+      "architecture_id": "Qwen3ForCausalLM",
+      "model_id": "xiaolesu/Lean4-sft-nt-8b",
+      "status": 0,
+      "verified_date": null,
+      "metadata": null,
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null
+    },
+    {
+      "architecture_id": "LlamaForCausalLM",
+      "model_id": "deqing/llama-300M-v5-permute",
+      "status": 0,
+      "verified_date": null,
+      "metadata": null,
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null
+    },
+    {
+      "architecture_id": "GPT2LMHeadModel",
+      "model_id": "microsoft/CodeGPT-small-java-adaptedGPT2",
+      "status": 0,
+      "verified_date": null,
+      "metadata": null,
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null
+    },
+    {
+      "architecture_id": "LlamaForCausalLM",
+      "model_id": "daryl149/llama-2-7b-chat-hf",
+      "status": 0,
+      "verified_date": null,
+      "metadata": null,
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null
+    },
+    {
+      "architecture_id": "ApertusForCausalLM",
+      "model_id": "swiss-ai/Apertus-8B-Instruct-2509",
+      "status": 1,
+      "verified_date": "2026-03-18",
+      "metadata": null,
+      "note": "Full verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "phase4_score": 95.4
+    },
+    {
+      "architecture_id": "ApertusForCausalLM",
+      "model_id": "swiss-ai/Apertus-8B-2509",
+      "status": 1,
+      "verified_date": "2026-03-18",
+      "metadata": null,
+      "note": "Full verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "phase4_score": 98.0
+    },
+    {
+      "architecture_id": "ApertusForCausalLM",
+      "model_id": "swiss-ai/Apertus-70B-Instruct-2509",
+      "status": 2,
+      "verified_date": "2026-03-18",
+      "metadata": null,
+      "note": "Estimated 705.6 GB exceeds 108.0 GB limit",
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null
+    },
+    {
+      "architecture_id": "ApertusForCausalLM",
+      "model_id": "swiss-ai/Apertus-70B-2509",
+      "status": 2,
+      "verified_date": "2026-03-18",
+      "metadata": null,
+      "note": "Estimated 705.6 GB exceeds 108.0 GB limit",
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null
+    },
+    {
+      "architecture_id": "ApertusForCausalLM",
+      "model_id": "aisingapore/Apertus-SEA-LION-v4-8B-IT",
+      "status": 1,
+      "verified_date": "2026-03-18",
+      "metadata": null,
+      "note": "Core verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": 94.1
+    },
+    {
+      "architecture_id": "ApertusForCausalLM",
+      "model_id": "yujiepan/apertus-tiny-random",
+      "status": 1,
+      "verified_date": "2026-03-18",
+      "metadata": null,
+      "note": "Core verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": 72.2
+    },
+    {
+      "architecture_id": "ApertusForCausalLM",
+      "model_id": "tiny-random/apertus",
+      "status": 1,
+      "verified_date": "2026-03-18",
+      "metadata": null,
+      "note": "Full verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "phase4_score": 72.2
+    },
+    {
+      "architecture_id": "ApertusForCausalLM",
+      "model_id": "unsloth/Apertus-8B-Instruct-2509",
+      "status": 1,
+      "verified_date": "2026-03-18",
+      "metadata": null,
+      "note": "Full verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "phase4_score": 95.4
+    },
+    {
+      "architecture_id": "ApertusForCausalLM",
+      "model_id": "tartuNLP/Apertus-EstLLM-8B-1125",
+      "status": 1,
+      "verified_date": "2026-03-18",
+      "metadata": null,
+      "note": "Core verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": 97.2
+    },
+    {
+      "architecture_id": "ApertusForCausalLM",
+      "model_id": "loleg/Apertus-8B-Instruct-2509-mlx",
+      "status": 3,
+      "verified_date": "2026-03-18",
+      "metadata": null,
+      "note": "CORE FAILED: Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed)",
+      "phase1_score": 0.0,
+      "phase2_score": null,
+      "phase3_score": null
+    },
+    {
+      "architecture_id": "ApertusForCausalLM",
+      "model_id": "llmat/Apertus-8B-Instruct-2509-NVFP4",
+      "status": 0,
+      "verified_date": null,
+      "metadata": null,
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null
+    },
+    {
+      "architecture_id": "ApertusForCausalLM",
+      "model_id": "onnx-community/Apertus-8B-Instruct-2509-ONNX",
+      "status": 0,
+      "verified_date": null,
+      "metadata": null,
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null
+    },
+    {
+      "architecture_id": "ApertusForCausalLM",
+      "model_id": "tartuNLP/Apertus-EstLLM-8B-Instruct-1125",
+      "status": 0,
+      "verified_date": null,
+      "metadata": null,
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null
     }
   ]
 }

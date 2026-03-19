@@ -1,13 +1,13 @@
 {
-  "generated_at": "2026-03-17",
+  "generated_at": "2026-03-18",
   "scan_info": {
-    "total_scanned": 4221,
+    "total_scanned": 3426,
     "task_filter": "text-generation",
     "min_downloads": 500,
-    "scan_duration_seconds": 2.6
+    "scan_duration_seconds": 2.4
   },
-  "total_unsupported_architectures": 254,
-  "total_unsupported_models": 1019,
+  "total_unsupported_architectures": 253,
+  "total_unsupported_models": 1013,
   "gaps": [
     {
       "architecture_id": "Qwen3MoeForCausalLM",
@@ -202,6 +202,22 @@
       ]
     },
     {
+      "architecture_id": "MiniMaxM2ForCausalLM",
+      "total_models": 15,
+      "sample_models": [
+        "MiniMaxAI/MiniMax-M2.5",
+        "MiniMaxAI/MiniMax-M2",
+        "cerebras/MiniMax-M2.1-REAP-139B-A10B",
+        "MiniMaxAI/MiniMax-M2.1",
+        "cerebras/MiniMax-M2.5-REAP-139B-A10B",
+        "PrimeIntellect/MiniMax-M2.5-bf16",
+        "cerebras/MiniMax-M2.5-REAP-172B-A10B",
+        "saricles/MiniMax-M2.5-REAP-172B-A10B-NVFP4-GB10",
+        "amd/MiniMax-M2.1-MXFP4",
+        "aspctu/MiniMax-M2.5"
+      ]
+    },
+    {
       "architecture_id": "GPTBigCodeForCausalLM",
       "total_models": 15,
       "sample_models": [
@@ -215,22 +231,6 @@
         "bigcode/starcoderbase-3b",
         "HuggingFaceH4/starchat-alpha",
         "openchat/opencoderplus"
-      ]
-    },
-    {
-      "architecture_id": "Glm4MoeLiteForCausalLM",
-      "total_models": 14,
-      "sample_models": [
-        "zai-org/GLM-4.7-Flash",
-        "GadflyII/GLM-4.7-Flash-NVFP4",
-        "unsloth/GLM-4.7-Flash",
-        "GadflyII/GLM-4.7-Flash-MTP-NVFP4",
-        "Olafangensan/GLM-4.7-Flash-heretic",
-        "huihui-ai/Huihui-GLM-4.7-Flash-abliterated",
-        "cerebras/GLM-4.7-Flash-REAP-23B-A3B",
-        "TeichAI/GLM-4.7-Flash-Claude-Opus-4.5-High-Reasoning-Distill",
-        "Ex0bit/GLM-4.7-Flash-PRISM",
-        "MuXodious/GLM-4.7-Flash-absolute-heresy"
       ]
     },
     {
@@ -250,22 +250,6 @@
       ]
     },
     {
-      "architecture_id": "MiniMaxM2ForCausalLM",
-      "total_models": 14,
-      "sample_models": [
-        "MiniMaxAI/MiniMax-M2.5",
-        "MiniMaxAI/MiniMax-M2",
-        "cerebras/MiniMax-M2.1-REAP-139B-A10B",
-        "MiniMaxAI/MiniMax-M2.1",
-        "cerebras/MiniMax-M2.5-REAP-139B-A10B",
-        "PrimeIntellect/MiniMax-M2.5-bf16",
-        "cerebras/MiniMax-M2.5-REAP-172B-A10B",
-        "saricles/MiniMax-M2.5-REAP-172B-A10B-NVFP4-GB10",
-        "amd/MiniMax-M2.1-MXFP4",
-        "aspctu/MiniMax-M2.5"
-      ]
-    },
-    {
       "architecture_id": "XGLMForCausalLM",
       "total_models": 14,
       "sample_models": [
@@ -274,8 +258,8 @@
         "facebook/xglm-1.7B",
         "KoboldAI/fairseq-dense-13B",
         "facebook/xglm-4.5B",
-        "KoboldAI/fairseq-dense-2.7B",
         "KoboldAI/fairseq-dense-125M",
+        "KoboldAI/fairseq-dense-2.7B",
         "KoboldAI/fairseq-dense-1.3B",
         "KoboldAI/fairseq-dense-355M",
         "KoboldAI/fairseq-dense-6.7B"
@@ -287,8 +271,8 @@
       "sample_models": [
         "Salesforce/codegen-350M-mono",
         "Salesforce/codegen-350M-multi",
-        "hf-tiny-model-private/tiny-random-CodeGenForCausalLM",
         "Salesforce/codegen-2B-mono",
+        "hf-tiny-model-private/tiny-random-CodeGenForCausalLM",
         "Salesforce/codegen-6B-multi",
         "shailja/fine-tuned-codegen-16B-Verilog",
         "katuni4ka/tiny-random-codegen2",
@@ -308,9 +292,25 @@
         "RWKV/rwkv-4-430m-pile",
         "RWKV/rwkv-4-3b-pile",
         "RWKV/rwkv-4-7b-pile",
-        "RWKV/rwkv-4-14b-pile",
         "RWKV/rwkv-raven-1b5",
+        "RWKV/rwkv-4-14b-pile",
         "RWKV/rwkv-raven-7b"
+      ]
+    },
+    {
+      "architecture_id": "Glm4MoeLiteForCausalLM",
+      "total_models": 12,
+      "sample_models": [
+        "zai-org/GLM-4.7-Flash",
+        "GadflyII/GLM-4.7-Flash-NVFP4",
+        "unsloth/GLM-4.7-Flash",
+        "GadflyII/GLM-4.7-Flash-MTP-NVFP4",
+        "Olafangensan/GLM-4.7-Flash-heretic",
+        "huihui-ai/Huihui-GLM-4.7-Flash-abliterated",
+        "cerebras/GLM-4.7-Flash-REAP-23B-A3B",
+        "TeichAI/GLM-4.7-Flash-Claude-Opus-4.5-High-Reasoning-Distill",
+        "Ex0bit/GLM-4.7-Flash-PRISM",
+        "MuXodious/GLM-4.7-Flash-absolute-heresy"
       ]
     },
     {
@@ -473,8 +473,8 @@
         "lightblue/japanese-mpt-7b",
         "vinai/PhoGPT-4B",
         "Nethermind/Mpt-Instruct-DotNet-S",
-        "vinai/PhoGPT-4B-Chat",
-        "replit/replit-code-v1-3b"
+        "replit/replit-code-v1-3b",
+        "vinai/PhoGPT-4B-Chat"
       ]
     },
     {
@@ -621,17 +621,6 @@
         "GSAI-ML/LLaDA-1.5",
         "Fraser/LLaDA-8B-Base-gg2m",
         "d3LLM/d3LLM_LLaDA"
-      ]
-    },
-    {
-      "architecture_id": "ApertusForCausalLM",
-      "total_models": 5,
-      "sample_models": [
-        "swiss-ai/Apertus-8B-Instruct-2509",
-        "swiss-ai/Apertus-8B-2509",
-        "swiss-ai/Apertus-70B-Instruct-2509",
-        "swiss-ai/Apertus-70B-2509",
-        "aisingapore/Apertus-SEA-LION-v4-8B-IT"
       ]
     },
     {
@@ -1377,19 +1366,19 @@
       ]
     },
     {
-      "architecture_id": "JetMoEForCausalLM",
-      "total_models": 2,
-      "sample_models": [
-        "jetmoe/jetmoe-8b",
-        "jetmoe/jetmoe-8b-chat"
-      ]
-    },
-    {
       "architecture_id": "MosaicGPT",
       "total_models": 2,
       "sample_models": [
         "anas-awadalla/mpt-1b-redpajama-200b",
         "anas-awadalla/mpt-1b-redpajama-200b-dolly"
+      ]
+    },
+    {
+      "architecture_id": "JetMoEForCausalLM",
+      "total_models": 2,
+      "sample_models": [
+        "jetmoe/jetmoe-8b",
+        "jetmoe/jetmoe-8b-chat"
       ]
     },
     {
@@ -1921,6 +1910,13 @@
       ]
     },
     {
+      "architecture_id": "SteerlingForCausalLM",
+      "total_models": 1,
+      "sample_models": [
+        "guidelabs/steerling-8b"
+      ]
+    },
+    {
       "architecture_id": "LamedPhi3ForCausalLM",
       "total_models": 1,
       "sample_models": [
@@ -2040,17 +2036,17 @@
       ]
     },
     {
-      "architecture_id": "CircuitGPTForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "openai/circuit-sparsity"
-      ]
-    },
-    {
       "architecture_id": "GPT2CustomLMHeadModel",
       "total_models": 1,
       "sample_models": [
         "fxmarty/tiny-testing-gpt2-remote-code"
+      ]
+    },
+    {
+      "architecture_id": "CircuitGPTForCausalLM",
+      "total_models": 1,
+      "sample_models": [
+        "openai/circuit-sparsity"
       ]
     },
     {
@@ -2065,13 +2061,6 @@
       "total_models": 1,
       "sample_models": [
         "manycore-research/SpatialLM1.1-Llama-1B"
-      ]
-    },
-    {
-      "architecture_id": "SKTOmniForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "Shrijanagain/SKT_OMNI_SUPREME"
       ]
     },
     {
