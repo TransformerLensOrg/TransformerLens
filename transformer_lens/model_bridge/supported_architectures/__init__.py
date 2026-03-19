@@ -24,15 +24,6 @@ from transformer_lens.model_bridge.supported_architectures.gemma3 import (
 from transformer_lens.model_bridge.supported_architectures.gemma3_multimodal import (
     Gemma3MultimodalArchitectureAdapter,
 )
-from transformer_lens.model_bridge.supported_architectures.granite import (
-    GraniteArchitectureAdapter,
-)
-from transformer_lens.model_bridge.supported_architectures.granite_moe import (
-    GraniteMoeArchitectureAdapter,
-)
-from transformer_lens.model_bridge.supported_architectures.granite_moe_hybrid import (
-    GraniteMoeHybridArchitectureAdapter,
-)
 from transformer_lens.model_bridge.supported_architectures.gpt2 import (
     GPT2ArchitectureAdapter,
 )
@@ -44,6 +35,15 @@ from transformer_lens.model_bridge.supported_architectures.gpt_oss import (
 )
 from transformer_lens.model_bridge.supported_architectures.gptj import (
     GptjArchitectureAdapter,
+)
+from transformer_lens.model_bridge.supported_architectures.granite import (
+    GraniteArchitectureAdapter,
+)
+from transformer_lens.model_bridge.supported_architectures.granite_moe import (
+    GraniteMoeArchitectureAdapter,
+)
+from transformer_lens.model_bridge.supported_architectures.granite_moe_hybrid import (
+    GraniteMoeHybridArchitectureAdapter,
 )
 from transformer_lens.model_bridge.supported_architectures.llama import (
     LlamaArchitectureAdapter,
@@ -69,6 +69,15 @@ from transformer_lens.model_bridge.supported_architectures.mixtral import (
 from transformer_lens.model_bridge.supported_architectures.nanogpt import (
     NanogptArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.neel_solu_old import (
+    NeelSoluOldArchitectureAdapter,
+)
+from transformer_lens.model_bridge.supported_architectures.neo import (
+    NeoArchitectureAdapter,
+)
+from transformer_lens.model_bridge.supported_architectures.neox import (
+    NeoxArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.olmo import (
     OlmoArchitectureAdapter,
 )
@@ -80,15 +89,6 @@ from transformer_lens.model_bridge.supported_architectures.olmo3 import (
 )
 from transformer_lens.model_bridge.supported_architectures.olmoe import (
     OlmoeArchitectureAdapter,
-)
-from transformer_lens.model_bridge.supported_architectures.neel_solu_old import (
-    NeelSoluOldArchitectureAdapter,
-)
-from transformer_lens.model_bridge.supported_architectures.neo import (
-    NeoArchitectureAdapter,
-)
-from transformer_lens.model_bridge.supported_architectures.neox import (
-    NeoxArchitectureAdapter,
 )
 from transformer_lens.model_bridge.supported_architectures.openelm import (
     OpenElmArchitectureAdapter,

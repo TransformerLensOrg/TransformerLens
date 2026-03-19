@@ -87,9 +87,7 @@ class ApertusArchitectureAdapter(ArchitectureAdapter):
                 name="model.layers",
                 submodules={
                     "ln1": RMSNormalizationBridge(name="attention_layernorm", config=self.cfg),
-                    "ln2": RMSNormalizationBridge(
-                        name="feedforward_layernorm", config=self.cfg
-                    ),
+                    "ln2": RMSNormalizationBridge(name="feedforward_layernorm", config=self.cfg),
                     "attn": PositionEmbeddingsAttentionBridge(
                         name="self_attn",
                         config=self.cfg,
@@ -116,11 +114,16 @@ class ApertusArchitectureAdapter(ArchitectureAdapter):
         }
 
     def prepare_loading(self, model_name: str, model_kwargs: dict) -> None:
-        """Patch XIELUActivation to handle meta tensor initialization.
+        """Patch XIELUActivation to defer eager .item() calls for meta tensor compat.
 
         Transformers v5 uses meta tensors during from_pretrained, but
-        XIELUActivation.__init__ calls .item() on buffer tensors which fails
-        on meta device. We defer the scalar computation to forward() time.
+        XIELUActivation.__init__ eagerly calls .item() on beta/eps buffers to
+        precompute _beta_scalar/_eps_scalar for the CUDA kernel path. This fails
+        on meta device. Once upstream fixes this (transformers PR #43473), this
+        patch can be removed.
+
+        Instead of reimplementing __init__, we wrap it to catch the meta tensor
+        failure and defer scalar computation to forward() time.
         """
         try:
             from transformers.activations import XIELUActivation
@@ -130,47 +133,63 @@ class ApertusArchitectureAdapter(ArchitectureAdapter):
         if getattr(XIELUActivation, "_apertus_patched", False):
             return
 
-        import torch
+        # Check if upstream already defers scalar computation (fix landed)
+        if not self._xielu_needs_patch(XIELUActivation):
+            return
 
         _orig_init = XIELUActivation.__init__
-
-        def _patched_init(self, *args, **kwargs):
-            """XIELUActivation init that defers .item() calls for meta tensor compat."""
-            torch.nn.Module.__init__(self)
-            alpha_p_init = kwargs.get("alpha_p_init", 0.8)
-            alpha_n_init = kwargs.get("alpha_n_init", 0.8)
-            beta = kwargs.get("beta", 0.5)
-            eps = kwargs.get("eps", -1e-6)
-            dtype = kwargs.get("dtype", torch.bfloat16)
-            with_vector_loads = kwargs.get("with_vector_loads", False)
-
-            self.alpha_p = torch.nn.Parameter(
-                torch.log(torch.expm1(torch.tensor(alpha_p_init, dtype=dtype))).unsqueeze(0)
-            )
-            self.alpha_n = torch.nn.Parameter(
-                torch.log(torch.expm1(torch.tensor(alpha_n_init - beta, dtype=dtype))).unsqueeze(0)
-            )
-            self.register_buffer("beta", torch.tensor(beta, dtype=dtype))
-            self.register_buffer("eps", torch.tensor(eps, dtype=dtype))
-            self.with_vector_loads = with_vector_loads
-            # Defer scalar computation — will be computed lazily in forward()
-            self._beta_scalar = None
-            self._eps_scalar = None
-            self._xielu_cuda_obj = None
-
         _orig_forward = XIELUActivation.forward
 
+        def _patched_init(self, *args, **kwargs):
+            try:
+                _orig_init(self, *args, **kwargs)
+            except NotImplementedError:
+                # Meta device — re-run without the .item() calls
+                _orig_init.__wrapped_meta = True  # type: ignore[attr-defined]
+                # Call nn.Module.__init__ and replicate only the tensor setup
+                import torch
+
+                torch.nn.Module.__init__(self)
+                alpha_p_init = kwargs.get("alpha_p_init", 0.8)
+                alpha_n_init = kwargs.get("alpha_n_init", 0.8)
+                beta = kwargs.get("beta", 0.5)
+                eps = kwargs.get("eps", -1e-6)
+                dtype = kwargs.get("dtype", torch.bfloat16)
+                self.with_vector_loads = kwargs.get("with_vector_loads", False)
+                self.alpha_p = torch.nn.Parameter(
+                    torch.log(torch.expm1(torch.tensor(alpha_p_init, dtype=dtype))).unsqueeze(0)
+                )
+                self.alpha_n = torch.nn.Parameter(
+                    torch.log(
+                        torch.expm1(torch.tensor(alpha_n_init - beta, dtype=dtype))
+                    ).unsqueeze(0)
+                )
+                self.register_buffer("beta", torch.tensor(beta, dtype=dtype))
+                self.register_buffer("eps", torch.tensor(eps, dtype=dtype))
+                self._beta_scalar = None
+                self._eps_scalar = None
+                self._xielu_cuda_obj = None
+
         def _patched_forward(self, x):
-            """Forward that lazily computes scalars on first call."""
+            """Lazily compute scalars on first real forward pass."""
             if self._beta_scalar is None:
                 self._beta_scalar = float(self.beta.detach().cpu().float().item())
                 self._eps_scalar = float(self.eps.detach().cpu().float().item())
             return _orig_forward(self, x)
 
-        XIELUActivation.__init__ = _patched_init
-        XIELUActivation.forward = _patched_forward
-        XIELUActivation._apertus_patched = True
+        XIELUActivation.__init__ = _patched_init  # type: ignore[method-assign]
+        XIELUActivation.forward = _patched_forward  # type: ignore[method-assign]
+        XIELUActivation._apertus_patched = True  # type: ignore[attr-defined]
         logger.debug("Patched XIELUActivation for meta tensor compatibility")
+
+    @staticmethod
+    def _xielu_needs_patch(cls: type) -> bool:
+        """Check whether XIELUActivation still eagerly calls .item() in __init__."""
+        import inspect
+
+        src = inspect.getsource(cls.__init__)  # type: ignore[misc]
+        # If __init__ still has the eager .item() / float() pattern, patch needed
+        return "_beta_scalar" in src and ".item()" in src
 
     def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
         """Set up rotary embedding references for Apertus component testing.
