@@ -1256,6 +1256,11 @@ class TransformerBridge(nn.Module):
 
         try:
             if isinstance(input, (str, list)):
+                if getattr(self.cfg, "is_audio_model", False):
+                    raise ValueError(
+                        "Audio models require tensor input (raw waveform), not text. "
+                        "Pass a torch.Tensor or use the input_values parameter."
+                    )
                 input_ids = self.to_tokens(
                     input, prepend_bos=prepend_bos, padding_side=padding_side
                 )
@@ -1389,6 +1394,11 @@ class TransformerBridge(nn.Module):
             if return_type == "logits":
                 return logits
             elif return_type == "loss":
+                if getattr(self.cfg, "is_audio_model", False):
+                    raise ValueError(
+                        "Audio models do not support return_type='loss'. "
+                        "CTC loss requires aligned frame-level labels."
+                    )
                 # Always use self.loss_fn for consistency with HT's formula
                 # (log_softmax + gather).  HF's output.loss uses F.cross_entropy
                 # which gives different results in bfloat16.
@@ -1397,6 +1407,11 @@ class TransformerBridge(nn.Module):
                 ), f"Expected logits tensor, got {type(logits)}"
                 return self.loss_fn(logits, input_ids, per_token=loss_per_token)
             elif return_type == "both":
+                if getattr(self.cfg, "is_audio_model", False):
+                    raise ValueError(
+                        "Audio models do not support return_type='both'. "
+                        "CTC loss requires aligned frame-level labels."
+                    )
                 assert isinstance(
                     logits, torch.Tensor
                 ), f"Expected logits tensor, got {type(logits)}"

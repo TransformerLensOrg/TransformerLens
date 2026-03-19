@@ -449,7 +449,7 @@ def _extract_phase_scores(results: list) -> dict[int, Optional[float]]:
     """
     from transformer_lens.benchmarks.utils import BenchmarkSeverity
 
-    phase_results: dict[int, list[bool]] = {1: [], 2: [], 3: [], 4: [], 7: []}
+    phase_results: dict[int, list[bool]] = {1: [], 2: [], 3: [], 4: [], 7: [], 8: []}
     for result in results:
         if result.phase in phase_results and result.severity != BenchmarkSeverity.SKIPPED:
             phase_results[result.phase].append(result.passed)
@@ -483,6 +483,7 @@ _MIN_PHASE_SCORES: dict[int, float] = {
     3: 75.0,
     4: 50.0,
     7: 75.0,
+    8: 75.0,
 }
 _DEFAULT_MIN_PHASE_SCORE = 50.0
 
@@ -495,6 +496,12 @@ _MULTIMODAL_ARCHITECTURES = {
     "Gemma3ForConditionalGeneration",
 }
 
+_AUDIO_ARCHITECTURES = {
+    "HubertForCTC",
+    "HubertModel",
+    "HubertForSequenceClassification",
+}
+
 # Tests that MUST pass for a phase to be considered passing, regardless of
 # the overall percentage score.  If any required test fails, the phase fails
 # even if the score is above the minimum threshold.
@@ -502,6 +509,7 @@ _REQUIRED_PHASE_TESTS: dict[int, list[str]] = {
     2: ["logits_equivalence", "loss_equivalence"],
     3: ["logits_equivalence", "loss_equivalence"],
     7: ["multimodal_forward"],
+    8: ["audio_forward"],
 }
 
 
@@ -527,11 +535,13 @@ def _check_phase_scores(
     failing_phases: list[str] = []
     for phase, score in sorted(phase_scores.items()):
         if score is None:
-            # Phase 7 (multimodal) with a NULL score means the processor was
-            # unavailable and no tests ran.  This is a verification failure,
-            # not something to silently skip.
+            # Phase 7 (multimodal) or Phase 8 (audio) with a NULL score means
+            # the processor was unavailable and no tests ran.  This is a
+            # verification failure, not something to silently skip.
             if phase == 7:
                 failing_phases.append(f"P7=NULL (multimodal tests skipped — processor unavailable)")
+            elif phase == 8:
+                failing_phases.append(f"P8=NULL (audio tests skipped — no results)")
             continue
 
         # Phase 4 is a quality metric, not a pass/fail check — skip it here.

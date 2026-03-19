@@ -1,8 +1,4 @@
-"""Convolutional positional embedding bridge component.
-
-This module contains the bridge component for convolutional positional
-embeddings used in audio models like HuBERT and wav2vec2.
-"""
+"""Bridge component for convolutional positional embeddings (HuBERT, wav2vec2)."""
 
 from typing import Any, Dict, Optional
 
@@ -14,12 +10,10 @@ from transformer_lens.model_bridge.generalized_components.base import (
 
 
 class ConvPosEmbedBridge(GeneralizedComponent):
-    """Bridge for convolutional positional embeddings (HuBERT, wav2vec2).
+    """Wraps a grouped 1D conv that produces relative positional information.
 
-    Unlike learned absolute position embeddings (PosEmbedBridge) or rotary
-    embeddings (RotaryEmbeddingBridge), convolutional positional embeddings
-    operate on hidden states via a grouped 1D convolution to produce
-    relative positional information.
+    Unlike PosEmbedBridge (lookup table) or RotaryEmbeddingBridge (rotation matrices),
+    this operates on hidden states via convolution.
     """
 
     hook_aliases = {
@@ -32,13 +26,6 @@ class ConvPosEmbedBridge(GeneralizedComponent):
         config: Optional[Any] = None,
         submodules: Optional[Dict[str, GeneralizedComponent]] = None,
     ):
-        """Initialize the convolutional positional embedding bridge.
-
-        Args:
-            name: The name of this component (e.g., "hubert.encoder.pos_conv_embed")
-            config: Optional configuration object
-            submodules: Dictionary of submodules to register
-        """
         super().__init__(name, config, submodules=submodules or {})
 
     def forward(
@@ -46,15 +33,7 @@ class ConvPosEmbedBridge(GeneralizedComponent):
         hidden_states: torch.Tensor,
         **kwargs: Any,
     ) -> torch.Tensor:
-        """Forward pass through the convolutional positional embedding.
-
-        Args:
-            hidden_states: Input hidden states [batch, seq_len, hidden_size]
-            **kwargs: Additional arguments
-
-        Returns:
-            Positional embeddings [batch, seq_len, hidden_size]
-        """
+        """hidden_states: [batch, seq_len, hidden_size] -> [batch, seq_len, hidden_size]"""
         if self.original_component is None:
             raise RuntimeError(
                 f"Original component not set for {self.name}. "

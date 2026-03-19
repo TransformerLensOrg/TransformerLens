@@ -1,8 +1,4 @@
-"""Audio feature extractor bridge component.
-
-This module contains the bridge component for HuBERT's CNN feature extractor,
-which converts raw audio waveforms into feature representations.
-"""
+"""Bridge component for audio CNN feature extractors (HuBERT, wav2vec2)."""
 
 from typing import Any, Dict, Optional
 
@@ -14,11 +10,9 @@ from transformer_lens.model_bridge.generalized_components.base import (
 
 
 class AudioFeatureExtractorBridge(GeneralizedComponent):
-    """Bridge for audio CNN feature extractors (HuBERT, wav2vec2).
+    """Wraps the multi-layer 1D CNN that converts raw waveforms into features.
 
-    Wraps the multi-layer 1D convolutional feature extractor that converts
-    raw audio waveforms into feature representations. Provides hook_in
-    (raw waveform) and hook_out (extracted features) for interpretability.
+    hook_in captures the raw waveform, hook_out captures extracted features.
     """
 
     hook_aliases = {
@@ -31,13 +25,6 @@ class AudioFeatureExtractorBridge(GeneralizedComponent):
         config: Optional[Any] = None,
         submodules: Optional[Dict[str, GeneralizedComponent]] = None,
     ):
-        """Initialize the audio feature extractor bridge.
-
-        Args:
-            name: The name of this component (e.g., "hubert.feature_extractor")
-            config: Optional configuration object
-            submodules: Dictionary of submodules to register
-        """
         super().__init__(name, config, submodules=submodules or {})
 
     def forward(
@@ -45,15 +32,7 @@ class AudioFeatureExtractorBridge(GeneralizedComponent):
         input_values: torch.Tensor,
         **kwargs: Any,
     ) -> torch.Tensor:
-        """Forward pass through the CNN feature extractor.
-
-        Args:
-            input_values: Raw audio waveform [batch, num_samples]
-            **kwargs: Additional arguments
-
-        Returns:
-            Extracted features [batch, conv_dim, num_frames]
-        """
+        """input_values: [batch, num_samples] -> [batch, conv_dim, num_frames]"""
         if self.original_component is None:
             raise RuntimeError(
                 f"Original component not set for {self.name}. "

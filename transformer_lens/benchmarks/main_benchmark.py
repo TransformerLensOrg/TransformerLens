@@ -111,9 +111,19 @@ MASKED_LM_ARCHITECTURES = [
 NO_HT_COMPARISON_ARCHITECTURES = [
     "Gemma3ForCausalLM",
     "Gemma3ForConditionalGeneration",
+    "HubertForCTC",
+    "HubertModel",
+    "HubertForSequenceClassification",
     "LlavaForConditionalGeneration",
     "LlavaNextForConditionalGeneration",
     "LlavaOnevisionForConditionalGeneration",
+]
+
+# Architecture names that indicate audio encoder models (not suited for text generation)
+AUDIO_ARCHITECTURES = [
+    "HubertForCTC",
+    "HubertModel",
+    "HubertForSequenceClassification",
 ]
 
 
@@ -200,6 +210,26 @@ def _is_multimodal_model(model_name: str, trust_remote_code: bool = False) -> bo
         )
         architectures = getattr(config, "architectures", []) or []
         return any(arch in MULTIMODAL_ARCHITECTURES for arch in architectures)
+    except Exception:
+        return False
+
+
+def is_audio_model(model_name: str, trust_remote_code: bool = False) -> bool:
+    """Check if a model is an audio encoder model (not suited for text generation).
+
+    Args:
+        model_name: The HuggingFace model name or path
+        trust_remote_code: Whether to trust remote code for custom architectures.
+
+    Returns:
+        True if the model is an audio encoder (like HuBERT), False otherwise
+    """
+    try:
+        config = AutoConfig.from_pretrained(
+            model_name, trust_remote_code=trust_remote_code, token=_hf_token()
+        )
+        architectures = getattr(config, "architectures", []) or []
+        return any(arch in AUDIO_ARCHITECTURES for arch in architectures)
     except Exception:
         return False
 
@@ -1152,35 +1182,54 @@ def run_benchmark_suite(
             # Capture HF reference logits using bridge.to_tokens() for
             # consistent tokenization (BOS prepending, etc.).  Both models
             # are still in memory so this is still within the 2.0x window.
+            _is_audio = getattr(bridge_unprocessed.cfg, "is_audio_model", False)
             if verbose:
                 print("Capturing HF reference outputs to CPU...")
             try:
-                hf_tokens = bridge_unprocessed.to_tokens(test_text)
-                is_enc_dec = is_encoder_decoder_model(
-                    model_name, trust_remote_code=trust_remote_code
-                )
-                with torch.no_grad():
-                    if is_enc_dec:
-                        decoder_start_id = getattr(
-                            getattr(hf_model, "config", None),
-                            "decoder_start_token_id",
-                            0,
+                if _is_audio:
+                    # Audio models: use synthetic waveform instead of text tokens
+                    test_audio = torch.randn(1, 16000, device=device, dtype=dtype)
+                    with torch.no_grad():
+                        hf_out = hf_model(input_values=test_audio)
+                        # Audio encoders output last_hidden_state, not logits
+                        if hasattr(hf_out, "logits") and hf_out.logits is not None:
+                            hf_saved_logits = hf_out.logits.detach().cpu().clone()
+                        else:
+                            hf_saved_logits = hf_out.last_hidden_state.detach().cpu().clone()
+                        # No loss computation for audio — CTC requires aligned labels
+                    if verbose:
+                        print(
+                            f"✓ Captured HF audio output {hf_saved_logits.shape}, "
+                            f"loss=N/A (CTC requires labels)\n"
                         )
-                        dec_ids = torch.tensor([[decoder_start_id]]).to(hf_tokens.device)
-                        hf_out = hf_model(hf_tokens, decoder_input_ids=dec_ids)
-                    else:
-                        hf_out = hf_model(hf_tokens)
-                    hf_saved_logits = hf_out.logits.detach().cpu().clone()
+                    del test_audio
+                else:
+                    hf_tokens = bridge_unprocessed.to_tokens(test_text)
+                    is_enc_dec = is_encoder_decoder_model(
+                        model_name, trust_remote_code=trust_remote_code
+                    )
+                    with torch.no_grad():
+                        if is_enc_dec:
+                            decoder_start_id = getattr(
+                                getattr(hf_model, "config", None),
+                                "decoder_start_token_id",
+                                0,
+                            )
+                            dec_ids = torch.tensor([[decoder_start_id]]).to(hf_tokens.device)
+                            hf_out = hf_model(hf_tokens, decoder_input_ids=dec_ids)
+                        else:
+                            hf_out = hf_model(hf_tokens)
+                        hf_saved_logits = hf_out.logits.detach().cpu().clone()
 
-                    # Compute causal LM loss (shift logits and labels)
-                    if not is_enc_dec and hf_saved_logits.shape[1] > 1:
-                        shift_logits = hf_out.logits[..., :-1, :].contiguous()
-                        shift_labels = hf_tokens[..., 1:].contiguous()
-                        loss_fn = torch.nn.CrossEntropyLoss()
-                        hf_saved_loss = loss_fn(
-                            shift_logits.view(-1, shift_logits.size(-1)),
-                            shift_labels.view(-1),
-                        ).item()
+                        # Compute causal LM loss (shift logits and labels)
+                        if not is_enc_dec and hf_saved_logits.shape[1] > 1:
+                            shift_logits = hf_out.logits[..., :-1, :].contiguous()
+                            shift_labels = hf_tokens[..., 1:].contiguous()
+                            loss_fn = torch.nn.CrossEntropyLoss()
+                            hf_saved_loss = loss_fn(
+                                shift_logits.view(-1, shift_logits.size(-1)),
+                                shift_labels.view(-1),
+                            ).item()
 
                 if verbose:
                     loss_str = f"{hf_saved_loss:.4f}" if hf_saved_loss is not None else "N/A"
@@ -1206,13 +1255,18 @@ def run_benchmark_suite(
         # matmul non-determinism can exceed the float32 default of 1e-3
         p1_atol = 1e-3 if dtype == torch.float32 else 5e-3
 
+        # For audio models, use a waveform tensor instead of text
+        _p1_input = test_text
+        if _is_audio:
+            _p1_input = torch.randn(1, 16000, device=device, dtype=dtype)
+
         if hf_saved_logits is not None:
             # Full mode: use pre-captured HF logits (bridge only, 1.0x)
             try:
                 add_result(
                     benchmark_forward_pass(
                         bridge_unprocessed,
-                        test_text,
+                        _p1_input,
                         reference_logits=hf_saved_logits.to(device),
                         atol=p1_atol,
                     )
@@ -1222,17 +1276,18 @@ def run_benchmark_suite(
                     print(f"✗ Forward pass benchmark failed: {e}\n")
         else:
             try:
-                add_result(benchmark_forward_pass(bridge_unprocessed, test_text, atol=p1_atol))
+                add_result(benchmark_forward_pass(bridge_unprocessed, _p1_input, atol=p1_atol))
             except Exception as e:
                 if verbose:
                     print(f"✗ Forward pass benchmark failed: {e}\n")
 
         # Capture Phase 1 reference for Phase 3 equivalence comparison.
+        # Skip for audio models (Phase 3 won't run — no HookedTransformer support).
         # When dtype==float32 (default) and the model natively uses reduced
         # precision, upcast for maximum accuracy.  When the user explicitly
         # requested a non-float32 dtype, run the reference pass in that dtype
         # so the entire pipeline honours the requested precision.
-        if bridge_unprocessed is not None:
+        if bridge_unprocessed is not None and not _is_audio:
             try:
                 original_dtype = bridge_unprocessed.cfg.dtype
                 needs_upcast = dtype == torch.float32 and original_dtype not in (
@@ -1301,11 +1356,13 @@ def run_benchmark_suite(
             print("Running Phase 2 benchmarks...\n")
 
         # Generation benchmarks (unprocessed only) - RUN FIRST
-        # Skip for encoder-decoder models (T5, etc.) which require different generation API
-        is_enc_dec = is_encoder_decoder_model(model_name)
+        # Skip for encoder-decoder and audio models (no text generation capability)
+        _skip_generation = is_encoder_decoder_model(model_name) or getattr(
+            bridge_unprocessed.cfg, "is_audio_model", False
+        )
         if verbose:
             print("1. Generation Benchmarks (unprocessed)")
-        if is_enc_dec:
+        if _skip_generation:
             if verbose:
                 print("⏭️ Skipped (encoder-decoder model - requires decoder_input_ids)\n")
             add_result(
@@ -1451,6 +1508,7 @@ def run_benchmark_suite(
         should_run_phase(4)
         and bridge_unprocessed is not None
         and not is_masked_lm_model(model_name, trust_remote_code=trust_remote_code)
+        and not is_audio_model(model_name, trust_remote_code=trust_remote_code)
     ):
         if verbose:
             print(f"\n{'='*80}")
@@ -1525,6 +1583,57 @@ def run_benchmark_suite(
                     message=f"Failed to run multimodal tests: {str(e)}",
                     details={"error": str(e)},
                     phase=7,
+                )
+            )
+
+    # ========================================================================
+    # Phase 8: Audio Tests (only for audio encoder models)
+    # Runs before Phase 3 so we can reuse bridge_unprocessed before cleanup.
+    # ========================================================================
+    if (
+        bridge_unprocessed is not None
+        and getattr(bridge_unprocessed.cfg, "is_audio_model", False)
+        and should_run_phase(8)
+    ):
+        current_phase[0] = 8
+        if verbose:
+            print("\n" + "=" * 80)
+            print("PHASE 8: AUDIO TESTS")
+            print("=" * 80)
+            print("Testing audio forward pass, caching, representation stability, and features.")
+            print("=" * 80 + "\n")
+
+        try:
+            from transformer_lens.benchmarks.audio import run_audio_benchmarks
+
+            test_audio = torch.randn(1, 16000, device=device, dtype=dtype)
+            audio_results = run_audio_benchmarks(
+                bridge_unprocessed,
+                test_audio=test_audio,
+                verbose=verbose,
+            )
+            for result in audio_results:
+                result.phase = 8
+                results.append(result)
+                if verbose:
+                    print(result)
+
+            if verbose:
+                print("\n" + "=" * 80)
+                print("PHASE 8 COMPLETE")
+                print("=" * 80)
+
+        except Exception as e:
+            if verbose:
+                print(f"\n⚠ Audio tests failed: {e}\n")
+            results.append(
+                BenchmarkResult(
+                    name="audio_suite",
+                    passed=False,
+                    severity=BenchmarkSeverity.ERROR,
+                    message=f"Failed to run audio tests: {str(e)}",
+                    details={"error": str(e)},
+                    phase=8,
                 )
             )
 

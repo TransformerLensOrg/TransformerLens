@@ -1,12 +1,8 @@
 """HuBERT architecture adapter.
 
-This module provides the architecture adapter for HuBERT audio models,
-including HubertModel (bare encoder) and HubertForCTC (with CTC head).
-
-HuBERT is an encoder-only audio transformer with a CNN feature extractor
-front-end. Its transformer encoder blocks are structurally identical to
-BERT's, using post-LN with standard multi-head self-attention and
-feed-forward layers.
+Supports HubertModel (bare encoder) and HubertForCTC (with CTC head).
+Encoder blocks are structurally identical to BERT (post-LN by default,
+pre-LN when do_stable_layer_norm=True).
 """
 
 from typing import Any
@@ -38,17 +34,11 @@ from transformer_lens.model_bridge.generalized_components.conv_pos_embed import 
 class HubertArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for HuBERT audio models.
 
-    Supports both HubertModel (bare encoder) and HubertForCTC (with CTC head).
-    HubertForCTC wraps HubertModel under a 'hubert.' prefix; prepare_model()
-    detects this and adjusts component paths accordingly.
+    HubertForCTC nests HubertModel under a 'hubert.' prefix;
+    prepare_model() detects this and adjusts component paths.
     """
 
     def __init__(self, cfg: Any) -> None:
-        """Initialize the HuBERT architecture adapter.
-
-        Args:
-            cfg: The configuration object.
-        """
         super().__init__(cfg)
 
         self.cfg.is_audio_model = True
@@ -58,16 +48,13 @@ class HubertArchitectureAdapter(ArchitectureAdapter):
         self.cfg.gated_mlp = False
         self.cfg.attn_only = False
 
-        # do_stable_layer_norm controls whether HuBERT uses pre-LN or post-LN.
-        # - False (default, hubert-base): post-LN (like BERT) — fold_ln unsafe
-        # - True (hubert-large/xlarge): pre-LN (like GPT-2) — fold_ln safe
-        # This attribute is propagated from HF config in prepare_loading().
+        # Pre-LN (True) vs post-LN (False). Propagated from HF config in prepare_loading().
         self._do_stable_layer_norm = getattr(self.cfg, "do_stable_layer_norm", False)
         self.supports_fold_ln = self._do_stable_layer_norm
 
         n_heads = self.cfg.n_heads
 
-        # Q/K/V/O weight rearrangement (same pattern as BERT)
+        # Q/K/V/O rearrangement — same pattern as BERT
         self.weight_processing_conversions = {
             "blocks.{i}.attn.q.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
@@ -100,19 +87,12 @@ class HubertArchitectureAdapter(ArchitectureAdapter):
             ),
         }
 
-        # Default component mapping for bare HubertModel (no prefix).
-        # prepare_model() will prepend "hubert." for HubertForCTC.
+        # Default mapping for bare HubertModel. prepare_model() rebuilds with
+        # "hubert." prefix for HubertForCTC.
         self.component_mapping = self._build_component_mapping(prefix="")
 
     def _build_component_mapping(self, prefix: str) -> dict:
-        """Build the component mapping with the given module prefix.
-
-        Args:
-            prefix: Module path prefix ("" for HubertModel, "hubert." for HubertForCTC)
-
-        Returns:
-            Dictionary of component name to bridge component mappings
-        """
+        """Build component mapping. prefix="" for HubertModel, "hubert." for HubertForCTC."""
         p = prefix
         mapping: dict[str, Any] = {
             "audio_feature_extractor": AudioFeatureExtractorBridge(
@@ -131,9 +111,7 @@ class HubertArchitectureAdapter(ArchitectureAdapter):
             ),
             "blocks": BlockBridge(
                 name=f"{p}encoder.layers",
-                # HuBERT MLP has no single container module (intermediate_dense
-                # and output_dense are inside feed_forward). Redirect hook aliases
-                # to the actual linear layer hooks, same pattern as BERT.
+                # Redirect MLP hooks to the actual linear layer hooks (same as BERT)
                 hook_alias_overrides={
                     "hook_mlp_out": "mlp.out.hook_out",
                     "hook_mlp_in": "mlp.in.hook_in",
@@ -173,35 +151,29 @@ class HubertArchitectureAdapter(ArchitectureAdapter):
         return mapping
 
     def prepare_loading(self, model_name: str, model_kwargs: dict) -> None:
-        """Propagate HuBERT-specific HF config attributes to the bridge config.
+        """Propagate HuBERT-specific HF config attributes to bridge config.
 
-        Several HuBERT config attributes affect model behavior but are not
-        standard TransformerBridgeConfig fields. We propagate them here to
-        avoid the silent-default bug.
+        Prevents silent-default bugs where adapter reads from bridge config
+        but the attribute was never propagated from HF config.
         """
         hf_config = model_kwargs.get("config")
         if hf_config is None:
             return
 
-        # do_stable_layer_norm: controls pre-LN (True) vs post-LN (False)
+        # Pre-LN vs post-LN — determines fold_ln safety
         do_stable = getattr(hf_config, "do_stable_layer_norm", False)
         self.cfg.do_stable_layer_norm = do_stable  # type: ignore[attr-defined]
         self._do_stable_layer_norm = do_stable
         self.supports_fold_ln = do_stable
 
-        # hidden_act and layer_norm_eps are now mapped globally in
-        # map_default_transformer_lens_config() — no per-adapter propagation needed.
+        # hidden_act and layer_norm_eps are mapped globally in
+        # map_default_transformer_lens_config()
 
-        # Rebuild component mapping now that we know the LN variant
+        # Rebuild with correct LN variant
         self.component_mapping = self._build_component_mapping(prefix="")
 
     def prepare_model(self, hf_model: Any) -> None:
-        """Adjust component mapping based on the actual HF model variant.
-
-        HubertForCTC nests HubertModel under 'self.hubert', adding a prefix.
-        HubertModel has no prefix. Also adds CTC head for HubertForCTC.
-        """
+        """Detect HubertForCTC (has 'hubert.' prefix) and add CTC head."""
         if hasattr(hf_model, "hubert"):
-            # HubertForCTC — rebuild mapping with "hubert." prefix and add CTC head
             self.component_mapping = self._build_component_mapping(prefix="hubert.")
             self.component_mapping["unembed"] = UnembeddingBridge(name="lm_head")
