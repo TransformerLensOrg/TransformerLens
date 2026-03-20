@@ -134,6 +134,7 @@ def benchmark_forward_pass(
             # HuggingFace model (reference_model is guaranteed non-None here
             # because we returned early at line 80 when both are None)
             assert reference_model is not None
+            assert isinstance(test_input, str), "Text model requires string input"
             tokens = bridge.to_tokens(test_input)
             with torch.no_grad():
                 if is_enc_dec:

@@ -1117,8 +1117,8 @@ def run_benchmark_suite(
         p1_atol = 1e-3 if dtype == torch.float32 else 5e-3
 
         # For audio models, reuse the waveform from HF reference capture
-        _p1_input = test_text
-        if _is_audio:
+        _p1_input: Union[str, torch.Tensor] = test_text
+        if _is_audio and _test_audio is not None:
             _p1_input = _test_audio
 
         if hf_saved_logits is not None:
