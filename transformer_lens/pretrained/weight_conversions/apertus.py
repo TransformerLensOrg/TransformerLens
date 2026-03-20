@@ -15,6 +15,8 @@ from transformer_lens.config.HookedTransformerConfig import HookedTransformerCon
 
 logger = logging.getLogger(__name__)
 
+logger = logging.getLogger(__name__)
+
 
 def convert_apertus_weights(apertus, cfg: HookedTransformerConfig):
     state_dict = {}
