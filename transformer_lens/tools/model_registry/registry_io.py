@@ -165,10 +165,33 @@ def update_model_status(
                     date.today().isoformat() if status != STATUS_UNVERIFIED else None
                 )
                 entry["note"] = note
-            for phase_num in (1, 2, 3, 4, 7):
+            for phase_num in (1, 2, 3, 4, 7, 8):
                 key = f"phase{phase_num}_score"
                 if phase_num in phase_scores:
                     entry[key] = phase_scores[phase_num]
+                elif key not in entry:
+                    entry[key] = None
+            # Reorder keys so phase scores are always in numerical order
+            _KEY_ORDER = [
+                "architecture_id",
+                "model_id",
+                "status",
+                "verified_date",
+                "metadata",
+                "note",
+                "phase1_score",
+                "phase2_score",
+                "phase3_score",
+                "phase4_score",
+                "phase7_score",
+                "phase8_score",
+            ]
+            reordered = {k: entry[k] for k in _KEY_ORDER if k in entry}
+            for k in entry:
+                if k not in reordered:
+                    reordered[k] = entry[k]
+            entry.clear()
+            entry.update(reordered)
             updated = True
             break
 
@@ -187,6 +210,7 @@ def update_model_status(
                 "phase3_score": phase_scores.get(3),
                 "phase4_score": phase_scores.get(4),
                 "phase7_score": phase_scores.get(7),
+                "phase8_score": phase_scores.get(8),
             }
         )
         updated = True

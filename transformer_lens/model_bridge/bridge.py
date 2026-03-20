@@ -105,7 +105,7 @@ class TransformerBridge(nn.Module):
         self.adapter = adapter
         self.cfg = adapter.cfg
         self.tokenizer = tokenizer
-        if self.cfg.d_vocab == -1:
+        if self.cfg.d_vocab == -1 and self.tokenizer is not None:
             if hasattr(self.tokenizer, "get_vocab"):
                 vocab = self.tokenizer.get_vocab()
                 self.cfg.d_vocab = max(vocab.values()) + 1
@@ -1214,6 +1214,7 @@ class TransformerBridge(nn.Module):
         start_at_layer: Optional[int] = None,
         stop_at_layer: Optional[int] = None,
         pixel_values: Optional[torch.Tensor] = None,
+        input_values: Optional[torch.Tensor] = None,
         **kwargs,
     ) -> Any:
         """Forward pass through the model.
@@ -1230,6 +1231,9 @@ class TransformerBridge(nn.Module):
             pixel_values: Optional image tensor for multimodal models (e.g., LLaVA, Gemma3).
                 The tensor is passed directly to the underlying HuggingFace model.
                 Only valid when cfg.is_multimodal is True.
+            input_values: Optional audio waveform tensor for audio models (e.g., HuBERT).
+                The tensor is passed directly to the underlying HuggingFace model.
+                Only valid when cfg.is_audio_model is True.
             **kwargs: Additional arguments passed to model
 
         Returns:
@@ -1252,6 +1256,11 @@ class TransformerBridge(nn.Module):
 
         try:
             if isinstance(input, (str, list)):
+                if getattr(self.cfg, "is_audio_model", False):
+                    raise ValueError(
+                        "Audio models require tensor input (raw waveform), not text. "
+                        "Pass a torch.Tensor or use the input_values parameter."
+                    )
                 input_ids = self.to_tokens(
                     input, prepend_bos=prepend_bos, padding_side=padding_side
                 )
@@ -1323,8 +1332,32 @@ class TransformerBridge(nn.Module):
                     )
                 kwargs["pixel_values"] = pixel_values
 
+            # Handle input_values for audio models
+            if input_values is not None:
+                if not getattr(self.cfg, "is_audio_model", False):
+                    raise ValueError(
+                        "input_values can only be passed to audio models "
+                        "(cfg.is_audio_model must be True)"
+                    )
+                kwargs["input_values"] = input_values
+
+            # Audio models take input_values (raw waveform), not input_ids
             original_tl_cache = past_kv_cache
-            output = self.original_model(input_ids, **kwargs)
+            if getattr(self.cfg, "is_audio_model", False):
+                # For audio models, input is the raw waveform tensor or
+                # input_values was passed as a keyword argument
+                if input_values is not None:
+                    output = self.original_model(**kwargs)
+                elif isinstance(input, torch.Tensor):
+                    kwargs["input_values"] = input
+                    output = self.original_model(**kwargs)
+                else:
+                    raise ValueError(
+                        "Audio models require tensor input (raw waveform). "
+                        "Pass a torch.Tensor or use input_values parameter."
+                    )
+            else:
+                output = self.original_model(input_ids, **kwargs)
             if (
                 original_tl_cache is not None
                 and hasattr(output, "past_key_values")
@@ -1361,6 +1394,11 @@ class TransformerBridge(nn.Module):
             if return_type == "logits":
                 return logits
             elif return_type == "loss":
+                if getattr(self.cfg, "is_audio_model", False):
+                    raise ValueError(
+                        "Audio models do not support return_type='loss'. "
+                        "CTC loss requires aligned frame-level labels."
+                    )
                 # Always use self.loss_fn for consistency with HT's formula
                 # (log_softmax + gather).  HF's output.loss uses F.cross_entropy
                 # which gives different results in bfloat16.
@@ -1369,6 +1407,11 @@ class TransformerBridge(nn.Module):
                 ), f"Expected logits tensor, got {type(logits)}"
                 return self.loss_fn(logits, input_ids, per_token=loss_per_token)
             elif return_type == "both":
+                if getattr(self.cfg, "is_audio_model", False):
+                    raise ValueError(
+                        "Audio models do not support return_type='both'. "
+                        "CTC loss requires aligned frame-level labels."
+                    )
                 assert isinstance(
                     logits, torch.Tensor
                 ), f"Expected logits tensor, got {type(logits)}"

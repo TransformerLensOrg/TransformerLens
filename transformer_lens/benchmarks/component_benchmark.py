@@ -53,6 +53,9 @@ def benchmark_all_components(
         skip_components = []
         if getattr(bridge.cfg, "is_multimodal", False):
             skip_components = ["vision_encoder", "vision_projector"]
+        if getattr(bridge.cfg, "is_audio_model", False):
+            # Audio preprocessing needs waveform input; validated in Phase 8
+            skip_components.extend(["audio_feature_extractor", "feat_proj", "conv_pos_embed"])
 
         # Run comprehensive benchmark
         report = benchmarker.benchmark_all_components(skip_components=skip_components)

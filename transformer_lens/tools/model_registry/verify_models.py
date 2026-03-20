@@ -451,7 +451,7 @@ def _extract_phase_scores(results: list) -> dict[int, Optional[float]]:
     """
     from transformer_lens.benchmarks.utils import BenchmarkSeverity
 
-    phase_results: dict[int, list[bool]] = {1: [], 2: [], 3: [], 4: [], 7: []}
+    phase_results: dict[int, list[bool]] = {1: [], 2: [], 3: [], 4: [], 7: [], 8: []}
     for result in results:
         if result.phase in phase_results and result.severity != BenchmarkSeverity.SKIPPED:
             phase_results[result.phase].append(result.passed)
@@ -485,12 +485,19 @@ _MIN_PHASE_SCORES: dict[int, float] = {
     3: 75.0,
     4: 50.0,
     7: 75.0,
+    8: 75.0,
 }
 _DEFAULT_MIN_PHASE_SCORE = 50.0
 
 # Architectures that include a vision encoder and require Phase 7 (multimodal
 # benchmarks) as part of core verification.
 from transformer_lens.utilities.architectures import classify_architecture
+
+_AUDIO_ARCHITECTURES = {
+    "HubertForCTC",
+    "HubertModel",
+    "HubertForSequenceClassification",
+}
 
 # Tests that MUST pass for a phase to be considered passing, regardless of
 # the overall percentage score.  If any required test fails, the phase fails
@@ -499,6 +506,7 @@ _REQUIRED_PHASE_TESTS: dict[int, list[str]] = {
     2: ["logits_equivalence", "loss_equivalence"],
     3: ["logits_equivalence", "loss_equivalence"],
     7: ["multimodal_forward"],
+    8: ["audio_forward"],
 }
 
 
@@ -524,11 +532,13 @@ def _check_phase_scores(
     failing_phases: list[str] = []
     for phase, score in sorted(phase_scores.items()):
         if score is None:
-            # Phase 7 (multimodal) with a NULL score means the processor was
-            # unavailable and no tests ran.  This is a verification failure,
-            # not something to silently skip.
+            # Phase 7 (multimodal) or Phase 8 (audio) with a NULL score means
+            # the processor was unavailable and no tests ran.  This is a
+            # verification failure, not something to silently skip.
             if phase == 7:
                 failing_phases.append(f"P7=NULL (multimodal tests skipped — processor unavailable)")
+            elif phase == 8:
+                failing_phases.append(f"P8=NULL (audio tests skipped — no results)")
             continue
 
         # Phase 4 is a quality metric, not a pass/fail check — skip it here.
@@ -866,10 +876,16 @@ def verify_models(
         # model's overall status or note — those reflect the full
         # verification and should only be set by a complete run.
         is_multimodal = classify_architecture(arch) == "multimodal"
-        # For multimodal models, Phase 7 is part of core verification.
-        # A full run is {1,2,3,4,7} for multimodal, {1,2,3,4} for text-only.
-        full_phases = {1, 2, 3, 4, 7} if is_multimodal else {1, 2, 3, 4}
-        core_required = {1, 4, 7} if is_multimodal else {1, 4}
+        is_audio = classify_architecture(arch) == "audio"
+        if is_audio:
+            full_phases = {1, 8}
+            core_required = {1, 8}
+        elif is_multimodal:
+            full_phases = {1, 2, 3, 4, 7}
+            core_required = {1, 4, 7}
+        else:
+            full_phases = {1, 2, 3, 4}
+            core_required = {1, 4}
         is_partial_run = set(phases) != full_phases
 
         if is_partial_run and phase_scores:
@@ -907,12 +923,19 @@ def verify_models(
                         if p7 is not None:
                             p7_pass = p7 >= _MIN_PHASE_SCORES.get(7, _DEFAULT_MIN_PHASE_SCORE)
                         else:
-                            # Phase 7 score is NULL — either not requested or
-                            # all tests were skipped (no processor).  Either
-                            # way, multimodal verification is incomplete.
                             p7_pass = False
 
-                    if p1_pass and p4_pass and p7_pass:
+                    # For audio models, Phase 8 is required; Phase 4 is not applicable
+                    p8_pass = True
+                    if is_audio:
+                        p4_pass = True  # Audio models skip text quality
+                        p8 = filtered_scores.get(8)
+                        if p8 is not None:
+                            p8_pass = p8 >= _MIN_PHASE_SCORES.get(8, _DEFAULT_MIN_PHASE_SCORE)
+                        else:
+                            p8_pass = False
+
+                    if p1_pass and p4_pass and p7_pass and p8_pass:
                         partial_status = STATUS_VERIFIED
                         partial_note = "Core verification completed"
                     elif p1_pass and p4_pass and not p7_pass:
@@ -978,7 +1001,8 @@ def verify_models(
                 print(
                     f"  VERIFIED: P1={phase_scores.get(1)}%, "
                     f"P2={phase_scores.get(2)}%, P3={phase_scores.get(3)}%, "
-                    f"P4={phase_scores.get(4)}%, P7={phase_scores.get(7)}%"
+                    f"P4={phase_scores.get(4)}%, P7={phase_scores.get(7)}%, "
+                    f"P8={phase_scores.get(8)}%"
                 )
             update_model_status(
                 model_id,
@@ -1000,7 +1024,8 @@ def verify_models(
                     print(
                         f"  Partial scores saved: P1={phase_scores.get(1)}%, "
                         f"P2={phase_scores.get(2)}%, P3={phase_scores.get(3)}%, "
-                        f"P4={phase_scores.get(4)}%"
+                        f"P4={phase_scores.get(4)}%, P7={phase_scores.get(7)}%, "
+                        f"P8={phase_scores.get(8)}%"
                     )
             update_model_status(
                 model_id,
