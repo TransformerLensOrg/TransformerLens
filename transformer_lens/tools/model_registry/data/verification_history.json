@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-03-19T13:52:40.585159",
+  "last_updated": "2026-03-20T09:04:14.726395",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -10425,6 +10425,2006 @@
       "model_id": "facebook/hubert-large-ls960-ft",
       "architecture_id": "HubertForCTC",
       "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "llmat/Apertus-8B-Instruct-2509-NVFP4",
+      "architecture_id": "ApertusForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: compressed_tensors is not installed and is required for compressed-tensors quantization. Please install ",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "onnx-community/Apertus-8B-Instruct-2509-ONNX",
+      "architecture_id": "ApertusForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: onnx-community/Apertus-8B-Instruct-2509-ONNX does not appear to have a file named pytorch_model.bin or m",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "tartuNLP/Apertus-EstLLM-8B-Instruct-1125",
+      "architecture_id": "ApertusForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "akreal/tiny-random-BloomForCausalLM",
+      "architecture_id": "BloomForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues, low text quality",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "basilepp19/bloom-1b7_it",
+      "architecture_id": "BloomForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "zyznull/RankingGPT-bloom-560m",
+      "architecture_id": "BloomForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P2=91.7% (failed: generation)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "NorthernTribe-Research/UMSR-Reasoner-7B",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: all_components, forward_pass_logits) \u2014 1/16 components failed (1 critical)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "hf-tiny-model-private/tiny-random-GPT2LMHeadModel",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues, low text quality",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Tasmay-Tib/gpt2-medium-ift-safe-genai",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "cglez/gpt2-ag_news",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "flax-community/gpt2-bengali",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "nebiyuelias1/distilgpt2-finetuned-cybernative",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "pranavpsv/genre-story-generator-v2",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "skt/ko-gpt-trinity-1.2B-v0.5",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "AVeryRealHuman/DialoGPT-small-TonyStark",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "neulab/gpt2-finetuned-wikitext103",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "NbAiLab/nb-gpt-j-6B-torgersen-alpaca",
+      "architecture_id": "GPTJForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "yujiepan/gptj-tiny-random",
+      "architecture_id": "GPTJForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Milos/slovak-gpt-j-1.4B",
+      "architecture_id": "GPTJForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "roneneldan/TinyStories-Instruct-3M",
+      "architecture_id": "GPTNeoForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "roneneldan/TinyStories-Instuct-1Layer-21M",
+      "architecture_id": "GPTNeoForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "yhavinga/gpt-neo-125M-dutch",
+      "architecture_id": "GPTNeoForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "roneneldan/TinyStories-Instruct-2Layers-33M",
+      "architecture_id": "GPTNeoForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "abehandlerorg/pythia-45m_lr1e-3_steps5k_seed1234_interleave0.02",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "abehandlerorg/pythia-45m_lr1e-3_steps5k_seed1234",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "ollieturnbull/p-IgGen-developable",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "line-corporation/japanese-large-lm-3.6b",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/pythia-160m-v0",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/pythia-2.8b-deduped-v0",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "lambdalabs/pythia-6.9b-deduped-synthetic-instruct",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "geodesic-research/sfm_baseline_unfiltered_dpo",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/pythia-1b-deduped-v0",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/pythia-70m-v0",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "cjvt/GaMS-9B-Instruct-Nemotron",
+      "architecture_id": "Gemma2ForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "AMindToThink/gemma-2-2b-it_RMU_s400_a300_layer7",
+      "architecture_id": "Gemma2ForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "turkerberkdonmez/TUSGPT-TR-Medical-9B",
+      "architecture_id": "Gemma2ForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "koalajun/Gemma-2-9b-it-Ko-Crypto-Translate",
+      "architecture_id": "Gemma2ForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "IlyaGusev/gemma-2-9b-it-abliterated",
+      "architecture_id": "Gemma2ForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "tokyotech-llm/Gemma-2-Llama-Swallow-2b-pt-v0.1",
+      "architecture_id": "Gemma2ForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "distil-labs/distil-home-assistant-functiongemma",
+      "architecture_id": "Gemma3ForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "lthn/LEM-Gemma3-1B",
+      "architecture_id": "Gemma3ForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "NbAiLab/borealis-270m-instruct-preview",
+      "architecture_id": "Gemma3ForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "mrdbourke/FoodExtract-gemma-3-270m-fine-tune-v1",
+      "architecture_id": "Gemma3ForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "AISA-Framework/AISA-AR-FunctionCall-FT",
+      "architecture_id": "Gemma3ForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "pixasocial/survival-uncensored-gemma-270m-v2",
+      "architecture_id": "Gemma3ForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "MBZUAI-Paris/Nile-Chat-12B",
+      "architecture_id": "Gemma3ForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Nightfoory/functiongemma-270m-it-simple-tool-calling",
+      "architecture_id": "Gemma3ForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "phaeth/queensland-ai-gemma3-fine-tuned-live",
+      "architecture_id": "Gemma3ForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "yam-peleg/Hebrew-Gemma-11B-Instruct",
+      "architecture_id": "GemmaForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "ariG23498/tiny-gemma-test",
+      "architecture_id": "GemmaForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Edcastro/gemma-2b-it-edcastr_JavaScript-v8",
+      "architecture_id": "GemmaForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Telugu-LLM-Labs/Indic-gemma-2b-finetuned-sft-Navarasa-2.0",
+      "architecture_id": "GemmaForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "alpindale/gemma-7b",
+      "architecture_id": "GemmaForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Xenova/tiny-random-GemmaForCausalLM",
+      "architecture_id": "GemmaForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "echarlaix/tiny-random-gpt-oss-mxfp4",
+      "architecture_id": "GptOssForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "optimum-internal-testing/tiny-random-gpt-oss",
+      "architecture_id": "GptOssForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "squ11z1/gpt-oss-nano",
+      "architecture_id": "GptOssForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "ibm-granite/granite-guardian-3.0-2b",
+      "architecture_id": "GraniteForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "ibm-granite/granite-3.2-2b-instruct",
+      "architecture_id": "GraniteForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "ibm-granite/granite-3.0-2b-base",
+      "architecture_id": "GraniteForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "ibm-granite/granite-3.1-2b-base",
+      "architecture_id": "GraniteForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "ibm-granite/granite-guardian-3.1-2b",
+      "architecture_id": "GraniteForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "ibm-granite/granite-3.0-8b-base",
+      "architecture_id": "GraniteForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "ibm-granite/granite-3.1-8b-base",
+      "architecture_id": "GraniteForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "ibm-granite/granite-guardian-3.2-5b",
+      "architecture_id": "GraniteForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "ibm-granite/granite-guardian-3.0-8b",
+      "architecture_id": "GraniteForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "ibm-granite/granite-3.0-3b-a800m-base",
+      "architecture_id": "GraniteMoeForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "ibm-granite/granite-3.0-1b-a400m-instruct",
+      "architecture_id": "GraniteMoeForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "onnx-community/granite-4.0-350m-ONNX-web",
+      "architecture_id": "GraniteMoeHybridForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: onnx-community/granite-4.0-350m-ONNX-web does not appear to have a file named pytorch_model.bin or model",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "ibm-granite/granite-4.0-350m",
+      "architecture_id": "GraniteMoeHybridForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "ibm-granite/granite-4.0-h-1b",
+      "architecture_id": "GraniteMoeHybridForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "ibm-granite/granite-4.0-350m-base",
+      "architecture_id": "GraniteMoeHybridForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "ibm-granite/granite-4.0-1b",
+      "architecture_id": "GraniteMoeHybridForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "ibm-granite/granite-4.0-h-350m",
+      "architecture_id": "GraniteMoeHybridForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "ibm-granite/granite-4.0-h-350m-base",
+      "architecture_id": "GraniteMoeHybridForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "unsloth/granite-4.0-h-tiny",
+      "architecture_id": "GraniteMoeHybridForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "ibm-granite/granite-4.0-h-micro-base",
+      "architecture_id": "GraniteMoeHybridForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "ibm-granite/granite-4.0-h-tiny-base",
+      "architecture_id": "GraniteMoeHybridForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "trl-internal-testing/tiny-random-LlamaForCausalLM",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "trl-internal-testing/tiny-LlamaForCausalLM-3.2",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "HuggingFaceTB/SmolLM2-360M-Instruct",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "unsloth/Llama-3.2-3B-Instruct",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "unsloth/Llama-3.2-1B-Instruct",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "mlabonne/NeuralMonarch-7B",
+      "architecture_id": "MistralForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "prometheus-eval/prometheus-7b-v2.0",
+      "architecture_id": "MistralForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "yujiepan/opt-tiny-random",
+      "architecture_id": "OPTForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "znhoughton/opt-c4-350m-seed964",
+      "architecture_id": "OPTForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "drisspg/fp8-opt-125m",
+      "architecture_id": "OPTForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: TorchAoConfig requires torchao to be installed. Install with `pip install torchao`",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "znhoughton/opt-c4-1.3b-seed964",
+      "architecture_id": "OPTForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "facebook/opt-iml-1.3b",
+      "architecture_id": "OPTForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "p1atdev/dart-v1-sft",
+      "architecture_id": "OPTForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "facebook/galactica-1.3b",
+      "architecture_id": "OPTForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "RLLab/olmo-3-7b-it-sft",
+      "architecture_id": "Olmo3ForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "dralex/olmo3-0.2b-random-ci",
+      "architecture_id": "Olmo3ForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "eac123/olmo3-7b-exp1b-lora128-e5",
+      "architecture_id": "Olmo3ForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: eac123/olmo3-7b-exp1b-lora128-e5 does not appear to have a file named pytorch_model.bin or model.safeten",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "allenai/Olmo-3-7B-RL-Zero-Code",
+      "architecture_id": "Olmo3ForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "onnx-community/tiny-random-olmo-hf",
+      "architecture_id": "OlmoForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: onnx-community/tiny-random-olmo-hf does not appear to have a file named pytorch_model.bin or model.safet",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Codemaster67/ChemOlmo-7b",
+      "architecture_id": "OlmoForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "unsloth/Phi-4-mini-instruct",
+      "architecture_id": "Phi3ForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "katuni4ka/tiny-random-phi3",
+      "architecture_id": "Phi3ForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: [Errno 32] Broken pipe",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "cglez/gpt2-ag_news",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "flax-community/gpt2-bengali",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "nebiyuelias1/distilgpt2-finetuned-cybernative",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues, low text quality: P2=75.0% (failed: generation, generation_with_kv_cache, multiple_generation_calls)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "pranavpsv/genre-story-generator-v2",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "skt/ko-gpt-trinity-1.2B-v0.5",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "AVeryRealHuman/DialoGPT-small-TonyStark",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "neulab/gpt2-finetuned-wikitext103",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "we0rr9u89q/chess_gpt2_results",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "microsoft/Promptist",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "egeb9/chess-gpt2-midterm_new",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "NbAiLab/nb-gpt-j-6B-torgersen-alpaca",
+      "architecture_id": "GPTJForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "yujiepan/gptj-tiny-random",
+      "architecture_id": "GPTJForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues, low text quality",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Milos/slovak-gpt-j-1.4B",
+      "architecture_id": "GPTJForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "roneneldan/TinyStories-Instruct-3M",
+      "architecture_id": "GPTNeoForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "roneneldan/TinyStories-Instuct-1Layer-21M",
+      "architecture_id": "GPTNeoForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "yhavinga/gpt-neo-125M-dutch",
+      "architecture_id": "GPTNeoForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "roneneldan/TinyStories-Instruct-2Layers-33M",
+      "architecture_id": "GPTNeoForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "abehandlerorg/pythia-45m_lr1e-3_steps5k_seed1234_interleave0.02",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "abehandlerorg/pythia-45m_lr1e-3_steps5k_seed1234",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "ollieturnbull/p-IgGen-developable",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P3=94.7% but required tests failed: loss_equivalence \u2014 Scalars differ: nan vs nan",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "line-corporation/japanese-large-lm-3.6b",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/pythia-160m-v0",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/pythia-2.8b-deduped-v0",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "LorenzoDeMattei/GePpeTto",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "occasion-2/my_awesome_eli5_clm-model",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "AlexWortega/instruct_rugptlarge",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Finisha-F-scratch/Charlotte-2b",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "AI-Sweden-Models/gpt-sw3-126m-instruct",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "AI-Sweden-Models/gpt-sw3-1.3b-instruct",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "akhooli/gpt2-small-arabic",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "vesteinn/gpt2-dna",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P2=75.0% (failed: generation, generation_with_kv_cache, multiple_generation_calls); P3=94.7% (failed: weight_modification)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "yhavinga/gpt2-medium-dutch",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "SCM1120/gpt2-ad-finetuned",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-03-19",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "lambdalabs/pythia-6.9b-deduped-synthetic-instruct",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "geodesic-research/sfm_baseline_unfiltered_dpo",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/pythia-1b-deduped-v0",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/pythia-70m-v0",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/pythia-410m-deduped-v0",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/pythia-70m-deduped-v0",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/pythia-2.8b-v0",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/pythia-160m-deduped-v0",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/pythia-6.9b-v0",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/pythia-1.4b-deduped-v0",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "cjvt/GaMS-9B-Instruct-Nemotron",
+      "architecture_id": "Gemma2ForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P3=94.7% (failed: unembed_centering)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "AMindToThink/gemma-2-2b-it_RMU_s400_a300_layer7",
+      "architecture_id": "Gemma2ForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P3=94.7% (failed: unembed_centering)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "turkerberkdonmez/TUSGPT-TR-Medical-9B",
+      "architecture_id": "Gemma2ForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P3=94.7% (failed: unembed_centering)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "koalajun/Gemma-2-9b-it-Ko-Crypto-Translate",
+      "architecture_id": "Gemma2ForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues, low text quality: P3=94.7% (failed: unembed_centering)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "IlyaGusev/gemma-2-9b-it-abliterated",
+      "architecture_id": "Gemma2ForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P3=94.7% (failed: unembed_centering)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "tokyotech-llm/Gemma-2-Llama-Swallow-2b-pt-v0.1",
+      "architecture_id": "Gemma2ForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P3=94.7% (failed: unembed_centering)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "pcuenq/gemma-tokenizer",
+      "architecture_id": "Gemma2ForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: pcuenq/gemma-tokenizer does not appear to have a file named pytorch_model.bin or model.safetensors.",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "buddhist-nlp/gemma-2-mitra-it",
+      "architecture_id": "Gemma2ForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P3=94.7% (failed: unembed_centering)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "IlyaGusev/gemma-2-2b-it-abliterated",
+      "architecture_id": "Gemma2ForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P3=94.7% (failed: unembed_centering)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "GaMS-Beta/GaMS-9B-SFT-Translator-DPO",
+      "architecture_id": "Gemma2ForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P3=94.7% (failed: unembed_centering)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "distil-labs/distil-home-assistant-functiongemma",
+      "architecture_id": "Gemma3ForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "lthn/LEM-Gemma3-1B",
+      "architecture_id": "Gemma3ForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "NbAiLab/borealis-270m-instruct-preview",
+      "architecture_id": "Gemma3ForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "mrdbourke/FoodExtract-gemma-3-270m-fine-tune-v1",
+      "architecture_id": "Gemma3ForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "AISA-Framework/AISA-AR-FunctionCall-FT",
+      "architecture_id": "Gemma3ForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "pixasocial/survival-uncensored-gemma-270m-v2",
+      "architecture_id": "Gemma3ForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "MBZUAI-Paris/Nile-Chat-12B",
+      "architecture_id": "Gemma3ForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Nightfoory/functiongemma-270m-it-simple-tool-calling",
+      "architecture_id": "Gemma3ForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "phaeth/queensland-ai-gemma3-fine-tuned-live",
+      "architecture_id": "Gemma3ForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "asazot/functiongemma-270m-it-simple-tool-calling",
+      "architecture_id": "Gemma3ForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "yam-peleg/Hebrew-Gemma-11B-Instruct",
+      "architecture_id": "GemmaForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "ariG23498/tiny-gemma-test",
+      "architecture_id": "GemmaForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Edcastro/gemma-2b-it-edcastr_JavaScript-v8",
+      "architecture_id": "GemmaForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Telugu-LLM-Labs/Indic-gemma-2b-finetuned-sft-Navarasa-2.0",
+      "architecture_id": "GemmaForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "alpindale/gemma-7b",
+      "architecture_id": "GemmaForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Xenova/tiny-random-GemmaForCausalLM",
+      "architecture_id": "GemmaForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "VibeStudio/Nidum-Gemma-2B-Uncensored",
+      "architecture_id": "GemmaForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "echarlaix/tiny-random-gpt-oss-mxfp4",
+      "architecture_id": "GptOssForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=50.0% < 100.0% (failed: all_components); P3=94.7% but required tests failed: log \u2014 2/10 components failed (2 critical)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "optimum-internal-testing/tiny-random-gpt-oss",
+      "architecture_id": "GptOssForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P3=94.7% but required tests failed: logits_equivalence \u2014 Text quality score: 78.6/100 (avg perplexity: 310.5) \u2014 generated text may be incoherent",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "squ11z1/gpt-oss-nano",
+      "architecture_id": "GptOssForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P3=89.5% but required tests failed: logits_equivalence, loss_equivalence \u2014 Tensors differ: max_diff=11.447359, mean_rel=0.048656",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "yujiepan/gpt-oss-tiny-random",
+      "architecture_id": "GptOssForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P3=94.7% but required tests failed: logits_equivalence \u2014 Text quality score: 78.6/100 (avg perplexity: 310.5) \u2014 generated text may be incoherent",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "ibm-granite/granite-guardian-3.0-2b",
+      "architecture_id": "GraniteForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "ibm-granite/granite-3.2-2b-instruct",
+      "architecture_id": "GraniteForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "ibm-granite/granite-3.0-2b-base",
+      "architecture_id": "GraniteForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "ibm-granite/granite-3.1-2b-base",
+      "architecture_id": "GraniteForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "ibm-granite/granite-guardian-3.1-2b",
+      "architecture_id": "GraniteForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "ibm-granite/granite-3.0-8b-base",
+      "architecture_id": "GraniteForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P3=94.7% (failed: weight_magnitudes)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "ibm-granite/granite-3.1-8b-base",
+      "architecture_id": "GraniteForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P3=94.7% (failed: weight_magnitudes)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "ibm-granite/granite-guardian-3.2-5b",
+      "architecture_id": "GraniteForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "ibm-granite/granite-guardian-3.0-8b",
+      "architecture_id": "GraniteForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P3=94.7% (failed: weight_magnitudes)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "ibm-granite/granite-3.0-3b-a800m-base",
+      "architecture_id": "GraniteMoeForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "ibm-granite/granite-3.0-1b-a400m-instruct",
+      "architecture_id": "GraniteMoeForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "ibm-granite/granite-4.0-350m",
+      "architecture_id": "GraniteMoeHybridForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues, low text quality: P3=78.9% (failed: process_bridge_weights, layer_norm_folding, attention_output_centering, mlp_output_centering)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "ibm-granite/granite-4.0-h-1b",
+      "architecture_id": "GraniteMoeHybridForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P3=78.9% (failed: process_bridge_weights, layer_norm_folding, attention_output_centering, mlp_output_centering)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "ibm-granite/granite-4.0-350m-base",
+      "architecture_id": "GraniteMoeHybridForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues, low text quality: P3=78.9% (failed: process_bridge_weights, layer_norm_folding, attention_output_centering, mlp_output_centering)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "ibm-granite/granite-4.0-1b",
+      "architecture_id": "GraniteMoeHybridForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P3=78.9% (failed: process_bridge_weights, layer_norm_folding, attention_output_centering, mlp_output_centering)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "ibm-granite/granite-4.0-h-350m",
+      "architecture_id": "GraniteMoeHybridForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P3=78.9% (failed: process_bridge_weights, layer_norm_folding, attention_output_centering, mlp_output_centering)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "ibm-granite/granite-4.0-h-350m-base",
+      "architecture_id": "GraniteMoeHybridForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P3=78.9% (failed: process_bridge_weights, layer_norm_folding, attention_output_centering, mlp_output_centering)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "unsloth/granite-4.0-h-tiny",
+      "architecture_id": "GraniteMoeHybridForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P3=83.3% (failed: layer_norm_folding, attention_output_centering, mlp_output_centering)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "ibm-granite/granite-4.0-h-micro-base",
+      "architecture_id": "GraniteMoeHybridForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P3=78.9% (failed: process_bridge_weights, layer_norm_folding, attention_output_centering, mlp_output_centering)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "ibm-granite/granite-4.0-h-tiny-base",
+      "architecture_id": "GraniteMoeHybridForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P3=83.3% (failed: layer_norm_folding, attention_output_centering, mlp_output_centering)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "ibm-granite/granite-4.0-micro-base",
+      "architecture_id": "GraniteMoeHybridForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P3=78.9% (failed: process_bridge_weights, layer_norm_folding, attention_output_centering, mlp_output_centering)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "trl-internal-testing/tiny-random-LlamaForCausalLM",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "trl-internal-testing/tiny-LlamaForCausalLM-3.2",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "HuggingFaceTB/SmolLM2-360M-Instruct",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "unsloth/Llama-3.2-3B-Instruct",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-03-20",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "unsloth/Llama-3.2-1B-Instruct",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-03-20",
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Full verification completed",
