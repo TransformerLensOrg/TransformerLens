@@ -186,107 +186,15 @@ def lm_accuracy(
         return correct_matches.sum() / correct_matches.numel()
 
 
-def gelu_new(
-    input: Float[torch.Tensor, "batch pos d_mlp"],
-) -> Float[torch.Tensor, "batch pos d_mlp"]:
-    # Implementation of GeLU used by GPT2 - subtly different from PyTorch's
-    return (
-        0.5
-        * input
-        * (1.0 + torch.tanh(np.sqrt(2.0 / np.pi) * (input + 0.044715 * torch.pow(input, 3.0))))
-    )
-
-
-def gelu_fast(
-    input: Float[torch.Tensor, "batch pos d_mlp"],
-) -> Float[torch.Tensor, "batch pos d_mlp"]:
-    return 0.5 * input * (1.0 + torch.tanh(input * 0.7978845608 * (1.0 + 0.044715 * input * input)))
-
-
-def gelu_pytorch_tanh(input: torch.Tensor) -> torch.Tensor:
-    """
-    Approximation of the gelu activation function, used in some older models.
-    """
-    return F.gelu(input, approximate="tanh")
-
-
-def solu(input: Float[torch.Tensor, "batch pos d_mlp"]) -> Float[torch.Tensor, "batch pos d_mlp"]:
-    """
-    SoLU activation function as described by
-    https://transformer-circuits.pub/2022/solu/index.html.
-
-    LayerNorm implemented by the MLP class.
-    """
-    return input * F.softmax(input, dim=-1)
-
-
-class XIELU(nn.Module):
-    """
-    Trainable xIELU activation function as described by
-    https://arxiv.org/abs/2411.13010
-
-    Defined as:
-    f(x) = {
-        α_p * x² + β * x,                                    if x > 0
-        α_n * (exp(min(x, ε)) - 1) - α_n * x + β * x,       if x ≤ 0
-    }
-    where α_p, α_n, β are trainable parameters.
-    """
-
-    def __init__(
-        self,
-        alpha_p_init: float = 0.8,
-        alpha_n_init: float = 0.8,
-        beta_init: float = 0.5,
-        eps: float = -1e-6,
-    ):
-        super().__init__()
-        self.alpha_p = nn.Parameter(torch.tensor(alpha_p_init, dtype=torch.float32))
-        self.alpha_n = nn.Parameter(torch.tensor(alpha_n_init, dtype=torch.float32))
-        self.beta = nn.Parameter(torch.tensor(beta_init, dtype=torch.float32))
-        self.eps = eps
-
-    def forward(
-        self, input: Float[torch.Tensor, "batch pos d_mlp"]
-    ) -> Float[torch.Tensor, "batch pos d_mlp"]:
-        return torch.where(
-            input > 0,
-            self.alpha_p * input**2 + self.beta * input,
-            self.alpha_n * torch.expm1(torch.clamp_max(input, self.eps))
-            - self.alpha_n * input
-            + self.beta * input,
-        )
-
-
-def xielu(input: Float[torch.Tensor, "batch pos d_mlp"]) -> Float[torch.Tensor, "batch pos d_mlp"]:
-    """
-    xIELU activation function as described by
-    https://arxiv.org/abs/2411.13010
-
-    and original code in:
-    https://github.com/rubber-duck-debug/xielu
-
-    Defined as
-
-    f(x) = {
-        α_p * x² + β * x,                                    if x > 0
-        α_n * (exp(min(x, ε)) - 1) - α_n * x + β * x,       if x ≤ 0
-        }
-
-    in this function the values are FIXED. However, the script can_be_used_as_mlp.py correctly used the XIELU class with trainable parameters, so the parameters can be trained if desired.
-    """
-    alpha_p: float = 0.8
-    alpha_n: float = 0.8
-    beta: float = 0.5
-    eps: float = -1e-6
-
-    # The core calculation logic:
-    return torch.where(
-        input > 0,
-        alpha_p * input * input + beta * input,
-        alpha_n * torch.expm1(torch.clamp_max(input, eps)) - alpha_n * input + beta * input,
-    )
-
+# Re-export activation functions from their canonical location for backwards compatibility.
+from transformer_lens.utilities.activation_functions import (  # noqa: F401, E402
+    XIELU,
+    gelu_fast,
+    gelu_new,
+    gelu_pytorch_tanh,
+    solu,
+    xielu,
+)
 
 ACTIVATION_FN_DICT = {
     "solu": solu,
@@ -432,9 +340,9 @@ def tokenize_and_concatenate(
     _deprecation_warnings_saved = None
     if hasattr(tokenizer, "deprecation_warnings"):
         _deprecation_warnings_saved = tokenizer.deprecation_warnings.copy()
-        tokenizer.deprecation_warnings[
-            "sequence-length-is-longer-than-the-specified-maximum"
-        ] = False
+        tokenizer.deprecation_warnings["sequence-length-is-longer-than-the-specified-maximum"] = (
+            False
+        )
     try:
         # Define the length to chop things up into - leaving space for a bos_token if required
         if add_bos_token:

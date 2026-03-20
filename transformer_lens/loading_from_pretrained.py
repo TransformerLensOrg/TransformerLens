@@ -48,6 +48,9 @@ from transformer_lens.pretrained.weight_conversions import (
     convert_t5_weights,
 )
 
+logger = logging.getLogger(__name__)
+
+
 OFFICIAL_MODEL_NAMES = [
     "gpt2",
     "gpt2-medium",

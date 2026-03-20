@@ -6,6 +6,7 @@ Centralized location for selection supported activation functions throughout Tra
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.utilities.activation_functions import (
     SUPPORTED_ACTIVATIONS,
+    XIELU,
     ActivationFunction,
 )
 
@@ -28,6 +29,12 @@ class ActivationFunctionFactory:
 
         if act_fn is None:
             raise ValueError("act_fn not set when trying to select Activation Function")
+
+        # XIeLU has trainable parameters (alpha_p, alpha_n, beta) that are loaded
+        # from pretrained weights via load_state_dict. Return a class instance so
+        # the parameters are registered as nn.Parameters on the MLP module.
+        if act_fn == "xielu":
+            return XIELU()
 
         activation_function = SUPPORTED_ACTIVATIONS.get(act_fn)
 
