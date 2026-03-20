@@ -783,6 +783,7 @@ NEED_REMOTE_CODE_MODELS = (
     "microsoft/phi-2",
     "microsoft/Phi-3-mini-4k-instruct",
     "microsoft/phi-4",
+    "openai/gpt-oss-",
     "swiss-ai/Apertus-",
 )
 
