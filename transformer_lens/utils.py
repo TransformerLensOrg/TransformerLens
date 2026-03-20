@@ -340,9 +340,9 @@ def tokenize_and_concatenate(
     _deprecation_warnings_saved = None
     if hasattr(tokenizer, "deprecation_warnings"):
         _deprecation_warnings_saved = tokenizer.deprecation_warnings.copy()
-        tokenizer.deprecation_warnings["sequence-length-is-longer-than-the-specified-maximum"] = (
-            False
-        )
+        tokenizer.deprecation_warnings[
+            "sequence-length-is-longer-than-the-specified-maximum"
+        ] = False
     try:
         # Define the length to chop things up into - leaving space for a bos_token if required
         if add_bos_token:
