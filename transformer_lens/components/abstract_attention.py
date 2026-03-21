@@ -304,14 +304,15 @@ class AbstractAttention(ABC, nn.Module):
                 if self.b_O.device != z.device:
                     z = z.to(self.b_O.device)
 
-                z = einops.rearrange(
-                    z, "batch pos head_index d_head -> batch pos (head_index d_head)"
-                )
+                z = z.reshape(z.shape[0], z.shape[1], self.cfg.d_head * self.cfg.n_heads)
 
-                out = (
-                    einops.einsum(z, w, "batch pos d_heads, d_model d_heads -> batch pos d_model")
-                    + self.b_O
-                )
+                # F.linear is a fused matmul+bias that matches HuggingFace exactly,
+                # but has a bug on MPS with PyTorch 2.8 (pytorch#161640).
+                # Fall back to manual matmul on MPS to work around it.
+                if z.device.type == "mps":
+                    out = torch.matmul(z, w.T) + self.b_O
+                else:
+                    out = F.linear(z, w, self.b_O)
         else:
             # Explicitly calculate the attention result so it can be accessed by a hook
             # This is off by default because it can easily eat through your GPU memory.
