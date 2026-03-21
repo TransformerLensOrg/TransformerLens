@@ -45,19 +45,12 @@ def solu(input: Float[torch.Tensor, "batch pos d_mlp"]) -> Float[torch.Tensor, "
 
 
 class XIELU(nn.Module):
-    """Trainable xIELU activation function as described by
-    https://arxiv.org/abs/2411.13010
+    """Trainable xIELU activation function.
+
+    See https://arxiv.org/abs/2411.13010
 
     Matches HuggingFace's XIELUActivation parameterization: alpha_p and alpha_n
     are stored in softplus-inverse space, and beta is a non-trainable buffer.
-    In the forward pass:
-        effective_alpha_p = softplus(alpha_p)
-        effective_alpha_n = beta + softplus(alpha_n)
-
-    f(x) = {
-        effective_alpha_p * x^2 + beta * x,                                          if x > 0
-        effective_alpha_n * (exp(min(x, eps)) - x) + beta * x,                       if x <= 0
-    }
     """
 
     def __init__(
