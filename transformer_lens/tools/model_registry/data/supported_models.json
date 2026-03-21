@@ -8,7 +8,7 @@
   },
   "total_architectures": 35,
   "total_models": 5833,
-  "total_verified": 777,
+  "total_verified": 804,
   "models": [
     {
       "architecture_id": "Qwen2ForCausalLM",
@@ -2324,28 +2324,30 @@
     {
       "architecture_id": "LlamaForCausalLM",
       "model_id": "baffo32/decapoda-research-llama-7B-hf",
-      "status": 0,
-      "verified_date": null,
+      "status": 3,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
+      "note": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: maximum recursion depth exceeded",
+      "phase1_score": 0.0,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "LlamaForCausalLM",
       "model_id": "ibm-granite/granite-3b-code-base-2k",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null,
-      "phase4_score": null,
-      "phase7_score": null
+      "note": "Full verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "phase4_score": 96.2,
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -2376,15 +2378,16 @@
     {
       "architecture_id": "LlamaForCausalLM",
       "model_id": "TheBloke/Wizard-Vicuna-30B-Uncensored-GPTQ",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "MistralForCausalLM",
@@ -2415,15 +2418,16 @@
     {
       "architecture_id": "LlamaForCausalLM",
       "model_id": "TheBloke/Llama-2-70B-Chat-AWQ",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "Qwen2ForCausalLM",
@@ -2610,15 +2614,16 @@
     {
       "architecture_id": "LlamaForCausalLM",
       "model_id": "NousResearch/Meta-Llama-3-8B-Instruct",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null,
-      "phase4_score": null,
-      "phase7_score": null
+      "note": "Full verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "phase4_score": 96.2,
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "Phi3ForCausalLM",
@@ -2649,15 +2654,16 @@
     {
       "architecture_id": "LlamaForCausalLM",
       "model_id": "ibnzterrell/Meta-Llama-3.3-70B-Instruct-AWQ-INT4",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "PhiForCausalLM",
@@ -2714,41 +2720,44 @@
     {
       "architecture_id": "LlamaForCausalLM",
       "model_id": "unsloth/Llama-3.1-8B-Instruct",
-      "status": 0,
-      "verified_date": null,
+      "status": 3,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
+      "note": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: unsloth/Llama-3.1-8B-Instruct does not appear to have files named ('model-00001-of-00004.safetensors', '",
+      "phase1_score": 0.0,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "LlamaForCausalLM",
       "model_id": "meta-llama/Llama-Guard-3-1B",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'meta-llama/Llama-Guard-3-1B'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name. Otherw",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "LlamaForCausalLM",
       "model_id": "deepseek-ai/deepseek-coder-6.7b-instruct",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'deepseek-ai/deepseek-coder-6.7b-instruct'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "Gemma2ForCausalLM",
@@ -2766,15 +2775,16 @@
     {
       "architecture_id": "LlamaForCausalLM",
       "model_id": "hugging-quants/Meta-Llama-3.1-70B-Instruct-AWQ-INT4",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "Qwen3ForCausalLM",
@@ -5406,14 +5416,14 @@
     {
       "architecture_id": "MistralForCausalLM",
       "model_id": "mlabonne/NeuralMonarch-7B",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null,
-      "phase4_score": null,
+      "note": "Full verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "phase4_score": 98.4,
       "phase7_score": null,
       "phase8_score": null
     },
@@ -6123,10 +6133,10 @@
     {
       "architecture_id": "MistralForCausalLM",
       "model_id": "prometheus-eval/prometheus-7b-v2.0",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'prometheus-eval/prometheus-7b-v2.0'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name.",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
@@ -6189,15 +6199,16 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Qwen/Qwen1.5-14B",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'Qwen/Qwen1.5-14B'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name. Otherwise, make s",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -6215,15 +6226,16 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Qwen/Qwen1.5-32B-Chat",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'Qwen/Qwen1.5-32B-Chat'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name. Otherwise, m",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -6254,15 +6266,16 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Qwen/Qwen2.5-Coder-14B",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'Qwen/Qwen2.5-Coder-14B'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name. Otherwise, ",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "Qwen3ForCausalLM",
@@ -6332,15 +6345,16 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Orion-zhen/Qwen2.5-7B-Instruct-Uncensored",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'Orion-zhen/Qwen2.5-7B-Instruct-Uncensored'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the sam",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "MistralForCausalLM",
@@ -6464,15 +6478,16 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Qwen/Qwen2-1.5B-Instruct-GPTQ-Int4",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "MixtralForCausalLM",
@@ -6556,15 +6571,16 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "unsloth/Qwen2-1.5B-Instruct",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'unsloth/Qwen2-1.5B-Instruct'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name. Otherw",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "Qwen2ForCausalLM",
@@ -6662,15 +6678,16 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Qwen/Qwen2-1.5B-Instruct-AWQ",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "GPTNeoForCausalLM",
@@ -6792,28 +6809,30 @@
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "RedHatAI/Qwen2-1.5B-Instruct-FP8",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "numind/NuExtract-tiny",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'numind/NuExtract-tiny'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name. Otherwise, m",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -6910,28 +6929,30 @@
     {
       "architecture_id": "MistralForCausalLM",
       "model_id": "WizardLMTeam/WizardMath-7B-V1.1",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'WizardLMTeam/WizardMath-7B-V1.1'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name. Ot",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "Qwen2ForCausalLM",
       "model_id": "Qwen/Qwen1.5-14B-Chat",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'Qwen/Qwen1.5-14B-Chat'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name. Otherwise, m",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -6949,15 +6970,16 @@
     {
       "architecture_id": "MistralForCausalLM",
       "model_id": "augmxnt/shisa-gamma-7b-v1",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'augmxnt/shisa-gamma-7b-v1'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name. Otherwis",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "Qwen3ForCausalLM",
@@ -7105,15 +7127,16 @@
     {
       "architecture_id": "MistralForCausalLM",
       "model_id": "nvidia/Mistral-NeMo-Minitron-8B-Instruct",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'nvidia/Mistral-NeMo-Minitron-8B-Instruct'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -7157,15 +7180,16 @@
     {
       "architecture_id": "MistralForCausalLM",
       "model_id": "Featherless-Chat-Models/Mistral-7B-Instruct-v0.2",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'Featherless-Chat-Models/Mistral-7B-Instruct-v0.2'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with ",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -7352,15 +7376,16 @@
     {
       "architecture_id": "MistralForCausalLM",
       "model_id": "RedHatAI/Mistral-Small-24B-Instruct-2501-quantized.w8a8",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "MixtralForCausalLM",
@@ -7378,15 +7403,16 @@
     {
       "architecture_id": "MistralForCausalLM",
       "model_id": "TheBloke/Mistral-7B-Instruct-v0.2-AWQ",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "T5ForConditionalGeneration",
@@ -7443,15 +7469,16 @@
     {
       "architecture_id": "MistralForCausalLM",
       "model_id": "meta-math/MetaMath-Mistral-7B",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'meta-math/MetaMath-Mistral-7B'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name. Othe",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "Qwen3ForCausalLM",
@@ -7482,15 +7509,16 @@
     {
       "architecture_id": "MistralForCausalLM",
       "model_id": "unsloth/mistral-7b-instruct-v0.2-bnb-4bit",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "GPT2LMHeadModel",
@@ -9173,15 +9201,16 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "JunHowie/Qwen3-32B-GPTQ-Int4",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "Gemma3ForCausalLM",
@@ -9329,15 +9358,16 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "RedHatAI/Qwen3-32B-NVFP4",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'RedHatAI/Qwen3-32B-NVFP4'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name. Otherwise",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "GPTNeoXForCausalLM",
@@ -9472,15 +9502,16 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "Qwen/Qwen3Guard-Gen-8B",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'Qwen/Qwen3Guard-Gen-8B'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name. Otherwise, ",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "BloomForCausalLM",
@@ -9654,15 +9685,16 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "optimum-internal-testing/tiny-random-qwen3",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'optimum-internal-testing/tiny-random-qwen3'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the sa",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "MistralForCausalLM",
@@ -9784,15 +9816,16 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "unsloth/Qwen3-4B-Base-unsloth-bnb-4bit",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "MistralForCausalLM",
@@ -9992,15 +10025,16 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "WebScraper991923/Affine-S10-5DMNKT78pBWsijyvpHrpCay6BRCNx5Hj5vHesjLWLy8SFkik",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'WebScraper991923/Affine-S10-5DMNKT78pBWsijyvpHrpCay6BRCNx5Hj5vHesjLWLy8SFkik'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't ",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -10031,15 +10065,16 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "nvidia/Nemotron-Cascade-14B-Thinking",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'nvidia/Nemotron-Cascade-14B-Thinking'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same nam",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -10096,15 +10131,16 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "opendatalab/MinerU-HTML",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'opendatalab/MinerU-HTML'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name. Otherwise,",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "Qwen2ForCausalLM",
@@ -10421,15 +10457,16 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "OpenOneRec/OneRec-1.7B",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'OpenOneRec/OneRec-1.7B'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name. Otherwise, ",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -11143,15 +11180,16 @@
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "t-tech/T-lite-it-2.1",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 't-tech/T-lite-it-2.1'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name. Otherwise, ma",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -12083,15 +12121,16 @@
     {
       "architecture_id": "MixtralForCausalLM",
       "model_id": "GritLM/GritLM-8x7B",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'GritLM/GritLM-8x7B'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name. Otherwise, make",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "MistralForCausalLM",
@@ -12161,15 +12200,16 @@
     {
       "architecture_id": "MixtralForCausalLM",
       "model_id": "artek0chumak/TestMixtral",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'artek0chumak/TestMixtral'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name. Otherwise",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -12239,15 +12279,16 @@
     {
       "architecture_id": "MixtralForCausalLM",
       "model_id": "dphn/dolphin-2.9.2-mixtral-8x22b",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'dphn/dolphin-2.9.2-mixtral-8x22b'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name. O",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -12304,15 +12345,16 @@
     {
       "architecture_id": "MixtralForCausalLM",
       "model_id": "mlabonne/Beyonder-4x7B-v3",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'mlabonne/Beyonder-4x7B-v3'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name. Otherwis",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -12343,15 +12385,16 @@
     {
       "architecture_id": "MixtralForCausalLM",
       "model_id": "jsfs11/MixtureofMerges-MoE-4x7b-v5",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'jsfs11/MixtureofMerges-MoE-4x7b-v5'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name.",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -12408,15 +12451,16 @@
     {
       "architecture_id": "MixtralForCausalLM",
       "model_id": "jsfs11/MixtureofMerges-MoE-4x7b-v4",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'jsfs11/MixtureofMerges-MoE-4x7b-v4'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name.",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -12434,15 +12478,16 @@
     {
       "architecture_id": "MixtralForCausalLM",
       "model_id": "CultriX/NeuralMona_MoE-4x7B",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'CultriX/NeuralMona_MoE-4x7B'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name. Otherw",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -12564,15 +12609,16 @@
     {
       "architecture_id": "MixtralForCausalLM",
       "model_id": "RubielLabarta/LogoS-7Bx2-MoE-13B-v0.2",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'RubielLabarta/LogoS-7Bx2-MoE-13B-v0.2'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same na",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -12798,15 +12844,16 @@
     {
       "architecture_id": "MixtralForCausalLM",
       "model_id": "MaziyarPanahi/Calme-4x7B-MoE-v0.1",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'MaziyarPanahi/Calme-4x7B-MoE-v0.1'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name. ",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -12824,15 +12871,16 @@
     {
       "architecture_id": "MixtralForCausalLM",
       "model_id": "cloudyu/Mixtral_34Bx2_MoE_60B",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'cloudyu/Mixtral_34Bx2_MoE_60B'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name. Othe",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "MistralForCausalLM",
@@ -14139,10 +14187,10 @@
     {
       "architecture_id": "Phi3ForCausalLM",
       "model_id": "unsloth/Phi-4-mini-instruct",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'unsloth/Phi-4-mini-instruct'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name. Otherw",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
@@ -15447,10 +15495,10 @@
     {
       "architecture_id": "Phi3ForCausalLM",
       "model_id": "katuni4ka/tiny-random-phi3",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'katuni4ka/tiny-random-phi3'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name. Otherwi",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
@@ -17011,10 +17059,10 @@
     {
       "architecture_id": "OPTForCausalLM",
       "model_id": "yujiepan/opt-tiny-random",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'yujiepan/opt-tiny-random'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name. Otherwise",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
@@ -17104,10 +17152,10 @@
     {
       "architecture_id": "OPTForCausalLM",
       "model_id": "znhoughton/opt-c4-350m-seed964",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'znhoughton/opt-c4-350m-seed964'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name. Oth",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
@@ -18147,15 +18195,16 @@
     {
       "architecture_id": "Phi3ForCausalLM",
       "model_id": "anakin87/Phi-3.5-mini-ITA",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'anakin87/Phi-3.5-mini-ITA'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name. Otherwis",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -18251,15 +18300,16 @@
     {
       "architecture_id": "Phi3ForCausalLM",
       "model_id": "SciPhi/Triplex",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'SciPhi/Triplex'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name. Otherwise, make sur",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "Qwen2ForCausalLM",
@@ -19075,15 +19125,16 @@
     {
       "architecture_id": "Phi3ForCausalLM",
       "model_id": "ReDiX/Artemide-3.5",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'ReDiX/Artemide-3.5'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name. Otherwise, make",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "T5ForConditionalGeneration",
@@ -19233,28 +19284,30 @@
     {
       "architecture_id": "Phi3ForCausalLM",
       "model_id": "pytorch/Phi-4-mini-instruct-AWQ-INT4",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "Phi3ForCausalLM",
       "model_id": "MoxoffSrL/Moxoff-Phi3Mini-PPO",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'MoxoffSrL/Moxoff-Phi3Mini-PPO'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name. Othe",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "Qwen2ForCausalLM",
@@ -19272,41 +19325,44 @@
     {
       "architecture_id": "Phi3ForCausalLM",
       "model_id": "MoxoffSrL/Moxoff-Phi3Mini-DPO",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'MoxoffSrL/Moxoff-Phi3Mini-DPO'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name. Othe",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "Phi3ForCausalLM",
       "model_id": "SeacomSrl/SeaPhi3-mini",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'SeacomSrl/SeaPhi3-mini'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name. Otherwise, ",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "Phi3ForCausalLM",
       "model_id": "unsloth/Phi-4-mini-instruct-bnb-4bit",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "OPTForCausalLM",
@@ -19455,10 +19511,10 @@
     {
       "architecture_id": "OPTForCausalLM",
       "model_id": "znhoughton/opt-c4-1.3b-seed964",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'znhoughton/opt-c4-1.3b-seed964'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name. Oth",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
@@ -20211,10 +20267,10 @@
     {
       "architecture_id": "OPTForCausalLM",
       "model_id": "facebook/opt-iml-1.3b",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'facebook/opt-iml-1.3b'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name. Otherwise, m",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
@@ -20993,15 +21049,16 @@
     {
       "architecture_id": "GptOssForCausalLM",
       "model_id": "ArliAI/gpt-oss-120b-Derestricted",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 1045.6 GB exceeds 96.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "MistralForCausalLM",
@@ -21487,15 +21544,16 @@
     {
       "architecture_id": "GptOssForCausalLM",
       "model_id": "RedHatAI/gpt-oss-120b-FP8-dynamic",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "GPT2LMHeadModel",
@@ -22488,10 +22546,10 @@
     {
       "architecture_id": "OPTForCausalLM",
       "model_id": "p1atdev/dart-v1-sft",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'p1atdev/dart-v1-sft'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name. Otherwise, mak",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
@@ -23763,15 +23821,16 @@
     {
       "architecture_id": "GptOssForCausalLM",
       "model_id": "AmanPriyanshu/gpt-oss-13.1b-specialized-science-pruned-moe-only-19-experts",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 116.8 GB exceeds 96.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "Qwen2ForCausalLM",
@@ -24244,10 +24303,10 @@
     {
       "architecture_id": "OPTForCausalLM",
       "model_id": "facebook/galactica-1.3b",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'facebook/galactica-1.3b'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name. Otherwise,",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
@@ -24882,15 +24941,16 @@
     {
       "architecture_id": "GptOssForCausalLM",
       "model_id": "AmanPriyanshu/gpt-oss-13.1b-specialized-all-pruned-moe-only-19-experts",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 116.8 GB exceeds 96.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "MistralForCausalLM",
@@ -26572,15 +26632,16 @@
     {
       "architecture_id": "GptOssForCausalLM",
       "model_id": "nightmedia/gpt-oss-120b-heretic-v2-mxfp4-q8-hi-mlx",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 1045.6 GB exceeds 96.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "Qwen2ForCausalLM",
@@ -27548,15 +27609,16 @@
     {
       "architecture_id": "GptOssForCausalLM",
       "model_id": "MultiverseComputingCAI/HyperNova-60B",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 525.0 GB exceeds 96.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "MistralForCausalLM",
@@ -28550,15 +28612,16 @@
     {
       "architecture_id": "GptOssForCausalLM",
       "model_id": "mlx-community/gpt-oss-120b-MXFP4-Q4",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "Qwen3ForCausalLM",
@@ -29448,15 +29511,16 @@
     {
       "architecture_id": "GptOssForCausalLM",
       "model_id": "p-e-w/gpt-oss-20b-heretic",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 186.2 GB exceeds 96.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "Qwen3ForCausalLM",
@@ -30308,15 +30372,16 @@
     {
       "architecture_id": "OPTForCausalLM",
       "model_id": "KoboldAI/OPT-2.7B-Erebus",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'KoboldAI/OPT-2.7B-Erebus'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name. Otherwise",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -30464,15 +30529,16 @@
     {
       "architecture_id": "GptOssForCausalLM",
       "model_id": "nightmedia/OpenAI-gpt-oss-20B-INSTRUCT-Heretic-Uncensored-MXFP4-q8-hi-mlx",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 186.2 GB exceeds 96.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -31504,15 +31570,16 @@
     {
       "architecture_id": "GptOssForCausalLM",
       "model_id": "mlx-community/gpt-oss-120b-4bit",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "TransformerLens does not support quantized models at this time",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -31959,15 +32026,16 @@
     {
       "architecture_id": "OPTForCausalLM",
       "model_id": "KoboldAI/OPT-6.7B-Erebus",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'KoboldAI/OPT-6.7B-Erebus'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name. Otherwise",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -32180,15 +32248,16 @@
     {
       "architecture_id": "OPTForCausalLM",
       "model_id": "facebook/opt-iml-max-1.3b",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'facebook/opt-iml-max-1.3b'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name. Otherwis",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "GPT2LMHeadModel",
@@ -32648,15 +32717,16 @@
     {
       "architecture_id": "OPTForCausalLM",
       "model_id": "facebook/galactica-120b",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'facebook/galactica-120b'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name. Otherwise,",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "GPTNeoXForCausalLM",
@@ -66674,13 +66744,16 @@
     {
       "architecture_id": "GraniteMoeHybridForCausalLM",
       "model_id": "ibm-granite/granite-4.0-1b-base",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Full verification completed with issues: P3=78.9% (failed: process_bridge_weights, layer_norm_folding, attention_output_centering, mlp_output_centering)",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 78.9,
+      "phase4_score": 71.0,
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "T5ForConditionalGeneration",
@@ -67168,10 +67241,10 @@
     {
       "architecture_id": "Olmo3ForCausalLM",
       "model_id": "RLLab/olmo-3-7b-it-sft",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'RLLab/olmo-3-7b-it-sft'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name. Otherwise, ",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
@@ -67232,13 +67305,16 @@
     {
       "architecture_id": "GraniteMoeHybridForCausalLM",
       "model_id": "nightpartycoderteam/granite-4-nano-dt",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Full verification completed with issues, low text quality: P3=78.9% (failed: process_bridge_weights, layer_norm_folding, attention_output_centering, mlp_output_centering)",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 78.9,
+      "phase4_score": 5.5,
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "Qwen2ForCausalLM",
@@ -67469,13 +67545,16 @@
     {
       "architecture_id": "T5ForConditionalGeneration",
       "model_id": "yacht/byt5-base-en2th-transliterator",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'yacht/byt5-base-en2th-transliterator'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same nam",
       "phase1_score": null,
       "phase2_score": null,
-      "phase3_score": null
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "Qwen2ForCausalLM",
@@ -67924,13 +68003,16 @@
     {
       "architecture_id": "GraniteMoeHybridForCausalLM",
       "model_id": "unsloth/granite-4.0-h-micro",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Full verification completed with issues: P3=78.9% (failed: process_bridge_weights, layer_norm_folding, attention_output_centering, mlp_output_centering)",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 78.9,
+      "phase4_score": 99.4,
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -68034,13 +68116,16 @@
     {
       "architecture_id": "GraniteMoeHybridForCausalLM",
       "model_id": "unsloth/granite-4.0-micro-base",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'unsloth/granite-4.0-micro-base'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name. Oth",
       "phase1_score": null,
       "phase2_score": null,
-      "phase3_score": null
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "Qwen2ForCausalLM",
@@ -68154,10 +68239,10 @@
     {
       "architecture_id": "Olmo3ForCausalLM",
       "model_id": "dralex/olmo3-0.2b-random-ci",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'dralex/olmo3-0.2b-random-ci'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name. Otherw",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
@@ -68776,13 +68861,16 @@
     {
       "architecture_id": "StableLmForCausalLM",
       "model_id": "Barrin666/NSFW-flash",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'Barrin666/NSFW-flash'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name. Otherwise, ma",
       "phase1_score": null,
       "phase2_score": null,
-      "phase3_score": null
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "Qwen2ForCausalLM",
@@ -69750,13 +69838,16 @@
     {
       "architecture_id": "GraniteMoeHybridForCausalLM",
       "model_id": "unsloth/granite-4.0-h-small",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'unsloth/granite-4.0-h-small'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name. Otherw",
       "phase1_score": null,
       "phase2_score": null,
-      "phase3_score": null
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -70272,10 +70363,10 @@
     {
       "architecture_id": "OlmoForCausalLM",
       "model_id": "Codemaster67/ChemOlmo-7b",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'Codemaster67/ChemOlmo-7b'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name. Otherwise",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
@@ -70297,13 +70388,16 @@
     {
       "architecture_id": "StableLmForCausalLM",
       "model_id": "stabilityai/stablelm-2-12b",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'stabilityai/stablelm-2-12b'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name. Otherwi",
       "phase1_score": null,
       "phase2_score": null,
-      "phase3_score": null
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -70319,10 +70413,10 @@
     {
       "architecture_id": "Olmo3ForCausalLM",
       "model_id": "allenai/Olmo-3-7B-RL-Zero-Code",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'allenai/Olmo-3-7B-RL-Zero-Code'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name. Oth",
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
@@ -70333,13 +70427,16 @@
     {
       "architecture_id": "GPT2LMHeadModel",
       "model_id": "Chaunce1121/chess-fen-move-model",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Full verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "phase4_score": 89.3,
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -70468,13 +70565,16 @@
     {
       "architecture_id": "T5ForConditionalGeneration",
       "model_id": "basharalrfooh/Fine-Tashkeel",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'basharalrfooh/Fine-Tashkeel'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name. Otherw",
       "phase1_score": null,
       "phase2_score": null,
-      "phase3_score": null
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "Qwen2ForCausalLM",
@@ -70567,13 +70667,16 @@
     {
       "architecture_id": "GraniteMoeHybridForCausalLM",
       "model_id": "unsloth/granite-4.0-h-350m",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'unsloth/granite-4.0-h-350m'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name. Otherwi",
       "phase1_score": null,
       "phase2_score": null,
-      "phase3_score": null
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "Qwen2ForCausalLM",
@@ -70827,13 +70930,16 @@
     {
       "architecture_id": "GPT2LMHeadModel",
       "model_id": "aariciah/gpt2-german-dutch-configC-6k",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Full verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "phase4_score": 90.8,
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "Gemma3ForCausalLM",
@@ -70900,13 +71006,16 @@
     {
       "architecture_id": "PhiForCausalLM",
       "model_id": "bluesky333/medphi2",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'bluesky333/medphi2'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name. Otherwise, make",
       "phase1_score": null,
       "phase2_score": null,
-      "phase3_score": null
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "Qwen3ForCausalLM",
@@ -71060,13 +71169,16 @@
     {
       "architecture_id": "GPT2LMHeadModel",
       "model_id": "aariciah/gpt2-portuguese-dutch-configC-6k",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Full verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "phase4_score": 93.1,
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "Qwen2ForCausalLM",
@@ -71217,13 +71329,16 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "EleutherAI/pythia-6.9b-deduped-v0",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Full verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "phase4_score": 95.8,
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "Qwen2ForCausalLM",
@@ -71363,13 +71478,16 @@
     {
       "architecture_id": "GPT2LMHeadModel",
       "model_id": "aariciah/gpt2-arabic-dutch-configC-6k",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Full verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "phase4_score": 91.5,
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "Qwen3ForCausalLM",
@@ -71506,24 +71624,30 @@
     {
       "architecture_id": "GPT2LMHeadModel",
       "model_id": "aariciah/gpt2-chinese-dutch-configC-6k",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Full verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "phase4_score": 94.5,
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "EleutherAI/pythia-1.4b-v0",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Full verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "phase4_score": 90.8,
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "Qwen3ForCausalLM",
@@ -71575,13 +71699,16 @@
     {
       "architecture_id": "GraniteMoeHybridForCausalLM",
       "model_id": "unsloth/granite-4.0-350m-base",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Full verification completed with issues, low text quality: P3=78.9% (failed: process_bridge_weights, layer_norm_folding, attention_output_centering, mlp_output_centering)",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 78.9,
+      "phase4_score": 28.1,
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "Qwen3ForCausalLM",
@@ -71597,13 +71724,16 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "EleutherAI/pythia-12b-deduped-v0",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 137.3 GB exceeds 96.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
-      "phase3_score": null
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "Qwen3ForCausalLM",
@@ -71619,13 +71749,16 @@
     {
       "architecture_id": "GraniteMoeHybridForCausalLM",
       "model_id": "unsloth/granite-4.0-350m",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Full verification completed with issues, low text quality: P3=78.9% (failed: process_bridge_weights, layer_norm_folding, attention_output_centering, mlp_output_centering)",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 78.9,
+      "phase4_score": 18.2,
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "Qwen2ForCausalLM",
@@ -71685,13 +71818,16 @@
     {
       "architecture_id": "T5ForConditionalGeneration",
       "model_id": "potsawee/t5-large-generation-squad-QuestionAnswer",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'potsawee/t5-large-generation-squad-QuestionAnswer'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with",
       "phase1_score": null,
       "phase2_score": null,
-      "phase3_score": null
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -71729,13 +71865,16 @@
     {
       "architecture_id": "GPT2LMHeadModel",
       "model_id": "xchen16/g2pt-moses-small-bfs",
-      "status": 0,
-      "verified_date": null,
+      "status": 3,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
+      "note": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: WordLevel error: Missing [UNK] token from the vocabulary",
+      "phase1_score": 0.0,
       "phase2_score": null,
-      "phase3_score": null
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -71784,13 +71923,16 @@
     {
       "architecture_id": "T5ForConditionalGeneration",
       "model_id": "flax-community/t5-recipe-generation",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'flax-community/t5-recipe-generation'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name",
       "phase1_score": null,
       "phase2_score": null,
-      "phase3_score": null
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "Qwen2ForCausalLM",
@@ -71839,13 +71981,16 @@
     {
       "architecture_id": "GPT2LMHeadModel",
       "model_id": "ytu-ce-cosmos/turkish-gpt2-large",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Full verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "phase4_score": 64.3,
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -71919,13 +72064,16 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "EleutherAI/pythia-12b-v0",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 137.3 GB exceeds 96.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
-      "phase3_score": null
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -71974,24 +72122,30 @@
     {
       "architecture_id": "GPT2LMHeadModel",
       "model_id": "huggingtweets/gaytimes-grindr",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Full verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "phase4_score": 90.0,
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "T5ForConditionalGeneration",
       "model_id": "MBZUAI/LaMini-T5-738M",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'MBZUAI/LaMini-T5-738M'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name. Otherwise, m",
       "phase1_score": null,
       "phase2_score": null,
-      "phase3_score": null
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "Qwen3ForCausalLM",
@@ -72029,13 +72183,16 @@
     {
       "architecture_id": "T5ForConditionalGeneration",
       "model_id": "potsawee/t5-large-generation-race-Distractor",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'potsawee/t5-large-generation-race-Distractor'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the ",
       "phase1_score": null,
       "phase2_score": null,
-      "phase3_score": null
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -72194,13 +72351,16 @@
     {
       "architecture_id": "GraniteMoeHybridForCausalLM",
       "model_id": "dunks/granite-350m-witness",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Full verification completed with issues: P3=78.9% (failed: process_bridge_weights, layer_norm_folding, attention_output_centering, mlp_output_centering)",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 78.9,
+      "phase4_score": 79.6,
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "Gemma3ForCausalLM",
@@ -72397,24 +72557,30 @@
     {
       "architecture_id": "GPT2LMHeadModel",
       "model_id": "FredZhang7/anime-anything-promptgen-v2",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Full verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "phase4_score": 78.8,
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "GPT2LMHeadModel",
       "model_id": "phonemetransformers/childes-segmentation-800k-2-gpt2_lm-model",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Full verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "phase4_score": 76.1,
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "GptOssForCausalLM",
@@ -72808,13 +72974,16 @@
     {
       "architecture_id": "T5ForConditionalGeneration",
       "model_id": "crossroderick/aramt5",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Config unavailable: Can't load the configuration of 'crossroderick/aramt5'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name. Otherwise, ma",
       "phase1_score": null,
       "phase2_score": null,
-      "phase3_score": null
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -72874,13 +73043,16 @@
     {
       "architecture_id": "Gemma2ForCausalLM",
       "model_id": "rtzr/ko-gemma-2-9b-it",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Full verification completed with issues: P3=94.7% (failed: unembed_centering)",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 94.7,
+      "phase4_score": 99.0,
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "Qwen2ForCausalLM",
@@ -73149,13 +73321,16 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "EleutherAI/deep-ignorance-e2e-strong-filter",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Full verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "phase4_score": 96.5,
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "Qwen2ForCausalLM",
@@ -74004,13 +74179,16 @@
     {
       "architecture_id": "Gemma2ForCausalLM",
       "model_id": "aisingapore/Gemma-SEA-LION-v3-9B-IT",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Full verification completed with issues: P3=94.7% (failed: unembed_centering)",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 94.7,
+      "phase4_score": 97.7,
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "MistralForCausalLM",
@@ -74081,13 +74259,16 @@
     {
       "architecture_id": "Gemma3ForCausalLM",
       "model_id": "rajpurkarlab/medgemma-4b-it-crimson",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Full verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "phase4_score": 99.0,
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -74202,24 +74383,30 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "EleutherAI/pythia-14m-seed2",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Full verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "phase4_score": 90.7,
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "EleutherAI/pythia-14m-seed3",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Full verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "phase4_score": 83.5,
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -74268,13 +74455,16 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "EleutherAI/pythia-31m-seed2",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Full verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "phase4_score": 82.0,
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "GPTJForCausalLM",
@@ -74381,13 +74571,16 @@
     {
       "architecture_id": "Gemma2ForCausalLM",
       "model_id": "unsloth/gemma-2-27b-it",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 251.2 GB exceeds 96.0 GB limit",
       "phase1_score": null,
       "phase2_score": null,
-      "phase3_score": null
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -74458,13 +74651,16 @@
     {
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "EleutherAI/pythia-14m-seed1",
-      "status": 0,
-      "verified_date": null,
+      "status": 3,
+      "verified_date": "2026-03-20",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Below threshold: P3=94.7% but required tests failed: logits_equivalence \u2014 Text quality score: 83.1/100 (below 85.0, avg perplexity: 53.3)",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 94.7,
+      "phase4_score": 83.1,
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "Qwen3ForCausalLM",
