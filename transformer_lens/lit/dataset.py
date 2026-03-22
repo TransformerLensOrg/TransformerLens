@@ -68,17 +68,14 @@ def _ensure_lit_available():
 
 @dataclass
 class DatasetConfig:
-    """Configuration for LIT datasets.
-
-    Attributes:
-        max_examples: Maximum number of examples to load.
-        shuffle: Whether to shuffle the examples.
-        seed: Random seed for shuffling.
-    """
+    """Configuration for LIT datasets."""
 
     max_examples: Optional[int] = None
+    """Maximum number of examples to load."""
     shuffle: bool = False
+    """Whether to shuffle the examples."""
     seed: int = 42
+    """Random seed for shuffling."""
 
 
 class SimpleTextDataset(_LITDatasetBase):  # type: ignore[misc, valid-type]
@@ -86,10 +83,6 @@ class SimpleTextDataset(_LITDatasetBase):  # type: ignore[misc, valid-type]
 
     This is a basic dataset class that holds text examples for analysis
     with LIT. Each example is a dictionary with at least a "text" field.
-
-    Attributes:
-        examples: List of example dictionaries.
-        name: Optional dataset name for display.
 
     Example:
         >>> dataset = SimpleTextDataset([  # doctest: +SKIP
@@ -213,9 +206,6 @@ class PromptCompletionDataset(_LITDatasetBase):  # type: ignore[misc, valid-type
 
     This dataset type is useful for analyzing model generation behavior,
     where each example has a prompt and an expected completion.
-
-    Attributes:
-        examples: List of example dictionaries with prompt and completion.
 
     Example:
         >>> dataset = PromptCompletionDataset([  # doctest: +SKIP

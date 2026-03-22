@@ -75,20 +75,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class HookedTransformerLITConfig:
-    """Configuration for the HookedTransformerLIT wrapper.
-
-    Attributes:
-        max_seq_length: Maximum sequence length for tokenization.
-        batch_size: Batch size for inference.
-        top_k: Number of top predictions to return.
-        compute_gradients: Whether to compute token gradients.
-        output_attention: Whether to output attention patterns.
-        output_embeddings: Whether to output layer embeddings.
-        output_all_layers: Whether to output embeddings from all layers.
-        embedding_layers: Specific layers to include (None = based on output_all_layers).
-        prepend_bos: Whether to prepend BOS token.
-        device: Device for computation (None = auto-detect).
-    """
+    """Configuration for the HookedTransformerLIT wrapper."""
 
     max_seq_length: int = DEFAULTS.MAX_SEQ_LENGTH
     batch_size: int = DEFAULTS.BATCH_SIZE
@@ -126,10 +113,6 @@ class HookedTransformerLIT(_LITModelBase):  # type: ignore[valid-type,misc]
     - Per-layer embeddings for embedding projector
     - Attention patterns for attention visualization
     - Token gradients for salience maps
-
-    Attributes:
-        model: The wrapped HookedTransformer model.
-        config: Configuration options for the wrapper.
 
     Example:
         >>> model = HookedTransformer.from_pretrained("gpt2-small")  # doctest: +SKIP
