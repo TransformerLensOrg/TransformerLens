@@ -16,8 +16,6 @@ from einops import repeat
 from jaxtyping import Float, Int
 from transformers import (
     AutoFeatureExtractor,
-    AutoProcessor,
-    HubertForCTC,
     HubertModel,
     Wav2Vec2Model,
 )
