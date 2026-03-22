@@ -362,7 +362,6 @@ class HookedAudioEncoder(HookedRootModule):
         device: Optional[str] = None,
         move_to_device: bool = True,
         dtype: torch.dtype = torch.float32,
-        use_ctc: bool = False,
         **from_pretrained_kwargs: Any,
     ) -> HookedEncoder:
         """Loads in the pretrained weights from huggingface. Currently supports loading weight from HuggingFace BertForMaskedLM. Unlike HookedTransformer, this does not yet do any preprocessing on the model."""
@@ -412,20 +411,9 @@ class HookedAudioEncoder(HookedRootModule):
         model = cls(cfg, move_to_device=False, model_name=official_model_name)
         model.load_state_dict(state_dict, strict=False)
         
-        if official_model_name.endswith("-ft") and use_ctc:
-            # fine-tuned model (has CTC head)
-            use_ctc = True
-            model.processor = AutoProcessor.from_pretrained(
-                official_model_name
-            )
-        else:
-            # pretraining-only model (no CTC)
-            use_ctc = False
-            model.processor = AutoFeatureExtractor.from_pretrained(official_model_name)
+        model.processor = AutoFeatureExtractor.from_pretrained(official_model_name)
 
-        if official_model_name.endswith("-ft") and use_ctc:
-            hubert_model = HubertForCTC.from_pretrained(official_model_name)
-        elif "wav2vec2" in model_name:
+        if "wav2vec2" in model_name:
             hubert_model = Wav2Vec2Model.from_pretrained(official_model_name)
         else:
             hubert_model = HubertModel.from_pretrained(official_model_name)
@@ -436,14 +424,7 @@ class HookedAudioEncoder(HookedRootModule):
             hubert_model.to(self.cfg.device)
 
         hubert_model.eval()
-        if use_ctc:
-            model.hubert_model = hubert_model.hubert
-            model.lm_head = hubert_model.lm_head
-            for p in model.lm_head.parameters():
-                p.requires_grad = False
-        else:
-            model.hubert_model = hubert_model
-            model.lm_head = None
+        model.hubert_model = hubert_model
 
         if move_to_device:
             model.to(cfg.device)
