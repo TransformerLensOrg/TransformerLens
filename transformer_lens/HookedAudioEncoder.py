@@ -386,13 +386,6 @@ class HookedAudioEncoder(HookedRootModule):
 
         official_model_name = loading.get_official_model_name(model_name)
 
-        if model_name.endswith("-ft") and use_ctc:
-            # fine-tuned model (has CTC head)
-            use_ctc = True
-        else:
-            # pretraining-only model (no CTC)
-            use_ctc = False
-
         cfg = loading.get_pretrained_model_config(
             official_model_name,
             checkpoint_index=checkpoint_index,
