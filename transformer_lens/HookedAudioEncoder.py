@@ -9,16 +9,12 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional, Tuple, TypeVar, Union, overload
 
+from einops import repeat
+from jaxtyping import Float, Int
 import numpy as np
 import torch
 import torch.nn as nn
-from einops import repeat
-from jaxtyping import Float, Int
-from transformers import (
-    AutoFeatureExtractor,
-    HubertModel,
-    Wav2Vec2Model,
-)
+from transformers import AutoFeatureExtractor, HubertModel, Wav2Vec2Model
 from typing_extensions import Literal
 
 from transformer_lens import loading_from_pretrained as loading
