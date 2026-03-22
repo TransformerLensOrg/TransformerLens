@@ -50,7 +50,6 @@ class HookedAudioEncoder(HookedRootModule):
         cfg: Union[HookedTransformerConfig, Dict],
         move_to_device: bool = True,
         model_name: str = "facebook/hubert-base-ls960",
-        use_ctc: bool = False,
         **kwargs: Any,
     ):
         super().__init__()
@@ -247,7 +246,6 @@ class HookedAudioEncoder(HookedRootModule):
         ],
         one_zero_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
         sampling_rate: int = 16000,
-        use_ctc: bool = False,
         move_to_device: bool = True,
     ) -> Optional[torch.Tensor]:
         """
@@ -296,16 +294,6 @@ class HookedAudioEncoder(HookedRootModule):
 
         # ---------- 3) Run encoder (respects pos_conv_embed / layer_norm / dropout inside encoder_output) ----------
         resid = self.encoder_output(frames, frame_mask)  # (B, T, d_model)
-
-        if use_ctc:
-            if self.lm_head is None:
-                logging.warning("HubertForCTC not enabled")
-                return resid
-            if isinstance(resid, tuple):
-                hidden_states = resid[0]  # take last hidden state
-            else:
-                hidden_states = resid  # already tensor
-            resid = self.lm_head(hidden_states)  # (B, T, vocab_size)
 
         return resid
 
