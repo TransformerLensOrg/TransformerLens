@@ -412,9 +412,9 @@ class HookedAudioEncoder(HookedRootModule):
             hubert_model = HubertModel.from_pretrained(official_model_name)
 
         if move_to_device:
-            if self.cfg.device is None:
+            if cfg.device is None:
                 raise ValueError("Cannot move to device when device is None")
-            hubert_model.to(self.cfg.device)
+            hubert_model.to(cfg.device)
 
         hubert_model.eval()
         model.hubert_model = hubert_model
