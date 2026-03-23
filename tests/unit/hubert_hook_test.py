@@ -10,35 +10,46 @@ SAMPLE_RATE = 16000
 DURATION_S = 1.0
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
+
 def make_sine(sr=SAMPLE_RATE, duration=DURATION_S, freq=440.0, amp=0.1):
-    t = np.linspace(0, duration, int(sr*duration), endpoint=False, dtype=np.float32)
+    t = np.linspace(0, duration, int(sr * duration), endpoint=False, dtype=np.float32)
     return amp * np.sin(2 * math.pi * freq * t)
 
+
 audio_model = HookedAudioEncoder.from_pretrained("facebook/hubert-base-ls960", device="cuda")
+
 
 def main():
     wav = make_sine()
     raw_batch = [wav]  # batch of one
 
     try:
-        frames, frame_mask = audio_model.to_frames(raw_batch, sampling_rate=SAMPLE_RATE, move_to_device=True)
+        frames, frame_mask = audio_model.to_frames(
+            raw_batch, sampling_rate=SAMPLE_RATE, move_to_device=True
+        )
     except NameError:
-        raise RuntimeError("Replace `audio_model` with your model/wrapper instance that implements to_frames().")
+        raise RuntimeError(
+            "Replace `audio_model` with your model/wrapper instance that implements to_frames()."
+        )
 
     print("frames.shape:", tuple(frames.shape))
     if frame_mask is not None:
         print("frame_mask.shape:", tuple(frame_mask.shape))
 
-    logits, cache = audio_model.run_with_cache(frames, one_zero_attention_mask=frame_mask, remove_batch_dim=True)
+    logits, cache = audio_model.run_with_cache(
+        frames, one_zero_attention_mask=frame_mask, remove_batch_dim=True
+    )
     layer_to_visualize = 0
-    pattern_name = utils.get_act_name("pattern", layer_to_visualize)  # e.g. "pattern_0" depending on utils
+    pattern_name = utils.get_act_name("pattern", layer_to_visualize)
     try:
-        attention_pattern = cache[pattern_name]   # expected shape: (pos, pos, n_heads) or (pos, n_heads, pos) depending on implementation
+        attention_pattern = cache[pattern_name]
     except Exception:
         try:
             attention_pattern = cache["pattern", layer_to_visualize, "attn"]
         except Exception as exc:
-            raise RuntimeError(f"Couldn't find attention pattern in cache. Keys: {list(cache.keys())}") from exc
+            raise RuntimeError(
+                f"Couldn't find attention pattern in cache. Keys: {list(cache.keys())}"
+            ) from exc
     n_frames = attention_pattern.shape[0]
     frame_tokens = [f"f{i}" for i in range(n_frames)]
 
@@ -65,10 +76,14 @@ def main():
 
     def run_and_get_repr(frames, frame_mask, hooks=None):
         if hooks is None:
-            cache = audio_model.run_with_cache(frames, one_zero_attention_mask=frame_mask, remove_batch_dim=True)
+            cache = audio_model.run_with_cache(
+                frames, one_zero_attention_mask=frame_mask, remove_batch_dim=True
+            )
             out = audio_model.run_with_hooks(frames, fwd_hooks=[])
         else:
-            out = audio_model.run_with_hooks(frames, fwd_hooks=hooks, one_zero_attention_mask=frame_mask)
+            out = audio_model.run_with_hooks(
+                frames, fwd_hooks=hooks, one_zero_attention_mask=frame_mask
+            )
         logits = None
         if isinstance(out, dict):
             for k in ("logits", "ctc_logits", "logits_ctc", "predictions"):
@@ -89,7 +104,9 @@ def main():
         try:
             last_layer = audio_model.cfg.n_layers - 1
             resid_name = utils.get_act_name("resid_post", last_layer)
-            cache = audio_model.run_with_cache(frames, one_zero_attention_mask=frame_mask, remove_batch_dim=True)
+            cache = audio_model.run_with_cache(
+                frames, one_zero_attention_mask=frame_mask, remove_batch_dim=True
+            )
             resid = cache[resid_name]  # e.g. (pos, d) or (batch,pos,d)
             if resid.ndim == 3:
                 pooled = resid.mean(dim=1)  # (batch, d)
@@ -99,9 +116,13 @@ def main():
                 raise RuntimeError("Unexpected resid_post shape")
             return pooled, None, cache
         except Exception as e:
-            raise RuntimeError("Couldn't extract logits or resid_post; adapt the extraction to your model's output format.") from e
+            raise RuntimeError(
+                "Couldn't extract logits or resid_post; adapt the extraction to your model's output format."
+            ) from e
 
-    baseline_repr, baseline_logits, baseline_cache = run_and_get_repr(frames, frame_mask, hooks=None)
+    baseline_repr, baseline_logits, baseline_cache = run_and_get_repr(
+        frames, frame_mask, hooks=None
+    )
     print("Baseline representation shape:", tuple(baseline_repr.shape))
 
     hooks = [(v_act_name, head_ablation_hook)]
@@ -118,8 +139,13 @@ def main():
         print("Sample argmax token ids (ablated): ", a_ids[0][:40].cpu().numpy().tolist())
 
     print("Done. Interpret the results:")
-    print(" - A large drop in cosine similarity (or large change in argmax tokens / increase in loss) means the ablated head mattered.")
-    print(" - If ablation causes little change, that head may be redundant or not used for this example.")
+    print(
+        " - A large drop in cosine similarity (or large change in argmax tokens / increase in loss) means the ablated head mattered."
+    )
+    print(
+        " - If ablation causes little change, that head may be redundant or not used for this example."
+    )
+
 
 if __name__ == "__main__":
     main()
