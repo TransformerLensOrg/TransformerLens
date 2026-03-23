@@ -9,11 +9,11 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional, Tuple, TypeVar, Union, overload
 
-from einops import repeat
-from jaxtyping import Float, Int
 import numpy as np
 import torch
 import torch.nn as nn
+from einops import repeat
+from jaxtyping import Float, Int
 from transformers import AutoFeatureExtractor, HubertModel, Wav2Vec2Model
 from typing_extensions import Literal
 
@@ -397,7 +397,7 @@ class HookedAudioEncoder(HookedRootModule):
 
         model = cls(cfg, move_to_device=False, model_name=official_model_name)
         model.load_state_dict(state_dict, strict=False)
-        
+
         model.processor = AutoFeatureExtractor.from_pretrained(official_model_name)
 
         if "wav2vec2" in model_name:
