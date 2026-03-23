@@ -16,7 +16,11 @@ def make_sine(sr=SAMPLE_RATE, duration=DURATION_S, freq=440.0, amp=0.1):
     return amp * np.sin(2 * math.pi * freq * t)
 
 
-audio_model = HookedAudioEncoder.from_pretrained("facebook/hubert-base-ls960", device="cuda")
+device = "cuda" if torch.cuda.is_available() else "cpu"
+audio_model = HookedAudioEncoder.from_pretrained(
+    "facebook/hubert-base-ls960",
+    device=device
+)
 
 
 def main():
