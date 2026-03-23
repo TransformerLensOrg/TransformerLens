@@ -2,6 +2,7 @@
 
 This module contains all the component :class:`BertPooler`.
 """
+
 from typing import Dict, Union
 
 import torch

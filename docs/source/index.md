@@ -34,7 +34,7 @@ content/gallery
 :caption: Documentation
 
 generated/code/modules
-generated/model_properties_table.md
+content/model_tables
 ```
 
 ```{toctree}

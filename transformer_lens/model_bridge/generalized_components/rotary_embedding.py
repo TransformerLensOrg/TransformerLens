@@ -72,7 +72,14 @@ class RotaryEmbeddingBridge(GeneralizedComponent):
             head_dim = 256
         x = torch.randn(batch_size, seq_len, num_heads, head_dim, device=device, dtype=dtype)
         position_ids = torch.arange(seq_len, device=device).unsqueeze(0).expand(batch_size, -1)
-        return {"args": (x, position_ids)}
+        args: tuple = (x, position_ids)
+        # Gemma3's rotary embedding requires a layer_type argument (e.g., "sliding_attention")
+        # to select the correct inv_freq buffer. Without it, forward() tries to access
+        # "None_inv_freq" which doesn't exist.
+        if self.original_component is not None and hasattr(self.original_component, "layer_types"):
+            layer_type = self.original_component.layer_types[0]  # type: ignore[index]
+            args = (x, position_ids, layer_type)
+        return {"args": args}
 
     def forward(self, *args: Any, **kwargs: Any) -> Tuple[torch.Tensor, torch.Tensor]:
         """Forward pass through the rotary embedding bridge.
@@ -123,3 +130,31 @@ class RotaryEmbeddingBridge(GeneralizedComponent):
         else:
             # For unexpected tuple lengths, just pass through
             return output
+
+    def get_dummy_inputs(
+        self, test_input: torch.Tensor, **kwargs: Any
+    ) -> tuple[tuple[Any, ...], dict[str, Any]]:
+        """Generate dummy inputs for rotary embedding forward method.
+
+        Rotary embeddings typically expect (x, position_ids) where:
+        - x: input tensor [batch, seq, d_model]
+        - position_ids: position indices [batch, seq]
+
+        Args:
+            test_input: Base test input tensor [batch, seq, d_model]
+            **kwargs: Additional context including position_ids
+
+        Returns:
+            Tuple of (args, kwargs) for the rotary embedding forward method
+        """
+        batch, seq_len, _ = test_input.shape
+
+        # Get position_ids from kwargs, or generate default
+        position_ids = kwargs.get("position_ids")
+        if position_ids is None:
+            position_ids = (
+                torch.arange(seq_len, device=test_input.device).unsqueeze(0).expand(batch, -1)
+            )
+
+        # Rotary embeddings expect (x, position_ids)
+        return (test_input, position_ids), {}

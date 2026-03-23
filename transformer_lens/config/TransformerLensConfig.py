@@ -138,8 +138,21 @@ class TransformerLensConfig:
         Instantiates a `TransformerLensConfig` from a Python dictionary of parameters.
         Only includes fields that are defined in the TransformerLensConfig dataclass.
         """
-        # Get the field names from the dataclass
-        valid_fields = set(inspect.signature(cls).parameters.keys())
+        sig = inspect.signature(cls)
+        valid_fields = set(sig.parameters.keys())
+
+        # If the constructor accepts **kwargs, also include fields from parent
+        # classes whose __init__ would receive those kwargs.
+        has_var_keyword = any(
+            p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
+        )
+        if has_var_keyword:
+            for parent_cls in cls.__mro__[1:]:
+                try:
+                    parent_sig = inspect.signature(parent_cls)
+                    valid_fields.update(parent_sig.parameters.keys())
+                except (ValueError, TypeError):
+                    pass
 
         # Filter the config dict to only include valid fields
         filtered_dict = {k: v for k, v in config_dict.items() if k in valid_fields}

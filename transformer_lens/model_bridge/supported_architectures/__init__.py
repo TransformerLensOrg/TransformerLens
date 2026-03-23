@@ -18,18 +18,32 @@ from transformer_lens.model_bridge.supported_architectures.gemma2 import (
 from transformer_lens.model_bridge.supported_architectures.gemma3 import (
     Gemma3ArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.gemma3_multimodal import (
+    Gemma3MultimodalArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.gpt2 import (
     GPT2ArchitectureAdapter,
 )
-from transformer_lens.model_bridge.supported_architectures.gpt_oss import GPTOSSArchitectureAdapter
 from transformer_lens.model_bridge.supported_architectures.gpt2_lm_head_custom import (
     Gpt2LmHeadCustomArchitectureAdapter,
+)
+from transformer_lens.model_bridge.supported_architectures.gpt_oss import (
+    GPTOSSArchitectureAdapter,
 )
 from transformer_lens.model_bridge.supported_architectures.gptj import (
     GptjArchitectureAdapter,
 )
 from transformer_lens.model_bridge.supported_architectures.llama import (
     LlamaArchitectureAdapter,
+)
+from transformer_lens.model_bridge.supported_architectures.llava import (
+    LlavaArchitectureAdapter,
+)
+from transformer_lens.model_bridge.supported_architectures.llava_next import (
+    LlavaNextArchitectureAdapter,
+)
+from transformer_lens.model_bridge.supported_architectures.llava_onevision import (
+    LlavaOnevisionArchitectureAdapter,
 )
 from transformer_lens.model_bridge.supported_architectures.mingpt import (
     MingptArchitectureAdapter,
@@ -43,6 +57,18 @@ from transformer_lens.model_bridge.supported_architectures.mixtral import (
 from transformer_lens.model_bridge.supported_architectures.nanogpt import (
     NanogptArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.olmo import (
+    OlmoArchitectureAdapter,
+)
+from transformer_lens.model_bridge.supported_architectures.olmo2 import (
+    Olmo2ArchitectureAdapter,
+)
+from transformer_lens.model_bridge.supported_architectures.olmo3 import (
+    Olmo3ArchitectureAdapter,
+)
+from transformer_lens.model_bridge.supported_architectures.olmoe import (
+    OlmoeArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.neel_solu_old import (
     NeelSoluOldArchitectureAdapter,
 )
@@ -51,6 +77,9 @@ from transformer_lens.model_bridge.supported_architectures.neo import (
 )
 from transformer_lens.model_bridge.supported_architectures.neox import (
     NeoxArchitectureAdapter,
+)
+from transformer_lens.model_bridge.supported_architectures.openelm import (
+    OpenElmArchitectureAdapter,
 )
 from transformer_lens.model_bridge.supported_architectures.opt import (
     OptArchitectureAdapter,
@@ -70,6 +99,12 @@ from transformer_lens.model_bridge.supported_architectures.qwen import (
 from transformer_lens.model_bridge.supported_architectures.qwen2 import (
     Qwen2ArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.qwen3 import (
+    Qwen3ArchitectureAdapter,
+)
+from transformer_lens.model_bridge.supported_architectures.stablelm import (
+    StableLmArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.t5 import (
     T5ArchitectureAdapter,
 )
@@ -80,10 +115,15 @@ __all__ = [
     "Gemma1ArchitectureAdapter",
     "Gemma2ArchitectureAdapter",
     "Gemma3ArchitectureAdapter",
+    "Gemma3MultimodalArchitectureAdapter",
     "GPT2ArchitectureAdapter",
+    "GPTOSSArchitectureAdapter",
     "Gpt2LmHeadCustomArchitectureAdapter",
     "GptjArchitectureAdapter",
     "LlamaArchitectureAdapter",
+    "LlavaArchitectureAdapter",
+    "LlavaNextArchitectureAdapter",
+    "LlavaOnevisionArchitectureAdapter",
     "MingptArchitectureAdapter",
     "MistralArchitectureAdapter",
     "MixtralArchitectureAdapter",
@@ -91,11 +131,18 @@ __all__ = [
     "NeelSoluOldArchitectureAdapter",
     "NeoArchitectureAdapter",
     "NeoxArchitectureAdapter",
+    "OpenElmArchitectureAdapter",
+    "OlmoArchitectureAdapter",
+    "Olmo2ArchitectureAdapter",
+    "Olmo3ArchitectureAdapter",
+    "OlmoeArchitectureAdapter",
     "OptArchitectureAdapter",
     "PhiArchitectureAdapter",
     "Phi3ArchitectureAdapter",
     "PythiaArchitectureAdapter",
     "QwenArchitectureAdapter",
     "Qwen2ArchitectureAdapter",
+    "Qwen3ArchitectureAdapter",
+    "StableLmArchitectureAdapter",
     "T5ArchitectureAdapter",
 ]

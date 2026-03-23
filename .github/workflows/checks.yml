@@ -48,6 +48,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
+      max-parallel: 1
       matrix:
         python-version:
           - "3.10"
@@ -88,11 +89,9 @@ jobs:
         run: |
           uv lock --check
           uv sync
-      - name: Authenticate HuggingFace CLI
+      - name: Authenticate HuggingFace
         if: env.HF_TOKEN != ''
-        run: |
-          uv pip install huggingface_hub
-          uv run huggingface-cli login --token "$HF_TOKEN"
+        run: uv run python -c "import os; from huggingface_hub import login; login(token=os.environ['HF_TOKEN'])"
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
       - name: Unit Test
@@ -200,11 +199,9 @@ jobs:
         run: |
           uv lock --check
           uv sync
-      - name: Authenticate HuggingFace CLI
+      - name: Authenticate HuggingFace
         if: env.HF_TOKEN != ''
-        run: |
-          uv pip install huggingface_hub
-          uv run huggingface-cli login --token "$HF_TOKEN"
+        run: uv run python -c "import os; from huggingface_hub import login; login(token=os.environ['HF_TOKEN'])"
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
       - name: Test Suite with Coverage Report
@@ -222,12 +219,13 @@ jobs:
   notebook-checks:
     name: Notebook Checks
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
         notebook:
-          # - "Activation_Patching_in_TL_Demo"
-          # - "Attribution_Patching_Demo"
+          - "Attribution_Patching_Demo"
+          - "Activation_Patching_in_TL_Demo"
           - "ARENA_Content"
           - "BERT"
           - "Exploratory_Analysis_Demo"
@@ -240,9 +238,17 @@ jobs:
           # - "No_Position_Experiment"
           - "Othello_GPT"
           - "Patchscopes_Generation_Demo"
-          # - "T5"
+          - "T5"
     steps:
       - uses: actions/checkout@v3
+      - name: Add swap space
+        run: |
+          sudo swapoff /swapfile 2>/dev/null || true
+          sudo rm -f /swapfile
+          sudo fallocate -l 8G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
       - name: Install uv
         uses: astral-sh/setup-uv@v6
         with:
@@ -297,11 +303,9 @@ jobs:
         with:
           name: test-coverage
           path: docs/source/_static/coverage
-      - name: Authenticate HuggingFace CLI
+      - name: Authenticate HuggingFace
         if: env.HF_TOKEN != ''
-        run: |
-          uv pip install huggingface_hub
-          uv run huggingface-cli login --token "$HF_TOKEN"
+        run: uv run python -c "import os; from huggingface_hub import login; login(token=os.environ['HF_TOKEN'])"
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
       - name: Build Docs

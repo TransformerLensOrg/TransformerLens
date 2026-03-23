@@ -23,6 +23,7 @@ from transformer_lens import FactoredMatrix
         ),  # Non-scalar Tensor. AssertionError expected.
         (torch.rand(2), AssertionError),  # Non-scalar Tensor. AssertionError expected.
     ],
+    ids=["tensor", "float", "int", "tensor_2d", "tensor_1d"],
 )
 @pytest.mark.parametrize("leading_dim", [False, True])
 @pytest.mark.parametrize("multiply_from_left", [False, True])

@@ -243,7 +243,27 @@ class HookPoint(nn.Module):
             pt_handle = self.register_forward_hook(full_hook, prepend=prepend)
             visible_hooks = self.fwd_hooks
         elif dir == "bwd":
-            pt_handle = self.register_full_backward_hook(full_hook, prepend=prepend)
+            # register_full_backward_hook signature:
+            #   hook(module, grad_input, grad_output) -> tuple(Tensor) | None
+            # The return value replaces grad_input.  full_hook returns a bare
+            # Tensor (or None), so we wrap it in a tuple for PyTorch.
+            def _bwd_hook_wrapper(
+                module: torch.nn.Module,
+                grad_input: Any,
+                grad_output: Any,
+            ):
+                result = full_hook(module, grad_input, grad_output)
+                if result is None:
+                    return None
+                if isinstance(result, tuple):
+                    return result
+                return (result,)
+
+            if isinstance(hook, partial):
+                _bwd_hook_wrapper.__name__ = f"partial({hook.func.__repr__()},...)"
+            else:
+                _bwd_hook_wrapper.__name__ = hook.__repr__()
+            pt_handle = self.register_full_backward_hook(_bwd_hook_wrapper, prepend=prepend)
             visible_hooks = self.bwd_hooks
         else:
             raise ValueError(f"Invalid direction {dir}")
