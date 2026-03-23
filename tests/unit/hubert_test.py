@@ -49,7 +49,7 @@ def run_basic_sanity_tests(model, waveform_np):
         print(
             "Warning: outputs differ between two eval runs (non-deterministic?), max diff:",
             (out_tensor - out2_tensor).abs().max().item(),
-        )    
+        )
     else:
         print("Determinism test passed (eval mode).")
 
