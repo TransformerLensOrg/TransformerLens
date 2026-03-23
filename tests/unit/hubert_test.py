@@ -1,6 +1,4 @@
-# test_hubert_hooked.py
 import math
-
 import numpy as np
 import torch
 
@@ -11,7 +9,6 @@ SAMPLE_RATE = 16000
 DURATION_S = 1.0
 BATCH_SIZE = 1
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-# Name of HF checkpoint to use if you want to compare outputs (optional)
 HF_CHECKPOINT = "facebook/hubert-base-ls960"  # optional
 # ----------------------------
 
@@ -20,14 +17,11 @@ def make_sine(frequency=440.0, sr=SAMPLE_RATE, duration=DURATION_S, amplitude=0.
     wav = amplitude * np.sin(2 * math.pi * frequency * t)
     return wav
 
+
 def run_basic_sanity_tests(model, waveform_np):
     """Run quick checks: forward pass, shape, finite, deterministic, grad flow."""
     model.to(DEVICE)
-
-    # Prepare tensor: shape (batch, time)
     x = torch.from_numpy(waveform_np).unsqueeze(0).to(DEVICE)  # (1, T)
-
-    # 1) Eval forward: no grad
     model.eval()
     with torch.no_grad():
         out1 = model(x)  # adapt if your API uses return_type="predictions" or similar
@@ -68,6 +62,7 @@ def run_basic_sanity_tests(model, waveform_np):
     grads_found = any((p.grad is not None and torch.isfinite(p.grad).all()) for p in model.parameters() if p.requires_grad)
     assert grads_found, "No finite gradients found on any parameter after backward()"
     print("Gradient check passed: some parameters have finite gradients.")
+
 
 def optional_compare_to_hf(your_model, waveform_np, sr=SAMPLE_RATE):
     """
@@ -116,17 +111,9 @@ def optional_compare_to_hf(your_model, waveform_np, sr=SAMPLE_RATE):
     cos = torch.nn.functional.cosine_similarity(hf_embedding, your_emb, dim=1)
     print("Cosine similarity between HF pooled embedding and your model:", cos.cpu().numpy())
 
-if __name__ == "__main__":
-    # Create sample waveform
-    wav = make_sine(frequency=440.0, sr=SAMPLE_RATE, duration=DURATION_S)
 
-    # -----------------------
-    # Instantiate your model
-    # -----------------------
-    # Example 1: from_pretrained API (if you implemented it)
+if __name__ == "__main__":
+    wav = make_sine(frequency=440.0, sr=SAMPLE_RATE, duration=DURATION_S)
     model = HookedAudioEncoder.from_pretrained("facebook/hubert-base-ls960").to(DEVICE)
-    # Run tests
     run_basic_sanity_tests(model, wav)
-    
-    # Optionally compare to HF (network required)
     optional_compare_to_hf(model, wav, sr=SAMPLE_RATE)
