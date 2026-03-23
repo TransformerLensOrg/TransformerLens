@@ -25,7 +25,7 @@ from transformer_lens.hook_points import HookedRootModule
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.utilities import devices
 
-T = TypeVar("T", bound="HookedEncoder")
+T = TypeVar("T", bound="HookedAudioEncoder")
 
 
 class HookedAudioEncoder(HookedRootModule):
@@ -38,6 +38,9 @@ class HookedAudioEncoder(HookedRootModule):
     Like HookedTransformer, it can have a pretrained Transformer's weights loaded via `.from_pretrained`. There are a few features you might know from HookedTransformer which are not yet supported:
         - There is no preprocessing (e.g. LayerNorm folding) when loading a pretrained model
     """
+
+    processor: Any  # AutoFeatureExtractor — HF auto class, not typed as callable in stubs
+    hubert_model: Union[HubertModel, Wav2Vec2Model]
 
     def __init__(
         self,
@@ -91,7 +94,7 @@ class HookedAudioEncoder(HookedRootModule):
 
     def to_frames(
         self,
-        raw_inputs: Union[torch.Tensor, List[torch.Tensor], List[np.ndarray]],
+        raw_inputs: Union[torch.Tensor, List[Union[torch.Tensor, np.ndarray]]],
         sampling_rate: int = 16000,
         move_to_device: bool = True,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -164,7 +167,7 @@ class HookedAudioEncoder(HookedRootModule):
                 # compute output lengths (downsampled lengths) from sample attention mask (sums per example)
                 input_lengths = sample_attention_mask.sum(dim=-1)  # (batch,)
                 # compute output lengths through conv layers using model._get_feat_extract_output_lengths if exists
-                if hasattr(model, "_get_feat_extract_output_lengths"):
+                if hasattr(self.hubert_model, "_get_feat_extract_output_lengths"):
                     output_lengths = self.hubert_model._get_feat_extract_output_lengths(
                         input_lengths
                     ).to(torch.long)
@@ -357,7 +360,7 @@ class HookedAudioEncoder(HookedRootModule):
         move_to_device: bool = True,
         dtype: torch.dtype = torch.float32,
         **from_pretrained_kwargs: Any,
-    ) -> HookedEncoder:
+    ) -> "HookedAudioEncoder":
         """Loads in the pretrained weights from huggingface. Currently supports loading weight from HuggingFace BertForMaskedLM. Unlike HookedTransformer, this does not yet do any preprocessing on the model."""
         logging.warning(
             "Support for HuBERT in TransformerLens is currently experimental, until such a time when it has feature "

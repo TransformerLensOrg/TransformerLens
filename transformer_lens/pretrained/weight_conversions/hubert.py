@@ -54,6 +54,8 @@ def convert_hubert_weights(hf_model, cfg: HookedTransformerConfig):
         if any(x is None for x in (q_w, k_w, v_w, o_w)):
             raise AttributeError(f"Could not find q/k/v/out projections in layer {l}. Found: {att}")
 
+        assert q_w is not None and k_w is not None and v_w is not None and o_w is not None
+
         # weights are Linear modules: weight shape (out, in)  => same convention as Bert conversion
         # reshape to Transformer-Lens expected shapes using einops
         state_dict[f"blocks.{l}.attn.W_Q"] = einops.rearrange(
