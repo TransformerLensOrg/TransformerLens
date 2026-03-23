@@ -12,7 +12,6 @@ from transformer_lens.model_bridge.generalized_components import (
     EmbeddingBridge,
     LinearBridge,
     MoEBridge,
-    NormalizationBridge,
     PositionEmbeddingsAttentionBridge,
     RMSNormalizationBridge,
     RotaryEmbeddingBridge,
@@ -29,6 +28,7 @@ class GPTOSSArchitectureAdapter(ArchitectureAdapter):
 
         self.cfg.gated_mlp = True
 
+        self.cfg.normalization_type = "RMS"
         self.cfg.uses_rms_norm = True
         # GPT-OSS uses 'variance_epsilon' instead of 'eps' for RMSNorm
         self.cfg.eps_attr = "variance_epsilon"
@@ -39,36 +39,30 @@ class GPTOSSArchitectureAdapter(ArchitectureAdapter):
 
         # Conversion rules for weight processing/folding
         # GPT-OSS uses MoE with batched experts, so we need special handling
+        # GPT-OSS may use GQA: K/V heads can differ from Q heads
+        n_kv_heads = (
+            self.cfg.n_key_value_heads
+            if hasattr(self.cfg, "n_key_value_heads") and self.cfg.n_key_value_heads is not None
+            else self.cfg.n_heads
+        )
         self.weight_processing_conversions = {
-            "embed.e": "model.embed_tokens.weight",
-            "blocks.{i}.ln1.w": "model.layers.{i}.input_layernorm.weight",
-            "blocks.{i}.ln2.w": "model.layers.{i}.post_attention_layernorm.weight",
-            "blocks.{i}.attn.q": ParamProcessingConversion(
+            "blocks.{i}.attn.q.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
-                source_key="model.layers.{i}.self_attn.q_proj.weight",
             ),
-            "blocks.{i}.attn.k": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
-                source_key="model.layers.{i}.self_attn.k_proj.weight",
+            "blocks.{i}.attn.k.weight": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=n_kv_heads),
             ),
-            "blocks.{i}.attn.v": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
-                source_key="model.layers.{i}.self_attn.v_proj.weight",
+            "blocks.{i}.attn.v.weight": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=n_kv_heads),
             ),
-            "blocks.{i}.attn.o": ParamProcessingConversion(
+            "blocks.{i}.attn.o.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("m (n h) -> n h m", n=self.cfg.n_heads),
-                source_key="model.layers.{i}.self_attn.o_proj.weight",
             ),
-            # Note: MLP weights for MoE models with batched experts are not directly mappable
-            # The experts use batched tensors [num_experts, ...] which need special handling
-            # These mappings are for the router only
-            "ln_final.w": "model.norm.weight",
-            "unembed.u": "lm_head.weight.T",
         }
 
         self.component_mapping = {
             "embed": EmbeddingBridge(name="model.embed_tokens"),
-            "rotary_emb": RotaryEmbeddingBridge(name="model.rotary_emb"),
+            "rotary_emb": RotaryEmbeddingBridge(name="model.rotary_emb", config=self.cfg),
             "blocks": BlockBridge(
                 name="model.layers",
                 submodules={
@@ -89,7 +83,7 @@ class GPTOSSArchitectureAdapter(ArchitectureAdapter):
                             "o": LinearBridge(name="o_proj"),
                         },
                     ),
-                    "ln2": NormalizationBridge(
+                    "ln2": RMSNormalizationBridge(
                         name="post_attention_layernorm",
                         config=self.cfg,
                         use_native_layernorm_autograd=True,  # Use HF's RMSNorm for correct dtype handling
@@ -99,7 +93,7 @@ class GPTOSSArchitectureAdapter(ArchitectureAdapter):
                     "mlp": MoEBridge(name="mlp", config=self.cfg),
                 },
             ),
-            "ln_final": NormalizationBridge(
+            "ln_final": RMSNormalizationBridge(
                 name="model.norm",
                 config=self.cfg,
                 use_native_layernorm_autograd=True,  # Use HF's RMSNorm for correct dtype handling

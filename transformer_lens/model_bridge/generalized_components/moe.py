@@ -99,6 +99,15 @@ class MoEBridge(GeneralizedComponent):
             ):
                 hooked = hooked.to(dtype=target_dtype)
             args = (hooked,) + args[1:]
+        elif "hidden_states" in kwargs:
+            hooked = self.hook_in(kwargs["hidden_states"])
+            if (
+                target_dtype is not None
+                and isinstance(hooked, torch.Tensor)
+                and hooked.is_floating_point()
+            ):
+                hooked = hooked.to(dtype=target_dtype)
+            kwargs = {**kwargs, "hidden_states": hooked}
         output = self.original_component(*args, **kwargs)
         if isinstance(output, tuple):
             hidden_states = output[0]

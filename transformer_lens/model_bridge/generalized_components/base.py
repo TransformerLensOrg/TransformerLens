@@ -33,6 +33,7 @@ class GeneralizedComponent(nn.Module):
         config: Optional[Any] = None,
         submodules: Optional[Dict[str, "GeneralizedComponent"]] = None,
         conversion_rule: Optional[BaseTensorConversion] = None,
+        hook_alias_overrides: Optional[Dict[str, str]] = None,
     ):
         """Initialize the generalized component.
 
@@ -41,6 +42,9 @@ class GeneralizedComponent(nn.Module):
             config: Optional configuration object for the component
             submodules: Dictionary of GeneralizedComponent submodules to register
             conversion_rule: Optional conversion rule for this component's hooks
+            hook_alias_overrides: Optional dictionary to override default hook aliases.
+                For example, {"hook_attn_out": "ln1_post.hook_out"} will make hook_attn_out
+                point to ln1_post.hook_out instead of the default value in self.hook_aliases.
         """
         super().__init__()
         self.name = name
@@ -58,6 +62,12 @@ class GeneralizedComponent(nn.Module):
         if self.conversion_rule is not None:
             self.hook_in.hook_conversion = self.conversion_rule
             self.hook_out.hook_conversion = self.conversion_rule
+
+        # Copy class-level hook_aliases and apply any overrides
+        if hook_alias_overrides is not None:
+            # Make a copy of class-level aliases and update with overrides
+            self.hook_aliases = self.__class__.hook_aliases.copy()
+            self.hook_aliases.update(hook_alias_overrides)
 
     def _register_hook(self, name: str, hook: HookPoint) -> None:
         """Register a hook in the component's hook registry."""

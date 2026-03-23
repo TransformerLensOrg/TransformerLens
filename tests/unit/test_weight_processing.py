@@ -746,6 +746,11 @@ class TestProcessWeights:
         """
         cfg = basic_config
         cfg.n_layers = 1  # Test with single layer for simplicity
+        # Match config to the tensor dimensions used below
+        cfg.d_model = 4
+        cfg.n_heads = 2
+        cfg.d_head = 2
+        cfg.d_mlp = 8
 
         # Create a state dict with known values for deterministic testing
         state_dict = {}

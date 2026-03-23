@@ -10,7 +10,7 @@ from functools import lru_cache
 from typing import List, Tuple, Union, overload
 
 import torch
-from jaxtyping import Float
+from jaxtyping import Complex, Float
 
 import transformer_lens.utilities.tensors as tensor_utils
 
@@ -34,12 +34,22 @@ class FactoredMatrix:
         self.rdim = self.B.size(-1)
         self.mdim = self.B.size(-2)
         self.has_leading_dims = (self.A.ndim > 2) or (self.B.ndim > 2)
-        self.shape = torch.broadcast_shapes(self.A.shape[:-2], self.B.shape[:-2]) + (
-            self.ldim,
-            self.rdim,
-        )
-        self.A = self.A.broadcast_to(self.shape[:-2] + (self.ldim, self.mdim))
-        self.B = self.B.broadcast_to(self.shape[:-2] + (self.mdim, self.rdim))
+        try:
+            self.shape = torch.broadcast_shapes(self.A.shape[:-2], self.B.shape[:-2]) + (
+                self.ldim,
+                self.rdim,
+            )
+        except RuntimeError as e:
+            raise RuntimeError(
+                f"Shape mismatch: Cannot broadcast leading dimensions. A has shape {self.A.shape}, B has shape {self.B.shape}. {str(e)}"
+            ) from e
+        try:
+            self.A = self.A.broadcast_to(self.shape[:-2] + (self.ldim, self.mdim))
+            self.B = self.B.broadcast_to(self.shape[:-2] + (self.mdim, self.rdim))
+        except RuntimeError as e:
+            raise RuntimeError(
+                f"Shape mismatch: Cannot broadcast tensors. A has shape {self.A.shape}, B has shape {self.B.shape}, expected broadcast shape {self.shape}. {str(e)}"
+            ) from e
 
     @overload
     def __matmul__(
@@ -189,9 +199,16 @@ class FactoredMatrix:
         return self.svd()[2]
 
     @property
-    def eigenvalues(self) -> Float[torch.Tensor, "*leading_dims mdim"]:
-        """Eigenvalues of AB are the same as for BA (apart from trailing zeros), because if BAv=kv ABAv = A(BAv)=kAv, so Av is an eigenvector of AB with eigenvalue k."""
-        return torch.linalg.eig(self.BA).eigenvalues
+    def eigenvalues(self) -> Complex[torch.Tensor, "*leading_dims mdim"]:
+        """
+        Eigenvalues of AB are the same as for BA (apart from trailing zeros), because if BAv=kv ABAv = A(BAv)=kAv,
+        so Av is an eigenvector of AB with eigenvalue k.
+        """
+        input_matrix = self.BA
+        if input_matrix.dtype in [torch.bfloat16, torch.float16]:
+            # Cast to float32 because eig is not implemented for 16-bit on CPU/CUDA
+            input_matrix = input_matrix.to(torch.float32)
+        return torch.linalg.eig(input_matrix).eigenvalues
 
     def _convert_to_slice(self, sequence: Union[Tuple, List], idx: int) -> Tuple:
         """

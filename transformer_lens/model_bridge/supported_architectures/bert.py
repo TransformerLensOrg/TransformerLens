@@ -14,6 +14,7 @@ from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
     BlockBridge,
     EmbeddingBridge,
+    LinearBridge,
     MLPBridge,
     NormalizationBridge,
     PosEmbedBridge,
@@ -39,80 +40,110 @@ class BertArchitectureAdapter(ArchitectureAdapter):
         self.cfg.gated_mlp = False
         self.cfg.attn_only = False
 
+        # BERT uses post-LN (LayerNorm after residual, not before sublayer).
+        # fold_ln assumes pre-LN (LN before sublayer) and folds ln1 into attention
+        # QKV and ln2 into MLP. For post-LN, ln1 output feeds MLP (not attention)
+        # and ln2 output feeds next block's attention (not MLP), so folding into
+        # the wrong sublayer produces incorrect results.
+        self.supports_fold_ln = False
+
+        n_heads = self.cfg.n_heads
+
         self.weight_processing_conversions = {
-            "embed.e": "bert.embeddings.word_embeddings.weight",
-            "pos_embed.pos": "bert.embeddings.position_embeddings.weight",
-            "embed.token_type_embeddings": "bert.embeddings.token_type_embeddings.weight",
-            "embed.LayerNorm.weight": "bert.embeddings.LayerNorm.weight",
-            "embed.LayerNorm.bias": "bert.embeddings.LayerNorm.bias",
-            "blocks.{i}.ln1.w": "bert.encoder.layer.{i}.attention.output.LayerNorm.weight",
-            "blocks.{i}.ln1.b": "bert.encoder.layer.{i}.attention.output.LayerNorm.bias",
-            "blocks.{i}.ln2.w": "bert.encoder.layer.{i}.output.LayerNorm.weight",
-            "blocks.{i}.ln2.b": "bert.encoder.layer.{i}.output.LayerNorm.bias",
-            "blocks.{i}.attn.q": ParamProcessingConversion(
+            "blocks.{i}.attn.q.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
-                    "(h d_head) d_model -> h d_head d_model"
+                    "(h d_head) d_model -> h d_model d_head", h=n_heads
                 ),
-                source_key="bert.encoder.layer.{i}.attention.self.query.weight",
             ),
-            "blocks.{i}.attn.k": ParamProcessingConversion(
+            "blocks.{i}.attn.k.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
-                    "(h d_head) d_model -> h d_head d_model"
+                    "(h d_head) d_model -> h d_model d_head", h=n_heads
                 ),
-                source_key="bert.encoder.layer.{i}.attention.self.key.weight",
             ),
-            "blocks.{i}.attn.v": ParamProcessingConversion(
+            "blocks.{i}.attn.v.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
-                    "(h d_head) d_model -> h d_head d_model"
+                    "(h d_head) d_model -> h d_model d_head", h=n_heads
                 ),
-                source_key="bert.encoder.layer.{i}.attention.self.value.weight",
             ),
-            "blocks.{i}.attn.b_Q": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion("(h d_head) -> h d_head"),
-                source_key="bert.encoder.layer.{i}.attention.self.query.bias",
+            "blocks.{i}.attn.q.bias": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion("(h d_head) -> h d_head", h=n_heads),
             ),
-            "blocks.{i}.attn.b_K": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion("(h d_head) -> h d_head"),
-                source_key="bert.encoder.layer.{i}.attention.self.key.bias",
+            "blocks.{i}.attn.k.bias": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion("(h d_head) -> h d_head", h=n_heads),
             ),
-            "blocks.{i}.attn.b_V": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion("(h d_head) -> h d_head"),
-                source_key="bert.encoder.layer.{i}.attention.self.value.bias",
+            "blocks.{i}.attn.v.bias": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion("(h d_head) -> h d_head", h=n_heads),
             ),
-            "blocks.{i}.attn.o": ParamProcessingConversion(
+            "blocks.{i}.attn.o.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
-                    "d_model (h d_head) -> h d_head d_model"
+                    "d_model (h d_head) -> h d_head d_model", h=n_heads
                 ),
-                source_key="bert.encoder.layer.{i}.attention.output.dense.weight",
             ),
-            "blocks.{i}.attn.b_O": "bert.encoder.layer.{i}.attention.output.dense.bias",
-            "blocks.{i}.mlp.in": "bert.encoder.layer.{i}.intermediate.dense.weight",
-            "blocks.{i}.mlp.b_in": "bert.encoder.layer.{i}.intermediate.dense.bias",
-            "blocks.{i}.mlp.out": "bert.encoder.layer.{i}.output.dense.weight",
-            "blocks.{i}.mlp.b_out": "bert.encoder.layer.{i}.output.dense.bias",
-            "ln_final.w": "bert.pooler.dense.weight",
-            "ln_final.b": "bert.pooler.dense.bias",
-            "unembed.u": "cls.predictions.transform.dense.weight",
-            "unembed.b_U": "cls.predictions.transform.dense.bias",
-            "unembed.LayerNorm.weight": "cls.predictions.transform.LayerNorm.weight",
-            "unembed.LayerNorm.bias": "cls.predictions.transform.LayerNorm.bias",
-            "unembed.decoder.weight": "cls.predictions.decoder.weight",
-            "unembed.decoder.bias": "cls.predictions.bias",
         }
 
         # Set up component mapping
+        # MLM defaults; prepare_model() adjusts for other task heads (e.g., NSP).
         self.component_mapping = {
-            "embed": EmbeddingBridge(name="bert.embeddings"),
+            "embed": EmbeddingBridge(name="bert.embeddings.word_embeddings"),
             "pos_embed": PosEmbedBridge(name="bert.embeddings.position_embeddings"),
             "blocks": BlockBridge(
                 name="bert.encoder.layer",
+                # BERT has no single MLP module (intermediate.dense and output.dense
+                # are siblings in BertLayer), so the MLPBridge forward is never called
+                # and mlp.hook_out never fires. Redirect hook_mlp_out to the actual
+                # MLP output hook (output of the "out" linear layer).
+                hook_alias_overrides={
+                    "hook_mlp_out": "mlp.out.hook_out",
+                    "hook_mlp_in": "mlp.in.hook_in",
+                },
                 submodules={
-                    "ln1": NormalizationBridge(name="attention.output.LayerNorm", config=self.cfg),
-                    "ln2": NormalizationBridge(name="output.LayerNorm", config=self.cfg),
-                    "attn": AttentionBridge(name="attention", config=self.cfg),
-                    "mlp": MLPBridge(name="intermediate"),
+                    "ln1": NormalizationBridge(
+                        name="attention.output.LayerNorm",
+                        config=self.cfg,
+                        use_native_layernorm_autograd=True,
+                    ),
+                    "ln2": NormalizationBridge(
+                        name="output.LayerNorm",
+                        config=self.cfg,
+                        use_native_layernorm_autograd=True,
+                    ),
+                    "attn": AttentionBridge(
+                        name="attention",
+                        config=self.cfg,
+                        submodules={
+                            "q": LinearBridge(name="self.query"),
+                            "k": LinearBridge(name="self.key"),
+                            "v": LinearBridge(name="self.value"),
+                            "o": LinearBridge(name="output.dense"),
+                        },
+                    ),
+                    "mlp": MLPBridge(
+                        name=None,
+                        config=self.cfg,
+                        submodules={
+                            "in": LinearBridge(name="intermediate.dense"),
+                            "out": LinearBridge(name="output.dense"),
+                        },
+                    ),
                 },
             ),
-            "unembed": UnembeddingBridge(name="cls.predictions"),
-            "ln_final": NormalizationBridge(name="bert.pooler.dense", config=self.cfg),
+            "unembed": UnembeddingBridge(name="cls.predictions.decoder"),
+            "ln_final": NormalizationBridge(
+                name="cls.predictions.transform.LayerNorm",
+                config=self.cfg,
+                use_native_layernorm_autograd=True,
+            ),
         }
+
+    def prepare_model(self, hf_model: Any) -> None:
+        """Adjust component mapping based on the actual HF model variant.
+
+        BertForMaskedLM has cls.predictions (MLM head).
+        BertForNextSentencePrediction has cls.seq_relationship (NSP head)
+        and no MLM-specific LayerNorm.
+        """
+        if hasattr(hf_model, "cls") and hasattr(hf_model.cls, "seq_relationship"):
+            # NSP model — swap head components
+            assert self.component_mapping is not None
+            self.component_mapping["unembed"] = UnembeddingBridge(name="cls.seq_relationship")
+            self.component_mapping.pop("ln_final", None)

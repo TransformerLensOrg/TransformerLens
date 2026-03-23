@@ -42,6 +42,7 @@ __all__ = [
     "init_xavier_normal_",
     "init_kaiming_uniform_",
     "init_kaiming_normal_",
+    "is_library_available",
     "tokenize_and_concatenate",
     "get_tokenizer_with_bos",
     "get_input_with_manually_prepended_bos",
