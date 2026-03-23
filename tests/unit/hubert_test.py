@@ -129,6 +129,10 @@ def optional_compare_to_hf(your_model, waveform_np, sr=SAMPLE_RATE):
 
 if __name__ == "__main__":
     wav = make_sine(frequency=440.0, sr=SAMPLE_RATE, duration=DURATION_S)
-    model = HookedAudioEncoder.from_pretrained("facebook/hubert-base-ls960").to(DEVICE)
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    audio_model = HookedAudioEncoder.from_pretrained(
+        "facebook/hubert-base-ls960",
+        device=device
+    )
     run_basic_sanity_tests(model, wav)
     optional_compare_to_hf(model, wav, sr=SAMPLE_RATE)
