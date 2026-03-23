@@ -53,13 +53,13 @@ def convert_gpt_oss_weights(gpt_oss, cfg: HookedTransformerConfig):
             )
         else:
             state_dict[f"blocks.{l}.attn.b_Q"] = torch.zeros(
-                cfg.n_heads, cfg.d_head, dtype=cfg.dtype
+                cfg.n_heads, cfg.d_head, dtype=cfg.dtype, device=cfg.device
             )
             state_dict[f"blocks.{l}.attn._b_K"] = torch.zeros(
-                cfg.n_key_value_heads, cfg.d_head, dtype=cfg.dtype
+                cfg.n_key_value_heads, cfg.d_head, dtype=cfg.dtype, device=cfg.device
             )
             state_dict[f"blocks.{l}.attn._b_V"] = torch.zeros(
-                cfg.n_key_value_heads, cfg.d_head, dtype=cfg.dtype
+                cfg.n_key_value_heads, cfg.d_head, dtype=cfg.dtype, device=cfg.device
             )
 
         W_O = einops.rearrange(layer.self_attn.o_proj.weight, "m (n h) -> n h m", n=cfg.n_heads)
@@ -68,7 +68,9 @@ def convert_gpt_oss_weights(gpt_oss, cfg: HookedTransformerConfig):
         if hasattr(layer.self_attn.o_proj, "bias") and layer.self_attn.o_proj.bias is not None:
             state_dict[f"blocks.{l}.attn.b_O"] = layer.self_attn.o_proj.bias
         else:
-            state_dict[f"blocks.{l}.attn.b_O"] = torch.zeros(cfg.d_model, dtype=cfg.dtype)
+            state_dict[f"blocks.{l}.attn.b_O"] = torch.zeros(
+                cfg.d_model, dtype=cfg.dtype, device=cfg.device
+            )
 
         # MoE - Router (GPT-OSS uses 'router' with bias)
         state_dict[f"blocks.{l}.mlp.W_gate.weight"] = layer.mlp.router.weight
@@ -104,6 +106,6 @@ def convert_gpt_oss_weights(gpt_oss, cfg: HookedTransformerConfig):
 
     state_dict["ln_final.w"] = gpt_oss.model.norm.weight
     state_dict["unembed.W_U"] = gpt_oss.lm_head.weight.T
-    state_dict["unembed.b_U"] = torch.zeros(cfg.d_vocab, dtype=cfg.dtype)
+    state_dict["unembed.b_U"] = torch.zeros(cfg.d_vocab, dtype=cfg.dtype, device=cfg.device)
 
     return state_dict
