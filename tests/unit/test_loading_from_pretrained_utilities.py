@@ -88,3 +88,46 @@ def test_n_ctx_override_larger_than_default_warns(mock_warning: mock.MagicMock):
         "trained on sequences this long and may produce unreliable results. "
         "Ensure you have sufficient memory for this context length."
     )
+
+
+# --- Architecture config tests ---
+
+
+class TestArchitectureConfigs:
+    """Verify that convert_hf_model_config produces correct configs for new architectures."""
+
+    def test_apertus_config(self):
+        from transformer_lens.loading_from_pretrained import get_pretrained_model_config
+
+        cfg = get_pretrained_model_config("apertus-8b")
+        assert cfg.original_architecture == "ApertusForCausalLM"
+        assert cfg.normalization_type == "RMS"
+        assert cfg.positional_embedding_type == "rotary"
+        assert cfg.gated_mlp is False
+        assert cfg.final_rms is True
+        assert cfg.act_fn == "xielu"
+        assert cfg.use_qk_norm is True
+        assert cfg.n_key_value_heads is not None
+        assert cfg.d_model > 0
+        assert cfg.n_heads > 0
+
+    def test_gpt_oss_config(self):
+        from transformer_lens.loading_from_pretrained import get_pretrained_model_config
+
+        cfg = get_pretrained_model_config("gpt-oss-20b")
+        assert cfg.original_architecture == "GptOssForCausalLM"
+        assert cfg.normalization_type == "RMS"
+        assert cfg.positional_embedding_type == "rotary"
+        assert cfg.gated_mlp is True
+        assert cfg.final_rms is True
+        assert cfg.num_experts is not None
+        assert cfg.num_experts > 0
+        assert cfg.experts_per_token is not None
+        assert cfg.n_key_value_heads is not None
+
+    def test_apertus_instruct_config(self):
+        from transformer_lens.loading_from_pretrained import get_pretrained_model_config
+
+        cfg = get_pretrained_model_config("apertus-8b-instruct")
+        assert cfg.original_architecture == "ApertusForCausalLM"
+        assert cfg.act_fn == "xielu"

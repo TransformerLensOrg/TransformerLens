@@ -1367,6 +1367,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any):
             "eps": hf_config.rms_norm_eps,
             "n_key_value_heads": hf_config.num_key_value_heads,
             "gated_mlp": True,
+            "final_rms": True,
             "use_local_attn": False,
             "rotary_dim": hf_config.head_dim,
             "num_experts": hf_config.num_local_experts,
