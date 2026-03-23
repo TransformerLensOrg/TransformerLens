@@ -144,6 +144,7 @@ def move_to_and_update_config(
         "transformer_lens.HookedTransformer",
         "transformer_lens.HookedEncoder",
         "transformer_lens.HookedEncoderDecoder",
+        "transformer_lens.HookedAudioEncoder",
     ],
     device_or_dtype: Union[torch.device, str, torch.dtype],
     print_details=True,

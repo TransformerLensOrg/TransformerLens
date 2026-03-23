@@ -13,6 +13,7 @@ from .ActivationCache import ActivationCache
 from .HookedTransformer import HookedTransformer
 from .SVDInterpreter import SVDInterpreter
 from .HookedEncoder import HookedEncoder
+from .HookedAudioEncoder import HookedAudioEncoder
 from .HookedEncoderDecoder import HookedEncoderDecoder
 from .BertNextSentencePrediction import BertNextSentencePrediction
 from . import head_detector
