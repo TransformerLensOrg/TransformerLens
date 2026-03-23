@@ -4,14 +4,12 @@ from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 
 def convert_hubert_weights(hf_model, cfg: HookedTransformerConfig):
-    """
-    Convert transformer encoder weights from a HuggingFace HuBERT model
+    """Convert transformer encoder weights from a HuggingFace HuBERT model
     into the state_dict expected by Transformer-Lens' HookedEncoder.
 
-    Notes:
-    - This intentionally skips the convolutional frontend and feature_projection.
-      Those are used directly from the HF model (hf_model.feature_extractor, hf_model.feature_projection).
-    - Use model.load_state_dict(state_dict, strict=False) to load these.
+    Intentionally skips the convolutional frontend and feature_projection;
+    those are used directly from the HF model. Use
+    ``model.load_state_dict(state_dict, strict=False)`` to load these.
     """
     state_dict = {}
 
