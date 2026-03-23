@@ -8,11 +8,11 @@ from transformer_lens.conversion_utils.param_processing_conversion import (
 )
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
-    AttentionBridge,
     BlockBridge,
     EmbeddingBridge,
     GatedMLPBridge,
     LinearBridge,
+    PositionEmbeddingsAttentionBridge,
     RMSNormalizationBridge,
     RotaryEmbeddingBridge,
     UnembeddingBridge,
@@ -71,36 +71,24 @@ class LlamaArchitectureAdapter(ArchitectureAdapter):
         self.cfg.eps_attr = "variance_epsilon"
 
         self.weight_processing_conversions = {
-            "embed.e": "model.embed_tokens.weight",
-            "blocks.{i}.ln1.w": "model.layers.{i}.input_layernorm.weight",
-            "blocks.{i}.ln2.w": "model.layers.{i}.post_attention_layernorm.weight",
-            "blocks.{i}.attn.q": ParamProcessingConversion(
+            "blocks.{i}.attn.q.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
-                source_key="model.layers.{i}.self_attn.q_proj.weight",
             ),
-            "blocks.{i}.attn.k": ParamProcessingConversion(
+            "blocks.{i}.attn.k.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
                     "(n h) m -> n m h",
-                    n=getattr(self.cfg, "n_key_value_heads", self.cfg.n_heads),
+                    n=getattr(self.cfg, "n_key_value_heads", None) or self.cfg.n_heads,
                 ),
-                source_key="model.layers.{i}.self_attn.k_proj.weight",
             ),
-            "blocks.{i}.attn.v": ParamProcessingConversion(
+            "blocks.{i}.attn.v.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
                     "(n h) m -> n m h",
-                    n=getattr(self.cfg, "n_key_value_heads", self.cfg.n_heads),
+                    n=getattr(self.cfg, "n_key_value_heads", None) or self.cfg.n_heads,
                 ),
-                source_key="model.layers.{i}.self_attn.v_proj.weight",
             ),
-            "blocks.{i}.attn.o": ParamProcessingConversion(
+            "blocks.{i}.attn.o.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("m (n h) -> n h m", n=self.cfg.n_heads),
-                source_key="model.layers.{i}.self_attn.o_proj.weight",
             ),
-            "blocks.{i}.mlp.in": "model.layers.{i}.mlp.up_proj.weight.T",
-            "blocks.{i}.mlp.gate": "model.layers.{i}.mlp.gate_proj.weight.T",
-            "blocks.{i}.mlp.out": "model.layers.{i}.mlp.down_proj.weight.T",
-            "ln_final.w": "model.norm.weight",
-            "unembed.u": "lm_head.weight.T",  # Not shared with embedding
         }
 
         self.component_mapping = {
@@ -111,7 +99,7 @@ class LlamaArchitectureAdapter(ArchitectureAdapter):
                 submodules={
                     "ln1": RMSNormalizationBridge(name="input_layernorm", config=self.cfg),
                     "ln2": RMSNormalizationBridge(name="post_attention_layernorm", config=self.cfg),
-                    "attn": AttentionBridge(
+                    "attn": PositionEmbeddingsAttentionBridge(
                         name="self_attn",
                         config=self.cfg,
                         submodules={
@@ -120,6 +108,8 @@ class LlamaArchitectureAdapter(ArchitectureAdapter):
                             "v": LinearBridge(name="v_proj"),
                             "o": LinearBridge(name="o_proj"),
                         },
+                        requires_attention_mask=True,
+                        requires_position_embeddings=True,
                     ),
                     "mlp": GatedMLPBridge(
                         name="mlp",
@@ -133,5 +123,29 @@ class LlamaArchitectureAdapter(ArchitectureAdapter):
                 },
             ),
             "ln_final": RMSNormalizationBridge(name="model.norm", config=self.cfg),
-            "unembed": UnembeddingBridge(name="lm_head"),
+            "unembed": UnembeddingBridge(name="lm_head", config=self.cfg),
         }
+
+    def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
+        """Set up rotary embedding references for Llama component testing.
+
+        Llama uses RoPE (Rotary Position Embeddings). We set the rotary_emb reference
+        on all attention bridge instances for component testing.
+
+        Args:
+            hf_model: The HuggingFace Llama model instance
+            bridge_model: The TransformerBridge model (if available, set rotary_emb on actual instances)
+        """
+        # Get rotary embedding instance from the model
+        rotary_emb = hf_model.model.rotary_emb
+
+        # Set rotary_emb on actual bridge instances in bridge_model if available
+        if bridge_model is not None and hasattr(bridge_model, "blocks"):
+            # Set on each layer's actual attention bridge instance
+            for block in bridge_model.blocks:
+                if hasattr(block, "attn"):
+                    block.attn.set_rotary_emb(rotary_emb)
+
+        # Also set on the template for get_generalized_component() calls
+        attn_bridge = self.get_generalized_component("blocks.0.attn")
+        attn_bridge.set_rotary_emb(rotary_emb)

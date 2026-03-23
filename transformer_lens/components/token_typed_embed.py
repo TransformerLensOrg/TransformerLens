@@ -2,6 +2,7 @@
 
 This module contains all the component :class:`TokenTypeEmbed`.
 """
+
 from typing import Dict, Union
 
 import torch

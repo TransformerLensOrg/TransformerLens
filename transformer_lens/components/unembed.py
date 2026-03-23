@@ -7,11 +7,11 @@ from typing import Dict, Union
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from jaxtyping import Float
 
 from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.hook_points import HookPoint
-from transformer_lens.utilities.addmm import batch_addmm
 
 
 class Unembed(nn.Module):
@@ -34,5 +34,7 @@ class Unembed(nn.Module):
         self, residual: Float[torch.Tensor, "batch pos d_model"]
     ) -> Float[torch.Tensor, "batch pos d_vocab_out"]:
         residual = self.hook_in(residual)
-        result = batch_addmm(self.b_U, self.W_U, residual)
+        # Use F.linear with contiguous transposed weight to match HF's nn.Linear
+        # memory layout, ensuring identical bfloat16 matmul accumulation order.
+        result = F.linear(residual, self.W_U.T.contiguous(), self.b_U)
         return self.hook_out(result)

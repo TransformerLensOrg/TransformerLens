@@ -8,7 +8,7 @@ from __future__ import annotations
 from typing import Any, Protocol, Union, runtime_checkable
 
 import torch
-import torch.nn as nn
+from torch import nn
 
 
 def get_device() -> torch.device:
