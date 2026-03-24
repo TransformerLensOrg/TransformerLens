@@ -165,6 +165,12 @@ def update_model_status(
                     date.today().isoformat() if status != STATUS_UNVERIFIED else None
                 )
                 entry["note"] = note
+            elif note is not None:
+                # Score-only update with an explicit note — overwrite stale notes
+                entry["note"] = note
+            elif phase_scores and "exceeds" in (entry.get("note") or "").lower():
+                # Writing real scores clears a stale memory-skip note
+                entry["note"] = None
             for phase_num in (1, 2, 3, 4, 7, 8):
                 key = f"phase{phase_num}_score"
                 if phase_num in phase_scores:

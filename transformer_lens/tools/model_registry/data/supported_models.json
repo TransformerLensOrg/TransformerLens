@@ -8,7 +8,7 @@
   },
   "total_architectures": 35,
   "total_models": 5833,
-  "total_verified": 677,
+  "total_verified": 686,
   "models": [
     {
       "architecture_id": "Qwen2ForCausalLM",
@@ -24117,15 +24117,16 @@
     {
       "architecture_id": "MixtralForCausalLM",
       "model_id": "DiscoResearch/DiscoLM-mixtral-8x7b-v2",
-      "status": 0,
-      "verified_date": null,
+      "status": 3,
+      "verified_date": "2026-03-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
+      "note": "CORE FAILED: Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed)",
+      "phase1_score": 0.0,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -28563,15 +28564,16 @@
     {
       "architecture_id": "MixtralForCausalLM",
       "model_id": "dphn/dolphin-2.5-mixtral-8x7b",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-03-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
+      "note": "Core verification completed",
+      "phase1_score": 100.0,
       "phase2_score": null,
       "phase3_score": null,
-      "phase4_score": null,
-      "phase7_score": null
+      "phase4_score": 99.4,
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "GPT2LMHeadModel",
@@ -40825,15 +40827,16 @@
     {
       "architecture_id": "MixtralForCausalLM",
       "model_id": "BEE-spoke-data/Mixtral-GQA-400m-v2",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-03-23",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null,
-      "phase4_score": null,
-      "phase7_score": null
+      "note": "Full verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "phase4_score": 91.0,
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -42047,15 +42050,16 @@
     {
       "architecture_id": "MixtralForCausalLM",
       "model_id": "NeverSleep/Noromaid-v0.1-mixtral-8x7b-Instruct-v3",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-03-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
+      "note": "Core verification completed",
+      "phase1_score": 100.0,
       "phase2_score": null,
       "phase3_score": null,
-      "phase4_score": null,
-      "phase7_score": null
+      "phase4_score": 99.4,
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "Qwen2ForCausalLM",
@@ -53370,15 +53374,16 @@
     {
       "architecture_id": "MixtralForCausalLM",
       "model_id": "jondurbin/bagel-8x7b-v0.2",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-03-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
+      "note": "Core verification completed",
+      "phase1_score": 100.0,
       "phase2_score": null,
       "phase3_score": null,
-      "phase4_score": null,
-      "phase7_score": null
+      "phase4_score": 96.9,
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "MistralForCausalLM",
@@ -54787,15 +54792,16 @@
     {
       "architecture_id": "MixtralForCausalLM",
       "model_id": "Isotonic/TinyMixtral-4x248M-MoE",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-03-23",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null,
-      "phase4_score": null,
-      "phase7_score": null
+      "note": "Full verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "phase4_score": 92.5,
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "Qwen2ForCausalLM",
@@ -55021,15 +55027,16 @@
     {
       "architecture_id": "MixtralForCausalLM",
       "model_id": "chargoddard/SmolLlamix-8x101M",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-03-23",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null,
-      "phase4_score": null,
-      "phase7_score": null
+      "note": "Full verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "phase4_score": 90.9,
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -55385,15 +55392,16 @@
     {
       "architecture_id": "MixtralForCausalLM",
       "model_id": "chargoddard/SmolLlamix-8x101M-take2",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-03-23",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null,
-      "phase4_score": null,
-      "phase7_score": null
+      "note": "Full verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "phase4_score": 97.5,
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -56464,15 +56472,16 @@
     {
       "architecture_id": "MixtralForCausalLM",
       "model_id": "yujiepan/mixtral-8xtiny-random",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-03-23",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null,
-      "phase4_score": null,
-      "phase7_score": null
+      "note": "Full verification completed with issues, low text quality",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "phase4_score": 47.5,
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "MixtralForCausalLM",
@@ -63956,7 +63965,7 @@
       "status": 2,
       "verified_date": "2026-03-18",
       "metadata": null,
-      "note": "Estimated 189.6 GB exceeds 121.0 GB limit",
+      "note": null,
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
@@ -63969,7 +63978,7 @@
       "status": 2,
       "verified_date": "2026-03-18",
       "metadata": null,
-      "note": "Estimated 189.6 GB exceeds 121.0 GB limit",
+      "note": null,
       "phase1_score": null,
       "phase2_score": null,
       "phase3_score": null,
@@ -65615,13 +65624,16 @@
     {
       "architecture_id": "MixtralForCausalLM",
       "model_id": "llm-jp/llm-jp-3-8x1.8b",
-      "status": 0,
-      "verified_date": null,
+      "status": 2,
+      "verified_date": "2026-03-23",
       "metadata": null,
-      "note": null,
+      "note": "Estimated 81.0 GB exceeds 68.4 GB limit",
       "phase1_score": null,
       "phase2_score": null,
-      "phase3_score": null
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "OPTForCausalLM",
@@ -68936,13 +68948,16 @@
     {
       "architecture_id": "MixtralForCausalLM",
       "model_id": "prometheus-eval/prometheus-8x7b-v2.0",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-03-24",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
+      "note": "Core verification completed",
+      "phase1_score": 100.0,
       "phase2_score": null,
-      "phase3_score": null
+      "phase3_score": null,
+      "phase4_score": 99.4,
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "MixtralForCausalLM",

@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-03-19T13:52:40.585159",
+  "last_updated": "2026-03-23T20:31:54.411804",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -10428,6 +10428,76 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Isotonic/TinyMixtral-4x248M-MoE",
+      "architecture_id": "MixtralForCausalLM",
+      "verified_date": "2026-03-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "chargoddard/SmolLlamix-8x101M",
+      "architecture_id": "MixtralForCausalLM",
+      "verified_date": "2026-03-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Isotonic/TinyMixtral-4x248M-MoE",
+      "architecture_id": "MixtralForCausalLM",
+      "verified_date": "2026-03-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "chargoddard/SmolLlamix-8x101M",
+      "architecture_id": "MixtralForCausalLM",
+      "verified_date": "2026-03-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "chargoddard/SmolLlamix-8x101M-take2",
+      "architecture_id": "MixtralForCausalLM",
+      "verified_date": "2026-03-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "BEE-spoke-data/Mixtral-GQA-400m-v2",
+      "architecture_id": "MixtralForCausalLM",
+      "verified_date": "2026-03-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "yujiepan/mixtral-8xtiny-random",
+      "architecture_id": "MixtralForCausalLM",
+      "verified_date": "2026-03-23",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues, low text quality",
       "invalidated": false,
       "invalidation_reason": null
     }

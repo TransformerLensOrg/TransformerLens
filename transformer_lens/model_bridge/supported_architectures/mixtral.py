@@ -105,7 +105,7 @@ class MixtralArchitectureAdapter(ArchitectureAdapter):
                     # native forward pass. The gate (router) is mapped as a submodule
                     # for hook access.
                     "mlp": MoEBridge(
-                        name="mlp",
+                        name="block_sparse_moe",
                         config=self.cfg,
                         submodules={
                             "gate": LinearBridge(name="gate"),
