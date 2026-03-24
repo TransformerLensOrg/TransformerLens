@@ -339,6 +339,8 @@ class HookedTransformerConfig:
 
         if self.device is None:
             self.device = utils.get_device()
+        else:
+            utils.warn_if_mps(self.device)
 
         if self.n_devices > 1:
             assert (

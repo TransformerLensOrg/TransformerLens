@@ -291,7 +291,7 @@ class TestGemmaWeightShapes:
         # Embedding should be scaled by sqrt(d_model)
         expected_scale = cfg.d_model**0.5
         # Check approximately equal (allowing for dtype conversion)
-        ratio = state_dict["embed.W_E"] / original_embed
+        ratio = (state_dict["embed.W_E"] / original_embed).detach()
         assert torch.allclose(ratio, torch.full_like(ratio, expected_scale), rtol=1e-4)
 
 
