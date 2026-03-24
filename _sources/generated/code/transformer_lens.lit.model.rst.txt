@@ -1,0 +1,7 @@
+transformer\_lens.lit.model
+===========================
+
+.. automodule:: transformer_lens.lit.model
+   :members:
+   :undoc-members:
+   :show-inheritance:

@@ -1,0 +1,13 @@
+transformer\_lens.lit
+=====================
+
+Submodules
+----------
+
+.. toctree::
+   :maxdepth: 1
+
+   transformer_lens.lit.constants
+   transformer_lens.lit.dataset
+   transformer_lens.lit.model
+   transformer_lens.lit.utils

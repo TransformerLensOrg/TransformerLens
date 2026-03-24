@@ -1,0 +1,7 @@
+transformer\_lens.HookedAudioEncoder
+====================================
+
+.. automodule:: transformer_lens.HookedAudioEncoder
+   :members:
+   :undoc-members:
+   :show-inheritance:

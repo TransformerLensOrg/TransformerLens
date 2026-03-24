@@ -10,6 +10,7 @@ Submodules
    transformer_lens.ActivationCache
    transformer_lens.BertNextSentencePrediction
    transformer_lens.FactoredMatrix
+   transformer_lens.HookedAudioEncoder
    transformer_lens.HookedEncoder
    transformer_lens.HookedEncoderDecoder
    transformer_lens.HookedTransformer
@@ -31,5 +32,6 @@ Subpackages
    :maxdepth: 1
 
    transformer_lens.components
+   transformer_lens.lit
    transformer_lens.pretrained
    transformer_lens.utilities

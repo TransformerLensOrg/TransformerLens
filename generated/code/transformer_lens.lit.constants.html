@@ -1,0 +1,820 @@
+<!doctype html>
+<html class="no-js" lang="en" data-content_root="">
+  <head><meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width,initial-scale=1"/>
+    <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="index" title="Index" href="../../genindex.html" /><link rel="search" title="Search" href="../../search.html" /><link rel="next" title="transformer_lens.lit.dataset" href="transformer_lens.lit.dataset.html" /><link rel="prev" title="transformer_lens.lit" href="transformer_lens.lit.html" />
+
+    <link rel="shortcut icon" href="../../_static/favicon.ico"/><!-- Generated with Sphinx 7.1.2 and Furo 2023.09.10 -->
+        <title>transformer_lens.lit.constants - TransformerLens Documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../../_static/styles/furo.css?v=135e06be" />
+    <link rel="stylesheet" type="text/css" href="../../_static/styles/furo-extensions.css?v=36a5483c" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #f8f8f8;
+  --color-code-foreground: black;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-half" viewBox="0 0 24 24">
+    <title>Auto light/dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-shadow">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M13 12h5" />
+      <path d="M13 15h4" />
+      <path d="M13 18h1" />
+      <path d="M13 9h4" />
+      <path d="M13 6h1" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc">
+<label class="overlay sidebar-overlay" for="__navigation">
+  <div class="visually-hidden">Hide navigation sidebar</div>
+</label>
+<label class="overlay toc-overlay" for="__toc">
+  <div class="visually-hidden">Hide table of contents sidebar</div>
+</label>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <div class="visually-hidden">Toggle site navigation sidebar</div>
+        <i class="icon"><svg><use href="#svg-menu"></use></svg></i>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="../../index.html"><div class="brand">TransformerLens Documentation</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle">
+          <div class="visually-hidden">Toggle Light / Dark / Auto color theme</div>
+          <svg class="theme-icon-when-auto"><use href="#svg-sun-half"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon" for="__toc">
+        <div class="visually-hidden">Toggle table of contents sidebar</div>
+        <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand" href="../../index.html">
+  
+  <div class="sidebar-logo-container">
+    <img class="sidebar-logo" src="../../_static/transformer_lens_logo.png" alt="Logo"/>
+  </div>
+  
+  <span class="sidebar-brand-text">TransformerLens Documentation</span>
+  
+</a><form class="sidebar-search-container" method="get" action="../../search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Introduction</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../content/getting_started.html">Getting Started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../content/getting_started_mech_interp.html">Getting Started in Mechanistic Interpretability</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../content/gallery.html">Gallery</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Documentation</span></p>
+<ul class="current">
+<li class="toctree-l1 current has-children"><a class="reference internal" href="modules.html">Transformer Lens API</a><input checked="" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><div class="visually-hidden">Toggle navigation of Transformer Lens API</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul class="current">
+<li class="toctree-l2 current has-children"><a class="reference internal" href="transformer_lens.html">transformer_lens</a><input checked="" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><div class="visually-hidden">Toggle navigation of transformer_lens</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.ActivationCache.html">transformer_lens.ActivationCache</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.BertNextSentencePrediction.html">transformer_lens.BertNextSentencePrediction</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.FactoredMatrix.html">transformer_lens.FactoredMatrix</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.HookedAudioEncoder.html">transformer_lens.HookedAudioEncoder</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.HookedEncoder.html">transformer_lens.HookedEncoder</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.HookedEncoderDecoder.html">transformer_lens.HookedEncoderDecoder</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.HookedTransformer.html">transformer_lens.HookedTransformer</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.HookedTransformerConfig.html">transformer_lens.HookedTransformerConfig</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.SVDInterpreter.html">transformer_lens.SVDInterpreter</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.evals.html">transformer_lens.evals</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.head_detector.html">transformer_lens.head_detector</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.hook_points.html">transformer_lens.hook_points</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.loading_from_pretrained.html">transformer_lens.loading_from_pretrained</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.past_key_value_caching.html">transformer_lens.past_key_value_caching</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.patching.html">transformer_lens.patching</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.train.html">transformer_lens.train</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.utils.html">transformer_lens.utils</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="transformer_lens.components.html">transformer_lens.components</a><input class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><div class="visually-hidden">Toggle navigation of transformer_lens.components</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.abstract_attention.html">transformer_lens.components.abstract_attention</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.attention.html">transformer_lens.components.attention</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.bert_block.html">transformer_lens.components.bert_block</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.bert_embed.html">transformer_lens.components.bert_embed</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.bert_mlm_head.html">transformer_lens.components.bert_mlm_head</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.bert_nsp_head.html">transformer_lens.components.bert_nsp_head</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.bert_pooler.html">transformer_lens.components.bert_pooler</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.embed.html">transformer_lens.components.embed</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.grouped_query_attention.html">transformer_lens.components.grouped_query_attention</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.layer_norm.html">transformer_lens.components.layer_norm</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.layer_norm_pre.html">transformer_lens.components.layer_norm_pre</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.pos_embed.html">transformer_lens.components.pos_embed</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.rms_norm.html">transformer_lens.components.rms_norm</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.rms_norm_pre.html">transformer_lens.components.rms_norm_pre</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.t5_attention.html">transformer_lens.components.t5_attention</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.t5_block.html">transformer_lens.components.t5_block</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.token_typed_embed.html">transformer_lens.components.token_typed_embed</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.transformer_block.html">transformer_lens.components.transformer_block</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.unembed.html">transformer_lens.components.unembed</a></li>
+</ul>
+</li>
+<li class="toctree-l3 current has-children"><a class="reference internal" href="transformer_lens.lit.html">transformer_lens.lit</a><input checked="" class="toctree-checkbox" id="toctree-checkbox-4" name="toctree-checkbox-4" role="switch" type="checkbox"/><label for="toctree-checkbox-4"><div class="visually-hidden">Toggle navigation of transformer_lens.lit</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul class="current">
+<li class="toctree-l4 current current-page"><a class="current reference internal" href="#">transformer_lens.lit.constants</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.lit.dataset.html">transformer_lens.lit.dataset</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.lit.model.html">transformer_lens.lit.model</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.lit.utils.html">transformer_lens.lit.utils</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="transformer_lens.pretrained.html">transformer_lens.pretrained</a><input class="toctree-checkbox" id="toctree-checkbox-5" name="toctree-checkbox-5" role="switch" type="checkbox"/><label for="toctree-checkbox-5"><div class="visually-hidden">Toggle navigation of transformer_lens.pretrained</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4 has-children"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.html">transformer_lens.pretrained.weight_conversions</a><input class="toctree-checkbox" id="toctree-checkbox-6" name="toctree-checkbox-6" role="switch" type="checkbox"/><label for="toctree-checkbox-6"><div class="visually-hidden">Toggle navigation of transformer_lens.pretrained.weight_conversions</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.apertus.html">transformer_lens.pretrained.weight_conversions.apertus</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.bert.html">transformer_lens.pretrained.weight_conversions.bert</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.bloom.html">transformer_lens.pretrained.weight_conversions.bloom</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.coder.html">transformer_lens.pretrained.weight_conversions.coder</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.gemma.html">transformer_lens.pretrained.weight_conversions.gemma</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.gpt2.html">transformer_lens.pretrained.weight_conversions.gpt2</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.gptj.html">transformer_lens.pretrained.weight_conversions.gptj</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.hubert.html">transformer_lens.pretrained.weight_conversions.hubert</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.llama.html">transformer_lens.pretrained.weight_conversions.llama</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.mingpt.html">transformer_lens.pretrained.weight_conversions.mingpt</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.mistral.html">transformer_lens.pretrained.weight_conversions.mistral</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.mixtral.html">transformer_lens.pretrained.weight_conversions.mixtral</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.nanogpt.html">transformer_lens.pretrained.weight_conversions.nanogpt</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.neel_solu_old.html">transformer_lens.pretrained.weight_conversions.neel_solu_old</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.neo.html">transformer_lens.pretrained.weight_conversions.neo</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.neox.html">transformer_lens.pretrained.weight_conversions.neox</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.openai.html">transformer_lens.pretrained.weight_conversions.openai</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.opt.html">transformer_lens.pretrained.weight_conversions.opt</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.phi.html">transformer_lens.pretrained.weight_conversions.phi</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.phi3.html">transformer_lens.pretrained.weight_conversions.phi3</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.qwen.html">transformer_lens.pretrained.weight_conversions.qwen</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.qwen2.html">transformer_lens.pretrained.weight_conversions.qwen2</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.qwen3.html">transformer_lens.pretrained.weight_conversions.qwen3</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.t5.html">transformer_lens.pretrained.weight_conversions.t5</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="transformer_lens.utilities.html">transformer_lens.utilities</a><input class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" role="switch" type="checkbox"/><label for="toctree-checkbox-7"><div class="visually-hidden">Toggle navigation of transformer_lens.utilities</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.activation_functions.html">transformer_lens.utilities.activation_functions</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.addmm.html">transformer_lens.utilities.addmm</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.attention.html">transformer_lens.utilities.attention</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.devices.html">transformer_lens.utilities.devices</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../model_properties_table.html">Model Properties Table</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Resources</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../content/tutorials.html">Tutorials</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../content/citation.html">Citation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../content/contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html">Transformer Lens Main Demo Notebook</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html#Setup">Setup</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html#Introduction">Introduction</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html#Features">Features</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../demos/Exploratory_Analysis_Demo.html">Exploratory Analysis Demo</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../content/special_cases.html">Special Cases</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">News</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../content/news/release-2.0.html">TransformerLens 2.0</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Development</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../content/contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://transformerlensorg.github.io/TransformerLens/_static/coverage/">Code Coverage</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/TransformerLensOrg/TransformerLens">Github</a></li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          
+<div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle">
+              <div class="visually-hidden">Toggle Light / Dark / Auto color theme</div>
+              <svg class="theme-icon-when-auto"><use href="#svg-sun-half"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon" for="__toc">
+            <div class="visually-hidden">Toggle table of contents sidebar</div>
+            <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
+          </label>
+        </div>
+        <article role="main">
+          <section id="module-transformer_lens.lit.constants">
+<span id="transformer-lens-lit-constants"></span><h1>transformer_lens.lit.constants<a class="headerlink" href="#module-transformer_lens.lit.constants" title="Permalink to this heading">#</a></h1>
+<p>Constants for the LIT integration module.</p>
+<p>This module defines constants used throughout the LIT integration with TransformerLens.
+These include default configuration values, field names, and other settings that
+ensure consistency across the integration.</p>
+<p>Note: LIT (Learning Interpretability Tool) is Google’s framework-agnostic tool for
+ML model interpretability. See: <a class="reference external" href="https://pair-code.github.io/lit/">https://pair-code.github.io/lit/</a></p>
+<p class="rubric">References</p>
+<ul class="simple">
+<li><p>LIT Documentation: <a class="reference external" href="https://pair-code.github.io/lit/documentation/">https://pair-code.github.io/lit/documentation/</a></p></li>
+<li><p>LIT API: <a class="reference external" href="https://pair-code.github.io/lit/documentation/api">https://pair-code.github.io/lit/documentation/api</a></p></li>
+<li><p>TransformerLens: <a class="reference external" href="https://github.com/TransformerLensOrg/TransformerLens">https://github.com/TransformerLensOrg/TransformerLens</a></p></li>
+</ul>
+<dl class="py class">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.DefaultConfig">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">transformer_lens.lit.constants.</span></span><span class="sig-name descname"><span class="pre">DefaultConfig</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">MAX_SEQ_LENGTH</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">512</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">BATCH_SIZE</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">8</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">TOP_K</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">10</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">COMPUTE_GRADIENTS</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">OUTPUT_ATTENTION</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">OUTPUT_EMBEDDINGS</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">OUTPUT_ALL_LAYERS</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">EMBEDDING_LAYERS</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">tuple</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">PREPEND_BOS</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">DEVICE</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">USE_FP16</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.lit.constants.DefaultConfig" title="Permalink to this definition">#</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Default configuration values for the LIT wrapper.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.DefaultConfig.BATCH_SIZE">
+<span class="sig-name descname"><span class="pre">BATCH_SIZE</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">8</span></em><a class="headerlink" href="#transformer_lens.lit.constants.DefaultConfig.BATCH_SIZE" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.DefaultConfig.COMPUTE_GRADIENTS">
+<span class="sig-name descname"><span class="pre">COMPUTE_GRADIENTS</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">True</span></em><a class="headerlink" href="#transformer_lens.lit.constants.DefaultConfig.COMPUTE_GRADIENTS" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.DefaultConfig.DEVICE">
+<span class="sig-name descname"><span class="pre">DEVICE</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#transformer_lens.lit.constants.DefaultConfig.DEVICE" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.DefaultConfig.EMBEDDING_LAYERS">
+<span class="sig-name descname"><span class="pre">EMBEDDING_LAYERS</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">tuple</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#transformer_lens.lit.constants.DefaultConfig.EMBEDDING_LAYERS" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.DefaultConfig.MAX_SEQ_LENGTH">
+<span class="sig-name descname"><span class="pre">MAX_SEQ_LENGTH</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">512</span></em><a class="headerlink" href="#transformer_lens.lit.constants.DefaultConfig.MAX_SEQ_LENGTH" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.DefaultConfig.OUTPUT_ALL_LAYERS">
+<span class="sig-name descname"><span class="pre">OUTPUT_ALL_LAYERS</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></em><a class="headerlink" href="#transformer_lens.lit.constants.DefaultConfig.OUTPUT_ALL_LAYERS" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.DefaultConfig.OUTPUT_ATTENTION">
+<span class="sig-name descname"><span class="pre">OUTPUT_ATTENTION</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">True</span></em><a class="headerlink" href="#transformer_lens.lit.constants.DefaultConfig.OUTPUT_ATTENTION" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.DefaultConfig.OUTPUT_EMBEDDINGS">
+<span class="sig-name descname"><span class="pre">OUTPUT_EMBEDDINGS</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">True</span></em><a class="headerlink" href="#transformer_lens.lit.constants.DefaultConfig.OUTPUT_EMBEDDINGS" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.DefaultConfig.PREPEND_BOS">
+<span class="sig-name descname"><span class="pre">PREPEND_BOS</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">True</span></em><a class="headerlink" href="#transformer_lens.lit.constants.DefaultConfig.PREPEND_BOS" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.DefaultConfig.TOP_K">
+<span class="sig-name descname"><span class="pre">TOP_K</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">10</span></em><a class="headerlink" href="#transformer_lens.lit.constants.DefaultConfig.TOP_K" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.DefaultConfig.USE_FP16">
+<span class="sig-name descname"><span class="pre">USE_FP16</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></em><a class="headerlink" href="#transformer_lens.lit.constants.DefaultConfig.USE_FP16" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.ErrorMessages">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">transformer_lens.lit.constants.</span></span><span class="sig-name descname"><span class="pre">ErrorMessages</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">NO_TOKENIZER</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'HookedTransformer</span> <span class="pre">has</span> <span class="pre">no</span> <span class="pre">tokenizer.</span> <span class="pre">Please</span> <span class="pre">load</span> <span class="pre">a</span> <span class="pre">model</span> <span class="pre">with</span> <span class="pre">a</span> <span class="pre">tokenizer</span> <span class="pre">or</span> <span class="pre">set</span> <span class="pre">one</span> <span class="pre">manually.'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">INVALID_MODEL</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'Model</span> <span class="pre">must</span> <span class="pre">be</span> <span class="pre">an</span> <span class="pre">instance</span> <span class="pre">of</span> <span class="pre">HookedTransformer.</span> <span class="pre">Got:</span> <span class="pre">{model_type}'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">LIT_NOT_INSTALLED</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'LIT</span> <span class="pre">(lit-nlp)</span> <span class="pre">is</span> <span class="pre">not</span> <span class="pre">installed.</span> <span class="pre">Please</span> <span class="pre">install</span> <span class="pre">it</span> <span class="pre">with:</span> <span class="pre">pip</span> <span class="pre">install</span> <span class="pre">lit-nlp'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">INCOMPATIBLE_INPUT</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'Input</span> <span class="pre">does</span> <span class="pre">not</span> <span class="pre">match</span> <span class="pre">the</span> <span class="pre">expected</span> <span class="pre">input_spec.</span> <span class="pre">Expected</span> <span class="pre">fields:</span> <span class="pre">{expected},</span> <span class="pre">got:</span> <span class="pre">{actual}'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">BATCH_SIZE_MISMATCH</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'Batch</span> <span class="pre">size</span> <span class="pre">mismatch.</span> <span class="pre">Expected</span> <span class="pre">{expected},</span> <span class="pre">got</span> <span class="pre">{actual}'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.lit.constants.ErrorMessages" title="Permalink to this definition">#</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Standard error messages for the LIT integration.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.ErrorMessages.BATCH_SIZE_MISMATCH">
+<span class="sig-name descname"><span class="pre">BATCH_SIZE_MISMATCH</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'Batch</span> <span class="pre">size</span> <span class="pre">mismatch.</span> <span class="pre">Expected</span> <span class="pre">{expected},</span> <span class="pre">got</span> <span class="pre">{actual}'</span></em><a class="headerlink" href="#transformer_lens.lit.constants.ErrorMessages.BATCH_SIZE_MISMATCH" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.ErrorMessages.INCOMPATIBLE_INPUT">
+<span class="sig-name descname"><span class="pre">INCOMPATIBLE_INPUT</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'Input</span> <span class="pre">does</span> <span class="pre">not</span> <span class="pre">match</span> <span class="pre">the</span> <span class="pre">expected</span> <span class="pre">input_spec.</span> <span class="pre">Expected</span> <span class="pre">fields:</span> <span class="pre">{expected},</span> <span class="pre">got:</span> <span class="pre">{actual}'</span></em><a class="headerlink" href="#transformer_lens.lit.constants.ErrorMessages.INCOMPATIBLE_INPUT" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.ErrorMessages.INVALID_MODEL">
+<span class="sig-name descname"><span class="pre">INVALID_MODEL</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'Model</span> <span class="pre">must</span> <span class="pre">be</span> <span class="pre">an</span> <span class="pre">instance</span> <span class="pre">of</span> <span class="pre">HookedTransformer.</span> <span class="pre">Got:</span> <span class="pre">{model_type}'</span></em><a class="headerlink" href="#transformer_lens.lit.constants.ErrorMessages.INVALID_MODEL" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.ErrorMessages.LIT_NOT_INSTALLED">
+<span class="sig-name descname"><span class="pre">LIT_NOT_INSTALLED</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'LIT</span> <span class="pre">(lit-nlp)</span> <span class="pre">is</span> <span class="pre">not</span> <span class="pre">installed.</span> <span class="pre">Please</span> <span class="pre">install</span> <span class="pre">it</span> <span class="pre">with:</span> <span class="pre">pip</span> <span class="pre">install</span> <span class="pre">lit-nlp'</span></em><a class="headerlink" href="#transformer_lens.lit.constants.ErrorMessages.LIT_NOT_INSTALLED" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.ErrorMessages.NO_TOKENIZER">
+<span class="sig-name descname"><span class="pre">NO_TOKENIZER</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'HookedTransformer</span> <span class="pre">has</span> <span class="pre">no</span> <span class="pre">tokenizer.</span> <span class="pre">Please</span> <span class="pre">load</span> <span class="pre">a</span> <span class="pre">model</span> <span class="pre">with</span> <span class="pre">a</span> <span class="pre">tokenizer</span> <span class="pre">or</span> <span class="pre">set</span> <span class="pre">one</span> <span class="pre">manually.'</span></em><a class="headerlink" href="#transformer_lens.lit.constants.ErrorMessages.NO_TOKENIZER" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.HookPointNames">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">transformer_lens.lit.constants.</span></span><span class="sig-name descname"><span class="pre">HookPointNames</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">HOOK_EMBED</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'hook_embed'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">HOOK_POS_EMBED</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'hook_pos_embed'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">HOOK_TOKENS</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'hook_tokens'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">RESID_PRE_TEMPLATE</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'blocks.{layer}.hook_resid_pre'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">RESID_POST_TEMPLATE</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'blocks.{layer}.hook_resid_post'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">RESID_MID_TEMPLATE</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'blocks.{layer}.hook_resid_mid'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ATTN_OUT_TEMPLATE</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'blocks.{layer}.hook_attn_out'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ATTN_PATTERN_TEMPLATE</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'blocks.{layer}.attn.hook_pattern'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ATTN_SCORES_TEMPLATE</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'blocks.{layer}.attn.hook_attn_scores'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Q_TEMPLATE</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'blocks.{layer}.attn.hook_q'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">K_TEMPLATE</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'blocks.{layer}.attn.hook_k'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">V_TEMPLATE</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'blocks.{layer}.attn.hook_v'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">MLP_OUT_TEMPLATE</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'blocks.{layer}.hook_mlp_out'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">MLP_PRE_TEMPLATE</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'blocks.{layer}.mlp.hook_pre'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">MLP_POST_TEMPLATE</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'blocks.{layer}.mlp.hook_post'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">LN_FINAL</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'ln_final.hook_normalized'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.lit.constants.HookPointNames" title="Permalink to this definition">#</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Common hook point names used in TransformerLens.</p>
+<p>These correspond to the hook points defined in HookedTransformer where
+we can intercept and extract intermediate activations.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.HookPointNames.ATTN_OUT_TEMPLATE">
+<span class="sig-name descname"><span class="pre">ATTN_OUT_TEMPLATE</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'blocks.{layer}.hook_attn_out'</span></em><a class="headerlink" href="#transformer_lens.lit.constants.HookPointNames.ATTN_OUT_TEMPLATE" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.HookPointNames.ATTN_PATTERN_TEMPLATE">
+<span class="sig-name descname"><span class="pre">ATTN_PATTERN_TEMPLATE</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'blocks.{layer}.attn.hook_pattern'</span></em><a class="headerlink" href="#transformer_lens.lit.constants.HookPointNames.ATTN_PATTERN_TEMPLATE" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.HookPointNames.ATTN_SCORES_TEMPLATE">
+<span class="sig-name descname"><span class="pre">ATTN_SCORES_TEMPLATE</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'blocks.{layer}.attn.hook_attn_scores'</span></em><a class="headerlink" href="#transformer_lens.lit.constants.HookPointNames.ATTN_SCORES_TEMPLATE" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.HookPointNames.HOOK_EMBED">
+<span class="sig-name descname"><span class="pre">HOOK_EMBED</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'hook_embed'</span></em><a class="headerlink" href="#transformer_lens.lit.constants.HookPointNames.HOOK_EMBED" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.HookPointNames.HOOK_POS_EMBED">
+<span class="sig-name descname"><span class="pre">HOOK_POS_EMBED</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'hook_pos_embed'</span></em><a class="headerlink" href="#transformer_lens.lit.constants.HookPointNames.HOOK_POS_EMBED" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.HookPointNames.HOOK_TOKENS">
+<span class="sig-name descname"><span class="pre">HOOK_TOKENS</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'hook_tokens'</span></em><a class="headerlink" href="#transformer_lens.lit.constants.HookPointNames.HOOK_TOKENS" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.HookPointNames.K_TEMPLATE">
+<span class="sig-name descname"><span class="pre">K_TEMPLATE</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'blocks.{layer}.attn.hook_k'</span></em><a class="headerlink" href="#transformer_lens.lit.constants.HookPointNames.K_TEMPLATE" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.HookPointNames.LN_FINAL">
+<span class="sig-name descname"><span class="pre">LN_FINAL</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'ln_final.hook_normalized'</span></em><a class="headerlink" href="#transformer_lens.lit.constants.HookPointNames.LN_FINAL" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.HookPointNames.MLP_OUT_TEMPLATE">
+<span class="sig-name descname"><span class="pre">MLP_OUT_TEMPLATE</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'blocks.{layer}.hook_mlp_out'</span></em><a class="headerlink" href="#transformer_lens.lit.constants.HookPointNames.MLP_OUT_TEMPLATE" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.HookPointNames.MLP_POST_TEMPLATE">
+<span class="sig-name descname"><span class="pre">MLP_POST_TEMPLATE</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'blocks.{layer}.mlp.hook_post'</span></em><a class="headerlink" href="#transformer_lens.lit.constants.HookPointNames.MLP_POST_TEMPLATE" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.HookPointNames.MLP_PRE_TEMPLATE">
+<span class="sig-name descname"><span class="pre">MLP_PRE_TEMPLATE</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'blocks.{layer}.mlp.hook_pre'</span></em><a class="headerlink" href="#transformer_lens.lit.constants.HookPointNames.MLP_PRE_TEMPLATE" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.HookPointNames.Q_TEMPLATE">
+<span class="sig-name descname"><span class="pre">Q_TEMPLATE</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'blocks.{layer}.attn.hook_q'</span></em><a class="headerlink" href="#transformer_lens.lit.constants.HookPointNames.Q_TEMPLATE" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.HookPointNames.RESID_MID_TEMPLATE">
+<span class="sig-name descname"><span class="pre">RESID_MID_TEMPLATE</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'blocks.{layer}.hook_resid_mid'</span></em><a class="headerlink" href="#transformer_lens.lit.constants.HookPointNames.RESID_MID_TEMPLATE" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.HookPointNames.RESID_POST_TEMPLATE">
+<span class="sig-name descname"><span class="pre">RESID_POST_TEMPLATE</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'blocks.{layer}.hook_resid_post'</span></em><a class="headerlink" href="#transformer_lens.lit.constants.HookPointNames.RESID_POST_TEMPLATE" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.HookPointNames.RESID_PRE_TEMPLATE">
+<span class="sig-name descname"><span class="pre">RESID_PRE_TEMPLATE</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'blocks.{layer}.hook_resid_pre'</span></em><a class="headerlink" href="#transformer_lens.lit.constants.HookPointNames.RESID_PRE_TEMPLATE" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.HookPointNames.V_TEMPLATE">
+<span class="sig-name descname"><span class="pre">V_TEMPLATE</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'blocks.{layer}.attn.hook_v'</span></em><a class="headerlink" href="#transformer_lens.lit.constants.HookPointNames.V_TEMPLATE" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.InputFieldNames">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">transformer_lens.lit.constants.</span></span><span class="sig-name descname"><span class="pre">InputFieldNames</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">TEXT</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'text'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">TOKENS</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'tokens'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">TOKEN_EMBEDDINGS</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'token_embeddings'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">TARGET</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'target'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">TARGET_MASK</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'target_mask'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.lit.constants.InputFieldNames" title="Permalink to this definition">#</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Field names for model inputs in LIT.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.InputFieldNames.TARGET">
+<span class="sig-name descname"><span class="pre">TARGET</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'target'</span></em><a class="headerlink" href="#transformer_lens.lit.constants.InputFieldNames.TARGET" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.InputFieldNames.TARGET_MASK">
+<span class="sig-name descname"><span class="pre">TARGET_MASK</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'target_mask'</span></em><a class="headerlink" href="#transformer_lens.lit.constants.InputFieldNames.TARGET_MASK" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.InputFieldNames.TEXT">
+<span class="sig-name descname"><span class="pre">TEXT</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'text'</span></em><a class="headerlink" href="#transformer_lens.lit.constants.InputFieldNames.TEXT" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.InputFieldNames.TOKENS">
+<span class="sig-name descname"><span class="pre">TOKENS</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'tokens'</span></em><a class="headerlink" href="#transformer_lens.lit.constants.InputFieldNames.TOKENS" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.InputFieldNames.TOKEN_EMBEDDINGS">
+<span class="sig-name descname"><span class="pre">TOKEN_EMBEDDINGS</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'token_embeddings'</span></em><a class="headerlink" href="#transformer_lens.lit.constants.InputFieldNames.TOKEN_EMBEDDINGS" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.OutputFieldNames">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">transformer_lens.lit.constants.</span></span><span class="sig-name descname"><span class="pre">OutputFieldNames</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">TOKENS</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'tokens'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">TOKEN_IDS</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'token_ids'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">LOGITS</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'logits'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">TOP_K_TOKENS</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'top_k_tokens'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">GENERATED_TEXT</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'generated_text'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">PROBAS</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'probas'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">LOSS</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'loss'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">LAYER_EMB_TEMPLATE</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'layer_{layer}/embeddings'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">CLS_EMBEDDING</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'cls_embedding'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">MEAN_EMBEDDING</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'mean_embedding'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ATTENTION_TEMPLATE</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'layer_{layer}/head_{head}/attention'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">LAYER_ATTENTION_TEMPLATE</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'layer_{layer}/attention'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">TOKEN_GRADIENTS</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'token_gradients'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">GRAD_L2</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'grad_l2'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">GRAD_DOT_INPUT</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'grad_dot_input'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">INPUT_EMBEDDINGS</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'input_embeddings'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.lit.constants.OutputFieldNames" title="Permalink to this definition">#</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Field names for model outputs in LIT.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.OutputFieldNames.ATTENTION_TEMPLATE">
+<span class="sig-name descname"><span class="pre">ATTENTION_TEMPLATE</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'layer_{layer}/head_{head}/attention'</span></em><a class="headerlink" href="#transformer_lens.lit.constants.OutputFieldNames.ATTENTION_TEMPLATE" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.OutputFieldNames.CLS_EMBEDDING">
+<span class="sig-name descname"><span class="pre">CLS_EMBEDDING</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'cls_embedding'</span></em><a class="headerlink" href="#transformer_lens.lit.constants.OutputFieldNames.CLS_EMBEDDING" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.OutputFieldNames.GENERATED_TEXT">
+<span class="sig-name descname"><span class="pre">GENERATED_TEXT</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'generated_text'</span></em><a class="headerlink" href="#transformer_lens.lit.constants.OutputFieldNames.GENERATED_TEXT" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.OutputFieldNames.GRAD_DOT_INPUT">
+<span class="sig-name descname"><span class="pre">GRAD_DOT_INPUT</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'grad_dot_input'</span></em><a class="headerlink" href="#transformer_lens.lit.constants.OutputFieldNames.GRAD_DOT_INPUT" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.OutputFieldNames.GRAD_L2">
+<span class="sig-name descname"><span class="pre">GRAD_L2</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'grad_l2'</span></em><a class="headerlink" href="#transformer_lens.lit.constants.OutputFieldNames.GRAD_L2" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.OutputFieldNames.INPUT_EMBEDDINGS">
+<span class="sig-name descname"><span class="pre">INPUT_EMBEDDINGS</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'input_embeddings'</span></em><a class="headerlink" href="#transformer_lens.lit.constants.OutputFieldNames.INPUT_EMBEDDINGS" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.OutputFieldNames.LAYER_ATTENTION_TEMPLATE">
+<span class="sig-name descname"><span class="pre">LAYER_ATTENTION_TEMPLATE</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'layer_{layer}/attention'</span></em><a class="headerlink" href="#transformer_lens.lit.constants.OutputFieldNames.LAYER_ATTENTION_TEMPLATE" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.OutputFieldNames.LAYER_EMB_TEMPLATE">
+<span class="sig-name descname"><span class="pre">LAYER_EMB_TEMPLATE</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'layer_{layer}/embeddings'</span></em><a class="headerlink" href="#transformer_lens.lit.constants.OutputFieldNames.LAYER_EMB_TEMPLATE" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.OutputFieldNames.LOGITS">
+<span class="sig-name descname"><span class="pre">LOGITS</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'logits'</span></em><a class="headerlink" href="#transformer_lens.lit.constants.OutputFieldNames.LOGITS" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.OutputFieldNames.LOSS">
+<span class="sig-name descname"><span class="pre">LOSS</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'loss'</span></em><a class="headerlink" href="#transformer_lens.lit.constants.OutputFieldNames.LOSS" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.OutputFieldNames.MEAN_EMBEDDING">
+<span class="sig-name descname"><span class="pre">MEAN_EMBEDDING</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'mean_embedding'</span></em><a class="headerlink" href="#transformer_lens.lit.constants.OutputFieldNames.MEAN_EMBEDDING" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.OutputFieldNames.PROBAS">
+<span class="sig-name descname"><span class="pre">PROBAS</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'probas'</span></em><a class="headerlink" href="#transformer_lens.lit.constants.OutputFieldNames.PROBAS" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.OutputFieldNames.TOKENS">
+<span class="sig-name descname"><span class="pre">TOKENS</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'tokens'</span></em><a class="headerlink" href="#transformer_lens.lit.constants.OutputFieldNames.TOKENS" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.OutputFieldNames.TOKEN_GRADIENTS">
+<span class="sig-name descname"><span class="pre">TOKEN_GRADIENTS</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'token_gradients'</span></em><a class="headerlink" href="#transformer_lens.lit.constants.OutputFieldNames.TOKEN_GRADIENTS" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.OutputFieldNames.TOKEN_IDS">
+<span class="sig-name descname"><span class="pre">TOKEN_IDS</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'token_ids'</span></em><a class="headerlink" href="#transformer_lens.lit.constants.OutputFieldNames.TOKEN_IDS" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.OutputFieldNames.TOP_K_TOKENS">
+<span class="sig-name descname"><span class="pre">TOP_K_TOKENS</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'top_k_tokens'</span></em><a class="headerlink" href="#transformer_lens.lit.constants.OutputFieldNames.TOP_K_TOKENS" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.ServerConfig">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">transformer_lens.lit.constants.</span></span><span class="sig-name descname"><span class="pre">ServerConfig</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">DEFAULT_PORT</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">5432</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">DEFAULT_HOST</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'localhost'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">DEFAULT_TITLE</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'TransformerLens</span> <span class="pre">+</span> <span class="pre">LIT'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">DEV_MODE</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">WARM_START</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">MAX_EXAMPLES</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1000</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.lit.constants.ServerConfig" title="Permalink to this definition">#</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Default configuration for the LIT server.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.ServerConfig.DEFAULT_HOST">
+<span class="sig-name descname"><span class="pre">DEFAULT_HOST</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'localhost'</span></em><a class="headerlink" href="#transformer_lens.lit.constants.ServerConfig.DEFAULT_HOST" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.ServerConfig.DEFAULT_PORT">
+<span class="sig-name descname"><span class="pre">DEFAULT_PORT</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">5432</span></em><a class="headerlink" href="#transformer_lens.lit.constants.ServerConfig.DEFAULT_PORT" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.ServerConfig.DEFAULT_TITLE">
+<span class="sig-name descname"><span class="pre">DEFAULT_TITLE</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'TransformerLens</span> <span class="pre">+</span> <span class="pre">LIT'</span></em><a class="headerlink" href="#transformer_lens.lit.constants.ServerConfig.DEFAULT_TITLE" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.ServerConfig.DEV_MODE">
+<span class="sig-name descname"><span class="pre">DEV_MODE</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></em><a class="headerlink" href="#transformer_lens.lit.constants.ServerConfig.DEV_MODE" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.ServerConfig.MAX_EXAMPLES">
+<span class="sig-name descname"><span class="pre">MAX_EXAMPLES</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">1000</span></em><a class="headerlink" href="#transformer_lens.lit.constants.ServerConfig.MAX_EXAMPLES" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.lit.constants.ServerConfig.WARM_START">
+<span class="sig-name descname"><span class="pre">WARM_START</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">True</span></em><a class="headerlink" href="#transformer_lens.lit.constants.ServerConfig.WARM_START" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+</section>
+
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          <a class="next-page" href="transformer_lens.lit.dataset.html">
+              <div class="page-info">
+                <div class="context">
+                  <span>Next</span>
+                </div>
+                <div class="title">transformer_lens.lit.dataset</div>
+              </div>
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+            </a>
+          <a class="prev-page" href="transformer_lens.lit.html">
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+              <div class="page-info">
+                <div class="context">
+                  <span>Previous</span>
+                </div>
+                
+                <div class="title">transformer_lens.lit</div>
+                
+              </div>
+            </a>
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2023, Neel Nanda
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer">
+      
+      
+      <div class="toc-sticky toc-scroll">
+        <div class="toc-title-container">
+          <span class="toc-title">
+            On this page
+          </span>
+        </div>
+        <div class="toc-tree-container">
+          <div class="toc-tree">
+            <ul>
+<li><a class="reference internal" href="#">transformer_lens.lit.constants</a><ul>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.DefaultConfig"><code class="docutils literal notranslate"><span class="pre">DefaultConfig</span></code></a><ul>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.DefaultConfig.BATCH_SIZE"><code class="docutils literal notranslate"><span class="pre">DefaultConfig.BATCH_SIZE</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.DefaultConfig.COMPUTE_GRADIENTS"><code class="docutils literal notranslate"><span class="pre">DefaultConfig.COMPUTE_GRADIENTS</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.DefaultConfig.DEVICE"><code class="docutils literal notranslate"><span class="pre">DefaultConfig.DEVICE</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.DefaultConfig.EMBEDDING_LAYERS"><code class="docutils literal notranslate"><span class="pre">DefaultConfig.EMBEDDING_LAYERS</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.DefaultConfig.MAX_SEQ_LENGTH"><code class="docutils literal notranslate"><span class="pre">DefaultConfig.MAX_SEQ_LENGTH</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.DefaultConfig.OUTPUT_ALL_LAYERS"><code class="docutils literal notranslate"><span class="pre">DefaultConfig.OUTPUT_ALL_LAYERS</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.DefaultConfig.OUTPUT_ATTENTION"><code class="docutils literal notranslate"><span class="pre">DefaultConfig.OUTPUT_ATTENTION</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.DefaultConfig.OUTPUT_EMBEDDINGS"><code class="docutils literal notranslate"><span class="pre">DefaultConfig.OUTPUT_EMBEDDINGS</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.DefaultConfig.PREPEND_BOS"><code class="docutils literal notranslate"><span class="pre">DefaultConfig.PREPEND_BOS</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.DefaultConfig.TOP_K"><code class="docutils literal notranslate"><span class="pre">DefaultConfig.TOP_K</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.DefaultConfig.USE_FP16"><code class="docutils literal notranslate"><span class="pre">DefaultConfig.USE_FP16</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.ErrorMessages"><code class="docutils literal notranslate"><span class="pre">ErrorMessages</span></code></a><ul>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.ErrorMessages.BATCH_SIZE_MISMATCH"><code class="docutils literal notranslate"><span class="pre">ErrorMessages.BATCH_SIZE_MISMATCH</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.ErrorMessages.INCOMPATIBLE_INPUT"><code class="docutils literal notranslate"><span class="pre">ErrorMessages.INCOMPATIBLE_INPUT</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.ErrorMessages.INVALID_MODEL"><code class="docutils literal notranslate"><span class="pre">ErrorMessages.INVALID_MODEL</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.ErrorMessages.LIT_NOT_INSTALLED"><code class="docutils literal notranslate"><span class="pre">ErrorMessages.LIT_NOT_INSTALLED</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.ErrorMessages.NO_TOKENIZER"><code class="docutils literal notranslate"><span class="pre">ErrorMessages.NO_TOKENIZER</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.HookPointNames"><code class="docutils literal notranslate"><span class="pre">HookPointNames</span></code></a><ul>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.HookPointNames.ATTN_OUT_TEMPLATE"><code class="docutils literal notranslate"><span class="pre">HookPointNames.ATTN_OUT_TEMPLATE</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.HookPointNames.ATTN_PATTERN_TEMPLATE"><code class="docutils literal notranslate"><span class="pre">HookPointNames.ATTN_PATTERN_TEMPLATE</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.HookPointNames.ATTN_SCORES_TEMPLATE"><code class="docutils literal notranslate"><span class="pre">HookPointNames.ATTN_SCORES_TEMPLATE</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.HookPointNames.HOOK_EMBED"><code class="docutils literal notranslate"><span class="pre">HookPointNames.HOOK_EMBED</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.HookPointNames.HOOK_POS_EMBED"><code class="docutils literal notranslate"><span class="pre">HookPointNames.HOOK_POS_EMBED</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.HookPointNames.HOOK_TOKENS"><code class="docutils literal notranslate"><span class="pre">HookPointNames.HOOK_TOKENS</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.HookPointNames.K_TEMPLATE"><code class="docutils literal notranslate"><span class="pre">HookPointNames.K_TEMPLATE</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.HookPointNames.LN_FINAL"><code class="docutils literal notranslate"><span class="pre">HookPointNames.LN_FINAL</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.HookPointNames.MLP_OUT_TEMPLATE"><code class="docutils literal notranslate"><span class="pre">HookPointNames.MLP_OUT_TEMPLATE</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.HookPointNames.MLP_POST_TEMPLATE"><code class="docutils literal notranslate"><span class="pre">HookPointNames.MLP_POST_TEMPLATE</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.HookPointNames.MLP_PRE_TEMPLATE"><code class="docutils literal notranslate"><span class="pre">HookPointNames.MLP_PRE_TEMPLATE</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.HookPointNames.Q_TEMPLATE"><code class="docutils literal notranslate"><span class="pre">HookPointNames.Q_TEMPLATE</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.HookPointNames.RESID_MID_TEMPLATE"><code class="docutils literal notranslate"><span class="pre">HookPointNames.RESID_MID_TEMPLATE</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.HookPointNames.RESID_POST_TEMPLATE"><code class="docutils literal notranslate"><span class="pre">HookPointNames.RESID_POST_TEMPLATE</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.HookPointNames.RESID_PRE_TEMPLATE"><code class="docutils literal notranslate"><span class="pre">HookPointNames.RESID_PRE_TEMPLATE</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.HookPointNames.V_TEMPLATE"><code class="docutils literal notranslate"><span class="pre">HookPointNames.V_TEMPLATE</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.InputFieldNames"><code class="docutils literal notranslate"><span class="pre">InputFieldNames</span></code></a><ul>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.InputFieldNames.TARGET"><code class="docutils literal notranslate"><span class="pre">InputFieldNames.TARGET</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.InputFieldNames.TARGET_MASK"><code class="docutils literal notranslate"><span class="pre">InputFieldNames.TARGET_MASK</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.InputFieldNames.TEXT"><code class="docutils literal notranslate"><span class="pre">InputFieldNames.TEXT</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.InputFieldNames.TOKENS"><code class="docutils literal notranslate"><span class="pre">InputFieldNames.TOKENS</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.InputFieldNames.TOKEN_EMBEDDINGS"><code class="docutils literal notranslate"><span class="pre">InputFieldNames.TOKEN_EMBEDDINGS</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.OutputFieldNames"><code class="docutils literal notranslate"><span class="pre">OutputFieldNames</span></code></a><ul>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.OutputFieldNames.ATTENTION_TEMPLATE"><code class="docutils literal notranslate"><span class="pre">OutputFieldNames.ATTENTION_TEMPLATE</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.OutputFieldNames.CLS_EMBEDDING"><code class="docutils literal notranslate"><span class="pre">OutputFieldNames.CLS_EMBEDDING</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.OutputFieldNames.GENERATED_TEXT"><code class="docutils literal notranslate"><span class="pre">OutputFieldNames.GENERATED_TEXT</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.OutputFieldNames.GRAD_DOT_INPUT"><code class="docutils literal notranslate"><span class="pre">OutputFieldNames.GRAD_DOT_INPUT</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.OutputFieldNames.GRAD_L2"><code class="docutils literal notranslate"><span class="pre">OutputFieldNames.GRAD_L2</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.OutputFieldNames.INPUT_EMBEDDINGS"><code class="docutils literal notranslate"><span class="pre">OutputFieldNames.INPUT_EMBEDDINGS</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.OutputFieldNames.LAYER_ATTENTION_TEMPLATE"><code class="docutils literal notranslate"><span class="pre">OutputFieldNames.LAYER_ATTENTION_TEMPLATE</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.OutputFieldNames.LAYER_EMB_TEMPLATE"><code class="docutils literal notranslate"><span class="pre">OutputFieldNames.LAYER_EMB_TEMPLATE</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.OutputFieldNames.LOGITS"><code class="docutils literal notranslate"><span class="pre">OutputFieldNames.LOGITS</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.OutputFieldNames.LOSS"><code class="docutils literal notranslate"><span class="pre">OutputFieldNames.LOSS</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.OutputFieldNames.MEAN_EMBEDDING"><code class="docutils literal notranslate"><span class="pre">OutputFieldNames.MEAN_EMBEDDING</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.OutputFieldNames.PROBAS"><code class="docutils literal notranslate"><span class="pre">OutputFieldNames.PROBAS</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.OutputFieldNames.TOKENS"><code class="docutils literal notranslate"><span class="pre">OutputFieldNames.TOKENS</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.OutputFieldNames.TOKEN_GRADIENTS"><code class="docutils literal notranslate"><span class="pre">OutputFieldNames.TOKEN_GRADIENTS</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.OutputFieldNames.TOKEN_IDS"><code class="docutils literal notranslate"><span class="pre">OutputFieldNames.TOKEN_IDS</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.OutputFieldNames.TOP_K_TOKENS"><code class="docutils literal notranslate"><span class="pre">OutputFieldNames.TOP_K_TOKENS</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.ServerConfig"><code class="docutils literal notranslate"><span class="pre">ServerConfig</span></code></a><ul>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.ServerConfig.DEFAULT_HOST"><code class="docutils literal notranslate"><span class="pre">ServerConfig.DEFAULT_HOST</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.ServerConfig.DEFAULT_PORT"><code class="docutils literal notranslate"><span class="pre">ServerConfig.DEFAULT_PORT</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.ServerConfig.DEFAULT_TITLE"><code class="docutils literal notranslate"><span class="pre">ServerConfig.DEFAULT_TITLE</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.ServerConfig.DEV_MODE"><code class="docutils literal notranslate"><span class="pre">ServerConfig.DEV_MODE</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.ServerConfig.MAX_EXAMPLES"><code class="docutils literal notranslate"><span class="pre">ServerConfig.MAX_EXAMPLES</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.lit.constants.ServerConfig.WARM_START"><code class="docutils literal notranslate"><span class="pre">ServerConfig.WARM_START</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+          </div>
+        </div>
+      </div>
+      
+      
+    </aside>
+  </div>
+</div><script data-url_root="../../" id="documentation_options" src="../../_static/documentation_options.js?v=525cde36"></script>
+    <script src="../../_static/doctools.js?v=888ff710"></script>
+    <script src="../../_static/sphinx_highlight.js?v=4825356b"></script>
+    <script src="../../_static/scripts/furo.js?v=32e29ea5"></script>
+    <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+    </body>
+</html>

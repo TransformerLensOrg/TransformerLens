@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <title>Coverage for transformer_lens/factories/mlp_factory.py: 90%</title>
+    <title>Coverage for transformer_lens/factories/mlp_factory.py: 92%</title>
     <link rel="icon" sizes="32x32" href="favicon_32_cb_58284776.png">
     <link rel="stylesheet" href="style_cb_8e611ae1.css" type="text/css">
     <script src="coverage_html_cb_6fb7b396.js" defer></script>
@@ -12,7 +12,7 @@
     <div class="content">
         <h1>
             <span class="text">Coverage for </span><b>transformer_lens/factories/mlp_factory.py</b>:
-            <span class="pc_cov">90%</span>
+            <span class="pc_cov">92%</span>
         </h1>
         <aside id="help_panel_wrapper">
             <input id="help_panel_state" type="checkbox">
@@ -55,8 +55,8 @@
             </div>
         </aside>
         <h2>
-            <span class="text">14 statements &nbsp;</span>
-            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">13<span class="text"> run</span></button>
+            <span class="text">17 statements &nbsp;</span>
+            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">16<span class="text"> run</span></button>
             <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">1<span class="text"> missing</span></button>
             <button type="button" class="exc show_exc button_toggle_exc" value="exc" data-shortcut="x" title="Toggle lines excluded">0<span class="text"> excluded</span></button>
             <button type="button" class="par run show_par button_toggle_par" value="par" data-shortcut="p" title="Toggle lines partially run">1<span class="text"> partial</span></button>
@@ -67,7 +67,7 @@
             <a id="nextFileLink" class="nav" href="z_af97b5493da09a14_head_detector_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.6.1">coverage.py v7.6.1</a>,
-            created at 2025-07-09 19:34 +0000
+            created at 2026-03-24 16:35 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -86,23 +86,27 @@
     <p class="pln"><span class="n"><a id="t2" href="#t2">2</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t3" href="#t3">3</a></span><span class="t"><span class="str">Centralized location for creating any MLP needed within TransformerLens</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t4" href="#t4">4</a></span><span class="t"><span class="str">"""</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t5" href="#t5">5</a></span><span class="t"><span class="key">from</span> <span class="nam">transformer_lens</span><span class="op">.</span><span class="nam">components</span><span class="op">.</span><span class="nam">mlps</span><span class="op">.</span><span class="nam">can_be_used_as_mlp</span> <span class="key">import</span> <span class="nam">CanBeUsedAsMLP</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t6" href="#t6">6</a></span><span class="t"><span class="key">from</span> <span class="nam">transformer_lens</span><span class="op">.</span><span class="nam">components</span><span class="op">.</span><span class="nam">mlps</span><span class="op">.</span><span class="nam">gated_mlp</span> <span class="key">import</span> <span class="nam">GatedMLP</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t7" href="#t7">7</a></span><span class="t"><span class="key">from</span> <span class="nam">transformer_lens</span><span class="op">.</span><span class="nam">components</span><span class="op">.</span><span class="nam">mlps</span><span class="op">.</span><span class="nam">gated_mlp_4bit</span> <span class="key">import</span> <span class="nam">GatedMLP4Bit</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t8" href="#t8">8</a></span><span class="t"><span class="key">from</span> <span class="nam">transformer_lens</span><span class="op">.</span><span class="nam">components</span><span class="op">.</span><span class="nam">mlps</span><span class="op">.</span><span class="nam">mlp</span> <span class="key">import</span> <span class="nam">MLP</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t9" href="#t9">9</a></span><span class="t"><span class="key">from</span> <span class="nam">transformer_lens</span><span class="op">.</span><span class="nam">components</span><span class="op">.</span><span class="nam">mlps</span><span class="op">.</span><span class="nam">moe</span> <span class="key">import</span> <span class="nam">MoE</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t10" href="#t10">10</a></span><span class="t"><span class="key">from</span> <span class="nam">transformer_lens</span><span class="op">.</span><span class="nam">HookedTransformerConfig</span> <span class="key">import</span> <span class="nam">HookedTransformerConfig</span>&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t11" href="#t11">11</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t12" href="#t12">12</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t13" href="#t13">13</a></span><span class="t"><span class="key">class</span> <span class="nam">MLPFactory</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t14" href="#t14">14</a></span><span class="t">    <span class="op">@</span><span class="nam">staticmethod</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t15" href="#t15">15</a></span><span class="t">    <span class="key">def</span> <span class="nam">create_mlp</span><span class="op">(</span><span class="nam">cfg</span><span class="op">:</span> <span class="nam">HookedTransformerConfig</span><span class="op">)</span> <span class="op">-></span> <span class="nam">CanBeUsedAsMLP</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="par run show_par"><span class="n"><a id="t16" href="#t16">16</a></span><span class="t">        <span class="key">if</span> <span class="nam">cfg</span><span class="op">.</span><span class="nam">num_experts</span><span class="op">:</span>&nbsp;</span><span class="r"><span class="annotate short">16&#x202F;&#x219B;&#x202F;17</span><span class="annotate long">line 16 didn't jump to line 17 because the condition on line 16 was never true</span></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t17" href="#t17">17</a></span><span class="t">            <span class="key">return</span> <span class="nam">MoE</span><span class="op">(</span><span class="nam">cfg</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t18" href="#t18">18</a></span><span class="t">        <span class="key">elif</span> <span class="nam">cfg</span><span class="op">.</span><span class="nam">gated_mlp</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t19" href="#t19">19</a></span><span class="t">            <span class="key">return</span> <span class="nam">GatedMLP</span><span class="op">(</span><span class="nam">cfg</span><span class="op">)</span> <span class="key">if</span> <span class="key">not</span> <span class="nam">cfg</span><span class="op">.</span><span class="nam">load_in_4bit</span> <span class="key">else</span> <span class="nam">GatedMLP4Bit</span><span class="op">(</span><span class="nam">cfg</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t20" href="#t20">20</a></span><span class="t">        <span class="key">else</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t21" href="#t21">21</a></span><span class="t">            <span class="key">return</span> <span class="nam">MLP</span><span class="op">(</span><span class="nam">cfg</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t5" href="#t5">5</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t6" href="#t6">6</a></span><span class="t"><span class="key">from</span> <span class="nam">transformer_lens</span><span class="op">.</span><span class="nam">components</span><span class="op">.</span><span class="nam">mlps</span><span class="op">.</span><span class="nam">can_be_used_as_mlp</span> <span class="key">import</span> <span class="nam">CanBeUsedAsMLP</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t7" href="#t7">7</a></span><span class="t"><span class="key">from</span> <span class="nam">transformer_lens</span><span class="op">.</span><span class="nam">components</span><span class="op">.</span><span class="nam">mlps</span><span class="op">.</span><span class="nam">gated_mlp</span> <span class="key">import</span> <span class="nam">GatedMLP</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t8" href="#t8">8</a></span><span class="t"><span class="key">from</span> <span class="nam">transformer_lens</span><span class="op">.</span><span class="nam">components</span><span class="op">.</span><span class="nam">mlps</span><span class="op">.</span><span class="nam">gated_mlp_4bit</span> <span class="key">import</span> <span class="nam">GatedMLP4Bit</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t9" href="#t9">9</a></span><span class="t"><span class="key">from</span> <span class="nam">transformer_lens</span><span class="op">.</span><span class="nam">components</span><span class="op">.</span><span class="nam">mlps</span><span class="op">.</span><span class="nam">gpt_oss_moe</span> <span class="key">import</span> <span class="nam">GptOssMoE</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t10" href="#t10">10</a></span><span class="t"><span class="key">from</span> <span class="nam">transformer_lens</span><span class="op">.</span><span class="nam">components</span><span class="op">.</span><span class="nam">mlps</span><span class="op">.</span><span class="nam">mlp</span> <span class="key">import</span> <span class="nam">MLP</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t11" href="#t11">11</a></span><span class="t"><span class="key">from</span> <span class="nam">transformer_lens</span><span class="op">.</span><span class="nam">components</span><span class="op">.</span><span class="nam">mlps</span><span class="op">.</span><span class="nam">moe</span> <span class="key">import</span> <span class="nam">MoE</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t12" href="#t12">12</a></span><span class="t"><span class="key">from</span> <span class="nam">transformer_lens</span><span class="op">.</span><span class="nam">HookedTransformerConfig</span> <span class="key">import</span> <span class="nam">HookedTransformerConfig</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t13" href="#t13">13</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t14" href="#t14">14</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t15" href="#t15">15</a></span><span class="t"><span class="key">class</span> <span class="nam">MLPFactory</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t16" href="#t16">16</a></span><span class="t">    <span class="op">@</span><span class="nam">staticmethod</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t17" href="#t17">17</a></span><span class="t">    <span class="key">def</span> <span class="nam">create_mlp</span><span class="op">(</span><span class="nam">cfg</span><span class="op">:</span> <span class="nam">HookedTransformerConfig</span><span class="op">)</span> <span class="op">-></span> <span class="nam">CanBeUsedAsMLP</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t18" href="#t18">18</a></span><span class="t">        <span class="key">if</span> <span class="nam">cfg</span><span class="op">.</span><span class="nam">num_experts</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="par run show_par"><span class="n"><a id="t19" href="#t19">19</a></span><span class="t">            <span class="key">if</span> <span class="nam">cfg</span><span class="op">.</span><span class="nam">original_architecture</span> <span class="op">==</span> <span class="str">"GptOssForCausalLM"</span><span class="op">:</span>&nbsp;</span><span class="r"><span class="annotate short">19&#x202F;&#x219B;&#x202F;21</span><span class="annotate long">line 19 didn't jump to line 21 because the condition on line 19 was always true</span></span></p>
+    <p class="run"><span class="n"><a id="t20" href="#t20">20</a></span><span class="t">                <span class="key">return</span> <span class="nam">GptOssMoE</span><span class="op">(</span><span class="nam">cfg</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t21" href="#t21">21</a></span><span class="t">            <span class="key">return</span> <span class="nam">MoE</span><span class="op">(</span><span class="nam">cfg</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t22" href="#t22">22</a></span><span class="t">        <span class="key">elif</span> <span class="nam">cfg</span><span class="op">.</span><span class="nam">gated_mlp</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t23" href="#t23">23</a></span><span class="t">            <span class="key">return</span> <span class="nam">GatedMLP</span><span class="op">(</span><span class="nam">cfg</span><span class="op">)</span> <span class="key">if</span> <span class="key">not</span> <span class="nam">cfg</span><span class="op">.</span><span class="nam">load_in_4bit</span> <span class="key">else</span> <span class="nam">GatedMLP4Bit</span><span class="op">(</span><span class="nam">cfg</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t24" href="#t24">24</a></span><span class="t">        <span class="key">else</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t25" href="#t25">25</a></span><span class="t">            <span class="key">return</span> <span class="nam">MLP</span><span class="op">(</span><span class="nam">cfg</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
 </main>
 <footer>
     <div class="content">
@@ -112,7 +116,7 @@
             <a class="nav" href="z_af97b5493da09a14_head_detector_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.6.1">coverage.py v7.6.1</a>,
-            created at 2025-07-09 19:34 +0000
+            created at 2026-03-24 16:35 +0000
         </p>
     </div>
 </footer>
