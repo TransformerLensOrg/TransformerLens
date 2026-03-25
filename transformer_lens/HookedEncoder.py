@@ -367,6 +367,7 @@ class HookedEncoder(HookedRootModule):
         return self.to("cpu")
 
     def mps(self: T) -> T:
+        """Warning: MPS may produce silently incorrect results. See #1178."""
         return self.to(torch.device("mps"))
 
     @classmethod

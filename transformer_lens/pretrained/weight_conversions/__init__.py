@@ -23,3 +23,6 @@ from .qwen import convert_qwen_weights
 from .qwen2 import convert_qwen2_weights
 from .qwen3 import convert_qwen3_weights
 from .t5 import convert_t5_weights
+from .hubert import convert_hubert_weights
+from .apertus import convert_apertus_weights
+from .openai import convert_gpt_oss_weights

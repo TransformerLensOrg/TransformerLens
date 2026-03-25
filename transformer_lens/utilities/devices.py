@@ -59,11 +59,15 @@ def move_to_and_update_config(
     Returns:
         The model after the operation
     """
+    from transformer_lens.utils import warn_if_mps
+
     if isinstance(device_or_dtype, torch.device):
+        warn_if_mps(device_or_dtype)
         model.cfg.device = device_or_dtype.type
         if print_details:
             print("Moving model to device: ", model.cfg.device)
     elif isinstance(device_or_dtype, str):
+        warn_if_mps(device_or_dtype)
         model.cfg.device = device_or_dtype
         if print_details:
             print("Moving model to device: ", model.cfg.device)
