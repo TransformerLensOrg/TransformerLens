@@ -391,7 +391,13 @@ def boot(
         # Ensure all parameters match the requested dtype. Some architectures
         # (e.g., MoE models) retain native bfloat16 weights even when
         # torch_dtype is specified during from_pretrained().
-        hf_model = hf_model.to(dtype=dtype)
+        # Only cast parameters (trainable weights), not buffers. HF
+        # intentionally keeps some buffers in float32 for precision (e.g.,
+        # RotaryEmbedding.inv_freq). Casting them to bfloat16 introduces
+        # rounding that compounds through every attention layer.
+        for param in hf_model.parameters():
+            if param.is_floating_point() and param.dtype != dtype:
+                param.data = param.data.to(dtype=dtype)
     adapter.prepare_model(hf_model)
     tokenizer = tokenizer
     default_padding_side = getattr(adapter.cfg, "default_padding_side", None)
