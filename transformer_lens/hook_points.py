@@ -231,7 +231,11 @@ class HookPoint(nn.Module):
 
             # For backward hooks, PyTorch expects the return to be a tuple of (grad,)
             if dir == "bwd" and hook_result is not None:
-                return hook_result if isinstance(hook_result, tuple) and len(hook_result) == 1 else (hook_result,)
+                return (
+                    hook_result
+                    if isinstance(hook_result, tuple) and len(hook_result) == 1
+                    else (hook_result,)
+                )
 
             return hook_result
 

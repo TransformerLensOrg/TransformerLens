@@ -20,7 +20,7 @@ from transformer_lens.utilities import *  # noqa: F401,F403
 # ---------------------------------------------------------------------------
 
 
-def get_device() -> torch.device:
+def get_device() -> torch.device:  # type: ignore[no-redef]  # intentionally overrides utilities.devices.get_device
     """Get the best available device, with MPS safety checks.
 
     MPS is only auto-selected when the environment variable

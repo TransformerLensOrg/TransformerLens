@@ -34,7 +34,6 @@ def gelu_pytorch_tanh(input: torch.Tensor) -> torch.Tensor:
     return F.gelu(input, approximate="tanh")
 
 
-
 def solu(input: Float[torch.Tensor, "batch pos d_mlp"]) -> Float[torch.Tensor, "batch pos d_mlp"]:
     """
     SoLU activation function as described by

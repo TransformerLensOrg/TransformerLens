@@ -20,9 +20,9 @@ from typing_extensions import Literal
 from transformer_lens import loading_from_pretrained as loading
 from transformer_lens.ActivationCache import ActivationCache
 from transformer_lens.components import MLP, Attention, BertBlock
+from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookedRootModule
-from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.utilities import devices
 
 T = TypeVar("T", bound="HookedAudioEncoder")
@@ -97,7 +97,7 @@ class HookedAudioEncoder(HookedRootModule):
         raw_inputs: Union[torch.Tensor, List[Union[torch.Tensor, np.ndarray]]],
         sampling_rate: int = 16000,
         move_to_device: bool = True,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         """
         Convert raw audio batch -> (projected frames, frame_attention_mask)
 
@@ -403,21 +403,21 @@ class HookedAudioEncoder(HookedRootModule):
 
         model.processor = AutoFeatureExtractor.from_pretrained(official_model_name)
 
+        hubert_model: Union[Wav2Vec2Model, HubertModel]
         if "wav2vec2" in model_name:
             hubert_model = Wav2Vec2Model.from_pretrained(official_model_name)
         else:
             hubert_model = HubertModel.from_pretrained(official_model_name)
 
-        if move_to_device:
-            if cfg.device is None:
-                raise ValueError("Cannot move to device when device is None")
-            hubert_model.to(cfg.device)
-
         hubert_model.eval()
         model.hubert_model = hubert_model
 
         if move_to_device:
-            model.to(cfg.device)
+            device = cfg.device
+            if device is None:
+                raise ValueError("Cannot move to device when device is None")
+            hubert_model.to(torch.device(device))  # type: ignore[arg-type]
+            model.to(device)
 
         print(f"Loaded pretrained model {model_name} into HookedEncoder")
 

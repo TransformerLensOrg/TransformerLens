@@ -3,7 +3,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from transformer_lens.utilities.activation_functions import SUPPORTED_ACTIVATIONS, XIELU, xielu
+from transformer_lens.utilities.activation_functions import (
+    SUPPORTED_ACTIVATIONS,
+    XIELU,
+    xielu,
+)
 
 
 class TestXIELUClass:

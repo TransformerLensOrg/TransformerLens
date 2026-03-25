@@ -107,9 +107,7 @@ def tokenize_and_concatenate(
                 padding_length = seq_len - len(tokens)
                 # Use eos_token_id for padding if tokenizer originally had no pad token,
                 # to avoid introducing token IDs outside the original vocabulary.
-                padding_id = (
-                    tokenizer.eos_token_id if not has_pad_token else tokenizer.pad_token_id
-                )
+                padding_id = tokenizer.eos_token_id if not has_pad_token else tokenizer.pad_token_id
                 padding = np.full(padding_length, padding_id)
                 tokens = np.concatenate([tokens, padding], axis=0)
         else:
