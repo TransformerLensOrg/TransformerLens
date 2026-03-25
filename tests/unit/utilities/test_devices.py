@@ -6,8 +6,12 @@ from unittest.mock import Mock, patch
 import pytest
 import torch
 
-from transformer_lens.utilities.devices import ModelWithCfg, move_to_and_update_config
-from transformer_lens.utils import get_device, warn_if_mps
+from transformer_lens.utilities.devices import (
+    ModelWithCfg,
+    get_device,
+    move_to_and_update_config,
+    warn_if_mps,
+)
 
 
 class MockModelWithCfg:
@@ -154,11 +158,11 @@ def test_move_to_and_update_config_print_details_false():
 @pytest.fixture(autouse=True)
 def reset_mps_warned():
     """Reset the _mps_warned flag before each test."""
-    import transformer_lens.utils as utils_module
+    import transformer_lens.utilities.devices as devices_module
 
-    utils_module._mps_warned = False
+    devices_module._mps_warned = False
     yield
-    utils_module._mps_warned = False
+    devices_module._mps_warned = False
 
 
 @patch.dict("os.environ", {}, clear=False)
@@ -253,19 +257,19 @@ def test_warn_if_mps_suppressed_when_torch_version_safe():
     """warn_if_mps() should be silent when PyTorch meets the safe version threshold."""
     import os
 
-    import transformer_lens.utils as utils_module
+    import transformer_lens.utilities.devices as devices_module
 
     os.environ.pop("TRANSFORMERLENS_ALLOW_MPS", None)
     # Simulate a future safe version threshold below current torch
-    original = utils_module._MPS_MIN_SAFE_TORCH_VERSION
+    original = devices_module._MPS_MIN_SAFE_TORCH_VERSION
     try:
-        utils_module._MPS_MIN_SAFE_TORCH_VERSION = (1, 0)
+        devices_module._MPS_MIN_SAFE_TORCH_VERSION = (1, 0)
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
             warn_if_mps("mps")
             assert len(w) == 0
     finally:
-        utils_module._MPS_MIN_SAFE_TORCH_VERSION = original
+        devices_module._MPS_MIN_SAFE_TORCH_VERSION = original
 
 
 @patch.dict("os.environ", {}, clear=False)
@@ -273,16 +277,16 @@ def test_warn_if_mps_active_when_torch_version_below_safe():
     """warn_if_mps() should warn when PyTorch is below the safe version threshold."""
     import os
 
-    import transformer_lens.utils as utils_module
+    import transformer_lens.utilities.devices as devices_module
 
     os.environ.pop("TRANSFORMERLENS_ALLOW_MPS", None)
     # Set threshold above any realistic current version
-    original = utils_module._MPS_MIN_SAFE_TORCH_VERSION
+    original = devices_module._MPS_MIN_SAFE_TORCH_VERSION
     try:
-        utils_module._MPS_MIN_SAFE_TORCH_VERSION = (99, 0)
+        devices_module._MPS_MIN_SAFE_TORCH_VERSION = (99, 0)
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
             warn_if_mps("mps")
             assert len(w) == 1
     finally:
-        utils_module._MPS_MIN_SAFE_TORCH_VERSION = original
+        devices_module._MPS_MIN_SAFE_TORCH_VERSION = original
