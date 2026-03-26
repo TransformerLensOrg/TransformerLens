@@ -23,8 +23,9 @@
         jaxtyping=">=0.2.11"
         numpy=[
             {version=">=1.20,<1.25", python=">=3.8,<3.9"},
-            {version=">=1.24,<2", python=">=3.9,<3.12"},
-            {version=">=1.26,<2", python=">=3.12,<3.13"},
+            {version=">=2.0,<2.1", python=">=3.9,<3.10"},
+            {version=">=2.0,<2.3", python=">=3.10,<3.11"},
+            {version=">=2.0", python=">=3.11"},
         ]
         pandas=[
             {version=">=1.1.5,<2.1", python=">=3.8,<3.12"},
@@ -98,8 +99,7 @@
         doctest_optionflags="NORMALIZE_WHITESPACE ELLIPSIS FLOAT_CMP"
         filterwarnings=[
             "ignore:pkg_resources is deprecated as an API:DeprecationWarning",
-            # Ignore numpy.distutils deprecation warning caused by pandas
-            # More info: https://numpy.org/doc/stable/reference/distutils.html#module-numpy.distutils
+            # Ignore distutils deprecation warning caused by pandas on Python < 3.12
             "ignore:distutils Version classes are deprecated:DeprecationWarning",
         ]
 
