@@ -47,7 +47,7 @@ def test_factored_matrix_broadcast_mismatch():
     A = torch.ones((9, 5, 3))
     B = torch.ones((2, 4, 3, 7))
 
-    with pytest.raises(RuntimeError):
+    with pytest.raises(RuntimeError, match=r"[Mm]ismatch"):
         FactoredMatrix(A, B)
 
 
