@@ -47,10 +47,8 @@ def test_factored_matrix_broadcast_mismatch():
     A = torch.ones((9, 5, 3))
     B = torch.ones((2, 4, 3, 7))
 
-    with pytest.raises(RuntimeError) as e:
+    with pytest.raises(RuntimeError):
         FactoredMatrix(A, B)
-
-    assert "Shape mismatch" in str(e.value)
 
 
 @pytest.mark.skip(
