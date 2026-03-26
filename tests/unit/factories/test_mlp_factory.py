@@ -72,3 +72,25 @@ def test_create_moe():
         )
         mlp = MLPFactory.create_mlp(config)
         assert isinstance(mlp, GatedMLP4Bit)
+
+
+def test_create_gpt_oss_moe():
+    """MLPFactory should return GptOssMoE for GPT-OSS architecture."""
+    from transformer_lens.components.mlps.gpt_oss_moe import GptOssMoE
+
+    config = HookedTransformerConfig.unwrap(
+        {
+            "n_layers": 1,
+            "n_ctx": 64,
+            "d_head": 8,
+            "d_model": 32,
+            "d_mlp": 16,
+            "act_fn": "silu",
+            "gated_mlp": True,
+            "num_experts": 2,
+            "experts_per_token": 1,
+            "original_architecture": "GptOssForCausalLM",
+        }
+    )
+    mlp = MLPFactory.create_mlp(config)
+    assert isinstance(mlp, GptOssMoE), f"Expected GptOssMoE, got {type(mlp)}"

@@ -1136,6 +1136,7 @@ class HookedTransformer(HookedRootModule):
         return self.to(torch.device("cpu"))
 
     def mps(self: T) -> T:
+        """Warning: MPS may produce silently incorrect results. See #1178."""
         return self.to(torch.device("mps"))
 
     def move_model_modules_to_device(self):
@@ -1171,6 +1172,7 @@ class HookedTransformer(HookedRootModule):
         default_padding_side: Optional[Literal["left", "right"]] = None,
         dtype="float32",
         first_n_layers: Optional[int] = None,
+        n_ctx: Optional[int] = None,
         **from_pretrained_kwargs,
     ) -> T:
         """Load in a Pretrained Model.
@@ -1381,6 +1383,7 @@ class HookedTransformer(HookedRootModule):
             default_prepend_bos=default_prepend_bos,
             dtype=dtype,
             first_n_layers=first_n_layers,
+            n_ctx=n_ctx,
             **from_pretrained_kwargs,
         )
 

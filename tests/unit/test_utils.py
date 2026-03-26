@@ -1,3 +1,5 @@
+import warnings
+
 import numpy as np
 import pytest
 import torch
@@ -433,3 +435,115 @@ class TestInitXavier:
         x_new = nn.Parameter(torch.empty(2, d_model, 137))
         utils.init_xavier_normal_(x_new)
         assert torch.allclose(x_new, x, rtol=1e-2)
+
+
+class TestTokenizeAndConcatenate:
+    """Tests for tokenize_and_concatenate utility function."""
+
+    def test_no_split_tokens_across_chunks(self):
+        """
+        Regression test for issue #1133.
+        tokenize_and_concatenate previously split text into chunks by character
+        count, which could cut words in half and produce token pairs that would
+        never occur in naturally tokenized text. This test verifies that all
+        tokens in the output also appear consecutively in a clean tokenization
+        of the same text, confirming no artificial token pairs were introduced.
+        """
+        from datasets import Dataset
+        from transformers import AutoTokenizer
+
+        tokenizer = AutoTokenizer.from_pretrained("gpt2")
+
+        # Construct text where character-based splitting would cut mid-word.
+        # Repeating a long word many times ensures a chunk boundary falls inside it.
+        text = "Military " * 500
+        dataset = Dataset.from_dict({"text": [text]})
+
+        result = utils.tokenize_and_concatenate(
+            dataset,
+            tokenizer,
+            streaming=False,
+            max_length=64,
+            add_bos_token=False,
+        )
+
+        # Tokenize the same text cleanly in one shot (no chunking)
+        clean_tokens = tokenizer(text, return_tensors="np")["input_ids"].flatten()
+
+        # Build a set of all consecutive pairs from the clean tokenization
+        clean_pairs = set(zip(clean_tokens[:-1], clean_tokens[1:]))
+
+        # Every consecutive pair in our output must exist in the clean pairs
+        output_tokens = np.array(result["tokens"]).flatten()
+        for i in range(len(output_tokens) - 1):
+            pair = (output_tokens[i], output_tokens[i + 1])
+            assert pair in clean_pairs, (
+                f"Token pair {pair} found in tokenize_and_concatenate output "
+                f"but never occurs in natural tokenization. "
+                f"This indicates a word was split across chunk boundaries."
+            )
+
+
+def test_tokenize_and_concatenate_no_spurious_sequence_length_warning():
+    """Test that tokenize_and_concatenate does not emit the HF 'sequence length longer than maximum' warning."""
+    from datasets import Dataset
+    from transformers import AutoTokenizer
+
+    # Use a tokenizer with model_max_length and EOS
+    tokenizer = AutoTokenizer.from_pretrained("t5-small")
+    assert tokenizer.model_max_length == 512
+    assert tokenizer.eos_token is not None
+
+    # Long text so that when split into 20 chunks, at least one chunk tokenizes to > 512 tokens
+    long_text = "word " * 20000
+    dataset = Dataset.from_dict({"text": [long_text]})
+
+    with warnings.catch_warnings(record=True) as recorded:
+        warnings.simplefilter("always")
+        result = utils.tokenize_and_concatenate(
+            dataset,
+            tokenizer,
+            max_length=tokenizer.model_max_length,
+            add_bos_token=False,
+            streaming=True,
+        )
+
+    # No warning about sequence length exceeding model maximum
+    for w in recorded:
+        msg = str(w.message)
+        assert (
+            "longer than the specified maximum" not in msg
+        ), f"tokenize_and_concatenate should not emit sequence-length warning; got: {msg}"
+
+    # Sanity: output has expected shape (batch, max_length); result is a Dataset
+    assert len(result) >= 1
+    first_row = result[0]["tokens"]
+    assert first_row.shape[0] == tokenizer.model_max_length
+    assert first_row.dim() == 1
+
+
+def test_tokenize_and_concatenate_short_sequence_no_invalid_tokens():
+    """
+    When the tokenizer has no pad token, output should only contain token IDs in the model's vocab.
+    """
+    from datasets import Dataset
+    from transformers import AutoTokenizer
+
+    tokenizer = AutoTokenizer.from_pretrained("gpt2")
+    assert tokenizer.pad_token is None, "GPT-2 has no pad token"
+    original_vocab_size = tokenizer.vocab_size
+
+    dataset = Dataset.from_dict({"text": ["Hello", "world", "today"]})
+    result = utils.tokenize_and_concatenate(
+        dataset,
+        tokenizer,
+        column_name="text",
+        add_bos_token=True,
+        streaming=True,
+    )
+    tokens = result[0]["tokens"]
+    assert tokens.min().item() >= 0
+    assert tokens.max().item() < original_vocab_size, (
+        "Returned tensor contained invalid token ID (e.g. synthetic pad). "
+        "All IDs must be < original tokenizer vocab size."
+    )

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import os
 from copy import deepcopy
+from typing import Any
 
 import einops
 import numpy as np
@@ -43,7 +44,8 @@ def tokenize_and_concatenate(
         Dataset: Returns the tokenized dataset, as a dataset of tensors, with a single column called "tokens"
     """
     dataset = keep_single_column(dataset, column_name)
-    if tokenizer.pad_token is None:
+    has_pad_token = tokenizer.pad_token is not None
+    if not has_pad_token:
         # We add a padding token, purely to implement the tokenizer. This will be removed before inputting tokens to the model, so we do not need to increment d_vocab in the model.
         tokenizer.add_special_tokens({"pad_token": "<PAD>"})
     # Define the length to chop things up into - leaving space for a bos_token if required
@@ -52,21 +54,44 @@ def tokenize_and_concatenate(
     else:
         seq_len = max_length
 
-    def tokenize_function(examples: dict[str, list[str]]) -> dict[str, np.ndarray]:
+    # Suppress the "sequence length longer than maximum" warning during chunked tokenization.
+    _deprecation_warnings_saved = None
+    if hasattr(tokenizer, "deprecation_warnings"):
+        _deprecation_warnings_saved = tokenizer.deprecation_warnings.copy()
+        tokenizer.deprecation_warnings[
+            "sequence-length-is-longer-than-the-specified-maximum"
+        ] = False
+
+    def tokenize_function(examples: Any) -> dict[str, np.ndarray]:
+        # datasets.map() may pass a LazyBatch, not a plain dict; accept dict-like batches
         text = examples[column_name]
         # Concatenate it all into an enormous string, separated by eos_tokens
-        if not hasattr(tokenizer, "eos_token") or tokenizer.eos_token is None:
-            raise ValueError("Tokenizer must have an eos_token")
+        assert tokenizer.eos_token is not None, "Tokenizer must have an EOS token."
         full_text = tokenizer.eos_token.join(text)
 
         # Handle the case when full_text is empty
         if not full_text.strip():
             return {"tokens": np.array([], dtype=np.int64)}
 
-        # Divide into 20 chunks of ~ equal length
+        # Divide into 20 chunks of ~ equal length, splitting at whitespace
+        # boundaries to avoid cutting words in half (which creates token pairs
+        # that would never occur in naturally tokenized text - see issue #1133)
         num_chunks = 20
         chunk_length = (len(full_text) - 1) // num_chunks + 1
-        chunks = [full_text[i * chunk_length : (i + 1) * chunk_length] for i in range(num_chunks)]
+        chunks = []
+        start = 0
+        lookahead = chunk_length // 10
+        for i in range(num_chunks):
+            end = min(start + chunk_length, len(full_text))
+            # Advance end to the next whitespace boundary to avoid splitting mid-token.
+            # Lookahead is bounded so pathological inputs (e.g. no whitespace) degrade
+            # gracefully to character-based splitting rather than consuming the rest of
+            # the string.
+            boundary = min(end + lookahead, len(full_text))
+            while end < boundary and not full_text[end].isspace():
+                end += 1
+            chunks.append(full_text[start:end])
+            start = end
         # Tokenize the chunks in parallel. Uses NumPy because HuggingFace map doesn't want tensors returned
         tokens = tokenizer(chunks, return_tensors="np", padding=True)["input_ids"].flatten()
         # Drop padding tokens
@@ -80,7 +105,10 @@ def tokenize_and_concatenate(
             tokens = tokens[:seq_len]
             if len(tokens) < seq_len:
                 padding_length = seq_len - len(tokens)
-                padding = np.full(padding_length, tokenizer.pad_token_id)
+                # Use eos_token_id for padding if tokenizer originally had no pad token,
+                # to avoid introducing token IDs outside the original vocabulary.
+                padding_id = tokenizer.eos_token_id if not has_pad_token else tokenizer.pad_token_id
+                padding = np.full(padding_length, padding_id)
                 tokens = np.concatenate([tokens, padding], axis=0)
         else:
             num_batches = num_tokens // seq_len
@@ -95,12 +123,17 @@ def tokenize_and_concatenate(
             tokens = np.concatenate([prefix, tokens], axis=1)
         return {"tokens": tokens}
 
-    tokenized_dataset = dataset.map(
-        tokenize_function,
-        batched=True,
-        num_proc=(num_proc if not streaming else None),
-        remove_columns=[column_name],
-    )
+    try:
+        tokenized_dataset = dataset.map(
+            tokenize_function,
+            batched=True,
+            num_proc=(num_proc if not streaming else None),
+            remove_columns=[column_name],
+        )
+    finally:
+        if _deprecation_warnings_saved is not None:
+            tokenizer.deprecation_warnings.clear()
+            tokenizer.deprecation_warnings.update(_deprecation_warnings_saved)
     tokenized_dataset.set_format(type="torch", columns=["tokens"])
     return tokenized_dataset
 
