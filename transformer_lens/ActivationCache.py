@@ -24,7 +24,7 @@ from jaxtyping import Float, Int
 from typing_extensions import Literal
 
 import transformer_lens.utils as utils
-from transformer_lens.utils import Slice, SliceInput
+from transformer_lens.utils import Slice, SliceInput, warn_if_mps
 
 
 class ActivationCache:
@@ -215,6 +215,7 @@ class ActivationCache:
                 DeprecationWarning,
             )
 
+        warn_if_mps(device)
         self.cache_dict = {key: value.to(device) for key, value in self.cache_dict.items()}
 
         if move_model:
@@ -350,7 +351,23 @@ class ActivationCache:
 
         To project this into the vocabulary space, remember that there is a final layer norm in most
         decoder-only transformers. Therefore, you need to first apply the final layer norm (which
-        can be done with `apply_ln`), and then multiply by the unembedding matrix (:math:`W_U`).
+        can be done with `apply_ln`), and then multiply by the unembedding matrix (:math:`W_U`)
+        and optionally add the unembedding bias (:math:`b_U`).
+
+        **Note on bias terms:** There are two valid approaches for the final projection:
+
+        1. **With bias terms:** Use `model.unembed(normalized_resid)` which applies both :math:`W_U`
+           and :math:`b_U` (equivalent to `normalized_resid @ model.W_U + model.b_U`). This works
+           correctly with both `fold_ln=True` and `fold_ln=False` settings, as the biases are
+           handled consistently.
+        2. **Without bias terms:** Use only `normalized_resid @ model.W_U`. If taking this approach,
+           you should instantiate the model with `fold_ln=True`, which folds the layer norm scaling
+           into :math:`W_U` and the layer norm bias into :math:`b_U`. Since `apply_ln=True` will
+           apply the (now parameter-free) layer norm, and you skip :math:`b_U`, no bias terms are
+           included. With `fold_ln=False`, the layer norm bias would still be applied, which is
+           typically not desired when excluding bias terms.
+
+        Both approaches are commonly used in the literature and are valid interpretability choices.
 
         If you instead want to look at contributions to the residual stream from each component
         (e.g. for direct logit attribution), see :meth:`decompose_resid` instead, or
@@ -362,11 +379,10 @@ class ActivationCache:
         Logit Lens analysis can be done as follows:
 
         >>> from transformer_lens import HookedTransformer
-        >>> from einops import einsum
         >>> import torch
         >>> import pandas as pd
 
-        >>> model = HookedTransformer.from_pretrained("tiny-stories-1M", device="cpu")
+        >>> model = HookedTransformer.from_pretrained("tiny-stories-1M", device="cpu", fold_ln=True)
         Loaded pretrained model tiny-stories-1M into HookedTransformer
 
         >>> prompt = "Why did the chicken cross the"
@@ -381,20 +397,24 @@ class ActivationCache:
         >>> print(last_token_accum.shape)  # layer, d_model
         torch.Size([9, 64])
 
+
         >>> W_U = model.W_U
         >>> print(W_U.shape)
         torch.Size([64, 50257])
 
-        >>> layers_unembedded = einsum(
-        ...         last_token_accum,
-        ...         W_U,
-        ...         "layer d_model, d_model d_vocab -> layer d_vocab"
-        ...     )
-        >>> print(layers_unembedded.shape)
+        >>> # Project to vocabulary without unembedding bias
+        >>> layers_logits = last_token_accum @ W_U  # layer, d_vocab
+        >>> print(layers_logits.shape)
+        torch.Size([9, 50257])
+
+        >>> # If you want to apply the unembedding bias, add b_U when present:
+        >>> # b_U = getattr(model, "b_U", None)
+        >>> # layers_logits = layers_logits + b_U if b_U is not None else layers_logits
+        >>> # print(layers_logits.shape)
         torch.Size([9, 50257])
 
         >>> # Get the rank of the correct answer by layer
-        >>> sorted_indices = torch.argsort(layers_unembedded, dim=1, descending=True)
+        >>> sorted_indices = torch.argsort(layers_logits, dim=1, descending=True)
         >>> rank_answer = (sorted_indices == 2975).nonzero(as_tuple=True)[1]
         >>> print(pd.Series(rank_answer, index=labels))
         0_pre         4442
@@ -418,7 +438,10 @@ class ActivationCache:
             incl_mid:
                 Whether to return `resid_mid` for all previous layers.
             apply_ln:
-                Whether to apply LayerNorm to the stack.
+                Whether to apply the final layer norm to the stack. When True, applies
+                `model.ln_final`, which recomputes normalization statistics (mean and
+                variance/RMS) for each intermediate state in the stack, transforming the
+                activations into the format expected by the unembedding layer.
             pos_slice:
                 A slice object to apply to the pos dimension. Defaults to None, do nothing.
             mlp_input:
@@ -453,8 +476,13 @@ class ActivationCache:
         components_list = [pos_slice.apply(c, dim=-2) for c in components_list]
         components = torch.stack(components_list, dim=0)
         if apply_ln:
+            recompute_ln = layer == self.model.cfg.n_layers
             components = self.apply_ln_to_stack(
-                components, layer, pos_slice=pos_slice, mlp_input=mlp_input
+                components,
+                layer,
+                pos_slice=pos_slice,
+                mlp_input=mlp_input,
+                recompute_ln=recompute_ln,
             )
         if return_labels:
             return components, labels
@@ -970,6 +998,7 @@ class ActivationCache:
         pos_slice: Union[Slice, SliceInput] = None,
         batch_slice: Union[Slice, SliceInput] = None,
         has_batch_dim: bool = True,
+        recompute_ln: bool = False,
     ) -> Float[torch.Tensor, "num_components *batch_and_pos_dims_out d_model"]:
         """Apply Layer Norm to a Stack.
 
@@ -981,6 +1010,10 @@ class ActivationCache:
         The layernorm scale is global across the entire residual stream for each layer, batch
         element and position, which is why we need to use the cached scale factors rather than just
         applying a new LayerNorm.
+
+        When recompute_ln=True and the target layer is the final layer (unembed), each
+        component is normalized using stats recomputed from that component; use this for logit lens
+        analysis. When recompute_ln=False, a single cached scale is used for all components.
 
         If the model does not use LayerNorm or RMSNorm, it returns the residual stack unchanged.
 
@@ -1004,6 +1037,9 @@ class ActivationCache:
                 The slice to take on the batch dimension. Defaults to None, do nothing.
             has_batch_dim:
                 Whether residual_stack has a batch dimension.
+            recompute_ln:
+                If True and target layer is the unembed (final layer), apply the final layer norm
+                to each component with statistics recomputed from that component. Defaults to False.
 
         """
         if self.model.cfg.normalization_type not in ["LN", "LNPre", "RMS", "RMSPre"]:
@@ -1021,6 +1057,22 @@ class ActivationCache:
         if has_batch_dim:
             # Apply batch slice to the stack
             residual_stack = batch_slice.apply(residual_stack, dim=1)
+
+        # Logit lens: apply final layer norm to each component with recomputed statistics
+        if recompute_ln and layer == self.model.cfg.n_layers and hasattr(self.model, "ln_final"):
+            ln_final = self.model.ln_final
+            had_pos_dim = residual_stack.ndim == 4
+            results = []
+            for i in range(residual_stack.shape[0]):
+                x = residual_stack[i]
+                # ln_final expects (batch, pos, d_model); ensure pos dim present
+                if x.ndim == 2:
+                    x = x.unsqueeze(1)
+                out = ln_final(x)
+                if not had_pos_dim:
+                    out = out.squeeze(1)
+                results.append(out)
+            return torch.stack(results, dim=0)
 
         # Center the stack onlny if the model uses LayerNorm
         if self.model.cfg.normalization_type in ["LN", "LNPre"]:

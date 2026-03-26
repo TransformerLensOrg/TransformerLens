@@ -32,7 +32,7 @@ from torch import Tensor
 from transformer_lens.conversion_utils.conversion_steps.base_tensor_conversion import (
     BaseTensorConversion,
 )
-from transformer_lens.utils import Slice, SliceInput
+from transformer_lens.utils import Slice, SliceInput, warn_if_mps
 
 
 @dataclass
@@ -228,6 +228,14 @@ class HookPoint(nn.Module):
             # Apply output reversion if hook_conversion exists and hook returned a value
             if hook_result is not None and self.hook_conversion is not None:
                 hook_result = self.hook_conversion.revert(hook_result)
+
+            # For backward hooks, PyTorch expects the return to be a tuple of (grad,)
+            if dir == "bwd" and hook_result is not None:
+                return (
+                    hook_result
+                    if isinstance(hook_result, tuple) and len(hook_result) == 1
+                    else (hook_result,)
+                )
 
             return hook_result
 
@@ -678,6 +686,8 @@ class HookedRootModule(nn.Module):
         Returns:
             cache (dict): The cache where activations will be stored.
         """
+        if device is not None:
+            warn_if_mps(device)
         if cache is None:
             cache = {}
 
@@ -798,6 +808,8 @@ class HookedRootModule(nn.Module):
             fwd_hooks (list): The forward hooks.
             bwd_hooks (list): The backward hooks. Empty if incl_bwd is False.
         """
+        if device is not None:
+            warn_if_mps(device)
         if cache is None:
             cache = {}
 
