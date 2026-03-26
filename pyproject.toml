@@ -14,12 +14,19 @@
 
     [tool.poetry.dependencies]
         accelerate=">=0.23.0" # Needed for Llama Models
-        beartype="^0.14.1"
+        beartype=[
+            {version=">=0.14.1,<0.20.0", python=">=3.8,<3.9"},
+            {version=">=0.14.1,<0.22.0", python=">=3.9,<3.10"},
+            {version=">=0.14.1", python=">=3.10"},
+        ]
         better-abc="^0.0.3"
         datasets=">=2.7.1"
         einops=">=0.6.0"
         fancy-einsum=">=0.0.3"
-        huggingface-hub=">=0.23.2,<1.0"
+        huggingface-hub=[
+            {version=">=0.23.2,<1.0", python=">=3.8,<3.9"},
+            {version=">=0.23.2", python=">=3.9"},
+        ]
         jaxtyping=">=0.2.11"
         numpy=[
             {version=">=1.20,<1.25", python=">=3.8,<3.9"},
