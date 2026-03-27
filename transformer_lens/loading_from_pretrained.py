@@ -918,7 +918,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "n_ctx": 8192,
             "eps": 1e-06,
             "d_vocab": 256000,
-            "act_fn": "gelu_new",
+            "act_fn": "gelu",
             "initializer_range": 0.02,
             "normalization_type": "RMS",
             "rotary_base": 10000,
@@ -940,7 +940,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "n_ctx": 8192,
             "eps": 1e-06,
             "d_vocab": 256000,
-            "act_fn": "gelu_new",
+            "act_fn": "gelu",
             "initializer_range": 0.02,
             "normalization_type": "RMS",
             "rotary_base": 10000.0,
@@ -1151,6 +1151,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "normalization_type": "RMS",
             "rotary_base": 1000000,  # Global attention layers
             "rotary_base_local": 10000,  # Local attention layers (per Gemma 3 paper)
+            "rotary_scaling_factor": 8.0,  # Linear RoPE scaling for global layers
             "positional_embedding_type": "rotary",
             "use_attn_scale": True,
             "n_key_value_heads": 4,
@@ -1213,6 +1214,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "normalization_type": "RMS",
             "rotary_base": 1000000,  # Global attention layers
             "rotary_base_local": 10000,  # Local attention layers (per Gemma 3 paper)
+            "rotary_scaling_factor": 8.0,  # Linear RoPE scaling for global layers
             "positional_embedding_type": "rotary",
             "use_attn_scale": True,
             "n_key_value_heads": 8,
@@ -1294,6 +1296,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "normalization_type": "RMS",
             "rotary_base": 1000000,  # Global attention layers
             "rotary_base_local": 10000,  # Local attention layers (per Gemma 3 paper)
+            "rotary_scaling_factor": 8.0,  # Linear RoPE scaling for global layers
             "positional_embedding_type": "rotary",
             "use_attn_scale": True,
             "n_key_value_heads": 16,
@@ -1379,7 +1382,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "n_ctx": 8192,
             "eps": 1e-06,
             "d_vocab": 256000,
-            "act_fn": "gelu_new",
+            "act_fn": "gelu",
             "initializer_range": 0.02,
             "normalization_type": "RMS",
             "rotary_base": 10000,
@@ -1401,7 +1404,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "n_ctx": 8192,
             "eps": 1e-06,
             "d_vocab": 256000,
-            "act_fn": "gelu_new",
+            "act_fn": "gelu",
             "initializer_range": 0.02,
             "normalization_type": "RMS",
             "rotary_base": 10000.0,
