@@ -333,7 +333,11 @@ class PositionEmbeddingsAttentionBridge(AttentionBridge):
         attn_output = attn_output.reshape(*input_shape, -1)
 
         # --- Output Projection ---
-        attn_output = hf_attn.o_proj(attn_output)
+        # Different architectures name this differently: o_proj (Llama, Gemma, Qwen),
+        # dense (Phi), out_proj (others)
+        o_proj = getattr(hf_attn, "o_proj", None) or getattr(hf_attn, "dense", None)
+        if o_proj is not None:
+            attn_output = o_proj(attn_output)
 
         # --- Output Hook ---
         attn_output = self.hook_out(attn_output)

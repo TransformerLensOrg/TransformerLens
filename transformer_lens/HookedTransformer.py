@@ -172,6 +172,8 @@ class HookedTransformer(HookedRootModule):
                     "OlmoForCausalLM",
                     "OlmoeForCausalLM",
                     "Olmo2ForCausalLM",
+                    "Qwen3ForCausalLM",
+                    "PhiForCausalLM",
                 ]
                 self.set_tokenizer(
                     AutoTokenizer.from_pretrained(
@@ -1407,7 +1409,10 @@ class HookedTransformer(HookedRootModule):
                 )
                 center_writing_weights = False
         # OLMo 2 uses post-norm (norm after attention/MLP, not before), which is
-        # incompatible with weight processing that assumes pre-norm structure.
+        # incompatible with fold_ln and center_writing_weights (these assume pre-norm).
+        # center_unembed and fold_value_biases are architecture-independent and remain valid:
+        # - center_unembed: softmax is always translation-invariant
+        # - fold_value_biases: attention patterns always sum to 1
         if cfg.original_architecture == "Olmo2ForCausalLM":
             if fold_ln:
                 logging.warning(
@@ -1421,19 +1426,6 @@ class HookedTransformer(HookedRootModule):
                     "architecture. Setting center_writing_weights=False."
                 )
                 center_writing_weights = False
-            if center_unembed:
-                logging.warning(
-                    "center_unembed=True is incompatible with OLMo 2's post-norm "
-                    "architecture (uses RMSNorm which does not center). "
-                    "Setting center_unembed=False."
-                )
-                center_unembed = False
-            if fold_value_biases:
-                logging.warning(
-                    "fold_value_biases=True is incompatible with OLMo 2's post-norm "
-                    "architecture. Setting fold_value_biases=False."
-                )
-                fold_value_biases = False
         if center_unembed and cfg.output_logits_soft_cap > 0.0:
             logging.warning(
                 "You tried to specify center_unembed=True for a model using logit softcap, but this can't be done! Softcapping is not invariant upon adding a constant "

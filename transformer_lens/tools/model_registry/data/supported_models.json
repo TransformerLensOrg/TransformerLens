@@ -8,7 +8,7 @@
   },
   "total_architectures": 35,
   "total_models": 5833,
-  "total_verified": 686,
+  "total_verified": 687,
   "models": [
     {
       "architecture_id": "Qwen2ForCausalLM",
@@ -27,14 +27,15 @@
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "Qwen/Qwen3-0.6B",
       "status": 1,
-      "verified_date": "2026-03-10",
+      "verified_date": "2026-03-27",
       "metadata": null,
       "note": "Full verification completed",
       "phase1_score": 100.0,
       "phase2_score": 100.0,
       "phase3_score": 100.0,
       "phase4_score": 91.9,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "GPT2LMHeadModel",
@@ -118,14 +119,15 @@
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "Qwen/Qwen3-4B",
       "status": 1,
-      "verified_date": "2026-03-10",
+      "verified_date": "2026-03-27",
       "metadata": null,
       "note": "Full verification completed",
       "phase1_score": 100.0,
       "phase2_score": 100.0,
       "phase3_score": 100.0,
       "phase4_score": 99.4,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "Qwen3ForCausalLM",
@@ -430,14 +432,15 @@
       "architecture_id": "PhiForCausalLM",
       "model_id": "microsoft/phi-2",
       "status": 1,
-      "verified_date": "2026-03-10",
+      "verified_date": "2026-03-27",
       "metadata": null,
-      "note": "Full verification completed",
+      "note": "Full verification completed with issues: P2=92.9% (failed: backward_hooks)",
       "phase1_score": 100.0,
-      "phase2_score": 100.0,
+      "phase2_score": 92.9,
       "phase3_score": 100.0,
       "phase4_score": 95.8,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "Qwen2ForCausalLM",
@@ -508,14 +511,15 @@
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "EleutherAI/pythia-160m",
       "status": 1,
-      "verified_date": "2026-03-10",
+      "verified_date": "2026-03-27",
       "metadata": null,
       "note": "Full verification completed",
       "phase1_score": 100.0,
       "phase2_score": 100.0,
       "phase3_score": 100.0,
       "phase4_score": 92.6,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -1340,14 +1344,15 @@
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "EleutherAI/pythia-70m-deduped",
       "status": 1,
-      "verified_date": "2026-03-10",
+      "verified_date": "2026-03-27",
       "metadata": null,
       "note": "Full verification completed",
       "phase1_score": 100.0,
       "phase2_score": 100.0,
       "phase3_score": 100.0,
       "phase4_score": 77.5,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "GptOssForCausalLM",
@@ -1742,15 +1747,16 @@
     {
       "architecture_id": "Olmo2ForCausalLM",
       "model_id": "allenai/OLMo-2-0425-1B",
-      "status": 3,
-      "verified_date": "2026-03-10",
+      "status": 1,
+      "verified_date": "2026-03-27",
       "metadata": null,
-      "note": "Below threshold: P3=90.0% but required tests failed: logits_equivalence \u2014 Tensors differ: max_diff=28.810719, mean_rel=60.400272",
+      "note": "Full verification completed",
       "phase1_score": 100.0,
       "phase2_score": 100.0,
-      "phase3_score": 90.0,
+      "phase3_score": 100.0,
       "phase4_score": 94.8,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "MistralForCausalLM",
@@ -2653,14 +2659,15 @@
       "architecture_id": "PhiForCausalLM",
       "model_id": "microsoft/phi-1_5",
       "status": 1,
-      "verified_date": "2026-03-10",
+      "verified_date": "2026-03-27",
       "metadata": null,
       "note": "Full verification completed",
       "phase1_score": 100.0,
       "phase2_score": 100.0,
       "phase3_score": 100.0,
       "phase4_score": 97.9,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "Qwen2ForCausalLM",
@@ -5877,14 +5884,15 @@
       "architecture_id": "Olmo2ForCausalLM",
       "model_id": "allenai/OLMo-2-0425-1B-Instruct",
       "status": 1,
-      "verified_date": "2026-03-10",
+      "verified_date": "2026-03-27",
       "metadata": null,
       "note": "Full verification completed",
       "phase1_score": 100.0,
       "phase2_score": 100.0,
       "phase3_score": 100.0,
       "phase4_score": 94.2,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "Gemma3ForCausalLM",

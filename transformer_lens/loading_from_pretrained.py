@@ -535,6 +535,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "positional_embedding_type": "rotary",
             "rotary_adjacent_pairs": False,
             "normalization_type": "LN",
+            "default_prepend_bos": False,
         }
         rotary_pct = get_rotary_pct_from_config(hf_config)
         cfg_dict["rotary_dim"] = round(rotary_pct * cfg_dict["d_head"])
@@ -836,6 +837,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "rotary_base": _get_rope_theta(hf_config),
             "use_attn_scale": True,
             "parallel_attn_mlp": True,
+            "default_prepend_bos": False,
         }
         partial_rotary_factor = hf_config.partial_rotary_factor
         cfg_dict["rotary_dim"] = round(partial_rotary_factor * cfg_dict["d_head"])
@@ -2051,12 +2053,31 @@ def get_pretrained_state_dict(
                     **kwargs,
                 )
             else:
-                hf_model = AutoModelForCausalLM.from_pretrained(
-                    official_model_name,
-                    torch_dtype=dtype,
-                    token=huggingface_token if len(huggingface_token) > 0 else None,
-                    **kwargs,
-                )
+                # Some older model configs (e.g., microsoft/phi-1) lack pad_token_id,
+                # which newer transformers versions require during model initialization.
+                try:
+                    hf_model = AutoModelForCausalLM.from_pretrained(
+                        official_model_name,
+                        torch_dtype=dtype,
+                        token=huggingface_token if len(huggingface_token) > 0 else None,
+                        **kwargs,
+                    )
+                except AttributeError as e:
+                    if "pad_token_id" in str(e):
+                        hf_config = AutoConfig.from_pretrained(
+                            official_model_name,
+                            token=huggingface_token if len(huggingface_token) > 0 else None,
+                        )
+                        hf_config.pad_token_id = getattr(hf_config, "pad_token_id", None)
+                        hf_model = AutoModelForCausalLM.from_pretrained(
+                            official_model_name,
+                            config=hf_config,
+                            torch_dtype=dtype,
+                            token=huggingface_token if len(huggingface_token) > 0 else None,
+                            **kwargs,
+                        )
+                    else:
+                        raise
 
             # Load model weights, and fold in layer norm weights
             if hf_model is not None:
