@@ -192,7 +192,9 @@ class PositionEmbeddingsAttentionBridge(AttentionBridge):
                 "Call set_original_component() first."
             )
 
-        hf_attn = self.original_component
+        # Type as Any — the HF attention module's interface (q_proj, k_proj, etc.)
+        # varies by architecture and isn't captured by nn.Module's type signature.
+        hf_attn: Any = self.original_component
 
         # Extract hidden_states and kwargs
         if "hidden_states" in kwargs:
