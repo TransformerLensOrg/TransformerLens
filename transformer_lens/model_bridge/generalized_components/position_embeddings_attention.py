@@ -266,7 +266,17 @@ class PositionEmbeddingsAttentionBridge(AttentionBridge):
             cos, sin = position_embeddings
             from transformers.models.llama.modeling_llama import apply_rotary_pos_emb
 
-            query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
+            # Some models use partial rotary (e.g., GPT-OSS) where cos/sin cover only
+            # a portion of head_dim. Split Q/K, rotate the partial dims, recombine.
+            rotary_dim = cos.shape[-1]
+            if rotary_dim < head_dim:
+                q_rot, q_pass = query_states[..., :rotary_dim], query_states[..., rotary_dim:]
+                k_rot, k_pass = key_states[..., :rotary_dim], key_states[..., rotary_dim:]
+                q_rot, k_rot = apply_rotary_pos_emb(q_rot, k_rot, cos, sin)
+                query_states = torch.cat([q_rot, q_pass], dim=-1)
+                key_states = torch.cat([k_rot, k_pass], dim=-1)
+            else:
+                query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
 
         # Fire hook_rot_q/hook_rot_k (post-rotation)
         if hasattr(self, "hook_rot_q"):
