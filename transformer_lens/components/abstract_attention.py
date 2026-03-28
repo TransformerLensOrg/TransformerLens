@@ -666,6 +666,11 @@ class AbstractAttention(ABC, nn.Module):
             freq = 1.0 / inv_freq
         else:
             freq = base ** (dim / (rotary_dim / 2))
+            # Apply linear RoPE scaling for global attention layers if configured
+            # (e.g., Gemma 3 4B uses factor=8.0 for global layers, but not local ones)
+            scaling_factor = getattr(self.cfg, "rotary_scaling_factor", 1.0)
+            if scaling_factor != 1.0 and self.attn_type != "local":
+                freq = freq * scaling_factor
         if self.cfg.rotary_adjacent_pairs:
             freq = einops.repeat(freq, "d -> (d 2)")
         else:

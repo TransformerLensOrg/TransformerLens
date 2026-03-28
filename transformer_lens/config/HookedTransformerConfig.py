@@ -254,6 +254,9 @@ class HookedTransformerConfig(TransformerLensConfig):
     rotary_base_local: Optional[
         int
     ] = None  # For models with different RoPE bases per attention type (e.g., Gemma 3)
+    rotary_scaling_factor: float = (
+        1.0  # Linear RoPE scaling factor for global attention (e.g., 8.0 for Gemma 3 4B)
+    )
     trust_remote_code: bool = False
     rotary_adjacent_pairs: bool = False
     load_in_4bit: bool = False
