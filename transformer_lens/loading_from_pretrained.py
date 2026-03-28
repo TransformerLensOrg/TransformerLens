@@ -7,6 +7,7 @@ This module contains functions for loading pretrained models from the Hugging Fa
 
 import dataclasses
 import logging
+import math
 import os
 import re
 from pathlib import Path
@@ -642,7 +643,11 @@ MODEL_ALIASES = {
     "google-bert/bert-large-uncased": ["bert-large-uncased"],
     "facebook/hubert-base-ls960": ["facebook/hubert-base-ls960", "hubert-base-ls960"],
     "facebook/wav2vec2-base": ["facebook/wav2vec2-base", "wav2vec2-base", "w2v2-base"],
-    "facebook/wav2vec2-large": ["facebook/wav2vec2-large", "wav2vec2-large", "w2v2-large"],
+    "facebook/wav2vec2-large": [
+        "facebook/wav2vec2-large",
+        "wav2vec2-large",
+        "w2v2-large",
+    ],
     "roneneldan/TinyStories-1M": ["tiny-stories-1M"],
     "roneneldan/TinyStories-3M": ["tiny-stories-3M"],
     "roneneldan/TinyStories-8M": ["tiny-stories-8M"],
@@ -843,31 +848,14 @@ def convert_hf_model_config(model_name: str, **kwargs: Any):
     # Load HuggingFace model config
     # Check cache first (for gated models that would need an HF token)
     hf_config = get_hf_config(official_model_name)
-    if hf_config is not None:
-        architecture = hf_config.architectures[0]
-    elif "gemma-3" in official_model_name.lower() or "medgemma" in official_model_name.lower():
-        # Gemma 3: 270M and 1B are text-only (CausalLM), 4B+ are multimodal (ConditionalGeneration)
-        # Exception: medgemma-27b-text-it is text-only
-        if "270m" in official_model_name.lower() or "1b" in official_model_name.lower():
-            architecture = "Gemma3ForCausalLM"
-        elif "medgemma-27b-text" in official_model_name.lower():
-            # medgemma-27b-text-it is text-only variant
-            architecture = "Gemma3ForCausalLM"
-        else:
-            # 4B, 12B, 27B and medgemma are multimodal
-            architecture = "Gemma3ForConditionalGeneration"
-    elif "gemma-2" in official_model_name.lower():
-        architecture = "Gemma2ForCausalLM"
-    elif "gemma" in official_model_name.lower():
-        architecture = "GemmaForCausalLM"
-    else:
+    if hf_config is None:
         huggingface_token = os.environ.get("HF_TOKEN", "")
         hf_config = AutoConfig.from_pretrained(
             official_model_name,
             token=huggingface_token if len(huggingface_token) > 0 else None,
             **kwargs,
         )
-        architecture = hf_config.architectures[0]
+    architecture = hf_config.architectures[0]
 
     cfg_dict: dict[str, Any]
     if architecture == "GPTNeoForCausalLM":
@@ -1169,7 +1157,8 @@ def convert_hf_model_config(model_name: str, **kwargs: Any):
             if rope_type == "llama3":
                 cfg_dict["use_NTK_by_parts_rope"] = True
                 cfg_dict["NTK_original_ctx_len"] = rope_scaling.get(
-                    "original_max_position_embeddings", hf_config.max_position_embeddings
+                    "original_max_position_embeddings",
+                    hf_config.max_position_embeddings,
                 )
                 cfg_dict["NTK_by_parts_low_freq_factor"] = rope_scaling.get("low_freq_factor", 1.0)
                 cfg_dict["NTK_by_parts_high_freq_factor"] = rope_scaling.get(
@@ -1352,466 +1341,116 @@ def convert_hf_model_config(model_name: str, **kwargs: Any):
             cfg_dict["NTK_by_parts_high_freq_factor"] = rope_scaling.get("high_freq_factor", 4.0)
             cfg_dict["NTK_by_parts_factor"] = rope_scaling.get("factor", 1.0)
 
-    elif official_model_name.startswith("google/gemma-3-270m"):
-        # Architecture for Gemma-3 270m and Gemma-3 270m Instruct models
+    elif architecture == "GemmaForCausalLM":
         cfg_dict = {
-            "d_model": 640,
-            "d_head": 256,
-            "n_heads": 4,
-            "d_mlp": 2048,
-            "n_layers": 18,
-            "n_ctx": 8192,  # Safe default (model supports up to 32K). Override: cfg_kwargs={"n_ctx": 32768}
-            "eps": 1e-06,
-            "d_vocab": 262144,
-            "act_fn": "gelu_pytorch_tanh",
-            "initializer_range": 0.02,
+            "d_model": hf_config.hidden_size,
+            "d_head": hf_config.head_dim,
+            "n_heads": hf_config.num_attention_heads,
+            "d_mlp": hf_config.intermediate_size,
+            "n_layers": hf_config.num_hidden_layers,
+            "n_ctx": hf_config.max_position_embeddings,
+            "eps": hf_config.rms_norm_eps,
+            "d_vocab": hf_config.vocab_size,
+            "act_fn": hf_config.hidden_act,
+            "initializer_range": hf_config.initializer_range,
             "normalization_type": "RMS",
-            "rotary_base": 1000000,  # Global attention layers
-            "rotary_base_local": 10000,  # Local attention layers (per Gemma 3 paper)
+            "rotary_base": int(hf_config.rope_theta),
+            "rotary_dim": hf_config.head_dim,
             "positional_embedding_type": "rotary",
             "use_attn_scale": True,
-            "n_key_value_heads": 1,
+            "n_key_value_heads": hf_config.num_key_value_heads,
+            "gated_mlp": True,
+            "final_rms": True,
+        }
+    elif architecture == "Gemma2ForCausalLM":
+        attn_types = [
+            "global" if lt == "full_attention" else "local" for lt in hf_config.layer_types
+        ]
+        cfg_dict = {
+            "d_model": hf_config.hidden_size,
+            "d_head": hf_config.head_dim,
+            "n_heads": hf_config.num_attention_heads,
+            "d_mlp": hf_config.intermediate_size,
+            "n_layers": hf_config.num_hidden_layers,
+            "n_ctx": hf_config.max_position_embeddings,
+            "eps": hf_config.rms_norm_eps,
+            "d_vocab": hf_config.vocab_size,
+            "act_fn": hf_config.hidden_activation,
+            "initializer_range": hf_config.initializer_range,
+            "normalization_type": "RMS",
+            "rotary_base": int(hf_config.rope_theta),
+            "positional_embedding_type": "rotary",
+            "use_attn_scale": True,
+            "n_key_value_heads": hf_config.num_key_value_heads,
+            "window_size": hf_config.sliding_window,
+            "use_local_attn": True,
+            "attn_types": attn_types,
+            "attn_scores_soft_cap": hf_config.attn_logit_softcapping,
+            "output_logits_soft_cap": hf_config.final_logit_softcapping,
+            "gated_mlp": True,
+            "final_rms": True,
+            "use_normalization_before_and_after": True,
+        }
+        if hf_config.query_pre_attn_scalar != hf_config.head_dim:
+            cfg_dict["attn_scale"] = math.sqrt(hf_config.query_pre_attn_scalar)
+    elif architecture == "Gemma3ForCausalLM":
+        attn_types = [
+            "global" if lt == "full_attention" else "local" for lt in hf_config.layer_types
+        ]
+        cfg_dict = {
+            "d_model": hf_config.hidden_size,
+            "d_head": hf_config.head_dim,
+            "n_heads": hf_config.num_attention_heads,
+            "d_mlp": hf_config.intermediate_size,
+            "n_layers": hf_config.num_hidden_layers,
+            "n_ctx": 8192,  # Safe default; models support up to 32-128K
+            "eps": hf_config.rms_norm_eps,
+            "d_vocab": hf_config.vocab_size,
+            "act_fn": hf_config.hidden_activation,
+            "initializer_range": hf_config.initializer_range,
+            "normalization_type": "RMS",
+            "rotary_base": int(hf_config.rope_theta),
+            "rotary_base_local": int(hf_config.rope_local_base_freq),
+            "positional_embedding_type": "rotary",
+            "use_attn_scale": True,
+            "n_key_value_heads": hf_config.num_key_value_heads,
             "gated_mlp": True,
             "final_rms": True,
             "use_normalization_before_and_after": True,
             "use_qk_norm": True,
-            "window_size": 512,
+            "window_size": hf_config.sliding_window,
             "use_local_attn": True,
-            "attn_types": [
-                "local",
-                "local",
-                "local",
-                "local",
-                "local",
-                "global",
-                "local",
-                "local",
-                "local",
-                "local",
-                "local",
-                "global",
-                "local",
-                "local",
-                "local",
-                "local",
-                "local",
-                "global",
-            ],
+            "attn_types": attn_types,
         }
-    elif official_model_name.startswith("google/gemma-3-1b"):
-        # Architecture for Gemma-3 1b-pt and Gemma-3 1b-it models
+    elif architecture == "Gemma3ForConditionalGeneration":
+        text_config = hf_config.text_config
+        attn_types = [
+            "global" if lt == "full_attention" else "local" for lt in text_config.layer_types
+        ]
         cfg_dict = {
-            "d_model": 1152,
-            "d_head": 256,
-            "n_heads": 4,
-            "d_mlp": 6912,
-            "n_layers": 26,
-            "n_ctx": 8192,  # Safe default (model supports up to 32K). Override: cfg_kwargs={"n_ctx": 32768}
-            "eps": 1e-06,
-            "d_vocab": 262144,
-            "act_fn": "gelu_pytorch_tanh",
-            "initializer_range": 0.02,
+            "d_model": text_config.hidden_size,
+            "d_head": text_config.head_dim,
+            "n_heads": text_config.num_attention_heads,
+            "d_mlp": text_config.intermediate_size,
+            "n_layers": text_config.num_hidden_layers,
+            "n_ctx": 8192,  # Safe default; models support up to 128K
+            "eps": text_config.rms_norm_eps,
+            "d_vocab": text_config.vocab_size,
+            "act_fn": text_config.hidden_activation,
+            "initializer_range": text_config.initializer_range,
             "normalization_type": "RMS",
-            "rotary_base": 1000000,  # Global attention layers
-            "rotary_base_local": 10000,  # Local attention layers (per Gemma 3 paper)
+            "rotary_base": int(text_config.rope_theta),
+            "rotary_base_local": int(text_config.rope_local_base_freq),
             "positional_embedding_type": "rotary",
             "use_attn_scale": True,
-            "n_key_value_heads": 1,
+            "n_key_value_heads": text_config.num_key_value_heads,
             "gated_mlp": True,
             "final_rms": True,
             "use_normalization_before_and_after": True,
             "use_qk_norm": True,
-            "window_size": 512,
+            "window_size": text_config.sliding_window,
             "use_local_attn": True,
-            "attn_types": [
-                "local",
-                "local",
-                "local",
-                "local",
-                "local",
-                "global",
-                "local",
-                "local",
-                "local",
-                "local",
-                "local",
-                "global",
-                "local",
-                "local",
-                "local",
-                "local",
-                "local",
-                "global",
-                "local",
-                "local",
-                "local",
-                "local",
-                "local",
-                "global",
-                "local",
-                "local",
-            ],
-        }
-    elif official_model_name.startswith("google/gemma-3-4b") or official_model_name.startswith(
-        "google/medgemma-4b"
-    ):
-        # Architecture for Gemma-3 4b and MedGemma 4b models (multimodal, text-only extraction)
-        cfg_dict = {
-            "d_model": 2560,
-            "d_head": 256,
-            "n_heads": 8,
-            "d_mlp": 10240,
-            "n_layers": 34,
-            "n_ctx": 8192,  # Safe default (model supports up to 128K). Override: cfg_kwargs={"n_ctx": 131072}
-            "eps": 1e-06,
-            "d_vocab": 262208,
-            "act_fn": "gelu_pytorch_tanh",
-            "initializer_range": 0.02,
-            "normalization_type": "RMS",
-            "rotary_base": 1000000,  # Global attention layers
-            "rotary_base_local": 10000,  # Local attention layers (per Gemma 3 paper)
-            "positional_embedding_type": "rotary",
-            "use_attn_scale": True,
-            "n_key_value_heads": 4,
-            "gated_mlp": True,
-            "final_rms": True,
-            "use_normalization_before_and_after": True,
-            "use_qk_norm": True,
-            "window_size": 1024,
-            "use_local_attn": True,
-            "attn_types": [
-                "local",
-                "local",
-                "local",
-                "local",
-                "local",
-                "global",
-                "local",
-                "local",
-                "local",
-                "local",
-                "local",
-                "global",
-                "local",
-                "local",
-                "local",
-                "local",
-                "local",
-                "global",
-                "local",
-                "local",
-                "local",
-                "local",
-                "local",
-                "global",
-                "local",
-                "local",
-                "local",
-                "local",
-                "local",
-                "global",
-                "local",
-                "local",
-                "local",
-                "local",
-            ],
-        }
-    elif official_model_name.startswith("google/gemma-3-12b"):
-        # Architecture for Gemma-3 12b models (multimodal, text-only extraction)
-        cfg_dict = {
-            "d_model": 3840,
-            "d_head": 256,
-            "n_heads": 16,
-            "d_mlp": 15360,
-            "n_layers": 48,
-            "n_ctx": 8192,  # Safe default (model supports up to 128K). Override: cfg_kwargs={"n_ctx": 131072}
-            "eps": 1e-06,
-            "d_vocab": 262208,
-            "act_fn": "gelu_pytorch_tanh",
-            "initializer_range": 0.02,
-            "normalization_type": "RMS",
-            "rotary_base": 1000000,  # Global attention layers
-            "rotary_base_local": 10000,  # Local attention layers (per Gemma 3 paper)
-            "positional_embedding_type": "rotary",
-            "use_attn_scale": True,
-            "n_key_value_heads": 8,
-            "gated_mlp": True,
-            "final_rms": True,
-            "use_normalization_before_and_after": True,
-            "use_qk_norm": True,
-            "window_size": 1024,
-            "use_local_attn": True,
-            "attn_types": [
-                "local",
-                "local",
-                "local",
-                "local",
-                "local",
-                "global",
-                "local",
-                "local",
-                "local",
-                "local",
-                "local",
-                "global",
-                "local",
-                "local",
-                "local",
-                "local",
-                "local",
-                "global",
-                "local",
-                "local",
-                "local",
-                "local",
-                "local",
-                "global",
-                "local",
-                "local",
-                "local",
-                "local",
-                "local",
-                "global",
-                "local",
-                "local",
-                "local",
-                "local",
-                "local",
-                "global",
-                "local",
-                "local",
-                "local",
-                "local",
-                "local",
-                "global",
-                "local",
-                "local",
-                "local",
-                "local",
-                "local",
-                "global",
-            ],
-        }
-    elif official_model_name.startswith("google/gemma-3-27b") or official_model_name.startswith(
-        "google/medgemma-27b"
-    ):
-        # Architecture for Gemma-3 27b and MedGemma 27b models (multimodal/text-only extraction)
-        # Note: medgemma-27b-text-it uses Gemma3ForCausalLM (text-only), others use Gemma3ForConditionalGeneration
-        cfg_dict = {
-            "d_model": 5376,
-            "d_head": 128,
-            "n_heads": 32,
-            "d_mlp": 21504,
-            "n_layers": 62,
-            "n_ctx": 8192,  # Safe default (model supports up to 128K). Override: cfg_kwargs={"n_ctx": 131072}
-            "eps": 1e-06,
-            "d_vocab": (
-                262144 if official_model_name == "google/medgemma-27b-text-it" else 262208
-            ),  # text-only variant uses 262144
-            "act_fn": "gelu_pytorch_tanh",
-            "initializer_range": 0.02,
-            "normalization_type": "RMS",
-            "rotary_base": 1000000,  # Global attention layers
-            "rotary_base_local": 10000,  # Local attention layers (per Gemma 3 paper)
-            "positional_embedding_type": "rotary",
-            "use_attn_scale": True,
-            "n_key_value_heads": 16,
-            "gated_mlp": True,
-            "final_rms": True,
-            "use_normalization_before_and_after": True,
-            "use_qk_norm": True,
-            "window_size": 1024,
-            "use_local_attn": True,
-            "attn_types": [
-                "local",
-                "local",
-                "local",
-                "local",
-                "local",
-                "global",
-                "local",
-                "local",
-                "local",
-                "local",
-                "local",
-                "global",
-                "local",
-                "local",
-                "local",
-                "local",
-                "local",
-                "global",
-                "local",
-                "local",
-                "local",
-                "local",
-                "local",
-                "global",
-                "local",
-                "local",
-                "local",
-                "local",
-                "local",
-                "global",
-                "local",
-                "local",
-                "local",
-                "local",
-                "local",
-                "global",
-                "local",
-                "local",
-                "local",
-                "local",
-                "local",
-                "global",
-                "local",
-                "local",
-                "local",
-                "local",
-                "local",
-                "global",
-                "local",
-                "local",
-                "local",
-                "local",
-                "local",
-                "global",
-                "local",
-                "local",
-                "local",
-                "local",
-                "local",
-                "global",
-                "local",
-                "local",
-            ],
-        }
-    elif official_model_name.startswith("google/gemma-2b"):
-        # Architecture for Gemma 2b and Gemma 2b Instruct models
-        cfg_dict = {
-            "d_model": 2048,
-            "d_head": 256,
-            "n_heads": 8,
-            "d_mlp": 16384,
-            "n_layers": 18,
-            "n_ctx": 8192,
-            "eps": 1e-06,
-            "d_vocab": 256000,
-            "act_fn": "gelu_new",
-            "initializer_range": 0.02,
-            "normalization_type": "RMS",
-            "rotary_base": 10000,
-            "rotary_dim": 256,
-            "positional_embedding_type": "rotary",
-            "use_attn_scale": True,
-            "n_key_value_heads": 1,
-            "gated_mlp": True,
-            "final_rms": True,
-        }
-    elif official_model_name.startswith("google/gemma-7b"):
-        # Architecture for Gemma 7b and Gemma 7b Instruct models
-        cfg_dict = {
-            "d_model": 3072,
-            "d_head": 256,
-            "n_heads": 16,
-            "d_mlp": 24576,
-            "n_layers": 28,
-            "n_ctx": 8192,
-            "eps": 1e-06,
-            "d_vocab": 256000,
-            "act_fn": "gelu_new",
-            "initializer_range": 0.02,
-            "normalization_type": "RMS",
-            "rotary_base": 10000.0,
-            "rotary_dim": 256,
-            "positional_embedding_type": "rotary",
-            "use_attn_scale": True,
-            "n_key_value_heads": 16,
-            "gated_mlp": True,
-            "final_rms": True,
-        }
-    elif official_model_name.startswith("google/gemma-2-2b"):
-        # Architecture for Gemma-2 2b and Gemma-2 2b Instruct models
-        cfg_dict = {
-            "d_model": 2304,
-            "d_head": 256,
-            "n_heads": 8,
-            "d_mlp": 9216,
-            "n_layers": 26,
-            "n_ctx": 8192,
-            "eps": 1e-06,
-            "d_vocab": 256000,
-            "act_fn": "gelu_pytorch_tanh",
-            "initializer_range": 0.02,
-            "normalization_type": "RMS",
-            "rotary_base": 10000.0,
-            "positional_embedding_type": "rotary",
-            "use_attn_scale": True,
-            "n_key_value_heads": 4,
-            "window_size": 4096,
-            "use_local_attn": True,
-            "attn_types": ["global", "local"] * 21,  # Alternate global and local attn
-            "attn_scores_soft_cap": 50.0,
-            "output_logits_soft_cap": 30.0,
-            "gated_mlp": True,
-            "final_rms": True,
-            "use_normalization_before_and_after": True,
-        }
-    elif official_model_name.startswith("google/gemma-2-9b"):
-        # Architecture for Gemma-2 9b and Gemma-2 9b Instruct models
-        cfg_dict = {
-            "d_model": 3584,
-            "d_head": 256,
-            "n_heads": 16,
-            "d_mlp": 14336,
-            "n_layers": 42,
-            "n_ctx": 8192,
-            "eps": 1e-06,
-            "d_vocab": 256000,
-            "act_fn": "gelu_pytorch_tanh",
-            "initializer_range": 0.02,
-            "normalization_type": "RMS",
-            "rotary_base": 10000.0,
-            "positional_embedding_type": "rotary",
-            "use_attn_scale": True,
-            "n_key_value_heads": 8,
-            "window_size": 4096,
-            "use_local_attn": True,
-            "attn_types": ["global", "local"] * 21,  # Alternate global and local attn
-            "attn_scores_soft_cap": 50.0,
-            "output_logits_soft_cap": 30.0,
-            "gated_mlp": True,
-            "final_rms": True,
-            "use_normalization_before_and_after": True,
-        }
-    elif official_model_name.startswith("google/gemma-2-27b"):
-        # Architecture for Gemma-2 27b and Gemma-2 27b Instruct models
-        cfg_dict = {
-            "d_model": 4608,
-            "d_head": 128,
-            "n_heads": 32,
-            "d_mlp": 36864,
-            "n_layers": 46,
-            "n_ctx": 8192,
-            "eps": 1e-06,
-            "d_vocab": 256000,
-            "act_fn": "gelu_pytorch_tanh",
-            "initializer_range": 0.02,
-            "normalization_type": "RMS",
-            "rotary_base": 10000.0,
-            "positional_embedding_type": "rotary",
-            "use_attn_scale": True,
-            "attn_scale": 12.0,
-            "n_key_value_heads": 16,
-            "window_size": 4096,
-            "use_local_attn": True,
-            "attn_types": ["global", "local"] * 23,  # Alternate global and local attn
-            "attn_scores_soft_cap": 50.0,
-            "output_logits_soft_cap": 30.0,
-            "gated_mlp": True,
-            "final_rms": True,
-            "use_normalization_before_and_after": True,
+            "attn_types": attn_types,
         }
     elif architecture == "T5ForConditionalGeneration":
         cfg_dict = {

@@ -403,10 +403,7 @@ class TestGemmaHardcodedConfigs:
                 "n_key_value_heads": 1,
                 "gated_mlp": True,
                 "final_rms": True,
-                # NOTE: "google/gemma-2b" contains "gemma-2" so the architecture
-                # detection assigns "Gemma2ForCausalLM" even though this is a Gemma 1 model.
-                # The config values are still correct (matched by model name prefix).
-                "original_architecture": "Gemma2ForCausalLM",
+                "original_architecture": "GemmaForCausalLM",
             },
         )
 
@@ -457,7 +454,7 @@ class TestGemmaHardcodedConfigs:
                 "n_key_value_heads": 4,
                 "window_size": 4096,
                 "use_local_attn": True,
-                "attn_types": ["global", "local"] * 21,
+                "attn_types": ["global", "local"] * 13,  # 26 layers
                 "attn_scores_soft_cap": 50.0,
                 "output_logits_soft_cap": 30.0,
                 "gated_mlp": True,
@@ -488,7 +485,7 @@ class TestGemmaHardcodedConfigs:
                 "n_key_value_heads": 8,
                 "window_size": 4096,
                 "use_local_attn": True,
-                "attn_types": ["global", "local"] * 21,
+                "attn_types": ["global", "local"] * 21,  # 42 layers
                 "attn_scores_soft_cap": 50.0,
                 "output_logits_soft_cap": 30.0,
                 "gated_mlp": True,
@@ -520,7 +517,7 @@ class TestGemmaHardcodedConfigs:
                 "n_key_value_heads": 16,
                 "window_size": 4096,
                 "use_local_attn": True,
-                "attn_types": ["global", "local"] * 23,
+                "attn_types": ["global", "local"] * 23,  # 46 layers
                 "attn_scores_soft_cap": 50.0,
                 "output_logits_soft_cap": 30.0,
                 "gated_mlp": True,
