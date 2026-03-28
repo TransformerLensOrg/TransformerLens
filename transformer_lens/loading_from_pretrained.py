@@ -900,6 +900,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any):
             "act_fn": "silu",
             "normalization_type": "RMS",
             "positional_embedding_type": "rotary",
+            "rotary_adjacent_pairs": False,
             "rotary_dim": 4096 // 32,
             "final_rms": True,
             "gated_mlp": True,
