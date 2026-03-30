@@ -13,10 +13,10 @@ from transformer_lens.conversion_utils.param_processing_conversion import (
 )
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
-    AttentionBridge,
     BlockBridge,
     EmbeddingBridge,
     GatedMLPBridge,
+    JointQKVPositionEmbeddingsAttentionBridge,
     LinearBridge,
     RMSNormalizationBridge,
     UnembeddingBridge,
@@ -94,16 +94,12 @@ class Phi3ArchitectureAdapter(ArchitectureAdapter):
                 submodules={
                     "ln1": RMSNormalizationBridge(name="input_layernorm", config=self.cfg),
                     "ln2": RMSNormalizationBridge(name="post_attention_layernorm", config=self.cfg),
-                    "attn": AttentionBridge(
+                    "attn": JointQKVPositionEmbeddingsAttentionBridge(
                         name="self_attn",
                         config=self.cfg,
-                        requires_position_embeddings=True,
-                        requires_attention_mask=True,
+                        split_qkv_matrix=self._split_phi3_qkv,
                         submodules={
-                            # Phi-3 uses combined qkv_proj, but we still need submodules for hooks
-                            "q": LinearBridge(name="qkv_proj"),
-                            "k": LinearBridge(name="qkv_proj"),
-                            "v": LinearBridge(name="qkv_proj"),
+                            "qkv": LinearBridge(name="qkv_proj"),
                             "o": LinearBridge(name="o_proj"),
                         },
                     ),
@@ -111,7 +107,6 @@ class Phi3ArchitectureAdapter(ArchitectureAdapter):
                         name="mlp",
                         config=self.cfg,
                         submodules={
-                            # Phi-3 uses joint gate_up_proj, but we need submodules for hooks
                             "gate": LinearBridge(name="gate_up_proj"),
                             "in": LinearBridge(name="gate_up_proj"),
                             "out": LinearBridge(name="down_proj"),
@@ -122,6 +117,79 @@ class Phi3ArchitectureAdapter(ArchitectureAdapter):
             "ln_final": RMSNormalizationBridge(name="model.norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head"),
         }
+
+    @staticmethod
+    def _split_gate_up(
+        original_mlp_component: Any,
+    ) -> tuple[torch.nn.Module, torch.nn.Module]:
+        """Split Phi-3's fused gate_up_proj into separate gate and up Linear modules."""
+        fused_weight = original_mlp_component.gate_up_proj.weight
+        gate_w, up_w = torch.tensor_split(fused_weight, 2, dim=0)
+        d_model = fused_weight.shape[1]
+        d_mlp = gate_w.shape[0]
+
+        has_bias = (
+            hasattr(original_mlp_component.gate_up_proj, "bias")
+            and original_mlp_component.gate_up_proj.bias is not None
+        )
+        gate_b: torch.Tensor | None
+        up_b: torch.Tensor | None
+        if has_bias:
+            gate_b, up_b = torch.tensor_split(original_mlp_component.gate_up_proj.bias, 2, dim=0)
+        else:
+            gate_b = up_b = None
+
+        gate_proj = torch.nn.Linear(d_model, d_mlp, bias=has_bias)
+        gate_proj.weight = torch.nn.Parameter(gate_w)
+        if gate_b is not None:
+            gate_proj.bias = torch.nn.Parameter(gate_b)
+
+        up_proj = torch.nn.Linear(d_model, d_mlp, bias=has_bias)
+        up_proj.weight = torch.nn.Parameter(up_w)
+        if up_b is not None:
+            up_proj.bias = torch.nn.Parameter(up_b)
+
+        return gate_proj, up_proj
+
+    def _split_phi3_qkv(
+        self, original_attention_component: Any
+    ) -> tuple[torch.nn.Module, torch.nn.Module, torch.nn.Module]:
+        """Split Phi-3's fused qkv_proj into separate Q, K, V linear modules."""
+        qkv_weight = original_attention_component.qkv_proj.weight
+        d_model = qkv_weight.shape[1]
+        # Phi-3 QKV is [3*n_heads*d_head, d_model], split into equal thirds
+        q_weight, k_weight, v_weight = torch.tensor_split(qkv_weight, 3, dim=0)
+
+        has_bias = (
+            hasattr(original_attention_component.qkv_proj, "bias")
+            and original_attention_component.qkv_proj.bias is not None
+        )
+        q_bias: torch.Tensor | None
+        k_bias: torch.Tensor | None
+        v_bias: torch.Tensor | None
+        if has_bias:
+            q_bias, k_bias, v_bias = torch.tensor_split(
+                original_attention_component.qkv_proj.bias, 3, dim=0
+            )
+        else:
+            q_bias = k_bias = v_bias = None
+
+        q_linear = torch.nn.Linear(d_model, q_weight.shape[0], bias=has_bias)
+        q_linear.weight = torch.nn.Parameter(q_weight)
+        if q_bias is not None:
+            q_linear.bias = torch.nn.Parameter(q_bias)
+
+        k_linear = torch.nn.Linear(d_model, k_weight.shape[0], bias=has_bias)
+        k_linear.weight = torch.nn.Parameter(k_weight)
+        if k_bias is not None:
+            k_linear.bias = torch.nn.Parameter(k_bias)
+
+        v_linear = torch.nn.Linear(d_model, v_weight.shape[0], bias=has_bias)
+        v_linear.weight = torch.nn.Parameter(v_weight)
+        if v_bias is not None:
+            v_linear.bias = torch.nn.Parameter(v_bias)
+
+        return q_linear, k_linear, v_linear
 
     def prepare_loading(self, model_name: str, model_kwargs: dict) -> None:
         """Fix compatibility issues for Phi-3 models with trust_remote_code=True.
