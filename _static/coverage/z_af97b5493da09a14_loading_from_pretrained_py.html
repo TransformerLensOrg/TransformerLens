@@ -67,7 +67,7 @@
             <a id="nextFileLink" class="nav" href="z_af97b5493da09a14_past_key_value_caching_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.6.1">coverage.py v7.6.1</a>,
-            created at 2026-03-24 16:35 +0000
+            created at 2026-03-31 17:04 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -937,7 +937,7 @@
     <p class="pln"><span class="n"><a id="t853" href="#t853">853</a></span><span class="t">        <span class="key">else</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t854" href="#t854">854</a></span><span class="t">            <span class="com"># 4B, 12B, 27B and medgemma are multimodal</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t855" href="#t855">855</a></span><span class="t">            <span class="nam">architecture</span> <span class="op">=</span> <span class="str">"Gemma3ForConditionalGeneration"</span>&nbsp;</span><span class="r"></span></p>
-    <p class="par run show_par"><span class="n"><a id="t856" href="#t856">856</a></span><span class="t">    <span class="key">elif</span> <span class="str">"gemma-2"</span> <span class="key">in</span> <span class="nam">official_model_name</span><span class="op">.</span><span class="nam">lower</span><span class="op">(</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"><span class="annotate short">856&#x202F;&#x219B;&#x202F;857</span><span class="annotate long">line 856 didn't jump to line 857 because the condition on line 856 was never true</span></span></p>
+    <p class="par run show_par"><span class="n"><a id="t856" href="#t856">856</a></span><span class="t">    <span class="key">elif</span> <span class="str">"gemma-2-"</span> <span class="key">in</span> <span class="nam">official_model_name</span><span class="op">.</span><span class="nam">lower</span><span class="op">(</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"><span class="annotate short">856&#x202F;&#x219B;&#x202F;857</span><span class="annotate long">line 856 didn't jump to line 857 because the condition on line 856 was never true</span></span></p>
     <p class="mis show_mis"><span class="n"><a id="t857" href="#t857">857</a></span><span class="t">        <span class="nam">architecture</span> <span class="op">=</span> <span class="str">"Gemma2ForCausalLM"</span>&nbsp;</span><span class="r"></span></p>
     <p class="par run show_par"><span class="n"><a id="t858" href="#t858">858</a></span><span class="t">    <span class="key">elif</span> <span class="str">"gemma"</span> <span class="key">in</span> <span class="nam">official_model_name</span><span class="op">.</span><span class="nam">lower</span><span class="op">(</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"><span class="annotate short">858&#x202F;&#x219B;&#x202F;859</span><span class="annotate long">line 858 didn't jump to line 859 because the condition on line 858 was never true</span></span></p>
     <p class="mis show_mis"><span class="n"><a id="t859" href="#t859">859</a></span><span class="t">        <span class="nam">architecture</span> <span class="op">=</span> <span class="str">"GemmaForCausalLM"</span>&nbsp;</span><span class="r"></span></p>
@@ -2093,7 +2093,7 @@
     <p class="pln"><span class="n"><a id="t2009" href="#t2009">2009</a></span><span class="t">            <span class="str">"n_key_value_heads"</span><span class="op">:</span> <span class="num">4</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t2010" href="#t2010">2010</a></span><span class="t">            <span class="str">"window_size"</span><span class="op">:</span> <span class="num">4096</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t2011" href="#t2011">2011</a></span><span class="t">            <span class="str">"use_local_attn"</span><span class="op">:</span> <span class="key">True</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t2012" href="#t2012">2012</a></span><span class="t">            <span class="str">"attn_types"</span><span class="op">:</span> <span class="op">[</span><span class="str">"global"</span><span class="op">,</span> <span class="str">"local"</span><span class="op">]</span> <span class="op">*</span> <span class="num">21</span><span class="op">,</span>  <span class="com"># Alternate global and local attn</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t2012" href="#t2012">2012</a></span><span class="t">            <span class="str">"attn_types"</span><span class="op">:</span> <span class="op">[</span><span class="str">"global"</span><span class="op">,</span> <span class="str">"local"</span><span class="op">]</span> <span class="op">*</span> <span class="num">13</span><span class="op">,</span>  <span class="com"># Alternate global and local attn</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t2013" href="#t2013">2013</a></span><span class="t">            <span class="str">"attn_scores_soft_cap"</span><span class="op">:</span> <span class="num">50.0</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t2014" href="#t2014">2014</a></span><span class="t">            <span class="str">"output_logits_soft_cap"</span><span class="op">:</span> <span class="num">30.0</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t2015" href="#t2015">2015</a></span><span class="t">            <span class="str">"gated_mlp"</span><span class="op">:</span> <span class="key">True</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
@@ -2730,7 +2730,7 @@
             <a class="nav" href="z_af97b5493da09a14_past_key_value_caching_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.6.1">coverage.py v7.6.1</a>,
-            created at 2026-03-24 16:35 +0000
+            created at 2026-03-31 17:04 +0000
         </p>
     </div>
 </footer>
