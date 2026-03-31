@@ -271,7 +271,7 @@ jobs:
           version: 1.0
       - name: Check Notebook Output Consistency
         # Note: currently only checks notebooks we have specifically setup for this
-        run: pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/${{ matrix.notebook }}.ipynb
+        run: pytest --nbval-sanitize-with demos/doc_sanitize.cfg --nbval-cell-timeout=60 demos/${{ matrix.notebook }}.ipynb
 
 
   build-docs:
