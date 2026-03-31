@@ -366,9 +366,7 @@ class AttentionBridge(GeneralizedComponent):
         )  # 2D: [d_model, n_heads*d_head] for Conv1D or [n_heads*d_head, d_model] for Linear
         if weight.ndim == 2 and self.config is not None:
             n_heads = self.config.n_heads if hasattr(self.config, "n_heads") else self.config.n_head
-            # Detect format based on weight shape
-            # Linear format: [(n_heads*d_head), d_model]
-            # Conv1D format: [d_model, (n_heads*d_head)]
+            # Detect Linear vs Conv1D format from weight shape
             if weight.shape[0] % n_heads == 0:
                 # Linear format - first dimension is (n_heads*d_head)
                 return einops.rearrange(
@@ -394,9 +392,7 @@ class AttentionBridge(GeneralizedComponent):
                     self.config.n_heads if hasattr(self.config, "n_heads") else self.config.n_head
                 )
             )
-            # Detect format based on weight shape
-            # Linear format: [(n_heads*d_head), d_model]
-            # Conv1D format: [d_model, (n_heads*d_head)]
+            # Detect Linear vs Conv1D format from weight shape
             if weight.shape[0] % n_heads == 0:
                 # Linear format - first dimension is (n_heads*d_head)
                 return einops.rearrange(
@@ -422,9 +418,7 @@ class AttentionBridge(GeneralizedComponent):
                     self.config.n_heads if hasattr(self.config, "n_heads") else self.config.n_head
                 )
             )
-            # Detect format based on weight shape
-            # Linear format: [(n_heads*d_head), d_model]
-            # Conv1D format: [d_model, (n_heads*d_head)]
+            # Detect Linear vs Conv1D format from weight shape
             if weight.shape[0] % n_heads == 0:
                 # Linear format - first dimension is (n_heads*d_head)
                 return einops.rearrange(

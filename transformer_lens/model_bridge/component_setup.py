@@ -77,9 +77,7 @@ def setup_submodules(
             # Add to real_components mapping
             component.real_components[module_name] = (submodule.name, list(bridged_list))
         elif isinstance(submodule, SymbolicBridge):
-            # SymbolicBridge: Set up the symbolic component and its submodules
-            # The symbolic bridge itself doesn't wrap a real component, but its
-            # submodules are set up using the parent's original_model as context
+            # SymbolicBridge: no real component; set up submodules via parent's model
             setup_submodules(submodule, architecture_adapter, original_model)
 
             # Add the symbolic bridge as a module (for structural access like blocks[i].mlp.in)

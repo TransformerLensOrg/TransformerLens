@@ -88,9 +88,7 @@ class LinearBridge(GeneralizedComponent):
             if bias is not None:
                 print(f"    Found bias key with shape: {bias.shape}")
 
-        # Handle 3D weights by flattening to 2D
-        # Use .contiguous() to ensure correct bfloat16 matmul accumulation order
-        # (non-contiguous rearrange views produce different F.linear results)
+        # Flatten 3D→2D; contiguous() needed for correct bfloat16 matmul order
         if weight.ndim == 3:
             n_heads, dim1, dim2 = weight.shape
             if dim1 > dim2:

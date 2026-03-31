@@ -50,9 +50,7 @@ def map_default_transformer_lens_config(hf_config):
     Returns:
         A copy of hf_config with additional TransformerLens fields
     """
-    # For multimodal models, extract language model config from text_config.
-    # The text_config contains hidden_size, num_attention_heads, etc. that
-    # TransformerLens needs for the language backbone.
+    # Extract language model config from text_config for multimodal models
     source_config = hf_config
     if hasattr(hf_config, "text_config") and hf_config.text_config is not None:
         source_config = hf_config.text_config
@@ -168,9 +166,7 @@ def map_default_transformer_lens_config(hf_config):
         tl_config.sliding_window = source_config.sliding_window
     if getattr(hf_config, "use_parallel_residual", False):
         tl_config.parallel_attn_mlp = True
-    # GPT-J has a parallel attention+MLP architecture (both read from same ln_1
-    # output) but doesn't set use_parallel_residual in its HF config. Detect it
-    # by architecture class so fold_ln correctly folds ln1 into BOTH attn and MLP.
+    # GPT-J: parallel attn+MLP but missing use_parallel_residual in HF config
     arch_classes = getattr(hf_config, "architectures", []) or []
     if any(a in ("GPTJForCausalLM",) for a in arch_classes):
         tl_config.parallel_attn_mlp = True
@@ -313,9 +309,7 @@ def boot(
     tl_config = map_default_transformer_lens_config(hf_config)
     architecture = determine_architecture_from_hf_config(hf_config)
     config_dict = dict(tl_config.__dict__)
-    # HF configs may remap attribute names via attribute_map (e.g., MixtralConfig maps
-    # `num_experts` -> `num_local_experts`). Explicitly restore the TL name so that
-    # TransformerBridgeConfig.from_dict receives the expected key.
+    # Restore TL attribute names that HF remaps via attribute_map
     if "num_local_experts" in config_dict and "num_experts" not in config_dict:
         config_dict["num_experts"] = config_dict["num_local_experts"]
     bridge_config = TransformerBridgeConfig.from_dict(config_dict)
@@ -356,9 +350,7 @@ def boot(
     adapter.cfg.device = str(device)
     if model_class is None:
         model_class = get_hf_model_class_for_architecture(architecture)
-    # Ensure pad_token_id exists on HF config. Transformers v5 raises AttributeError
-    # for missing config attributes (instead of returning None), which crashes models
-    # like Phi-1 that access config.pad_token_id during __init__.
+    # Ensure pad_token_id exists (v5 raises AttributeError if missing)
     if not hasattr(hf_config, "pad_token_id") or "pad_token_id" not in hf_config.__dict__:
         fallback_pad = getattr(hf_config, "eos_token_id", None)
         # eos_token_id can be a list (e.g., Gemma3 uses [1, 106]); take the first.
@@ -373,9 +365,7 @@ def boot(
     if hasattr(adapter.cfg, "attn_implementation") and adapter.cfg.attn_implementation is not None:
         model_kwargs["attn_implementation"] = adapter.cfg.attn_implementation
     else:
-        # Default to "eager" — the Bridge uses output_attentions for hooks,
-        # which requires eager attention.  This also ensures numerical parity
-        # with benchmarks that compare Bridge vs HF reference (both use eager).
+        # Default to eager (required for output_attentions hooks)
         model_kwargs["attn_implementation"] = "eager"
     adapter.prepare_loading(model_name, model_kwargs)
     if not load_weights:
@@ -388,13 +378,7 @@ def boot(
         hf_model = model_class.from_pretrained(model_name, **model_kwargs)
         if device is not None:
             hf_model = hf_model.to(device)
-        # Ensure all parameters match the requested dtype. Some architectures
-        # (e.g., MoE models) retain native bfloat16 weights even when
-        # torch_dtype is specified during from_pretrained().
-        # Only cast parameters (trainable weights), not buffers. HF
-        # intentionally keeps some buffers in float32 for precision (e.g.,
-        # RotaryEmbedding.inv_freq). Casting them to bfloat16 introduces
-        # rounding that compounds through every attention layer.
+        # Cast params to dtype; preserve float32 buffers (e.g., RotaryEmbedding.inv_freq)
         for param in hf_model.parameters():
             if param.is_floating_point() and param.dtype != dtype:
                 param.data = param.data.to(dtype=dtype)
@@ -410,8 +394,7 @@ def boot(
         tokenizer = setup_tokenizer(tokenizer, default_padding_side=default_padding_side)
     else:
         token_arg = get_hf_token()
-        # Determine tokenizer source: use adapter's tokenizer_name if the model
-        # doesn't ship its own tokenizer (e.g., OpenELM uses LLaMA tokenizer)
+        # Use adapter's tokenizer_name if model lacks one (e.g., OpenELM)
         tokenizer_source = model_name
         if hasattr(adapter.cfg, "tokenizer_name") and adapter.cfg.tokenizer_name is not None:
             tokenizer_source = adapter.cfg.tokenizer_name
@@ -438,10 +421,7 @@ def boot(
             default_padding_side=default_padding_side,
         )
     if tokenizer is not None:
-        # Detect whether the tokenizer auto-prepends BOS or auto-appends EOS.
-        # We encode a non-empty test string and check the first/last tokens.
-        # Using encode("") is unreliable because setup_tokenizer may set
-        # bos_token = eos_token, making them indistinguishable.
+        # Detect BOS/EOS behavior (use non-empty string; empty is unreliable with token aliasing)
         encoded_test = tokenizer.encode("a")
         adapter.cfg.tokenizer_prepends_bos = (
             len(encoded_test) > 1
@@ -468,17 +448,14 @@ def boot(
                 trust_remote_code=trust_remote_code,
             )
         except Exception:
-            # Some multimodal processors (e.g., LlavaOnevision) require
-            # torchvision for video processing.  Conditionally install it
-            # and retry the processor loading.
+            # Some processors need torchvision (e.g., LlavaOnevision); install if needed
             _torchvision_available = False
             try:
                 import torchvision  # noqa: F401
 
                 _torchvision_available = True
             except Exception:
-                # torchvision may be missing (ImportError) or broken/version-
-                # mismatched (RuntimeError).  Try to install/reinstall it.
+                # Install/reinstall torchvision if missing or broken
                 import shutil
                 import subprocess
                 import sys
@@ -561,10 +538,7 @@ def setup_tokenizer(tokenizer, default_padding_side=None):
     if tokenizer.bos_token is None:
         tokenizer.bos_token = tokenizer.eos_token
 
-    # Ensure special token strings resolve to valid IDs.  Some tokenizers
-    # (e.g. ChemGPT's SMILES vocabulary) don't contain the default fallback
-    # strings, leaving pad_token_id as None.  HF's padding logic then crashes
-    # with "TypeError: '<' not supported between instances of 'NoneType' and 'int'".
+    # Ensure special tokens resolve to valid IDs (some vocabularies lack defaults)
     if tokenizer.pad_token is not None and tokenizer.pad_token_id is None:
         tokenizer.add_special_tokens({"pad_token": tokenizer.pad_token})
     if tokenizer.eos_token is not None and tokenizer.eos_token_id is None:

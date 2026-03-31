@@ -419,9 +419,7 @@ class JointQKVAttentionBridge(AttentionBridge):
         else:
             raise ValueError(f"Unexpected Q tensor shape: {q.shape}. Expected 3D or 4D tensor.")
 
-        # Build attention scale matching HF's GPT2Attention behavior:
-        # 1. Standard 1/sqrt(d_head) scaling
-        # 2. Optional 1/(layer_idx + 1) scaling (scale_attn_by_inverse_layer_idx)
+        # Attention scale: 1/sqrt(d_head) with optional inverse-layer scaling
         scale = head_dim ** (-0.5)
         if (
             hasattr(self.config, "scale_attn_by_inverse_layer_idx")

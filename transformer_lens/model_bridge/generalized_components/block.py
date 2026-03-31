@@ -99,11 +99,7 @@ class BlockBridge(GeneralizedComponent):
         # Check if we should stop before executing this block
         # The _stop_at_layer_idx attribute is set by the bridge's forward method
         if hasattr(self, "_stop_at_layer_idx") and self._stop_at_layer_idx is not None:
-            # Extract layer index from name
-            # Supports multiple naming patterns:
-            # - "blocks.0" (TransformerLens style)
-            # - "transformer.h.0" (HuggingFace GPT-2 style)
-            # - "model.layers.0" (HuggingFace LLaMA style)
+            # Extract layer index (supports TL/GPT-2/LLaMA naming patterns)
             if self.name is not None:
                 # Try multiple patterns to extract layer index
                 match = (
@@ -188,8 +184,7 @@ class BlockBridge(GeneralizedComponent):
             if accepts_var_keyword:
                 return kwargs
 
-            # Determine which parameters are already satisfied by positional args
-            # (to avoid "multiple values for argument" errors)
+            # Skip params already provided positionally
             positional_param_names = set(param_list[:num_positional_args])
 
             # Filter kwargs: include only if in signature AND not already provided positionally

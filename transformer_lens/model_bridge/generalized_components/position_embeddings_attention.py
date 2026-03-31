@@ -221,12 +221,7 @@ class PositionEmbeddingsAttentionBridge(AttentionBridge):
             hidden_states = hidden_states.to(dtype=target_dtype)
 
         # --- Q/K/V Projection + Optional Q/K Norms ---
-        # Some models (OLMo 2) apply Q/K norms BEFORE multi-head reshape on [batch, seq, hidden].
-        # Others (Gemma 3) apply AFTER reshape on [batch, heads, seq, head_dim].
-        # We match the HF model's order by checking if the original forward does
-        # proj → norm → reshape (OLMo 2) or proj → reshape → norm (Gemma 3).
-        # Detection: try applying norm to the flat projected tensor. If it fails
-        # (shape mismatch), the model uses post-reshape norms.
+        # Detect norm order: pre-reshape (OLMo 2) vs post-reshape (Gemma 3)
         input_shape = hidden_states.shape[:-1]
         head_dim = hf_attn.head_dim
         hidden_shape = (*input_shape, -1, head_dim)

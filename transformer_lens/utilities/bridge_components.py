@@ -58,9 +58,7 @@ def collect_components_of_block_bridge(
     if component.name is None:
         raise ValueError("Block bridge component must have a name")
 
-    # If the component already has its original_component set (from boot),
-    # use it directly. This handles nested list components (e.g., vision encoder
-    # layers) whose names are relative to their parent, not the model root.
+    # Use cached original_component for nested list items (relative names)
     if component.original_component is not None:
         remote_module_list = component.original_component
     else:
@@ -69,9 +67,7 @@ def collect_components_of_block_bridge(
                 model.original_model, component.name
             )
         except AttributeError:
-            # Submodule name is relative to a parent component that isn't the model root
-            # (e.g., vision encoder layers inside a multimodal model). Skip gracefully
-            # since these components are already set up during boot.
+            # Relative name not reachable from root; already set up during boot
             return components
 
     # Make sure the remote component is a ModuleList
