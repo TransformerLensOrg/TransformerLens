@@ -43,6 +43,7 @@ class ArchitectureAdapter:
         self.component_mapping: ComponentMapping | None = None
         self.weight_processing_conversions: Dict[str, ParamProcessingConversion | str] | None = None
         self.uses_split_attention: bool = getattr(cfg, "uses_split_attention", False)
+        self._fold_ln_requested: bool = True
         self._merge_default_config()
 
     def _merge_default_config(self) -> None:

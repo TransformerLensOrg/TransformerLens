@@ -445,16 +445,17 @@ class ComponentBenchmarker:
                 try:
                     parent_component = self.adapter.get_component(self.bridge_model, parent_path)
                     if hasattr(parent_component, "submodules"):
-                        subs = parent_component.submodules  # type: ignore[union-attr]
+                        parent_bridge = cast(GeneralizedComponent, parent_component)
+                        subs = parent_bridge.submodules
                         # Joint QKV: q/k/v are splits from fused qkv_proj/c_attn
                         if last_part in ["q", "k", "v"] and (
-                            "qkv" in subs or "c_attn" in subs  # type: ignore[operator]
+                            "qkv" in subs or "c_attn" in subs
                         ):
                             return
                         # Joint gate+up: gate/in are splits from fused gate_up_proj
                         if last_part in ["gate", "in"] and (
-                            "gate_up" in subs  # type: ignore[operator]
-                            or type(parent_component).__name__ == "JointGateUpMLPBridge"
+                            "gate_up" in subs
+                            or type(parent_bridge).__name__ == "JointGateUpMLPBridge"
                         ):
                             return
                 except Exception:

@@ -732,7 +732,7 @@ class TransformerBridge(nn.Module):
                 state_dict[unembed_key] = state_dict[unembed_key].clone()
 
         if adapter and hasattr(adapter, "preprocess_weights"):
-            adapter._fold_ln_requested = fold_ln  # type: ignore[union-attr, attr-defined]
+            adapter._fold_ln_requested = fold_ln  # type: ignore[union-attr]
             state_dict = adapter.preprocess_weights(state_dict)
 
         # Use unified ProcessWeights.process_weights() like HookedTransformer does.
