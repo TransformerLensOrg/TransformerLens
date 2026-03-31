@@ -204,23 +204,22 @@ class JointQKVPositionEmbeddingsAttentionBridge(JointQKVAttentionBridge):
         assert original_component is not None
         assert self.config is not None
         num_heads = self.config.n_heads
+        num_kv_heads = getattr(self.config, "n_key_value_heads", None) or num_heads
 
         # Reshape Q, K, V to [batch, heads, seq_len, head_dim]
+        # GQA: K/V may have fewer heads than Q
         if len(q.shape) == 3:
-            batch_size, seq_len, hidden_size = q.shape
-            head_dim: int = hidden_size // num_heads
+            batch_size, seq_len, q_hidden = q.shape
+            head_dim: int = q_hidden // num_heads
             q = q.view(batch_size, seq_len, num_heads, head_dim).transpose(1, 2)
-            k = k.view(batch_size, seq_len, num_heads, head_dim).transpose(1, 2)
-            v = v.view(batch_size, seq_len, num_heads, head_dim).transpose(1, 2)
+            k = k.view(batch_size, seq_len, num_kv_heads, head_dim).transpose(1, 2)
+            v = v.view(batch_size, seq_len, num_kv_heads, head_dim).transpose(1, 2)
         elif len(q.shape) == 4:
-            batch_size, seq_len, num_heads_tensor, head_dim = q.shape
-            assert (
-                num_heads_tensor == num_heads
-            ), f"Expected {num_heads} heads, got {num_heads_tensor}"
+            batch_size, seq_len, _, head_dim = q.shape
             q = q.transpose(1, 2)
             k = k.transpose(1, 2)
             v = v.transpose(1, 2)
-            seq_len = q.shape[2]  # Update seq_len from transposed tensor
+            seq_len = q.shape[2]
         else:
             raise ValueError(f"Unexpected Q tensor shape: {q.shape}. Expected 3D or 4D tensor.")
 
@@ -233,6 +232,12 @@ class JointQKVPositionEmbeddingsAttentionBridge(JointQKVAttentionBridge):
             cos, sin = hooked_position_embeddings
             # Apply rotary embeddings to Q and K
             q, k = self._apply_rotary_pos_emb(q, k, cos, sin)
+
+        # GQA: expand K/V heads to match Q heads
+        if num_kv_heads != num_heads:
+            n_rep = num_heads // num_kv_heads
+            k = k.repeat_interleave(n_rep, dim=1)
+            v = v.repeat_interleave(n_rep, dim=1)
 
         # Compute attention scores
         scale = head_dim ** (-0.5)
