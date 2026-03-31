@@ -448,9 +448,7 @@ class ComponentBenchmarker:
                         parent_bridge = cast(GeneralizedComponent, parent_component)
                         subs = parent_bridge.submodules
                         # Joint QKV: q/k/v are splits from fused qkv_proj/c_attn
-                        if last_part in ["q", "k", "v"] and (
-                            "qkv" in subs or "c_attn" in subs
-                        ):
+                        if last_part in ["q", "k", "v"] and ("qkv" in subs or "c_attn" in subs):
                             return
                         # Joint gate+up: gate/in are splits from fused gate_up_proj
                         if last_part in ["gate", "in"] and (
