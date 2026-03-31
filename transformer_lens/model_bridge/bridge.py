@@ -85,8 +85,7 @@ class TransformerBridge(nn.Module):
     """
 
     hook_aliases: Dict[str, Union[str, List[str]]] = {
-        # Prefer embed_ln.hook_out (post-LN) when available, matching HT's convention
-        # for models with post-embedding LayerNorm (e.g., Bloom, BERT)
+        # Prefer embed_ln.hook_out for post-LN models (Bloom, BERT)
         "hook_embed": ["embed_ln.hook_out", "embed.hook_out"],
         "hook_pos_embed": ["pos_embed.hook_out", "rotary_emb.hook_out"],
         "hook_unembed": "unembed.hook_out",
@@ -406,7 +405,7 @@ class TransformerBridge(nn.Module):
     def _scan_existing_hooks(self, module: nn.Module, prefix: str = "") -> None:
         """Scan existing modules for hooks and add them to registry."""
         visited = set()
-        # Prevent alias entries from overwriting canonical HookPoint names.
+        # Protect canonical HookPoint names from alias overwrites
         named_hook_ids: set = set()
 
         def scan_module(mod: nn.Module, path: str = "") -> None:
@@ -552,7 +551,7 @@ class TransformerBridge(nn.Module):
         """Provide a clear error message for missing attributes."""
         if name in self.__dict__:  # type: ignore[arg-type]
             return self.__dict__[name]
-        # Use direct __dict__ access instead of hasattr to avoid recursion risk
+        # Use __dict__ directly to avoid recursion
         if "_modules" in self.__dict__ and name in self.__dict__["_modules"]:  # type: ignore[arg-type]
             return self.__dict__["_modules"][name]
         if "original_model" in self.__dict__ and self.__dict__["original_model"] is not None:
@@ -633,8 +632,7 @@ class TransformerBridge(nn.Module):
                     refactor_factored_attn_matrices=refactor_factored_attn_matrices,
                 )
         finally:
-            # Always re-initialize hooks even if weight processing fails,
-            # so the bridge remains usable for downstream tests.
+            # Re-initialize hooks even on failure so bridge stays usable
             self._initialize_hook_registry()
             self._setup_hook_compatibility()
             self._register_all_aliases_recursive()
@@ -717,9 +715,7 @@ class TransformerBridge(nn.Module):
         state_dict = self.state_dict()
         adapter = self.adapter
 
-        # Break weight tying between embed and unembed in the state dict
-        # This is necessary for models like GPT-2 that share weights between lm_head and wte
-        # We need to untie them so that center_unembed only affects unembed, not embed
+        # Untie embed/unembed weights (GPT-2) so centering affects only unembed
         embed_key = "embed.weight"
         unembed_key = "unembed.weight"
 
@@ -750,11 +746,7 @@ class TransformerBridge(nn.Module):
             adapter=adapter,
         )
 
-        # Normalize any remaining HF-prefix keys to TL format.
-        # Some architectures (e.g., OPT with SymbolicBridge) produce state dict keys
-        # with HF prefixes (model.decoder.layers.0.mlp.in.weight) instead of TL prefixes
-        # (blocks.0.mlp.in.weight). distribute_weights_to_components uses TL prefixes
-        # for routing, so we normalize all keys here.
+        # Normalize HF-prefix keys to TL format for weight routing
         import re
 
         hf_to_tl_prefix = {}
@@ -849,13 +841,12 @@ class TransformerBridge(nn.Module):
             truncation=truncate,
             max_length=self.cfg.n_ctx if truncate else None,
         )["input_ids"]
-        # Strip trailing EOS tokens that some tokenizers auto-append
-        # (e.g., OLMo's GPTNeoXTokenizer appends <|endoftext|> to all inputs)
+        # Strip auto-appended EOS tokens (e.g., OLMo)
         if (
             getattr(self.cfg, "tokenizer_appends_eos", False)
             and self.tokenizer.eos_token_id is not None
         ):
-            # Remove trailing EOS from each sequence, but keep at least 1 token
+            # Remove trailing EOS, keep at least 1 token
             while tokens.shape[-1] > 1 and (tokens[:, -1] == self.tokenizer.eos_token_id).all():
                 tokens = tokens[:, :-1]
         if not prepend_bos and tokenizer_prepends_bos:
@@ -942,9 +933,7 @@ class TransformerBridge(nn.Module):
             tokens = torch.tensor(tokens_np)
         else:
             raise ValueError(f"Invalid input type to to_str_tokens: {type(input)}")
-        # In transformers v5, batch_decode treats a flat list as a single sequence,
-        # not individual token IDs, so would return a single string. To maintain backward
-        # compatibility with v4, we wrap each token to decode them individually.
+        # v5 compat: wrap each token so batch_decode decodes them individually
         tokens_list = [[int(t)] for t in tokens.tolist()]
         str_tokens = self.tokenizer.batch_decode(tokens_list, clean_up_tokenization_spaces=False)
         return str_tokens
@@ -1297,9 +1286,7 @@ class TransformerBridge(nn.Module):
                 kwargs["use_cache"] = True
             elif "use_past_kv_cache" in kwargs and kwargs["use_past_kv_cache"]:
                 kwargs["use_cache"] = True
-            # For encoder-decoder models (T5, BART, etc.), auto-generate
-            # decoder_input_ids if not explicitly provided. Uses the standard
-            # right-shift pattern: prepend decoder_start_token_id, drop last token.
+            # Auto-generate decoder_input_ids for encoder-decoder models
             if (
                 "decoder_input_ids" not in kwargs
                 and hasattr(self.original_model, "config")
@@ -1342,11 +1329,9 @@ class TransformerBridge(nn.Module):
                     )
                 kwargs["input_values"] = input_values
 
-            # Audio models take input_values (raw waveform), not input_ids
+            # Audio models use input_values (waveform), not input_ids
             original_tl_cache = past_kv_cache
             if getattr(self.cfg, "is_audio_model", False):
-                # For audio models, input is the raw waveform tensor or
-                # input_values was passed as a keyword argument
                 if input_values is not None:
                     output = self.original_model(**kwargs)
                 elif isinstance(input, torch.Tensor):
@@ -1400,9 +1385,7 @@ class TransformerBridge(nn.Module):
                         "Audio models do not support return_type='loss'. "
                         "CTC loss requires aligned frame-level labels."
                     )
-                # Always use self.loss_fn for consistency with HT's formula
-                # (log_softmax + gather).  HF's output.loss uses F.cross_entropy
-                # which gives different results in bfloat16.
+                # Use self.loss_fn for bfloat16 consistency (vs HF's cross_entropy)
                 assert isinstance(
                     logits, torch.Tensor
                 ), f"Expected logits tensor, got {type(logits)}"
@@ -1781,8 +1764,7 @@ class TransformerBridge(nn.Module):
                 if remove_batch_dim:
                     original_hook_fn = hook_fn
 
-                    # Use default argument to capture hook_fn by value, not reference
-                    # This prevents all closures from using the last hook_fn in the loop
+                    # Default arg captures hook_fn by value (avoids closure issue)
                     def wrapped_hook_fn(tensor, hook, _orig_fn=original_hook_fn):
                         if tensor.shape[0] == 1:
                             tensor_no_batch = tensor.squeeze(0)
@@ -1851,8 +1833,7 @@ class TransformerBridge(nn.Module):
         pixel_values: Optional[torch.Tensor] = None,
         **multimodal_kwargs,
     ) -> str | list[str] | torch.Tensor | Any:  # Any for transformers.utils.ModelOutput
-        # Using Any due to beartype's forward reference resolution limitations.
-        # See: https://github.com/beartype/beartype/issues/546
+        # Any: beartype forward ref limitation (beartype#546)
         """Sample tokens from the model.
 
         Sample tokens from the model until the model outputs eos_token or max_new_tokens is reached.
@@ -1885,7 +1866,7 @@ class TransformerBridge(nn.Module):
             Generated sequence as string, list of strings, or tensor depending on input type and return_type.
             If output_logits=True, returns a ModelOutput-like object with 'sequences' and 'logits' attributes.
         """
-        # Convert input to tokens using to_tokens() for consistent special token handling
+        # Convert input to tokens
         if isinstance(input, str):
             input_tokens = self.to_tokens(input, move_to_device=True, truncate=False)
             input_type = "str"
@@ -2084,8 +2065,7 @@ class TransformerBridge(nn.Module):
         pixel_values: torch.Tensor | None = None,
         **generation_kwargs,
     ) -> str | list[str] | torch.Tensor | Any:  # Any for HF ModelOutput types
-        # Using Any due to beartype's forward reference resolution limitations.
-        # See: https://github.com/beartype/beartype/issues/546
+        # Any: beartype forward ref limitation (beartype#546)
         """Generate text using the underlying HuggingFace model with full HF API support.
 
         This method provides direct access to HuggingFace's generation API, forwarding all

@@ -14,7 +14,7 @@ class TestActivationCacheCompatibility:
     def cleanup_after_class(self):
         """Clean up memory after each test class."""
         yield
-        # Force garbage collection and clear CUDA cache
+        # Clear GPU memory
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
         for _ in range(3):
@@ -36,13 +36,12 @@ class TestActivationCacheCompatibility:
         """Test that caches can be created from TransformerBridge."""
         prompt = "Test cache creation."
 
-        # Test run_with_cache with cache object
         output, cache = bridge_model.run_with_cache(prompt, return_cache_object=True)
 
         assert isinstance(output, torch.Tensor)
         assert isinstance(cache, (dict, ActivationCache))
 
-        # If it's an ActivationCache, test its properties
+        # Verify ActivationCache properties
         if isinstance(cache, ActivationCache):
             assert hasattr(cache, "cache_dict")
             assert hasattr(cache, "model")
@@ -50,7 +49,6 @@ class TestActivationCacheCompatibility:
 
     def test_cache_dict_access(self, sample_cache):
         """Test that cache dictionary access works."""
-        # Get cache dict regardless of type
         if hasattr(sample_cache, "cache_dict"):
             cache_dict = sample_cache.cache_dict
         else:
@@ -58,26 +56,19 @@ class TestActivationCacheCompatibility:
 
         assert isinstance(cache_dict, dict)
         assert len(cache_dict) > 0
-
-        # All values should be tensors or None
         for key, value in cache_dict.items():
             if value is not None:
                 assert isinstance(value, torch.Tensor), f"Cache value for {key} is not a tensor"
 
     def test_cache_key_patterns(self, sample_cache):
         """Test that cache keys follow expected patterns."""
-        # Get cache dict
         if hasattr(sample_cache, "cache_dict"):
             cache_dict = sample_cache.cache_dict
         else:
             cache_dict = sample_cache
 
         cache_keys = list(cache_dict.keys())
-
-        # Should have some keys
         assert len(cache_keys) > 0
-
-        # Log what patterns we find (for debugging)
         patterns_found = []
         common_patterns = [
             "embed",
@@ -101,7 +92,6 @@ class TestActivationCacheCompatibility:
 
     def test_cache_tensor_shapes(self, sample_cache, bridge_model):
         """Test that cached tensors have reasonable shapes."""
-        # Get cache dict
         if hasattr(sample_cache, "cache_dict"):
             cache_dict = sample_cache.cache_dict
         else:
@@ -111,55 +101,43 @@ class TestActivationCacheCompatibility:
 
         for key, value in cache_dict.items():
             if value is not None and isinstance(value, torch.Tensor):
-                # All tensors should have at least 2 dimensions (batch, seq, ...)
                 assert value.ndim >= 2, f"Tensor {key} has insufficient dimensions: {value.shape}"
-
-                # Batch dimension should be 1 for single prompt
                 assert value.shape[0] == 1, f"Tensor {key} has wrong batch size: {value.shape[0]}"
 
-                # If it's a 3D tensor, last dimension might be d_model or d_vocab
                 if value.ndim == 3:
                     last_dim = value.shape[2]
-                    # Should be one of the common dimensions
                     common_dims = [cfg.d_model, cfg.d_vocab, cfg.d_head * cfg.n_heads]
                     if hasattr(cfg, "d_mlp"):
                         common_dims.append(cfg.d_mlp)
 
-                    # Don't enforce strict checking since bridge might have different dimensions
-                    # Just check that it's reasonable
+                    # Skip strict dim checking (bridge may differ)
                     assert last_dim > 0, f"Tensor {key} has invalid last dimension: {last_dim}"
 
     def test_cache_with_names_filter(self, bridge_model):
         """Test that names filtering works with caching."""
         prompt = "Test names filter."
 
-        # Get available hook names
         hook_dict = bridge_model.hook_dict
         if len(hook_dict) == 0:
             pytest.skip("No hooks available for filtering")
 
-        # Use first few hook names
         filter_names = list(hook_dict.keys())[:3]
 
         try:
             output, cache = bridge_model.run_with_cache(prompt, names_filter=filter_names)
 
-            # Get cache dict
             if hasattr(cache, "cache_dict"):
                 cache_dict = cache.cache_dict
             else:
                 cache_dict = cache
 
-            # Should have some activations
             assert len(cache_dict) > 0
 
-            # Check that we got activations for the filtered names (or their aliases)
             cache_keys = set(cache_dict.keys())
             filter_set = set(filter_names)
 
-            # Should have some overlap (exact match not required due to aliasing)
+            # Allow partial matches due to aliasing
             overlap = len(cache_keys & filter_set)
-            # Allow for aliases by checking partial matches
             partial_matches = sum(
                 1
                 for cache_key in cache_keys
@@ -174,13 +152,10 @@ class TestActivationCacheCompatibility:
 
     def test_cache_iteration(self, sample_cache):
         """Test that cache can be iterated over."""
-        # Get cache dict
         if hasattr(sample_cache, "cache_dict"):
             cache_dict = sample_cache.cache_dict
         else:
             cache_dict = sample_cache
-
-        # Test iteration
         keys_from_iter = []
         for key in cache_dict:
             keys_from_iter.append(key)
@@ -192,7 +167,6 @@ class TestActivationCacheCompatibility:
 
     def test_cache_getitem(self, sample_cache):
         """Test that cache supports getitem access."""
-        # Get cache dict
         if hasattr(sample_cache, "cache_dict"):
             cache_dict = sample_cache.cache_dict
         else:
@@ -201,8 +175,7 @@ class TestActivationCacheCompatibility:
         if len(cache_dict) == 0:
             pytest.skip("Empty cache")
 
-        # Test accessing items
-        for key in list(cache_dict.keys())[:3]:  # Test first few
+        for key in list(cache_dict.keys())[:3]:
             value = cache_dict[key]
             if value is not None:
                 assert isinstance(value, torch.Tensor)
@@ -212,16 +185,12 @@ class TestActivationCacheCompatibility:
         prompts = ["First prompt for batch testing.", "Second prompt for batch testing."]
 
         try:
-            # Test with multiple prompts
             output, cache = bridge_model.run_with_cache(prompts)
 
-            # Get cache dict
             if hasattr(cache, "cache_dict"):
                 cache_dict = cache.cache_dict
             else:
                 cache_dict = cache
-
-            # Check that cached tensors have correct batch dimension
             for key, value in cache_dict.items():
                 if value is not None and isinstance(value, torch.Tensor):
                     assert value.shape[0] == len(
@@ -235,17 +204,13 @@ class TestActivationCacheCompatibility:
         """Test that cached tensors are on the correct device."""
         prompt = "Test device consistency."
 
-        # Test on CPU
         model_cpu = bridge_model.cpu()
         output, cache = model_cpu.run_with_cache(prompt)
 
-        # Get cache dict
         if hasattr(cache, "cache_dict"):
             cache_dict = cache.cache_dict
         else:
             cache_dict = cache
-
-        # All cached tensors should be on CPU
         for key, value in cache_dict.items():
             if value is not None and isinstance(value, torch.Tensor):
                 assert value.device.type == "cpu", f"Tensor {key} is not on CPU: {value.device}"
@@ -254,17 +219,14 @@ class TestActivationCacheCompatibility:
         """Test that cache doesn't cause memory leaks."""
         prompt = "Test cache memory efficiency."
 
-        # Record initial memory
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
             initial_memory = torch.cuda.memory_allocated()
 
-        # Create and delete multiple caches
         for _ in range(3):
             output, cache = bridge_model.run_with_cache(prompt)
             del output, cache
 
-        # Clean up
         import gc
 
         gc.collect()
@@ -272,7 +234,6 @@ class TestActivationCacheCompatibility:
             torch.cuda.empty_cache()
             final_memory = torch.cuda.memory_allocated()
 
-            # Memory shouldn't grow significantly
             memory_growth = final_memory - initial_memory
             assert (
                 memory_growth < 50 * 1024 * 1024
@@ -280,18 +241,14 @@ class TestActivationCacheCompatibility:
 
     def test_cache_with_different_inputs(self, bridge_model):
         """Test that cache works with different input types."""
-        # Test with string
         output1, cache1 = bridge_model.run_with_cache("String input test.")
 
-        # Test with tokens
         tokens = bridge_model.to_tokens("Token input test.")
         output2, cache2 = bridge_model.run_with_cache(tokens)
 
-        # Both should work
         assert isinstance(output1, torch.Tensor)
         assert isinstance(output2, torch.Tensor)
 
-        # Get cache dicts
         if hasattr(cache1, "cache_dict"):
             cache_dict1 = cache1.cache_dict
         else:
@@ -302,15 +259,11 @@ class TestActivationCacheCompatibility:
         else:
             cache_dict2 = cache2
 
-        # Both should have cached activations
         assert len(cache_dict1) > 0
         assert len(cache_dict2) > 0
 
-        # Should have similar cache keys
         keys1 = set(cache_dict1.keys())
         keys2 = set(cache_dict2.keys())
-
-        # At least some overlap in keys
         overlap = len(keys1 & keys2)
         assert overlap > 0, "No common cache keys between string and token inputs"
 

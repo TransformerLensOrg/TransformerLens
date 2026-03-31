@@ -251,10 +251,7 @@ class HookPoint(nn.Module):
             pt_handle = self.register_forward_hook(full_hook, prepend=prepend)
             visible_hooks = self.fwd_hooks
         elif dir == "bwd":
-            # register_full_backward_hook signature:
-            #   hook(module, grad_input, grad_output) -> tuple(Tensor) | None
-            # The return value replaces grad_input.  full_hook returns a bare
-            # Tensor (or None), so we wrap it in a tuple for PyTorch.
+            # Wrap full_hook's bare Tensor return in tuple for PyTorch's backward API
             def _bwd_hook_wrapper(
                 module: torch.nn.Module,
                 grad_input: Any,
