@@ -289,6 +289,7 @@ class AttentionBridge(GeneralizedComponent):
         Args:
             use_kv: If True, return n_key_value_heads (for GQA) when available.
         """
+        assert self.config is not None, "config required to resolve n_heads"
         if use_kv:
             if hasattr(self.config, "n_key_value_heads") and self.config.n_key_value_heads:
                 return self.config.n_key_value_heads
@@ -433,7 +434,9 @@ class AttentionBridge(GeneralizedComponent):
             return self._reshape_weight_to_3d(weight, self._get_n_heads(), pattern="o")
         return weight
 
-    def _reshape_bias(self, bias: Optional[torch.Tensor], use_kv: bool = False) -> Optional[torch.Tensor]:
+    def _reshape_bias(
+        self, bias: Optional[torch.Tensor], use_kv: bool = False
+    ) -> Optional[torch.Tensor]:
         """Reshape 1D bias to [n_heads, d_head]."""
         if bias is not None and bias.ndim == 1 and self.config is not None:
             n_heads = self._get_n_heads(use_kv=use_kv)

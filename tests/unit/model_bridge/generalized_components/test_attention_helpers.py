@@ -1,7 +1,9 @@
 """Tests for AttentionBridge helper methods (_get_n_heads, _reshape_weight_to_3d)."""
 import torch
 
-from transformer_lens.model_bridge.generalized_components.attention import AttentionBridge
+from transformer_lens.model_bridge.generalized_components.attention import (
+    AttentionBridge,
+)
 
 
 class _FakeCfg:

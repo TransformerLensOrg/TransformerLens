@@ -12,7 +12,6 @@ from transformer_lens.benchmarks.utils import (
     compare_scalars,
     filter_expected_missing_hooks,
     make_capture_hook,
-    safe_allclose,
 )
 from transformer_lens.model_bridge import TransformerBridge
 

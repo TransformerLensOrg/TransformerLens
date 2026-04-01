@@ -18,7 +18,9 @@ from transformer_lens.model_bridge.generalized_components.position_embedding_hoo
 )
 
 
-class JointQKVPositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, JointQKVAttentionBridge):
+class JointQKVPositionEmbeddingsAttentionBridge(
+    PositionEmbeddingHooksMixin, JointQKVAttentionBridge
+):
     """Attention bridge for models with fused QKV and position embeddings (e.g., Pythia).
 
     This combines the functionality of JointQKVAttentionBridge (splitting fused QKV matrices)

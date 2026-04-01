@@ -3,10 +3,8 @@ import torch
 from transformer_lens.model_bridge import TransformerBridge
 
 
-def test_split_qkv_normal_attn_correct():
-    """Verifies that the split_qkv_input flag does not change the output for models with normal attention."""
-    # Use a simple pretrained model instead of creating from scratch
-    # since TransformerBridge works with pretrained models
+def test_split_qkv_does_not_change_output():
+    """Verifies that set_use_split_qkv_input(True) does not change model output."""
     model = TransformerBridge.boot_transformers("gpt2", device="cpu")
 
     x = torch.arange(1, 9).unsqueeze(0)

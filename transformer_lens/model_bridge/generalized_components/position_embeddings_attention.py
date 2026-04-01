@@ -15,14 +15,12 @@ from typing import Any, Callable, Dict, Optional
 import torch
 import transformers.models.gemma2.modeling_gemma2 as gemma2_module
 
-from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.generalized_components.attention import (
     AttentionBridge,
 )
 from transformer_lens.model_bridge.generalized_components.position_embedding_hooks_mixin import (
     PositionEmbeddingHooksMixin,
 )
-
 
 # Global registry mapping HF attention modules to their bridge instances
 # Uses WeakValueDictionary to avoid preventing garbage collection of bridges

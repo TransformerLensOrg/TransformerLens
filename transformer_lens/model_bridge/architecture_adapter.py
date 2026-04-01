@@ -70,24 +70,16 @@ class ArchitectureAdapter:
             n_kv_heads = getattr(self.cfg, "n_key_value_heads", None) or self.cfg.n_heads
         return {
             "blocks.{i}.attn.q.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion(
-                    "(n h) m -> n m h", n=self.cfg.n_heads
-                ),
+                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
             ),
             "blocks.{i}.attn.k.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion(
-                    "(n h) m -> n m h", n=n_kv_heads
-                ),
+                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=n_kv_heads),
             ),
             "blocks.{i}.attn.v.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion(
-                    "(n h) m -> n m h", n=n_kv_heads
-                ),
+                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=n_kv_heads),
             ),
             "blocks.{i}.attn.o.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion(
-                    "m (n h) -> n h m", n=self.cfg.n_heads
-                ),
+                tensor_conversion=RearrangeTensorConversion("m (n h) -> n h m", n=self.cfg.n_heads),
             ),
         }
 

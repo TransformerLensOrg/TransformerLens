@@ -1,7 +1,9 @@
 """Tests for resolve_activation_fn utility."""
 import torch
 
-from transformer_lens.model_bridge.generalized_components.gated_mlp import resolve_activation_fn
+from transformer_lens.model_bridge.generalized_components.gated_mlp import (
+    resolve_activation_fn,
+)
 
 
 class _FakeCfg:

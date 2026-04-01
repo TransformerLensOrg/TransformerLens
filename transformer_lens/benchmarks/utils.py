@@ -217,7 +217,9 @@ def compare_activation_dicts(
             b, r = t1.float(), t2.float()
             max_diff = torch.max(torch.abs(b - r)).item()
             mean_diff = torch.mean(torch.abs(b - r)).item()
-            mismatches.append(f"{key}: Value mismatch - max_diff={max_diff:.6f}, mean_diff={mean_diff:.6f}")
+            mismatches.append(
+                f"{key}: Value mismatch - max_diff={max_diff:.6f}, mean_diff={mean_diff:.6f}"
+            )
     return mismatches
 
 
