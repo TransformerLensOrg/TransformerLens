@@ -143,6 +143,84 @@ class PhaseReferenceData:
     test_text: Optional[str] = None
 
 
+def make_capture_hook(storage: dict, name: str):
+    """Create a forward hook that captures activations into a dict.
+
+    Handles both raw tensors and tuples (extracts first element).
+    """
+
+    def hook_fn(tensor, hook):
+        if isinstance(tensor, torch.Tensor):
+            storage[name] = tensor.detach().clone()
+        elif isinstance(tensor, tuple) and len(tensor) > 0:
+            if isinstance(tensor[0], torch.Tensor):
+                storage[name] = tensor[0].detach().clone()
+        return tensor
+
+    return hook_fn
+
+
+def make_grad_capture_hook(storage: dict, name: str, return_none: bool = False):
+    """Create a backward hook that captures gradients into a dict.
+
+    Args:
+        storage: Dict to store captured gradients
+        name: Key name for storage
+        return_none: If True, return None (for backward hooks that shouldn't modify grads)
+    """
+
+    def hook_fn(tensor, hook=None):
+        if isinstance(tensor, torch.Tensor):
+            storage[name] = tensor.detach().clone()
+        elif isinstance(tensor, tuple) and len(tensor) > 0:
+            if tensor[0] is not None and isinstance(tensor[0], torch.Tensor):
+                storage[name] = tensor[0].detach().clone()
+        return None if return_none else tensor
+
+    return hook_fn
+
+
+def _squeeze_batch_dim(t1: torch.Tensor, t2: torch.Tensor):
+    """Handle batch dimension differences (e.g., [seq, dim] vs [1, seq, dim]).
+
+    Returns (t1, t2) with matching shapes, or None if shapes are incompatible.
+    """
+    if t1.shape == t2.shape:
+        return t1, t2
+    if t1.ndim == t2.ndim - 1 and t2.shape[0] == 1 and t1.shape == t2.shape[1:]:
+        return t1.unsqueeze(0), t2
+    if t2.ndim == t1.ndim - 1 and t1.shape[0] == 1 and t2.shape == t1.shape[1:]:
+        return t1, t2.unsqueeze(0)
+    return None
+
+
+def compare_activation_dicts(
+    dict1: Dict[str, torch.Tensor],
+    dict2: Dict[str, torch.Tensor],
+    atol: float = 1e-5,
+    rtol: float = 0.0,
+) -> List[str]:
+    """Compare two activation/gradient dicts, returning mismatch descriptions.
+
+    Handles batch-dim squeezing and dtype/device normalization.
+    """
+    mismatches = []
+    common_keys = sorted(set(dict1.keys()) & set(dict2.keys()))
+    for key in common_keys:
+        t1, t2 = dict1[key], dict2[key]
+        squeezed = _squeeze_batch_dim(t1, t2)
+        if squeezed is None:
+            mismatches.append(f"{key}: Shape mismatch - {t1.shape} vs {t2.shape}")
+            continue
+        t1, t2 = squeezed
+        if not safe_allclose(t1, t2, atol=atol, rtol=rtol):
+            b, r = t1.float(), t2.float()
+            max_diff = torch.max(torch.abs(b - r)).item()
+            mean_diff = torch.mean(torch.abs(b - r)).item()
+            mismatches.append(f"{key}: Value mismatch - max_diff={max_diff:.6f}, mean_diff={mean_diff:.6f}")
+    return mismatches
+
+
 def compare_tensors(
     tensor1: torch.Tensor,
     tensor2: torch.Tensor,

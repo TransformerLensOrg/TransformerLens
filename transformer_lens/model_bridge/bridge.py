@@ -1017,104 +1017,105 @@ class TransformerBridge(nn.Module):
             return str(token[0])
         raise AssertionError("Expected a single string token.")
 
+    def _stack_block_params(
+        self, attr_path: str, reshape_fn: Optional[Callable] = None
+    ) -> torch.Tensor:
+        """Stack a parameter across all blocks.
+
+        Args:
+            attr_path: Dot-separated attribute path from block (e.g., "attn.W_K")
+            reshape_fn: Optional function to reshape each weight before stacking
+        """
+        weights = []
+        for block in self.blocks:
+            w = block
+            for attr in attr_path.split("."):
+                w = getattr(w, attr)
+            if reshape_fn is not None:
+                w = reshape_fn(w)
+            weights.append(w)
+        return torch.stack(weights, dim=0)
+
+    def _reshape_qkv(self, w: torch.Tensor) -> torch.Tensor:
+        """Reshape 2D [d_model, d_model] QKV weight to 3D [n_heads, d_model, d_head]."""
+        if w.shape == (self.cfg.d_model, self.cfg.d_model):
+            d_head = self.cfg.d_model // self.cfg.n_heads
+            return w.reshape(self.cfg.n_heads, self.cfg.d_model, d_head)
+        return w
+
+    def _reshape_o(self, w: torch.Tensor) -> torch.Tensor:
+        """Reshape 2D [d_model, d_model] O weight to 3D [n_heads, d_head, d_model]."""
+        if w.shape == (self.cfg.d_model, self.cfg.d_model):
+            d_head = self.cfg.d_model // self.cfg.n_heads
+            return w.reshape(self.cfg.n_heads, d_head, self.cfg.d_model)
+        return w
+
     @property
     def W_K(self) -> torch.Tensor:
         """Stack the key weights across all layers."""
-        weights = []
-        for block in self.blocks:
-            w_k = block.attn.W_K
-            if w_k.shape == (self.cfg.d_model, self.cfg.d_model):
-                d_head = self.cfg.d_model // self.cfg.n_heads
-                w_k = w_k.reshape(self.cfg.n_heads, self.cfg.d_model, d_head)
-            weights.append(w_k)
-        return torch.stack(weights, dim=0)
+        return self._stack_block_params("attn.W_K", self._reshape_qkv)
 
     @property
     def W_Q(self) -> torch.Tensor:
         """Stack the query weights across all layers."""
-        weights = []
-        for block in self.blocks:
-            w_q = block.attn.W_Q
-            if w_q.shape == (self.cfg.d_model, self.cfg.d_model):
-                d_head = self.cfg.d_model // self.cfg.n_heads
-                w_q = w_q.reshape(self.cfg.n_heads, self.cfg.d_model, d_head)
-            weights.append(w_q)
-        return torch.stack(weights, dim=0)
+        return self._stack_block_params("attn.W_Q", self._reshape_qkv)
 
     @property
     def W_V(self) -> torch.Tensor:
         """Stack the value weights across all layers."""
-        weights = []
-        for block in self.blocks:
-            w_v = block.attn.W_V
-            if w_v.shape == (self.cfg.d_model, self.cfg.d_model):
-                d_head = self.cfg.d_model // self.cfg.n_heads
-                w_v = w_v.reshape(self.cfg.n_heads, self.cfg.d_model, d_head)
-            weights.append(w_v)
-        return torch.stack(weights, dim=0)
+        return self._stack_block_params("attn.W_V", self._reshape_qkv)
 
     @property
     def W_O(self) -> torch.Tensor:
         """Stack the attn output weights across all layers."""
-        weights = []
-        for block in self.blocks:
-            w_o = block.attn.W_O
-            if w_o.shape == (self.cfg.d_model, self.cfg.d_model):
-                d_head = self.cfg.d_model // self.cfg.n_heads
-                w_o = w_o.reshape(self.cfg.n_heads, d_head, self.cfg.d_model)
-            weights.append(w_o)
-        return torch.stack(weights, dim=0)
+        return self._stack_block_params("attn.W_O", self._reshape_o)
 
     @property
     def W_in(self) -> torch.Tensor:
         """Stack the MLP input weights across all layers."""
-        return torch.stack([block.mlp.W_in for block in self.blocks], dim=0)
+        return self._stack_block_params("mlp.W_in")
 
     @property
     def W_gate(self) -> Union[torch.Tensor, None]:
-        """Stack the MLP gate weights across all layers.
-
-        Only works for models with gated MLPs.
-        """
+        """Stack the MLP gate weights across all layers (gated MLPs only)."""
         if getattr(self.cfg, "gated_mlp", False):
-            return torch.stack([block.mlp.W_gate for block in self.blocks], dim=0)
-        else:
-            return None
+            return self._stack_block_params("mlp.W_gate")
+        return None
 
     @property
     def W_out(self) -> torch.Tensor:
         """Stack the MLP output weights across all layers."""
-        return torch.stack([block.mlp.W_out for block in self.blocks], dim=0)
+        return self._stack_block_params("mlp.W_out")
 
     @property
     def b_K(self) -> torch.Tensor:
         """Stack the key biases across all layers."""
-        return torch.stack([block.attn.b_K for block in self.blocks], dim=0)
+        return self._stack_block_params("attn.b_K")
 
     @property
     def b_Q(self) -> torch.Tensor:
         """Stack the query biases across all layers."""
-        return torch.stack([block.attn.b_Q for block in self.blocks], dim=0)
+        return self._stack_block_params("attn.b_Q")
 
     @property
     def b_V(self) -> torch.Tensor:
         """Stack the value biases across all layers."""
-        return torch.stack([block.attn.b_V for block in self.blocks], dim=0)
+        return self._stack_block_params("attn.b_V")
 
     @property
     def b_O(self) -> torch.Tensor:
         """Stack the attn output biases across all layers."""
-        return torch.stack([block.attn.b_O for block in self.blocks], dim=0)
+        return self._stack_block_params("attn.b_O")
 
     @property
     def b_in(self) -> torch.Tensor:
         """Stack the MLP input biases across all layers."""
-        return torch.stack([block.mlp.b_in for block in self.blocks], dim=0)
+        return self._stack_block_params("mlp.b_in")
 
     @property
     def b_out(self) -> torch.Tensor:
         """Stack the MLP output biases across all layers."""
-        return torch.stack([block.mlp.b_out for block in self.blocks], dim=0)
+        return self._stack_block_params("mlp.b_out")
 
     @property
     def QK(self):

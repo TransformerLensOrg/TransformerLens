@@ -4,12 +4,8 @@ Base adapter for the IBM Granite model family. Provides shared config setup and
 helper methods used by GraniteMoe and GraniteMoeHybrid variants.
 """
 
-from typing import Any, Dict
+from typing import Any
 
-from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorConversion
-from transformer_lens.conversion_utils.param_processing_conversion import (
-    ParamProcessingConversion,
-)
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
@@ -44,8 +40,7 @@ class GraniteArchitectureAdapter(ArchitectureAdapter):
         super().__init__(cfg)
 
         self._setup_common_config(cfg)
-        n_kv_heads = self._get_n_kv_heads()
-        self.weight_processing_conversions = self._build_attn_weight_conversions(n_kv_heads)
+        self.weight_processing_conversions = {**self._qkvo_weight_conversions()}
         self.component_mapping = self._build_component_mapping()
 
     def _setup_common_config(self, cfg: Any) -> None:
@@ -69,31 +64,6 @@ class GraniteArchitectureAdapter(ArchitectureAdapter):
         if hasattr(cfg, "n_key_value_heads") and cfg.n_key_value_heads is not None:
             self.default_config["n_key_value_heads"] = cfg.n_key_value_heads
             self.cfg.n_key_value_heads = cfg.n_key_value_heads
-
-    def _get_n_kv_heads(self) -> int:
-        """Get the number of key-value heads (for GQA or MHA)."""
-        if hasattr(self.cfg, "n_key_value_heads") and self.cfg.n_key_value_heads is not None:
-            return self.cfg.n_key_value_heads
-        return self.cfg.n_heads
-
-    def _build_attn_weight_conversions(
-        self, n_kv_heads: int
-    ) -> Dict[str, ParamProcessingConversion | str]:
-        """Build weight processing conversions for attention projections."""
-        return {
-            "blocks.{i}.attn.q.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
-            ),
-            "blocks.{i}.attn.k.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=n_kv_heads),
-            ),
-            "blocks.{i}.attn.v.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=n_kv_heads),
-            ),
-            "blocks.{i}.attn.o.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion("m (n h) -> n h m", n=self.cfg.n_heads),
-            ),
-        }
 
     def _build_attention_bridge(self) -> PositionEmbeddingsAttentionBridge:
         """Build the standard Granite attention bridge."""
