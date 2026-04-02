@@ -273,13 +273,7 @@ jobs:
           version: 1.0
       - name: Check Notebook Output Consistency
         # Note: currently only checks notebooks we have specifically setup for this
-        # Patching notebooks need a longer cell timeout due to compute-heavy cells
-        run: |
-          if [[ "${{ matrix.notebook }}" == *"Patching"* ]]; then
-            pytest --nbval-sanitize-with demos/doc_sanitize.cfg --nbval-cell-timeout 300 demos/${{ matrix.notebook }}.ipynb
-          else
-            pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/${{ matrix.notebook }}.ipynb
-          fi
+        run: pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/${{ matrix.notebook }}.ipynb
 
 
   build-docs:

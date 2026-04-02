@@ -30,9 +30,7 @@ def test_get_act_patch_attn_head_all_pos_every_shape(model, corrupted_tokens, cl
     def metric(logits):
         return logits[:, -1, :].sum()
 
-    result = get_act_patch_attn_head_all_pos_every(
-        model, corrupted_tokens, clean_cache, metric
-    )
+    result = get_act_patch_attn_head_all_pos_every(model, corrupted_tokens, clean_cache, metric)
 
     assert result.shape == (5, model.cfg.n_layers, model.cfg.n_heads)
 
@@ -43,9 +41,7 @@ def test_get_act_patch_attn_head_all_pos_every_values_vary(model, corrupted_toke
     def metric(logits):
         return logits[:, -1, :].sum()
 
-    result = get_act_patch_attn_head_all_pos_every(
-        model, corrupted_tokens, clean_cache, metric
-    )
+    result = get_act_patch_attn_head_all_pos_every(model, corrupted_tokens, clean_cache, metric)
 
     # Not all values should be identical — different heads have different effects
     assert not torch.all(result == result[0, 0, 0]), "All patch results are identical"
