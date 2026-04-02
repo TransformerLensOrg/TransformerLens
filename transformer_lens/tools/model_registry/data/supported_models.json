@@ -8,7 +8,7 @@
   },
   "total_architectures": 35,
   "total_models": 5833,
-  "total_verified": 687,
+  "total_verified": 688,
   "models": [
     {
       "architecture_id": "Qwen2ForCausalLM",
@@ -595,14 +595,15 @@
       "architecture_id": "BloomForCausalLM",
       "model_id": "bigscience/bloomz-560m",
       "status": 1,
-      "verified_date": "2026-03-10",
+      "verified_date": "2026-04-02",
       "metadata": null,
       "note": "Full verification completed with issues: P2=91.7% (failed: generation)",
       "phase1_score": 100.0,
       "phase2_score": 91.7,
       "phase3_score": 100.0,
       "phase4_score": 95.9,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "LlamaForCausalLM",
@@ -2536,14 +2537,15 @@
       "architecture_id": "BloomForCausalLM",
       "model_id": "bigscience/bloom-560m",
       "status": 1,
-      "verified_date": "2026-03-10",
+      "verified_date": "2026-04-02",
       "metadata": null,
-      "note": "Full verification completed with issues: P2=92.9% (failed: hook_functionality)",
+      "note": "Full verification completed",
       "phase1_score": 100.0,
-      "phase2_score": 92.9,
+      "phase2_score": 100.0,
       "phase3_score": 100.0,
       "phase4_score": 89.2,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "MistralForCausalLM",
@@ -67375,13 +67377,16 @@
     {
       "architecture_id": "BloomForCausalLM",
       "model_id": "akreal/tiny-random-BloomForCausalLM",
-      "status": 0,
-      "verified_date": null,
+      "status": 3,
+      "verified_date": "2026-04-02",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Below threshold: P1=50.0% < 100.0% (failed: forward_pass_logits) \u2014 Tensors differ: max_diff=0.004379, mean_rel=0.022909",
+      "phase1_score": 50.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "phase4_score": 42.0,
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "Qwen3ForCausalLM",
@@ -69210,13 +69215,16 @@
     {
       "architecture_id": "BloomForCausalLM",
       "model_id": "zyznull/RankingGPT-bloom-560m",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-04-02",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null
+      "note": "Full verification completed with issues: P2=91.7% (failed: generation)",
+      "phase1_score": 100.0,
+      "phase2_score": 91.7,
+      "phase3_score": 100.0,
+      "phase4_score": 95.6,
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "GPTNeoXForCausalLM",

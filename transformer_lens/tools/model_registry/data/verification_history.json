@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-03-30T22:08:44.089444",
+  "last_updated": "2026-04-02T16:47:39.135017",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -11058,6 +11058,46 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "akreal/tiny-random-BloomForCausalLM",
+      "architecture_id": "BloomForCausalLM",
+      "verified_date": "2026-04-02",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=50.0% < 100.0% (failed: forward_pass_logits) \u2014 Tensors differ: max_diff=0.004379, mean_rel=0.022909",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "zyznull/RankingGPT-bloom-560m",
+      "architecture_id": "BloomForCausalLM",
+      "verified_date": "2026-04-02",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P2=91.7% (failed: generation)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "bigscience/bloom-560m",
+      "architecture_id": "BloomForCausalLM",
+      "verified_date": "2026-04-02",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "bigscience/bloomz-560m",
+      "architecture_id": "BloomForCausalLM",
+      "verified_date": "2026-04-02",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P2=91.7% (failed: generation)",
       "invalidated": false,
       "invalidation_reason": null
     }
