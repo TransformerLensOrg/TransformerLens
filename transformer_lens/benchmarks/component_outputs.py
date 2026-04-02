@@ -646,7 +646,7 @@ class ComponentBenchmarker:
         Returns:
             The component output
         """
-        # Special handling for q_norm/k_norm: they expect (batch, seq, d_head) not (batch, seq, d_model)
+        # q_norm/k_norm expect d_head, not d_model
         if component_path.endswith(".q_norm") or component_path.endswith(".k_norm"):
             # Reshape test_input from (batch, seq, d_model) to (batch, seq, d_head)
             batch, seq, d_model = test_input.shape

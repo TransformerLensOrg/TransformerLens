@@ -2054,8 +2054,7 @@ def get_pretrained_state_dict(
                     **kwargs,
                 )
             else:
-                # Some older model configs (e.g., microsoft/phi-1) lack pad_token_id,
-                # which newer transformers versions require during model initialization.
+                # Older models may lack pad_token_id (required in newer transformers)
                 try:
                     hf_model = AutoModelForCausalLM.from_pretrained(
                         official_model_name,

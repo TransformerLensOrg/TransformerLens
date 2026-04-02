@@ -120,11 +120,7 @@ class ActivationCache:
         self.has_embed = "hook_embed" in self.cache_dict
         self.has_pos_embed = "hook_pos_embed" in self.cache_dict
 
-        # Note: self.model creates a strong reference that prevents model garbage collection.
-        # If memory is a concern and you don't need the cache methods that access model weights
-        # (e.g., compute_head_results, stack_head_results), you can break the reference with:
-        # cache.model = None  # after creating the cache
-        # Most analysis methods only need the cached activations, not the full model.
+        # Note: model reference prevents garbage collection. Set cache.model = None if unneeded.
 
     def remove_batch_dim(self) -> ActivationCache:
         """Remove the Batch Dimension (if a single batch item).
@@ -133,7 +129,7 @@ class ActivationCache:
             The ActivationCache with the batch dimension removed.
         """
         if self.has_batch_dim:
-            # Some tensors lack a batch dim (e.g., T5 position biases) — skip those.
+            # Skip tensors without a batch dimension
             has_batch_1 = any(v.size(0) == 1 for v in self.cache_dict.values())
             for key in self.cache_dict:
                 if self.cache_dict[key].size(0) == 1:
@@ -709,16 +705,14 @@ class ActivationCache:
         Intended use is to enable use_attn_results when running and caching the model, but this can
         be useful if you forget.
         """
-        # Return early if valid 4D per-head results already exist.
-        # TransformerBridge may place 3D combined-output tensors under
-        # hook_result (via alias); detect and replace those with proper 4D.
+        # Return if valid 4D results exist; replace stale 3D Bridge entries if needed
         first_key = "blocks.0.attn.hook_result"
         if first_key in self.cache_dict:
             val = self.cache_dict[first_key]
             if isinstance(val, torch.Tensor) and val.ndim >= 4:
                 logging.warning("Tried to compute head results when they were already cached")
                 return
-            # Stale 3D entries exist — remove them before recomputing
+            # Remove stale 3D entries before recomputing
             for layer in range(self.model.cfg.n_layers):
                 key = f"blocks.{layer}.attn.hook_result"
                 if key in self.cache_dict:
@@ -777,7 +771,7 @@ class ActivationCache:
             # Default to the residual stream immediately pre unembed
             layer = self.model.cfg.n_layers
 
-        # Idempotent; also cleans up stale 3D hook_result entries from Bridge.
+        # Idempotent; cleans up stale Bridge entries
         self.compute_head_results()
 
         components: Any = []

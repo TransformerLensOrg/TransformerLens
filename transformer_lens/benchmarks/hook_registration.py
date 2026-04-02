@@ -8,9 +8,10 @@ from transformer_lens import HookedTransformer
 from transformer_lens.benchmarks.utils import (
     BenchmarkResult,
     BenchmarkSeverity,
+    compare_activation_dicts,
     compare_scalars,
     filter_expected_missing_hooks,
-    safe_allclose,
+    make_capture_hook,
 )
 from transformer_lens.model_bridge import TransformerBridge
 
@@ -133,23 +134,12 @@ def benchmark_forward_hooks(
             hook_names = list(bridge.hook_dict.keys())
 
         # Register hooks on bridge and track missing hooks
-        def make_bridge_hook(name: str):
-            def hook_fn(tensor, hook):
-                if isinstance(tensor, torch.Tensor):
-                    bridge_activations[name] = tensor.detach().clone()
-                elif isinstance(tensor, tuple) and len(tensor) > 0:
-                    if isinstance(tensor[0], torch.Tensor):
-                        bridge_activations[name] = tensor[0].detach().clone()
-                return tensor
-
-            return hook_fn
-
         bridge_handles = []
         missing_from_bridge = []
         for hook_name in hook_names:
             if hook_name in bridge.hook_dict:
                 hook_point = bridge.hook_dict[hook_name]
-                handle = hook_point.add_hook(make_bridge_hook(hook_name))  # type: ignore[func-returns-value]
+                handle = hook_point.add_hook(make_capture_hook(bridge_activations, hook_name))  # type: ignore[func-returns-value]
                 bridge_handles.append((hook_name, handle))
             else:
                 missing_from_bridge.append(hook_name)
@@ -192,22 +182,11 @@ def benchmark_forward_hooks(
             )
 
         # Register hooks on reference model
-        def make_reference_hook(name: str):
-            def hook_fn(tensor, hook):
-                if isinstance(tensor, torch.Tensor):
-                    reference_activations[name] = tensor.detach().clone()
-                elif isinstance(tensor, tuple) and len(tensor) > 0:
-                    if isinstance(tensor[0], torch.Tensor):
-                        reference_activations[name] = tensor[0].detach().clone()
-                return tensor
-
-            return hook_fn
-
         reference_handles = []
         for hook_name in hook_names:
             if hook_name in reference_model.hook_dict:
                 hook_point = reference_model.hook_dict[hook_name]
-                handle = hook_point.add_hook(make_reference_hook(hook_name))  # type: ignore[func-returns-value]
+                handle = hook_point.add_hook(make_capture_hook(reference_activations, hook_name))  # type: ignore[func-returns-value]
                 reference_handles.append(handle)
 
         # Run reference forward pass
@@ -260,44 +239,9 @@ def benchmark_forward_hooks(
 
         # Compare activations
         common_hooks = set(bridge_activations.keys()) & set(reference_activations.keys())
-        mismatches = []
-
-        for hook_name in sorted(common_hooks):
-            bridge_tensor = bridge_activations[hook_name]
-            reference_tensor = reference_activations[hook_name]
-
-            # Check shapes
-            # Handle batch dimension differences: some HF models (e.g., OPT)
-            # internally reshape to 2D for MLP path, producing [seq, dim] hooks
-            # while HT always maintains [batch, seq, dim]
-            if bridge_tensor.shape != reference_tensor.shape:
-                if (
-                    bridge_tensor.ndim == reference_tensor.ndim - 1
-                    and reference_tensor.shape[0] == 1
-                    and bridge_tensor.shape == reference_tensor.shape[1:]
-                ):
-                    bridge_tensor = bridge_tensor.unsqueeze(0)
-                elif (
-                    reference_tensor.ndim == bridge_tensor.ndim - 1
-                    and bridge_tensor.shape[0] == 1
-                    and reference_tensor.shape == bridge_tensor.shape[1:]
-                ):
-                    reference_tensor = reference_tensor.unsqueeze(0)
-                else:
-                    mismatches.append(
-                        f"{hook_name}: Shape mismatch - Bridge{bridge_tensor.shape} vs Ref{reference_tensor.shape}"
-                    )
-                    continue
-
-            # Check values
-            if not safe_allclose(bridge_tensor, reference_tensor, atol=tolerance, rtol=0.0):
-                b = bridge_tensor.float()
-                r = reference_tensor.float()
-                max_diff = torch.max(torch.abs(b - r)).item()
-                mean_diff = torch.mean(torch.abs(b - r)).item()
-                mismatches.append(
-                    f"{hook_name}: Value mismatch - max_diff={max_diff:.6f}, mean_diff={mean_diff:.6f}"
-                )
+        mismatches = compare_activation_dicts(
+            bridge_activations, reference_activations, atol=tolerance
+        )
 
         if mismatches:
             # Detect Bloom-style residual-merged hooks: Bloom adds residual inside
@@ -399,19 +343,11 @@ def benchmark_critical_forward_hooks(
         bridge_activations: Dict[str, torch.Tensor] = {}
 
         # Register hooks on bridge
-        def make_bridge_hook(name: str):
-            def hook_fn(tensor, hook):
-                if isinstance(tensor, torch.Tensor):
-                    bridge_activations[name] = tensor.detach().clone()
-                return tensor
-
-            return hook_fn
-
         bridge_handles = []
         for hook_name in critical_hooks:
             if hook_name in bridge.hook_dict:
                 hook_point = bridge.hook_dict[hook_name]
-                handle = hook_point.add_hook(make_bridge_hook(hook_name))  # type: ignore[func-returns-value]
+                handle = hook_point.add_hook(make_capture_hook(bridge_activations, hook_name))  # type: ignore[func-returns-value]
                 bridge_handles.append(handle)
 
         # Run bridge forward pass
@@ -436,19 +372,11 @@ def benchmark_critical_forward_hooks(
         # Compare with reference model
         reference_activations: Dict[str, torch.Tensor] = {}
 
-        def make_reference_hook(name: str):
-            def hook_fn(tensor, hook):
-                if isinstance(tensor, torch.Tensor):
-                    reference_activations[name] = tensor.detach().clone()
-                return tensor
-
-            return hook_fn
-
         reference_handles = []
         for hook_name in critical_hooks:
             if hook_name in reference_model.hook_dict:
                 hook_point = reference_model.hook_dict[hook_name]
-                handle = hook_point.add_hook(make_reference_hook(hook_name))  # type: ignore[func-returns-value]
+                handle = hook_point.add_hook(make_capture_hook(reference_activations, hook_name))  # type: ignore[func-returns-value]
                 reference_handles.append(handle)
 
         # Run reference forward pass
@@ -460,57 +388,24 @@ def benchmark_critical_forward_hooks(
             if handle is not None:
                 handle.remove()
 
-        # Compare activations
-        # Only compare hooks that exist in BOTH models
-        # If a hook is missing from reference but exists in bridge, that's fine (bridge has more hooks)
-        # If a hook is missing from bridge but exists in reference, that's a problem
-        mismatches = []
+        # Compare activations — categorize by presence
         bridge_missing = []  # Hooks in reference but not in bridge (BAD)
-        reference_missing = []  # Hooks in bridge but not in reference (OK - bridge has extras)
+        reference_missing = []  # Hooks in bridge but not in reference (OK)
 
         for hook_name in critical_hooks:
             if hook_name not in bridge_activations and hook_name not in reference_activations:
-                # Neither has it - skip
                 continue
             if hook_name not in bridge_activations:
-                # Bridge is missing a hook that reference has - this is a problem
                 bridge_missing.append(f"{hook_name}: Not found in Bridge")
                 continue
             if hook_name not in reference_activations:
-                # Reference doesn't have a hook that bridge has - this is fine (bridge has more)
                 reference_missing.append(
                     f"{hook_name}: Not in Reference (Bridge has additional hooks)"
                 )
-                continue
 
-            bridge_tensor = bridge_activations[hook_name]
-            reference_tensor = reference_activations[hook_name]
-
-            # Handle batch dimension differences (see forward_hooks)
-            if bridge_tensor.shape != reference_tensor.shape:
-                if (
-                    bridge_tensor.ndim == reference_tensor.ndim - 1
-                    and reference_tensor.shape[0] == 1
-                    and bridge_tensor.shape == reference_tensor.shape[1:]
-                ):
-                    bridge_tensor = bridge_tensor.unsqueeze(0)
-                elif (
-                    reference_tensor.ndim == bridge_tensor.ndim - 1
-                    and bridge_tensor.shape[0] == 1
-                    and reference_tensor.shape == bridge_tensor.shape[1:]
-                ):
-                    reference_tensor = reference_tensor.unsqueeze(0)
-                else:
-                    mismatches.append(
-                        f"{hook_name}: Shape mismatch - Bridge{bridge_tensor.shape} vs Ref{reference_tensor.shape}"
-                    )
-                    continue
-
-            if not safe_allclose(bridge_tensor, reference_tensor, atol=tolerance, rtol=0.0):
-                max_diff = torch.max(
-                    torch.abs(bridge_tensor.cpu().float() - reference_tensor.cpu().float())
-                ).item()
-                mismatches.append(f"{hook_name}: max_diff={max_diff:.6f}")
+        mismatches = compare_activation_dicts(
+            bridge_activations, reference_activations, atol=tolerance
+        )
 
         # Filter out hooks expected to be missing in bridge models.
         if bridge_missing:

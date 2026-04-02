@@ -11,6 +11,7 @@ from transformer_lens.model_bridge.generalized_components.base import (
 )
 from transformer_lens.model_bridge.generalized_components.gated_mlp import (
     GatedMLPBridge,
+    resolve_activation_fn,
 )
 from transformer_lens.model_bridge.generalized_components.linear import LinearBridge
 
@@ -121,32 +122,7 @@ class JointGateUpMLPBridge(GatedMLPBridge):
         """Resolve the activation function for the reconstructed forward pass."""
         if self._activation_fn is not None:
             return self._activation_fn
-
-        # Config-based fallback (same logic as GatedMLPBridge)
-        act_fn_name = None
-        if self.config:
-            act_fn_name = getattr(self.config, "activation_function", None)
-            if act_fn_name is None:
-                act_fn_name = getattr(self.config, "hidden_activation", None)
-            if act_fn_name is None:
-                act_fn_name = getattr(self.config, "hidden_act", None)
-            if act_fn_name is None:
-                act_fn_name = getattr(self.config, "act_fn", None)
-
-        if act_fn_name is None or act_fn_name in ("silu", "swish"):
-            return torch.nn.functional.silu
-        elif act_fn_name == "gelu":
-            return torch.nn.functional.gelu
-        elif act_fn_name in ("gelu_new", "gelu_pytorch_tanh"):
-
-            def gelu_tanh(x: torch.Tensor) -> torch.Tensor:
-                return torch.nn.functional.gelu(x, approximate="tanh")
-
-            return gelu_tanh
-        elif act_fn_name == "relu":
-            return torch.nn.functional.relu
-        else:
-            return torch.nn.functional.silu
+        return resolve_activation_fn(self.config)
 
     def forward(self, *args: Any, **kwargs: Any) -> torch.Tensor:
         """Reconstructed gated MLP forward with individual hook access."""

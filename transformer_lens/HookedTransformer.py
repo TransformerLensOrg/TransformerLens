@@ -44,8 +44,7 @@ import transformer_lens.loading_from_pretrained as loading
 import transformer_lens.utils as utils
 from transformer_lens.ActivationCache import ActivationCache
 
-# Note - activation cache is used with run_with_cache, past_key_value_caching is used for
-# generation.
+# Activation cache for run_with_cache; KV cache for generation
 from transformer_lens.cache.key_value_cache import TransformerLensKeyValueCache
 from transformer_lens.components import (
     Embed,
@@ -760,16 +759,13 @@ class HookedTransformer(HookedRootModule):
         self.tokenizer = tokenizer_with_bos
         assert self.tokenizer is not None  # keep mypy happy
 
-        # If user passes default_padding_side explicitly, use that value
+        # Use explicit value, else tokenizer default, else "right"
         if default_padding_side is not None:
             self.tokenizer.padding_side = default_padding_side
-        # If not, then use the tokenizer's default padding side
-        # If the tokenizer doesn't have a default padding side, use the global default "right"
         if self.tokenizer.padding_side is None:
             self.tokenizer.padding_side = "right"
 
-        # Some tokenizers doesn't automatically prepend the BOS token even when they are initialized
-        # with add_bos_token=True. Therefore, we need this information to dynamically control prepend_bos.
+        # Detect whether tokenizer actually prepends BOS to control prepend_bos dynamically
         self.cfg.tokenizer_prepends_bos = len(self.tokenizer.encode("")) > 0
 
         if self.tokenizer.eos_token is None:
@@ -967,9 +963,7 @@ class HookedTransformer(HookedRootModule):
                 ), f"Invalid tokens input to to_str_tokens, has shape: {tokens.shape}"
             else:
                 raise ValueError(f"Invalid input type to to_str_tokens: {type(input)}")
-            # In transformers v5, batch_decode treats a flat list as a single sequence,
-            # not individual token IDs, so would return a single string. To maintain backward
-            # compatibility with v4, we wrap each token to decode them individually.
+            # v5 compat: wrap each token so batch_decode decodes them individually
             if isinstance(tokens, np.ndarray):
                 tokens_list = [[int(t)] for t in tokens]
             else:
@@ -1358,8 +1352,7 @@ class HookedTransformer(HookedRootModule):
             # Convert from string to a torch dtype
             dtype = DTYPE_FROM_STRING[dtype]
         if "torch_dtype" in from_pretrained_kwargs:
-            # For backwards compatibility with the previous way to do low precision loading
-            # This should maybe check the user did not explicitly set dtype *and* torch_dtype
+            # Backwards compat: torch_dtype overrides dtype
             dtype = from_pretrained_kwargs["torch_dtype"]
 
         if (
@@ -1371,9 +1364,7 @@ class HookedTransformer(HookedRootModule):
         # Get the model name used in HuggingFace, rather than the alias.
         official_model_name = loading.get_official_model_name(model_name)
 
-        # Load the config into an HookedTransformerConfig object. If loading from a
-        # checkpoint, the config object will contain the information about the
-        # checkpoint
+        # Load config (includes checkpoint info if applicable)
         cfg = loading.get_pretrained_model_config(
             official_model_name,
             hf_cfg=hf_cfg,
@@ -1408,11 +1399,7 @@ class HookedTransformer(HookedRootModule):
                     "Setting center_writing_weights=False instead."
                 )
                 center_writing_weights = False
-        # OLMo 2 uses post-norm (norm after attention/MLP, not before), which is
-        # incompatible with fold_ln and center_writing_weights (these assume pre-norm).
-        # center_unembed and fold_value_biases are architecture-independent and remain valid:
-        # - center_unembed: softmax is always translation-invariant
-        # - fold_value_biases: attention patterns always sum to 1
+        # OLMo 2 post-norm is incompatible with fold_ln/center_writing_weights (pre-norm only)
         if cfg.original_architecture == "Olmo2ForCausalLM":
             if fold_ln:
                 logging.warning(
@@ -1994,20 +1981,18 @@ class HookedTransformer(HookedRootModule):
             else:
                 past_kv_cache = None
 
-            # We only support a single HF style generation kwarg: `output_logits` which will cause
-            # the function to return a ModelOutput-like object containing `sequences` and `logits`.
-            # Any other HF-style generation kwargs are rejected to avoid supporting the full HF API here.
+            # Only `output_logits` is supported from HF generation kwargs
             output_logits_flag = False
             if generation_kwargs:
                 if "output_logits" in generation_kwargs:
                     output_logits_flag = bool(generation_kwargs.pop("output_logits"))
-                # Identify keys to warn about: anything other than allowed/silently ignored
+                # Warn about unsupported keys
                 accepted_keys = {"output_logits", "return_dict_in_generate"}
                 unsupported_keys = [k for k in generation_kwargs.keys() if k not in accepted_keys]
-                # silently ignore `return_dict_in_generate`
+                # Ignore `return_dict_in_generate`
                 if "return_dict_in_generate" in generation_kwargs:
                     generation_kwargs.pop("return_dict_in_generate")
-                # If any unsupported keys remain, warn and ignore them
+                # Warn and drop unsupported keys
                 if unsupported_keys:
                     import warnings
 
@@ -2015,11 +2000,11 @@ class HookedTransformer(HookedRootModule):
                         f"HookedTransformer.generate received unsupported generation kwargs; ignoring: {unsupported_keys}",
                         UserWarning,
                     )
-                    # Clear unsupported keys
+                    # Remove unsupported keys
                     for k in unsupported_keys:
                         generation_kwargs.pop(k, None)
 
-            # Optionally collect logits at each generation step for downstream tooling/tests
+            # Collect per-step logits if requested
             logits_seq_list: Optional[List[torch.Tensor]] = [] if output_logits_flag else None
 
             shortformer_pos_embed = None
@@ -2179,12 +2164,12 @@ class HookedTransformer(HookedRootModule):
                 result = cast(Any, embeds)
 
             if output_logits_flag:
-                # Adhere to HF ModelOutput format with sequences (tokens) and logits (per-step)
+                # Return HF ModelOutput format
                 from transformers.utils import ModelOutput  # type: ignore
 
                 def _logits_to_tuple(logits_list: list[torch.Tensor]) -> tuple[torch.Tensor, ...]:
                     assert logits_list is not None
-                    # Convert list of [batch, vocab] tensors to tuple
+                    # Convert to tuple of tensors
                     return tuple(logits_list)
 
                 try:
@@ -2196,7 +2181,7 @@ class HookedTransformer(HookedRootModule):
                         logits=_logits_to_tuple(logits_seq_list),  # type: ignore[arg-type]
                     )
                 except (ImportError, AttributeError):
-                    # Fallback if GenerateDecoderOnlyOutput not available in this transformers version
+                    # Fallback for older transformers versions
                     # `sequences` expects a tensor of token ids
                     return ModelOutput(sequences=output_tokens, logits=_logits_to_tuple(logits_seq_list))  # type: ignore[arg-type]
             else:

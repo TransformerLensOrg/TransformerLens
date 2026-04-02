@@ -46,7 +46,7 @@ def tokenize_and_concatenate(
     dataset = keep_single_column(dataset, column_name)
     has_pad_token = tokenizer.pad_token is not None
     if not has_pad_token:
-        # We add a padding token, purely to implement the tokenizer. This will be removed before inputting tokens to the model, so we do not need to increment d_vocab in the model.
+        # Add padding token for tokenizer (removed before model input)
         tokenizer.add_special_tokens({"pad_token": "<PAD>"})
     # Define the length to chop things up into - leaving space for a bos_token if required
     if add_bos_token:
@@ -73,9 +73,7 @@ def tokenize_and_concatenate(
         if not full_text.strip():
             return {"tokens": np.array([], dtype=np.int64)}
 
-        # Divide into 20 chunks of ~ equal length, splitting at whitespace
-        # boundaries to avoid cutting words in half (which creates token pairs
-        # that would never occur in naturally tokenized text - see issue #1133)
+        # Split at whitespace boundaries to avoid mid-word tokens (#1133)
         num_chunks = 20
         chunk_length = (len(full_text) - 1) // num_chunks + 1
         chunks = []
@@ -83,16 +81,13 @@ def tokenize_and_concatenate(
         lookahead = chunk_length // 10
         for i in range(num_chunks):
             end = min(start + chunk_length, len(full_text))
-            # Advance end to the next whitespace boundary to avoid splitting mid-token.
-            # Lookahead is bounded so pathological inputs (e.g. no whitespace) degrade
-            # gracefully to character-based splitting rather than consuming the rest of
-            # the string.
+            # Advance to whitespace; bounded lookahead for pathological inputs
             boundary = min(end + lookahead, len(full_text))
             while end < boundary and not full_text[end].isspace():
                 end += 1
             chunks.append(full_text[start:end])
             start = end
-        # Tokenize the chunks in parallel. Uses NumPy because HuggingFace map doesn't want tensors returned
+        # Tokenize in parallel with NumPy (HF map rejects tensors)
         tokens = tokenizer(chunks, return_tensors="np", padding=True)["input_ids"].flatten()
         # Drop padding tokens
         tokens = tokens[tokens != tokenizer.pad_token_id]
@@ -105,8 +100,7 @@ def tokenize_and_concatenate(
             tokens = tokens[:seq_len]
             if len(tokens) < seq_len:
                 padding_length = seq_len - len(tokens)
-                # Use eos_token_id for padding if tokenizer originally had no pad token,
-                # to avoid introducing token IDs outside the original vocabulary.
+                # Use EOS as pad to avoid out-of-vocabulary IDs
                 padding_id = tokenizer.eos_token_id if not has_pad_token else tokenizer.pad_token_id
                 padding = np.full(padding_length, padding_id)
                 tokens = np.concatenate([tokens, padding], axis=0)
@@ -265,9 +259,7 @@ def get_attention_mask(
         is_leading_pad = get_cumsum_along_dim(is_not_pad_token, -1, reverse=False) == 0
         attention_mask[is_leading_pad] = 0
 
-        # If the bos token is the same as the pad token,
-        # the last token of the leftmost leading pad tokens is the bos token.
-        # We need to set the attention mask for the bos token to 1.
+        # Unmask BOS when it shares the same ID as pad token
         if prepend_bos and tokenizer.bos_token_id == tokenizer.pad_token_id:
             pad_bos_positions = is_leading_pad.sum(-1) - 1
             attention_mask[torch.arange(attention_mask.shape[0]), pad_bos_positions] = 1

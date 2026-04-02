@@ -10,13 +10,17 @@ from typing import Any, Callable, Dict, Optional
 
 import torch
 
-from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.generalized_components.joint_qkv_attention import (
     JointQKVAttentionBridge,
 )
+from transformer_lens.model_bridge.generalized_components.position_embedding_hooks_mixin import (
+    PositionEmbeddingHooksMixin,
+)
 
 
-class JointQKVPositionEmbeddingsAttentionBridge(JointQKVAttentionBridge):
+class JointQKVPositionEmbeddingsAttentionBridge(
+    PositionEmbeddingHooksMixin, JointQKVAttentionBridge
+):
     """Attention bridge for models with fused QKV and position embeddings (e.g., Pythia).
 
     This combines the functionality of JointQKVAttentionBridge (splitting fused QKV matrices)
@@ -52,38 +56,7 @@ class JointQKVPositionEmbeddingsAttentionBridge(JointQKVAttentionBridge):
             submodules=submodules,
             **kwargs,
         )
-        self._rotary_emb = None
-        # Add hooks for cos and sin to match HookedTransformer pattern
-        self.hook_cos = HookPoint()
-        self.hook_sin = HookPoint()
-
-    def set_rotary_emb(self, rotary_emb: Any) -> None:
-        """Set reference to the model's rotary embedding component.
-
-        Args:
-            rotary_emb: The model's rotary_emb component (from model.gpt_neox.layers[0].attention.rotary_emb)
-        """
-        self._rotary_emb = rotary_emb
-
-    def _apply_position_embedding_hooks(self, position_embeddings):
-        """Apply hooks to position embeddings (cos, sin tuple).
-
-        Extracts cos and sin from the position_embeddings tuple and passes them
-        through hook_cos and hook_sin to match HookedTransformer's behavior.
-
-        Args:
-            position_embeddings: Tuple of (cos, sin) tensors
-
-        Returns:
-            Tuple of (hooked_cos, hooked_sin) tensors
-        """
-        if isinstance(position_embeddings, tuple) and len(position_embeddings) == 2:
-            cos, sin = position_embeddings
-            # Apply hooks to match HookedTransformer's rotary_cos/rotary_sin pattern
-            hooked_cos = self.hook_cos(cos)
-            hooked_sin = self.hook_sin(sin)
-            return (hooked_cos, hooked_sin)
-        return position_embeddings
+        self._init_position_embedding_hooks()
 
     def get_random_inputs(
         self,

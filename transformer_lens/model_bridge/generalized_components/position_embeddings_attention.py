@@ -15,9 +15,11 @@ from typing import Any, Callable, Dict, Optional
 import torch
 import transformers.models.gemma2.modeling_gemma2 as gemma2_module
 
-from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.generalized_components.attention import (
     AttentionBridge,
+)
+from transformer_lens.model_bridge.generalized_components.position_embedding_hooks_mixin import (
+    PositionEmbeddingHooksMixin,
 )
 
 # Global registry mapping HF attention modules to their bridge instances
@@ -98,7 +100,7 @@ def _setup_eager_attention_hook_wrapper() -> None:
     _EAGER_ATTENTION_WRAPPED = True
 
 
-class PositionEmbeddingsAttentionBridge(AttentionBridge):
+class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBridge):
     """Attention bridge for models that require position embeddings (e.g., Gemma-3).
 
     Some models use specialized position embedding systems (like Gemma-3's dual RoPE)
@@ -124,18 +126,7 @@ class PositionEmbeddingsAttentionBridge(AttentionBridge):
         kwargs["requires_attention_mask"] = True
         kwargs["maintain_native_attention"] = True
         super().__init__(name, config, submodules, **kwargs)
-        self._rotary_emb = None
-        # Add hooks for cos and sin to match HookedTransformer pattern
-        self.hook_cos = HookPoint()
-        self.hook_sin = HookPoint()
-
-    def set_rotary_emb(self, rotary_emb: Any) -> None:
-        """Set reference to the model's rotary embedding component.
-
-        Args:
-            rotary_emb: The model's rotary_emb component (from model.model.rotary_emb)
-        """
-        self._rotary_emb = rotary_emb
+        self._init_position_embedding_hooks()
 
     def set_original_component(self, component: torch.nn.Module) -> None:
         """Set the original HF component and register for rotary hook firing.
@@ -154,26 +145,6 @@ class PositionEmbeddingsAttentionBridge(AttentionBridge):
 
         # Ensure the wrapper is set up
         _setup_eager_attention_hook_wrapper()
-
-    def _apply_position_embedding_hooks(self, position_embeddings):
-        """Apply hooks to position embeddings (cos, sin tuple).
-
-        Extracts cos and sin from the position_embeddings tuple and passes them
-        through hook_cos and hook_sin to match HookedTransformer's behavior.
-
-        Args:
-            position_embeddings: Tuple of (cos, sin) tensors
-
-        Returns:
-            Tuple of (hooked_cos, hooked_sin) tensors
-        """
-        if isinstance(position_embeddings, tuple) and len(position_embeddings) == 2:
-            cos, sin = position_embeddings
-            # Apply hooks to match HookedTransformer's rotary_cos/rotary_sin pattern
-            hooked_cos = self.hook_cos(cos)
-            hooked_sin = self.hook_sin(sin)
-            return (hooked_cos, hooked_sin)
-        return position_embeddings
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         """Reimplemented forward pass with hooks at correct computation stages.
@@ -221,12 +192,7 @@ class PositionEmbeddingsAttentionBridge(AttentionBridge):
             hidden_states = hidden_states.to(dtype=target_dtype)
 
         # --- Q/K/V Projection + Optional Q/K Norms ---
-        # Some models (OLMo 2) apply Q/K norms BEFORE multi-head reshape on [batch, seq, hidden].
-        # Others (Gemma 3) apply AFTER reshape on [batch, heads, seq, head_dim].
-        # We match the HF model's order by checking if the original forward does
-        # proj → norm → reshape (OLMo 2) or proj → reshape → norm (Gemma 3).
-        # Detection: try applying norm to the flat projected tensor. If it fails
-        # (shape mismatch), the model uses post-reshape norms.
+        # Detect norm order: pre-reshape (OLMo 2) vs post-reshape (Gemma 3)
         input_shape = hidden_states.shape[:-1]
         head_dim = hf_attn.head_dim
         hidden_shape = (*input_shape, -1, head_dim)
