@@ -2,6 +2,7 @@
 
 This module contains the bridge component for attention layers that use a fused qkv matrix.
 """
+import copy
 from typing import Any, Callable, Dict, Optional
 
 import einops
@@ -107,6 +108,35 @@ class JointQKVAttentionBridge(AttentionBridge):
 
         # Exclude stale qkv combined weights from state_dict after splitting.
         self._register_state_dict_hook(JointQKVAttentionBridge._filter_qkv_state_dict)
+
+    def __deepcopy__(self, memo):
+        """Share split_qkv_matrix and config across clones instead of copying.
+
+        split_qkv_matrix may be a bound method of the architecture adapter,
+        which transitively references the full HF model. Without this override,
+        deepcopy duplicates the entire model per block (~1GB x N_layers).
+        """
+        saved_split_fn = self.split_qkv_matrix
+        saved_config = self.config
+
+        self.split_qkv_matrix = None  # type: ignore[assignment]
+        self.config = None
+        try:
+            # Remove override from defining class (not subclass) to avoid recursion.
+            owner = JointQKVAttentionBridge
+            override = owner.__dict__["__deepcopy__"]
+            del owner.__deepcopy__
+            try:
+                clone = copy.deepcopy(self, memo)
+            finally:
+                owner.__deepcopy__ = override  # type: ignore[method-assign]
+        finally:
+            self.split_qkv_matrix = saved_split_fn
+            self.config = saved_config
+
+        clone.split_qkv_matrix = saved_split_fn
+        clone.config = saved_config
+        return clone
 
     @staticmethod
     def _filter_qkv_state_dict(
