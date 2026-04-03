@@ -532,7 +532,7 @@ class AbstractAttention(ABC, nn.Module):
         self,
         rotary_dim: int,
         n_ctx: int,
-        base: int = 10000,
+        base: Union[float, int] = 10000,
         dtype: torch.dtype = torch.float32,
     ) -> Tuple[Float[torch.Tensor, "n_ctx rotary_dim"], Float[torch.Tensor, "n_ctx rotary_dim"]]:
         """
