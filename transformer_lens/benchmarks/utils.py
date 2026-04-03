@@ -2,9 +2,84 @@
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Collection, Dict, List, Optional, Union
 
 import torch
+
+# Prefixes used by tiny/random test models that produce degenerate weights and
+# should be skipped for certain benchmarks (centering, generation, etc.).
+TINY_TEST_MODEL_PATTERNS = (
+    "tiny-random",
+    "trl-internal-testing/tiny",
+    "peft-internal-testing/tiny",
+)
+
+
+def is_tiny_test_model(model_name: str) -> bool:
+    """Check if a model name belongs to a tiny/random test model."""
+    return any(pattern in model_name for pattern in TINY_TEST_MODEL_PATTERNS)
+
+
+# Hook patterns that bridge models inherently don't have because they use HF's
+# native implementation rather than reimplementing attention/MLP internals.
+BRIDGE_EXPECTED_MISSING_PATTERNS = [
+    "mlp.hook_pre",
+    "mlp.hook_post",
+    "hook_mlp_in",
+    "hook_mlp_out",
+    "attn.hook_rot_q",
+    "attn.hook_rot_k",
+    "hook_pos_embed",
+    "embed.ln.hook_scale",
+    "embed.ln.hook_normalized",
+    "attn.hook_q",
+    "attn.hook_k",
+    "attn.hook_v",
+    "hook_q_input",
+    "hook_k_input",
+    "hook_v_input",
+    "attn.hook_attn_scores",
+    "attn.hook_pattern",
+    # MoE per-expert hooks: Bridge uses HF's batched MoE forward pass via MoEBridge,
+    # which wraps the entire MoE module. HookedTransformer creates individual expert
+    # modules with per-expert hooks (e.g., blocks.0.mlp.experts.3.hook_pre).
+    "mlp.experts.",
+    "mlp.hook_experts",
+    "mlp.hook_expert_indices",
+    "mlp.hook_expert_weights",
+    # Parallel attention+MLP architectures (GPT-J, GPT-NeoX): HF has a single
+    # shared layer norm (ln_1), while HT creates a virtual ln2 that shares weights
+    # with ln1. The Bridge only wraps the actual HF ln_1, so ln2 hooks don't exist.
+    # These patterns only match "missing" hooks when ln2 is absent from the Bridge;
+    # for non-parallel architectures, the Bridge HAS ln2 and these won't be missing.
+    "ln2.hook_scale",
+    "ln2.hook_normalized",
+]
+
+
+def filter_expected_missing_hooks(hook_names: Collection[str]) -> list[str]:
+    """Filter out hook names that bridge models are expected to be missing."""
+    return [
+        h
+        for h in hook_names
+        if not any(pattern in h for pattern in BRIDGE_EXPECTED_MISSING_PATTERNS)
+    ]
+
+
+def safe_allclose(
+    tensor1: torch.Tensor,
+    tensor2: torch.Tensor,
+    atol: float = 1e-5,
+    rtol: float = 1e-5,
+) -> bool:
+    """torch.allclose that handles dtype and device mismatches."""
+    if tensor1.device != tensor2.device:
+        tensor1 = tensor1.cpu()
+        tensor2 = tensor2.cpu()
+    if tensor1.dtype != tensor2.dtype:
+        tensor1 = tensor1.to(torch.float32)
+        tensor2 = tensor2.to(torch.float32)
+    return torch.allclose(tensor1, tensor2, atol=atol, rtol=rtol)
 
 
 class BenchmarkSeverity(Enum):
@@ -26,6 +101,7 @@ class BenchmarkResult:
     message: str
     details: Optional[Dict[str, Any]] = None
     passed: bool = True
+    phase: Optional[int] = None  # Phase number (1, 2, 3, etc.)
 
     def __str__(self) -> str:
         """Format result for console output."""
@@ -58,6 +134,95 @@ class BenchmarkResult:
         print(str(self))
 
 
+@dataclass
+class PhaseReferenceData:
+    """Float32 reference data from Phase 1 for Phase 3 equivalence comparison."""
+
+    hf_logits: Optional[torch.Tensor] = None
+    hf_loss: Optional[float] = None
+    test_text: Optional[str] = None
+
+
+def make_capture_hook(storage: dict, name: str):
+    """Create a forward hook that captures activations into a dict.
+
+    Handles both raw tensors and tuples (extracts first element).
+    """
+
+    def hook_fn(tensor, hook):
+        if isinstance(tensor, torch.Tensor):
+            storage[name] = tensor.detach().clone()
+        elif isinstance(tensor, tuple) and len(tensor) > 0:
+            if isinstance(tensor[0], torch.Tensor):
+                storage[name] = tensor[0].detach().clone()
+        return tensor
+
+    return hook_fn
+
+
+def make_grad_capture_hook(storage: dict, name: str, return_none: bool = False):
+    """Create a backward hook that captures gradients into a dict.
+
+    Args:
+        storage: Dict to store captured gradients
+        name: Key name for storage
+        return_none: If True, return None (for backward hooks that shouldn't modify grads)
+    """
+
+    def hook_fn(tensor, hook=None):
+        if isinstance(tensor, torch.Tensor):
+            storage[name] = tensor.detach().clone()
+        elif isinstance(tensor, tuple) and len(tensor) > 0:
+            if tensor[0] is not None and isinstance(tensor[0], torch.Tensor):
+                storage[name] = tensor[0].detach().clone()
+        return None if return_none else tensor
+
+    return hook_fn
+
+
+def _squeeze_batch_dim(t1: torch.Tensor, t2: torch.Tensor):
+    """Handle batch dimension differences (e.g., [seq, dim] vs [1, seq, dim]).
+
+    Returns (t1, t2) with matching shapes, or None if shapes are incompatible.
+    """
+    if t1.shape == t2.shape:
+        return t1, t2
+    if t1.ndim == t2.ndim - 1 and t2.shape[0] == 1 and t1.shape == t2.shape[1:]:
+        return t1.unsqueeze(0), t2
+    if t2.ndim == t1.ndim - 1 and t1.shape[0] == 1 and t2.shape == t1.shape[1:]:
+        return t1, t2.unsqueeze(0)
+    return None
+
+
+def compare_activation_dicts(
+    dict1: Dict[str, torch.Tensor],
+    dict2: Dict[str, torch.Tensor],
+    atol: float = 1e-5,
+    rtol: float = 0.0,
+) -> List[str]:
+    """Compare two activation/gradient dicts, returning mismatch descriptions.
+
+    Handles batch-dim squeezing and dtype/device normalization.
+    """
+    mismatches = []
+    common_keys = sorted(set(dict1.keys()) & set(dict2.keys()))
+    for key in common_keys:
+        t1, t2 = dict1[key], dict2[key]
+        squeezed = _squeeze_batch_dim(t1, t2)
+        if squeezed is None:
+            mismatches.append(f"{key}: Shape mismatch - {t1.shape} vs {t2.shape}")
+            continue
+        t1, t2 = squeezed
+        if not safe_allclose(t1, t2, atol=atol, rtol=rtol):
+            b, r = t1.float(), t2.float()
+            max_diff = torch.max(torch.abs(b - r)).item()
+            mean_diff = torch.mean(torch.abs(b - r)).item()
+            mismatches.append(
+                f"{key}: Value mismatch - max_diff={max_diff:.6f}, mean_diff={mean_diff:.6f}"
+            )
+    return mismatches
+
+
 def compare_tensors(
     tensor1: torch.Tensor,
     tensor2: torch.Tensor,
@@ -86,7 +251,14 @@ def compare_tensors(
             passed=False,
         )
 
-    # Compare values
+    if tensor1.device != tensor2.device:
+        tensor1 = tensor1.cpu()
+        tensor2 = tensor2.cpu()
+
+    if tensor1.dtype != tensor2.dtype:
+        tensor1 = tensor1.to(torch.float32)
+        tensor2 = tensor2.to(torch.float32)
+
     if torch.allclose(tensor1, tensor2, atol=atol, rtol=rtol):
         return BenchmarkResult(
             name=name,
@@ -95,24 +267,15 @@ def compare_tensors(
             details={"atol": atol, "rtol": rtol},
         )
 
-    # Calculate differences
     diff = torch.abs(tensor1 - tensor2)
     max_diff = diff.max().item()
     mean_diff = diff.mean().item()
     rel_diff = diff / (torch.abs(tensor1) + 1e-10)
     mean_rel = rel_diff.mean().item()
 
-    # Determine severity based on differences
-    if max_diff < atol * 10 and mean_rel < rtol * 10:
-        severity = BenchmarkSeverity.WARNING
-        passed = True
-    else:
-        severity = BenchmarkSeverity.DANGER
-        passed = False
-
     return BenchmarkResult(
         name=name,
-        severity=severity,
+        severity=BenchmarkSeverity.DANGER,
         message=f"Tensors differ: max_diff={max_diff:.6f}, mean_rel={mean_rel:.6f}",
         details={
             "max_diff": max_diff,
@@ -121,7 +284,7 @@ def compare_tensors(
             "atol": atol,
             "rtol": rtol,
         },
-        passed=passed,
+        passed=False,
     )
 
 
@@ -151,18 +314,11 @@ def compare_scalars(
             message=f"Scalars match: {scalar1:.6f} ≈ {scalar2:.6f}",
             details={"diff": diff, "atol": atol},
         )
-    elif diff < atol * 10:
-        return BenchmarkResult(
-            name=name,
-            severity=BenchmarkSeverity.WARNING,
-            message=f"Scalars differ slightly: {scalar1:.6f} vs {scalar2:.6f}",
-            details={"diff": diff, "atol": atol},
-        )
     else:
         return BenchmarkResult(
             name=name,
             severity=BenchmarkSeverity.DANGER,
-            message=f"Scalars differ significantly: {scalar1:.6f} vs {scalar2:.6f}",
+            message=f"Scalars differ: {scalar1:.6f} vs {scalar2:.6f}",
             details={"diff": diff, "atol": atol},
             passed=False,
         )

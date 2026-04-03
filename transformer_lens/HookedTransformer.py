@@ -14,6 +14,7 @@ from __future__ import annotations
 import logging
 import os
 from typing import (
+    Any,
     Dict,
     List,
     NamedTuple,
@@ -43,8 +44,7 @@ import transformer_lens.loading_from_pretrained as loading
 import transformer_lens.utils as utils
 from transformer_lens.ActivationCache import ActivationCache
 
-# Note - activation cache is used with run_with_cache, past_key_value_caching is used for
-# generation.
+# Activation cache for run_with_cache; KV cache for generation
 from transformer_lens.cache.key_value_cache import TransformerLensKeyValueCache
 from transformer_lens.components import (
     Embed,
@@ -56,6 +56,8 @@ from transformer_lens.components import (
     TransformerBlock,
     Unembed,
 )
+from transformer_lens.components.mlps.gated_mlp import GatedMLP
+from transformer_lens.components.mlps.mlp import MLP
 from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookedRootModule, HookPoint
@@ -116,6 +118,7 @@ class HookedTransformer(HookedRootModule):
 
     ln_final: nn.Module
     tokenizer: Optional[PreTrainedTokenizerBase]
+    blocks: nn.ModuleList[TransformerBlock]  # type: ignore[type-arg]
 
     def __init__(
         self,
@@ -147,7 +150,6 @@ class HookedTransformer(HookedRootModule):
             )
 
         self.cfg = HookedTransformerConfig.unwrap(cfg)
-
         if tokenizer is not None:
             self.set_tokenizer(tokenizer, default_padding_side=default_padding_side)
         elif self.cfg.tokenizer_name is not None:
@@ -165,10 +167,17 @@ class HookedTransformer(HookedRootModule):
                 if "phi" in self.cfg.tokenizer_name.lower():
                     use_fast = False
                 huggingface_token = os.environ.get("HF_TOKEN", "")
+                add_bos_token = self.cfg.original_architecture not in [
+                    "OlmoForCausalLM",
+                    "OlmoeForCausalLM",
+                    "Olmo2ForCausalLM",
+                    "Qwen3ForCausalLM",
+                    "PhiForCausalLM",
+                ]
                 self.set_tokenizer(
                     AutoTokenizer.from_pretrained(
                         self.cfg.tokenizer_name,
-                        add_bos_token=True,
+                        add_bos_token=add_bos_token,
                         trust_remote_code=self.cfg.trust_remote_code,
                         use_fast=use_fast,
                         token=huggingface_token if len(huggingface_token) > 0 else None,
@@ -739,20 +748,24 @@ class HookedTransformer(HookedRootModule):
         # tokenizers like LlamaTokenizer are different when bos token is automatically/manually
         # prepended, and add_bos_token cannot be dynamically controlled after initialization
         # (https://github.com/huggingface/transformers/issues/25886).
-        tokenizer_with_bos = utils.get_tokenizer_with_bos(tokenizer)
+        tokenizer_with_bos = tokenizer
+        if self.cfg.original_architecture not in [
+            "OlmoForCausalLM",
+            "OlmoeForCausalLM",
+            "Olmo2ForCausalLM",
+        ]:
+            tokenizer_with_bos = utils.get_tokenizer_with_bos(tokenizer)
+
         self.tokenizer = tokenizer_with_bos
         assert self.tokenizer is not None  # keep mypy happy
 
-        # If user passes default_padding_side explicitly, use that value
+        # Use explicit value, else tokenizer default, else "right"
         if default_padding_side is not None:
             self.tokenizer.padding_side = default_padding_side
-        # If not, then use the tokenizer's default padding side
-        # If the tokenizer doesn't have a default padding side, use the global default "right"
         if self.tokenizer.padding_side is None:
             self.tokenizer.padding_side = "right"
 
-        # Some tokenizers doesn't automatically prepend the BOS token even when they are initialized
-        # with add_bos_token=True. Therefore, we need this information to dynamically control prepend_bos.
+        # Detect whether tokenizer actually prepends BOS to control prepend_bos dynamically
         self.cfg.tokenizer_prepends_bos = len(self.tokenizer.encode("")) > 0
 
         if self.tokenizer.eos_token is None:
@@ -950,7 +963,14 @@ class HookedTransformer(HookedRootModule):
                 ), f"Invalid tokens input to to_str_tokens, has shape: {tokens.shape}"
             else:
                 raise ValueError(f"Invalid input type to to_str_tokens: {type(input)}")
-            str_tokens = self.tokenizer.batch_decode(tokens, clean_up_tokenization_spaces=False)
+            # v5 compat: wrap each token so batch_decode decodes them individually
+            if isinstance(tokens, np.ndarray):
+                tokens_list = [[int(t)] for t in tokens]
+            else:
+                tokens_list = [[int(t)] for t in tokens.tolist()]
+            str_tokens = self.tokenizer.batch_decode(
+                tokens_list, clean_up_tokenization_spaces=False
+            )
             return str_tokens
 
     def to_single_token(self, string):
@@ -1112,6 +1132,7 @@ class HookedTransformer(HookedRootModule):
         return self.to(torch.device("cpu"))
 
     def mps(self: T) -> T:
+        """Warning: MPS may produce silently incorrect results. See #1178."""
         return self.to(torch.device("mps"))
 
     def move_model_modules_to_device(self):
@@ -1147,6 +1168,7 @@ class HookedTransformer(HookedRootModule):
         default_padding_side: Optional[Literal["left", "right"]] = None,
         dtype="float32",
         first_n_layers: Optional[int] = None,
+        n_ctx: Optional[int] = None,
         **from_pretrained_kwargs,
     ) -> T:
         """Load in a Pretrained Model.
@@ -1330,8 +1352,7 @@ class HookedTransformer(HookedRootModule):
             # Convert from string to a torch dtype
             dtype = DTYPE_FROM_STRING[dtype]
         if "torch_dtype" in from_pretrained_kwargs:
-            # For backwards compatibility with the previous way to do low precision loading
-            # This should maybe check the user did not explicitly set dtype *and* torch_dtype
+            # Backwards compat: torch_dtype overrides dtype
             dtype = from_pretrained_kwargs["torch_dtype"]
 
         if (
@@ -1343,9 +1364,7 @@ class HookedTransformer(HookedRootModule):
         # Get the model name used in HuggingFace, rather than the alias.
         official_model_name = loading.get_official_model_name(model_name)
 
-        # Load the config into an HookedTransformerConfig object. If loading from a
-        # checkpoint, the config object will contain the information about the
-        # checkpoint
+        # Load config (includes checkpoint info if applicable)
         cfg = loading.get_pretrained_model_config(
             official_model_name,
             hf_cfg=hf_cfg,
@@ -1357,6 +1376,7 @@ class HookedTransformer(HookedRootModule):
             default_prepend_bos=default_prepend_bos,
             dtype=dtype,
             first_n_layers=first_n_layers,
+            n_ctx=n_ctx,
             **from_pretrained_kwargs,
         )
 
@@ -1377,6 +1397,20 @@ class HookedTransformer(HookedRootModule):
                 logging.warning(
                     "You tried to specify center_writing_weights=True for a shortformer model, but this can't be done! "
                     "Setting center_writing_weights=False instead."
+                )
+                center_writing_weights = False
+        # OLMo 2 post-norm is incompatible with fold_ln/center_writing_weights (pre-norm only)
+        if cfg.original_architecture == "Olmo2ForCausalLM":
+            if fold_ln:
+                logging.warning(
+                    "fold_ln=True is incompatible with OLMo 2's post-norm architecture. "
+                    "Setting fold_ln=False."
+                )
+                fold_ln = False
+            if center_writing_weights:
+                logging.warning(
+                    "center_writing_weights=True is incompatible with OLMo 2's post-norm "
+                    "architecture. Setting center_writing_weights=False."
                 )
                 center_writing_weights = False
         if center_unembed and cfg.output_logits_soft_cap > 0.0:
@@ -1746,7 +1780,7 @@ class HookedTransformer(HookedRootModule):
 
     def set_use_split_qkv_input(self, use_split_qkv_input: bool):
         """
-        Toggles whether to allow editing of inputs to each attention head.
+        Toggles whether to allow editing of the separate Q, K, and V inputs to each attention head.
         """
         self.cfg.use_split_qkv_input = use_split_qkv_input
 
@@ -1795,7 +1829,7 @@ class HookedTransformer(HookedRootModule):
             # but it's the easiest way to do it.
             self.cfg.normalization_type = "LNPre"
             self.ln_final = LayerNormPre(self.cfg)
-            for layer in self.blocks:
+            for layer in self._get_blocks():
                 layer.ln1 = LayerNormPre(self.cfg)
                 layer.ln2 = LayerNormPre(self.cfg)
                 if self.cfg.is_layer_norm_activation():
@@ -1804,7 +1838,7 @@ class HookedTransformer(HookedRootModule):
             # We do the same for RMSNorm if used
             self.cfg.normalization_type = "RMSPre"
             self.ln_final = RMSNormPre(self.cfg)
-            for layer in self.blocks:
+            for layer in self._get_blocks():
                 layer.ln1 = RMSNormPre(self.cfg)
                 layer.ln2 = RMSNormPre(self.cfg)
                 if self.cfg.is_layer_norm_activation():
@@ -1840,11 +1874,15 @@ class HookedTransformer(HookedRootModule):
         padding_side: Optional[Literal["left", "right"]] = USE_DEFAULT_VALUE,
         return_type: Optional[str] = "input",
         verbose: bool = True,
+        **generation_kwargs,
     ) -> Union[
         str,
         List[str],
         Int[torch.Tensor, "batch pos_plus_new_tokens"],
         Float[torch.Tensor, "batch pos_plus_new_tokens hidden_size"],
+        Any,  # transformers.utils.ModelOutput to accommodate output_logits=True.
+        # Using Any due to beartype's forward reference resolution limitations.
+        # See: https://github.com/beartype/beartype/issues/546
     ]:
         """Sample Tokens from the Model.
 
@@ -1943,6 +1981,32 @@ class HookedTransformer(HookedRootModule):
             else:
                 past_kv_cache = None
 
+            # Only `output_logits` is supported from HF generation kwargs
+            output_logits_flag = False
+            if generation_kwargs:
+                if "output_logits" in generation_kwargs:
+                    output_logits_flag = bool(generation_kwargs.pop("output_logits"))
+                # Warn about unsupported keys
+                accepted_keys = {"output_logits", "return_dict_in_generate"}
+                unsupported_keys = [k for k in generation_kwargs.keys() if k not in accepted_keys]
+                # Ignore `return_dict_in_generate`
+                if "return_dict_in_generate" in generation_kwargs:
+                    generation_kwargs.pop("return_dict_in_generate")
+                # Warn and drop unsupported keys
+                if unsupported_keys:
+                    import warnings
+
+                    warnings.warn(
+                        f"HookedTransformer.generate received unsupported generation kwargs; ignoring: {unsupported_keys}",
+                        UserWarning,
+                    )
+                    # Remove unsupported keys
+                    for k in unsupported_keys:
+                        generation_kwargs.pop(k, None)
+
+            # Collect per-step logits if requested
+            logits_seq_list: Optional[List[torch.Tensor]] = [] if output_logits_flag else None
+
             shortformer_pos_embed = None
             embeds = input if input_type == "embeds" else self.embed(input)
 
@@ -2033,6 +2097,10 @@ class HookedTransformer(HookedRootModule):
                     )
                 final_logits = logits[:, -1, :]
 
+                if output_logits_flag:
+                    assert logits_seq_list is not None
+                    logits_seq_list.append(final_logits.clone())
+
                 if do_sample:
                     if input_type in [
                         "str",
@@ -2085,15 +2153,39 @@ class HookedTransformer(HookedRootModule):
                 output_tokens = sampled_tokens
 
             if return_type == "str":
-                decoded_texts = [
-                    self.tokenizer.decode(tokens, skip_special_tokens=True)
+                decoded_texts: List[str] = [
+                    cast(str, self.tokenizer.decode(tokens, skip_special_tokens=True))
                     for tokens in output_tokens
                 ]
-                return decoded_texts[0] if len(decoded_texts) == 1 else decoded_texts
+                result: Any = decoded_texts[0] if len(decoded_texts) == 1 else decoded_texts
             elif return_type == "tokens":
-                return output_tokens
+                result = cast(Any, output_tokens)
             else:
-                return embeds
+                result = cast(Any, embeds)
+
+            if output_logits_flag:
+                # Return HF ModelOutput format
+                from transformers.utils import ModelOutput  # type: ignore
+
+                def _logits_to_tuple(logits_list: list[torch.Tensor]) -> tuple[torch.Tensor, ...]:
+                    assert logits_list is not None
+                    # Convert to tuple of tensors
+                    return tuple(logits_list)
+
+                try:
+                    from transformers.generation.utils import GenerateDecoderOnlyOutput
+
+                    return GenerateDecoderOnlyOutput(
+                        sequences=cast(torch.LongTensor, output_tokens),
+                        # HF's type hint tuple[FloatTensor] is really tuple[FloatTensor, ...]
+                        logits=_logits_to_tuple(logits_seq_list),  # type: ignore[arg-type]
+                    )
+                except (ImportError, AttributeError):
+                    # Fallback for older transformers versions
+                    # `sequences` expects a tensor of token ids
+                    return ModelOutput(sequences=output_tokens, logits=_logits_to_tuple(logits_seq_list))  # type: ignore[arg-type]
+            else:
+                return result
 
     # Give access to all weights as properties.
     @property
@@ -2135,30 +2227,36 @@ class HookedTransformer(HookedRootModule):
     # we want to do analysis on weights across all layers. If GPU memory is a bottleneck, don't use
     # these properties!
 
+    def _get_blocks(self) -> list[TransformerBlock]:
+        """Helper to get blocks with proper typing."""
+        return [cast(TransformerBlock, block) for block in self.blocks]
+
     @property
     def W_K(self) -> Float[torch.Tensor, "n_layers n_heads d_model d_head"]:
         """Stack the key weights across all layers."""
-        return torch.stack([block.attn.W_K for block in self.blocks], dim=0)
+        return torch.stack([block.attn.W_K for block in self._get_blocks()], dim=0)
 
     @property
     def W_Q(self) -> Float[torch.Tensor, "n_layers n_heads d_model d_head"]:
         """Stack the query weights across all layers."""
-        return torch.stack([block.attn.W_Q for block in self.blocks], dim=0)
+        return torch.stack([block.attn.W_Q for block in self._get_blocks()], dim=0)
 
     @property
     def W_V(self) -> Float[torch.Tensor, "n_layers n_heads d_model d_head"]:
         """Stack the value weights across all layers."""
-        return torch.stack([block.attn.W_V for block in self.blocks], dim=0)
+        return torch.stack([block.attn.W_V for block in self._get_blocks()], dim=0)
 
     @property
     def W_O(self) -> Float[torch.Tensor, "n_layers n_heads d_head d_model"]:
         """Stack the attn output weights across all layers."""
-        return torch.stack([block.attn.W_O for block in self.blocks], dim=0)
+        return torch.stack([block.attn.W_O for block in self._get_blocks()], dim=0)
 
     @property
     def W_in(self) -> Float[torch.Tensor, "n_layers d_model d_mlp"]:
         """Stack the MLP input weights across all layers."""
-        return torch.stack([block.mlp.W_in for block in self.blocks], dim=0)
+        return torch.stack(
+            [cast(Union[MLP, GatedMLP], block.mlp).W_in for block in self._get_blocks()], dim=0
+        )
 
     @property
     def W_gate(self) -> Union[Float[torch.Tensor, "n_layers d_model d_mlp"], None]:
@@ -2167,44 +2265,52 @@ class HookedTransformer(HookedRootModule):
         Only works for models with gated MLPs.
         """
         if self.cfg.gated_mlp:
-            return torch.stack([block.mlp.W_gate for block in self.blocks], dim=0)
+            return torch.stack(
+                [cast(GatedMLP, block.mlp).W_gate for block in self._get_blocks()], dim=0
+            )
         else:
             return None
 
     @property
     def W_out(self) -> Float[torch.Tensor, "n_layers d_mlp d_model"]:
         """Stack the MLP output weights across all layers."""
-        return torch.stack([block.mlp.W_out for block in self.blocks], dim=0)
+        return torch.stack(
+            [cast(Union[MLP, GatedMLP], block.mlp).W_out for block in self._get_blocks()], dim=0
+        )
 
     @property
     def b_K(self) -> Float[torch.Tensor, "n_layers n_heads d_head"]:
         """Stack the key biases across all layers."""
-        return torch.stack([block.attn.b_K for block in self.blocks], dim=0)
+        return torch.stack([block.attn.b_K for block in self._get_blocks()], dim=0)
 
     @property
     def b_Q(self) -> Float[torch.Tensor, "n_layers n_heads d_head"]:
         """Stack the query biases across all layers."""
-        return torch.stack([block.attn.b_Q for block in self.blocks], dim=0)
+        return torch.stack([block.attn.b_Q for block in self._get_blocks()], dim=0)
 
     @property
     def b_V(self) -> Float[torch.Tensor, "n_layers n_heads d_head"]:
         """Stack the value biases across all layers."""
-        return torch.stack([block.attn.b_V for block in self.blocks], dim=0)
+        return torch.stack([block.attn.b_V for block in self._get_blocks()], dim=0)
 
     @property
     def b_O(self) -> Float[torch.Tensor, "n_layers d_model"]:
         """Stack the attn output biases across all layers."""
-        return torch.stack([block.attn.b_O for block in self.blocks], dim=0)
+        return torch.stack([block.attn.b_O for block in self._get_blocks()], dim=0)
 
     @property
     def b_in(self) -> Float[torch.Tensor, "n_layers d_mlp"]:
         """Stack the MLP input biases across all layers."""
-        return torch.stack([block.mlp.b_in for block in self.blocks], dim=0)
+        return torch.stack(
+            [cast(Union[MLP, GatedMLP], block.mlp).b_in for block in self._get_blocks()], dim=0
+        )
 
     @property
     def b_out(self) -> Float[torch.Tensor, "n_layers d_model"]:
         """Stack the MLP output biases across all layers."""
-        return torch.stack([block.mlp.b_out for block in self.blocks], dim=0)
+        return torch.stack(
+            [cast(Union[MLP, GatedMLP], block.mlp).b_out for block in self._get_blocks()], dim=0
+        )
 
     @property
     def QK(self):

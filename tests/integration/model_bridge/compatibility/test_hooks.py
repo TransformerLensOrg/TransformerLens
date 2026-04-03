@@ -1,233 +1,179 @@
+"""Focused hook tests for TransformerBridge.
+
+Tests that Bridge hooks fire correctly, can modify activations,
+and that run_with_cache returns populated caches.
+"""
+
 import pytest
 import torch
 
 from transformer_lens.model_bridge import TransformerBridge
 
-MODEL = "distilgpt2"  # Use distilgpt2 for faster tests
-
-prompt = "Hello World!"
-embed = lambda name: name == "hook_embed"
+MODEL = "gpt2"
 
 
 @pytest.fixture(scope="module")
-def model():
-    """Load model once per test module to reduce memory usage."""
+def bridge():
     return TransformerBridge.boot_transformers(MODEL, device="cpu")
 
 
-class Counter:
-    def __init__(self):
-        self.count = 0
+def test_hook_fires_on_forward(bridge):
+    """A registered forward hook must fire exactly once per forward pass."""
+    count = 0
 
-    def inc(self, *args, **kwargs):
-        self.count += 1
-
-
-def test_hook_attaches_normally(model):
-    """Test that hooks can be attached and removed normally with TransformerBridge."""
-    c = Counter()
-    _ = model.run_with_hooks(prompt, fwd_hooks=[(embed, c.inc)])
-
-    # Check that hooks are removed after run_with_hooks
-    hook_dict = model.hook_dict
-    if "hook_embed" in hook_dict:
-        assert all([len(hp.fwd_hooks) == 0 for _, hp in hook_dict.items()])
-        assert c.count == 1
-    else:
-        # If hook_embed doesn't exist yet, skip this test
-        pytest.skip("hook_embed not available on TransformerBridge")
-
-    # Clean up
-    try:
-        model.remove_all_hook_fns(including_permanent=True)
-    except AttributeError:
-        # Method might not exist on TransformerBridge yet
-        pass
-
-
-def test_perma_hook_attaches_normally(model):
-    """Test that permanent hooks can be attached with TransformerBridge."""
-    c = Counter()
-
-    try:
-        model.add_perma_hook(embed, c.inc)
-        hook_dict = model.hook_dict
-
-        if "hook_embed" in hook_dict:
-            assert len(hook_dict["hook_embed"].fwd_hooks) == 1
-            model.run_with_hooks(prompt, fwd_hooks=[])
-            assert len(hook_dict["hook_embed"].fwd_hooks) == 1
-            assert c.count == 1
-        else:
-            pytest.skip("hook_embed not available on TransformerBridge")
-
-    except AttributeError as e:
-        pytest.skip(f"Permanent hooks not supported on TransformerBridge: {e}")
-
-    # Clean up
-    try:
-        model.remove_all_hook_fns(including_permanent=True)
-    except AttributeError:
-        pass
-
-
-@pytest.mark.skip(
-    reason="hooks() context manager with lambda filters is not a common use case - direct add_hook() works fine"
-)
-def test_hook_context_manager(model):
-    """Test that hook context manager works with TransformerBridge."""
-    c = Counter()
-
-    try:
-        with model.hooks(fwd_hooks=[(embed, c.inc)]):
-            hook_dict = model.hook_dict
-            if "hook_embed" in hook_dict:
-                assert len(hook_dict["hook_embed"].fwd_hooks) == 1
-                model.forward(prompt)
-            else:
-                pytest.skip("hook_embed not available on TransformerBridge")
-
-        # After context manager, hooks should be removed
-        hook_dict = model.hook_dict
-        if "hook_embed" in hook_dict:
-            assert len(hook_dict["hook_embed"].fwd_hooks) == 0
-            assert c.count == 1
-
-    except AttributeError as e:
-        pytest.skip(f"Hook context manager not supported on TransformerBridge: {e}")
-
-    # Clean up
-    try:
-        model.remove_all_hook_fns(including_permanent=True)
-    except AttributeError:
-        pass
-
-
-def test_run_with_cache_functionality(model):
-    """Test that run_with_cache works with TransformerBridge."""
-    try:
-        output, cache = model.run_with_cache(prompt)
-
-        # Basic checks
-        assert isinstance(output, torch.Tensor)
-        assert isinstance(cache, dict) or hasattr(cache, "cache_dict")
-
-        # Get cache dict
-        if hasattr(cache, "cache_dict"):
-            cache_dict = cache.cache_dict
-        else:
-            cache_dict = cache
-
-        # Should have some cached activations
-        assert len(cache_dict) > 0
-
-        # Check that cached values are tensors
-        for key, value in cache_dict.items():
-            if value is not None:
-                assert isinstance(value, torch.Tensor), f"Cache value for {key} is not a tensor"
-
-    except Exception as e:
-        pytest.skip(f"run_with_cache not working on TransformerBridge: {e}")
-
-
-def test_hook_dict_access(model):
-    """Test that hook_dict property works with TransformerBridge."""
-    try:
-        hook_dict = model.hook_dict
-        assert isinstance(hook_dict, dict)
-
-        # Should have some hooks
-        assert len(hook_dict) > 0
-
-        # All values should be HookPoints
-        from transformer_lens.hook_points import HookPoint
-
-        for name, hook_point in hook_dict.items():
-            assert isinstance(hook_point, HookPoint), f"Hook {name} is not a HookPoint"
-
-    except Exception as e:
-        pytest.skip(f"hook_dict not working on TransformerBridge: {e}")
-
-
-def test_basic_forward_with_hooks(model):
-    """Test basic forward pass with hooks on TransformerBridge."""
-
-    def simple_hook(tensor, hook):
-        """Simple hook that just returns the tensor unchanged."""
+    def hook_fn(tensor, hook):
+        nonlocal count
+        count += 1
         return tensor
 
+    bridge.run_with_hooks(
+        "Hello world",
+        fwd_hooks=[("blocks.0.hook_resid_pre", hook_fn)],
+    )
+    assert count == 1
+
+
+def test_hook_receives_tensor(bridge):
+    """Hook must receive a tensor with batch and sequence dimensions."""
+    captured = {}
+
+    def hook_fn(tensor, hook):
+        captured["shape"] = tensor.shape
+        captured["dtype"] = tensor.dtype
+        return tensor
+
+    bridge.run_with_hooks(
+        "Hello",
+        fwd_hooks=[("blocks.0.hook_resid_pre", hook_fn)],
+    )
+    assert "shape" in captured
+    assert len(captured["shape"]) >= 2  # at least [batch, seq, ...]
+    assert captured["shape"][0] >= 1  # batch >= 1
+
+
+def test_hook_can_modify_output(bridge):
+    """Zeroing a residual stream hook must change the final output."""
+    with torch.no_grad():
+        normal_output = bridge("Hello world")
+
+        def zero_hook(tensor, hook):
+            return torch.zeros_like(tensor)
+
+        modified_output = bridge.run_with_hooks(
+            "Hello world",
+            fwd_hooks=[("blocks.0.hook_resid_pre", zero_hook)],
+        )
+
+    assert not torch.allclose(normal_output, modified_output)
+
+
+def test_run_with_cache_returns_activations(bridge):
+    """run_with_cache must return a non-empty cache with expected keys."""
+    with torch.no_grad():
+        _, cache = bridge.run_with_cache("Hello world")
+
+    assert len(cache) > 0
+    # Must contain at least residual stream hooks
+    cache_keys = list(cache.keys())
+    assert any(
+        "hook_resid" in k for k in cache_keys
+    ), f"No residual stream hooks in cache. Keys: {cache_keys[:10]}"
+
+
+def test_cache_values_are_tensors_with_correct_batch(bridge):
+    """All cached values must be tensors with batch dim matching input."""
+    with torch.no_grad():
+        _, cache = bridge.run_with_cache("Hello")
+
+    for key, value in cache.items():
+        assert isinstance(value, torch.Tensor), f"Cache[{key}] is {type(value)}, not Tensor"
+        assert value.shape[0] == 1, f"Cache[{key}] batch dim is {value.shape[0]}, expected 1"
+
+
+def test_multiple_hooks_fire_independently(bridge):
+    """Multiple hooks on different points must each fire independently."""
+    fired = set()
+
+    def make_hook(name):
+        def hook_fn(tensor, hook):
+            fired.add(name)
+            return tensor
+
+        return hook_fn
+
+    bridge.run_with_hooks(
+        "Hello",
+        fwd_hooks=[
+            ("blocks.0.hook_resid_pre", make_hook("resid_pre_0")),
+            ("blocks.0.hook_resid_post", make_hook("resid_post_0")),
+        ],
+    )
+    assert "resid_pre_0" in fired
+    assert "resid_post_0" in fired
+
+
+@pytest.mark.xfail(reason="add_perma_hook not yet implemented on TransformerBridge")
+def test_perma_hook_persists_across_calls(bridge):
+    """A permanent hook must fire on every forward pass until explicitly removed."""
+    count = 0
+
+    def hook_fn(tensor, hook):
+        nonlocal count
+        count += 1
+        return tensor
+
+    bridge.add_perma_hook("blocks.0.hook_resid_pre", hook_fn)
     try:
-        # Try to find any available hook
-        hook_dict = model.hook_dict
-        if len(hook_dict) == 0:
-            pytest.skip("No hooks available on TransformerBridge")
+        with torch.no_grad():
+            bridge("Hello")
+            assert count == 1
+            bridge("World")
+            assert count == 2  # still fires on second call
+    finally:
+        bridge.reset_hooks()
 
-        # Use the first available hook
-        hook_name = list(hook_dict.keys())[0]
-        hook_filter = lambda name: name == hook_name
-
-        # Run with a simple hook
-        output = model.run_with_hooks(prompt, fwd_hooks=[(hook_filter, simple_hook)])
-
-        assert isinstance(output, torch.Tensor)
-        assert output.shape[-1] == model.cfg.d_vocab  # Should have vocab dimension
-
-    except Exception as e:
-        pytest.skip(f"Forward with hooks not working on TransformerBridge: {e}")
+    # After reset, hook should no longer fire
+    count = 0
+    with torch.no_grad():
+        bridge("Hello again")
+    assert count == 0
 
 
-def test_hook_names_consistency(model):
-    """Test that hook names are consistent and follow expected patterns."""
-    try:
-        hook_dict = model.hook_dict
-        hook_names = list(hook_dict.keys())
+def test_hook_context_manager_cleans_up(bridge):
+    """Hooks added via run_with_hooks must not persist after the call returns."""
+    count = 0
 
-        # Should have some hooks
-        assert len(hook_names) > 0
+    def hook_fn(tensor, hook):
+        nonlocal count
+        count += 1
+        return tensor
 
-        # Check for some expected patterns (though they may not exist yet)
-        expected_patterns = ["embed", "pos_embed", "blocks", "ln_final", "unembed"]
+    # Run with hook
+    with torch.no_grad():
+        bridge.run_with_hooks(
+            "Hello",
+            fwd_hooks=[("blocks.0.hook_resid_pre", hook_fn)],
+        )
+    assert count == 1
 
-        found_patterns = []
-        for pattern in expected_patterns:
-            if any(pattern in name for name in hook_names):
-                found_patterns.append(pattern)
-
-        # Don't assert any specific patterns exist, just document what we find
-        print(f"Found hook patterns: {found_patterns}")
-        print(f"Total hooks: {len(hook_names)}")
-        print(f"Sample hook names: {hook_names[:5]}")
-
-    except Exception as e:
-        pytest.skip(f"Hook names check failed on TransformerBridge: {e}")
+    # Run again without hooks — count should NOT increase
+    count = 0
+    with torch.no_grad():
+        bridge("Hello")
+    assert count == 0, "Hook persisted after run_with_hooks returned"
 
 
-def test_caching_with_names_filter(model):
-    """Test that caching with names filter works with TransformerBridge."""
-    try:
-        hook_dict = model.hook_dict
-        if len(hook_dict) == 0:
-            pytest.skip("No hooks available on TransformerBridge")
+def test_cache_with_names_filter(bridge):
+    """run_with_cache with names_filter must return only matching keys."""
+    with torch.no_grad():
+        _, full_cache = bridge.run_with_cache("Hello")
+        _, filtered_cache = bridge.run_with_cache(
+            "Hello",
+            names_filter=lambda name: "hook_resid_pre" in name,
+        )
 
-        # Use the first available hook name
-        hook_name = list(hook_dict.keys())[0]
-
-        output, cache = model.run_with_cache(prompt, names_filter=[hook_name])
-
-        # Get cache dict
-        if hasattr(cache, "cache_dict"):
-            cache_dict = cache.cache_dict
-        else:
-            cache_dict = cache
-
-        # Should have at least the filtered hook
-        assert len(cache_dict) > 0
-        # The specific hook should be in the cache (or its alias)
-        assert any(hook_name in key or key in hook_name for key in cache_dict.keys())
-
-    except Exception as e:
-        pytest.skip(f"Caching with names filter not working on TransformerBridge: {e}")
-
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v", "-s"])
+    # Filtered cache should be a strict subset
+    assert len(filtered_cache) > 0
+    assert len(filtered_cache) < len(full_cache)
+    for key in filtered_cache:
+        assert "hook_resid_pre" in key, f"Unexpected key in filtered cache: {key}"

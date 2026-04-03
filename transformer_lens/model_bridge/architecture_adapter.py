@@ -2,11 +2,15 @@
 
 This module contains the base class for architecture adapters that map between different model architectures.
 """
-from typing import Any, Dict, cast
+from typing import Any, Dict, Optional, cast
 
+import einops
 import torch
 
 from transformer_lens.config import TransformerBridgeConfig
+from transformer_lens.conversion_utils.conversion_steps.rearrange_tensor_conversion import (
+    RearrangeTensorConversion,
+)
 from transformer_lens.conversion_utils.param_processing_conversion import (
     ParamProcessingConversion,
 )
@@ -42,6 +46,7 @@ class ArchitectureAdapter:
         self.component_mapping: ComponentMapping | None = None
         self.weight_processing_conversions: Dict[str, ParamProcessingConversion | str] | None = None
         self.uses_split_attention: bool = getattr(cfg, "uses_split_attention", False)
+        self._fold_ln_requested: bool = True
         self._merge_default_config()
 
     def _merge_default_config(self) -> None:
@@ -49,6 +54,34 @@ class ArchitectureAdapter:
         for key, value in self.default_cfg.items():
             if not hasattr(self.cfg, key):
                 setattr(self.cfg, key, value)
+
+    def _qkvo_weight_conversions(
+        self, n_kv_heads: Optional[int] = None
+    ) -> Dict[str, ParamProcessingConversion]:
+        """Standard Q/K/V/O weight rearrangement conversions.
+
+        Most decoder-only models use the same rearrange patterns for attention
+        weights. Override only when your model's layout differs.
+
+        Args:
+            n_kv_heads: Number of KV heads for GQA. If None, falls back to n_heads.
+        """
+        if n_kv_heads is None:
+            n_kv_heads = getattr(self.cfg, "n_key_value_heads", None) or self.cfg.n_heads
+        return {
+            "blocks.{i}.attn.q.weight": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
+            ),
+            "blocks.{i}.attn.k.weight": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=n_kv_heads),
+            ),
+            "blocks.{i}.attn.v.weight": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=n_kv_heads),
+            ),
+            "blocks.{i}.attn.o.weight": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion("m (n h) -> n h m", n=self.cfg.n_heads),
+            ),
+        }
 
     def preprocess_weights(self, state_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
         """Apply architecture-specific weight transformations before ProcessWeights.
@@ -113,7 +146,13 @@ class ArchitectureAdapter:
             >>> # <LayerNorm>
         """
         current = model
-        for part in path.split("."):
+        parent_stack: list[RemoteComponent] = []  # Track parent components for .. navigation
+
+        # Handle ../ pattern by replacing with a marker before splitting
+        # This is needed because "../output.dense".split(".") gives ['', '', '/output', 'dense']
+        path_with_markers = path.replace("../", "##PARENT##.")
+
+        for part in path_with_markers.split("."):
             # If current is a GeneralizedComponent bridge, unwrap to get the original HF component
             if (
                 isinstance(current, GeneralizedComponent)
@@ -122,9 +161,21 @@ class ArchitectureAdapter:
             ):
                 current = current.original_component
 
-            if part.isdigit():
+            if part == "##PARENT##":
+                # Navigate to parent component (from ../ syntax)
+                if not parent_stack:
+                    raise ValueError(f"Cannot navigate above root in path: {path}")
+                current = parent_stack.pop()
+            elif part == "..":
+                # Navigate to parent component (from plain .. syntax)
+                if not parent_stack:
+                    raise ValueError(f"Cannot navigate above root in path: {path}")
+                current = parent_stack.pop()
+            elif part.isdigit():
+                parent_stack.append(current)
                 current = current[int(part)]  # type: ignore[index]
             else:
+                parent_stack.append(current)
                 current = getattr(current, part)
         return current
 
@@ -618,13 +669,49 @@ class ArchitectureAdapter:
                             if hf_subpath is not None and subkey.startswith(hf_subpath + "."):
                                 param = subkey[len(hf_subpath) + 1 :]
                                 return f"blocks.{layer_idx}.{tl_subname}.{param}"
+                            # SymbolicBridge (name=None): keys use bridge names directly.
+                            if hf_subpath is None and subkey.startswith(tl_subname + "."):
+                                param = subkey[len(tl_subname) + 1 :]
+                                return f"blocks.{layer_idx}.{tl_subname}.{param}"
                             if hasattr(subcomponent, "submodules"):
                                 for tl_nested_name, nested_comp in subcomponent.submodules.items():
-                                    hf_nested_path = f"{hf_subpath}.{nested_comp.name}"
-                                    if subkey.startswith(hf_nested_path + "."):
+                                    if hf_subpath is not None:
+                                        hf_nested_path: Optional[
+                                            str
+                                        ] = f"{hf_subpath}.{nested_comp.name}"
+                                    else:
+                                        # SymbolicBridge: no container prefix
+                                        hf_nested_path = nested_comp.name
+                                    if hf_nested_path is not None and subkey.startswith(
+                                        hf_nested_path + "."
+                                    ):
                                         param = subkey[len(hf_nested_path) + 1 :]
                                         return f"blocks.{layer_idx}.{tl_subname}.{tl_nested_name}.{param}"
         return hf_key
+
+    def prepare_loading(self, model_name: str, model_kwargs: dict) -> None:
+        """Called before HuggingFace model loading to apply architecture-specific patches.
+
+        Override this to patch HF model classes before from_pretrained() is called.
+        For example, patching custom model code that is incompatible with transformers v5
+        meta device initialization.
+
+        Args:
+            model_name: The HuggingFace model name/path
+            model_kwargs: The kwargs dict that will be passed to from_pretrained()
+        """
+        pass
+
+    def prepare_model(self, hf_model: Any) -> None:
+        """Called after HuggingFace model loading but before bridge creation.
+
+        Override this to fix up the loaded model (e.g., create synthetic modules,
+        re-initialize deferred computations, apply post-load patches).
+
+        Args:
+            hf_model: The loaded HuggingFace model instance
+        """
+        pass
 
     def setup_component_testing(self, hf_model: RemoteModel, bridge_model: Any = None) -> None:
         """Set up model-specific references needed for component testing.
@@ -700,8 +787,6 @@ class ArchitectureAdapter:
         GPT-2 uses Conv1D which stores weights as [in_features, out_features] = [d_model, 3*d_model].
         We need to split and reshape to [n_heads, d_model, d_head] format for HookedTransformer.
         """
-        import einops
-
         W = c_attn.weight.data
         W_Q, W_K, W_V = torch.tensor_split(W, 3, dim=1)
         W_Q = einops.rearrange(W_Q, "m (i h)->i m h", i=n_heads)

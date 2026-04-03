@@ -2,6 +2,7 @@
 
 This module contains all the component :class:`BertBlock`.
 """
+
 from typing import Optional
 
 import torch

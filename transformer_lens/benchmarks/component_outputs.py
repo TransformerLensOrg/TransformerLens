@@ -223,6 +223,28 @@ class ComponentBenchmarker:
         self.adapter = adapter
         self.cfg = cfg
 
+        # Reconcile dtypes: upcast both models to the higher-precision dtype.
+        self._bridge_was_upcast = False
+        self._bridge_original_dtype: Optional[torch.dtype] = None
+        try:
+            hf_dtype = next(hf_model.parameters()).dtype
+        except StopIteration:
+            hf_dtype = torch.float32
+        try:
+            bridge_dtype = next(bridge_model.parameters()).dtype
+        except StopIteration:
+            bridge_dtype = torch.float32
+        if hf_dtype != bridge_dtype:
+            # Upcast to the higher-precision dtype
+            target = hf_dtype if hf_dtype.itemsize >= bridge_dtype.itemsize else bridge_dtype
+            if bridge_dtype != target:
+                self._bridge_original_dtype = bridge_dtype
+                bridge_model.to(target)
+                self._bridge_was_upcast = True
+            if hf_dtype != target:
+                hf_model.to(target)
+        self.test_dtype = hf_dtype if hf_dtype.itemsize >= bridge_dtype.itemsize else bridge_dtype
+
         # Adjust tolerances based on dtype for reduced precision formats
         model_dtype = getattr(cfg, "dtype", torch.float32)
         if model_dtype == torch.bfloat16:
@@ -265,13 +287,17 @@ class ComponentBenchmarker:
 
         results: List[ComponentTestResult] = []
 
+        # Block-type components that need to be tested recursively by layer
+        # (they are ModuleLists that don't have direct forward methods)
+        block_components = {"blocks", "encoder_blocks", "decoder_blocks"}
+
         # Test top-level components (embed, pos_embed, ln_final, unembed)
         for comp_name, component in component_mapping.items():
             if comp_name in skip_components:
                 continue
 
-            if comp_name == "blocks":
-                # Handle blocks separately
+            if comp_name in block_components:
+                # Handle blocks separately - test their subcomponents by layer
                 continue
 
             result = self._test_component(comp_name, component, test_inputs)
@@ -279,29 +305,44 @@ class ComponentBenchmarker:
                 results.append(result)
 
         # Test block components recursively
-        if "blocks" in component_mapping and "blocks" not in skip_components:
-            blocks_component = component_mapping["blocks"]
-            n_layers = self.cfg.n_layers
+        for block_type in block_components:
+            if block_type in component_mapping and block_type not in skip_components:
+                blocks_component = component_mapping[block_type]
+                n_layers = self.cfg.n_layers
 
-            for layer_idx in range(n_layers):
-                # Recursively test each subcomponent and its nested subcomponents
-                for subcomp_name, subcomponent in blocks_component.submodules.items():
-                    comp_path = f"blocks.{layer_idx}.{subcomp_name}"
-                    self._test_component_recursive(
-                        comp_path, subcomponent, test_inputs, results, skip_components
-                    )
+                for layer_idx in range(n_layers):
+                    # Recursively test each subcomponent and its nested subcomponents
+                    for subcomp_name, subcomponent in blocks_component.submodules.items():
+                        comp_path = f"{block_type}.{layer_idx}.{subcomp_name}"
+                        self._test_component_recursive(
+                            comp_path, subcomponent, test_inputs, results, skip_components
+                        )
+
+        # Clean up test inputs to free memory
+        if test_inputs is not None:
+            for key in list(test_inputs.keys()):
+                tensor = test_inputs[key]
+                if tensor is not None and isinstance(tensor, torch.Tensor):
+                    del tensor
+            test_inputs.clear()
 
         # Create report
         passed = sum(1 for r in results if r.passed)
         failed = sum(1 for r in results if not r.passed)
 
-        return BenchmarkReport(
+        report = BenchmarkReport(
             model_name=getattr(self.cfg, "model_name", "unknown"),
             total_components=len(results),
             passed_components=passed,
             failed_components=failed,
             component_results=results,
         )
+
+        # Restore bridge to its original dtype if we upcast it
+        if self._bridge_was_upcast and self._bridge_original_dtype is not None:
+            self.bridge_model.to(self._bridge_original_dtype)
+
+        return report
 
     def _test_component_recursive(
         self,
@@ -333,6 +374,58 @@ class ComponentBenchmarker:
         if component_path in skip_components:
             return
 
+        # Skip MLP components that don't exist as separate modules in HF (name=None)
+        # These are virtual components where fc1/fc2 are directly on the layer
+        # Component testing doesn't work for these because get_component returns the parent layer
+        if "mlp" in component_path and hasattr(component, "name") and component.name is None:
+            return
+
+        # Skip MLP components with custom forward signatures (e.g., BLOOM requires residual)
+        # These can't be tested in isolation without full model context
+        if "mlp" in component_path and hasattr(component, "hf_component"):
+            import inspect
+
+            try:
+                sig = inspect.signature(component.hf_component.forward)
+                params = list(sig.parameters.keys())
+                # Standard MLP only needs hidden_states (or self + hidden_states)
+                # If there are more required params, skip testing
+                if len(params) > 2:  # self + hidden_states + other required params
+                    return
+            except Exception:
+                # If we can't inspect, proceed with testing
+                pass
+
+        # Skip attention components that require position embeddings in Phase 3
+        # These can't be tested in isolation without full model context for position embeddings
+        if (
+            "attn" in component_path
+            and hasattr(component, "requires_position_embeddings")
+            and component.requires_position_embeddings
+        ):
+            return
+
+        # Skip attention components that use native HF attention (maintain_native_attention=True)
+        # These have custom forward signatures (e.g., BLOOM requires residual, alibi, attention_mask)
+        # and can't be tested in isolation without full model context
+        if (
+            "attn" in component_path
+            and hasattr(component, "maintain_native_attention")
+            and component.maintain_native_attention
+        ):
+            return
+
+        # Skip BLOOM and T5 attention and MLP components - they have custom signatures that require
+        # residual connections, alibi bias, or cache_position from the full model context
+        if "attn" in component_path or "mlp" in component_path:
+            # Check if this is a BLOOM or T5 model by looking at the HF model config
+            hf_model_config = getattr(self.hf_model, "config", None)
+            if hf_model_config and hasattr(hf_model_config, "model_type"):
+                # BLOOM requires residual and alibi bias
+                # T5 requires cache_position for relative position embeddings
+                if hf_model_config.model_type in ["bloom", "t5"]:
+                    return
+
         # Skip components that require specific shaped inputs from their parent modules
         # These components expect intermediate outputs from their parent attention/MLP
         # modules and can't be tested with generic hidden state inputs
@@ -346,29 +439,24 @@ class ComponentBenchmarker:
             if last_part in ["o", "out"]:
                 return
 
-            # Check if this is a q/k/v subcomponent and parent is joint QKV
-            if last_part in ["q", "k", "v"]:
-                # Check if parent component is JointQKVAttentionBridge
-                parent_type = type(component).__name__
-                # The component passed in is actually the q/k/v component itself
-                # We need to check if we should skip based on parent context
-                # For now, we'll check if the parent path exists and is a joint module
-                # This is a heuristic - skip q/k/v that are children of attention
-                # if the attention module has "qkv" or "c_attn" in its submodules
-                # (indicating joint QKV projection)
+            # Skip virtual splits from fused projections (no standalone HF equivalent)
+            if last_part in ["q", "k", "v", "gate", "in"]:
                 parent_path = ".".join(path_parts[:-1])
                 try:
                     parent_component = self.adapter.get_component(self.bridge_model, parent_path)
-                    # Check if parent has a joint qkv module
                     if hasattr(parent_component, "submodules"):
-                        if (
-                            "qkv" in parent_component.submodules  # type: ignore[operator]
-                            or "c_attn" in parent_component.submodules  # type: ignore[operator]
+                        parent_bridge = cast(GeneralizedComponent, parent_component)
+                        subs = parent_bridge.submodules
+                        # Joint QKV: q/k/v are splits from fused qkv_proj/c_attn
+                        if last_part in ["q", "k", "v"] and ("qkv" in subs or "c_attn" in subs):
+                            return
+                        # Joint gate+up: gate/in are splits from fused gate_up_proj
+                        if last_part in ["gate", "in"] and (
+                            "gate_up" in subs
+                            or type(parent_bridge).__name__ == "JointGateUpMLPBridge"
                         ):
-                            # Skip - this is a virtual q/k/v split from joint projection
                             return
                 except Exception:
-                    # If we can't get parent, proceed with testing
                     pass
 
         # Test this component
@@ -402,7 +490,10 @@ class ComponentBenchmarker:
         """
         try:
             # Get bridge component
-            bridge_component = self.adapter.get_component(self.bridge_model, component_path)
+            # The adapter returns nn.Module, but for bridge models it's actually GeneralizedComponent
+            bridge_component = cast(
+                GeneralizedComponent, self.adapter.get_component(self.bridge_model, component_path)
+            )
 
             # Get HuggingFace component
             hf_component = self.adapter.get_component(self.hf_model, component_path)
@@ -412,11 +503,20 @@ class ComponentBenchmarker:
             if test_input is None:
                 return None
 
-            # For embedding components, generate token indices once to use for both
+            # Get input args/kwargs from the Bridge component
+            # All bridge components inherit from GeneralizedComponent and have get_dummy_inputs()
+            batch, seq_len, _ = test_input.shape
+            pos_indices = (
+                torch.arange(seq_len, device=test_input.device).unsqueeze(0).expand(batch, -1)
+            )
+
+            # For embedding components, generate token indices once
             shared_token_indices = None
             if component_path == "embed":
                 batch, seq_len, _ = test_input.shape
-                shared_token_indices = torch.randint(0, self.cfg.d_vocab, (batch, seq_len))
+                shared_token_indices = torch.randint(
+                    0, self.cfg.d_vocab, (batch, seq_len), device=test_input.device
+                )
 
             # Generate shared inputs for attention/MLP/rotary components that have get_random_inputs()
             # This is needed for model-specific inputs like position_embeddings or attention_mask
@@ -490,13 +590,28 @@ class ComponentBenchmarker:
                 bridge_tensor, hf_tensor
             )
 
+            # Get output shape before deleting tensors
+            output_shape = tuple(bridge_tensor.shape)
+
+            # Clean up output tensors immediately to free memory
+            del bridge_output, hf_output, bridge_tensor, hf_tensor
+            if shared_inputs is not None:
+                # Clean up shared inputs
+                for key in list(shared_inputs.keys()):
+                    val = shared_inputs[key]
+                    if val is not None and isinstance(val, torch.Tensor):
+                        del val
+                    shared_inputs[key] = None
+            if shared_token_indices is not None:
+                del shared_token_indices
+
             return ComponentTestResult(
                 component_path=component_path,
                 component_type=type(component).__name__,
                 passed=passed,
                 max_diff=max_diff,
                 mean_diff=mean_diff,
-                output_shape=tuple(bridge_tensor.shape),
+                output_shape=output_shape,
                 percentile_diffs=percentile_diffs,
             )
 
@@ -531,7 +646,7 @@ class ComponentBenchmarker:
         Returns:
             The component output
         """
-        # Special handling for q_norm/k_norm: they expect (batch, seq, d_head) not (batch, seq, d_model)
+        # q_norm/k_norm expect d_head, not d_model
         if component_path.endswith(".q_norm") or component_path.endswith(".k_norm"):
             # Reshape test_input from (batch, seq, d_model) to (batch, seq, d_head)
             batch, seq, d_model = test_input.shape
@@ -576,13 +691,17 @@ class ComponentBenchmarker:
                 token_indices = shared_token_indices
             else:
                 batch, seq_len, _ = test_input.shape
-                token_indices = torch.randint(0, self.cfg.d_vocab, (batch, seq_len))
+                token_indices = torch.randint(
+                    0, self.cfg.d_vocab, (batch, seq_len), device=test_input.device
+                )
             return component(token_indices)
         elif component_path == "pos_embed" or "pos_embed" in component_path:
             # Position embedding expects integer position indices
             batch, seq_len, _ = test_input.shape
             # For positional embeddings, we need position indices
-            pos_indices = torch.arange(seq_len).unsqueeze(0).expand(batch, -1)
+            pos_indices = (
+                torch.arange(seq_len, device=test_input.device).unsqueeze(0).expand(batch, -1)
+            )
             try:
                 return component(pos_indices)
             except (TypeError, IndexError):
@@ -596,12 +715,25 @@ class ComponentBenchmarker:
                 except AttributeError:
                     # Skip this component
                     raise ValueError("Cannot test pos_embed - unclear interface")
+        elif component_path == "project_in":
+            # project_in expects word_embed_proj_dim, not d_model.
+            word_embed_proj_dim = getattr(self.cfg, "word_embed_proj_dim", None)
+            if word_embed_proj_dim is not None and word_embed_proj_dim != self.cfg.d_model:
+                test_input = test_input[..., :word_embed_proj_dim]
+            return component(test_input)
         elif (
             component_path == "unembed"
             or "unembed" in component_path
             or "lm_head" in component_path
         ):
-            # Unembedding expects [batch, seq, d_model] input
+            # Unembed may expect word_embed_proj_dim (e.g., OPT-350m project_out).
+            word_embed_proj_dim = getattr(self.cfg, "word_embed_proj_dim", None)
+            if (
+                word_embed_proj_dim is not None
+                and word_embed_proj_dim != self.cfg.d_model
+                and test_input.shape[-1] != word_embed_proj_dim
+            ):
+                test_input = test_input[..., :word_embed_proj_dim]
             return component(test_input)
         else:
             # Standard components (MLP, LayerNorm, etc.)
@@ -636,9 +768,12 @@ class ComponentBenchmarker:
         seq_len = 8
         d_model = self.cfg.d_model
 
-        # Use dtype from config (matches HF model's dtype)
-        dtype = getattr(self.cfg, "dtype", torch.float32)
-        device = next(self.hf_model.parameters()).device
+        # Use the reconciled dtype from __init__.
+        dtype = self.test_dtype
+        try:
+            device = next(self.hf_model.parameters()).device
+        except StopIteration:
+            device = torch.device("cpu")
 
         return {
             "hidden_states": torch.randn(batch_size, seq_len, d_model, dtype=dtype, device=device),
@@ -661,16 +796,15 @@ class ComponentBenchmarker:
         if bridge_output.shape != hf_output.shape:
             return False, float("inf"), float("inf"), {}
 
-        # Compute differences
-        diff = torch.abs(bridge_output - hf_output)
+        # Compute differences (upcast to float32 for safety)
+        bo = bridge_output.float()
+        ho = hf_output.float()
+        diff = torch.abs(bo - ho)
         max_diff = diff.max().item()
         mean_diff = diff.mean().item()
 
         # Compute percentile differences
-        # Convert to float32 for quantile computation (bfloat16 not supported)
         flat_diff = diff.flatten()
-        if flat_diff.dtype == torch.bfloat16 or flat_diff.dtype == torch.float16:
-            flat_diff = flat_diff.float()
         percentile_diffs = {
             "50th": torch.quantile(flat_diff, 0.5).item(),
             "90th": torch.quantile(flat_diff, 0.9).item(),
@@ -678,7 +812,7 @@ class ComponentBenchmarker:
         }
 
         # Check if within tolerance
-        passed = torch.allclose(bridge_output, hf_output, atol=self.atol, rtol=self.rtol)
+        passed = torch.allclose(bo, ho, atol=self.atol, rtol=self.rtol)
 
         return passed, max_diff, mean_diff, percentile_diffs
 

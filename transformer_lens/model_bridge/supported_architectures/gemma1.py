@@ -2,18 +2,25 @@
 
 from typing import Any
 
-from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorConversion
+from transformer_lens.conversion_utils.conversion_steps import (
+    ArithmeticTensorConversion,
+    TransposeTensorConversion,
+)
+from transformer_lens.conversion_utils.conversion_steps.arithmetic_tensor_conversion import (
+    OperationTypes,
+)
 from transformer_lens.conversion_utils.param_processing_conversion import (
     ParamProcessingConversion,
 )
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
-    AttentionBridge,
     BlockBridge,
     EmbeddingBridge,
     GatedMLPBridge,
     LinearBridge,
+    PositionEmbeddingsAttentionBridge,
     RMSNormalizationBridge,
+    RotaryEmbeddingBridge,
     UnembeddingBridge,
 )
 
@@ -32,53 +39,59 @@ class Gemma1ArchitectureAdapter(ArchitectureAdapter):
         self.cfg.gated_mlp = True
         self.cfg.attn_only = False
 
-        # Gemma models were not trained with BOS tokens
-        self.cfg.default_prepend_bos = False
+        # Gemma models use BOS tokens (tokenizer prepends BOS by default)
+        # Matches HookedTransformer behavior (default_prepend_bos = True)
+        self.cfg.default_prepend_bos = True
         self.cfg.uses_rms_norm = True
+        # Gemma models use (1.0 + weight) in RMSNorm instead of just weight
+        # See: https://github.com/huggingface/transformers/pull/29402
+        self.cfg.rmsnorm_uses_offset = True
 
         self.weight_processing_conversions = {
-            # Gemma1 scales embeddings by sqrt(d_model)
-            "embed.e": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion(
-                    "d_vocab d_model -> d_vocab d_model",
-                    scale=self.cfg.d_model**0.5,
-                ),
-                source_key="model.embed_tokens.weight",
+            # NOTE: Gemma1 scales embeddings by sqrt(d_model) at RUNTIME in
+            # GemmaModel.forward(). We must NOT pre-scale embed weights here
+            # because that would cause double-scaling (pre-scale + runtime).
+            # The runtime hook_conversion in setup_hook_compatibility() handles
+            # scaling the hook output so it matches HookedTransformer's behavior.
+            #
+            # Attention weight conversions
+            **self._qkvo_weight_conversions(),
+            # RMSNorm weight conversions - Gemma adds 1.0 to weights before applying
+            # See: https://github.com/huggingface/transformers/pull/29402
+            "blocks.{i}.ln1.weight": ParamProcessingConversion(
+                tensor_conversion=ArithmeticTensorConversion(OperationTypes.ADDITION, 1.0),
             ),
-            "blocks.{i}.ln1.w": "model.layers.{i}.input_layernorm.weight",
-            "blocks.{i}.ln2.w": "model.layers.{i}.post_attention_layernorm.weight",
-            "blocks.{i}.attn.q": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
-                source_key="model.layers.{i}.self_attn.q_proj.weight",
+            "blocks.{i}.ln2.weight": ParamProcessingConversion(
+                tensor_conversion=ArithmeticTensorConversion(OperationTypes.ADDITION, 1.0),
             ),
-            "blocks.{i}.attn.k": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
-                source_key="model.layers.{i}.self_attn.k_proj.weight",
+            "ln_final.weight": ParamProcessingConversion(
+                tensor_conversion=ArithmeticTensorConversion(OperationTypes.ADDITION, 1.0),
             ),
-            "blocks.{i}.attn.v": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
-                source_key="model.layers.{i}.self_attn.v_proj.weight",
+            # MLP weight conversions - transpose from [out, in] to [in, out]
+            "blocks.{i}.mlp.gate.weight": ParamProcessingConversion(
+                tensor_conversion=TransposeTensorConversion(),
             ),
-            "blocks.{i}.attn.o": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion("m (n h) -> n h m", n=self.cfg.n_heads),
-                source_key="model.layers.{i}.self_attn.o_proj.weight",
+            "blocks.{i}.mlp.in.weight": ParamProcessingConversion(
+                tensor_conversion=TransposeTensorConversion(),
             ),
-            "blocks.{i}.mlp.in": "model.layers.{i}.mlp.up_proj.weight.T",
-            "blocks.{i}.mlp.gate": "model.layers.{i}.mlp.gate_proj.weight.T",
-            "blocks.{i}.mlp.out": "model.layers.{i}.mlp.down_proj.weight.T",
-            "ln_final.w": "model.norm.weight",
-            "unembed.u": "lm_head.weight.T",  # Not shared with embedding
+            "blocks.{i}.mlp.out.weight": ParamProcessingConversion(
+                tensor_conversion=TransposeTensorConversion(),
+            ),
+            # Unembed weight conversion - transpose from [vocab, d_model] to [d_model, vocab]
+            "unembed.weight": ParamProcessingConversion(
+                tensor_conversion=TransposeTensorConversion(),
+            ),
         }
 
         self.component_mapping = {
             "embed": EmbeddingBridge(name="model.embed_tokens"),
-            "rotary_emb": EmbeddingBridge(name="model.rotary_emb"),
+            "rotary_emb": RotaryEmbeddingBridge(name="model.rotary_emb", config=self.cfg),
             "blocks": BlockBridge(
                 name="model.layers",
                 submodules={
                     "ln1": RMSNormalizationBridge(name="input_layernorm", config=self.cfg),
                     "ln2": RMSNormalizationBridge(name="post_attention_layernorm", config=self.cfg),
-                    "attn": AttentionBridge(
+                    "attn": PositionEmbeddingsAttentionBridge(
                         name="self_attn",
                         config=self.cfg,
                         submodules={
@@ -87,6 +100,8 @@ class Gemma1ArchitectureAdapter(ArchitectureAdapter):
                             "v": LinearBridge(name="v_proj"),
                             "o": LinearBridge(name="o_proj"),
                         },
+                        requires_attention_mask=True,
+                        requires_position_embeddings=True,
                     ),
                     "mlp": GatedMLPBridge(
                         name="mlp",
@@ -102,3 +117,73 @@ class Gemma1ArchitectureAdapter(ArchitectureAdapter):
             "ln_final": RMSNormalizationBridge(name="model.norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head"),
         }
+
+    def setup_hook_compatibility(self, bridge: Any) -> None:
+        """Setup hook compatibility for Gemma1 models.
+
+        Gemma1 scales embeddings by sqrt(d_model) in its forward pass,
+        but the HuggingFace embed_tokens layer doesn't include this scaling.
+        We need to apply it to hook_embed to match HookedTransformer behavior.
+
+        Args:
+            bridge: The TransformerBridge instance
+        """
+        from transformer_lens.conversion_utils.conversion_steps.base_tensor_conversion import (
+            BaseTensorConversion,
+        )
+
+        class EmbeddingScaleConversion(BaseTensorConversion):
+            """Scale embeddings by sqrt(d_model) for Gemma models."""
+
+            def __init__(self, scale: float):
+                super().__init__()
+                self.scale = scale
+
+            def handle_conversion(self, input_value: Any, *full_context: Any) -> Any:
+                """Scale the embedding output."""
+                return input_value * self.scale
+
+            def revert(self, input_value: Any, *full_context: Any) -> Any:
+                """Unscale the embedding output (for user modifications)."""
+                return input_value / self.scale
+
+        # Apply scaling to embed.hook_out
+        if hasattr(bridge, "embed") and hasattr(bridge.embed, "hook_out"):
+            scale_factor = self.cfg.d_model**0.5
+            bridge.embed.hook_out.hook_conversion = EmbeddingScaleConversion(scale_factor)
+
+    def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
+        """Set up rotary embedding references for Gemma1 component testing.
+
+        Gemma1 uses RoPE (Rotary Position Embeddings). We set the rotary_emb reference
+        on all attention bridge instances for component testing.
+
+        Args:
+            hf_model: The HuggingFace Gemma1 model instance
+            bridge_model: The TransformerBridge model (if available, set rotary_emb on actual instances)
+        """
+        # Get rotary embedding instance from the model
+        rotary_emb = hf_model.model.rotary_emb
+
+        # Force HF model to use "eager" attention to match bridge implementation
+        # Bridge uses "eager" to support output_attentions for hook compatibility
+        # SDPA and eager are mathematically equivalent but have numerical differences
+        if hasattr(hf_model, "config") and hasattr(hf_model.config, "_attn_implementation"):
+            hf_model.config._attn_implementation = "eager"
+
+        # Also set on all attention layers
+        if hasattr(hf_model, "model") and hasattr(hf_model.model, "layers"):
+            for layer in hf_model.model.layers:
+                if hasattr(layer, "self_attn") and hasattr(layer.self_attn, "config"):
+                    layer.self_attn.config._attn_implementation = "eager"
+
+        # Set rotary_emb on actual bridge instances in bridge_model if available
+        if bridge_model is not None and hasattr(bridge_model, "blocks"):
+            # Set on each layer's actual attention bridge instance
+            for block in bridge_model.blocks:
+                if hasattr(block, "attn"):
+                    block.attn.set_rotary_emb(rotary_emb)
+
+        # Also set on the template for get_generalized_component() calls
+        attn_bridge = self.get_generalized_component("blocks.0.attn")
+        attn_bridge.set_rotary_emb(rotary_emb)

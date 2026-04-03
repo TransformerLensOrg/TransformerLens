@@ -1,22 +1,106 @@
-"""Gemma-3 specialized attention bridge.
+"""Position embeddings attention bridge with full hook support.
 
-Gemma-3 uses a unique dual RoPE (Rotary Position Embedding) system that requires
-position_embeddings to be generated from the model's rotary_emb component rather
-than using the standard (cos, sin) tuple format.
+Reimplements attention for models using RoPE (Llama, Gemma, Qwen, OLMo, etc.)
+so that all hook points fire at the correct computation stage:
+- hook_q/hook_k/hook_v: after projection
+- hook_rot_q/hook_rot_k: after RoPE rotation
+- hook_attn_scores: PRE-softmax (matching HookedTransformer convention)
+- hook_pattern: POST-softmax
 """
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+import weakref
+from typing import Any, Callable, Dict, Optional
 
 import torch
+import transformers.models.gemma2.modeling_gemma2 as gemma2_module
 
-from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.generalized_components.attention import (
     AttentionBridge,
 )
+from transformer_lens.model_bridge.generalized_components.position_embedding_hooks_mixin import (
+    PositionEmbeddingHooksMixin,
+)
+
+# Global registry mapping HF attention modules to their bridge instances
+# Uses WeakValueDictionary to avoid preventing garbage collection of bridges
+_ATTENTION_BRIDGE_REGISTRY: weakref.WeakValueDictionary = weakref.WeakValueDictionary()
+
+# Track whether we've already wrapped eager_attention_forward
+_EAGER_ATTENTION_WRAPPED = False
+
+# Store the original function for restoration
+_ORIGINAL_EAGER_ATTENTION_FORWARD: Optional[Callable] = None
 
 
-class PositionEmbeddingsAttentionBridge(AttentionBridge):
+def _setup_eager_attention_hook_wrapper() -> None:
+    """Wrap gemma2's eager_attention_forward to fire hook_rot_q and hook_rot_k.
+
+    This function monkey-patches the module-level eager_attention_forward function
+    to intercept query and key tensors (which have already had rotary embeddings applied)
+    and fire the corresponding hooks on the registered bridge instance.
+
+    This is safe to call multiple times - it will only wrap once.
+    """
+    global _EAGER_ATTENTION_WRAPPED, _ORIGINAL_EAGER_ATTENTION_FORWARD
+
+    if _EAGER_ATTENTION_WRAPPED:
+        return
+
+    # Store the original function
+    _ORIGINAL_EAGER_ATTENTION_FORWARD = gemma2_module.eager_attention_forward
+
+    def hooked_eager_attention_forward(
+        module: torch.nn.Module,
+        query: torch.Tensor,
+        key: torch.Tensor,
+        value: torch.Tensor,
+        attention_mask: Optional[torch.Tensor],
+        **kwargs: Any,
+    ) -> tuple:
+        """Wrapped eager_attention_forward that fires rotary hooks.
+
+        Args:
+            module: The HF attention module (used to look up the bridge)
+            query: Query tensor AFTER rotary embeddings applied
+            key: Key tensor AFTER rotary embeddings applied
+            value: Value tensor
+            attention_mask: Attention mask
+            **kwargs: Additional arguments (dropout, scaling, etc.)
+
+        Returns:
+            Tuple of (attn_output, attn_weights)
+        """
+        # Look up the bridge instance for this attention module
+        bridge = _ATTENTION_BRIDGE_REGISTRY.get(id(module))
+
+        if bridge is not None:
+            # Fire hook_rot_q and hook_rot_k with the post-rotary Q/K
+            if hasattr(bridge, "hook_rot_q"):
+                query = bridge.hook_rot_q(query)
+            if hasattr(bridge, "hook_rot_k"):
+                key = bridge.hook_rot_k(key)
+
+        # Call the original function
+        assert _ORIGINAL_EAGER_ATTENTION_FORWARD is not None
+        return _ORIGINAL_EAGER_ATTENTION_FORWARD(
+            module, query, key, value, attention_mask, **kwargs
+        )
+
+    # Replace the module-level function for both Gemma 2 and Gemma 3
+    gemma2_module.eager_attention_forward = hooked_eager_attention_forward  # type: ignore[assignment]
+
+    try:
+        import transformers.models.gemma3.modeling_gemma3 as gemma3_module
+
+        gemma3_module.eager_attention_forward = hooked_eager_attention_forward  # type: ignore[assignment]
+    except ImportError:
+        pass  # Gemma 3 not available in this transformers version
+
+    _EAGER_ATTENTION_WRAPPED = True
+
+
+class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBridge):
     """Attention bridge for models that require position embeddings (e.g., Gemma-3).
 
     Some models use specialized position embedding systems (like Gemma-3's dual RoPE)
@@ -42,38 +126,189 @@ class PositionEmbeddingsAttentionBridge(AttentionBridge):
         kwargs["requires_attention_mask"] = True
         kwargs["maintain_native_attention"] = True
         super().__init__(name, config, submodules, **kwargs)
-        self._rotary_emb = None
-        # Add hooks for cos and sin to match HookedTransformer pattern
-        self.hook_cos = HookPoint()
-        self.hook_sin = HookPoint()
+        self._init_position_embedding_hooks()
 
-    def set_rotary_emb(self, rotary_emb):
-        """Set reference to the model's rotary embedding component.
+    def set_original_component(self, component: torch.nn.Module) -> None:
+        """Set the original HF component and register for rotary hook firing.
 
-        Args:
-            rotary_emb: The model's rotary_emb component (from model.model.rotary_emb)
-        """
-        self._rotary_emb = rotary_emb
-
-    def _apply_position_embedding_hooks(self, position_embeddings):
-        """Apply hooks to position embeddings (cos, sin tuple).
-
-        Extracts cos and sin from the position_embeddings tuple and passes them
-        through hook_cos and hook_sin to match HookedTransformer's behavior.
+        This overrides the base class method to also:
+        1. Register this bridge in the global registry (for hook_rot_q/hook_rot_k)
+        2. Set up the eager_attention_forward wrapper if not already done
 
         Args:
-            position_embeddings: Tuple of (cos, sin) tensors
-
-        Returns:
-            Tuple of (hooked_cos, hooked_sin) tensors
+            component: The HuggingFace attention module
         """
-        if isinstance(position_embeddings, tuple) and len(position_embeddings) == 2:
+        super().set_original_component(component)
+
+        # Register this bridge instance so the wrapped eager_attention_forward can find it
+        _ATTENTION_BRIDGE_REGISTRY[id(component)] = self
+
+        # Ensure the wrapper is set up
+        _setup_eager_attention_hook_wrapper()
+
+    def forward(self, *args: Any, **kwargs: Any) -> Any:
+        """Reimplemented forward pass with hooks at correct computation stages.
+
+        Instead of delegating to the HF attention module (which returns post-softmax
+        weights), this reimplements attention step-by-step so that:
+        - hook_attn_scores fires on PRE-softmax scores (matching HookedTransformer)
+        - hook_pattern fires on POST-softmax weights
+        - hook_rot_q/hook_rot_k fire after RoPE application
+
+        Handles RoPE, GQA, Q/K norms, sliding window, and softcapping.
+        """
+        if self.original_component is None:
+            raise RuntimeError(
+                f"Original component not set for {self.name}. "
+                "Call set_original_component() first."
+            )
+
+        # Type as Any — the HF attention module's interface (q_proj, k_proj, etc.)
+        # varies by architecture and isn't captured by nn.Module's type signature.
+        hf_attn: Any = self.original_component
+
+        # Extract hidden_states and kwargs
+        if "hidden_states" in kwargs:
+            hidden_states = kwargs.pop("hidden_states")
+        elif len(args) > 0 and isinstance(args[0], torch.Tensor):
+            hidden_states = args[0]
+            args = args[1:]
+        else:
+            raise ValueError("Could not find hidden_states in args or kwargs")
+
+        position_embeddings = kwargs.pop("position_embeddings", None)
+        attention_mask = kwargs.pop("attention_mask", None)
+
+        # Apply input hook
+        hidden_states = self.hook_in(hidden_states)
+
+        # Match dtype of HF module
+        target_dtype = None
+        try:
+            target_dtype = next(hf_attn.parameters()).dtype
+        except StopIteration:
+            pass
+        if target_dtype is not None and hidden_states.is_floating_point():
+            hidden_states = hidden_states.to(dtype=target_dtype)
+
+        # --- Q/K/V Projection + Optional Q/K Norms ---
+        # Detect norm order: pre-reshape (OLMo 2) vs post-reshape (Gemma 3)
+        input_shape = hidden_states.shape[:-1]
+        head_dim = hf_attn.head_dim
+        hidden_shape = (*input_shape, -1, head_dim)
+
+        query_states = hf_attn.q_proj(hidden_states)
+        key_states = hf_attn.k_proj(hidden_states)
+        value_states = hf_attn.v_proj(hidden_states)
+
+        has_q_norm = hasattr(hf_attn, "q_norm") and hf_attn.q_norm is not None
+        has_k_norm = hasattr(hf_attn, "k_norm") and hf_attn.k_norm is not None
+        applied_pre_reshape_norm = False
+
+        if has_q_norm:
+            try:
+                # Try pre-reshape norm (OLMo 2 style: norm on flat [batch, seq, hidden])
+                query_states = hf_attn.q_norm(query_states)
+                if has_k_norm:
+                    key_states = hf_attn.k_norm(key_states)
+                applied_pre_reshape_norm = True
+            except RuntimeError:
+                # Shape mismatch — this model uses post-reshape norms
+                pass
+
+        query_states = query_states.view(hidden_shape).transpose(1, 2)
+        key_states = key_states.view(hidden_shape).transpose(1, 2)
+        value_states = value_states.view(hidden_shape).transpose(1, 2)
+
+        if has_q_norm and not applied_pre_reshape_norm:
+            # Post-reshape norm (Gemma 3 style: norm on [batch, heads, seq, head_dim])
+            query_states = hf_attn.q_norm(query_states)
+        if has_k_norm and not applied_pre_reshape_norm:
+            key_states = hf_attn.k_norm(key_states)
+
+        # --- RoPE ---
+        if position_embeddings is not None:
+            position_embeddings = self._apply_position_embedding_hooks(position_embeddings)
             cos, sin = position_embeddings
-            # Apply hooks to match HookedTransformer's rotary_cos/rotary_sin pattern
-            hooked_cos = self.hook_cos(cos)
-            hooked_sin = self.hook_sin(sin)
-            return (hooked_cos, hooked_sin)
-        return position_embeddings
+            from transformers.models.llama.modeling_llama import apply_rotary_pos_emb
+
+            # Some models use partial rotary (e.g., GPT-OSS) where cos/sin cover only
+            # a portion of head_dim. Split Q/K, rotate the partial dims, recombine.
+            rotary_dim = cos.shape[-1]
+            if rotary_dim < head_dim:
+                q_rot, q_pass = query_states[..., :rotary_dim], query_states[..., rotary_dim:]
+                k_rot, k_pass = key_states[..., :rotary_dim], key_states[..., rotary_dim:]
+                q_rot, k_rot = apply_rotary_pos_emb(q_rot, k_rot, cos, sin)
+                query_states = torch.cat([q_rot, q_pass], dim=-1)
+                key_states = torch.cat([k_rot, k_pass], dim=-1)
+            else:
+                query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
+
+        # Fire hook_rot_q/hook_rot_k (post-rotation)
+        if hasattr(self, "hook_rot_q"):
+            query_states = self.hook_rot_q(query_states)
+        if hasattr(self, "hook_rot_k"):
+            key_states = self.hook_rot_k(key_states)
+
+        # --- GQA: Expand K/V ---
+        num_key_value_groups = getattr(hf_attn, "num_key_value_groups", 1)
+        if num_key_value_groups > 1:
+            from transformers.models.llama.modeling_llama import repeat_kv
+
+            key_states_expanded = repeat_kv(key_states, num_key_value_groups)
+            value_states_expanded = repeat_kv(value_states, num_key_value_groups)
+        else:
+            key_states_expanded = key_states
+            value_states_expanded = value_states
+
+        # --- Attention Scores ---
+        scaling = getattr(hf_attn, "scaling", head_dim**-0.5)
+        attn_scores = torch.matmul(query_states, key_states_expanded.transpose(-2, -1)) * scaling
+
+        # --- Softcapping (Gemma 2) ---
+        softcap = getattr(hf_attn, "attn_logit_softcapping", None)
+        if softcap is not None:
+            attn_scores = attn_scores / softcap
+            attn_scores = torch.tanh(attn_scores)
+            attn_scores = attn_scores * softcap
+
+        # --- Causal / Sliding Window Mask ---
+        if attention_mask is not None:
+            causal_mask = attention_mask[:, :, :, : key_states_expanded.shape[-2]]
+            attn_scores = attn_scores + causal_mask
+
+        # --- hook_attn_scores: PRE-softmax (matching HookedTransformer) ---
+        attn_scores = self.hook_attn_scores(attn_scores)
+
+        # --- Softmax (in float32 for numerical stability) ---
+        attn_weights = torch.nn.functional.softmax(attn_scores, dim=-1, dtype=torch.float32).to(
+            query_states.dtype
+        )
+
+        # --- Dropout ---
+        dropout_rate = getattr(hf_attn, "attention_dropout", 0.0)
+        if self.training and dropout_rate > 0.0:
+            attn_weights = torch.nn.functional.dropout(attn_weights, p=dropout_rate, training=True)
+
+        # --- hook_pattern: POST-softmax ---
+        attn_weights = self.hook_pattern(attn_weights)
+
+        # --- Attention Output ---
+        attn_output = torch.matmul(attn_weights, value_states_expanded)
+        attn_output = attn_output.transpose(1, 2).contiguous()
+        attn_output = attn_output.reshape(*input_shape, -1)
+
+        # --- Output Projection ---
+        # Different architectures name this differently: o_proj (Llama, Gemma, Qwen),
+        # dense (Phi), out_proj (others)
+        o_proj = getattr(hf_attn, "o_proj", None) or getattr(hf_attn, "dense", None)
+        if o_proj is not None:
+            attn_output = o_proj(attn_output)
+
+        # --- Output Hook ---
+        attn_output = self.hook_out(attn_output)
+
+        return attn_output, attn_weights
 
     def get_random_inputs(
         self,
@@ -126,213 +361,3 @@ class PositionEmbeddingsAttentionBridge(AttentionBridge):
             inputs["position_embeddings"] = (cos, sin)
         inputs["attention_mask"] = None
         return inputs
-
-    def setup_hook_compatibility(self) -> None:
-        """Setup hook compatibility transformations to match HookedTransformer behavior.
-
-        For models requiring position embeddings (like Gemma with RoPE), this wraps the
-        HF attention forward to inject required position_embeddings and attention_mask.
-        This is necessary because some code paths may call the HF attention directly,
-        bypassing the bridge's forward method.
-
-        Also sets up rotary embedding hooks (hook_rot_q, hook_rot_k) by monkey-patching
-        the HF attention's forward to intercept Q/K after rotary position embeddings are applied.
-
-        Also sets up Q/K/V/Z hook reshaping like the base AttentionBridge.
-
-        This is called during Bridge.__init__ and should always be run.
-        Note: This method is idempotent - can be called multiple times safely.
-        """
-        if self.original_component is None:
-            return
-        original_hf_forward = self.original_component.forward
-
-        def wrapped_forward(*args, **kwargs):
-            """Wrapper that injects position_embeddings, attention_mask, and rotary hooks."""
-            if "position_embeddings" not in kwargs or kwargs["position_embeddings"] is None:
-                hidden_states = kwargs.get("hidden_states") or (args[0] if len(args) > 0 else None)
-                if hidden_states is not None:
-                    batch_size, seq_len, _ = hidden_states.shape
-                    device = hidden_states.device
-                    dtype = hidden_states.dtype
-                    if self._rotary_emb is not None:
-                        head_dim = (
-                            self.config.head_dim
-                            if self.config and hasattr(self.config, "head_dim")
-                            else 256
-                        )
-                        num_heads = (
-                            self.config.num_attention_heads
-                            if self.config and hasattr(self.config, "num_attention_heads")
-                            else 4
-                        )
-                        dummy_qk = torch.randn(
-                            1, seq_len, num_heads, head_dim, device=device, dtype=dtype
-                        )
-                        position_ids = torch.arange(seq_len, device=device).unsqueeze(0)
-                        try:
-                            position_embeddings = self._rotary_emb(dummy_qk, position_ids)
-                            # Apply hooks to cos and sin
-                            kwargs["position_embeddings"] = self._apply_position_embedding_hooks(
-                                position_embeddings
-                            )
-                        except Exception as e:
-                            import warnings
-
-                            warnings.warn(f"Rotary embedding call failed: {e}, using fallback")
-                            cos = torch.ones(1, seq_len, head_dim, device=device, dtype=dtype)
-                            sin = torch.zeros(1, seq_len, head_dim, device=device, dtype=dtype)
-                            # Apply hooks to fallback cos/sin
-                            kwargs["position_embeddings"] = self._apply_position_embedding_hooks(
-                                (cos, sin)
-                            )
-                    else:
-                        head_dim = (
-                            self.config.head_dim
-                            if self.config and hasattr(self.config, "head_dim")
-                            else 256
-                        )
-                        cos = torch.ones(1, seq_len, head_dim, device=device, dtype=dtype)
-                        sin = torch.zeros(1, seq_len, head_dim, device=device, dtype=dtype)
-                        # Apply hooks to fallback cos/sin
-                        kwargs["position_embeddings"] = self._apply_position_embedding_hooks(
-                            (cos, sin)
-                        )
-            if "attention_mask" not in kwargs:
-                kwargs["attention_mask"] = None
-            import transformers.models.gemma2.modeling_gemma2 as gemma2_module
-
-            original_apply_rotary = gemma2_module.apply_rotary_pos_emb
-
-            def hooked_apply_rotary(q, k, cos, sin, position_ids=None, unsqueeze_dim=1):
-                """Wrapper that applies rotary hooks BEFORE rotation (matching HookedTransformer)."""
-                if hasattr(self, "hook_rot_q"):
-                    q = self.hook_rot_q(q)
-                if hasattr(self, "hook_rot_k"):
-                    k = self.hook_rot_k(k)
-                rotated_q, rotated_k = original_apply_rotary(
-                    q, k, cos, sin, position_ids, unsqueeze_dim
-                )
-                return (rotated_q, rotated_k)
-
-            gemma2_module.apply_rotary_pos_emb = hooked_apply_rotary
-            try:
-                result = original_hf_forward(*args, **kwargs)
-            finally:
-                gemma2_module.apply_rotary_pos_emb = original_apply_rotary
-            return result
-
-        self.original_component.forward = wrapped_forward
-        self._hf_forward_wrapped = True
-        if hasattr(self.config, "n_heads"):
-            self._setup_qkv_hook_reshaping()
-
-    def forward(self, *args: Any, **kwargs: Any) -> Any:
-        """Simplified forward pass - minimal wrapping around original component.
-
-        This override strips back the complex processing in AttentionBridge._process_output()
-        to do minimal wrapping: hook_in → delegate → hook_out.
-
-        This ensures we match HuggingFace's exact output without any intermediate
-        pattern extraction or re-application logic.
-
-        Args:
-            *args: Input arguments to pass to the original component
-            **kwargs: Input keyword arguments to pass to the original component
-
-        Returns:
-            The output from the original component, with only input/output hooks applied
-        """
-        if self.original_component is None:
-            raise RuntimeError(
-                f"Original component not set for {self.name}. Call set_original_component() first."
-            )
-        target_dtype = None
-        try:
-            target_dtype = next(self.original_component.parameters()).dtype
-        except StopIteration:
-            pass
-        if "hidden_states" in kwargs:
-            hooked = self.hook_in(kwargs["hidden_states"])
-            if (
-                target_dtype is not None
-                and isinstance(hooked, torch.Tensor)
-                and hooked.is_floating_point()
-            ):
-                hooked = hooked.to(dtype=target_dtype)
-            kwargs["hidden_states"] = hooked
-        elif len(args) > 0:
-            hooked = self.hook_in(args[0])
-            if (
-                target_dtype is not None
-                and isinstance(hooked, torch.Tensor)
-                and hooked.is_floating_point()
-            ):
-                hooked = hooked.to(dtype=target_dtype)
-            args = (hooked,) + args[1:]
-            kwargs["hidden_states"] = args[0]
-            args = args[1:]
-        else:
-            raise ValueError("Gemma3Attention requires hidden_states argument")
-        if "position_embeddings" not in kwargs or kwargs["position_embeddings"] is None:
-            hidden_states = kwargs["hidden_states"]
-            batch_size, seq_len, _ = hidden_states.shape
-            device = hidden_states.device
-            dtype = hidden_states.dtype
-            if self._rotary_emb is not None:
-                head_dim = (
-                    self.config.head_dim
-                    if self.config and hasattr(self.config, "head_dim")
-                    else 256
-                )
-                num_heads = (
-                    self.config.num_attention_heads
-                    if self.config and hasattr(self.config, "num_attention_heads")
-                    else 4
-                )
-                dummy_qk = torch.randn(1, seq_len, num_heads, head_dim, device=device, dtype=dtype)
-                position_ids = torch.arange(seq_len, device=device).unsqueeze(0)
-                try:
-                    position_embeddings = self._rotary_emb(dummy_qk, position_ids)
-                    # Apply hooks to cos and sin
-                    kwargs["position_embeddings"] = self._apply_position_embedding_hooks(
-                        position_embeddings
-                    )
-                except Exception:
-                    cos = torch.ones(1, seq_len, head_dim, device=device, dtype=dtype)
-                    sin = torch.zeros(1, seq_len, head_dim, device=device, dtype=dtype)
-                    # Apply hooks to fallback cos/sin
-                    kwargs["position_embeddings"] = self._apply_position_embedding_hooks((cos, sin))
-            else:
-                head_dim = (
-                    self.config.head_dim
-                    if self.config and hasattr(self.config, "head_dim")
-                    else 256
-                )
-                cos = torch.ones(1, seq_len, head_dim, device=device, dtype=dtype)
-                sin = torch.zeros(1, seq_len, head_dim, device=device, dtype=dtype)
-                # Apply hooks to fallback cos/sin
-                kwargs["position_embeddings"] = self._apply_position_embedding_hooks((cos, sin))
-        if "attention_mask" not in kwargs:
-            kwargs["attention_mask"] = None
-        kwargs["output_attentions"] = True
-        output = self.original_component(*args, **kwargs)
-        if isinstance(output, tuple) and len(output) >= 2:
-            attn_weights = output[1]
-            if attn_weights is not None:
-                _ = self.hook_pattern(attn_weights)
-                with torch.no_grad():
-                    d_head = (
-                        self.config.head_dim
-                        if self.config and hasattr(self.config, "head_dim")
-                        else 256
-                    )
-                    attn_scores_approx = torch.log(attn_weights + 1e-10) * d_head**0.5
-                _ = self.hook_attn_scores(attn_scores_approx)
-        if isinstance(output, tuple) and len(output) >= 2:
-            output = (self.hook_out(output[0]), output[1])
-        elif isinstance(output, tuple) and len(output) == 1:
-            output = (self.hook_out(output[0]),)
-        else:
-            output = self.hook_out(output)
-        return output

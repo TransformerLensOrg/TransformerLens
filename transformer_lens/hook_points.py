@@ -32,7 +32,7 @@ from torch import Tensor
 from transformer_lens.conversion_utils.conversion_steps.base_tensor_conversion import (
     BaseTensorConversion,
 )
-from transformer_lens.utils import Slice, SliceInput
+from transformer_lens.utils import Slice, SliceInput, warn_if_mps
 
 
 @dataclass
@@ -229,6 +229,14 @@ class HookPoint(nn.Module):
             if hook_result is not None and self.hook_conversion is not None:
                 hook_result = self.hook_conversion.revert(hook_result)
 
+            # For backward hooks, PyTorch expects the return to be a tuple of (grad,)
+            if dir == "bwd" and hook_result is not None:
+                return (
+                    hook_result
+                    if isinstance(hook_result, tuple) and len(hook_result) == 1
+                    else (hook_result,)
+                )
+
             return hook_result
 
         # annotate the `full_hook` with the string representation of the `hook` function
@@ -243,7 +251,24 @@ class HookPoint(nn.Module):
             pt_handle = self.register_forward_hook(full_hook, prepend=prepend)
             visible_hooks = self.fwd_hooks
         elif dir == "bwd":
-            pt_handle = self.register_full_backward_hook(full_hook, prepend=prepend)
+            # Wrap full_hook's bare Tensor return in tuple for PyTorch's backward API
+            def _bwd_hook_wrapper(
+                module: torch.nn.Module,
+                grad_input: Any,
+                grad_output: Any,
+            ):
+                result = full_hook(module, grad_input, grad_output)
+                if result is None:
+                    return None
+                if isinstance(result, tuple):
+                    return result
+                return (result,)
+
+            if isinstance(hook, partial):
+                _bwd_hook_wrapper.__name__ = f"partial({hook.func.__repr__()},...)"
+            else:
+                _bwd_hook_wrapper.__name__ = hook.__repr__()
+            pt_handle = self.register_full_backward_hook(_bwd_hook_wrapper, prepend=prepend)
             visible_hooks = self.bwd_hooks
         else:
             raise ValueError(f"Invalid direction {dir}")
@@ -658,6 +683,8 @@ class HookedRootModule(nn.Module):
         Returns:
             cache (dict): The cache where activations will be stored.
         """
+        if device is not None:
+            warn_if_mps(device)
         if cache is None:
             cache = {}
 
@@ -778,6 +805,8 @@ class HookedRootModule(nn.Module):
             fwd_hooks (list): The forward hooks.
             bwd_hooks (list): The backward hooks. Empty if incl_bwd is False.
         """
+        if device is not None:
+            warn_if_mps(device)
         if cache is None:
             cache = {}
 

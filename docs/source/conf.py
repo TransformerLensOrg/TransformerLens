@@ -130,8 +130,7 @@ def run_apidoc(_app: Optional[Any] = None):
     generated_path.mkdir(parents=True, exist_ok=True)
     output_path.mkdir(parents=True, exist_ok=True)
 
-    # Arguments for sphinx-apidoc
-    # Exclude modules that have their own dedicated pages to avoid duplicate documentation
+    # Exclude modules with dedicated pages
     excluded_modules = [
         "ActivationCache.py",
         "FactoredMatrix.py",
@@ -154,7 +153,7 @@ def run_apidoc(_app: Optional[Any] = None):
     # Call sphinx-apidoc
     apidoc.main(args)
 
-    # Post-process .rst files to add exclude-members for modules that have separate documentation
+    # Add exclude-members for modules with separate docs
     package_excludes = {
         "transformer_lens.rst": "ActivationCache, FactoredMatrix, HookedEncoder, HookedEncoderDecoder, HookedTransformer, SVDInterpreter, BertNextSentencePrediction, HookedTransformerConfig, EasyTransformerConfig",
         "transformer_lens.config.rst": "HookedTransformerConfig, TransformerBridgeConfig, TransformerLensConfig",
@@ -165,7 +164,7 @@ def run_apidoc(_app: Optional[Any] = None):
         rst_file = output_path / filename
         if rst_file.exists():
             content = rst_file.read_text()
-            # Add exclude-members to the package-level automodule directive
+            # Patch automodule directive
             package_name = filename.replace(".rst", "")
             old_directive = f".. automodule:: {package_name}\n   :members:\n   :undoc-members:\n   :show-inheritance:"
             new_directive = f"{old_directive}\n   :exclude-members: {excluded_members}"
@@ -175,7 +174,7 @@ def run_apidoc(_app: Optional[Any] = None):
 
 # -- Sphinx Notebook Demo Config ---------------------------------------------
 
-nbsphinx_execute = "always"  # Always re-run so Plotly charts are created correctly.
+nbsphinx_execute = "never"  # Don't execute notebooks during build (avoids device/memory issues).
 
 # -- Sphinx Setup Overrides --------------------------------------------------
 

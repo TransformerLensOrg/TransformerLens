@@ -1,31 +1,101 @@
-"""Basic device utilities.
+"""Device utilities.
 
-Simple utilities for moving models to devices and updating their configurations.
+Utilities for device detection (with MPS safety), moving models to devices,
+and updating their configurations.
 """
 
 from __future__ import annotations
 
+import logging
+import os
+import warnings
 from typing import Any, Protocol, Union, runtime_checkable
 
 import torch
-import torch.nn as nn
+from torch import nn
+
+# ---------------------------------------------------------------------------
+# MPS safety state
+# ---------------------------------------------------------------------------
+
+_mps_warned = False
+
+# MPS silent correctness issues are known in PyTorch <= 2.7.
+# Bump this when a PyTorch release ships verified MPS fixes.
+_MPS_MIN_SAFE_TORCH_VERSION: tuple[int, ...] | None = None
+
+
+def _torch_version_tuple() -> tuple[int, ...]:
+    """Parse torch.__version__ into a comparable tuple, ignoring pre-release suffixes."""
+    return tuple(int(x) for x in torch.__version__.split("+")[0].split(".")[:2])
+
+
+# ---------------------------------------------------------------------------
+# Device helpers
+# ---------------------------------------------------------------------------
 
 
 def get_device() -> torch.device:
-    """Get the best available device for the current system.
+    """Get the best available device, with MPS safety checks.
+
+    MPS is only auto-selected when the environment variable
+    ``TRANSFORMERLENS_ALLOW_MPS=1`` is set **and** the installed PyTorch
+    version meets or exceeds ``_MPS_MIN_SAFE_TORCH_VERSION``.
 
     Returns:
         torch.device: The best available device (cuda, mps, or cpu)
     """
     if torch.cuda.is_available():
         return torch.device("cuda")
+
     if torch.backends.mps.is_available() and torch.backends.mps.is_built():
-        # Parse the PyTorch version to check if it's below version 2.0
         major_version = int(torch.__version__.split(".")[0])
         if major_version >= 2:
-            return torch.device("mps")
+            # Only auto-select MPS when explicitly opted-in via env var
+            if os.environ.get("TRANSFORMERLENS_ALLOW_MPS", "") == "1":
+                return torch.device("mps")
+            logging.info(
+                "MPS device available but not auto-selected due to known correctness issues "
+                "(PyTorch %s). Set TRANSFORMERLENS_ALLOW_MPS=1 to override. See: "
+                "https://github.com/TransformerLensOrg/TransformerLens/issues/1178",
+                torch.__version__,
+            )
 
     return torch.device("cpu")
+
+
+def warn_if_mps(device):
+    """Emit a one-time warning if device is MPS and TRANSFORMERLENS_ALLOW_MPS is not set.
+
+    Automatically suppressed when the installed PyTorch version meets or exceeds
+    _MPS_MIN_SAFE_TORCH_VERSION (currently unset — no version is considered safe yet).
+    """
+    global _mps_warned
+    if _mps_warned:
+        return
+    if isinstance(device, torch.device):
+        device = device.type
+    if isinstance(device, str) and device == "mps":
+        if (
+            _MPS_MIN_SAFE_TORCH_VERSION is not None
+            and _torch_version_tuple() >= _MPS_MIN_SAFE_TORCH_VERSION
+        ):
+            return
+        if os.environ.get("TRANSFORMERLENS_ALLOW_MPS", "") != "1":
+            _mps_warned = True
+            warnings.warn(
+                "MPS backend may produce silently incorrect results (PyTorch "
+                f"{torch.__version__}). "
+                "Set TRANSFORMERLENS_ALLOW_MPS=1 to suppress this warning. "
+                "See: https://github.com/TransformerLensOrg/TransformerLens/issues/1178",
+                UserWarning,
+                stacklevel=2,
+            )
+
+
+# ---------------------------------------------------------------------------
+# Model protocol & move helper
+# ---------------------------------------------------------------------------
 
 
 @runtime_checkable
@@ -59,11 +129,15 @@ def move_to_and_update_config(
     Returns:
         The model after the operation
     """
+    from transformer_lens.utils import warn_if_mps
+
     if isinstance(device_or_dtype, torch.device):
+        warn_if_mps(device_or_dtype)
         model.cfg.device = device_or_dtype.type
         if print_details:
             print("Moving model to device: ", model.cfg.device)
     elif isinstance(device_or_dtype, str):
+        warn_if_mps(device_or_dtype)
         model.cfg.device = device_or_dtype
         if print_details:
             print("Moving model to device: ", model.cfg.device)

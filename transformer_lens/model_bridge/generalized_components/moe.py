@@ -65,9 +65,9 @@ class MoEBridge(GeneralizedComponent):
         if dtype is None:
             dtype = torch.float32
         d_model = self.config.d_model if self.config and hasattr(self.config, "d_model") else 768
-        return {
-            "hidden_states": torch.randn(batch_size, seq_len, d_model, device=device, dtype=dtype)
-        }
+        # Use positional args to avoid parameter name mismatches across MoE implementations
+        # (e.g., Mixtral uses "hidden_states", GraniteMoe uses "layer_input")
+        return {"args": (torch.randn(batch_size, seq_len, d_model, device=device, dtype=dtype),)}
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         """Forward pass through the MoE bridge.
@@ -99,6 +99,15 @@ class MoEBridge(GeneralizedComponent):
             ):
                 hooked = hooked.to(dtype=target_dtype)
             args = (hooked,) + args[1:]
+        elif "hidden_states" in kwargs:
+            hooked = self.hook_in(kwargs["hidden_states"])
+            if (
+                target_dtype is not None
+                and isinstance(hooked, torch.Tensor)
+                and hooked.is_floating_point()
+            ):
+                hooked = hooked.to(dtype=target_dtype)
+            kwargs = {**kwargs, "hidden_states": hooked}
         output = self.original_component(*args, **kwargs)
         if isinstance(output, tuple):
             hidden_states = output[0]

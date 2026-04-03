@@ -20,7 +20,12 @@ class SVDInterpreter:
     def __init__(self, model: Any):
         self.model = model
         self.cfg = model.cfg
-        self.params = {name: param for name, param in model.named_parameters()}
+        # Use tl_parameters() for TransformerBridge (returns TL-style dict)
+        # Fall back to named_parameters() for HookedTransformer
+        if hasattr(model, "tl_parameters"):
+            self.params = model.tl_parameters()
+        else:
+            self.params = {name: param for name, param in model.named_parameters()}
 
     @typechecked
     def get_singular_vectors(

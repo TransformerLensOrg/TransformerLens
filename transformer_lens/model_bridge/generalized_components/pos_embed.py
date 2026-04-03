@@ -69,5 +69,21 @@ class PosEmbedBridge(GeneralizedComponent):
             first_arg = self.hook_in(args[0])
             args = (first_arg,) + args[1:]
         output = self.original_component(*args, **kwargs)
+
+        # Expand batch=1 pos embeddings to match actual batch size for hooks.
+        batch_size = getattr(self, "_current_batch_size", None)
+
+        # Read-and-clear to avoid stale values during generate() steps.
+        if batch_size is not None:
+            self._current_batch_size = None
+        if (
+            batch_size is not None
+            and batch_size > 1
+            and isinstance(output, torch.Tensor)
+            and output.ndim >= 1
+            and output.shape[0] == 1
+        ):
+            output = output.expand(batch_size, *[-1] * (output.ndim - 1))
+
         output = self.hook_out(output)
         return output

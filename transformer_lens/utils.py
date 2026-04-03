@@ -1,13 +1,15 @@
 """utils.
 
-This module is deprecated, but imports from the new utilities to maintain backwards compatibility
+This module is deprecated, but imports from the new utilities to maintain backwards compatibility.
 """
+
 import warnings
 
-from transformer_lens.utilities import *
+from transformer_lens.utilities import *  # noqa: F401,F403
 
 warnings.warn(
-    "The 'utils' module has been deprecated. Please use 'transformer_lens.utilities' instead. Importing from utils.py will be removed in TransformerLens 4.0.",
+    "The 'utils' module has been deprecated. Please use 'transformer_lens.utilities' instead. "
+    "Importing from utils.py will be removed in TransformerLens 4.0.",
     DeprecationWarning,
     stacklevel=2,
 )
@@ -42,6 +44,7 @@ __all__ = [
     "init_xavier_normal_",
     "init_kaiming_uniform_",
     "init_kaiming_normal_",
+    "is_library_available",
     "tokenize_and_concatenate",
     "get_tokenizer_with_bos",
     "get_input_with_manually_prepended_bos",
@@ -57,4 +60,5 @@ __all__ = [
     "LocallyOverridenDefaults",
     "USE_DEFAULT_VALUE",
     "test_prompt",
+    "warn_if_mps",
 ]

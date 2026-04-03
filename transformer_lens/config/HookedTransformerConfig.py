@@ -193,6 +193,24 @@ class HookedTransformerConfig(TransformerLensConfig):
         NTK_by_parts_factor (float): The overall factor used in the "NTK-by-parts" method that
             affects the rate of change between low and high-frequency interpolation strategies.
             Defaults to 8.0.
+        use_yarn_rope (bool): Whether to apply YARN (Yet Another RoPE extensioN) scaling to
+            rotary positional embeddings. YARN blends interpolated and extrapolated frequencies
+            per dimension using correction ranges. See https://arxiv.org/abs/2309.00071 for
+            details. Used by OLMo 3. Defaults to False.
+        yarn_factor (float): The interpolation factor for YARN RoPE scaling. Defaults to 1.0.
+        yarn_attention_factor (float): Multiplicative scaling applied to sin/cos embeddings in
+            YARN. Defaults to 1.0.
+        yarn_beta_fast (float): Upper rotation threshold for YARN correction range. Defaults to 32.
+        yarn_beta_slow (float): Lower rotation threshold for YARN correction range. Defaults to 1.
+        yarn_original_max_position_embeddings (int): The original max position embeddings before
+            YARN extension. Defaults to 4096.
+        use_qk_norm (bool): Whether to apply RMSNorm to the query and key projections before
+            computing attention scores. Used by Gemma 3 models. Defaults to False.
+        rotary_base_local (int, *optional*): The base for rotary positional embeddings in local
+            attention layers. Used by models with hybrid local/global attention (e.g., Gemma 3)
+            which use different RoPE bases for local (10k) and global (1M) attention. Defaults
+            to None, which means the standard rotary_base is used for all layers.
+        norm_topk_prob (bool): Whether to normalize the top-k probabilities in the MoE layer.
     """
 
     model_name: str = "custom"
@@ -233,6 +251,12 @@ class HookedTransformerConfig(TransformerLensConfig):
     tokenizer_prepends_bos: Optional[bool] = None
     post_embedding_ln: bool = False
     rotary_base: int = 10000
+    rotary_base_local: Optional[
+        int
+    ] = None  # For models with different RoPE bases per attention type (e.g., Gemma 3)
+    rotary_scaling_factor: float = (
+        1.0  # Linear RoPE scaling factor for global attention (e.g., 8.0 for Gemma 3 4B)
+    )
     trust_remote_code: bool = False
     rotary_adjacent_pairs: bool = False
     load_in_4bit: bool = False
@@ -250,6 +274,13 @@ class HookedTransformerConfig(TransformerLensConfig):
     NTK_by_parts_high_freq_factor: float = 4.0
     NTK_by_parts_factor: float = 8.0
     NTK_original_ctx_len: int = 8192
+    use_yarn_rope: bool = False
+    yarn_factor: float = 1.0
+    yarn_attention_factor: float = 1.0
+    yarn_beta_fast: float = 32.0
+    yarn_beta_slow: float = 1.0
+    yarn_original_max_position_embeddings: int = 4096
+    norm_topk_prob: bool = False
 
     def __post_init__(self):
         # Call parent's post_init first
@@ -290,20 +321,24 @@ class HookedTransformerConfig(TransformerLensConfig):
                 self.num_experts is not None
             ), "num_experts must be set if experts_per_token is set"
 
-        # The number of parameters in attention layers (ignoring biases and layer norm). 4 because W_Q, W_K, W_V and W_O
+        # Attention params (W_Q, W_K, W_V, W_O), ignoring biases/LN
         self.n_params = self.n_layers * ((self.d_model * self.d_head * self.n_heads * 4))
         if not self.attn_only:
             assert self.d_mlp is not None  # mypy
-            # Number of parameters in MLP layers (ignoring biases and layer norm). 2 because W_in and W_out
+            # MLP params (W_in, W_out), ignoring biases/LN
             mlp_params_per_layer = self.d_model * self.d_mlp * (2 + self.gated_mlp)
 
             if self.num_experts:
-                # If we are using MoE, we multiply by num_experts, and add the expert gate parameters (d_model * num_experts)
+                # Scale by num_experts and add gate params
                 mlp_params_per_layer = (mlp_params_per_layer + self.d_model) * self.num_experts
             self.n_params += self.n_layers * mlp_params_per_layer
 
         if self.device is None:
             self.device = str(get_device())
+        else:
+            from transformer_lens.utils import warn_if_mps
+
+            warn_if_mps(self.device)
 
         if self.n_devices > 1:
             assert (

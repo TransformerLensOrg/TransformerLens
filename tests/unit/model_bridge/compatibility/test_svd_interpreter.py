@@ -34,7 +34,8 @@ def second_model():
         return TransformerBridge.boot_transformers(MODEL, device="cpu")
 
 
-def test_svd_interpreter(model):
+def test_svd_interpreter_returns_meaningful_values(model):
+    """SVD singular vectors must be non-zero and top values must exceed bottom values."""
     svd_interpreter = SVDInterpreter(model)
     ov = svd_interpreter.get_singular_vectors(
         "OV", num_vectors=4, layer_index=0, head_index=0
@@ -46,31 +47,29 @@ def test_svd_interpreter(model):
         "w_out", num_vectors=4, layer_index=0, head_index=0
     ).abs()
 
-    # Get top 2 values for comparison
-    ov, w_in, w_out = (
-        ov.topk(2, dim=0).values,
-        w_in.topk(2, dim=0).values,
-        w_out.topk(2, dim=0).values,
-    )
-
-    # Basic shape and type checks (values may differ from original expected values)
-    assert ov.shape[0] == 2
-    assert w_in.shape[0] == 2
-    assert w_out.shape[0] == 2
+    # All three vector types should have the same shape
     assert ov.shape == w_in.shape == w_out.shape
 
+    # Singular vectors must contain non-zero values
+    assert ov.abs().sum() > 0
+    assert w_in.abs().sum() > 0
+    assert w_out.abs().sum() > 0
 
-def test_w_in_when_fold_ln_is_false(unfolded_model):
-    # Note: This test may not be directly applicable to TransformerBridge
-    # if fold_ln is not supported, but we'll test the basic functionality
+    # Top singular values should be larger than bottom ones (SVD ordering)
+    for vectors, name in [(ov, "OV"), (w_in, "w_in"), (w_out, "w_out")]:
+        top2 = vectors.topk(2, dim=0).values.mean()
+        bot2 = vectors.topk(2, dim=0, largest=False).values.mean()
+        assert top2 > bot2, f"{name}: top singular values should exceed bottom values"
+
+
+def test_w_in_unfolded_produces_nonzero_values(unfolded_model):
+    """SVDInterpreter w_in should produce non-zero results on an unfolded model."""
     svd_interpreter = SVDInterpreter(unfolded_model)
     w_in = svd_interpreter.get_singular_vectors(
         "w_in", num_vectors=4, layer_index=0, head_index=0
     ).abs()
-    w_in = w_in.topk(2, dim=0).values
 
-    # Basic shape check
-    assert w_in.shape[0] == 2
+    assert w_in.abs().sum() > 0
 
 
 def test_svd_interpreter_returns_different_answers_for_different_layers(model):
@@ -142,7 +141,7 @@ def test_svd_interpreter_fails_on_not_passing_required_head_index(model):
     svd_interpreter = SVDInterpreter(model)
     with pytest.raises(AssertionError) as e:
         svd_interpreter.get_singular_vectors("OV", layer_index=0, num_vectors=4)
-        assert str(e.value) == "Head index optional only for w_in and w_out, got OV"
+    assert "Head index optional only for w_in and w_out, got OV" in str(e.value)
 
 
 def test_svd_interpreter_fails_on_invalid_layer_index(model):

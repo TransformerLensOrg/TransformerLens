@@ -6,7 +6,25 @@ This module contains utility functions related to initialization functions
 from __future__ import annotations
 
 import numpy as np
+import torch
 import torch.nn as nn
+from typing_extensions import Literal
+
+# Type alias for valid nonlinearity values accepted by nn.init.calculate_gain
+NonlinearityType = Literal[
+    "linear",
+    "conv1d",
+    "conv2d",
+    "conv3d",
+    "conv_transpose1d",
+    "conv_transpose2d",
+    "conv_transpose3d",
+    "sigmoid",
+    "tanh",
+    "relu",
+    "leaky_relu",
+    "selu",
+]
 
 
 def calc_fan_in_and_fan_out(tensor):
@@ -52,7 +70,13 @@ def init_xavier_normal_(param, gain=1.0):
     return nn.init.normal_(param, mean=0.0, std=std)
 
 
-def init_kaiming_uniform_(param, a=0, nonlinearity="relu", gain=1.0, mode="fan_in"):
+def init_kaiming_uniform_(
+    param: torch.Tensor,
+    a: float = 0,
+    nonlinearity: NonlinearityType = "relu",
+    gain: float = 1.0,
+    mode: str = "fan_in",
+) -> torch.Tensor:
     """
     Initializes the input tensor using the Kaiming initialization method.
 
@@ -68,7 +92,13 @@ def init_kaiming_uniform_(param, a=0, nonlinearity="relu", gain=1.0, mode="fan_i
     return nn.init.uniform_(param, -max, max)
 
 
-def init_kaiming_normal_(param, a=0, nonlinearity="relu", gain=1.0, mode="fan_in"):
+def init_kaiming_normal_(
+    param: torch.Tensor,
+    a: float = 0,
+    nonlinearity: NonlinearityType = "relu",
+    gain: float = 1.0,
+    mode: str = "fan_in",
+) -> torch.Tensor:
     """
     Initializes the input tensor using the Kaiming initialization method.
 

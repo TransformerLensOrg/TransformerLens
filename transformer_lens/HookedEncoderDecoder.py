@@ -38,7 +38,7 @@ from transformer_lens.config.HookedTransformerConfig import HookedTransformerCon
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookedRootModule, HookPoint
 from transformer_lens.utilities.multi_gpu import get_device_for_block_index
-from transformer_lens.utils import sample_logits
+from transformer_lens.utils import sample_logits, warn_if_mps
 
 T = TypeVar("T", bound="HookedEncoderDecoder")
 
@@ -479,7 +479,7 @@ class HookedEncoderDecoder(HookedRootModule):
         if return_type == "str":
             assert self.tokenizer is not None
             # Convert tokens to string
-            return self.tokenizer.decode(decoder_input[0], skip_special_tokens=True)
+            return cast(str, self.tokenizer.decode(decoder_input[0], skip_special_tokens=True))
 
         else:
             return decoder_input
@@ -533,6 +533,8 @@ class HookedEncoderDecoder(HookedRootModule):
         return self.to("cpu")
 
     def mps(self: T) -> T:
+        """Warning: MPS may produce silently incorrect results. See #1178."""
+        warn_if_mps("mps")
         return self.to(torch.device("mps"))
 
     @classmethod

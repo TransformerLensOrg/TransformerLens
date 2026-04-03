@@ -62,6 +62,10 @@ class NormalizationBridge(GeneralizedComponent):
             result = self._hf_autograd_forward_with_hooks(hidden_states)
         else:
             uses_rms_norm = getattr(self.config, "uses_rms_norm", False)
+            # Upcast to float32 for normalization precision (matches HT's RMSNorm behavior)
+            input_dtype = hidden_states.dtype
+            if input_dtype not in (torch.float32, torch.float64):
+                hidden_states = hidden_states.float()
             if not uses_rms_norm:
                 hidden_states = hidden_states - hidden_states.mean(-1, keepdim=True)
             scale = self.hook_scale(
@@ -69,8 +73,8 @@ class NormalizationBridge(GeneralizedComponent):
                     hidden_states.pow(2).mean(-1, keepdim=True) + getattr(self.config, "eps", 1e-05)
                 ).sqrt()
             )
-            dtype = getattr(self.config, "dtype", hidden_states.dtype)
-            hidden_states = self.hook_normalized(hidden_states / scale).to(dtype)
+            hidden_states = self.hook_normalized(hidden_states / scale)
+            # Apply weight/bias in float32 before casting back (matches HF precision).
             if uses_rms_norm:
                 hidden_states = hidden_states * self.weight
             else:
@@ -80,7 +84,7 @@ class NormalizationBridge(GeneralizedComponent):
                     and self.original_component.bias is not None
                 ):
                     hidden_states = hidden_states + cast(torch.Tensor, self.original_component.bias)
-            result = hidden_states
+            result = hidden_states.to(input_dtype)
         output = self.hook_out(result)
         return output
 
@@ -99,10 +103,12 @@ class NormalizationBridge(GeneralizedComponent):
         if self.original_component is None:
             raise RuntimeError(f"Original component not set for {self.name}")
         with torch.no_grad():
+            # Upcast to float32 for hook precision (matches HT's RMSNorm/LayerNorm behavior)
+            x_float = x.float() if x.dtype not in (torch.float32, torch.float64) else x
             if not getattr(self.config, "uses_rms_norm", False):
-                x_centered = x - x.mean(-1, keepdim=True)
+                x_centered = x_float - x_float.mean(-1, keepdim=True)
             else:
-                x_centered = x
+                x_centered = x_float
             eps_tensor = getattr(self.original_component, "eps", None)
             if eps_tensor is None:
                 eps_tensor = getattr(self.original_component, "variance_epsilon", None)
@@ -110,11 +116,17 @@ class NormalizationBridge(GeneralizedComponent):
                 eps_value: float | torch.Tensor = getattr(self.config, "eps", 1e-05)
             else:
                 eps_value = eps_tensor
+            variance = x_centered.pow(2).mean(-1, keepdim=True)
             if isinstance(eps_value, torch.Tensor):
-                scale = (x_centered.pow(2).mean(-1, keepdim=True) + eps_value).sqrt()
+                inv_rms = torch.rsqrt(variance + eps_value)
+                scale = (variance + eps_value).sqrt()
             else:
-                scale = (x_centered.pow(2).mean(-1, keepdim=True) + float(eps_value)).sqrt()
-            x_normalized = x_centered / scale
+                inv_rms = torch.rsqrt(variance + float(eps_value))
+                scale = (variance + float(eps_value)).sqrt()
+            # Use rsqrt for x_normalized to match HF's actual computation path
+            # (LlamaRMSNorm uses x * rsqrt(variance + eps)). Keep scale as sqrt
+            # for hook_scale (denominator convention used by HookedTransformer).
+            x_normalized = x_centered * inv_rms
         _ = self.hook_scale(scale)
         _ = self.hook_normalized(x_normalized)
         input_dtype = x.dtype
