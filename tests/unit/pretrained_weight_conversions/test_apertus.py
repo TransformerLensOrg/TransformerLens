@@ -183,7 +183,7 @@ class TestApertusWeightConversion:
             "blocks.0.mlp.b_out",
             "unembed.b_U",
         ]:
-            assert sd[key].device.type == cfg.device.type, f"{key} on wrong device"
+            assert sd[key].device.type == cfg.device, f"{key} on wrong device"
 
     def test_unembed_shapes(self):
         cfg = make_cfg()

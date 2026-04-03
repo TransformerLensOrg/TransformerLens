@@ -1015,9 +1015,9 @@ def check_structure(t1: torch.Tensor, t2: torch.Tensor, *, verbose: bool = False
         print(f"column mismatch: {col_mismatch}")
 
 
-def get_device():
+def get_device() -> str:
     if torch.cuda.is_available():
-        return torch.device("cuda")
+        return "cuda"
     if torch.backends.mps.is_available() and torch.backends.mps.is_built():
         major_version = int(torch.__version__.split(".")[0])
         if major_version >= 2:
@@ -1026,9 +1026,9 @@ def get_device():
                 _MPS_MIN_SAFE_TORCH_VERSION is not None
                 and _torch_version_tuple() >= _MPS_MIN_SAFE_TORCH_VERSION
             ):
-                return torch.device("mps")
+                return "mps"
             if os.environ.get("TRANSFORMERLENS_ALLOW_MPS", "") == "1":
-                return torch.device("mps")
+                return "mps"
             logging.info(
                 "MPS device available but not auto-selected due to known correctness issues "
                 "(PyTorch %s). Set TRANSFORMERLENS_ALLOW_MPS=1 to override. See: "
@@ -1036,7 +1036,7 @@ def get_device():
                 torch.__version__,
             )
 
-    return torch.device("cpu")
+    return "cpu"
 
 
 _mps_warned = False
@@ -1051,7 +1051,7 @@ def _torch_version_tuple() -> tuple[int, ...]:
     return tuple(int(x) for x in torch.__version__.split("+")[0].split(".")[:2])
 
 
-def warn_if_mps(device):
+def warn_if_mps(device: Union[str, torch.device]) -> None:
     """Emit a one-time warning if device is MPS and TRANSFORMERLENS_ALLOW_MPS is not set.
 
     Automatically suppressed when the installed PyTorch version meets or exceeds

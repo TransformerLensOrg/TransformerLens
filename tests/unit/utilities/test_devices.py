@@ -92,7 +92,7 @@ def test_get_device_returns_cpu_when_mps_available(mock_built, mock_avail, mock_
 
     os.environ.pop("TRANSFORMERLENS_ALLOW_MPS", None)
     result = get_device()
-    assert result == torch.device("cpu")
+    assert result == "cpu"
 
 
 @patch.dict("os.environ", {"TRANSFORMERLENS_ALLOW_MPS": "1"})
@@ -102,7 +102,7 @@ def test_get_device_returns_cpu_when_mps_available(mock_built, mock_avail, mock_
 def test_get_device_returns_mps_when_env_var_set(mock_built, mock_avail, mock_cuda):
     """get_device() should return MPS when TRANSFORMERLENS_ALLOW_MPS=1 is set."""
     result = get_device()
-    assert result == torch.device("mps")
+    assert result == "mps"
 
 
 @patch.dict("os.environ", {}, clear=False)
