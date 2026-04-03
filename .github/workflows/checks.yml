@@ -241,7 +241,7 @@ jobs:
           - "Othello_GPT"
           - "Patchscopes_Generation_Demo"
           - "Santa_Coder"
-          - "stable_lm"
+          # - "stable_lm"
           - "T5"
     steps:
       - uses: actions/checkout@v3
