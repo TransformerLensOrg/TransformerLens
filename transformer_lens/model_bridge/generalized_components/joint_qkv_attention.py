@@ -449,6 +449,16 @@ class JointQKVAttentionBridge(AttentionBridge):
         else:
             raise ValueError(f"Unexpected Q tensor shape: {q.shape}. Expected 3D or 4D tensor.")
 
+        # KV cache support: read from and write to the cache if provided.
+        # This mirrors HF's native attention cache handling so that
+        # DynamicCache is properly populated during generation.
+        past_key_values = kwargs.get("past_key_values", None)
+        layer_idx = getattr(self, "_layer_idx", None)
+
+        if past_key_values is not None and layer_idx is not None:
+            # Append current K/V to cache and get the full K/V sequence
+            k, v = past_key_values.update(k, v, layer_idx)
+
         # Attention scale: 1/sqrt(d_head) with optional inverse-layer scaling
         scale = head_dim ** (-0.5)
         if (
@@ -467,12 +477,15 @@ class JointQKVAttentionBridge(AttentionBridge):
         else:
             q_scores = q
             k_scores = k
+
+        # seq_len for masking uses the full K/V length (includes cached positions)
+        kv_seq_len = k.shape[-2]
         attn_scores = torch.matmul(q_scores, k_scores.transpose(-2, -1)) * scale
         attention_mask = kwargs.get("attention_mask", None)
         attn_scores = self._apply_reconstruct_attention_mask(
             attn_scores=attn_scores,
             attention_mask=attention_mask,
-            seq_len=seq_len,
+            seq_len=kv_seq_len,
         )
 
         attn_scores = self.hook_attn_scores(attn_scores)
@@ -490,6 +503,8 @@ class JointQKVAttentionBridge(AttentionBridge):
         attn_output = torch.matmul(attn_weights, v)
         attn_output = attn_output.transpose(1, 2).contiguous()
         final_hidden_size: int = num_heads * head_dim
+        # seq_len here is the query sequence length (not kv_seq_len), which is
+        # correct: the attention output has one vector per query position.
         attn_output = attn_output.view(batch_size, seq_len, final_hidden_size)
         if hasattr(self, "o") and self.o is not None:
             attn_output = self.o(attn_output)

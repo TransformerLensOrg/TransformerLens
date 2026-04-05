@@ -1260,12 +1260,15 @@ class TransformerBridge(nn.Module):
             if attention_mask is not None:
                 kwargs["attention_mask"] = attention_mask
             if past_kv_cache is not None:
-                backend_cache = []
-                for entry in past_kv_cache.entries:
+                from transformers import DynamicCache
+
+                hf_config = getattr(self.original_model, "config", None)
+                backend_cache = DynamicCache(config=hf_config) if hf_config else DynamicCache()
+                for layer_idx, entry in enumerate(past_kv_cache.entries):
                     if entry.past_keys.numel() > 0:
                         cached_keys = entry.past_keys.transpose(1, 2)
                         cached_values = entry.past_values.transpose(1, 2)
-                        backend_cache.append((cached_keys, cached_values))
+                        backend_cache.update(cached_keys, cached_values, layer_idx)
                 kwargs["past_key_values"] = backend_cache
                 if hasattr(past_kv_cache, "previous_attention_mask"):
                     batch_size = input_ids.shape[0]
@@ -1345,14 +1348,22 @@ class TransformerBridge(nn.Module):
                     )
             else:
                 output = self.original_model(input_ids, **kwargs)
+
+            # Store raw HF output for generate()'s KV cache extraction.
+            # Only set when generate() signals it needs the cache via this flag.
+            if getattr(self, "_capture_hf_cache", False):
+                self._last_hf_output = output
+
             if (
                 original_tl_cache is not None
                 and hasattr(output, "past_key_values")
                 and (output.past_key_values is not None)
             ):
                 backend_cache = output.past_key_values
-                for i, (cached_keys, cached_values) in enumerate(backend_cache):
-                    if i < len(original_tl_cache.entries) and cached_keys is not None:
+                n_cache_layers = min(len(backend_cache), len(original_tl_cache.entries))
+                for i in range(n_cache_layers):
+                    cached_keys, cached_values = backend_cache[i]
+                    if cached_keys is not None:
                         tl_keys = cached_keys.transpose(1, 2)
                         tl_values = cached_values.transpose(1, 2)
                         original_tl_cache.entries[i].past_keys = tl_keys
@@ -1919,6 +1930,13 @@ class TransformerBridge(nn.Module):
             self.original_model.config, "is_encoder_decoder", False
         )
 
+        # KV cache: let HF manage its own DynamicCache internally.
+        # The cache flows through Bridge's component chain naturally because
+        # _reconstruct_attention() calls cache.update() on each layer.
+        _hf_kv_cache = None  # Opaque HF cache object, populated on step 0
+        if use_past_kv_cache:
+            self._capture_hf_cache = True  # Signal forward() to stash output
+
         # Generate tokens
         current_tokens = input_tokens.clone()
         sampled_tokens_list = []
@@ -1947,16 +1965,40 @@ class TransformerBridge(nn.Module):
                     )
                 else:
                     forward_kwargs: Dict[str, Any] = {}
-                    # Pass multimodal inputs only on the first step — the vision
-                    # encoder processes the image once, embedding it into the
-                    # token sequence.  This includes pixel_values plus any extra
-                    # processor outputs (e.g. image_sizes for LlavaNext).
                     if gen_step_idx == 0:
                         if pixel_values is not None:
                             forward_kwargs["pixel_values"] = pixel_values
                         if multimodal_kwargs:
                             forward_kwargs.update(multimodal_kwargs)
-                    logits = self(current_tokens, return_type="logits", **forward_kwargs)
+                    if use_past_kv_cache:
+                        forward_kwargs["use_cache"] = True
+                        if _hf_kv_cache is not None:
+                            # Cached step: pass only the last token + cache
+                            forward_kwargs["past_key_values"] = _hf_kv_cache
+                            logits = self(
+                                current_tokens[:, -1:],
+                                return_type="logits",
+                                **forward_kwargs,
+                            )
+                        else:
+                            # Step 0: full sequence, cache gets populated
+                            logits = self(
+                                current_tokens,
+                                return_type="logits",
+                                **forward_kwargs,
+                            )
+                    else:
+                        # No cache: full sequence every step
+                        logits = self(current_tokens, return_type="logits", **forward_kwargs)
+                    # Capture HF cache from output for next step.
+                    # TODO: _last_hf_output is an implicit side-channel between
+                    # forward() and generate(). Consider returning the cache as
+                    # part of forward()'s output when use_cache=True.
+                    if use_past_kv_cache and hasattr(self, "_last_hf_output"):
+                        _hf_kv_cache = getattr(
+                            self._last_hf_output, "past_key_values", _hf_kv_cache
+                        )
+                        del self._last_hf_output  # Release reference immediately
                 final_logits = logits[:, -1, :]
 
                 # Collect logits if requested
@@ -2003,6 +2045,11 @@ class TransformerBridge(nn.Module):
                 # Early stopping if all sequences finished
                 if stop_at_eos and finished_sequences.all():
                     break
+
+        # Clean up generate-only state
+        self._capture_hf_cache = False
+        if hasattr(self, "_last_hf_output"):
+            del self._last_hf_output
 
         # Concatenate all sampled tokens
         sampled_tokens = torch.cat(sampled_tokens_list, dim=1)
