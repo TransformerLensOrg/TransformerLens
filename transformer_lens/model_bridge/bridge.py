@@ -1236,6 +1236,11 @@ class TransformerBridge(nn.Module):
                 )
             else:
                 input_ids = input
+
+            # Detect inputs_embeds: if the tensor is floating point, it's pre-computed
+            # embeddings (e.g., from multimodal models) rather than token IDs.
+            _is_inputs_embeds = isinstance(input_ids, torch.Tensor) and input_ids.is_floating_point()
+
             if attention_mask is not None:
                 kwargs["attention_mask"] = attention_mask
             if kwargs.pop("use_past_kv_cache", False) or kwargs.get("use_cache", False):
@@ -1284,6 +1289,7 @@ class TransformerBridge(nn.Module):
                 kwargs["input_values"] = input_values
 
             # Audio models use input_values (waveform), not input_ids
+            original_tl_cache = past_kv_cache
             if getattr(self.cfg, "is_audio_model", False):
                 if input_values is not None:
                     output = self.original_model(**kwargs)
@@ -1295,8 +1301,37 @@ class TransformerBridge(nn.Module):
                         "Audio models require tensor input (raw waveform). "
                         "Pass a torch.Tensor or use input_values parameter."
                     )
+            elif _is_inputs_embeds:
+                output = self.original_model(inputs_embeds=input_ids, **kwargs)
             else:
                 output = self.original_model(input_ids, **kwargs)
+            if (
+                original_tl_cache is not None
+                and hasattr(output, "past_key_values")
+                and (output.past_key_values is not None)
+            ):
+                backend_cache = output.past_key_values
+                for i, (cached_keys, cached_values) in enumerate(backend_cache):
+                    if i < len(original_tl_cache.entries) and cached_keys is not None:
+                        tl_keys = cached_keys.transpose(1, 2)
+                        tl_values = cached_values.transpose(1, 2)
+                        original_tl_cache.entries[i].past_keys = tl_keys
+                        original_tl_cache.entries[i].past_values = tl_values
+                if attention_mask is not None:
+                    original_tl_cache.previous_attention_mask = kwargs.get(
+                        "attention_mask", attention_mask
+                    )
+                elif hasattr(original_tl_cache, "previous_attention_mask"):
+                    batch_size, current_length = input_ids.shape
+                    new_mask = torch.ones(
+                        batch_size, current_length, dtype=torch.long, device=input_ids.device
+                    )
+                    if original_tl_cache.previous_attention_mask is not None:
+                        original_tl_cache.previous_attention_mask = torch.cat(
+                            [original_tl_cache.previous_attention_mask, new_mask], dim=1
+                        )
+                    else:
+                        original_tl_cache.previous_attention_mask = new_mask
 
             # Stash only the cache object (not the full output) for generate().
             if getattr(self, "_capture_hf_cache", False):
@@ -1315,7 +1350,13 @@ class TransformerBridge(nn.Module):
                         "Audio models do not support return_type='loss'. "
                         "CTC loss requires aligned frame-level labels."
                     )
-                # Use self.loss_fn for bfloat16 consistency (vs HF's cross_entropy)
+                if _is_inputs_embeds:
+                    raise ValueError(
+                        "Cannot compute loss with inputs_embeds — token IDs required for labels."
+                    )
+                # Always use self.loss_fn for consistency with HT's formula
+                # (log_softmax + gather).  HF's output.loss uses F.cross_entropy
+                # which gives different results in bfloat16.
                 assert isinstance(
                     logits, torch.Tensor
                 ), f"Expected logits tensor, got {type(logits)}"
@@ -1325,6 +1366,10 @@ class TransformerBridge(nn.Module):
                     raise ValueError(
                         "Audio models do not support return_type='both'. "
                         "CTC loss requires aligned frame-level labels."
+                    )
+                if _is_inputs_embeds:
+                    raise ValueError(
+                        "Cannot compute loss with inputs_embeds — token IDs required for labels."
                     )
                 assert isinstance(
                     logits, torch.Tensor
@@ -1796,13 +1841,19 @@ class TransformerBridge(nn.Module):
             Generated sequence as string, list of strings, or tensor depending on input type and return_type.
             If output_logits=True, returns a ModelOutput-like object with 'sequences' and 'logits' attributes.
         """
-        # Convert input to tokens
+        # Convert input to tokens using to_tokens() for consistent special token handling
+        _generate_from_embeds = False
         if isinstance(input, str):
             input_tokens = self.to_tokens(input, move_to_device=True, truncate=False)
             input_type = "str"
         elif isinstance(input, list):
             input_tokens = self.to_tokens(input, move_to_device=True, truncate=False)
             input_type = "list"
+        elif isinstance(input, torch.Tensor) and input.is_floating_point():
+            # inputs_embeds: pre-computed embeddings (e.g., from multimodal models)
+            input_tokens = input.to(self.cfg.device)
+            input_type = "embeds"
+            _generate_from_embeds = True
         else:
             input_tokens = input.to(self.cfg.device)
             input_type = "tokens"
@@ -1811,6 +1862,8 @@ class TransformerBridge(nn.Module):
         if return_type == "input":
             if input_type in ["str", "list"]:
                 return_type = "str"
+            elif input_type == "embeds":
+                return_type = "tokens"
             else:
                 return_type = "tokens"
 
@@ -1861,6 +1914,9 @@ class TransformerBridge(nn.Module):
 
         # Generate tokens
         current_tokens = input_tokens.clone()
+        # For inputs_embeds generation, also track generated token IDs for decoding
+        if _generate_from_embeds:
+            generated_token_ids: list[torch.Tensor] = []
         sampled_tokens_list = []
 
         # For encoder-decoder models, keep encoder input fixed and grow decoder input
@@ -1888,6 +1944,10 @@ class TransformerBridge(nn.Module):
                         )
                     else:
                         forward_kwargs: Dict[str, Any] = {}
+                        # Pass multimodal inputs only on the first step — the vision
+                        # encoder processes the image once, embedding it into the
+                        # token sequence.  This includes pixel_values plus any extra
+                        # processor outputs (e.g. image_sizes for LlavaNext).
                         if gen_step_idx == 0:
                             if pixel_values is not None:
                                 forward_kwargs["pixel_values"] = pixel_values
@@ -1924,6 +1984,11 @@ class TransformerBridge(nn.Module):
                         logits_seq_list.append(final_logits.clone())
 
                     # Sample next token
+                    # For inputs_embeds, we can't pass the embeddings to freq/rep penalty,
+                    # so use the generated_token_ids for penalty tracking
+                    penalty_tokens = (
+                        torch.stack(generated_token_ids, dim=1) if _generate_from_embeds and generated_token_ids else None
+                    )
                     if do_sample:
                         sampled_tokens = utils.sample_logits(
                             final_logits,
@@ -1932,14 +1997,14 @@ class TransformerBridge(nn.Module):
                             temperature=temperature,
                             freq_penalty=freq_penalty,
                             repetition_penalty=repetition_penalty,
-                            tokens=decoder_tokens if is_encoder_decoder else current_tokens,
+                            tokens=penalty_tokens if _generate_from_embeds else (decoder_tokens if is_encoder_decoder else current_tokens),
                         ).to(self.cfg.device)
                     else:
                         sampled_tokens = utils.sample_logits(
                             final_logits,
                             temperature=0.0,
                             repetition_penalty=repetition_penalty,
-                            tokens=decoder_tokens if is_encoder_decoder else current_tokens,
+                            tokens=penalty_tokens if _generate_from_embeds else (decoder_tokens if is_encoder_decoder else current_tokens),
                         ).to(self.cfg.device)
 
                     sampled_tokens_list.append(sampled_tokens.unsqueeze(1))
@@ -1959,6 +2024,13 @@ class TransformerBridge(nn.Module):
                         decoder_tokens = torch.cat(
                             [decoder_tokens, sampled_tokens.unsqueeze(1)], dim=1
                         )
+                    elif _generate_from_embeds:
+                        # For inputs_embeds: get the embedding of the new token and append
+                        generated_token_ids.append(sampled_tokens)
+                        new_embed = self.original_model.get_input_embeddings()(
+                            sampled_tokens.unsqueeze(1)
+                        ).to(current_tokens.dtype)
+                        current_tokens = torch.cat([current_tokens, new_embed], dim=1)
                     else:
                         current_tokens = torch.cat(
                             [current_tokens, sampled_tokens.unsqueeze(1)], dim=1
@@ -1978,6 +2050,9 @@ class TransformerBridge(nn.Module):
         sampled_tokens = torch.cat(sampled_tokens_list, dim=1)
         if is_encoder_decoder:
             output_tokens = decoder_tokens
+        elif _generate_from_embeds:
+            # For inputs_embeds, we only have the generated token IDs (no input token IDs)
+            output_tokens = sampled_tokens
         else:
             output_tokens = torch.cat([input_tokens, sampled_tokens], dim=1)
 
