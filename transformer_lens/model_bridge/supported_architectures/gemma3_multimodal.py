@@ -58,6 +58,9 @@ class Gemma3MultimodalArchitectureAdapter(ArchitectureAdapter):
         self.cfg.gated_mlp = True
         self.cfg.uses_rms_norm = True
         self.cfg.normalization_type = "RMS"
+        # Gemma models use (1.0 + weight) in RMSNorm instead of just weight.
+        # Without this, fold_ln sets identity to 1.0 instead of 0.0, causing 2x scaling.
+        self.cfg.rmsnorm_uses_offset = True
         self.cfg.positional_embedding_type = "rotary"
         self.cfg.attn_implementation = "eager"
 
@@ -184,34 +187,15 @@ class Gemma3MultimodalArchitectureAdapter(ArchitectureAdapter):
     def setup_hook_compatibility(self, bridge: Any) -> None:
         """Setup hook compatibility for Gemma3 multimodal models.
 
-        Applies embedding scaling like text-only Gemma 3.
+        Like text-only Gemma 3, the multimodal model uses
+        Gemma3TextScaledWordEmbedding which scales embeddings by sqrt(d_model)
+        internally in its forward() method. No additional hook conversion is
+        needed — adding one would double-scale the embeddings.
 
         Args:
             bridge: The TransformerBridge instance
         """
-        from transformer_lens.conversion_utils.conversion_steps.base_tensor_conversion import (
-            BaseTensorConversion,
-        )
-
-        class EmbeddingScaleConversion(BaseTensorConversion):
-            """Scale embeddings by sqrt(d_model) for Gemma models."""
-
-            def __init__(self, scale: float):
-                super().__init__()
-                self.scale = scale
-
-            def handle_conversion(self, input_value: Any, *full_context: Any) -> Any:
-                """Scale the embedding output."""
-                return input_value * self.scale
-
-            def revert(self, input_value: Any, *full_context: Any) -> Any:
-                """Unscale the embedding output (for user modifications)."""
-                return input_value / self.scale
-
-        # Apply scaling to embed.hook_out
-        if hasattr(bridge, "embed") and hasattr(bridge.embed, "hook_out"):
-            scale_factor = self.cfg.d_model**0.5
-            bridge.embed.hook_out.hook_conversion = EmbeddingScaleConversion(scale_factor)
+        pass
 
     def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
         """Set up rotary embedding references for Gemma-3 multimodal component testing.

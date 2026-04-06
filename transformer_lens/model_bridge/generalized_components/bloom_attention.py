@@ -67,6 +67,10 @@ class BloomAttentionBridge(JointQKVAttentionBridge):
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         """Forward pass through BLOOM attention with hooks.
 
+        Uses the parent's hooked Q/K/V split path so that hook_q, hook_k, hook_v,
+        hook_attn_scores, and hook_pattern all fire correctly. ALiBi bias and
+        attention masking are handled in _reconstruct_attention.
+
         BLOOM attention requires these arguments:
         - hidden_states (first positional arg)
         - residual (second positional arg)
@@ -84,31 +88,121 @@ class BloomAttentionBridge(JointQKVAttentionBridge):
                 f"Original component not set for {self.name}. Call set_original_component() first."
             )
 
-        # Apply hook_in to hidden_states (first positional argument)
+        # Extract hidden_states (first positional arg) and residual (second positional arg)
         if len(args) > 0 and isinstance(args[0], torch.Tensor):
-            hooked_input = self.hook_in(args[0])
-            args = (hooked_input,) + args[1:]
+            hidden_states = args[0]
         elif "hidden_states" in kwargs and isinstance(kwargs["hidden_states"], torch.Tensor):
-            kwargs["hidden_states"] = self.hook_in(kwargs["hidden_states"])
+            hidden_states = kwargs["hidden_states"]
+        else:
+            raise ValueError("Could not find hidden_states in args or kwargs")
 
-        # BLOOM attention requires residual as second positional arg
-        # The original BLOOM block passes it, so we just pass everything through
-        # No need to validate since the original component will handle it
+        residual = args[1] if len(args) > 1 and isinstance(args[1], torch.Tensor) else None
 
-        # Call the original BLOOM attention component with all arguments
-        # BLOOM attention returns (hidden_states,) or (hidden_states, attention_weights)
-        output = self.original_component(*args, **kwargs)
+        # Apply input hook
+        hooked_input = self.hook_in(hidden_states)
 
-        # Apply hook_out to the hidden_states (first element of tuple)
-        if isinstance(output, tuple) and len(output) > 0:
-            processed_output = list(output)
-            if isinstance(output[0], torch.Tensor):
-                processed_output[0] = self.hook_out(output[0])
-            output = tuple(processed_output)
-        elif isinstance(output, torch.Tensor):
-            output = self.hook_out(output)
+        # Run through split Q/K/V projections (these fire hook_q, hook_k, hook_v)
+        q_output = self.q(hooked_input)
+        k_output = self.k(hooked_input)
+        v_output = self.v(hooked_input)
+
+        # Reconstruct attention with ALiBi (fires hook_attn_scores, hook_pattern)
+        attn_output, attn_weights = self._reconstruct_attention(
+            q_output, k_output, v_output, **kwargs
+        )
+
+        # BLOOM's original attention applies dropout_add(dense_output, residual, ...)
+        # inside the attention module, not in the block. We must replicate this.
+        if residual is not None:
+            assert self.original_component is not None
+            hidden_dropout = getattr(self.original_component, "hidden_dropout", 0.0)
+            if self.training:
+                attn_output = torch.nn.functional.dropout(
+                    attn_output, p=hidden_dropout, training=True
+                )
+            attn_output = attn_output + residual
+
+        # Apply output hook
+        output = (attn_output, attn_weights)
+        output = self._process_output(output)
 
         return output
+
+    def _reconstruct_attention(
+        self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, **kwargs: Any
+    ) -> tuple:
+        """Reconstruct attention using BLOOM's ALiBi-based score computation.
+
+        BLOOM fuses the ALiBi positional bias into scores via baddbmm.
+        """
+        assert self.original_component is not None
+        assert self.config is not None
+        num_heads = self.config.n_heads
+
+        q, k, v, batch_size, seq_len, head_dim = self._reshape_qkv_to_heads(q, k, v, num_heads)
+
+        # KV cache: extend K/V with cached positions.
+        k, v = self._update_kv_cache(k, v, **kwargs)
+
+        kv_seq_len = k.shape[-2]  # Includes cached positions
+        # Reshape to [batch*heads, seq, head_dim] for baddbmm
+        q_bh = q.reshape(batch_size * num_heads, seq_len, head_dim)
+        k_bh = k.reshape(batch_size * num_heads, kv_seq_len, head_dim)
+        v_bh = v.reshape(batch_size * num_heads, kv_seq_len, head_dim)
+
+        inv_norm_factor = head_dim ** (-0.5)
+
+        alibi = kwargs.get("alibi", None)
+        if alibi is not None:
+            # Resize alibi to match kv_seq_len (may differ after cache update).
+            alibi_kv_len = alibi.shape[-1]
+            if alibi_kv_len < kv_seq_len:
+                # ALiBi is slope * position — recompute for the extended length.
+                if alibi.ndim == 3 and alibi.shape[1] == 1:
+                    slopes = alibi[:, 0, 1:2]  # [batch*heads, 1]
+                    if slopes.numel() > 0 and slopes.abs().sum() > 0:
+                        positions = torch.arange(
+                            kv_seq_len, device=alibi.device, dtype=alibi.dtype
+                        ).unsqueeze(0)
+                        alibi = slopes * positions  # [batch*heads, kv_seq_len]
+                        alibi = alibi.unsqueeze(1)  # [batch*heads, 1, kv_seq_len]
+            elif alibi_kv_len > kv_seq_len:
+                alibi = alibi[..., :kv_seq_len]
+            attn_scores = alibi.baddbmm(
+                batch1=q_bh,
+                batch2=k_bh.transpose(-1, -2),
+                beta=1.0,
+                alpha=inv_norm_factor,
+            )
+        else:
+            attn_scores = torch.bmm(q_bh, k_bh.transpose(-1, -2)) * inv_norm_factor
+
+        attn_scores = attn_scores.view(batch_size, num_heads, seq_len, -1)
+
+        attention_mask = kwargs.get("attention_mask", None)
+        if attention_mask is not None:
+            causal_mask = attention_mask[:, :, :, : attn_scores.shape[-1]]
+            attn_scores = attn_scores + causal_mask
+
+        attn_scores = self.hook_attn_scores(attn_scores)
+
+        # Softmax in float32 for numerical stability (matches HF BLOOM)
+        attn_weights = torch.nn.functional.softmax(attn_scores, dim=-1, dtype=torch.float32)
+        attn_weights = attn_weights.to(q.dtype)
+
+        attn_weights = self._apply_attn_dropout(attn_weights)
+        attn_weights = self.hook_pattern(attn_weights)
+
+        # bmm in [batch*heads, seq, seq] format for BLOOM compatibility
+        attn_weights_bh = attn_weights.reshape(batch_size * num_heads, seq_len, -1)
+        attn_output = torch.bmm(attn_weights_bh, v_bh)
+
+        attn_output = attn_output.view(batch_size, num_heads, seq_len, head_dim)
+        attn_output = attn_output.transpose(1, 2).contiguous()
+        attn_output = attn_output.view(batch_size, seq_len, num_heads * head_dim)
+        attn_output = self._apply_output_projection(attn_output)
+
+        return (attn_output, attn_weights)
 
     def set_processed_weights(
         self, weights: Mapping[str, torch.Tensor | None], verbose: bool = False

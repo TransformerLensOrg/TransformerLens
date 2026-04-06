@@ -640,8 +640,7 @@ def build_docs():
     copy_demos()
     generate_bridge_models_page()
 
-    # Generating docs
-    # Use sys.executable with -m sphinx to ensure we use the venv's sphinx
+    # Generate docs using venv's sphinx
     subprocess.run(
         [
             sys.executable,
@@ -704,7 +703,6 @@ def generate_model_table(_app: Optional[Any] = None):
     markdown table.
     """
 
-    # Create the table
     column_names = [
         "n_params",
         "n_layers",
@@ -728,12 +726,10 @@ def generate_model_table(_app: Optional[Any] = None):
         index=supported_models.DEFAULT_MODEL_ALIASES,
     )
 
-    # Convert to markdown (with a title)
     df["n_key_value_heads"] = df["n_key_value_heads"].fillna(-1).astype(int).replace(-1, "")
     markdown_string = df.to_markdown()
     markdown_string = "# Model Properties Table\n\n" + markdown_string
 
-    # Save to the docs directory
     GENERATED_DIR.mkdir(exist_ok=True)
     file_path = GENERATED_DIR / "model_properties_table.md"
     with open(file_path, "w", encoding="utf-8") as file:
@@ -1298,7 +1294,6 @@ def generate_bridge_models_page():
     to the canonical source at transformer_lens/tools/model_registry/data/.
     """
     GENERATED_DIR.mkdir(exist_ok=True)
-    # Write the markdown wrapper page
     (GENERATED_DIR / "transformer_bridge_models.md").write_text(
         BRIDGE_MODELS_PAGE, encoding="utf-8"
     )

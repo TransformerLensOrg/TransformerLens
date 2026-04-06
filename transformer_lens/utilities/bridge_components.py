@@ -57,7 +57,18 @@ def collect_components_of_block_bridge(
     # Retrieve the remote component list from the adapter (we need a ModuleList to iterate over)
     if component.name is None:
         raise ValueError("Block bridge component must have a name")
-    remote_module_list = model.adapter.get_remote_component(model.original_model, component.name)
+
+    # Use cached original_component for nested list items (relative names)
+    if component.original_component is not None:
+        remote_module_list = component.original_component
+    else:
+        try:
+            remote_module_list = model.adapter.get_remote_component(
+                model.original_model, component.name
+            )
+        except AttributeError:
+            # Relative name not reachable from root; already set up during boot
+            return components
 
     # Make sure the remote component is a ModuleList
     if isinstance(remote_module_list, nn.ModuleList):

@@ -1,7 +1,7 @@
 [project]
     authors=[{name="Neel Nanda", email="77788841+TransformerLensOrg@users.noreply.github.com"}]
     dependencies=[
-        "accelerate>=0.23.0",                                                    # Needed for Llama Models
+        "accelerate>=0.23.0",                                                   # Needed for Llama Models
         "beartype>=0.14.1,<0.15",
         "better-abc>=0.0.3",
         "datasets>=2.7.1",
@@ -32,138 +32,129 @@
         build-docs="docs.make_docs:build_docs"
         docs-hot-reload="docs.make_docs:docs_hot_reload"
 
-    [dependency-groups]
-        dev = [
-            "black>=23.3.0",
-            "circuitsvis>=1.38.1",
-            "ipython>=8.0.0",
-            "isort==5.8.0",
-            "jupyter>=1.0.0",
-            "mypy>=1.10.0",
-            "nbval>=0.10.0",
-            "plotly>=5.12.0",
-            "pycln>=2.1.3",
-            "pytest>=7.2.0",
-            "pytest-cov>=4.0.0",
-            "pytest-doctestplus>=1.0.0",
-            "pytest-rerunfailures>=12.0",
-            "pytest-xdist>=3.8.0",
-        ]
-        jupyter = [
-            "ipywidgets>=8.1.1",
-            "jupyterlab>=3.5.0",
-        ]
-        docs = [
-            "furo>=2023.3.27,<2024.0.0",
-            "muutils>=0.6.13",
-            "myst-parser>=2.0.0,<3.0.0",
-            "nbconvert>=7.9.2",
-            "nbsphinx>=0.9.3",
-            "pandoc>=2.3",
-            "snowballstemmer",
-            "sphinx>=7.0.0,<8.0.0",
-            "sphinx-autobuild>=2021.3.14,<2022.12.7",
-            "sphinxcontrib-napoleon>=0.7",
-            "tabulate>=0.9.0",
-        ]
+[dependency-groups]
+    dev=[
+        "black>=23.3.0",
+        "circuitsvis>=1.38.1",
+        "ipython>=8.0.0",
+        "isort==5.8.0",
+        "jupyter>=1.0.0",
+        "mypy>=1.10.0",
+        "nbval>=0.10.0",
+        "plotly>=5.12.0",
+        "pycln>=2.1.3",
+        "pytest-cov>=4.0.0",
+        "pytest-doctestplus>=1.0.0",
+        "pytest-rerunfailures>=12.0",
+        "pytest-xdist>=3.8.0",
+        "pytest>=7.2.0",
+    ]
+    docs=[
+        "furo>=2023.3.27,<2024.0.0",
+        "muutils>=0.6.13",
+        "myst-parser>=2.0.0,<3.0.0",
+        "nbconvert>=7.9.2",
+        "nbsphinx>=0.9.3",
+        "pandoc>=2.3",
+        "snowballstemmer",
+        "sphinx-autobuild>=2021.3.14,<2022.12.7",
+        "sphinx>=7.0.0,<8.0.0",
+        "sphinxcontrib-napoleon>=0.7",
+        "tabulate>=0.9.0",
+    ]
+    jupyter=["ipywidgets>=8.1.1", "jupyterlab>=3.5.0"]
 
-    [tool.poetry.dependencies]
-        accelerate=">=0.23.0" # Needed for Llama Models
-        beartype="^0.14.1"
-        better-abc="^0.0.3"
-        datasets=">=2.7.1"
-        einops=">=0.6.0"
-        fancy-einsum=">=0.0.3"
-        huggingface-hub=">=0.23.2,<1.0"
-        jaxtyping=">=0.2.11,<0.2.20"
-        numpy=[
-            {version=">=1.24", python=">=3.9,<3.12"},
-            {version=">=1.26", python=">=3.12,<4.0"},
-        ]
-        pandas=[
-            {version=">=1.1.5,<2.1", python=">=3.8,<3.12"},
-            {version=">=2.1", python=">=3.12,<4.0"},
-        ]
-        protobuf=">=3.20.0"
-        python=">=3.10,<4.0"
-        rich=">=12.6.0"
-        sentencepiece="*"
-        torch=">=2.6"
-        tqdm=">=4.64.1"
-        transformers=">=4.51"
-        transformers-stream-generator="^0.0.5"
-        typeguard="^4.2"
-        typing-extensions="*"
-        wandb=">=0.13.5"
-        # Optional dependencies
-        lit-nlp = {version = "^1.3", optional = true, python = ">=3.9"}
+[tool.poetry.dependencies]
+    accelerate=">=0.23.0"                                                                            # Needed for Llama Models
+    beartype="^0.14.1"
+    better-abc="^0.0.3"
+    datasets=">=2.7.1"
+    einops=">=0.6.0"
+    fancy-einsum=">=0.0.3"
+    huggingface-hub=">=0.23.2,<1.0"
+    jaxtyping=">=0.2.11,<0.2.20"
+    numpy=[{version=">=1.24", python=">=3.9,<3.12"}, {version=">=1.26", python=">=3.12,<4.0"}]
+    pandas=[{version=">=1.1.5,<2.1", python=">=3.8,<3.12"}, {version=">=2.1", python=">=3.12,<4.0"}]
+    protobuf=">=3.20.0"
+    python=">=3.10,<4.0"
+    rich=">=12.6.0"
+    sentencepiece="*"
+    torch=">=2.6"
+    tqdm=">=4.64.1"
+    transformers=">=4.51"
+    transformers-stream-generator="^0.0.5"
+    typeguard="^4.2"
+    typing-extensions="*"
+    wandb=">=0.13.5"
+    # Optional dependencies
+    lit-nlp={version="^1.3", optional=true, python=">=3.9"}
 
-    [tool.poetry.extras]
-        lit = ["lit-nlp"]
+[tool.poetry.extras]
+    lit=["lit-nlp"]
 
-    [tool.poetry.group]
-        [tool.poetry.group.dev.dependencies]
-            black="^23.3.0"
-            circuitsvis=">=1.38.1"
-            isort="5.8.0"
-            jupyter=">=1.0.0"
-            mypy=">=1.10.0"
-            nbval="^0.10.0"
-            plotly=">=5.12.0"
-            pycln="^2.1.3"
-            pytest=">=7.2.0"
-            pytest-cov=">=4.0.0"
-            pytest-doctestplus="^1.0.0"
-            pytest-rerunfailures=">=12.0"
-            pytest-xdist="^3.8.0"  # For parallel test execution
+[tool.poetry.group]
+    [tool.poetry.group.dev.dependencies]
+        black="^23.3.0"
+        circuitsvis=">=1.38.1"
+        isort="5.8.0"
+        jupyter=">=1.0.0"
+        mypy=">=1.10.0"
+        nbval="^0.10.0"
+        plotly=">=5.12.0"
+        pycln="^2.1.3"
+        pytest=">=7.2.0"
+        pytest-cov=">=4.0.0"
+        pytest-doctestplus="^1.0.0"
+        pytest-rerunfailures=">=12.0"
+        pytest-xdist="^3.8.0"         # For parallel test execution
 
-        [tool.poetry.group.demo]
-            optional=true
+    [tool.poetry.group.demo]
+        optional=true
 
         [tool.poetry.group.demo.dependencies]
             gradio={version=">=4.0.0", python=">=3.10"}
             orjson={version=">=3.11.7,<4.0", python=">=3.10"}
 
-        [tool.poetry.group.jupyter.dependencies]
-            ipywidgets="^8.1.1"
-            jupyterlab=">=3.5.0"
+    [tool.poetry.group.jupyter.dependencies]
+        ipywidgets="^8.1.1"
+        jupyterlab=">=3.5.0"
 
-        [tool.poetry.group.docs.dependencies]
-            furo={version=">=2023.3.27,<2024.0.0"}
-            myst-parser={version=">=2.0.0,<3.0.0"}
-            nbconvert="^7.9.2"
-            nbsphinx="^0.9.3"
-            pandoc="^2.3"
-            snowballstemmer="*"
-            sphinx={version=">=7.0.0,<8.0.0"}
-            sphinx-autobuild={version=">=2021.3.14,<2022.12.7"}
-            sphinxcontrib-napoleon={version=">=0.7"}
-            tabulate={version=">=0.9.0"}
-            tiktoken = "^0.7.0"
-            muutils = "^0.6.15"
+    [tool.poetry.group.docs.dependencies]
+        furo={version=">=2023.3.27,<2024.0.0"}
+        muutils="^0.6.15"
+        myst-parser={version=">=2.0.0,<3.0.0"}
+        nbconvert="^7.9.2"
+        nbsphinx="^0.9.3"
+        pandoc="^2.3"
+        snowballstemmer="*"
+        sphinx={version=">=7.0.0,<8.0.0"}
+        sphinx-autobuild={version=">=2021.3.14,<2022.12.7"}
+        sphinxcontrib-napoleon={version=">=0.7"}
+        tabulate={version=">=0.9.0"}
+        tiktoken="^0.7.0"
 
 [tool.uv]
-    default-groups=["dev", "jupyter", "docs"]
+    default-groups=["dev", "docs", "jupyter"]
 
 [tool.pytest]
 
-[tool.pytest.ini_options]
-    addopts=[
-        "--doctest-modules",
-        "--doctest-plus",
-        "--jaxtyping-packages=transformer_lens,beartype.beartype",
-        "--nbval",
-        "-W ignore::beartype.roar.BeartypeDecorHintPep585DeprecationWarning",
-    ]
-    testpaths = ["tests", "transformer_lens"]  # Only test these directories
-    doctest_optionflags="NORMALIZE_WHITESPACE ELLIPSIS FLOAT_CMP"
-    filterwarnings=[
-        "ignore:pkg_resources is deprecated as an API:DeprecationWarning",
-        # Ignore numpy.distutils deprecation warning caused by pandas
-        # More info: https://numpy.org/doc/stable/reference/distutils.html#module-numpy.distutils
-        "ignore:distutils Version classes are deprecated:DeprecationWarning",
-    ]
-    pythonpath=["."]
+    [tool.pytest.ini_options]
+        addopts=[
+            "--doctest-modules",
+            "--doctest-plus",
+            "--jaxtyping-packages=transformer_lens,beartype.beartype",
+            "--nbval",
+            "-W ignore::beartype.roar.BeartypeDecorHintPep585DeprecationWarning",
+        ]
+        doctest_optionflags="NORMALIZE_WHITESPACE ELLIPSIS FLOAT_CMP"
+        filterwarnings=[
+            "ignore:pkg_resources is deprecated as an API:DeprecationWarning",
+            # Ignore numpy.distutils deprecation warning caused by pandas
+            # More info: https://numpy.org/doc/stable/reference/distutils.html#module-numpy.distutils
+            "ignore:distutils Version classes are deprecated:DeprecationWarning",
+        ]
+        pythonpath=["."]
+        testpaths=["tests", "transformer_lens"] # Only test these directories
 
 [tool.isort]
     extend_skip=[".venv/", "__init__.py"]

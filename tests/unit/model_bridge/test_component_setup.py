@@ -4,6 +4,7 @@
 from types import SimpleNamespace
 
 import pytest
+import torch
 import torch.nn as nn
 
 from tests.mocks.architecture_adapter import MockArchitectureAdapter, mock_model_adapter
@@ -20,6 +21,9 @@ from transformer_lens.model_bridge.generalized_components import (
     EmbeddingBridge,
     MLPBridge,
     NormalizationBridge,
+)
+from transformer_lens.model_bridge.generalized_components.joint_qkv_attention import (
+    JointQKVAttentionBridge,
 )
 
 
@@ -285,6 +289,45 @@ class TestComponentSetup:
             model.blocks.append(block)
 
         return model
+
+    def test_setup_blocks_bridge_no_weight_duplication_with_bound_method(self):
+        """Block deepcopy must not duplicate adapter via bound split_qkv_matrix."""
+        adapter = MockArchitectureAdapter()
+
+        class FakeAdapterWithSplitFn:
+            def __init__(self):
+                self.component_mapping = {}
+                self.heavy_tensor = torch.randn(256, 256)
+
+            def split_qkv(self, component):
+                return (
+                    nn.Linear(10, 10, bias=False),
+                    nn.Linear(10, 10, bias=False),
+                    nn.Linear(10, 10, bias=False),
+                )
+
+        fake_adapter = FakeAdapterWithSplitFn()
+
+        blocks_template = BlockBridge(
+            name="blocks",
+            submodules={
+                "ln1": NormalizationBridge(name="ln1", config={}),
+                "attn": JointQKVAttentionBridge(
+                    name="attn",
+                    config=SimpleNamespace(n_heads=1, d_model=10),
+                    split_qkv_matrix=fake_adapter.split_qkv,
+                ),
+            },
+        )
+        fake_adapter.component_mapping["blocks"] = blocks_template
+
+        mock_model = self._create_fresh_mock_model()
+        bridged_blocks = setup_blocks_bridge(blocks_template, adapter, mock_model)
+
+        for block in bridged_blocks:
+            fn = block.attn.split_qkv_matrix
+            assert hasattr(fn, "__self__")
+            assert fn.__self__ is fake_adapter
 
     @pytest.fixture
     def mock_model_adapter(self):

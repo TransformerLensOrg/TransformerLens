@@ -10,13 +10,17 @@ from typing import Any, Callable, Dict, Optional
 
 import torch
 
-from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.generalized_components.joint_qkv_attention import (
     JointQKVAttentionBridge,
 )
+from transformer_lens.model_bridge.generalized_components.position_embedding_hooks_mixin import (
+    PositionEmbeddingHooksMixin,
+)
 
 
-class JointQKVPositionEmbeddingsAttentionBridge(JointQKVAttentionBridge):
+class JointQKVPositionEmbeddingsAttentionBridge(
+    PositionEmbeddingHooksMixin, JointQKVAttentionBridge
+):
     """Attention bridge for models with fused QKV and position embeddings (e.g., Pythia).
 
     This combines the functionality of JointQKVAttentionBridge (splitting fused QKV matrices)
@@ -52,38 +56,7 @@ class JointQKVPositionEmbeddingsAttentionBridge(JointQKVAttentionBridge):
             submodules=submodules,
             **kwargs,
         )
-        self._rotary_emb = None
-        # Add hooks for cos and sin to match HookedTransformer pattern
-        self.hook_cos = HookPoint()
-        self.hook_sin = HookPoint()
-
-    def set_rotary_emb(self, rotary_emb: Any) -> None:
-        """Set reference to the model's rotary embedding component.
-
-        Args:
-            rotary_emb: The model's rotary_emb component (from model.gpt_neox.layers[0].attention.rotary_emb)
-        """
-        self._rotary_emb = rotary_emb
-
-    def _apply_position_embedding_hooks(self, position_embeddings):
-        """Apply hooks to position embeddings (cos, sin tuple).
-
-        Extracts cos and sin from the position_embeddings tuple and passes them
-        through hook_cos and hook_sin to match HookedTransformer's behavior.
-
-        Args:
-            position_embeddings: Tuple of (cos, sin) tensors
-
-        Returns:
-            Tuple of (hooked_cos, hooked_sin) tensors
-        """
-        if isinstance(position_embeddings, tuple) and len(position_embeddings) == 2:
-            cos, sin = position_embeddings
-            # Apply hooks to match HookedTransformer's rotary_cos/rotary_sin pattern
-            hooked_cos = self.hook_cos(cos)
-            hooked_sin = self.hook_sin(sin)
-            return (hooked_cos, hooked_sin)
-        return position_embeddings
+        self._init_position_embedding_hooks()
 
     def get_random_inputs(
         self,
@@ -195,77 +168,49 @@ class JointQKVPositionEmbeddingsAttentionBridge(JointQKVAttentionBridge):
     def _reconstruct_attention(
         self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, **kwargs
     ) -> tuple:
-        """Manual attention reconstruction with rotary position embeddings.
-
-        This overrides the parent class to apply rotary embeddings to Q and K
-        before computing attention scores.
-        """
-        original_component = self.original_component
-        assert original_component is not None
+        """Attention reconstruction with rotary position embeddings and GQA support."""
+        assert self.original_component is not None
         assert self.config is not None
         num_heads = self.config.n_heads
+        num_kv_heads = getattr(self.config, "n_key_value_heads", None) or num_heads
 
-        # Reshape Q, K, V to [batch, heads, seq_len, head_dim]
-        if len(q.shape) == 3:
-            batch_size, seq_len, hidden_size = q.shape
-            head_dim: int = hidden_size // num_heads
-            q = q.view(batch_size, seq_len, num_heads, head_dim).transpose(1, 2)
-            k = k.view(batch_size, seq_len, num_heads, head_dim).transpose(1, 2)
-            v = v.view(batch_size, seq_len, num_heads, head_dim).transpose(1, 2)
-        elif len(q.shape) == 4:
-            batch_size, seq_len, num_heads_tensor, head_dim = q.shape
-            assert (
-                num_heads_tensor == num_heads
-            ), f"Expected {num_heads} heads, got {num_heads_tensor}"
-            q = q.transpose(1, 2)
-            k = k.transpose(1, 2)
-            v = v.transpose(1, 2)
-            seq_len = q.shape[2]  # Update seq_len from transposed tensor
-        else:
-            raise ValueError(f"Unexpected Q tensor shape: {q.shape}. Expected 3D or 4D tensor.")
+        q, k, v, batch_size, seq_len, head_dim = self._reshape_qkv_to_heads(
+            q, k, v, num_heads, num_kv_heads
+        )
 
         # Apply rotary position embeddings if provided
         position_embeddings = kwargs.get("position_embeddings", None)
         if position_embeddings is not None and isinstance(position_embeddings, tuple):
-            cos, sin = position_embeddings
-            # Apply hooks to position embeddings
-            hooked_position_embeddings = self._apply_position_embedding_hooks(position_embeddings)
-            cos, sin = hooked_position_embeddings
-            # Apply rotary embeddings to Q and K
+            cos, sin = self._apply_position_embedding_hooks(position_embeddings)
             q, k = self._apply_rotary_pos_emb(q, k, cos, sin)
 
-        # Compute attention scores
-        scale = head_dim ** (-0.5)
-        attn_scores = torch.matmul(q, k.transpose(-2, -1)) * scale
+        # KV cache: extend K/V with cached positions.
+        k, v = self._update_kv_cache(k, v, **kwargs)
+
+        # GQA: expand K/V heads to match Q heads
+        if num_kv_heads != num_heads:
+            n_rep = num_heads // num_kv_heads
+            k = k.repeat_interleave(n_rep, dim=1)
+            v = v.repeat_interleave(n_rep, dim=1)
+
+        kv_seq_len = k.shape[-2]  # Includes cached positions
+        attn_scores = torch.matmul(q, k.transpose(-2, -1)) * (head_dim ** (-0.5))
 
         attention_mask = kwargs.get("attention_mask", None)
         attn_scores = self._apply_reconstruct_attention_mask(
             attn_scores=attn_scores,
             attention_mask=attention_mask,
-            seq_len=seq_len,
+            seq_len=kv_seq_len,
+            q_seq_len=seq_len,
         )
 
-        # Apply hook to attention scores
         attn_scores = self.hook_attn_scores(attn_scores)
-
-        # Compute attention weights
         attn_weights = torch.nn.functional.softmax(attn_scores, dim=-1)
-
-        # Apply dropout if present
-        if hasattr(original_component, "attn_dropout"):
-            attn_weights = original_component.attn_dropout(attn_weights)  # type: ignore[operator]
-
-        # Apply hook to attention pattern
+        attn_weights = self._apply_attn_dropout(attn_weights)
         attn_weights = self.hook_pattern(attn_weights)
 
-        # Compute attention output
         attn_output = torch.matmul(attn_weights, v)
         attn_output = attn_output.transpose(1, 2).contiguous()
-        final_hidden_size: int = num_heads * head_dim
-        attn_output = attn_output.view(batch_size, seq_len, final_hidden_size)
-
-        # Apply output projection if present
-        if hasattr(self, "o") and self.o is not None:
-            attn_output = self.o(attn_output)
-
+        attn_output = attn_output.view(batch_size, seq_len, num_heads * head_dim)
+        attn_output = self._apply_output_projection(attn_output)
         return (attn_output, attn_weights)

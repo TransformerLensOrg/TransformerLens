@@ -359,11 +359,15 @@ class AbstractAttention(ABC, nn.Module):
                 if z.dtype != w.dtype:
                     z = z.to(w.dtype)
 
-                out = F.linear(
-                    z.reshape(z.shape[0], z.shape[1], self.cfg.d_head * self.cfg.n_heads),
-                    w,
-                    b_O,
-                )
+                z = z.reshape(z.shape[0], z.shape[1], self.cfg.d_head * self.cfg.n_heads)
+
+                # F.linear is a fused matmul+bias that matches HuggingFace exactly,
+                # but has a bug on MPS with PyTorch 2.8 (pytorch#161640).
+                # Fall back to manual matmul on MPS to work around it.
+                if z.device.type == "mps":
+                    out = torch.matmul(z, w.T) + b_O
+                else:
+                    out = F.linear(z, w, b_O)
         else:
             # Explicitly calculate the attention result so it can be accessed by a hook
             # This is off by default because it can easily eat through your GPU memory.
@@ -662,6 +666,11 @@ class AbstractAttention(ABC, nn.Module):
             freq = 1.0 / inv_freq
         else:
             freq = base ** (dim / (rotary_dim / 2))
+            # Apply linear RoPE scaling for global attention layers if configured
+            # (e.g., Gemma 3 4B uses factor=8.0 for global layers, but not local ones)
+            scaling_factor = getattr(self.cfg, "rotary_scaling_factor", 1.0)
+            if scaling_factor != 1.0 and self.attn_type != "local":
+                freq = freq * scaling_factor
         if self.cfg.rotary_adjacent_pairs:
             freq = einops.repeat(freq, "d -> (d 2)")
         else:

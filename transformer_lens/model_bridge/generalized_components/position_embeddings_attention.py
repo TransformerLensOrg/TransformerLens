@@ -1,10 +1,11 @@
-"""Gemma-2/3 specialized attention bridge.
+"""Position embeddings attention bridge with full hook support.
 
-Gemma-2/3 use Rotary Position Embeddings (RoPE) which requires special handling
-to fire hook_rot_q and hook_rot_k with the correct post-rotation Q/K values.
-
-This is achieved by wrapping HuggingFace's eager_attention_forward function
-to intercept the query and key tensors after rotary embeddings have been applied.
+Reimplements attention for models using RoPE (Llama, Gemma, Qwen, OLMo, etc.)
+so that all hook points fire at the correct computation stage:
+- hook_q/hook_k/hook_v: after projection
+- hook_rot_q/hook_rot_k: after RoPE rotation
+- hook_attn_scores: PRE-softmax (matching HookedTransformer convention)
+- hook_pattern: POST-softmax
 """
 from __future__ import annotations
 
@@ -14,9 +15,11 @@ from typing import Any, Callable, Dict, Optional
 import torch
 import transformers.models.gemma2.modeling_gemma2 as gemma2_module
 
-from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.generalized_components.attention import (
     AttentionBridge,
+)
+from transformer_lens.model_bridge.generalized_components.position_embedding_hooks_mixin import (
+    PositionEmbeddingHooksMixin,
 )
 
 # Global registry mapping HF attention modules to their bridge instances
@@ -79,16 +82,25 @@ def _setup_eager_attention_hook_wrapper() -> None:
                 key = bridge.hook_rot_k(key)
 
         # Call the original function
+        assert _ORIGINAL_EAGER_ATTENTION_FORWARD is not None
         return _ORIGINAL_EAGER_ATTENTION_FORWARD(
             module, query, key, value, attention_mask, **kwargs
         )
 
-    # Replace the module-level function
+    # Replace the module-level function for both Gemma 2 and Gemma 3
     gemma2_module.eager_attention_forward = hooked_eager_attention_forward  # type: ignore[assignment]
+
+    try:
+        import transformers.models.gemma3.modeling_gemma3 as gemma3_module
+
+        gemma3_module.eager_attention_forward = hooked_eager_attention_forward  # type: ignore[assignment]
+    except ImportError:
+        pass  # Gemma 3 not available in this transformers version
+
     _EAGER_ATTENTION_WRAPPED = True
 
 
-class PositionEmbeddingsAttentionBridge(AttentionBridge):
+class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBridge):
     """Attention bridge for models that require position embeddings (e.g., Gemma-3).
 
     Some models use specialized position embedding systems (like Gemma-3's dual RoPE)
@@ -114,18 +126,7 @@ class PositionEmbeddingsAttentionBridge(AttentionBridge):
         kwargs["requires_attention_mask"] = True
         kwargs["maintain_native_attention"] = True
         super().__init__(name, config, submodules, **kwargs)
-        self._rotary_emb = None
-        # Add hooks for cos and sin to match HookedTransformer pattern
-        self.hook_cos = HookPoint()
-        self.hook_sin = HookPoint()
-
-    def set_rotary_emb(self, rotary_emb: Any) -> None:
-        """Set reference to the model's rotary embedding component.
-
-        Args:
-            rotary_emb: The model's rotary_emb component (from model.model.rotary_emb)
-        """
-        self._rotary_emb = rotary_emb
+        self._init_position_embedding_hooks()
 
     def set_original_component(self, component: torch.nn.Module) -> None:
         """Set the original HF component and register for rotary hook firing.
@@ -145,25 +146,177 @@ class PositionEmbeddingsAttentionBridge(AttentionBridge):
         # Ensure the wrapper is set up
         _setup_eager_attention_hook_wrapper()
 
-    def _apply_position_embedding_hooks(self, position_embeddings):
-        """Apply hooks to position embeddings (cos, sin tuple).
+    def forward(self, *args: Any, **kwargs: Any) -> Any:
+        """Reimplemented forward pass with hooks at correct computation stages.
 
-        Extracts cos and sin from the position_embeddings tuple and passes them
-        through hook_cos and hook_sin to match HookedTransformer's behavior.
+        Instead of delegating to the HF attention module (which returns post-softmax
+        weights), this reimplements attention step-by-step so that:
+        - hook_attn_scores fires on PRE-softmax scores (matching HookedTransformer)
+        - hook_pattern fires on POST-softmax weights
+        - hook_rot_q/hook_rot_k fire after RoPE application
 
-        Args:
-            position_embeddings: Tuple of (cos, sin) tensors
-
-        Returns:
-            Tuple of (hooked_cos, hooked_sin) tensors
+        Handles RoPE, GQA, Q/K norms, sliding window, and softcapping.
         """
-        if isinstance(position_embeddings, tuple) and len(position_embeddings) == 2:
+        if self.original_component is None:
+            raise RuntimeError(
+                f"Original component not set for {self.name}. "
+                "Call set_original_component() first."
+            )
+
+        # Type as Any — the HF attention module's interface (q_proj, k_proj, etc.)
+        # varies by architecture and isn't captured by nn.Module's type signature.
+        hf_attn: Any = self.original_component
+
+        # Extract hidden_states and kwargs
+        if "hidden_states" in kwargs:
+            hidden_states = kwargs.pop("hidden_states")
+        elif len(args) > 0 and isinstance(args[0], torch.Tensor):
+            hidden_states = args[0]
+            args = args[1:]
+        else:
+            raise ValueError("Could not find hidden_states in args or kwargs")
+
+        position_embeddings = kwargs.pop("position_embeddings", None)
+        attention_mask = kwargs.pop("attention_mask", None)
+
+        # Apply input hook
+        hidden_states = self.hook_in(hidden_states)
+
+        # Match dtype of HF module
+        target_dtype = None
+        try:
+            target_dtype = next(hf_attn.parameters()).dtype
+        except StopIteration:
+            pass
+        if target_dtype is not None and hidden_states.is_floating_point():
+            hidden_states = hidden_states.to(dtype=target_dtype)
+
+        # --- Q/K/V Projection + Optional Q/K Norms ---
+        # Detect norm order: pre-reshape (OLMo 2) vs post-reshape (Gemma 3)
+        input_shape = hidden_states.shape[:-1]
+        head_dim = hf_attn.head_dim
+        hidden_shape = (*input_shape, -1, head_dim)
+
+        query_states = hf_attn.q_proj(hidden_states)
+        key_states = hf_attn.k_proj(hidden_states)
+        value_states = hf_attn.v_proj(hidden_states)
+
+        has_q_norm = hasattr(hf_attn, "q_norm") and hf_attn.q_norm is not None
+        has_k_norm = hasattr(hf_attn, "k_norm") and hf_attn.k_norm is not None
+        applied_pre_reshape_norm = False
+
+        if has_q_norm:
+            try:
+                # Try pre-reshape norm (OLMo 2 style: norm on flat [batch, seq, hidden])
+                query_states = hf_attn.q_norm(query_states)
+                if has_k_norm:
+                    key_states = hf_attn.k_norm(key_states)
+                applied_pre_reshape_norm = True
+            except RuntimeError:
+                # Shape mismatch — this model uses post-reshape norms
+                pass
+
+        query_states = query_states.view(hidden_shape).transpose(1, 2)
+        key_states = key_states.view(hidden_shape).transpose(1, 2)
+        value_states = value_states.view(hidden_shape).transpose(1, 2)
+
+        if has_q_norm and not applied_pre_reshape_norm:
+            # Post-reshape norm (Gemma 3 style: norm on [batch, heads, seq, head_dim])
+            query_states = hf_attn.q_norm(query_states)
+        if has_k_norm and not applied_pre_reshape_norm:
+            key_states = hf_attn.k_norm(key_states)
+
+        # --- RoPE ---
+        if position_embeddings is not None:
+            position_embeddings = self._apply_position_embedding_hooks(position_embeddings)
             cos, sin = position_embeddings
-            # Apply hooks to match HookedTransformer's rotary_cos/rotary_sin pattern
-            hooked_cos = self.hook_cos(cos)
-            hooked_sin = self.hook_sin(sin)
-            return (hooked_cos, hooked_sin)
-        return position_embeddings
+            from transformers.models.llama.modeling_llama import apply_rotary_pos_emb
+
+            # Some models use partial rotary (e.g., GPT-OSS) where cos/sin cover only
+            # a portion of head_dim. Split Q/K, rotate the partial dims, recombine.
+            rotary_dim = cos.shape[-1]
+            if rotary_dim < head_dim:
+                q_rot, q_pass = query_states[..., :rotary_dim], query_states[..., rotary_dim:]
+                k_rot, k_pass = key_states[..., :rotary_dim], key_states[..., rotary_dim:]
+                q_rot, k_rot = apply_rotary_pos_emb(q_rot, k_rot, cos, sin)
+                query_states = torch.cat([q_rot, q_pass], dim=-1)
+                key_states = torch.cat([k_rot, k_pass], dim=-1)
+            else:
+                query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
+
+        # Fire hook_rot_q/hook_rot_k (post-rotation)
+        if hasattr(self, "hook_rot_q"):
+            query_states = self.hook_rot_q(query_states)
+        if hasattr(self, "hook_rot_k"):
+            key_states = self.hook_rot_k(key_states)
+
+        # --- KV cache: extend K/V with cached positions ---
+        key_states, value_states = self._update_kv_cache(key_states, value_states, **kwargs)
+
+        # --- GQA: Expand K/V ---
+        num_key_value_groups = getattr(hf_attn, "num_key_value_groups", 1)
+        if num_key_value_groups > 1:
+            from transformers.models.llama.modeling_llama import repeat_kv
+
+            key_states_expanded = repeat_kv(key_states, num_key_value_groups)
+            value_states_expanded = repeat_kv(value_states, num_key_value_groups)
+        else:
+            key_states_expanded = key_states
+            value_states_expanded = value_states
+
+        # --- Attention Scores ---
+        scaling = getattr(hf_attn, "scaling", head_dim**-0.5)
+        attn_scores = torch.matmul(query_states, key_states_expanded.transpose(-2, -1)) * scaling
+
+        # --- Softcapping (Gemma 2) ---
+        softcap = getattr(hf_attn, "attn_logit_softcapping", None)
+        if softcap is not None:
+            attn_scores = attn_scores / softcap
+            attn_scores = torch.tanh(attn_scores)
+            attn_scores = attn_scores * softcap
+
+        # --- Causal / Sliding Window Mask ---
+        kv_seq_len = key_states_expanded.shape[-2]
+        q_seq_len = query_states.shape[-2]
+        attn_scores = self._apply_reconstruct_attention_mask(
+            attn_scores=attn_scores,
+            attention_mask=attention_mask,
+            seq_len=kv_seq_len,
+            q_seq_len=q_seq_len,
+        )
+
+        # --- hook_attn_scores: PRE-softmax (matching HookedTransformer) ---
+        attn_scores = self.hook_attn_scores(attn_scores)
+
+        # --- Softmax (in float32 for numerical stability) ---
+        attn_weights = torch.nn.functional.softmax(attn_scores, dim=-1, dtype=torch.float32).to(
+            query_states.dtype
+        )
+
+        # --- Dropout ---
+        dropout_rate = getattr(hf_attn, "attention_dropout", 0.0)
+        if self.training and dropout_rate > 0.0:
+            attn_weights = torch.nn.functional.dropout(attn_weights, p=dropout_rate, training=True)
+
+        # --- hook_pattern: POST-softmax ---
+        attn_weights = self.hook_pattern(attn_weights)
+
+        # --- Attention Output ---
+        attn_output = torch.matmul(attn_weights, value_states_expanded)
+        attn_output = attn_output.transpose(1, 2).contiguous()
+        attn_output = attn_output.reshape(*input_shape, -1)
+
+        # --- Output Projection ---
+        # Different architectures name this differently: o_proj (Llama, Gemma, Qwen),
+        # dense (Phi), out_proj (others)
+        o_proj = getattr(hf_attn, "o_proj", None) or getattr(hf_attn, "dense", None)
+        if o_proj is not None:
+            attn_output = o_proj(attn_output)
+
+        # --- Output Hook ---
+        attn_output = self.hook_out(attn_output)
+
+        return attn_output, attn_weights
 
     def get_random_inputs(
         self,

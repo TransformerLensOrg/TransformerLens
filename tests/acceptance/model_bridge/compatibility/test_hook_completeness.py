@@ -17,14 +17,13 @@ from transformer_lens.model_bridge import TransformerBridge
 
 pytestmark = pytest.mark.skip(reason="Temporarily skipping hook completeness tests pending fixes")
 
-# Models to test hook completeness on
-# Include diverse architectures to catch architecture-specific issues
+# Diverse architectures for hook completeness testing
 MODELS_TO_TEST = [
     "gpt2",  # Standard decoder-only with joint QKV
     "EleutherAI/pythia-14m",  # GPT-NeoX architecture (smaller than pythia-70m)
 ]
 
-# Only test Gemma2 locally (not in CI) due to size
+# Gemma2: local only (too large for CI)
 if not os.getenv("CI"):
     MODELS_TO_TEST.append("google/gemma-2-2b-it")  # Gemma2 with unique normalization setup
 

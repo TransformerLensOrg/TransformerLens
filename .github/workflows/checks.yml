@@ -67,6 +67,7 @@ jobs:
         with:
           path: |
             ~/.cache/huggingface/hub/models--gpt2
+            ~/.cache/huggingface/hub/models--gpt2-xl
             ~/.cache/huggingface/hub/models--distilgpt2
             ~/.cache/huggingface/hub/models--EleutherAI--pythia-70m
             ~/.cache/huggingface/hub/models--EleutherAI--gpt-neo-125M
@@ -177,6 +178,7 @@ jobs:
         with:
           path: |
             ~/.cache/huggingface/hub/models--gpt2
+            ~/.cache/huggingface/hub/models--gpt2-xl
             ~/.cache/huggingface/hub/models--distilgpt2
             ~/.cache/huggingface/hub/models--EleutherAI--pythia-70m
             ~/.cache/huggingface/hub/models--EleutherAI--gpt-neo-125M
@@ -238,6 +240,8 @@ jobs:
           # - "No_Position_Experiment"
           - "Othello_GPT"
           - "Patchscopes_Generation_Demo"
+          - "Santa_Coder"
+          # - "stable_lm"
           - "T5"
     steps:
       - uses: actions/checkout@v3

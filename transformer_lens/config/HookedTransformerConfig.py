@@ -254,6 +254,9 @@ class HookedTransformerConfig(TransformerLensConfig):
     rotary_base_local: Optional[
         int
     ] = None  # For models with different RoPE bases per attention type (e.g., Gemma 3)
+    rotary_scaling_factor: float = (
+        1.0  # Linear RoPE scaling factor for global attention (e.g., 8.0 for Gemma 3 4B)
+    )
     trust_remote_code: bool = False
     rotary_adjacent_pairs: bool = False
     load_in_4bit: bool = False
@@ -318,20 +321,24 @@ class HookedTransformerConfig(TransformerLensConfig):
                 self.num_experts is not None
             ), "num_experts must be set if experts_per_token is set"
 
-        # The number of parameters in attention layers (ignoring biases and layer norm). 4 because W_Q, W_K, W_V and W_O
+        # Attention params (W_Q, W_K, W_V, W_O), ignoring biases/LN
         self.n_params = self.n_layers * ((self.d_model * self.d_head * self.n_heads * 4))
         if not self.attn_only:
             assert self.d_mlp is not None  # mypy
-            # Number of parameters in MLP layers (ignoring biases and layer norm). 2 because W_in and W_out
+            # MLP params (W_in, W_out), ignoring biases/LN
             mlp_params_per_layer = self.d_model * self.d_mlp * (2 + self.gated_mlp)
 
             if self.num_experts:
-                # If we are using MoE, we multiply by num_experts, and add the expert gate parameters (d_model * num_experts)
+                # Scale by num_experts and add gate params
                 mlp_params_per_layer = (mlp_params_per_layer + self.d_model) * self.num_experts
             self.n_params += self.n_layers * mlp_params_per_layer
 
         if self.device is None:
             self.device = str(get_device())
+        else:
+            from transformer_lens.utils import warn_if_mps
+
+            warn_if_mps(self.device)
 
         if self.n_devices > 1:
             assert (

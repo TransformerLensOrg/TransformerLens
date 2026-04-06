@@ -439,29 +439,24 @@ class ComponentBenchmarker:
             if last_part in ["o", "out"]:
                 return
 
-            # Check if this is a q/k/v subcomponent and parent is joint QKV
-            if last_part in ["q", "k", "v"]:
-                # Check if parent component is JointQKVAttentionBridge
-                parent_type = type(component).__name__
-                # The component passed in is actually the q/k/v component itself
-                # We need to check if we should skip based on parent context
-                # For now, we'll check if the parent path exists and is a joint module
-                # This is a heuristic - skip q/k/v that are children of attention
-                # if the attention module has "qkv" or "c_attn" in its submodules
-                # (indicating joint QKV projection)
+            # Skip virtual splits from fused projections (no standalone HF equivalent)
+            if last_part in ["q", "k", "v", "gate", "in"]:
                 parent_path = ".".join(path_parts[:-1])
                 try:
                     parent_component = self.adapter.get_component(self.bridge_model, parent_path)
-                    # Check if parent has a joint qkv module
                     if hasattr(parent_component, "submodules"):
-                        if (
-                            "qkv" in parent_component.submodules  # type: ignore[operator]
-                            or "c_attn" in parent_component.submodules  # type: ignore[operator]
+                        parent_bridge = cast(GeneralizedComponent, parent_component)
+                        subs = parent_bridge.submodules
+                        # Joint QKV: q/k/v are splits from fused qkv_proj/c_attn
+                        if last_part in ["q", "k", "v"] and ("qkv" in subs or "c_attn" in subs):
+                            return
+                        # Joint gate+up: gate/in are splits from fused gate_up_proj
+                        if last_part in ["gate", "in"] and (
+                            "gate_up" in subs
+                            or type(parent_bridge).__name__ == "JointGateUpMLPBridge"
                         ):
-                            # Skip - this is a virtual q/k/v split from joint projection
                             return
                 except Exception:
-                    # If we can't get parent, proceed with testing
                     pass
 
         # Test this component
@@ -651,7 +646,7 @@ class ComponentBenchmarker:
         Returns:
             The component output
         """
-        # Special handling for q_norm/k_norm: they expect (batch, seq, d_head) not (batch, seq, d_model)
+        # q_norm/k_norm expect d_head, not d_model
         if component_path.endswith(".q_norm") or component_path.endswith(".k_norm"):
             # Reshape test_input from (batch, seq, d_model) to (batch, seq, d_head)
             batch, seq, d_model = test_input.shape

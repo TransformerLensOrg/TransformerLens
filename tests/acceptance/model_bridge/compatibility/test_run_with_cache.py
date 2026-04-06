@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""Acceptance tests for run_with_cache compatibility between TransformerBridge and HookedTransformer.
-
-This test suite ensures that run_with_cache works correctly and produces identical
-results in both TransformerBridge and HookedTransformer implementations.
-"""
+"""Acceptance tests for run_with_cache compatibility between TransformerBridge and HookedTransformer."""
 
 import torch
 
@@ -15,10 +11,7 @@ class TestRunWithCacheCompatibility:
     """Test run_with_cache compatibility between TransformerBridge and HookedTransformer."""
 
     def test_run_with_cache_matches_forward_pass(self):
-        """Test that run_with_cache produces identical results to a regular forward pass.
-
-        This ensures that the caching mechanism doesn't alter the model's output.
-        """
+        """Test that run_with_cache produces identical results to a regular forward pass."""
         bridge_model: TransformerBridge = TransformerBridge.boot_transformers(
             "gpt2", device="cpu"
         )  # type: ignore
@@ -39,12 +32,7 @@ class TestRunWithCacheCompatibility:
         ), "run_with_cache should produce identical results to forward pass"
 
     def test_run_with_cache_returns_correct_cached_values(self):
-        """Test that run_with_cache returns correct cached activation values.
-
-        This ensures that TransformerBridge.run_with_cache() returns the same
-        cached activation values as manual hooks, matching HookedTransformer behavior.
-        """
-        # Create both models with the same configuration
+        """Test that run_with_cache returns correct cached activation values."""
         hooked_model = HookedTransformer.from_pretrained_no_processing("gpt2", device_map="cpu")
         bridge_model: TransformerBridge = TransformerBridge.boot_transformers(
             "gpt2", device="cpu"
@@ -53,11 +41,9 @@ class TestRunWithCacheCompatibility:
 
         test_input = torch.tensor([[1, 2, 3]])
 
-        # Method 1: run_with_cache
         _, hooked_cache = hooked_model.run_with_cache(test_input)
         _, bridge_cache = bridge_model.run_with_cache(test_input)
 
-        # Method 2: Manual hooks (ground truth)
         manual_cache = {}
 
         def make_cache_hook(name):
@@ -75,14 +61,14 @@ class TestRunWithCacheCompatibility:
         with bridge_model.hooks(fwd_hooks=[("blocks.0.hook_mlp_out", make_cache_hook("bridge"))]):
             bridge_model(test_input)
 
-        # Verify cache values match manual hooks for HookedTransformer
+        # Verify cache matches manual hooks
         print(f"HookedTransformer cache sum: {hooked_cache['blocks.0.hook_mlp_out'].sum():.6f}")
         print(f"HookedTransformer manual sum: {manual_cache['hooked'].sum():.6f}")
         assert torch.allclose(
             hooked_cache["blocks.0.hook_mlp_out"], manual_cache["hooked"], atol=1e-5
         ), "HookedTransformer run_with_cache should match manual hooks"
 
-        # Verify cache values match manual hooks for TransformerBridge
+        # Same check for TransformerBridge
         print(f"TransformerBridge cache sum: {bridge_cache['blocks.0.hook_mlp_out'].sum():.6f}")
         print(f"TransformerBridge manual sum: {manual_cache['bridge'].sum():.6f}")
         cache_diff = (bridge_cache["blocks.0.hook_mlp_out"] - manual_cache["bridge"]).abs().max()
@@ -99,7 +85,6 @@ class TestRunWithCacheCompatibility:
 
 
 if __name__ == "__main__":
-    # Run tests when executed directly
     test = TestRunWithCacheCompatibility()
     test.test_run_with_cache_matches_forward_pass()
     print("✅ run_with_cache forward pass test passed!")

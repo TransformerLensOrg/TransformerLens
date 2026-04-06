@@ -364,9 +364,7 @@ class ProcessWeights:
                 b_V_key, state_dict, bv_tensor, cfg, adapter, layer
             )
 
-            # Auto-reshape 1D biases to [n_heads, d_head] when weights are 3D
-            # [n_heads, d_model, d_head]. This handles adapters that define weight
-            # conversions but not bias conversions (e.g., OPT).
+            # Auto-reshape 1D biases for 3D weights (e.g., OPT)
             def _reshape_bias_if_needed(bias, weight):
                 if bias is not None and weight is not None:
                     if len(weight.shape) == 3 and len(bias.shape) == 1:
@@ -436,9 +434,7 @@ class ProcessWeights:
         ln1_w = tensors["ln1_w"]
         keys = tensors["keys"]
 
-        # Fold attention LN into QKV weights (only if separate Q/K/V weights exist).
-        # Models with combined QKV (e.g., OpenELM's qkv_proj) won't have separate
-        # Q/K/V weights — skip attention folding but still proceed to MLP folding.
+        # Fold LN into QKV (skip if combined QKV, e.g., OpenELM)
         if wq_tensor is not None:
             assert isinstance(wq_tensor, torch.Tensor)
             assert isinstance(keys, dict)
@@ -452,15 +448,12 @@ class ProcessWeights:
                 assert isinstance(bk_tensor, torch.Tensor)
             if bv_tensor is not None:
                 assert isinstance(bv_tensor, torch.Tensor)
-            # CRITICAL FIX: For RMS norm (Gemma), ln1_b is None. We must still fold ln1_w!
-            # Only require ln1_w to be non-None for folding
+            # RMS norm (Gemma): ln1_b may be None, only ln1_w required
             if ln1_w is not None:
                 assert isinstance(ln1_w, torch.Tensor)
-                # Only fold biases if they exist (LayerNorm). RMS norm has no biases.
+                # Fold biases if present (RMS norm has none; missing QKV biases get zeros)
                 if fold_biases and ln1_b is not None:
                     assert isinstance(ln1_b, torch.Tensor)
-                    # fold_layer_norm_biases handles missing QKV biases by creating
-                    # zero-initialized ones, so we always fold (no all(...) guard needed).
                     assert wq_tensor is not None
                     assert wk_tensor is not None
                     assert wv_tensor is not None
@@ -476,22 +469,14 @@ class ProcessWeights:
                     )
                     if alternate_b_key != keys["ln1_b"] and alternate_b_key in state_dict:
                         state_dict[alternate_b_key] = torch.zeros_like(ln1_b)
-                # Fold ln1_w into QKV weights (works for both LayerNorm and RMS norm).
-                # For rmsnorm_uses_offset models (Gemma/Gemma2), the effective LN scale is
-                # (1 + weight) rather than weight. After folding, the weight must be set to
-                # 0.0 so that (1 + 0.0) = 1.0 = identity (not ones which gives 1+1=2).
+                # Fold ln1_w; use (1+w) for rmsnorm_uses_offset (Gemma), then set to identity
                 rmsnorm_uses_offset = getattr(cfg, "rmsnorm_uses_offset", False)
                 effective_ln1_w = (1.0 + ln1_w) if rmsnorm_uses_offset else ln1_w
                 if wk_tensor is not None and wv_tensor is not None:
                     wq_tensor, wk_tensor, wv_tensor = ProcessWeights.fold_layer_norm_weights(
                         wq_tensor, wk_tensor, wv_tensor, effective_ln1_w
                     )
-                # After folding, set ln1.w to identity.
-                # For HookedTransformer with Pre normalization (LNPre/RMSNormPre), load_state_dict
-                # will ignore these weights since those layers have no weight parameters.
-                # For TransformerBridge and other models, the weights must be identity after folding:
-                #   - Standard RMSNorm/LayerNorm: identity = ones (computes x * 1.0 = x)
-                #   - rmsnorm_uses_offset (Gemma): identity = zeros (computes x * (1+0.0) = x)
+                # Set ln1.w to identity: ones (standard) or zeros (rmsnorm_uses_offset)
                 identity_val = (
                     torch.zeros_like(ln1_w) if rmsnorm_uses_offset else torch.ones_like(ln1_w)
                 )
@@ -522,17 +507,9 @@ class ProcessWeights:
                 layer,
             )
 
-        # NOTE: For Gemma 2/3 with use_normalization_before_and_after=True, ln1_post.w exists
-        # and should KEEP its original values (not be set to 1.0). It applies normalization
-        # AFTER the attention output, which is independent of the ln1 folding we just did.
+        # ln1_post.w (Gemma 2/3): keep original; independent post-attention normalization
 
-        # Fold MLP layer norm.
-        # For parallel architectures, both attention and MLP read from the residual.
-        # Two sub-cases:
-        #   1) Shared LN (e.g., Phi-2, GPT-J): no separate ln2 — MLP reads from ln1.
-        #      Since ln1.w was already set to identity, pass ORIGINAL ln1 values.
-        #   2) Separate LNs (e.g., GPT-NeoX/Pythia): ln2 exists — MLP reads from ln2.
-        #      Fold ln2 into MLP normally (no override needed).
+        # Fold MLP LN: shared ln1 (Phi-2, GPT-J) or separate ln2 (Pythia)
         if getattr(cfg, "parallel_attn_mlp", False) and ln1_w is not None:
             # Check if a separate ln2 exists for this layer
             ln2_check_key = ProcessWeights._resolve_state_dict_key(
@@ -643,8 +620,7 @@ class ProcessWeights:
         if has_ln and ln2_w is not None:
             # MoE layers: fold ln2 into router gate and each expert's W_in/W_gate
             if getattr(cfg, "num_experts", None) is not None and cfg.num_experts > 0:
-                # Track folds; skip setting ln2 to identity if expert weights
-                # aren't in the state dict (Bridge MoE wraps the whole module).
+                # MoE: fold into router + experts; skip identity if wrapped
                 expert_fold_count = 0
                 expected_expert_folds = cfg.num_experts * 2  # W_in + W_gate per expert
 
@@ -687,8 +663,7 @@ class ProcessWeights:
                 mlp_W_in_key, state_dict, state_dict.get(mlp_W_in_key), cfg, adapter, layer
             )
             assert mlp_W_in is not None, f"MLP W_in not found at key {mlp_W_in_key}"
-            # For rmsnorm_uses_offset models (Gemma/Gemma2), the effective LN scale is
-            # (1 + weight). After folding, set to 0.0 so (1 + 0.0) = 1.0 = identity.
+            # rmsnorm_uses_offset: effective scale is (1+w), identity is 0.0
             rmsnorm_uses_offset = getattr(cfg, "rmsnorm_uses_offset", False)
             effective_ln2_w = (1.0 + ln2_w) if rmsnorm_uses_offset else ln2_w
             if mlp_W_in.shape[1] == effective_ln2_w.shape[0]:
@@ -737,9 +712,7 @@ class ProcessWeights:
                 mlp_W_gate = ProcessWeights.convert_tensor_to_tl_format(
                     mlp_W_gate_key, state_dict, state_dict.get(mlp_W_gate_key), cfg, adapter, layer
                 )
-                # For models with combined gate+up projections (e.g., OpenELM's proj_1),
-                # the separate gate weight won't exist — LN was already folded into the
-                # combined "in" weight above.
+                # Combined gate+up (OpenELM): no separate gate, already folded above
                 if mlp_W_gate is not None:
                     new_mlp_W_gate = mlp_W_gate * ln2_w_broadcast
                     state_dict[mlp_W_gate_key] = ProcessWeights.convert_tensor_to_hf_format(
@@ -782,9 +755,7 @@ class ProcessWeights:
                 mlp_W_in_key, state_dict, state_dict.get(mlp_W_in_key), cfg, adapter, layer
             )
             assert mlp_W_in_centered is not None, f"MLP W_in not found at key {mlp_W_in_key}"
-            # Center along d_model dimension. Detect format:
-            # TL format [d_model, d_mlp] -> center along dim=0
-            # HF format [d_mlp, d_model] -> center along dim=-1
+            # Center along d_model: TL [d_model, d_mlp] or HF [d_mlp, d_model]
             d_model = cfg.d_model if cfg is not None else None
             if (
                 d_model is not None
@@ -862,9 +833,7 @@ class ProcessWeights:
             if mlp_ln_w_key in state_dict:
                 state_dict[mlp_ln_w_key] = torch.ones_like(mlp_ln_w)
 
-        # NOTE: For Gemma 2/3 with use_normalization_before_and_after=True, ln2_post.w exists
-        # and should KEEP its original values (not be set to 1.0). It applies normalization
-        # AFTER the MLP output, which is independent of the ln2 folding we just did.
+        # ln2_post.w (Gemma 2/3): keep original; independent post-MLP normalization
 
         return state_dict
 
@@ -958,9 +927,7 @@ class ProcessWeights:
         )
         ln_weight = state_dict[ln_final_w_key]
         assert unembed_weight is not None, f"Unembed weight not found at key {unembed_W_U_key}"
-        # For rmsnorm_uses_offset models (Gemma/Gemma2), the effective LN scale is
-        # (1 + weight) rather than weight. After folding, the weight must be set to
-        # 0.0 so that (1 + 0.0) = 1.0 = identity (not ones which gives 1+1=2).
+        # rmsnorm_uses_offset: effective scale is (1+w), identity is 0.0
         rmsnorm_uses_offset = getattr(cfg, "rmsnorm_uses_offset", False)
         effective_ln_weight = (1.0 + ln_weight) if rmsnorm_uses_offset else ln_weight
         if len(unembed_weight.shape) == 2 and len(ln_weight.shape) == 1:
@@ -979,11 +946,7 @@ class ProcessWeights:
         state_dict[unembed_W_U_key] = ProcessWeights.convert_tensor_to_hf_format(
             unembed_W_U_key, new_unembed_weight, cfg, adapter, None
         )
-        # After folding, set ln_final.w to identity.
-        # For rmsnorm_uses_offset models (Gemma/Gemma2), identity is 0.0 because HF
-        # computes x * (1 + weight); setting weight=0.0 gives (1+0.0)=1.0 = identity.
-        # For standard models, identity is 1.0.
-        # For HookedTransformer with Pre normalization, load_state_dict will ignore these.
+        # Set ln_final.w to identity: zeros (rmsnorm_uses_offset) or ones (standard)
         identity_val = (
             torch.zeros_like(ln_weight) if rmsnorm_uses_offset else torch.ones_like(ln_weight)
         )
@@ -1004,8 +967,7 @@ class ProcessWeights:
                 unembed_weight_centered is not None
             ), f"Unembed weight not found at key {unembed_W_U_key}"
             if len(unembed_weight_centered.shape) == 2:
-                # Detect format: TL [d_model, d_vocab] vs HF [d_vocab, d_model].
-                # Center along the d_model dimension (mean over d_model).
+                # Center along d_model: detect TL vs HF format
                 d_vocab = getattr(cfg, "d_vocab", None) if cfg is not None else None
                 if (
                     d_vocab is not None
@@ -1378,11 +1340,7 @@ class ProcessWeights:
         )
         assert W_U is not None, f"Unembed weight not found at key {unembed_W_U_key}"
 
-        # Determine which dimension is d_vocab to center along.
-        # In TL format W_U is [d_model, d_vocab], so we center along dim=-1.
-        # But if convert_tensor_to_tl_format was a no-op (empty weight_processing_conversions),
-        # W_U may still be in HF format [d_vocab, d_model]. Centering along the wrong
-        # dimension is NOT softmax-invariant and corrupts model output.
+        # Detect W_U format to center along correct dim (wrong dim corrupts output)
         vocab_dim = -1  # Default: TL format [d_model, d_vocab]
         if cfg is not None:
             d_vocab = getattr(cfg, "d_vocab", None)
