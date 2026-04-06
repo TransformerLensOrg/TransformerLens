@@ -90,10 +90,10 @@ class TestGenerateExceptionSafety:
 
 
 class TestGenerateGuards:
-    """Test that generate() rejects invalid cache configurations."""
+    """Test that generate() handles edge cases for cache configuration."""
 
-    def test_encoder_decoder_raises(self, gpt2_bridge):
-        """Encoder-decoder models should raise ValueError for use_past_kv_cache=True."""
+    def test_encoder_decoder_disables_cache_silently(self, gpt2_bridge):
+        """Encoder-decoder models silently disable KV cache instead of crashing."""
         bridge = gpt2_bridge
 
         original_config = bridge.original_model.config
@@ -101,13 +101,18 @@ class TestGenerateGuards:
 
         try:
             tokens = bridge.to_tokens("Test", prepend_bos=False)
-            with pytest.raises(ValueError, match="encoder-decoder"):
-                bridge.generate(
-                    tokens,
-                    max_new_tokens=2,
-                    use_past_kv_cache=True,
-                    verbose=False,
-                )
+            # Should NOT raise — cache is silently disabled for enc-dec models
+            # (use_past_kv_cache=True is the default, so users shouldn't need
+            # to know to pass False for T5/BART)
+            result = bridge.generate(
+                tokens,
+                max_new_tokens=2,
+                use_past_kv_cache=True,
+                verbose=False,
+                return_type="tokens",
+            )
+            assert result.shape[0] == tokens.shape[0]
+            assert not getattr(bridge, "_capture_hf_cache", False)
         finally:
             original_config.is_encoder_decoder = False
 

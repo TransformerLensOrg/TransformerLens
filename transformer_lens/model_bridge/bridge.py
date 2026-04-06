@@ -1851,12 +1851,12 @@ class TransformerBridge(nn.Module):
         # HF cache flows opaquely through the component chain via
         # _reconstruct_attention() → _update_kv_cache() on each layer.
         _hf_kv_cache = None
+        if use_past_kv_cache and is_encoder_decoder:
+            # Encoder-decoder models (T5, BART) don't support the opaque
+            # cache path — silently disable rather than crash, since
+            # use_past_kv_cache=True is the default.
+            use_past_kv_cache = False
         if use_past_kv_cache:
-            if is_encoder_decoder:
-                raise ValueError(
-                    "use_past_kv_cache=True is not supported for encoder-decoder models "
-                    "(e.g. T5, BART). Set use_past_kv_cache=False."
-                )
             self._capture_hf_cache = True  # Signal forward() to stash cache
 
         # Generate tokens
