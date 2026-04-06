@@ -384,19 +384,32 @@ class JointQKVAttentionBridge(AttentionBridge):
         attn_scores: torch.Tensor,
         attention_mask: torch.Tensor | None,
         seq_len: int,
+        q_seq_len: int | None = None,
     ) -> torch.Tensor:
         """Apply causal and optional attention masking to reconstructed scores.
 
         HuggingFace-style 4D masks already encode causal semantics, so they are
         treated as authoritative. Lower-rank masks do not, so the local causal
         mask is still applied before adding the caller-provided padding mask.
+
+        Args:
+            attn_scores: Attention scores [batch, heads, q_seq_len, kv_seq_len].
+            attention_mask: Optional mask from the caller.
+            seq_len: The KV sequence length (total positions including cache).
+            q_seq_len: The query sequence length. When using KV cache this is
+                shorter than seq_len. Defaults to seq_len when not provided.
         """
+        if q_seq_len is None:
+            q_seq_len = seq_len
         min_dtype = torch.finfo(attn_scores.dtype).min
         use_direct_hf_mask = attention_mask is not None and attention_mask.ndim >= 4
         if not use_direct_hf_mask:
-            causal_mask = torch.tril(
-                torch.ones(seq_len, seq_len, device=attn_scores.device, dtype=torch.bool)
+            # Rectangular causal mask: query i attends to KV 0..(offset+i)
+            # where offset = kv_seq_len - q_seq_len (cached positions).
+            causal_mask = torch.ones(
+                q_seq_len, seq_len, device=attn_scores.device, dtype=torch.bool
             )
+            causal_mask = torch.tril(causal_mask, diagonal=seq_len - q_seq_len)
             attn_scores = attn_scores.masked_fill(~causal_mask, min_dtype)
 
         if attention_mask is None:
@@ -404,8 +417,8 @@ class JointQKVAttentionBridge(AttentionBridge):
 
         if attention_mask.shape[-1] != seq_len:
             attention_mask = attention_mask[..., :seq_len]
-        if attention_mask.ndim >= 3 and attention_mask.shape[-2] != seq_len:
-            attention_mask = attention_mask[..., :seq_len, :]
+        if attention_mask.ndim >= 3 and attention_mask.shape[-2] != q_seq_len:
+            attention_mask = attention_mask[..., :q_seq_len, :]
 
         if attention_mask.dtype == torch.bool:
             attention_mask = torch.where(
@@ -422,28 +435,13 @@ class JointQKVAttentionBridge(AttentionBridge):
         self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, **kwargs
     ) -> tuple:
         """Manual attention reconstruction used by the bridge after splitting fused QKV projections."""
-        original_component = self.original_component
-        assert original_component is not None
+        assert self.original_component is not None
         assert self.config is not None
         num_heads = self.config.n_heads
-        if len(q.shape) == 3:
-            batch_size, seq_len, hidden_size = q.shape
-            head_dim: int = hidden_size // num_heads
-            q = q.view(batch_size, seq_len, num_heads, head_dim).transpose(1, 2)
-            k = k.view(batch_size, seq_len, num_heads, head_dim).transpose(1, 2)
-            v = v.view(batch_size, seq_len, num_heads, head_dim).transpose(1, 2)
-        elif len(q.shape) == 4:
-            batch_size, seq_len, num_heads_tensor, head_dim = q.shape
-            assert (
-                num_heads_tensor == num_heads
-            ), f"Expected {num_heads} heads, got {num_heads_tensor}"
-            q = q.transpose(1, 2)
-            k = k.transpose(1, 2)
-            v = v.transpose(1, 2)
-        else:
-            raise ValueError(f"Unexpected Q tensor shape: {q.shape}. Expected 3D or 4D tensor.")
 
-        # KV cache: append current K/V to cache and get the full sequence back.
+        q, k, v, batch_size, seq_len, head_dim = self._reshape_qkv_to_heads(q, k, v, num_heads)
+
+        # KV cache: extend K/V with cached positions.
         k, v = self._update_kv_cache(k, v, **kwargs)
 
         # Attention scale: 1/sqrt(d_head) with optional inverse-layer scaling
@@ -455,8 +453,7 @@ class JointQKVAttentionBridge(AttentionBridge):
         ):
             scale /= float(self._layer_idx + 1)
 
-        # When reorder_and_upcast_attn is True, HF computes attention in float32
-        # using torch.baddbmm for numerical stability. Mirror that behavior here.
+        # When reorder_and_upcast_attn is True, HF computes attention in float32.
         reorder_and_upcast = getattr(self, "_reorder_and_upcast_attn", False)
         if reorder_and_upcast:
             q_scores = q.to(torch.float32)
@@ -465,34 +462,28 @@ class JointQKVAttentionBridge(AttentionBridge):
             q_scores = q
             k_scores = k
 
-        # seq_len for masking uses the full K/V length (includes cached positions)
-        kv_seq_len = k.shape[-2]
+        kv_seq_len = k.shape[-2]  # Includes cached positions
         attn_scores = torch.matmul(q_scores, k_scores.transpose(-2, -1)) * scale
         attention_mask = kwargs.get("attention_mask", None)
         attn_scores = self._apply_reconstruct_attention_mask(
             attn_scores=attn_scores,
             attention_mask=attention_mask,
             seq_len=kv_seq_len,
+            q_seq_len=seq_len,
         )
 
         attn_scores = self.hook_attn_scores(attn_scores)
 
-        # Softmax in float32 when upcast mode is active, then cast back
         if reorder_and_upcast:
             attn_weights = torch.nn.functional.softmax(attn_scores, dim=-1)
             attn_weights = attn_weights.to(v.dtype)
         else:
             attn_weights = torch.nn.functional.softmax(attn_scores, dim=-1)
 
-        if hasattr(original_component, "attn_dropout"):
-            attn_weights = original_component.attn_dropout(attn_weights)  # type: ignore[operator]
+        attn_weights = self._apply_attn_dropout(attn_weights)
         attn_weights = self.hook_pattern(attn_weights)
         attn_output = torch.matmul(attn_weights, v)
         attn_output = attn_output.transpose(1, 2).contiguous()
-        final_hidden_size: int = num_heads * head_dim
-        # seq_len here is the query sequence length (not kv_seq_len), which is
-        # correct: the attention output has one vector per query position.
-        attn_output = attn_output.view(batch_size, seq_len, final_hidden_size)
-        if hasattr(self, "o") and self.o is not None:
-            attn_output = self.o(attn_output)
+        attn_output = attn_output.view(batch_size, seq_len, num_heads * head_dim)
+        attn_output = self._apply_output_projection(attn_output)
         return (attn_output, attn_weights)

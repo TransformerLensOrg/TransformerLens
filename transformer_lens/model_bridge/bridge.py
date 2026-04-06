@@ -1349,20 +1349,29 @@ class TransformerBridge(nn.Module):
             else:
                 output = self.original_model(input_ids, **kwargs)
 
-            # Store raw HF output for generate()'s KV cache extraction.
-            # Only set when generate() signals it needs the cache via this flag.
+            # Stash only the cache object (not the full output) for generate().
             if getattr(self, "_capture_hf_cache", False):
-                self._last_hf_output = output
+                self._last_hf_cache = getattr(output, "past_key_values", None)
 
             if (
-                original_tl_cache is not None
+                not getattr(self, "_capture_hf_cache", False)
+                and original_tl_cache is not None
                 and hasattr(output, "past_key_values")
                 and (output.past_key_values is not None)
             ):
                 backend_cache = output.past_key_values
                 n_cache_layers = min(len(backend_cache), len(original_tl_cache.entries))
                 for i in range(n_cache_layers):
-                    cached_keys, cached_values = backend_cache[i]
+                    # DynamicCache (transformers >= 4.x) stores K/V per-layer;
+                    # legacy format is a tuple of (keys, values) tuples.
+                    if hasattr(backend_cache, "layers"):
+                        cached_keys = backend_cache.layers[i].keys
+                        cached_values = backend_cache.layers[i].values
+                    elif hasattr(backend_cache, "key_cache"):
+                        cached_keys = backend_cache.key_cache[i]
+                        cached_values = backend_cache.value_cache[i]
+                    else:
+                        cached_keys, cached_values = backend_cache[i]
                     if cached_keys is not None:
                         tl_keys = cached_keys.transpose(1, 2)
                         tl_values = cached_values.transpose(1, 2)
@@ -1930,12 +1939,16 @@ class TransformerBridge(nn.Module):
             self.original_model.config, "is_encoder_decoder", False
         )
 
-        # KV cache: let HF manage its own DynamicCache internally.
-        # The cache flows through Bridge's component chain naturally because
-        # _reconstruct_attention() calls cache.update() on each layer.
-        _hf_kv_cache = None  # Opaque HF cache object, populated on step 0
+        # HF DynamicCache flows through the component chain via
+        # _reconstruct_attention() → _update_kv_cache() on each layer.
+        _hf_kv_cache = None
         if use_past_kv_cache:
-            self._capture_hf_cache = True  # Signal forward() to stash output
+            if is_encoder_decoder:
+                raise ValueError(
+                    "use_past_kv_cache=True is not supported for encoder-decoder models "
+                    "(e.g. T5, BART). Set use_past_kv_cache=False."
+                )
+            self._capture_hf_cache = True  # Signal forward() to stash cache
 
         # Generate tokens
         current_tokens = input_tokens.clone()
@@ -1954,102 +1967,103 @@ class TransformerBridge(nn.Module):
                 device=self.cfg.device,
             )
 
-        for gen_step_idx in range(max_new_tokens):
-            # Get logits for next token
-            with torch.no_grad():
-                if is_encoder_decoder:
-                    logits = self(
-                        encoder_input,
-                        return_type="logits",
-                        decoder_input=decoder_tokens,
-                    )
-                else:
-                    forward_kwargs: Dict[str, Any] = {}
-                    if gen_step_idx == 0:
-                        if pixel_values is not None:
-                            forward_kwargs["pixel_values"] = pixel_values
-                        if multimodal_kwargs:
-                            forward_kwargs.update(multimodal_kwargs)
-                    if use_past_kv_cache:
-                        forward_kwargs["use_cache"] = True
-                        if _hf_kv_cache is not None:
-                            # Cached step: pass only the last token + cache
-                            forward_kwargs["past_key_values"] = _hf_kv_cache
-                            logits = self(
-                                current_tokens[:, -1:],
-                                return_type="logits",
-                                **forward_kwargs,
-                            )
-                        else:
-                            # Step 0: full sequence, cache gets populated
-                            logits = self(
-                                current_tokens,
-                                return_type="logits",
-                                **forward_kwargs,
-                            )
+        try:
+            for gen_step_idx in range(max_new_tokens):
+                # Get logits for next token
+                with torch.no_grad():
+                    if is_encoder_decoder:
+                        logits = self(
+                            encoder_input,
+                            return_type="logits",
+                            decoder_input=decoder_tokens,
+                        )
                     else:
-                        # No cache: full sequence every step
-                        logits = self(current_tokens, return_type="logits", **forward_kwargs)
-                    # Capture HF cache from output for next step.
-                    # TODO: _last_hf_output is an implicit side-channel between
-                    # forward() and generate(). Consider returning the cache as
-                    # part of forward()'s output when use_cache=True.
-                    if use_past_kv_cache and hasattr(self, "_last_hf_output"):
-                        _hf_kv_cache = getattr(
-                            self._last_hf_output, "past_key_values", _hf_kv_cache
+                        forward_kwargs: Dict[str, Any] = {}
+                        if gen_step_idx == 0:
+                            if pixel_values is not None:
+                                forward_kwargs["pixel_values"] = pixel_values
+                            if multimodal_kwargs:
+                                forward_kwargs.update(multimodal_kwargs)
+                        if use_past_kv_cache:
+                            forward_kwargs["use_cache"] = True
+                            if _hf_kv_cache is not None:
+                                # Cached step: pass only the last token + cache
+                                forward_kwargs["past_key_values"] = _hf_kv_cache
+                                logits = self(
+                                    current_tokens[:, -1:],
+                                    return_type="logits",
+                                    **forward_kwargs,
+                                )
+                            else:
+                                # Step 0: full sequence, cache gets populated
+                                logits = self(
+                                    current_tokens,
+                                    return_type="logits",
+                                    **forward_kwargs,
+                                )
+                        else:
+                            # No cache: full sequence every step
+                            logits = self(current_tokens, return_type="logits", **forward_kwargs)
+                        # Capture HF cache from forward() for next step.
+                        if use_past_kv_cache and hasattr(self, "_last_hf_cache"):
+                            _hf_kv_cache = self._last_hf_cache or _hf_kv_cache
+                            del self._last_hf_cache
+                    final_logits = logits[:, -1, :]
+
+                    # Collect logits if requested
+                    if logits_seq_list is not None:
+                        logits_seq_list.append(final_logits.clone())
+
+                    # Sample next token
+                    if do_sample:
+                        sampled_tokens = utils.sample_logits(
+                            final_logits,
+                            top_k=top_k,
+                            top_p=top_p,
+                            temperature=temperature,
+                            freq_penalty=freq_penalty,
+                            repetition_penalty=repetition_penalty,
+                            tokens=decoder_tokens if is_encoder_decoder else current_tokens,
+                        ).to(self.cfg.device)
+                    else:
+                        sampled_tokens = utils.sample_logits(
+                            final_logits,
+                            temperature=0.0,
+                            repetition_penalty=repetition_penalty,
+                            tokens=decoder_tokens if is_encoder_decoder else current_tokens,
+                        ).to(self.cfg.device)
+
+                    sampled_tokens_list.append(sampled_tokens.unsqueeze(1))
+
+                    # Handle EOS tokens for finished sequences
+                    if stop_at_eos:
+                        sampled_tokens[finished_sequences] = eos_token_for_padding
+                        finished_sequences.logical_or_(
+                            torch.isin(
+                                sampled_tokens.to(self.cfg.device),
+                                torch.tensor(stop_tokens).to(self.cfg.device),
+                            )
                         )
-                        del self._last_hf_output  # Release reference immediately
-                final_logits = logits[:, -1, :]
 
-                # Collect logits if requested
-                if logits_seq_list is not None:
-                    logits_seq_list.append(final_logits.clone())
-
-                # Sample next token
-                if do_sample:
-                    sampled_tokens = utils.sample_logits(
-                        final_logits,
-                        top_k=top_k,
-                        top_p=top_p,
-                        temperature=temperature,
-                        freq_penalty=freq_penalty,
-                        repetition_penalty=repetition_penalty,
-                        tokens=decoder_tokens if is_encoder_decoder else current_tokens,
-                    ).to(self.cfg.device)
-                else:
-                    sampled_tokens = utils.sample_logits(
-                        final_logits,
-                        temperature=0.0,
-                        repetition_penalty=repetition_penalty,
-                        tokens=decoder_tokens if is_encoder_decoder else current_tokens,
-                    ).to(self.cfg.device)
-
-                sampled_tokens_list.append(sampled_tokens.unsqueeze(1))
-
-                # Handle EOS tokens for finished sequences
-                if stop_at_eos:
-                    sampled_tokens[finished_sequences] = eos_token_for_padding
-                    finished_sequences.logical_or_(
-                        torch.isin(
-                            sampled_tokens.to(self.cfg.device),
-                            torch.tensor(stop_tokens).to(self.cfg.device),
+                    # Append sampled token to current sequence
+                    if is_encoder_decoder:
+                        decoder_tokens = torch.cat(
+                            [decoder_tokens, sampled_tokens.unsqueeze(1)], dim=1
                         )
-                    )
+                    else:
+                        current_tokens = torch.cat(
+                            [current_tokens, sampled_tokens.unsqueeze(1)], dim=1
+                        )
 
-                # Append sampled token to current sequence
-                if is_encoder_decoder:
-                    decoder_tokens = torch.cat([decoder_tokens, sampled_tokens.unsqueeze(1)], dim=1)
-                else:
-                    current_tokens = torch.cat([current_tokens, sampled_tokens.unsqueeze(1)], dim=1)
-
-                # Early stopping if all sequences finished
-                if stop_at_eos and finished_sequences.all():
-                    break
-
-        # Clean up generate-only state
-        self._capture_hf_cache = False
-        if hasattr(self, "_last_hf_output"):
-            del self._last_hf_output
+                    # Early stopping if all sequences finished
+                    if stop_at_eos and finished_sequences.all():
+                        break
+        finally:
+            # Clean up generate-only state even if an exception occurs,
+            # so _capture_hf_cache doesn't leak into subsequent forward() calls.
+            self._capture_hf_cache = False
+            if hasattr(self, "_last_hf_cache"):
+                del self._last_hf_cache
 
         # Concatenate all sampled tokens
         sampled_tokens = torch.cat(sampled_tokens_list, dim=1)

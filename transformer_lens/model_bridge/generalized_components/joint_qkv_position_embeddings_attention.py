@@ -168,45 +168,23 @@ class JointQKVPositionEmbeddingsAttentionBridge(
     def _reconstruct_attention(
         self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, **kwargs
     ) -> tuple:
-        """Manual attention reconstruction with rotary position embeddings.
-
-        This overrides the parent class to apply rotary embeddings to Q and K
-        before computing attention scores.
-        """
-        original_component = self.original_component
-        assert original_component is not None
+        """Attention reconstruction with rotary position embeddings and GQA support."""
+        assert self.original_component is not None
         assert self.config is not None
         num_heads = self.config.n_heads
         num_kv_heads = getattr(self.config, "n_key_value_heads", None) or num_heads
 
-        # Reshape Q, K, V to [batch, heads, seq_len, head_dim]
-        # GQA: K/V may have fewer heads than Q
-        if len(q.shape) == 3:
-            batch_size, seq_len, q_hidden = q.shape
-            head_dim: int = q_hidden // num_heads
-            q = q.view(batch_size, seq_len, num_heads, head_dim).transpose(1, 2)
-            k = k.view(batch_size, seq_len, num_kv_heads, head_dim).transpose(1, 2)
-            v = v.view(batch_size, seq_len, num_kv_heads, head_dim).transpose(1, 2)
-        elif len(q.shape) == 4:
-            batch_size, seq_len, _, head_dim = q.shape
-            q = q.transpose(1, 2)
-            k = k.transpose(1, 2)
-            v = v.transpose(1, 2)
-            seq_len = q.shape[2]
-        else:
-            raise ValueError(f"Unexpected Q tensor shape: {q.shape}. Expected 3D or 4D tensor.")
+        q, k, v, batch_size, seq_len, head_dim = self._reshape_qkv_to_heads(
+            q, k, v, num_heads, num_kv_heads
+        )
 
         # Apply rotary position embeddings if provided
         position_embeddings = kwargs.get("position_embeddings", None)
         if position_embeddings is not None and isinstance(position_embeddings, tuple):
-            cos, sin = position_embeddings
-            # Apply hooks to position embeddings
-            hooked_position_embeddings = self._apply_position_embedding_hooks(position_embeddings)
-            cos, sin = hooked_position_embeddings
-            # Apply rotary embeddings to Q and K
+            cos, sin = self._apply_position_embedding_hooks(position_embeddings)
             q, k = self._apply_rotary_pos_emb(q, k, cos, sin)
 
-        # KV cache: append current K/V and get the full sequence back
+        # KV cache: extend K/V with cached positions.
         k, v = self._update_kv_cache(k, v, **kwargs)
 
         # GQA: expand K/V heads to match Q heads
@@ -215,40 +193,24 @@ class JointQKVPositionEmbeddingsAttentionBridge(
             k = k.repeat_interleave(n_rep, dim=1)
             v = v.repeat_interleave(n_rep, dim=1)
 
-        # Compute attention scores
-        # After cache update, K/V may have more positions than Q
-        kv_seq_len = k.shape[-2]
-        scale = head_dim ** (-0.5)
-        attn_scores = torch.matmul(q, k.transpose(-2, -1)) * scale
+        kv_seq_len = k.shape[-2]  # Includes cached positions
+        attn_scores = torch.matmul(q, k.transpose(-2, -1)) * (head_dim ** (-0.5))
 
         attention_mask = kwargs.get("attention_mask", None)
         attn_scores = self._apply_reconstruct_attention_mask(
             attn_scores=attn_scores,
             attention_mask=attention_mask,
             seq_len=kv_seq_len,
+            q_seq_len=seq_len,
         )
 
-        # Apply hook to attention scores
         attn_scores = self.hook_attn_scores(attn_scores)
-
-        # Compute attention weights
         attn_weights = torch.nn.functional.softmax(attn_scores, dim=-1)
-
-        # Apply dropout if present
-        if hasattr(original_component, "attn_dropout"):
-            attn_weights = original_component.attn_dropout(attn_weights)  # type: ignore[operator]
-
-        # Apply hook to attention pattern
+        attn_weights = self._apply_attn_dropout(attn_weights)
         attn_weights = self.hook_pattern(attn_weights)
 
-        # Compute attention output
         attn_output = torch.matmul(attn_weights, v)
         attn_output = attn_output.transpose(1, 2).contiguous()
-        final_hidden_size: int = num_heads * head_dim
-        attn_output = attn_output.view(batch_size, seq_len, final_hidden_size)
-
-        # Apply output projection if present
-        if hasattr(self, "o") and self.o is not None:
-            attn_output = self.o(attn_output)
-
+        attn_output = attn_output.view(batch_size, seq_len, num_heads * head_dim)
+        attn_output = self._apply_output_projection(attn_output)
         return (attn_output, attn_weights)
