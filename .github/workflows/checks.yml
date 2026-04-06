@@ -273,9 +273,16 @@ jobs:
         with:
           packages: pandoc
           version: 1.0
+      - name: Authenticate HuggingFace
+        if: env.HF_TOKEN != ''
+        run: uv run python -c "import os; from huggingface_hub import login; login(token=os.environ['HF_TOKEN'])"
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
       - name: Check Notebook Output Consistency
         # Note: currently only checks notebooks we have specifically setup for this
         run: pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/${{ matrix.notebook }}.ipynb
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
 
 
   # build-docs:
