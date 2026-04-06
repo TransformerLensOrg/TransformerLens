@@ -149,6 +149,7 @@ class TransformerBridge(nn.Module):
         load_weights: bool = True,
         trust_remote_code: bool = False,
         model_class: Optional[type] = None,
+        hf_model: Optional[Any] = None,
     ) -> "TransformerBridge":
         """Boot a model from HuggingFace (alias for sources.transformers.boot).
 
@@ -162,6 +163,9 @@ class TransformerBridge(nn.Module):
             trust_remote_code: Whether to trust remote code for custom model architectures.
             model_class: Optional HuggingFace model class to use instead of the default
                 auto-detected class (e.g., BertForNextSentencePrediction).
+            hf_model: Optional pre-loaded HuggingFace model to use instead of loading one. Useful
+                for models loaded with custom configurations (e.g., quantization via
+                BitsAndBytesConfig). When provided, load_weights is ignored.
 
         Returns:
             The bridge to the loaded model.
@@ -177,6 +181,7 @@ class TransformerBridge(nn.Module):
             load_weights=load_weights,
             trust_remote_code=trust_remote_code,
             model_class=model_class,
+            hf_model=hf_model,
         )
 
     @property
