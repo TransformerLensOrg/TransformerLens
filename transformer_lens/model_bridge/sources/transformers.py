@@ -270,6 +270,7 @@ def boot(
     load_weights: bool = True,
     trust_remote_code: bool = False,
     model_class: Any | None = None,
+    hf_model: Any | None = None,
 ) -> TransformerBridge:
     """Boot a model from HuggingFace.
 
@@ -283,6 +284,9 @@ def boot(
         model_class: Optional HuggingFace model class to use instead of the default auto-detected
             class. When the class name matches a key in SUPPORTED_ARCHITECTURES, the corresponding
             adapter is selected automatically (e.g., BertForNextSentencePrediction).
+        hf_model: Optional pre-loaded HuggingFace model to use instead of loading one. Useful for
+            models loaded with custom configurations (e.g., quantization via BitsAndBytesConfig).
+            When provided, load_weights is ignored.
 
     Returns:
         The bridge to the loaded model.
@@ -368,7 +372,10 @@ def boot(
         # Default to eager (required for output_attentions hooks)
         model_kwargs["attn_implementation"] = "eager"
     adapter.prepare_loading(model_name, model_kwargs)
-    if not load_weights:
+    if hf_model is not None:
+        # Use the pre-loaded model as-is (e.g., quantized models with custom device_map)
+        pass
+    elif not load_weights:
         from_config_kwargs = {}
         if trust_remote_code:
             from_config_kwargs["trust_remote_code"] = True
