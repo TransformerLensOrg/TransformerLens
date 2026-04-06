@@ -107,7 +107,6 @@ def test_text_generation(gpt2_bridge):
     assert len(output) > len(prompt), "Generated text should be longer than the prompt"
 
 
-@pytest.mark.skip(reason="KV cache support for TransformerBridge is currently incomplete")
 def test_generate_with_kv_cache():
     """Test that generate works with use_past_kv_cache parameter."""
     model_name = "gpt2"  # Use a smaller model for testing
