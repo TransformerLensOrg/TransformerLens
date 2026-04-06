@@ -250,6 +250,9 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
         if hasattr(self, "hook_rot_k"):
             key_states = self.hook_rot_k(key_states)
 
+        # --- KV cache: extend K/V with cached positions ---
+        key_states, value_states = self._update_kv_cache(key_states, value_states, **kwargs)
+
         # --- GQA: Expand K/V ---
         num_key_value_groups = getattr(hf_attn, "num_key_value_groups", 1)
         if num_key_value_groups > 1:
@@ -273,9 +276,14 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
             attn_scores = attn_scores * softcap
 
         # --- Causal / Sliding Window Mask ---
-        if attention_mask is not None:
-            causal_mask = attention_mask[:, :, :, : key_states_expanded.shape[-2]]
-            attn_scores = attn_scores + causal_mask
+        kv_seq_len = key_states_expanded.shape[-2]
+        q_seq_len = query_states.shape[-2]
+        attn_scores = self._apply_reconstruct_attention_mask(
+            attn_scores=attn_scores,
+            attention_mask=attention_mask,
+            seq_len=kv_seq_len,
+            q_seq_len=q_seq_len,
+        )
 
         # --- hook_attn_scores: PRE-softmax (matching HookedTransformer) ---
         attn_scores = self.hook_attn_scores(attn_scores)

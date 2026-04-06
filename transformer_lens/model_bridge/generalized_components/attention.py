@@ -2,10 +2,13 @@
 
 This module contains the bridge component for attention layers.
 """
+import logging
 from typing import Any, Dict, Optional
 
 import einops
 import torch
+
+logger = logging.getLogger(__name__)
 
 from transformer_lens.conversion_utils.conversion_steps.attention_auto_conversion import (
     AttentionAutoConversion,
@@ -100,6 +103,14 @@ class AttentionBridge(GeneralizedComponent):
         self.requires_position_embeddings = requires_position_embeddings
         self.requires_attention_mask = requires_attention_mask
         self.attention_mask_4d = attention_mask_4d
+        self._layer_idx: Optional[int] = None
+
+    def set_original_component(self, original_component: torch.nn.Module) -> None:
+        """Set original component and capture layer index for KV caching."""
+        super().set_original_component(original_component)
+        layer_idx_raw = getattr(original_component, "layer_idx", None)
+        if layer_idx_raw is not None:
+            self._layer_idx = int(layer_idx_raw)
 
     def setup_hook_compatibility(self) -> None:
         """Setup hook compatibility transformations to match HookedTransformer behavior.
@@ -282,6 +293,131 @@ class AttentionBridge(GeneralizedComponent):
     def _setup_hook_z_reshape(self) -> None:
         """Backward compatibility alias for _setup_qkv_hook_reshaping."""
         self._setup_qkv_hook_reshaping()
+
+    def _update_kv_cache(
+        self, k: torch.Tensor, v: torch.Tensor, **kwargs: Any
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Update KV cache if provided, returning the (possibly extended) K and V.
+
+        Call this after K/V projections and any positional embeddings (e.g. RoPE)
+        have been applied, but before computing attention scores. If no cache is
+        present in kwargs, K and V are returned unchanged.
+        """
+        past_key_values = kwargs.get("past_key_values", None)
+        if past_key_values is None:
+            return k, v
+        layer_idx = getattr(self, "_layer_idx", None)
+        if layer_idx is None:
+            logger.warning(
+                "%s: past_key_values provided but _layer_idx is None "
+                "(HF component missing layer_idx attribute). "
+                "KV cache update skipped — generation will be slow.",
+                self.name,
+            )
+            return k, v
+        k, v = past_key_values.update(k, v, layer_idx)
+        return k, v
+
+    def _reshape_qkv_to_heads(
+        self,
+        q: torch.Tensor,
+        k: torch.Tensor,
+        v: torch.Tensor,
+        num_heads: int,
+        num_kv_heads: int | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, int, int, int]:
+        """Reshape Q/K/V from [batch, seq, hidden] or [batch, seq, heads, head_dim]
+        to [batch, heads, seq, head_dim]. Returns (q, k, v, batch_size, seq_len, head_dim).
+
+        Args:
+            num_kv_heads: If provided and differs from num_heads (GQA), K/V use
+                this head count for the 3D reshape path.
+        """
+        if num_kv_heads is None:
+            num_kv_heads = num_heads
+        if q.ndim == 3:
+            batch_size, seq_len, q_hidden = q.shape
+            head_dim: int = q_hidden // num_heads
+            q = q.view(batch_size, seq_len, num_heads, head_dim).transpose(1, 2)
+            k = k.view(batch_size, seq_len, num_kv_heads, head_dim).transpose(1, 2)
+            v = v.view(batch_size, seq_len, num_kv_heads, head_dim).transpose(1, 2)
+        elif q.ndim == 4:
+            batch_size, seq_len = q.shape[0], q.shape[1]
+            head_dim = q.shape[-1]
+            q = q.transpose(1, 2)
+            k = k.transpose(1, 2)
+            v = v.transpose(1, 2)
+        else:
+            raise ValueError(f"Unexpected Q tensor shape: {q.shape}. Expected 3D or 4D.")
+        return q, k, v, batch_size, seq_len, head_dim
+
+    def _apply_attn_dropout(self, attn_weights: torch.Tensor) -> torch.Tensor:
+        """Apply attention dropout from the original HF component if present."""
+        if self.original_component is not None:
+            dropout_fn = getattr(self.original_component, "attn_dropout", None)
+            if dropout_fn is None:
+                dropout_fn = getattr(self.original_component, "attention_dropout", None)
+            if dropout_fn is not None:
+                attn_weights = dropout_fn(attn_weights)
+        return attn_weights
+
+    def _apply_output_projection(self, attn_output: torch.Tensor) -> torch.Tensor:
+        """Apply the output projection (self.o) if present."""
+        if hasattr(self, "o") and self.o is not None:
+            attn_output = self.o(attn_output)
+        return attn_output
+
+    def _apply_reconstruct_attention_mask(
+        self,
+        attn_scores: torch.Tensor,
+        attention_mask: torch.Tensor | None,
+        seq_len: int,
+        q_seq_len: int | None = None,
+    ) -> torch.Tensor:
+        """Apply causal and optional attention masking to reconstructed scores.
+
+        HuggingFace-style 4D masks already encode causal semantics, so they are
+        treated as authoritative. Lower-rank masks do not, so the local causal
+        mask is still applied before adding the caller-provided padding mask.
+
+        Args:
+            attn_scores: Attention scores [batch, heads, q_seq_len, kv_seq_len].
+            attention_mask: Optional mask from the caller.
+            seq_len: The KV sequence length (total positions including cache).
+            q_seq_len: The query sequence length. When using KV cache this is
+                shorter than seq_len. Defaults to seq_len when not provided.
+        """
+        if q_seq_len is None:
+            q_seq_len = seq_len
+        min_dtype = torch.finfo(attn_scores.dtype).min
+        use_direct_hf_mask = attention_mask is not None and attention_mask.ndim >= 4
+        if not use_direct_hf_mask:
+            # Rectangular causal mask: query i attends to KV 0..(offset+i)
+            # where offset = kv_seq_len - q_seq_len (cached positions).
+            causal_mask = torch.ones(
+                q_seq_len, seq_len, device=attn_scores.device, dtype=torch.bool
+            )
+            causal_mask = torch.tril(causal_mask, diagonal=seq_len - q_seq_len)
+            attn_scores = attn_scores.masked_fill(~causal_mask, min_dtype)
+
+        if attention_mask is None:
+            return attn_scores
+
+        if attention_mask.shape[-1] != seq_len:
+            attention_mask = attention_mask[..., :seq_len]
+        if attention_mask.ndim >= 3 and attention_mask.shape[-2] != q_seq_len:
+            attention_mask = attention_mask[..., :q_seq_len, :]
+
+        if attention_mask.dtype == torch.bool:
+            attention_mask = torch.where(
+                attention_mask,
+                torch.zeros((), dtype=attn_scores.dtype, device=attn_scores.device),
+                torch.full((), min_dtype, dtype=attn_scores.dtype, device=attn_scores.device),
+            )
+        else:
+            attention_mask = attention_mask.to(dtype=attn_scores.dtype)
+
+        return attn_scores + attention_mask
 
     def _get_n_heads(self, use_kv: bool = False) -> int:
         """Resolve the number of attention heads from config.

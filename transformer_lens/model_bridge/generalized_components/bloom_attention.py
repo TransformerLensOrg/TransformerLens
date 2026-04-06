@@ -133,55 +133,52 @@ class BloomAttentionBridge(JointQKVAttentionBridge):
     ) -> tuple:
         """Reconstruct attention using BLOOM's ALiBi-based score computation.
 
-        BLOOM computes attention scores via alibi.baddbmm(Q, K^T) which fuses the
-        ALiBi positional bias directly into the score computation. This override
-        mirrors that behavior while keeping all hook points active.
+        BLOOM fuses the ALiBi positional bias into scores via baddbmm.
         """
         assert self.original_component is not None
         assert self.config is not None
         num_heads = self.config.n_heads
-        head_dim: int = self.config.d_head
 
-        # Reshape Q/K/V from [batch, seq, hidden] to [batch, heads, seq, head_dim]
-        if q.ndim == 3:
-            batch_size, seq_len, _ = q.shape
-            q = q.view(batch_size, seq_len, num_heads, head_dim).transpose(1, 2)
-            k = k.view(batch_size, seq_len, num_heads, head_dim).transpose(1, 2)
-            v = v.view(batch_size, seq_len, num_heads, head_dim).transpose(1, 2)
-        elif q.ndim == 4:
-            batch_size, seq_len = q.shape[0], q.shape[1]
-            q = q.transpose(1, 2)
-            k = k.transpose(1, 2)
-            v = v.transpose(1, 2)
-        else:
-            raise ValueError(f"Unexpected Q tensor shape: {q.shape}")
+        q, k, v, batch_size, seq_len, head_dim = self._reshape_qkv_to_heads(q, k, v, num_heads)
 
-        # BLOOM uses baddbmm: alibi + Q @ K^T * inv_norm_factor
+        # KV cache: extend K/V with cached positions.
+        k, v = self._update_kv_cache(k, v, **kwargs)
+
+        kv_seq_len = k.shape[-2]  # Includes cached positions
         # Reshape to [batch*heads, seq, head_dim] for baddbmm
         q_bh = q.reshape(batch_size * num_heads, seq_len, head_dim)
-        k_bh = k.reshape(batch_size * num_heads, seq_len, head_dim)
-        v_bh = v.reshape(batch_size * num_heads, seq_len, head_dim)
+        k_bh = k.reshape(batch_size * num_heads, kv_seq_len, head_dim)
+        v_bh = v.reshape(batch_size * num_heads, kv_seq_len, head_dim)
 
         inv_norm_factor = head_dim ** (-0.5)
-        beta = 1.0
 
         alibi = kwargs.get("alibi", None)
         if alibi is not None:
-            # alibi shape: [batch*heads, 1, seq] or [batch*heads, seq, seq]
-            # baddbmm: beta * alibi + alpha * (Q @ K^T)
+            # Resize alibi to match kv_seq_len (may differ after cache update).
+            alibi_kv_len = alibi.shape[-1]
+            if alibi_kv_len < kv_seq_len:
+                # ALiBi is slope * position — recompute for the extended length.
+                if alibi.ndim == 3 and alibi.shape[1] == 1:
+                    slopes = alibi[:, 0, 1:2]  # [batch*heads, 1]
+                    if slopes.numel() > 0 and slopes.abs().sum() > 0:
+                        positions = torch.arange(
+                            kv_seq_len, device=alibi.device, dtype=alibi.dtype
+                        ).unsqueeze(0)
+                        alibi = slopes * positions  # [batch*heads, kv_seq_len]
+                        alibi = alibi.unsqueeze(1)  # [batch*heads, 1, kv_seq_len]
+            elif alibi_kv_len > kv_seq_len:
+                alibi = alibi[..., :kv_seq_len]
             attn_scores = alibi.baddbmm(
                 batch1=q_bh,
                 batch2=k_bh.transpose(-1, -2),
-                beta=beta,
+                beta=1.0,
                 alpha=inv_norm_factor,
             )
         else:
             attn_scores = torch.bmm(q_bh, k_bh.transpose(-1, -2)) * inv_norm_factor
 
-        # Reshape to [batch, heads, seq, seq]
         attn_scores = attn_scores.view(batch_size, num_heads, seq_len, -1)
 
-        # Apply attention mask
         attention_mask = kwargs.get("attention_mask", None)
         if attention_mask is not None:
             causal_mask = attention_mask[:, :, :, : attn_scores.shape[-1]]
@@ -193,24 +190,17 @@ class BloomAttentionBridge(JointQKVAttentionBridge):
         attn_weights = torch.nn.functional.softmax(attn_scores, dim=-1, dtype=torch.float32)
         attn_weights = attn_weights.to(q.dtype)
 
-        if hasattr(self.original_component, "attention_dropout"):
-            attn_weights = self.original_component.attention_dropout(attn_weights)  # type: ignore[operator]
-
+        attn_weights = self._apply_attn_dropout(attn_weights)
         attn_weights = self.hook_pattern(attn_weights)
 
-        # Compute attention output
-        # Reshape weights to [batch*heads, seq, seq] for bmm
+        # bmm in [batch*heads, seq, seq] format for BLOOM compatibility
         attn_weights_bh = attn_weights.reshape(batch_size * num_heads, seq_len, -1)
         attn_output = torch.bmm(attn_weights_bh, v_bh)
 
-        # Reshape back to [batch, seq, hidden]
         attn_output = attn_output.view(batch_size, num_heads, seq_len, head_dim)
         attn_output = attn_output.transpose(1, 2).contiguous()
         attn_output = attn_output.view(batch_size, seq_len, num_heads * head_dim)
-
-        # Apply output projection
-        if hasattr(self, "o") and self.o is not None:
-            attn_output = self.o(attn_output)
+        attn_output = self._apply_output_projection(attn_output)
 
         return (attn_output, attn_weights)
 
