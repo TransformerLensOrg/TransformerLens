@@ -267,7 +267,7 @@ jobs:
       - name: Install dependencies
         run: |
           uv lock --check
-          uv sync
+          uv sync --group quantization
       - name: Install pandoc
         uses: awalsh128/cache-apt-pkgs-action@latest
         with:
