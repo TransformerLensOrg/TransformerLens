@@ -1239,7 +1239,9 @@ class TransformerBridge(nn.Module):
 
             # Detect inputs_embeds: if the tensor is floating point, it's pre-computed
             # embeddings (e.g., from multimodal models) rather than token IDs.
-            _is_inputs_embeds = isinstance(input_ids, torch.Tensor) and input_ids.is_floating_point()
+            _is_inputs_embeds = (
+                isinstance(input_ids, torch.Tensor) and input_ids.is_floating_point()
+            )
 
             if attention_mask is not None:
                 kwargs["attention_mask"] = attention_mask
@@ -1289,7 +1291,6 @@ class TransformerBridge(nn.Module):
                 kwargs["input_values"] = input_values
 
             # Audio models use input_values (waveform), not input_ids
-            original_tl_cache = past_kv_cache
             if getattr(self.cfg, "is_audio_model", False):
                 if input_values is not None:
                     output = self.original_model(**kwargs)
@@ -1305,34 +1306,6 @@ class TransformerBridge(nn.Module):
                 output = self.original_model(inputs_embeds=input_ids, **kwargs)
             else:
                 output = self.original_model(input_ids, **kwargs)
-            if (
-                original_tl_cache is not None
-                and hasattr(output, "past_key_values")
-                and (output.past_key_values is not None)
-            ):
-                backend_cache = output.past_key_values
-                for i, (cached_keys, cached_values) in enumerate(backend_cache):
-                    if i < len(original_tl_cache.entries) and cached_keys is not None:
-                        tl_keys = cached_keys.transpose(1, 2)
-                        tl_values = cached_values.transpose(1, 2)
-                        original_tl_cache.entries[i].past_keys = tl_keys
-                        original_tl_cache.entries[i].past_values = tl_values
-                if attention_mask is not None:
-                    original_tl_cache.previous_attention_mask = kwargs.get(
-                        "attention_mask", attention_mask
-                    )
-                elif hasattr(original_tl_cache, "previous_attention_mask"):
-                    batch_size, current_length = input_ids.shape
-                    new_mask = torch.ones(
-                        batch_size, current_length, dtype=torch.long, device=input_ids.device
-                    )
-                    if original_tl_cache.previous_attention_mask is not None:
-                        original_tl_cache.previous_attention_mask = torch.cat(
-                            [original_tl_cache.previous_attention_mask, new_mask], dim=1
-                        )
-                    else:
-                        original_tl_cache.previous_attention_mask = new_mask
-
             # Stash only the cache object (not the full output) for generate().
             if getattr(self, "_capture_hf_cache", False):
                 self._last_hf_cache = getattr(output, "past_key_values", None)
@@ -1987,7 +1960,9 @@ class TransformerBridge(nn.Module):
                     # For inputs_embeds, we can't pass the embeddings to freq/rep penalty,
                     # so use the generated_token_ids for penalty tracking
                     penalty_tokens = (
-                        torch.stack(generated_token_ids, dim=1) if _generate_from_embeds and generated_token_ids else None
+                        torch.stack(generated_token_ids, dim=1)
+                        if _generate_from_embeds and generated_token_ids
+                        else None
                     )
                     if do_sample:
                         sampled_tokens = utils.sample_logits(
@@ -1997,14 +1972,18 @@ class TransformerBridge(nn.Module):
                             temperature=temperature,
                             freq_penalty=freq_penalty,
                             repetition_penalty=repetition_penalty,
-                            tokens=penalty_tokens if _generate_from_embeds else (decoder_tokens if is_encoder_decoder else current_tokens),
+                            tokens=penalty_tokens
+                            if _generate_from_embeds
+                            else (decoder_tokens if is_encoder_decoder else current_tokens),
                         ).to(self.cfg.device)
                     else:
                         sampled_tokens = utils.sample_logits(
                             final_logits,
                             temperature=0.0,
                             repetition_penalty=repetition_penalty,
-                            tokens=penalty_tokens if _generate_from_embeds else (decoder_tokens if is_encoder_decoder else current_tokens),
+                            tokens=penalty_tokens
+                            if _generate_from_embeds
+                            else (decoder_tokens if is_encoder_decoder else current_tokens),
                         ).to(self.cfg.device)
 
                     sampled_tokens_list.append(sampled_tokens.unsqueeze(1))
