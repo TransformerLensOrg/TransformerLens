@@ -28,7 +28,6 @@ from torch import nn
 
 from transformer_lens import utils
 from transformer_lens.ActivationCache import ActivationCache
-from transformer_lens.cache.key_value_cache import TransformerLensKeyValueCache
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
@@ -85,8 +84,7 @@ class TransformerBridge(nn.Module):
     """
 
     hook_aliases: Dict[str, Union[str, List[str]]] = {
-        # Prefer embed_ln.hook_out (post-LN) when available, matching HT's convention
-        # for models with post-embedding LayerNorm (e.g., Bloom, BERT)
+        # Prefer embed_ln.hook_out for post-LN models (Bloom, BERT)
         "hook_embed": ["embed_ln.hook_out", "embed.hook_out"],
         "hook_pos_embed": ["pos_embed.hook_out", "rotary_emb.hook_out"],
         "hook_unembed": "unembed.hook_out",
@@ -105,7 +103,7 @@ class TransformerBridge(nn.Module):
         self.adapter = adapter
         self.cfg = adapter.cfg
         self.tokenizer = tokenizer
-        if self.cfg.d_vocab == -1:
+        if self.cfg.d_vocab == -1 and self.tokenizer is not None:
             if hasattr(self.tokenizer, "get_vocab"):
                 vocab = self.tokenizer.get_vocab()
                 self.cfg.d_vocab = max(vocab.values()) + 1
@@ -151,6 +149,7 @@ class TransformerBridge(nn.Module):
         load_weights: bool = True,
         trust_remote_code: bool = False,
         model_class: Optional[type] = None,
+        hf_model: Optional[Any] = None,
     ) -> "TransformerBridge":
         """Boot a model from HuggingFace (alias for sources.transformers.boot).
 
@@ -164,6 +163,9 @@ class TransformerBridge(nn.Module):
             trust_remote_code: Whether to trust remote code for custom model architectures.
             model_class: Optional HuggingFace model class to use instead of the default
                 auto-detected class (e.g., BertForNextSentencePrediction).
+            hf_model: Optional pre-loaded HuggingFace model to use instead of loading one. Useful
+                for models loaded with custom configurations (e.g., quantization via
+                BitsAndBytesConfig). When provided, load_weights is ignored.
 
         Returns:
             The bridge to the loaded model.
@@ -179,6 +181,7 @@ class TransformerBridge(nn.Module):
             load_weights=load_weights,
             trust_remote_code=trust_remote_code,
             model_class=model_class,
+            hf_model=hf_model,
         )
 
     @property
@@ -406,7 +409,7 @@ class TransformerBridge(nn.Module):
     def _scan_existing_hooks(self, module: nn.Module, prefix: str = "") -> None:
         """Scan existing modules for hooks and add them to registry."""
         visited = set()
-        # Prevent alias entries from overwriting canonical HookPoint names.
+        # Protect canonical HookPoint names from alias overwrites
         named_hook_ids: set = set()
 
         def scan_module(mod: nn.Module, path: str = "") -> None:
@@ -552,7 +555,7 @@ class TransformerBridge(nn.Module):
         """Provide a clear error message for missing attributes."""
         if name in self.__dict__:  # type: ignore[arg-type]
             return self.__dict__[name]
-        # Use direct __dict__ access instead of hasattr to avoid recursion risk
+        # Use __dict__ directly to avoid recursion
         if "_modules" in self.__dict__ and name in self.__dict__["_modules"]:  # type: ignore[arg-type]
             return self.__dict__["_modules"][name]
         if "original_model" in self.__dict__ and self.__dict__["original_model"] is not None:
@@ -633,8 +636,7 @@ class TransformerBridge(nn.Module):
                     refactor_factored_attn_matrices=refactor_factored_attn_matrices,
                 )
         finally:
-            # Always re-initialize hooks even if weight processing fails,
-            # so the bridge remains usable for downstream tests.
+            # Re-initialize hooks even on failure so bridge stays usable
             self._initialize_hook_registry()
             self._setup_hook_compatibility()
             self._register_all_aliases_recursive()
@@ -717,9 +719,7 @@ class TransformerBridge(nn.Module):
         state_dict = self.state_dict()
         adapter = self.adapter
 
-        # Break weight tying between embed and unembed in the state dict
-        # This is necessary for models like GPT-2 that share weights between lm_head and wte
-        # We need to untie them so that center_unembed only affects unembed, not embed
+        # Untie embed/unembed weights (GPT-2) so centering affects only unembed
         embed_key = "embed.weight"
         unembed_key = "unembed.weight"
 
@@ -732,6 +732,7 @@ class TransformerBridge(nn.Module):
                 state_dict[unembed_key] = state_dict[unembed_key].clone()
 
         if adapter and hasattr(adapter, "preprocess_weights"):
+            adapter._fold_ln_requested = fold_ln  # type: ignore[union-attr]
             state_dict = adapter.preprocess_weights(state_dict)
 
         # Use unified ProcessWeights.process_weights() like HookedTransformer does.
@@ -749,11 +750,7 @@ class TransformerBridge(nn.Module):
             adapter=adapter,
         )
 
-        # Normalize any remaining HF-prefix keys to TL format.
-        # Some architectures (e.g., OPT with SymbolicBridge) produce state dict keys
-        # with HF prefixes (model.decoder.layers.0.mlp.in.weight) instead of TL prefixes
-        # (blocks.0.mlp.in.weight). distribute_weights_to_components uses TL prefixes
-        # for routing, so we normalize all keys here.
+        # Normalize HF-prefix keys to TL format for weight routing
         import re
 
         hf_to_tl_prefix = {}
@@ -848,13 +845,12 @@ class TransformerBridge(nn.Module):
             truncation=truncate,
             max_length=self.cfg.n_ctx if truncate else None,
         )["input_ids"]
-        # Strip trailing EOS tokens that some tokenizers auto-append
-        # (e.g., OLMo's GPTNeoXTokenizer appends <|endoftext|> to all inputs)
+        # Strip auto-appended EOS tokens (e.g., OLMo)
         if (
             getattr(self.cfg, "tokenizer_appends_eos", False)
             and self.tokenizer.eos_token_id is not None
         ):
-            # Remove trailing EOS from each sequence, but keep at least 1 token
+            # Remove trailing EOS, keep at least 1 token
             while tokens.shape[-1] > 1 and (tokens[:, -1] == self.tokenizer.eos_token_id).all():
                 tokens = tokens[:, :-1]
         if not prepend_bos and tokenizer_prepends_bos:
@@ -862,24 +858,6 @@ class TransformerBridge(nn.Module):
         if move_to_device:
             tokens = tokens.to(self.cfg.device)
         return tokens
-
-    def get_pos_offset(self, past_kv_cache, batch_size: int) -> int:
-        """Compute position offset from a TransformerLensKeyValueCache-like object.
-
-        Mirrors TransformerLens.get_pos_offset behavior for compatibility.
-        """
-        if past_kv_cache is None:
-            return 0
-        cached_batch_size, cache_ctx_length, num_heads_in_cache, d_head_in_cache = past_kv_cache[
-            0
-        ].past_keys.shape
-        assert cached_batch_size == batch_size
-        if getattr(self.cfg, "n_key_value_heads", None) is None:
-            assert num_heads_in_cache == self.cfg.n_heads
-        else:
-            assert num_heads_in_cache == getattr(self.cfg, "n_key_value_heads")
-        assert d_head_in_cache == self.cfg.d_head
-        return cache_ctx_length
 
     def to_string(
         self, tokens: Union[List[int], torch.Tensor, np.ndarray]
@@ -941,9 +919,7 @@ class TransformerBridge(nn.Module):
             tokens = torch.tensor(tokens_np)
         else:
             raise ValueError(f"Invalid input type to to_str_tokens: {type(input)}")
-        # In transformers v5, batch_decode treats a flat list as a single sequence,
-        # not individual token IDs, so would return a single string. To maintain backward
-        # compatibility with v4, we wrap each token to decode them individually.
+        # v5 compat: wrap each token so batch_decode decodes them individually
         tokens_list = [[int(t)] for t in tokens.tolist()]
         str_tokens = self.tokenizer.batch_decode(tokens_list, clean_up_tokenization_spaces=False)
         return str_tokens
@@ -1027,104 +1003,105 @@ class TransformerBridge(nn.Module):
             return str(token[0])
         raise AssertionError("Expected a single string token.")
 
+    def _stack_block_params(
+        self, attr_path: str, reshape_fn: Optional[Callable] = None
+    ) -> torch.Tensor:
+        """Stack a parameter across all blocks.
+
+        Args:
+            attr_path: Dot-separated attribute path from block (e.g., "attn.W_K")
+            reshape_fn: Optional function to reshape each weight before stacking
+        """
+        weights = []
+        for block in self.blocks:
+            w = block
+            for attr in attr_path.split("."):
+                w = getattr(w, attr)
+            if reshape_fn is not None:
+                w = reshape_fn(w)
+            weights.append(w)
+        return torch.stack(weights, dim=0)
+
+    def _reshape_qkv(self, w: torch.Tensor) -> torch.Tensor:
+        """Reshape 2D [d_model, d_model] QKV weight to 3D [n_heads, d_model, d_head]."""
+        if w.shape == (self.cfg.d_model, self.cfg.d_model):
+            d_head = self.cfg.d_model // self.cfg.n_heads
+            return w.reshape(self.cfg.n_heads, self.cfg.d_model, d_head)
+        return w
+
+    def _reshape_o(self, w: torch.Tensor) -> torch.Tensor:
+        """Reshape 2D [d_model, d_model] O weight to 3D [n_heads, d_head, d_model]."""
+        if w.shape == (self.cfg.d_model, self.cfg.d_model):
+            d_head = self.cfg.d_model // self.cfg.n_heads
+            return w.reshape(self.cfg.n_heads, d_head, self.cfg.d_model)
+        return w
+
     @property
     def W_K(self) -> torch.Tensor:
         """Stack the key weights across all layers."""
-        weights = []
-        for block in self.blocks:
-            w_k = block.attn.W_K
-            if w_k.shape == (self.cfg.d_model, self.cfg.d_model):
-                d_head = self.cfg.d_model // self.cfg.n_heads
-                w_k = w_k.reshape(self.cfg.n_heads, self.cfg.d_model, d_head)
-            weights.append(w_k)
-        return torch.stack(weights, dim=0)
+        return self._stack_block_params("attn.W_K", self._reshape_qkv)
 
     @property
     def W_Q(self) -> torch.Tensor:
         """Stack the query weights across all layers."""
-        weights = []
-        for block in self.blocks:
-            w_q = block.attn.W_Q
-            if w_q.shape == (self.cfg.d_model, self.cfg.d_model):
-                d_head = self.cfg.d_model // self.cfg.n_heads
-                w_q = w_q.reshape(self.cfg.n_heads, self.cfg.d_model, d_head)
-            weights.append(w_q)
-        return torch.stack(weights, dim=0)
+        return self._stack_block_params("attn.W_Q", self._reshape_qkv)
 
     @property
     def W_V(self) -> torch.Tensor:
         """Stack the value weights across all layers."""
-        weights = []
-        for block in self.blocks:
-            w_v = block.attn.W_V
-            if w_v.shape == (self.cfg.d_model, self.cfg.d_model):
-                d_head = self.cfg.d_model // self.cfg.n_heads
-                w_v = w_v.reshape(self.cfg.n_heads, self.cfg.d_model, d_head)
-            weights.append(w_v)
-        return torch.stack(weights, dim=0)
+        return self._stack_block_params("attn.W_V", self._reshape_qkv)
 
     @property
     def W_O(self) -> torch.Tensor:
         """Stack the attn output weights across all layers."""
-        weights = []
-        for block in self.blocks:
-            w_o = block.attn.W_O
-            if w_o.shape == (self.cfg.d_model, self.cfg.d_model):
-                d_head = self.cfg.d_model // self.cfg.n_heads
-                w_o = w_o.reshape(self.cfg.n_heads, d_head, self.cfg.d_model)
-            weights.append(w_o)
-        return torch.stack(weights, dim=0)
+        return self._stack_block_params("attn.W_O", self._reshape_o)
 
     @property
     def W_in(self) -> torch.Tensor:
         """Stack the MLP input weights across all layers."""
-        return torch.stack([block.mlp.W_in for block in self.blocks], dim=0)
+        return self._stack_block_params("mlp.W_in")
 
     @property
     def W_gate(self) -> Union[torch.Tensor, None]:
-        """Stack the MLP gate weights across all layers.
-
-        Only works for models with gated MLPs.
-        """
+        """Stack the MLP gate weights across all layers (gated MLPs only)."""
         if getattr(self.cfg, "gated_mlp", False):
-            return torch.stack([block.mlp.W_gate for block in self.blocks], dim=0)
-        else:
-            return None
+            return self._stack_block_params("mlp.W_gate")
+        return None
 
     @property
     def W_out(self) -> torch.Tensor:
         """Stack the MLP output weights across all layers."""
-        return torch.stack([block.mlp.W_out for block in self.blocks], dim=0)
+        return self._stack_block_params("mlp.W_out")
 
     @property
     def b_K(self) -> torch.Tensor:
         """Stack the key biases across all layers."""
-        return torch.stack([block.attn.b_K for block in self.blocks], dim=0)
+        return self._stack_block_params("attn.b_K")
 
     @property
     def b_Q(self) -> torch.Tensor:
         """Stack the query biases across all layers."""
-        return torch.stack([block.attn.b_Q for block in self.blocks], dim=0)
+        return self._stack_block_params("attn.b_Q")
 
     @property
     def b_V(self) -> torch.Tensor:
         """Stack the value biases across all layers."""
-        return torch.stack([block.attn.b_V for block in self.blocks], dim=0)
+        return self._stack_block_params("attn.b_V")
 
     @property
     def b_O(self) -> torch.Tensor:
         """Stack the attn output biases across all layers."""
-        return torch.stack([block.attn.b_O for block in self.blocks], dim=0)
+        return self._stack_block_params("attn.b_O")
 
     @property
     def b_in(self) -> torch.Tensor:
         """Stack the MLP input biases across all layers."""
-        return torch.stack([block.mlp.b_in for block in self.blocks], dim=0)
+        return self._stack_block_params("mlp.b_in")
 
     @property
     def b_out(self) -> torch.Tensor:
         """Stack the MLP output biases across all layers."""
-        return torch.stack([block.mlp.b_out for block in self.blocks], dim=0)
+        return self._stack_block_params("mlp.b_out")
 
     @property
     def QK(self):
@@ -1209,11 +1186,11 @@ class TransformerBridge(nn.Module):
         loss_per_token: bool = False,
         prepend_bos: Optional[bool] = None,
         padding_side: Optional[str] = None,
-        past_kv_cache: Optional[TransformerLensKeyValueCache] = None,
         attention_mask: Optional[torch.Tensor] = None,
         start_at_layer: Optional[int] = None,
         stop_at_layer: Optional[int] = None,
         pixel_values: Optional[torch.Tensor] = None,
+        input_values: Optional[torch.Tensor] = None,
         **kwargs,
     ) -> Any:
         """Forward pass through the model.
@@ -1224,12 +1201,14 @@ class TransformerBridge(nn.Module):
             loss_per_token: Whether to return loss per token
             prepend_bos: Whether to prepend BOS token
             padding_side: Which side to pad on
-            past_kv_cache: Optional TransformerLensKeyValueCache for generation
             start_at_layer: Layer to start forward pass from
             stop_at_layer: Layer to stop forward pass at
             pixel_values: Optional image tensor for multimodal models (e.g., LLaVA, Gemma3).
                 The tensor is passed directly to the underlying HuggingFace model.
                 Only valid when cfg.is_multimodal is True.
+            input_values: Optional audio waveform tensor for audio models (e.g., HuBERT).
+                The tensor is passed directly to the underlying HuggingFace model.
+                Only valid when cfg.is_audio_model is True.
             **kwargs: Additional arguments passed to model
 
         Returns:
@@ -1252,44 +1231,28 @@ class TransformerBridge(nn.Module):
 
         try:
             if isinstance(input, (str, list)):
+                if getattr(self.cfg, "is_audio_model", False):
+                    raise ValueError(
+                        "Audio models require tensor input (raw waveform), not text. "
+                        "Pass a torch.Tensor or use the input_values parameter."
+                    )
                 input_ids = self.to_tokens(
                     input, prepend_bos=prepend_bos, padding_side=padding_side
                 )
             else:
                 input_ids = input
+
+            # Detect inputs_embeds: if the tensor is floating point, it's pre-computed
+            # embeddings (e.g., from multimodal models) rather than token IDs.
+            _is_inputs_embeds = (
+                isinstance(input_ids, torch.Tensor) and input_ids.is_floating_point()
+            )
+
             if attention_mask is not None:
                 kwargs["attention_mask"] = attention_mask
-            if past_kv_cache is not None:
-                backend_cache = []
-                for entry in past_kv_cache.entries:
-                    if entry.past_keys.numel() > 0:
-                        cached_keys = entry.past_keys.transpose(1, 2)
-                        cached_values = entry.past_values.transpose(1, 2)
-                        backend_cache.append((cached_keys, cached_values))
-                kwargs["past_key_values"] = backend_cache
-                if hasattr(past_kv_cache, "previous_attention_mask"):
-                    batch_size = input_ids.shape[0]
-                    current_length = input_ids.shape[1]
-                    past_length = past_kv_cache.previous_attention_mask.shape[1]
-                    if attention_mask is not None:
-                        current_mask = attention_mask
-                    else:
-                        current_mask = torch.ones(
-                            batch_size, current_length, dtype=torch.long, device=input_ids.device
-                        )
-                    if past_length > 0:
-                        full_attention_mask = torch.cat(
-                            [past_kv_cache.previous_attention_mask, current_mask], dim=1
-                        )
-                    else:
-                        full_attention_mask = current_mask
-                    kwargs["attention_mask"] = full_attention_mask
+            if kwargs.pop("use_past_kv_cache", False) or kwargs.get("use_cache", False):
                 kwargs["use_cache"] = True
-            elif "use_past_kv_cache" in kwargs and kwargs["use_past_kv_cache"]:
-                kwargs["use_cache"] = True
-            # For encoder-decoder models (T5, BART, etc.), auto-generate
-            # decoder_input_ids if not explicitly provided. Uses the standard
-            # right-shift pattern: prepend decoder_start_token_id, drop last token.
+            # Auto-generate decoder_input_ids for encoder-decoder models
             if (
                 "decoder_input_ids" not in kwargs
                 and hasattr(self.original_model, "config")
@@ -1323,35 +1286,34 @@ class TransformerBridge(nn.Module):
                     )
                 kwargs["pixel_values"] = pixel_values
 
-            original_tl_cache = past_kv_cache
-            output = self.original_model(input_ids, **kwargs)
-            if (
-                original_tl_cache is not None
-                and hasattr(output, "past_key_values")
-                and (output.past_key_values is not None)
-            ):
-                backend_cache = output.past_key_values
-                for i, (cached_keys, cached_values) in enumerate(backend_cache):
-                    if i < len(original_tl_cache.entries) and cached_keys is not None:
-                        tl_keys = cached_keys.transpose(1, 2)
-                        tl_values = cached_values.transpose(1, 2)
-                        original_tl_cache.entries[i].past_keys = tl_keys
-                        original_tl_cache.entries[i].past_values = tl_values
-                if attention_mask is not None:
-                    original_tl_cache.previous_attention_mask = kwargs.get(
-                        "attention_mask", attention_mask
+            # Handle input_values for audio models
+            if input_values is not None:
+                if not getattr(self.cfg, "is_audio_model", False):
+                    raise ValueError(
+                        "input_values can only be passed to audio models "
+                        "(cfg.is_audio_model must be True)"
                     )
-                elif hasattr(original_tl_cache, "previous_attention_mask"):
-                    batch_size, current_length = input_ids.shape
-                    new_mask = torch.ones(
-                        batch_size, current_length, dtype=torch.long, device=input_ids.device
+                kwargs["input_values"] = input_values
+
+            # Audio models use input_values (waveform), not input_ids
+            if getattr(self.cfg, "is_audio_model", False):
+                if input_values is not None:
+                    output = self.original_model(**kwargs)
+                elif isinstance(input, torch.Tensor):
+                    kwargs["input_values"] = input
+                    output = self.original_model(**kwargs)
+                else:
+                    raise ValueError(
+                        "Audio models require tensor input (raw waveform). "
+                        "Pass a torch.Tensor or use input_values parameter."
                     )
-                    if original_tl_cache.previous_attention_mask is not None:
-                        original_tl_cache.previous_attention_mask = torch.cat(
-                            [original_tl_cache.previous_attention_mask, new_mask], dim=1
-                        )
-                    else:
-                        original_tl_cache.previous_attention_mask = new_mask
+            elif _is_inputs_embeds:
+                output = self.original_model(inputs_embeds=input_ids, **kwargs)
+            else:
+                output = self.original_model(input_ids, **kwargs)
+            # Stash only the cache object (not the full output) for generate().
+            if getattr(self, "_capture_hf_cache", False):
+                self._last_hf_cache = getattr(output, "past_key_values", None)
             if hasattr(output, "logits"):
                 logits = output.logits
             elif isinstance(output, tuple) and len(output) > 0:
@@ -1361,6 +1323,15 @@ class TransformerBridge(nn.Module):
             if return_type == "logits":
                 return logits
             elif return_type == "loss":
+                if getattr(self.cfg, "is_audio_model", False):
+                    raise ValueError(
+                        "Audio models do not support return_type='loss'. "
+                        "CTC loss requires aligned frame-level labels."
+                    )
+                if _is_inputs_embeds:
+                    raise ValueError(
+                        "Cannot compute loss with inputs_embeds — token IDs required for labels."
+                    )
                 # Always use self.loss_fn for consistency with HT's formula
                 # (log_softmax + gather).  HF's output.loss uses F.cross_entropy
                 # which gives different results in bfloat16.
@@ -1369,6 +1340,15 @@ class TransformerBridge(nn.Module):
                 ), f"Expected logits tensor, got {type(logits)}"
                 return self.loss_fn(logits, input_ids, per_token=loss_per_token)
             elif return_type == "both":
+                if getattr(self.cfg, "is_audio_model", False):
+                    raise ValueError(
+                        "Audio models do not support return_type='both'. "
+                        "CTC loss requires aligned frame-level labels."
+                    )
+                if _is_inputs_embeds:
+                    raise ValueError(
+                        "Cannot compute loss with inputs_embeds — token IDs required for labels."
+                    )
                 assert isinstance(
                     logits, torch.Tensor
                 ), f"Expected logits tensor, got {type(logits)}"
@@ -1737,8 +1717,7 @@ class TransformerBridge(nn.Module):
                 if remove_batch_dim:
                     original_hook_fn = hook_fn
 
-                    # Use default argument to capture hook_fn by value, not reference
-                    # This prevents all closures from using the last hook_fn in the loop
+                    # Default arg captures hook_fn by value (avoids closure issue)
                     def wrapped_hook_fn(tensor, hook, _orig_fn=original_hook_fn):
                         if tensor.shape[0] == 1:
                             tensor_no_batch = tensor.squeeze(0)
@@ -1807,8 +1786,7 @@ class TransformerBridge(nn.Module):
         pixel_values: Optional[torch.Tensor] = None,
         **multimodal_kwargs,
     ) -> str | list[str] | torch.Tensor | Any:  # Any for transformers.utils.ModelOutput
-        # Using Any due to beartype's forward reference resolution limitations.
-        # See: https://github.com/beartype/beartype/issues/546
+        # Any: beartype forward ref limitation (beartype#546)
         """Sample tokens from the model.
 
         Sample tokens from the model until the model outputs eos_token or max_new_tokens is reached.
@@ -1827,7 +1805,7 @@ class TransformerBridge(nn.Module):
             repetition_penalty: HuggingFace-style repetition penalty. Values > 1.0 discourage
                 repetition by dividing positive logits and multiplying negative logits for
                 previously seen tokens. Default 1.0 (no penalty).
-            use_past_kv_cache: Not used in Bridge (kept for API compatibility)
+            use_past_kv_cache: If True, use KV caching for faster generation
             prepend_bos: Not used in Bridge (kept for API compatibility)
             padding_side: Not used in Bridge (kept for API compatibility)
             return_type: The type of output to return - 'input', 'str', or 'tokens'
@@ -1842,12 +1820,18 @@ class TransformerBridge(nn.Module):
             If output_logits=True, returns a ModelOutput-like object with 'sequences' and 'logits' attributes.
         """
         # Convert input to tokens using to_tokens() for consistent special token handling
+        _generate_from_embeds = False
         if isinstance(input, str):
             input_tokens = self.to_tokens(input, move_to_device=True, truncate=False)
             input_type = "str"
         elif isinstance(input, list):
             input_tokens = self.to_tokens(input, move_to_device=True, truncate=False)
             input_type = "list"
+        elif isinstance(input, torch.Tensor) and input.is_floating_point():
+            # inputs_embeds: pre-computed embeddings (e.g., from multimodal models)
+            input_tokens = input.to(self.cfg.device)
+            input_type = "embeds"
+            _generate_from_embeds = True
         else:
             input_tokens = input.to(self.cfg.device)
             input_type = "tokens"
@@ -1856,6 +1840,8 @@ class TransformerBridge(nn.Module):
         if return_type == "input":
             if input_type in ["str", "list"]:
                 return_type = "str"
+            elif input_type == "embeds":
+                return_type = "tokens"
             else:
                 return_type = "tokens"
 
@@ -1893,8 +1879,22 @@ class TransformerBridge(nn.Module):
             self.original_model.config, "is_encoder_decoder", False
         )
 
+        # HF cache flows opaquely through the component chain via
+        # _reconstruct_attention() → _update_kv_cache() on each layer.
+        _hf_kv_cache = None
+        if use_past_kv_cache and is_encoder_decoder:
+            # Encoder-decoder models (T5, BART) don't support the opaque
+            # cache path — silently disable rather than crash, since
+            # use_past_kv_cache=True is the default.
+            use_past_kv_cache = False
+        if use_past_kv_cache:
+            self._capture_hf_cache = True  # Signal forward() to stash cache
+
         # Generate tokens
         current_tokens = input_tokens.clone()
+        # For inputs_embeds generation, also track generated token IDs for decoding
+        if _generate_from_embeds:
+            generated_token_ids: list[torch.Tensor] = []
         sampled_tokens_list = []
 
         # For encoder-decoder models, keep encoder input fixed and grow decoder input
@@ -1910,78 +1910,133 @@ class TransformerBridge(nn.Module):
                 device=self.cfg.device,
             )
 
-        for gen_step_idx in range(max_new_tokens):
-            # Get logits for next token
-            with torch.no_grad():
-                if is_encoder_decoder:
-                    logits = self(
-                        encoder_input,
-                        return_type="logits",
-                        decoder_input=decoder_tokens,
-                    )
-                else:
-                    forward_kwargs: Dict[str, Any] = {}
-                    # Pass multimodal inputs only on the first step — the vision
-                    # encoder processes the image once, embedding it into the
-                    # token sequence.  This includes pixel_values plus any extra
-                    # processor outputs (e.g. image_sizes for LlavaNext).
-                    if gen_step_idx == 0:
-                        if pixel_values is not None:
-                            forward_kwargs["pixel_values"] = pixel_values
-                        if multimodal_kwargs:
-                            forward_kwargs.update(multimodal_kwargs)
-                    logits = self(current_tokens, return_type="logits", **forward_kwargs)
-                final_logits = logits[:, -1, :]
-
-                # Collect logits if requested
-                if logits_seq_list is not None:
-                    logits_seq_list.append(final_logits.clone())
-
-                # Sample next token
-                if do_sample:
-                    sampled_tokens = utils.sample_logits(
-                        final_logits,
-                        top_k=top_k,
-                        top_p=top_p,
-                        temperature=temperature,
-                        freq_penalty=freq_penalty,
-                        repetition_penalty=repetition_penalty,
-                        tokens=decoder_tokens if is_encoder_decoder else current_tokens,
-                    ).to(self.cfg.device)
-                else:
-                    sampled_tokens = utils.sample_logits(
-                        final_logits,
-                        temperature=0.0,
-                        repetition_penalty=repetition_penalty,
-                        tokens=decoder_tokens if is_encoder_decoder else current_tokens,
-                    ).to(self.cfg.device)
-
-                sampled_tokens_list.append(sampled_tokens.unsqueeze(1))
-
-                # Handle EOS tokens for finished sequences
-                if stop_at_eos:
-                    sampled_tokens[finished_sequences] = eos_token_for_padding
-                    finished_sequences.logical_or_(
-                        torch.isin(
-                            sampled_tokens.to(self.cfg.device),
-                            torch.tensor(stop_tokens).to(self.cfg.device),
+        try:
+            for gen_step_idx in range(max_new_tokens):
+                # Get logits for next token
+                with torch.no_grad():
+                    if is_encoder_decoder:
+                        logits = self(
+                            encoder_input,
+                            return_type="logits",
+                            decoder_input=decoder_tokens,
                         )
+                    else:
+                        forward_kwargs: Dict[str, Any] = {}
+                        # Pass multimodal inputs only on the first step — the vision
+                        # encoder processes the image once, embedding it into the
+                        # token sequence.  This includes pixel_values plus any extra
+                        # processor outputs (e.g. image_sizes for LlavaNext).
+                        if gen_step_idx == 0:
+                            if pixel_values is not None:
+                                forward_kwargs["pixel_values"] = pixel_values
+                            if multimodal_kwargs:
+                                forward_kwargs.update(multimodal_kwargs)
+                        if use_past_kv_cache:
+                            forward_kwargs["use_cache"] = True
+                            if _hf_kv_cache is not None:
+                                # Cached step: pass only the last token + cache
+                                forward_kwargs["past_key_values"] = _hf_kv_cache
+                                logits = self(
+                                    current_tokens[:, -1:],
+                                    return_type="logits",
+                                    **forward_kwargs,
+                                )
+                            else:
+                                # Step 0: full sequence, cache gets populated
+                                logits = self(
+                                    current_tokens,
+                                    return_type="logits",
+                                    **forward_kwargs,
+                                )
+                        else:
+                            # No cache: full sequence every step
+                            logits = self(current_tokens, return_type="logits", **forward_kwargs)
+                        # Capture HF cache from forward() for next step.
+                        if use_past_kv_cache and hasattr(self, "_last_hf_cache"):
+                            _hf_kv_cache = self._last_hf_cache or _hf_kv_cache
+                            del self._last_hf_cache
+                    final_logits = logits[:, -1, :]
+
+                    # Collect logits if requested
+                    if logits_seq_list is not None:
+                        logits_seq_list.append(final_logits.clone())
+
+                    # Sample next token
+                    # For inputs_embeds, we can't pass the embeddings to freq/rep penalty,
+                    # so use the generated_token_ids for penalty tracking
+                    penalty_tokens = (
+                        torch.stack(generated_token_ids, dim=1)
+                        if _generate_from_embeds and generated_token_ids
+                        else None
                     )
+                    if do_sample:
+                        sampled_tokens = utils.sample_logits(
+                            final_logits,
+                            top_k=top_k,
+                            top_p=top_p,
+                            temperature=temperature,
+                            freq_penalty=freq_penalty,
+                            repetition_penalty=repetition_penalty,
+                            tokens=penalty_tokens
+                            if _generate_from_embeds
+                            else (decoder_tokens if is_encoder_decoder else current_tokens),
+                        ).to(self.cfg.device)
+                    else:
+                        sampled_tokens = utils.sample_logits(
+                            final_logits,
+                            temperature=0.0,
+                            repetition_penalty=repetition_penalty,
+                            tokens=penalty_tokens
+                            if _generate_from_embeds
+                            else (decoder_tokens if is_encoder_decoder else current_tokens),
+                        ).to(self.cfg.device)
 
-                # Append sampled token to current sequence
-                if is_encoder_decoder:
-                    decoder_tokens = torch.cat([decoder_tokens, sampled_tokens.unsqueeze(1)], dim=1)
-                else:
-                    current_tokens = torch.cat([current_tokens, sampled_tokens.unsqueeze(1)], dim=1)
+                    sampled_tokens_list.append(sampled_tokens.unsqueeze(1))
 
-                # Early stopping if all sequences finished
-                if stop_at_eos and finished_sequences.all():
-                    break
+                    # Handle EOS tokens for finished sequences
+                    if stop_at_eos:
+                        sampled_tokens[finished_sequences] = eos_token_for_padding
+                        finished_sequences.logical_or_(
+                            torch.isin(
+                                sampled_tokens.to(self.cfg.device),
+                                torch.tensor(stop_tokens).to(self.cfg.device),
+                            )
+                        )
+
+                    # Append sampled token to current sequence
+                    if is_encoder_decoder:
+                        decoder_tokens = torch.cat(
+                            [decoder_tokens, sampled_tokens.unsqueeze(1)], dim=1
+                        )
+                    elif _generate_from_embeds:
+                        # For inputs_embeds: get the embedding of the new token and append
+                        generated_token_ids.append(sampled_tokens)
+                        embed_fn = self.original_model.get_input_embeddings()  # type: ignore[operator]
+                        assert embed_fn is not None
+                        new_embed = embed_fn(sampled_tokens.unsqueeze(1)).to(current_tokens.dtype)
+                        current_tokens = torch.cat([current_tokens, new_embed], dim=1)
+                    else:
+                        current_tokens = torch.cat(
+                            [current_tokens, sampled_tokens.unsqueeze(1)], dim=1
+                        )
+
+                    # Early stopping if all sequences finished
+                    if stop_at_eos and finished_sequences.all():
+                        break
+        finally:
+            # Clean up generate-only state even if an exception occurs,
+            # so _capture_hf_cache doesn't leak into subsequent forward() calls.
+            self._capture_hf_cache = False
+            if hasattr(self, "_last_hf_cache"):
+                del self._last_hf_cache
 
         # Concatenate all sampled tokens
         sampled_tokens = torch.cat(sampled_tokens_list, dim=1)
         if is_encoder_decoder:
             output_tokens = decoder_tokens
+        elif _generate_from_embeds:
+            # For inputs_embeds, we only have the generated token IDs (no input token IDs)
+            output_tokens = sampled_tokens
         else:
             output_tokens = torch.cat([input_tokens, sampled_tokens], dim=1)
 
@@ -2040,8 +2095,7 @@ class TransformerBridge(nn.Module):
         pixel_values: torch.Tensor | None = None,
         **generation_kwargs,
     ) -> str | list[str] | torch.Tensor | Any:  # Any for HF ModelOutput types
-        # Using Any due to beartype's forward reference resolution limitations.
-        # See: https://github.com/beartype/beartype/issues/546
+        # Any: beartype forward ref limitation (beartype#546)
         """Generate text using the underlying HuggingFace model with full HF API support.
 
         This method provides direct access to HuggingFace's generation API, forwarding all

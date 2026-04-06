@@ -2,7 +2,7 @@
 
 This module contains the bridge component for gated MLP layers (e.g., LLaMA, Gemma).
 """
-from typing import Any, Dict, Mapping, Optional
+from typing import Any, Callable, Dict, Mapping, Optional
 
 import torch
 
@@ -10,6 +10,34 @@ from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
 from transformer_lens.model_bridge.generalized_components.mlp import MLPBridge
+
+
+def resolve_activation_fn(config: Any) -> Callable:
+    """Resolve activation function from a model config.
+
+    Checks config attributes in order: activation_function, hidden_activation,
+    hidden_act, act_fn. Maps common aliases to torch.nn.functional callables.
+    """
+    act_fn_name = None
+    if config is not None:
+        for attr in ("activation_function", "hidden_activation", "hidden_act", "act_fn"):
+            act_fn_name = getattr(config, attr, None)
+            if act_fn_name is not None:
+                break
+
+    if act_fn_name is None or act_fn_name in ("silu", "swish"):
+        return torch.nn.functional.silu
+    if act_fn_name == "gelu":
+        return torch.nn.functional.gelu
+    if act_fn_name in ("gelu_new", "gelu_pytorch_tanh"):
+
+        def gelu_tanh(x: torch.Tensor) -> torch.Tensor:
+            return torch.nn.functional.gelu(x, approximate="tanh")
+
+        return gelu_tanh
+    if act_fn_name == "relu":
+        return torch.nn.functional.relu
+    return torch.nn.functional.silu
 
 
 class GatedMLPBridge(MLPBridge):
@@ -81,27 +109,8 @@ class GatedMLPBridge(MLPBridge):
                 in_module = getattr(self, "in", None)
                 if in_module is not None and hasattr(in_module, "hook_out"):
                     linear_output = in_module.hook_out(linear_output)  # type: ignore[misc]
-                act_fn_name = None
-                if self.config:
-                    act_fn_name = getattr(self.config, "activation_function", None)
-                    if act_fn_name is None:
-                        act_fn_name = getattr(self.config, "hidden_activation", None)
-                    if act_fn_name is None:
-                        act_fn_name = getattr(self.config, "hidden_act", None)
-                    if act_fn_name is None:
-                        act_fn_name = getattr(self.config, "act_fn", None)
-                if act_fn_name is None:
-                    act_fn_name = "silu"
-                if act_fn_name in ("silu", "swish"):
-                    activated = torch.nn.functional.silu(gate_output)
-                elif act_fn_name == "gelu":
-                    activated = torch.nn.functional.gelu(gate_output)
-                elif act_fn_name == "gelu_new" or act_fn_name == "gelu_pytorch_tanh":
-                    activated = torch.nn.functional.gelu(gate_output, approximate="tanh")
-                elif act_fn_name == "relu":
-                    activated = torch.nn.functional.relu(gate_output)
-                else:
-                    activated = torch.nn.functional.silu(gate_output)
+                act_fn = resolve_activation_fn(self.config)
+                activated = act_fn(gate_output)
                 hidden = activated * linear_output
                 if hasattr(self, "out") and hasattr(self.out, "hook_in"):
                     hidden = self.out.hook_in(hidden)

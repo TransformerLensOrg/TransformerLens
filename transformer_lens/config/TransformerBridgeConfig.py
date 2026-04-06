@@ -86,6 +86,8 @@ class TransformerBridgeConfig(TransformerLensConfig):
         eps_attr: str = "eps",
         rmsnorm_uses_offset: bool = False,
         attn_implementation: Optional[str] = None,
+        # Audio model configuration
+        is_audio_model: bool = False,
         # Multimodal configuration
         is_multimodal: bool = False,
         vision_hidden_size: Optional[int] = None,
@@ -174,6 +176,8 @@ class TransformerBridgeConfig(TransformerLensConfig):
         self.eps_attr = eps_attr
         self.rmsnorm_uses_offset = rmsnorm_uses_offset
         self.attn_implementation = attn_implementation
+        # Audio model configuration
+        self.is_audio_model = is_audio_model
         # Multimodal configuration
         self.is_multimodal = is_multimodal
         self.vision_hidden_size = vision_hidden_size

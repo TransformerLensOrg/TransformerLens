@@ -315,33 +315,63 @@ class TestGeneralizedComponentHooks:
             self.component.add_hook(test_hook, "invalid")
 
     def test_remove_hooks_all(self):
-        """Test removing all hooks."""
+        """Test removing all hooks stops them from firing."""
+        call_count = {"input": 0, "output": 0}
 
-        def test_hook(tensor, hook):
+        def input_hook(tensor, hook):
+            call_count["input"] += 1
             return tensor
 
-        self.component.add_hook(test_hook, "input")
-        self.component.add_hook(test_hook, "output")
+        def output_hook(tensor, hook):
+            call_count["output"] += 1
+            return tensor
+
+        self.component.add_hook(input_hook, "input")
+        self.component.add_hook(output_hook, "output")
+
+        # Verify hooks fire before removal
+        test_tensor = torch.tensor([1.0, 2.0])
+        self.component.hook_in(test_tensor)
+        self.component.hook_out(test_tensor)
+        assert call_count["input"] == 1
+        assert call_count["output"] == 1
 
         self.component.remove_hooks()
 
-        # Hooks should be removed (this is hard to test directly,
-        # but we can at least verify the method doesn't crash)
-        assert True
+        # Verify hooks no longer fire after removal
+        self.component.hook_in(test_tensor)
+        self.component.hook_out(test_tensor)
+        assert call_count["input"] == 1  # unchanged
+        assert call_count["output"] == 1  # unchanged
 
     def test_remove_hooks_specific(self):
-        """Test removing specific hooks."""
+        """Test removing specific hooks leaves others intact."""
+        call_count = {"input": 0, "output": 0}
 
-        def test_hook(tensor, hook):
+        def input_hook(tensor, hook):
+            call_count["input"] += 1
             return tensor
 
-        self.component.add_hook(test_hook, "input")
-        self.component.add_hook(test_hook, "output")
+        def output_hook(tensor, hook):
+            call_count["output"] += 1
+            return tensor
 
+        self.component.add_hook(input_hook, "input")
+        self.component.add_hook(output_hook, "output")
+
+        # Remove only input hooks
         self.component.remove_hooks("input")
-        self.component.remove_hooks("output")
 
-        assert True
+        test_tensor = torch.tensor([1.0, 2.0])
+        self.component.hook_in(test_tensor)
+        self.component.hook_out(test_tensor)
+        assert call_count["input"] == 0  # removed, never fires
+        assert call_count["output"] == 1  # still active
+
+        # Now remove output
+        self.component.remove_hooks("output")
+        self.component.hook_out(test_tensor)
+        assert call_count["output"] == 1  # unchanged after removal
 
     def test_remove_hooks_invalid_name(self):
         """Test removing hooks with invalid name raises error."""

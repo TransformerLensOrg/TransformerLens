@@ -19,18 +19,23 @@ from transformers import (
     AutoModel,
     AutoModelForCausalLM,
     BertForPreTraining,
+    HubertModel,
     T5ForConditionalGeneration,
+    Wav2Vec2Model,
 )
 
 import transformer_lens.utils as utils
 from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.pretrained.weight_conversions import (
+    convert_apertus_weights,
     convert_bert_weights,
     convert_bloom_weights,
     convert_coder_weights,
     convert_gemma_weights,
     convert_gpt2_weights,
+    convert_gpt_oss_weights,
     convert_gptj_weights,
+    convert_hubert_weights,
     convert_llama_weights,
     convert_mingpt_weights,
     convert_mistral_weights,
@@ -66,13 +71,14 @@ NEED_REMOTE_CODE_MODELS = (
     "Qwen/Qwen-",
     "Qwen/Qwen3-",
     "microsoft/phi-2",
-    "microsoft/Phi-3-mini-4k-instruct",
     "microsoft/phi-4",
     "apple/OpenELM",
+    "openai/gpt-oss-",
+    "swiss-ai/Apertus-",
 )
 
 
-def _get_rope_theta(hf_config: Any, default: float = 10000.0) -> float:
+def _get_rope_theta(hf_config: Any, default: float = 10000.0) -> float | int:
     """Extract rope_theta from a HuggingFace config, handling both old and new formats.
 
     In transformers v5+, rope_theta moved from a top-level attribute to
@@ -528,9 +534,55 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "positional_embedding_type": "rotary",
             "rotary_adjacent_pairs": False,
             "normalization_type": "LN",
+            "default_prepend_bos": False,
         }
         rotary_pct = get_rotary_pct_from_config(hf_config)
         cfg_dict["rotary_dim"] = round(rotary_pct * cfg_dict["d_head"])
+    elif architecture == "HubertModel":
+        # Basic transformer configuration
+        cfg_dict = {
+            "d_model": hf_config.hidden_size,
+            "d_head": hf_config.hidden_size // hf_config.num_attention_heads,
+            "n_heads": hf_config.num_attention_heads,
+            "d_mlp": hf_config.intermediate_size,
+            "n_layers": hf_config.num_hidden_layers,
+            # HuBERT operates on audio frames, not tokens — n_ctx is flexible
+            "n_ctx": getattr(hf_config, "max_position_embeddings", 8192),
+            "eps": hf_config.layer_norm_eps,
+            "act_fn": getattr(hf_config, "hidden_act", "gelu"),
+            "attention_dir": "bidirectional",
+            "d_vocab": -1,  # no text vocabulary
+        }
+    elif "wav2vec2-base" in official_model_name or "wav2vec2-large" in official_model_name:
+        # Basic transformer configuration
+        cfg_dict = {
+            "d_model": hf_config.hidden_size,
+            "d_head": hf_config.hidden_size // hf_config.num_attention_heads,
+            "n_heads": hf_config.num_attention_heads,
+            "d_mlp": hf_config.intermediate_size,
+            "n_layers": hf_config.num_hidden_layers,
+            # HuBERT operates on audio frames, not tokens — n_ctx is flexible
+            "n_ctx": getattr(hf_config, "max_position_embeddings", 8192),
+            "eps": hf_config.layer_norm_eps,
+            "act_fn": getattr(hf_config, "hidden_act", "gelu"),
+            "attention_dir": "bidirectional",
+            "d_vocab": -1,  # no text vocabulary
+        }
+    elif architecture == "HubertForCTC":
+        # Basic transformer configuration
+        cfg_dict = {
+            "d_model": hf_config.hidden_size,
+            "d_head": hf_config.hidden_size // hf_config.num_attention_heads,
+            "n_heads": hf_config.num_attention_heads,
+            "d_mlp": hf_config.intermediate_size,
+            "n_layers": hf_config.num_hidden_layers,
+            "n_ctx": getattr(hf_config, "max_position_embeddings", 8192),
+            "eps": hf_config.layer_norm_eps,
+            "act_fn": getattr(hf_config, "hidden_act", "gelu"),
+            "attention_dir": "bidirectional",
+            # For CTC models:
+            "d_vocab": hf_config.vocab_size,  # text vocab from tokenizer
+        }
     elif architecture == "BertForMaskedLM":
         # All supported Bert architectures have the same config,
         # so we can use the BertForMaskedLM config for all of them
@@ -594,6 +646,29 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "gated_mlp": True,
             "use_local_attn": False,
             "rotary_dim": hf_config.hidden_size // hf_config.num_attention_heads,
+            "num_experts": hf_config.num_local_experts,
+            "experts_per_token": hf_config.num_experts_per_tok,
+        }
+    elif architecture == "GptOssForCausalLM":
+        cfg_dict = {
+            "dtype": torch.bfloat16,
+            "d_model": hf_config.hidden_size,
+            "d_head": hf_config.head_dim,
+            "n_heads": hf_config.num_attention_heads,
+            "d_mlp": hf_config.intermediate_size,
+            "n_layers": hf_config.num_hidden_layers,
+            "n_ctx": hf_config.max_position_embeddings,
+            "d_vocab": hf_config.vocab_size,
+            "act_fn": hf_config.hidden_act,
+            "normalization_type": "RMS",
+            "positional_embedding_type": "rotary",
+            "rotary_base": _get_rope_theta(hf_config),
+            "eps": hf_config.rms_norm_eps,
+            "n_key_value_heads": hf_config.num_key_value_heads,
+            "gated_mlp": True,
+            "final_rms": True,
+            "use_local_attn": False,
+            "rotary_dim": hf_config.head_dim,
             "num_experts": hf_config.num_local_experts,
             "experts_per_token": hf_config.num_experts_per_tok,
         }
@@ -761,6 +836,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "rotary_base": _get_rope_theta(hf_config),
             "use_attn_scale": True,
             "parallel_attn_mlp": True,
+            "default_prepend_bos": False,
         }
         partial_rotary_factor = hf_config.partial_rotary_factor
         cfg_dict["rotary_dim"] = round(partial_rotary_factor * cfg_dict["d_head"])
@@ -784,13 +860,50 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "initializer_range": hf_config.initializer_range,
             "normalization_type": "RMS",
             "positional_embedding_type": "rotary",
-            "trust_remote_code": True,
             "rotary_base": _get_rope_theta(hf_config),
             "use_attn_scale": True,
             "gated_mlp": True,
             "parallel_attn_mlp": False,
             "rotary_dim": hf_config.hidden_size // hf_config.num_attention_heads,
         }
+    elif architecture == "ApertusForCausalLM":
+        n_heads = hf_config.num_attention_heads
+        d_head = hf_config.hidden_size // n_heads
+        num_kv_heads = getattr(hf_config, "num_key_value_heads", n_heads)
+        n_kv_heads = num_kv_heads if num_kv_heads != n_heads else None
+        cfg_dict = {
+            "d_model": hf_config.hidden_size,
+            "d_head": d_head,
+            "n_heads": n_heads,
+            "n_key_value_heads": n_kv_heads,
+            "d_mlp": hf_config.intermediate_size,
+            "n_layers": hf_config.num_hidden_layers,
+            "n_ctx": hf_config.max_position_embeddings,
+            "eps": hf_config.rms_norm_eps,
+            "d_vocab": hf_config.vocab_size,
+            "act_fn": hf_config.hidden_act,
+            "normalization_type": "RMS",
+            "positional_embedding_type": "rotary",
+            "rotary_dim": d_head,
+            "rotary_base": _get_rope_theta(hf_config),
+            "gated_mlp": False,
+            "final_rms": True,
+            "use_qk_norm": getattr(hf_config, "qk_norm", False),
+        }
+        rope_scaling = getattr(hf_config, "rope_scaling", None)
+        if rope_scaling:
+            rope_type = (rope_scaling.get("type") or rope_scaling.get("rope_type") or "").lower()
+        else:
+            rope_type = ""
+        if rope_type == "llama3":
+            assert rope_scaling is not None
+            cfg_dict["use_NTK_by_parts_rope"] = True
+            cfg_dict["NTK_original_ctx_len"] = rope_scaling.get(
+                "original_max_position_embeddings", hf_config.max_position_embeddings
+            )
+            cfg_dict["NTK_by_parts_low_freq_factor"] = rope_scaling.get("low_freq_factor", 1.0)
+            cfg_dict["NTK_by_parts_high_freq_factor"] = rope_scaling.get("high_freq_factor", 4.0)
+            cfg_dict["NTK_by_parts_factor"] = rope_scaling.get("factor", 1.0)
 
     elif official_model_name.startswith("google/gemma-2b"):
         # Architecture for Gemma 2b and Gemma 2b Instruct models
@@ -803,7 +916,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "n_ctx": 8192,
             "eps": 1e-06,
             "d_vocab": 256000,
-            "act_fn": "gelu_new",
+            "act_fn": "gelu",
             "initializer_range": 0.02,
             "normalization_type": "RMS",
             "rotary_base": 10000,
@@ -825,7 +938,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "n_ctx": 8192,
             "eps": 1e-06,
             "d_vocab": 256000,
-            "act_fn": "gelu_new",
+            "act_fn": "gelu",
             "initializer_range": 0.02,
             "normalization_type": "RMS",
             "rotary_base": 10000.0,
@@ -1036,6 +1149,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "normalization_type": "RMS",
             "rotary_base": 1000000,  # Global attention layers
             "rotary_base_local": 10000,  # Local attention layers (per Gemma 3 paper)
+            "rotary_scaling_factor": 8.0,  # Linear RoPE scaling for global layers
             "positional_embedding_type": "rotary",
             "use_attn_scale": True,
             "n_key_value_heads": 4,
@@ -1098,6 +1212,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "normalization_type": "RMS",
             "rotary_base": 1000000,  # Global attention layers
             "rotary_base_local": 10000,  # Local attention layers (per Gemma 3 paper)
+            "rotary_scaling_factor": 8.0,  # Linear RoPE scaling for global layers
             "positional_embedding_type": "rotary",
             "use_attn_scale": True,
             "n_key_value_heads": 8,
@@ -1179,6 +1294,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "normalization_type": "RMS",
             "rotary_base": 1000000,  # Global attention layers
             "rotary_base_local": 10000,  # Local attention layers (per Gemma 3 paper)
+            "rotary_scaling_factor": 8.0,  # Linear RoPE scaling for global layers
             "positional_embedding_type": "rotary",
             "use_attn_scale": True,
             "n_key_value_heads": 16,
@@ -1264,7 +1380,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "n_ctx": 8192,
             "eps": 1e-06,
             "d_vocab": 256000,
-            "act_fn": "gelu_new",
+            "act_fn": "gelu",
             "initializer_range": 0.02,
             "normalization_type": "RMS",
             "rotary_base": 10000,
@@ -1286,7 +1402,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "n_ctx": 8192,
             "eps": 1e-06,
             "d_vocab": 256000,
-            "act_fn": "gelu_new",
+            "act_fn": "gelu",
             "initializer_range": 0.02,
             "normalization_type": "RMS",
             "rotary_base": 10000.0,
@@ -1597,6 +1713,7 @@ def get_pretrained_model_config(
     default_prepend_bos: bool | None = None,
     dtype: torch.dtype = torch.float32,
     first_n_layers: int | None = None,
+    n_ctx: int | None = None,
     **kwargs: Any,
 ) -> HookedTransformerConfig:
     """Returns the pretrained model config as an HookedTransformerConfig object.
@@ -1737,6 +1854,17 @@ def get_pretrained_model_config(
             )
     if first_n_layers is not None:
         cfg_dict["n_layers"] = first_n_layers
+
+    if n_ctx is not None:
+        default_n_ctx = cfg_dict.get("n_ctx")
+        if default_n_ctx is not None and n_ctx > default_n_ctx:
+            logging.warning(
+                f"You are setting n_ctx={n_ctx} which is larger than this model's "
+                f"default context length of {default_n_ctx}. The model was not "
+                f"trained on sequences this long and may produce unreliable results. "
+                f"Ensure you have sufficient memory for this context length."
+            )
+        cfg_dict["n_ctx"] = n_ctx
 
     cfg = HookedTransformerConfig.from_dict(cfg_dict)
     return cfg
@@ -1889,6 +2017,20 @@ def get_pretrained_state_dict(
             huggingface_token = os.environ.get("HF_TOKEN", "")
             if official_model_name in NON_HF_HOSTED_MODEL_NAMES:
                 raise NotImplementedError("Model not hosted on HuggingFace, must pass in hf_model")
+            elif "hubert" in official_model_name:
+                hf_model = HubertModel.from_pretrained(
+                    official_model_name,
+                    torch_dtype=dtype,
+                    token=huggingface_token if len(huggingface_token) > 0 else None,
+                    **kwargs,
+                )
+            elif "wav2vec2" in official_model_name:
+                hf_model = Wav2Vec2Model.from_pretrained(
+                    official_model_name,
+                    torch_dtype=dtype,
+                    token=huggingface_token if len(huggingface_token) > 0 else None,
+                    **kwargs,
+                )
             elif "bert" in official_model_name:
                 hf_model = BertForPreTraining.from_pretrained(
                     official_model_name,
@@ -1912,12 +2054,30 @@ def get_pretrained_state_dict(
                     **kwargs,
                 )
             else:
-                hf_model = AutoModelForCausalLM.from_pretrained(
-                    official_model_name,
-                    torch_dtype=dtype,
-                    token=huggingface_token if len(huggingface_token) > 0 else None,
-                    **kwargs,
-                )
+                # Older models may lack pad_token_id (required in newer transformers)
+                try:
+                    hf_model = AutoModelForCausalLM.from_pretrained(
+                        official_model_name,
+                        torch_dtype=dtype,
+                        token=huggingface_token if len(huggingface_token) > 0 else None,
+                        **kwargs,
+                    )
+                except AttributeError as e:
+                    if "pad_token_id" in str(e):
+                        hf_config = AutoConfig.from_pretrained(
+                            official_model_name,
+                            token=huggingface_token if len(huggingface_token) > 0 else None,
+                        )
+                        hf_config.pad_token_id = getattr(hf_config, "pad_token_id", None)
+                        hf_model = AutoModelForCausalLM.from_pretrained(
+                            official_model_name,
+                            config=hf_config,
+                            torch_dtype=dtype,
+                            token=huggingface_token if len(huggingface_token) > 0 else None,
+                            **kwargs,
+                        )
+                    else:
+                        raise
 
             # Load model weights, and fold in layer norm weights
             if hf_model is not None:
@@ -1936,6 +2096,15 @@ def get_pretrained_state_dict(
             state_dict = convert_neox_weights(hf_model, cfg)
         elif cfg.original_architecture == "LlamaForCausalLM":
             state_dict = convert_llama_weights(hf_model, cfg)
+        elif cfg.original_architecture == "HubertModel":
+            state_dict = convert_hubert_weights(hf_model, cfg)
+        elif (
+            cfg.original_architecture == "Wav2Vec2Model"
+            or cfg.original_architecture == "Wav2Vec2ForPreTraining"
+        ):
+            state_dict = convert_hubert_weights(hf_model, cfg)
+        elif cfg.original_architecture == "HubertForCTC":
+            state_dict = convert_hubert_weights(hf_model, cfg)
         elif cfg.original_architecture == "BertForMaskedLM":
             state_dict = convert_bert_weights(hf_model, cfg)
         elif cfg.original_architecture == "T5ForConditionalGeneration":
@@ -1944,6 +2113,8 @@ def get_pretrained_state_dict(
             state_dict = convert_mistral_weights(hf_model, cfg)
         elif cfg.original_architecture == "MixtralForCausalLM":
             state_dict = convert_mixtral_weights(hf_model, cfg)
+        elif cfg.original_architecture == "GptOssForCausalLM":
+            state_dict = convert_gpt_oss_weights(hf_model, cfg)
         elif cfg.original_architecture == "BloomForCausalLM":
             state_dict = convert_bloom_weights(hf_model, cfg)
         elif cfg.original_architecture == "GPT2LMHeadCustomModel":
@@ -1962,6 +2133,8 @@ def get_pretrained_state_dict(
             state_dict = convert_gemma_weights(hf_model, cfg)
         elif cfg.original_architecture == "Gemma2ForCausalLM":
             state_dict = convert_gemma_weights(hf_model, cfg)
+        elif cfg.original_architecture == "ApertusForCausalLM":
+            state_dict = convert_apertus_weights(hf_model, cfg)
         elif cfg.original_architecture == "Gemma3ForCausalLM":
             state_dict = convert_gemma_weights(hf_model, cfg)
         elif cfg.original_architecture == "Gemma3ForConditionalGeneration":

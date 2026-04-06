@@ -27,7 +27,6 @@ import argparse
 import gc
 import json
 import logging
-import os
 import re
 import signal
 import time
@@ -176,8 +175,11 @@ def estimate_model_params(model_id: str) -> int:
     from transformer_lens.loading_from_pretrained import NEED_REMOTE_CODE_MODELS
 
     trust_remote_code = any(model_id.startswith(prefix) for prefix in NEED_REMOTE_CODE_MODELS)
-    _token = os.environ.get("HF_TOKEN", "") or None
-    config = AutoConfig.from_pretrained(model_id, trust_remote_code=trust_remote_code, token=_token)
+    from transformer_lens.utilities.hf_utils import get_hf_token
+
+    config = AutoConfig.from_pretrained(
+        model_id, trust_remote_code=trust_remote_code, token=get_hf_token()
+    )
 
     # For multimodal models (LLaVA, Gemma3 multimodal), the language model config
     # is nested under text_config. Fall through to the top-level config otherwise.
@@ -277,16 +279,13 @@ def estimate_benchmark_memory_gb(
     n_params: int,
     dtype: str = "float32",
     phases: Optional[list[int]] = None,
-    conserve_memory: bool = False,
 ) -> float:
     """Estimate peak memory needed for benchmark suite.
 
     Phases run sequentially, so peak memory is the maximum of any single phase,
     not the sum. The multiplier represents how many model copies exist at peak:
 
-    Phase 1 (conserve_memory=True):  Bridge only (uses bridge.original_model
-        as reference) → 1.0x model + overhead
-    Phase 1 (conserve_memory=False): Briefly loads HF ref + Bridge → 2.0x peak
+    Phase 1: Briefly loads HF ref + Bridge → 2.0x peak
     Phase 2: Bridge + HookedTransformer (separate copy) → 2.0x model + overhead
     Phase 3: Same as Phase 2 (processed versions) → 2.0x model + overhead
     Phase 4: Bridge + GPT-2 scorer (~500MB) → ~1.0x model + 0.5 GB
@@ -295,7 +294,6 @@ def estimate_benchmark_memory_gb(
         n_params: Number of model parameters
         dtype: Data type for memory calculation
         phases: Which phases will be run (None = all phases)
-        conserve_memory: Whether --conserve-memory mode is enabled
 
     Returns:
         Estimated peak memory in GB
@@ -317,13 +315,10 @@ def estimate_benchmark_memory_gb(
         phases = [1, 2, 3, 4]
 
     for p in phases:
-        if p == 1:
-            copies = 1.0 if conserve_memory else 2.0
-            phase_peaks.append(model_size_gb * copies * (1 + overhead_fraction))
-        elif p in (2, 3):
-            # Bridge + HookedTransformer = 2 full model copies
-            copies = 2.0
-            phase_peaks.append(model_size_gb * copies * (1 + overhead_fraction))
+        if p in (1, 2, 3):
+            # Phase 1: HF ref + Bridge = 2 copies briefly
+            # Phase 2/3: Bridge + HookedTransformer = 2 copies
+            phase_peaks.append(model_size_gb * 2.0 * (1 + overhead_fraction))
         elif p == 4:
             # Bridge + GPT-2 scorer
             phase_peaks.append(model_size_gb * (1 + overhead_fraction) + gpt2_overhead_gb)
@@ -456,7 +451,7 @@ def _extract_phase_scores(results: list) -> dict[int, Optional[float]]:
     """
     from transformer_lens.benchmarks.utils import BenchmarkSeverity
 
-    phase_results: dict[int, list[bool]] = {1: [], 2: [], 3: [], 4: [], 7: []}
+    phase_results: dict[int, list[bool]] = {1: [], 2: [], 3: [], 4: [], 7: [], 8: []}
     for result in results:
         if result.phase in phase_results and result.severity != BenchmarkSeverity.SKIPPED:
             phase_results[result.phase].append(result.passed)
@@ -490,16 +485,18 @@ _MIN_PHASE_SCORES: dict[int, float] = {
     3: 75.0,
     4: 50.0,
     7: 75.0,
+    8: 75.0,
 }
 _DEFAULT_MIN_PHASE_SCORE = 50.0
 
 # Architectures that include a vision encoder and require Phase 7 (multimodal
 # benchmarks) as part of core verification.
-_MULTIMODAL_ARCHITECTURES = {
-    "LlavaForConditionalGeneration",
-    "LlavaNextForConditionalGeneration",
-    "LlavaOnevisionForConditionalGeneration",
-    "Gemma3ForConditionalGeneration",
+from transformer_lens.utilities.architectures import classify_architecture
+
+_AUDIO_ARCHITECTURES = {
+    "HubertForCTC",
+    "HubertModel",
+    "HubertForSequenceClassification",
 }
 
 # Tests that MUST pass for a phase to be considered passing, regardless of
@@ -509,6 +506,7 @@ _REQUIRED_PHASE_TESTS: dict[int, list[str]] = {
     2: ["logits_equivalence", "loss_equivalence"],
     3: ["logits_equivalence", "loss_equivalence"],
     7: ["multimodal_forward"],
+    8: ["audio_forward"],
 }
 
 
@@ -534,11 +532,13 @@ def _check_phase_scores(
     failing_phases: list[str] = []
     for phase, score in sorted(phase_scores.items()):
         if score is None:
-            # Phase 7 (multimodal) with a NULL score means the processor was
-            # unavailable and no tests ran.  This is a verification failure,
-            # not something to silently skip.
+            # Phase 7 (multimodal) or Phase 8 (audio) with a NULL score means
+            # the processor was unavailable and no tests ran.  This is a
+            # verification failure, not something to silently skip.
             if phase == 7:
                 failing_phases.append(f"P7=NULL (multimodal tests skipped — processor unavailable)")
+            elif phase == 8:
+                failing_phases.append(f"P8=NULL (audio tests skipped — no results)")
             continue
 
         # Phase 4 is a quality metric, not a pass/fail check — skip it here.
@@ -678,7 +678,6 @@ def verify_models(
     phases: Optional[list[int]] = None,
     quiet: bool = False,
     progress: Optional[VerificationProgress] = None,
-    conserve_memory: bool = False,
 ) -> VerificationProgress:
     """Run verification benchmarks on a list of model candidates.
 
@@ -692,7 +691,6 @@ def verify_models(
         phases: Which benchmark phases to run (default: [1, 2, 3, 4])
         quiet: Suppress verbose output
         progress: Existing progress for resume
-        conserve_memory: Reduce Phase 1 peak memory by using bridge.original_model
 
     Returns:
         VerificationProgress with results
@@ -783,9 +781,7 @@ def verify_models(
             continue
 
         # Step 2: Check memory
-        estimated_mem = estimate_benchmark_memory_gb(
-            n_params, dtype, phases=phases, conserve_memory=conserve_memory
-        )
+        estimated_mem = estimate_benchmark_memory_gb(n_params, dtype, phases=phases)
         candidate.estimated_memory_gb = estimated_mem
         if not quiet:
             print(
@@ -828,10 +824,6 @@ def verify_models(
         }
         torch_dtype = _dtype_map[dtype]
 
-        # Multimodal models always use conserve_memory to avoid loading two
-        # large models simultaneously (causes MPS memory-pressure divergence).
-        effective_conserve_memory = conserve_memory or arch in _MULTIMODAL_ARCHITECTURES
-
         if not quiet:
             print(f"  Running phases {phases} in a single benchmark call...")
         try:
@@ -843,7 +835,6 @@ def verify_models(
                 use_ht_reference=use_ht_reference,
                 verbose=not quiet,
                 phases=phases,
-                conserve_memory=effective_conserve_memory,
                 trust_remote_code=needs_remote_code,
                 scoring_model=_scoring_model,
                 scoring_tokenizer=_scoring_tokenizer,
@@ -884,11 +875,17 @@ def verify_models(
         # only update the phase scores that were run.  Don't change the
         # model's overall status or note — those reflect the full
         # verification and should only be set by a complete run.
-        is_multimodal = arch in _MULTIMODAL_ARCHITECTURES
-        # For multimodal models, Phase 7 is part of core verification.
-        # A full run is {1,2,3,4,7} for multimodal, {1,2,3,4} for text-only.
-        full_phases = {1, 2, 3, 4, 7} if is_multimodal else {1, 2, 3, 4}
-        core_required = {1, 4, 7} if is_multimodal else {1, 4}
+        is_multimodal = classify_architecture(arch) == "multimodal"
+        is_audio = classify_architecture(arch) == "audio"
+        if is_audio:
+            full_phases = {1, 8}
+            core_required = {1, 8}
+        elif is_multimodal:
+            full_phases = {1, 2, 3, 4, 7}
+            core_required = {1, 4, 7}
+        else:
+            full_phases = {1, 2, 3, 4}
+            core_required = {1, 4}
         is_partial_run = set(phases) != full_phases
 
         if is_partial_run and phase_scores:
@@ -926,12 +923,19 @@ def verify_models(
                         if p7 is not None:
                             p7_pass = p7 >= _MIN_PHASE_SCORES.get(7, _DEFAULT_MIN_PHASE_SCORE)
                         else:
-                            # Phase 7 score is NULL — either not requested or
-                            # all tests were skipped (no processor).  Either
-                            # way, multimodal verification is incomplete.
                             p7_pass = False
 
-                    if p1_pass and p4_pass and p7_pass:
+                    # For audio models, Phase 8 is required; Phase 4 is not applicable
+                    p8_pass = True
+                    if is_audio:
+                        p4_pass = True  # Audio models skip text quality
+                        p8 = filtered_scores.get(8)
+                        if p8 is not None:
+                            p8_pass = p8 >= _MIN_PHASE_SCORES.get(8, _DEFAULT_MIN_PHASE_SCORE)
+                        else:
+                            p8_pass = False
+
+                    if p1_pass and p4_pass and p7_pass and p8_pass:
                         partial_status = STATUS_VERIFIED
                         partial_note = "Core verification completed"
                     elif p1_pass and p4_pass and not p7_pass:
@@ -997,7 +1001,8 @@ def verify_models(
                 print(
                     f"  VERIFIED: P1={phase_scores.get(1)}%, "
                     f"P2={phase_scores.get(2)}%, P3={phase_scores.get(3)}%, "
-                    f"P4={phase_scores.get(4)}%, P7={phase_scores.get(7)}%"
+                    f"P4={phase_scores.get(4)}%, P7={phase_scores.get(7)}%, "
+                    f"P8={phase_scores.get(8)}%"
                 )
             update_model_status(
                 model_id,
@@ -1019,7 +1024,8 @@ def verify_models(
                     print(
                         f"  Partial scores saved: P1={phase_scores.get(1)}%, "
                         f"P2={phase_scores.get(2)}%, P3={phase_scores.get(3)}%, "
-                        f"P4={phase_scores.get(4)}%"
+                        f"P4={phase_scores.get(4)}%, P7={phase_scores.get(7)}%, "
+                        f"P8={phase_scores.get(8)}%"
                     )
             update_model_status(
                 model_id,
@@ -1081,7 +1087,6 @@ def _print_dry_run(
     dtype: str,
     max_memory_gb: float,
     phases: Optional[list[int]] = None,
-    conserve_memory: bool = False,
 ) -> None:
     """Print what would be tested in a dry run."""
     print(f"\nDry run: {len(candidates)} models would be tested")
@@ -1102,9 +1107,7 @@ def _print_dry_run(
         for c in models:
             try:
                 n_params = estimate_model_params(c.model_id)
-                mem = estimate_benchmark_memory_gb(
-                    n_params, dtype, phases=phases, conserve_memory=conserve_memory
-                )
+                mem = estimate_benchmark_memory_gb(n_params, dtype, phases=phases)
                 status = "OK" if mem <= max_memory_gb else "SKIP (too large)"
                 if mem > max_memory_gb:
                     skippable += 1
@@ -1239,12 +1242,6 @@ Examples:
         help="Re-run previously failed models instead of skipping them",
     )
     parser.add_argument(
-        "--conserve-memory",
-        action="store_true",
-        help="Reduce Phase 1 peak memory from 2.0x to 1.0x by using "
-        "bridge.original_model instead of a separate HF model",
-    )
-    parser.add_argument(
         "--reverify",
         action="store_true",
         help="Re-run verification for already-verified/skipped/failed models. "
@@ -1342,7 +1339,6 @@ Examples:
             args.dtype,
             max_memory_gb,
             phases=args.phases,
-            conserve_memory=args.conserve_memory,
         )
         return
 
@@ -1361,7 +1357,6 @@ Examples:
         phases=args.phases,
         quiet=args.quiet,
         progress=progress,
-        conserve_memory=args.conserve_memory,
     )
     elapsed = time.time() - start
 

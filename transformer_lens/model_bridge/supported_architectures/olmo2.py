@@ -2,10 +2,6 @@
 
 from typing import Any
 
-from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorConversion
-from transformer_lens.conversion_utils.param_processing_conversion import (
-    ParamProcessingConversion,
-)
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
@@ -78,25 +74,8 @@ class Olmo2ArchitectureAdapter(ArchitectureAdapter):
             self.default_config["n_key_value_heads"] = cfg.n_key_value_heads
             self.cfg.n_key_value_heads = cfg.n_key_value_heads
 
-        n_kv_heads = (
-            self.cfg.n_key_value_heads
-            if self.cfg.n_key_value_heads is not None
-            else self.cfg.n_heads
-        )
-
         self.weight_processing_conversions = {
-            "blocks.{i}.attn.q.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
-            ),
-            "blocks.{i}.attn.k.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=n_kv_heads),
-            ),
-            "blocks.{i}.attn.v.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=n_kv_heads),
-            ),
-            "blocks.{i}.attn.o.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion("m (n h) -> n h m", n=self.cfg.n_heads),
-            ),
+            **self._qkvo_weight_conversions(),
         }
 
         # Component mapping — POST-NORM architecture:

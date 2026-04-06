@@ -8,6 +8,9 @@ import einops
 import torch
 
 from transformer_lens.config import TransformerBridgeConfig
+from transformer_lens.conversion_utils.conversion_steps.rearrange_tensor_conversion import (
+    RearrangeTensorConversion,
+)
 from transformer_lens.conversion_utils.param_processing_conversion import (
     ParamProcessingConversion,
 )
@@ -43,6 +46,7 @@ class ArchitectureAdapter:
         self.component_mapping: ComponentMapping | None = None
         self.weight_processing_conversions: Dict[str, ParamProcessingConversion | str] | None = None
         self.uses_split_attention: bool = getattr(cfg, "uses_split_attention", False)
+        self._fold_ln_requested: bool = True
         self._merge_default_config()
 
     def _merge_default_config(self) -> None:
@@ -50,6 +54,34 @@ class ArchitectureAdapter:
         for key, value in self.default_cfg.items():
             if not hasattr(self.cfg, key):
                 setattr(self.cfg, key, value)
+
+    def _qkvo_weight_conversions(
+        self, n_kv_heads: Optional[int] = None
+    ) -> Dict[str, ParamProcessingConversion]:
+        """Standard Q/K/V/O weight rearrangement conversions.
+
+        Most decoder-only models use the same rearrange patterns for attention
+        weights. Override only when your model's layout differs.
+
+        Args:
+            n_kv_heads: Number of KV heads for GQA. If None, falls back to n_heads.
+        """
+        if n_kv_heads is None:
+            n_kv_heads = getattr(self.cfg, "n_key_value_heads", None) or self.cfg.n_heads
+        return {
+            "blocks.{i}.attn.q.weight": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
+            ),
+            "blocks.{i}.attn.k.weight": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=n_kv_heads),
+            ),
+            "blocks.{i}.attn.v.weight": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=n_kv_heads),
+            ),
+            "blocks.{i}.attn.o.weight": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion("m (n h) -> n h m", n=self.cfg.n_heads),
+            ),
+        }
 
     def preprocess_weights(self, state_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
         """Apply architecture-specific weight transformations before ProcessWeights.

@@ -50,9 +50,7 @@ def map_default_transformer_lens_config(hf_config):
     Returns:
         A copy of hf_config with additional TransformerLens fields
     """
-    # For multimodal models, extract language model config from text_config.
-    # The text_config contains hidden_size, num_attention_heads, etc. that
-    # TransformerLens needs for the language backbone.
+    # Extract language model config from text_config for multimodal models
     source_config = hf_config
     if hasattr(hf_config, "text_config") and hf_config.text_config is not None:
         source_config = hf_config.text_config
@@ -123,7 +121,7 @@ def map_default_transformer_lens_config(hf_config):
         tl_config.n_layers = source_config.num_transformer_layers
     elif hasattr(source_config, "num_layers"):
         tl_config.n_layers = source_config.num_layers
-    if hasattr(source_config, "vocab_size"):
+    if hasattr(source_config, "vocab_size") and isinstance(source_config.vocab_size, int):
         tl_config.d_vocab = source_config.vocab_size
     if hasattr(source_config, "n_positions"):
         tl_config.n_ctx = source_config.n_positions
@@ -151,6 +149,15 @@ def map_default_transformer_lens_config(hf_config):
         tl_config.d_head = tl_config.d_model // tl_config.n_heads
     if hasattr(source_config, "activation_function"):
         tl_config.act_fn = source_config.activation_function
+    elif hasattr(source_config, "hidden_act"):
+        tl_config.act_fn = source_config.hidden_act
+    # Layer norm / RMS norm epsilon — HF uses 3 different field names
+    if hasattr(source_config, "rms_norm_eps"):
+        tl_config.eps = source_config.rms_norm_eps
+    elif hasattr(source_config, "layer_norm_eps"):
+        tl_config.eps = source_config.layer_norm_eps
+    elif hasattr(source_config, "layer_norm_epsilon"):
+        tl_config.eps = source_config.layer_norm_epsilon
     if hasattr(source_config, "num_local_experts"):
         tl_config.num_experts = source_config.num_local_experts
     if hasattr(source_config, "num_experts_per_tok"):
@@ -159,9 +166,7 @@ def map_default_transformer_lens_config(hf_config):
         tl_config.sliding_window = source_config.sliding_window
     if getattr(hf_config, "use_parallel_residual", False):
         tl_config.parallel_attn_mlp = True
-    # GPT-J has a parallel attention+MLP architecture (both read from same ln_1
-    # output) but doesn't set use_parallel_residual in its HF config. Detect it
-    # by architecture class so fold_ln correctly folds ln1 into BOTH attn and MLP.
+    # GPT-J: parallel attn+MLP but missing use_parallel_residual in HF config
     arch_classes = getattr(hf_config, "architectures", []) or []
     if any(a in ("GPTJForCausalLM",) for a in arch_classes):
         tl_config.parallel_attn_mlp = True
@@ -189,7 +194,9 @@ def determine_architecture_from_hf_config(hf_config):
     if hasattr(hf_config, "model_type"):
         model_type = hf_config.model_type
         model_type_mappings = {
+            "apertus": "ApertusForCausalLM",
             "gpt2": "GPT2LMHeadModel",
+            "hubert": "HubertModel",
             "llama": "LlamaForCausalLM",
             "mistral": "MistralForCausalLM",
             "mixtral": "MixtralForCausalLM",
@@ -223,47 +230,33 @@ def determine_architecture_from_hf_config(hf_config):
 
 
 def get_hf_model_class_for_architecture(architecture: str):
-    """Determine the correct HuggingFace AutoModel class to use for loading.
+    """Determine the correct HuggingFace AutoModel class for loading.
 
-    Args:
-        architecture: The architecture name (e.g., "GPT2LMHeadModel", "T5ForConditionalGeneration")
-
-    Returns:
-        The appropriate HuggingFace AutoModel class to use
-
-    Raises:
-        ValueError: If architecture is not recognized
+    Uses centralized architecture sets from utilities.architectures.
     """
-    seq2seq_architectures = {
-        "T5ForConditionalGeneration",
-        "BartForConditionalGeneration",
-        "MBartForConditionalGeneration",
-        "MarianMTModel",
-        "PegasusForConditionalGeneration",
-        "BlenderbotForConditionalGeneration",
-        "BlenderbotSmallForConditionalGeneration",
-    }
-    masked_lm_architectures = {
-        "BertForMaskedLM",
-        "RobertaForMaskedLM",
-        "DistilBertForMaskedLM",
-        "AlbertForMaskedLM",
-        "ElectraForMaskedLM",
-    }
-    multimodal_architectures = {
-        "LlavaForConditionalGeneration",
-        "LlavaNextForConditionalGeneration",
-        "LlavaOnevisionForConditionalGeneration",
-        "Gemma3ForConditionalGeneration",
-    }
-    if architecture in seq2seq_architectures:
+    from transformer_lens.utilities.architectures import (
+        AUDIO_ARCHITECTURES,
+        MASKED_LM_ARCHITECTURES,
+        MULTIMODAL_ARCHITECTURES,
+        SEQ2SEQ_ARCHITECTURES,
+    )
+
+    if architecture in SEQ2SEQ_ARCHITECTURES:
         return AutoModelForSeq2SeqLM
-    elif architecture in masked_lm_architectures:
+    elif architecture in MASKED_LM_ARCHITECTURES:
         return AutoModelForMaskedLM
-    elif architecture in multimodal_architectures:
+    elif architecture in MULTIMODAL_ARCHITECTURES:
         from transformers import AutoModelForImageTextToText
 
         return AutoModelForImageTextToText
+    elif architecture in AUDIO_ARCHITECTURES:
+        if "ForCTC" in architecture:
+            from transformers import AutoModelForCTC
+
+            return AutoModelForCTC
+        from transformers import AutoModel
+
+        return AutoModel
     else:
         return AutoModelForCausalLM
 
@@ -277,6 +270,7 @@ def boot(
     load_weights: bool = True,
     trust_remote_code: bool = False,
     model_class: Any | None = None,
+    hf_model: Any | None = None,
 ) -> TransformerBridge:
     """Boot a model from HuggingFace.
 
@@ -290,6 +284,9 @@ def boot(
         model_class: Optional HuggingFace model class to use instead of the default auto-detected
             class. When the class name matches a key in SUPPORTED_ARCHITECTURES, the corresponding
             adapter is selected automatically (e.g., BertForNextSentencePrediction).
+        hf_model: Optional pre-loaded HuggingFace model to use instead of loading one. Useful for
+            models loaded with custom configurations (e.g., quantization via BitsAndBytesConfig).
+            When provided, load_weights is ignored.
 
     Returns:
         The bridge to the loaded model.
@@ -302,7 +299,9 @@ def boot(
             model_name = official_name
             break
     # Pass HF token for gated model access (e.g. meta-llama/*)
-    _hf_token = os.environ.get("HF_TOKEN", "") or None
+    from transformer_lens.utilities.hf_utils import get_hf_token
+
+    _hf_token = get_hf_token()
     hf_config = AutoConfig.from_pretrained(
         model_name,
         output_attentions=True,
@@ -314,9 +313,7 @@ def boot(
     tl_config = map_default_transformer_lens_config(hf_config)
     architecture = determine_architecture_from_hf_config(hf_config)
     config_dict = dict(tl_config.__dict__)
-    # HF configs may remap attribute names via attribute_map (e.g., MixtralConfig maps
-    # `num_experts` -> `num_local_experts`). Explicitly restore the TL name so that
-    # TransformerBridgeConfig.from_dict receives the expected key.
+    # Restore TL attribute names that HF remaps via attribute_map
     if "num_local_experts" in config_dict and "num_experts" not in config_dict:
         config_dict["num_experts"] = config_dict["num_local_experts"]
     bridge_config = TransformerBridgeConfig.from_dict(config_dict)
@@ -342,6 +339,11 @@ def boot(
     attn_logit_softcapping = getattr(hf_config, "attn_logit_softcapping", None)
     if attn_logit_softcapping is not None:
         bridge_config.attn_scores_soft_cap = float(attn_logit_softcapping)
+    # Propagate position_embedding_type for Granite Hybrid models that use
+    # "nope" (no positional embeddings) instead of "rope" on some/all layers.
+    position_embedding_type = getattr(hf_config, "position_embedding_type", None)
+    if position_embedding_type is not None:
+        bridge_config.position_embedding_type = position_embedding_type
     # Propagate vision config for multimodal models so the adapter can
     # select the correct vision encoder bridge (CLIP vs SigLIP).
     if hasattr(hf_config, "vision_config") and hf_config.vision_config is not None:
@@ -352,9 +354,7 @@ def boot(
     adapter.cfg.device = str(device)
     if model_class is None:
         model_class = get_hf_model_class_for_architecture(architecture)
-    # Ensure pad_token_id exists on HF config. Transformers v5 raises AttributeError
-    # for missing config attributes (instead of returning None), which crashes models
-    # like Phi-1 that access config.pad_token_id during __init__.
+    # Ensure pad_token_id exists (v5 raises AttributeError if missing)
     if not hasattr(hf_config, "pad_token_id") or "pad_token_id" not in hf_config.__dict__:
         fallback_pad = getattr(hf_config, "eos_token_id", None)
         # eos_token_id can be a list (e.g., Gemma3 uses [1, 106]); take the first.
@@ -369,12 +369,13 @@ def boot(
     if hasattr(adapter.cfg, "attn_implementation") and adapter.cfg.attn_implementation is not None:
         model_kwargs["attn_implementation"] = adapter.cfg.attn_implementation
     else:
-        # Default to "eager" — the Bridge uses output_attentions for hooks,
-        # which requires eager attention.  This also ensures numerical parity
-        # with benchmarks that compare Bridge vs HF reference (both use eager).
+        # Default to eager (required for output_attentions hooks)
         model_kwargs["attn_implementation"] = "eager"
     adapter.prepare_loading(model_name, model_kwargs)
-    if not load_weights:
+    if hf_model is not None:
+        # Use the pre-loaded model as-is (e.g., quantized models with custom device_map)
+        pass
+    elif not load_weights:
         from_config_kwargs = {}
         if trust_remote_code:
             from_config_kwargs["trust_remote_code"] = True
@@ -384,21 +385,23 @@ def boot(
         hf_model = model_class.from_pretrained(model_name, **model_kwargs)
         if device is not None:
             hf_model = hf_model.to(device)
-        # Ensure all parameters match the requested dtype. Some architectures
-        # (e.g., MoE models) retain native bfloat16 weights even when
-        # torch_dtype is specified during from_pretrained().
-        hf_model = hf_model.to(dtype=dtype)
+        # Cast params to dtype; preserve float32 buffers (e.g., RotaryEmbedding.inv_freq)
+        for param in hf_model.parameters():
+            if param.is_floating_point() and param.dtype != dtype:
+                param.data = param.data.to(dtype=dtype)
     adapter.prepare_model(hf_model)
     tokenizer = tokenizer
     default_padding_side = getattr(adapter.cfg, "default_padding_side", None)
     use_fast = getattr(adapter.cfg, "use_fast", True)
-    if tokenizer is not None:
+    # Audio models use feature extractors, not text tokenizers
+    _is_audio = getattr(adapter.cfg, "is_audio_model", False)
+    if _is_audio and tokenizer is None:
+        tokenizer = None  # Skip tokenizer loading for audio models
+    elif tokenizer is not None:
         tokenizer = setup_tokenizer(tokenizer, default_padding_side=default_padding_side)
     else:
-        huggingface_token = os.environ.get("HF_TOKEN", "")
-        token_arg = huggingface_token if len(huggingface_token) > 0 else None
-        # Determine tokenizer source: use adapter's tokenizer_name if the model
-        # doesn't ship its own tokenizer (e.g., OpenELM uses LLaMA tokenizer)
+        token_arg = get_hf_token()
+        # Use adapter's tokenizer_name if model lacks one (e.g., OpenELM)
         tokenizer_source = model_name
         if hasattr(adapter.cfg, "tokenizer_name") and adapter.cfg.tokenizer_name is not None:
             tokenizer_source = adapter.cfg.tokenizer_name
@@ -425,10 +428,7 @@ def boot(
             default_padding_side=default_padding_side,
         )
     if tokenizer is not None:
-        # Detect whether the tokenizer auto-prepends BOS or auto-appends EOS.
-        # We encode a non-empty test string and check the first/last tokens.
-        # Using encode("") is unreliable because setup_tokenizer may set
-        # bos_token = eos_token, making them indistinguishable.
+        # Detect BOS/EOS behavior (use non-empty string; empty is unreliable with token aliasing)
         encoded_test = tokenizer.encode("a")
         adapter.cfg.tokenizer_prepends_bos = (
             len(encoded_test) > 1
@@ -455,17 +455,14 @@ def boot(
                 trust_remote_code=trust_remote_code,
             )
         except Exception:
-            # Some multimodal processors (e.g., LlavaOnevision) require
-            # torchvision for video processing.  Conditionally install it
-            # and retry the processor loading.
+            # Some processors need torchvision (e.g., LlavaOnevision); install if needed
             _torchvision_available = False
             try:
                 import torchvision  # noqa: F401
 
                 _torchvision_available = True
             except Exception:
-                # torchvision may be missing (ImportError) or broken/version-
-                # mismatched (RuntimeError).  Try to install/reinstall it.
+                # Install/reinstall torchvision if missing or broken
                 import shutil
                 import subprocess
                 import sys
@@ -500,6 +497,21 @@ def boot(
                 except Exception:
                     pass  # Processor not available; user can set bridge.processor manually
 
+    # Load feature extractor for audio models (needed for audio preprocessing)
+    if getattr(adapter.cfg, "is_audio_model", False):
+        try:
+            from transformers import AutoFeatureExtractor
+
+            huggingface_token = os.environ.get("HF_TOKEN", "")
+            token_arg = huggingface_token if len(huggingface_token) > 0 else None
+            bridge.processor = AutoFeatureExtractor.from_pretrained(
+                model_name,
+                token=token_arg,
+                trust_remote_code=trust_remote_code,
+            )
+        except Exception:
+            pass  # Feature extractor not available; user can set bridge.processor manually
+
     return bridge
 
 
@@ -533,10 +545,7 @@ def setup_tokenizer(tokenizer, default_padding_side=None):
     if tokenizer.bos_token is None:
         tokenizer.bos_token = tokenizer.eos_token
 
-    # Ensure special token strings resolve to valid IDs.  Some tokenizers
-    # (e.g. ChemGPT's SMILES vocabulary) don't contain the default fallback
-    # strings, leaving pad_token_id as None.  HF's padding logic then crashes
-    # with "TypeError: '<' not supported between instances of 'NoneType' and 'int'".
+    # Ensure special tokens resolve to valid IDs (some vocabularies lack defaults)
     if tokenizer.pad_token is not None and tokenizer.pad_token_id is None:
         tokenizer.add_special_tokens({"pad_token": tokenizer.pad_token})
     if tokenizer.eos_token is not None and tokenizer.eos_token_id is None:

@@ -56,6 +56,7 @@ class CLIPVisionEncoderLayerBridge(GeneralizedComponent):
         self,
         hidden_states: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
+        causal_attention_mask: Optional[torch.Tensor] = None,
         **kwargs: Any,
     ) -> torch.Tensor:
         """Forward pass through the vision encoder layer.
@@ -63,6 +64,7 @@ class CLIPVisionEncoderLayerBridge(GeneralizedComponent):
         Args:
             hidden_states: Input hidden states from previous layer
             attention_mask: Optional attention mask
+            causal_attention_mask: Optional causal attention mask (used by CLIP encoder)
             **kwargs: Additional arguments
 
         Returns:
@@ -74,7 +76,12 @@ class CLIPVisionEncoderLayerBridge(GeneralizedComponent):
             )
 
         hidden_states = self.hook_in(hidden_states)
-        output = self.original_component(hidden_states, attention_mask=attention_mask, **kwargs)
+        output = self.original_component(
+            hidden_states,
+            attention_mask=attention_mask,
+            causal_attention_mask=causal_attention_mask,
+            **kwargs,
+        )
 
         if isinstance(output, tuple):
             output = (self.hook_out(output[0]),) + output[1:]

@@ -22,6 +22,11 @@ from huggingface_hub.constants import HF_HUB_CACHE
 CACHE_DIR = HF_HUB_CACHE
 
 
+def get_hf_token() -> str | None:
+    """Get HuggingFace token from environment. Returns None if not set."""
+    return os.environ.get("HF_TOKEN", "") or None
+
+
 def get_rotary_pct_from_config(config: Any) -> float:
     """Get the rotary percentage from a config object.
 

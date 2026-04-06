@@ -39,7 +39,7 @@ def _get_decoder_input_ids(model: torch.nn.Module, batch_size: int = 1) -> torch
 
 def benchmark_forward_pass(
     bridge: TransformerBridge,
-    test_text: str,
+    test_input: Union[str, torch.Tensor],
     reference_model: Optional[Union[HookedTransformer, torch.nn.Module]] = None,
     reference_logits: Optional[torch.Tensor] = None,
     atol: float = 1e-3,
@@ -49,10 +49,10 @@ def benchmark_forward_pass(
 
     Args:
         bridge: TransformerBridge model to test
-        test_text: Input text for testing
+        test_input: Input text string or audio waveform tensor for testing
         reference_model: Optional reference model (HookedTransformer or HF model)
-        reference_logits: Optional pre-computed reference logits tensor (e.g., saved
-            from a prior HF forward pass to avoid needing both models in memory)
+        reference_logits: Optional pre-computed reference logits/hidden states tensor
+            (e.g., saved from a prior HF forward pass to avoid needing both models in memory)
         atol: Absolute tolerance for comparison
         rtol: Relative tolerance for comparison
 
@@ -60,13 +60,15 @@ def benchmark_forward_pass(
         BenchmarkResult with comparison details
     """
     try:
+        _is_audio = getattr(bridge.cfg, "is_audio_model", False)
+
         # Check if this is an encoder-decoder model
         is_enc_dec = _is_encoder_decoder(bridge.original_model)
 
         # Prepare extra kwargs for encoder-decoder models
         extra_kwargs = {}
-        if is_enc_dec:
-            tokens = bridge.to_tokens(test_text)
+        if is_enc_dec and isinstance(test_input, str):
+            tokens = bridge.to_tokens(test_input)
             batch_size = tokens.shape[0]
             decoder_input_ids = _get_decoder_input_ids(bridge.original_model, batch_size)
             decoder_input_ids = decoder_input_ids.to(tokens.device)
@@ -75,7 +77,19 @@ def benchmark_forward_pass(
         # Run bridge forward pass (use no_grad to match HF reference context —
         # MPS SDPA can produce different results with vs without gradient tracking)
         with torch.no_grad():
-            bridge_output = bridge(test_text, return_type="logits", **extra_kwargs)
+            if _is_audio and isinstance(test_input, torch.Tensor):
+                # Audio models: pass waveform, extract tensor from output
+                bridge_output_raw = bridge(test_input, return_type="logits")
+                if isinstance(bridge_output_raw, torch.Tensor):
+                    bridge_output = bridge_output_raw
+                elif hasattr(bridge_output_raw, "logits") and bridge_output_raw.logits is not None:
+                    bridge_output = bridge_output_raw.logits
+                elif hasattr(bridge_output_raw, "last_hidden_state"):
+                    bridge_output = bridge_output_raw.last_hidden_state
+                else:
+                    bridge_output = bridge_output_raw
+            else:
+                bridge_output = bridge(test_input, return_type="logits", **extra_kwargs)
 
         if reference_model is None and reference_logits is None:
             # No reference model or logits - just verify output shape and validity
@@ -106,12 +120,22 @@ def benchmark_forward_pass(
         if reference_logits is not None:
             reference_output = reference_logits.to(bridge_output.device)
         elif isinstance(reference_model, HookedTransformer):
-            reference_output = reference_model(test_text, return_type="logits")
+            reference_output = reference_model(test_input, return_type="logits")
+        elif _is_audio and isinstance(test_input, torch.Tensor):
+            # Audio HF reference model: pass waveform directly
+            assert reference_model is not None
+            with torch.no_grad():
+                hf_output = reference_model(input_values=test_input)
+                if hasattr(hf_output, "logits") and hf_output.logits is not None:
+                    reference_output = hf_output.logits
+                else:
+                    reference_output = hf_output.last_hidden_state
         else:
             # HuggingFace model (reference_model is guaranteed non-None here
             # because we returned early at line 80 when both are None)
             assert reference_model is not None
-            tokens = bridge.to_tokens(test_text)
+            assert isinstance(test_input, str), "Text model requires string input"
+            tokens = bridge.to_tokens(test_input)
             with torch.no_grad():
                 if is_enc_dec:
                     # Encoder-decoder models need decoder_input_ids

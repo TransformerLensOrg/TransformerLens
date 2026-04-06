@@ -202,8 +202,8 @@ def generic_activation_patch(
 
     # A generic patching hook - for each index, it applies the patch_setter appropriately to patch the activation
     def patching_hook(corrupted_activation, hook, index, clean_activation):
-        # Clone before inplace patch_setter to avoid autograd view conflicts.
-        corrupted_activation = corrupted_activation.clone()
+        if corrupted_activation.requires_grad:
+            corrupted_activation = corrupted_activation.clone()
         return patch_setter(corrupted_activation, index, clean_activation)
 
     # Iterate over every list of indices, and make the appropriate patch!

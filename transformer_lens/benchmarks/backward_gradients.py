@@ -8,6 +8,7 @@ from transformer_lens import HookedTransformer
 from transformer_lens.benchmarks.utils import (
     BenchmarkResult,
     BenchmarkSeverity,
+    make_grad_capture_hook,
     safe_allclose,
 )
 from transformer_lens.model_bridge import TransformerBridge
@@ -43,22 +44,11 @@ def benchmark_backward_hooks(
             hook_names = list(bridge._hook_registry.keys())
 
         # Register backward hooks on bridge
-        def make_bridge_backward_hook(name: str):
-            def hook_fn(tensor, hook):
-                if isinstance(tensor, torch.Tensor):
-                    bridge_gradients[name] = tensor.detach().clone()
-                elif isinstance(tensor, tuple) and len(tensor) > 0:
-                    if isinstance(tensor[0], torch.Tensor):
-                        bridge_gradients[name] = tensor[0].detach().clone()
-                return None
-
-            return hook_fn
-
         bridge_handles = []
         for hook_name in hook_names:
             if hook_name in bridge.hook_dict:
                 hook_point = bridge.hook_dict[hook_name]
-                handle = hook_point.add_hook(make_bridge_backward_hook(hook_name), dir="bwd")  # type: ignore[func-returns-value]
+                handle = hook_point.add_hook(make_grad_capture_hook(bridge_gradients, hook_name, return_none=True), dir="bwd")  # type: ignore[func-returns-value]
                 bridge_handles.append(handle)
 
         # Run bridge forward and backward
@@ -87,22 +77,11 @@ def benchmark_backward_hooks(
             return result
 
         # Register backward hooks on reference model
-        def make_reference_backward_hook(name: str):
-            def hook_fn(tensor, hook):
-                if isinstance(tensor, torch.Tensor):
-                    reference_gradients[name] = tensor.detach().clone()
-                elif isinstance(tensor, tuple) and len(tensor) > 0:
-                    if isinstance(tensor[0], torch.Tensor):
-                        reference_gradients[name] = tensor[0].detach().clone()
-                return None
-
-            return hook_fn
-
         reference_handles = []
         for hook_name in hook_names:
             if hook_name in reference_model.hook_dict:
                 hook_point = reference_model.hook_dict[hook_name]
-                handle = hook_point.add_hook(make_reference_backward_hook(hook_name), dir="bwd")  # type: ignore[func-returns-value]
+                handle = hook_point.add_hook(make_grad_capture_hook(reference_gradients, hook_name, return_none=True), dir="bwd")  # type: ignore[func-returns-value]
                 reference_handles.append(handle)
 
         # Run reference forward and backward
@@ -316,19 +295,11 @@ def benchmark_critical_backward_hooks(
         bridge_gradients: Dict[str, torch.Tensor] = {}
 
         # Register backward hooks on bridge
-        def make_bridge_backward_hook(name: str):
-            def hook_fn(tensor, hook):
-                if isinstance(tensor, torch.Tensor):
-                    bridge_gradients[name] = tensor.detach().clone()
-                return None
-
-            return hook_fn
-
         bridge_handles = []
         for hook_name in critical_hooks:
             if hook_name in bridge.hook_dict:
                 hook_point = bridge.hook_dict[hook_name]
-                handle = hook_point.add_hook(make_bridge_backward_hook(hook_name), dir="bwd")  # type: ignore[func-returns-value]
+                handle = hook_point.add_hook(make_grad_capture_hook(bridge_gradients, hook_name, return_none=True), dir="bwd")  # type: ignore[func-returns-value]
                 bridge_handles.append(handle)
 
         # Run bridge forward and backward
@@ -360,19 +331,11 @@ def benchmark_critical_backward_hooks(
         # Register backward hooks on reference model
         reference_gradients: Dict[str, torch.Tensor] = {}
 
-        def make_reference_backward_hook(name: str):
-            def hook_fn(tensor, hook):
-                if isinstance(tensor, torch.Tensor):
-                    reference_gradients[name] = tensor.detach().clone()
-                return None
-
-            return hook_fn
-
         reference_handles = []
         for hook_name in critical_hooks:
             if hook_name in reference_model.hook_dict:
                 hook_point = reference_model.hook_dict[hook_name]
-                handle = hook_point.add_hook(make_reference_backward_hook(hook_name), dir="bwd")  # type: ignore[func-returns-value]
+                handle = hook_point.add_hook(make_grad_capture_hook(reference_gradients, hook_name, return_none=True), dir="bwd")  # type: ignore[func-returns-value]
                 reference_handles.append(handle)
 
         # Run reference forward and backward

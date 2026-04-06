@@ -11,7 +11,6 @@ Usage:
 
 import argparse
 import json
-import os
 import time
 from collections import Counter
 from datetime import date
@@ -47,8 +46,9 @@ def discover_architectures(
     except ImportError:
         raise ImportError("huggingface_hub required: pip install huggingface_hub")
 
-    token = os.environ.get("HF_TOKEN", None)
-    api = HfApi(token=token)
+    from transformer_lens.utilities.hf_utils import get_hf_token
+
+    api = HfApi(token=get_hf_token())
     arch_counts: Counter[str] = Counter()
     arch_models: dict[str, list[str]] = {}  # Track example models per architecture
     checked = 0
