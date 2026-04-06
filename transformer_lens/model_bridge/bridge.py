@@ -2006,9 +2006,9 @@ class TransformerBridge(nn.Module):
                     elif _generate_from_embeds:
                         # For inputs_embeds: get the embedding of the new token and append
                         generated_token_ids.append(sampled_tokens)
-                        new_embed = self.original_model.get_input_embeddings()(
-                            sampled_tokens.unsqueeze(1)
-                        ).to(current_tokens.dtype)
+                        embed_fn = self.original_model.get_input_embeddings()  # type: ignore[operator]
+                        assert embed_fn is not None
+                        new_embed = embed_fn(sampled_tokens.unsqueeze(1)).to(current_tokens.dtype)
                         current_tokens = torch.cat([current_tokens, new_embed], dim=1)
                     else:
                         current_tokens = torch.cat(
