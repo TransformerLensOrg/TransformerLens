@@ -28,7 +28,6 @@ from torch import nn
 
 from transformer_lens import utils
 from transformer_lens.ActivationCache import ActivationCache
-from transformer_lens.cache.key_value_cache import TransformerLensKeyValueCache
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
@@ -855,24 +854,6 @@ class TransformerBridge(nn.Module):
             tokens = tokens.to(self.cfg.device)
         return tokens
 
-    def get_pos_offset(self, past_kv_cache, batch_size: int) -> int:
-        """Compute position offset from a TransformerLensKeyValueCache-like object.
-
-        Mirrors TransformerLens.get_pos_offset behavior for compatibility.
-        """
-        if past_kv_cache is None:
-            return 0
-        cached_batch_size, cache_ctx_length, num_heads_in_cache, d_head_in_cache = past_kv_cache[
-            0
-        ].past_keys.shape
-        assert cached_batch_size == batch_size
-        if getattr(self.cfg, "n_key_value_heads", None) is None:
-            assert num_heads_in_cache == self.cfg.n_heads
-        else:
-            assert num_heads_in_cache == getattr(self.cfg, "n_key_value_heads")
-        assert d_head_in_cache == self.cfg.d_head
-        return cache_ctx_length
-
     def to_string(
         self, tokens: Union[List[int], torch.Tensor, np.ndarray]
     ) -> Union[str, List[str]]:
@@ -1200,7 +1181,6 @@ class TransformerBridge(nn.Module):
         loss_per_token: bool = False,
         prepend_bos: Optional[bool] = None,
         padding_side: Optional[str] = None,
-        past_kv_cache: Optional[TransformerLensKeyValueCache] = None,
         attention_mask: Optional[torch.Tensor] = None,
         start_at_layer: Optional[int] = None,
         stop_at_layer: Optional[int] = None,
@@ -1216,7 +1196,6 @@ class TransformerBridge(nn.Module):
             loss_per_token: Whether to return loss per token
             prepend_bos: Whether to prepend BOS token
             padding_side: Which side to pad on
-            past_kv_cache: Optional TransformerLensKeyValueCache for generation
             start_at_layer: Layer to start forward pass from
             stop_at_layer: Layer to stop forward pass at
             pixel_values: Optional image tensor for multimodal models (e.g., LLaVA, Gemma3).
@@ -1259,36 +1238,7 @@ class TransformerBridge(nn.Module):
                 input_ids = input
             if attention_mask is not None:
                 kwargs["attention_mask"] = attention_mask
-            if past_kv_cache is not None:
-                from transformers import DynamicCache
-
-                hf_config = getattr(self.original_model, "config", None)
-                backend_cache = DynamicCache(config=hf_config) if hf_config else DynamicCache()
-                for layer_idx, entry in enumerate(past_kv_cache.entries):
-                    if entry.past_keys.numel() > 0:
-                        cached_keys = entry.past_keys.transpose(1, 2)
-                        cached_values = entry.past_values.transpose(1, 2)
-                        backend_cache.update(cached_keys, cached_values, layer_idx)
-                kwargs["past_key_values"] = backend_cache
-                if hasattr(past_kv_cache, "previous_attention_mask"):
-                    batch_size = input_ids.shape[0]
-                    current_length = input_ids.shape[1]
-                    past_length = past_kv_cache.previous_attention_mask.shape[1]
-                    if attention_mask is not None:
-                        current_mask = attention_mask
-                    else:
-                        current_mask = torch.ones(
-                            batch_size, current_length, dtype=torch.long, device=input_ids.device
-                        )
-                    if past_length > 0:
-                        full_attention_mask = torch.cat(
-                            [past_kv_cache.previous_attention_mask, current_mask], dim=1
-                        )
-                    else:
-                        full_attention_mask = current_mask
-                    kwargs["attention_mask"] = full_attention_mask
-                kwargs["use_cache"] = True
-            elif "use_past_kv_cache" in kwargs and kwargs["use_past_kv_cache"]:
+            if kwargs.pop("use_past_kv_cache", False) or kwargs.get("use_cache", False):
                 kwargs["use_cache"] = True
             # Auto-generate decoder_input_ids for encoder-decoder models
             if (
@@ -1334,7 +1284,6 @@ class TransformerBridge(nn.Module):
                 kwargs["input_values"] = input_values
 
             # Audio models use input_values (waveform), not input_ids
-            original_tl_cache = past_kv_cache
             if getattr(self.cfg, "is_audio_model", False):
                 if input_values is not None:
                     output = self.original_model(**kwargs)
@@ -1352,46 +1301,6 @@ class TransformerBridge(nn.Module):
             # Stash only the cache object (not the full output) for generate().
             if getattr(self, "_capture_hf_cache", False):
                 self._last_hf_cache = getattr(output, "past_key_values", None)
-
-            if (
-                not getattr(self, "_capture_hf_cache", False)
-                and original_tl_cache is not None
-                and hasattr(output, "past_key_values")
-                and (output.past_key_values is not None)
-            ):
-                backend_cache = output.past_key_values
-                n_cache_layers = min(len(backend_cache), len(original_tl_cache.entries))
-                for i in range(n_cache_layers):
-                    # DynamicCache (transformers >= 4.x) stores K/V per-layer;
-                    # legacy format is a tuple of (keys, values) tuples.
-                    if hasattr(backend_cache, "layers"):
-                        cached_keys = backend_cache.layers[i].keys
-                        cached_values = backend_cache.layers[i].values
-                    elif hasattr(backend_cache, "key_cache"):
-                        cached_keys = backend_cache.key_cache[i]
-                        cached_values = backend_cache.value_cache[i]
-                    else:
-                        cached_keys, cached_values = backend_cache[i]
-                    if cached_keys is not None:
-                        tl_keys = cached_keys.transpose(1, 2)
-                        tl_values = cached_values.transpose(1, 2)
-                        original_tl_cache.entries[i].past_keys = tl_keys
-                        original_tl_cache.entries[i].past_values = tl_values
-                if attention_mask is not None:
-                    original_tl_cache.previous_attention_mask = kwargs.get(
-                        "attention_mask", attention_mask
-                    )
-                elif hasattr(original_tl_cache, "previous_attention_mask"):
-                    batch_size, current_length = input_ids.shape
-                    new_mask = torch.ones(
-                        batch_size, current_length, dtype=torch.long, device=input_ids.device
-                    )
-                    if original_tl_cache.previous_attention_mask is not None:
-                        original_tl_cache.previous_attention_mask = torch.cat(
-                            [original_tl_cache.previous_attention_mask, new_mask], dim=1
-                        )
-                    else:
-                        original_tl_cache.previous_attention_mask = new_mask
             if hasattr(output, "logits"):
                 logits = output.logits
             elif isinstance(output, tuple) and len(output) > 0:
@@ -1873,7 +1782,7 @@ class TransformerBridge(nn.Module):
             repetition_penalty: HuggingFace-style repetition penalty. Values > 1.0 discourage
                 repetition by dividing positive logits and multiplying negative logits for
                 previously seen tokens. Default 1.0 (no penalty).
-            use_past_kv_cache: Not used in Bridge (kept for API compatibility)
+            use_past_kv_cache: If True, use KV caching for faster generation
             prepend_bos: Not used in Bridge (kept for API compatibility)
             padding_side: Not used in Bridge (kept for API compatibility)
             return_type: The type of output to return - 'input', 'str', or 'tokens'
@@ -1939,7 +1848,7 @@ class TransformerBridge(nn.Module):
             self.original_model.config, "is_encoder_decoder", False
         )
 
-        # HF DynamicCache flows through the component chain via
+        # HF cache flows opaquely through the component chain via
         # _reconstruct_attention() → _update_kv_cache() on each layer.
         _hf_kv_cache = None
         if use_past_kv_cache:

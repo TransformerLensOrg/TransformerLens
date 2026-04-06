@@ -60,30 +60,42 @@ class TestGenerateExceptionSafety:
         assert bridge._capture_hf_cache is False
         assert not hasattr(bridge, "_last_hf_cache")
 
-    def test_no_stale_cache_after_exception(self, gpt2_bridge):
-        """After a failed generate(), subsequent forward() calls don't stash caches."""
+    def test_forward_clean_after_failed_generate(self, gpt2_bridge):
+        """After a failed generate(), the next forward() must not stash caches."""
         bridge = gpt2_bridge
+        original_forward = bridge.forward
+        call_count = 0
 
-        # Force the flag as if generate() had crashed without cleanup
-        # (this tests the contract, not the implementation)
-        bridge._capture_hf_cache = False
+        def failing_forward(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count > 1:
+                raise RuntimeError("Simulated failure")
+            return original_forward(*args, **kwargs)
 
-        tokens = bridge.to_tokens("Test", prepend_bos=False)
+        tokens = bridge.to_tokens("Hello world", prepend_bos=False)
+
+        # Trigger a failed generate
+        with patch.object(bridge, "forward", side_effect=failing_forward):
+            with pytest.raises(RuntimeError):
+                bridge.generate(tokens, max_new_tokens=5, use_past_kv_cache=True, verbose=False)
+
+        # Now run a normal forward — should NOT stash any cache
         with torch.no_grad():
             bridge(tokens, return_type="logits")
 
-        # _last_hf_cache should NOT be set during normal forward
-        assert not hasattr(bridge, "_last_hf_cache")
+        assert not hasattr(
+            bridge, "_last_hf_cache"
+        ), "_last_hf_cache leaked into normal forward() after failed generate()"
 
 
-class TestGenerateEncoderDecoderGuard:
-    """Test that use_past_kv_cache=True raises for encoder-decoder models."""
+class TestGenerateGuards:
+    """Test that generate() rejects invalid cache configurations."""
 
     def test_encoder_decoder_raises(self, gpt2_bridge):
         """Encoder-decoder models should raise ValueError for use_past_kv_cache=True."""
         bridge = gpt2_bridge
 
-        # Temporarily make the model look like an encoder-decoder
         original_config = bridge.original_model.config
         original_config.is_encoder_decoder = True
 

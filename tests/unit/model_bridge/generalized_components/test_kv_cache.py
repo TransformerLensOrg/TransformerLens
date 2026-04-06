@@ -120,13 +120,20 @@ class TestRectangularCausalMask:
         assert (result[0, 0, 2, :] == 0.0).all()
 
     def test_4d_mask_bypasses_causal(self):
-        """4D HF masks are treated as authoritative — no extra causal mask."""
+        """4D HF masks are treated as authoritative — no extra causal mask applied.
+
+        Use q_seq_len=3, kv_seq_len=3 so a square causal mask WOULD mask
+        the upper triangle. If the 4D path incorrectly applies causal masking,
+        the anti-causal positions in the 4D mask would get double-masked.
+        """
         bridge = _make_bridge()
-        q_seq_len = 1
-        kv_seq_len = 5
+        q_seq_len = 3
+        kv_seq_len = 3
         attn_scores = torch.zeros(1, 2, q_seq_len, kv_seq_len)
 
-        # 4D mask that allows attending everywhere
+        # 4D mask that deliberately allows attending to FUTURE positions
+        # (anti-causal). If the causal mask were wrongly applied on top,
+        # these positions would be masked to min_dtype instead of 0.
         mask_4d = torch.zeros(1, 1, q_seq_len, kv_seq_len)
 
         result = bridge._apply_reconstruct_attention_mask(
@@ -136,11 +143,14 @@ class TestRectangularCausalMask:
             q_seq_len=q_seq_len,
         )
 
-        # 4D mask is additive (0 = attend), so result should be all zeros
+        # Position [0, 2] is anti-causal — must still be 0.0 (4D mask wins)
+        assert (
+            result[0, 0, 0, 2] == 0.0
+        ), "4D mask should override causal semantics but upper-triangle was masked"
         assert (result == 0.0).all()
 
     def test_backward_compat_no_q_seq_len(self):
-        """Without q_seq_len, defaults to seq_len (square mask)."""
+        """Without q_seq_len, defaults to seq_len (square causal mask)."""
         bridge = _make_bridge()
         seq_len = 3
         attn_scores = torch.zeros(1, 2, seq_len, seq_len)
@@ -149,29 +159,31 @@ class TestRectangularCausalMask:
             attn_scores=attn_scores,
             attention_mask=None,
             seq_len=seq_len,
-            # q_seq_len omitted
+            # q_seq_len omitted — should default to seq_len
         )
 
         min_val = torch.finfo(result.dtype).min
-        # Should be a standard lower-triangular causal mask
-        assert result[0, 0, 0, 1] == min_val
-        assert result[0, 0, 0, 0] == 0.0
-        assert result[0, 0, 2, 2] == 0.0
+        # Verify the entire mask matches a lower-triangular causal pattern
+        for i in range(seq_len):
+            for j in range(seq_len):
+                if j > i:
+                    assert result[0, 0, i, j] == min_val, f"[{i},{j}] should be masked"
+                else:
+                    assert result[0, 0, i, j] == 0.0, f"[{i},{j}] should be unmasked"
 
-    def test_reconstruct_attention_with_cache(self):
-        """Full _reconstruct_attention produces correct output shape with cached KV.
+    def test_reconstruct_attention_with_cache_shapes_and_causality(self):
+        """Full _reconstruct_attention with q_len < kv_len (simulated cache).
 
-        _reconstruct_attention reshapes Q/K/V internally, so we pass 4D tensors
-        in [batch, seq, heads, head_dim] format (pre-transpose).
-        When q_seq_len < kv_seq_len (simulating cache), the cache update is
-        bypassed (no past_key_values kwarg), so we pre-expand K/V ourselves.
+        Verifies output shapes AND that the single query token attends to all
+        5 KV positions (it's at position 4, so causal mask allows 0..4 = all).
+        Also verifies output differs from uniform attention (the learned Q/K
+        projections should produce a non-trivial pattern).
         """
         bridge = _make_bridge()
 
         batch, q_len, kv_len, heads, head_dim = 1, 1, 5, 2, 2
 
-        # Pass Q with q_len=1 in [batch, seq, heads, head_dim] format.
-        # K/V with kv_len=5 to simulate already-extended cache.
+        torch.manual_seed(42)
         q = torch.randn(batch, q_len, heads, head_dim)
         k = torch.randn(batch, kv_len, heads, head_dim)
         v = torch.randn(batch, kv_len, heads, head_dim)
@@ -180,9 +192,38 @@ class TestRectangularCausalMask:
 
         assert output.shape == (batch, q_len, heads * head_dim)
         assert pattern.shape == (batch, heads, q_len, kv_len)
-        # All pattern weights should sum to ~1 along kv dim
+        # Pattern should sum to 1 (valid probability distribution)
         sums = pattern.sum(dim=-1)
         assert torch.allclose(sums, torch.ones_like(sums), atol=1e-5)
+        # All 5 KV positions should have nonzero attention weight
+        # (single query at last position can attend to all via causal mask)
+        assert (pattern > 0).all(), (
+            "Query at last position should attend to all KV positions, "
+            f"but got zero weights at positions: {(pattern == 0).nonzero()}"
+        )
+
+    def test_reconstruct_attention_multi_query_causality(self):
+        """With q_len=3, kv_len=5 the last query row should have nonzero
+        weights everywhere, but the first query row should have zeros
+        in future positions (kv positions 3 and 4).
+        """
+        bridge = _make_bridge()
+
+        batch, q_len, kv_len, heads, head_dim = 1, 3, 5, 2, 2
+
+        torch.manual_seed(42)
+        q = torch.randn(batch, q_len, heads, head_dim)
+        k = torch.randn(batch, kv_len, heads, head_dim)
+        v = torch.randn(batch, kv_len, heads, head_dim)
+
+        output, pattern = bridge._reconstruct_attention(q, k, v)
+
+        # Query 0 (position 2 in full seq) should NOT attend to kv[3] or kv[4]
+        assert (
+            pattern[:, :, 0, 3:] == 0
+        ).all(), "Query 0 should have zero attention on future KV positions 3,4"
+        # Query 2 (position 4) should attend to all 5 positions
+        assert (pattern[:, :, 2, :] > 0).all(), "Query 2 should attend to all KV positions"
 
 
 class TestUpdateKVCache:
@@ -284,13 +325,7 @@ class TestLayerIdxCoercion:
 class TestBloomAlibiWithCache:
     """Test Bloom alibi tensor handling when KV cache extends the sequence."""
 
-    def test_alibi_extended_for_longer_kv(self):
-        """Alibi is extended when kv_seq_len > original alibi length.
-
-        Bloom's _reconstruct_attention reshapes Q/K/V with Q's seq_len for
-        the 3D path, so we pass 4D [batch, seq, heads, head_dim] tensors
-        with different Q vs K/V lengths to simulate post-cache state.
-        """
+    def _make_bloom_bridge(self):
         from transformer_lens.model_bridge.generalized_components.bloom_attention import (
             BloomAttentionBridge,
         )
@@ -302,42 +337,49 @@ class TestBloomAlibiWithCache:
 
         bridge = BloomAttentionBridge(name="bloom_attn", config=BloomConfig())
         bridge.add_module("_original_component", MockOriginalAttention())
+        return bridge
+
+    def test_alibi_extended_for_longer_kv(self):
+        """Alibi is extended when kv_seq_len > original alibi length.
+
+        Verifies that the extension produces different attention patterns than
+        running without alibi (i.e. the extended alibi actually contributes).
+        """
+        bridge = self._make_bloom_bridge()
         bridge._layer_idx = 0
 
         batch, heads, head_dim = 1, 2, 2
         q_seq_len = 1
         kv_seq_len = 5
 
-        # 4D: [batch, seq, heads, head_dim] — gets transposed internally
         q = torch.randn(batch, q_seq_len, heads, head_dim)
         k = torch.randn(batch, kv_seq_len, heads, head_dim)
         v = torch.randn(batch, kv_seq_len, heads, head_dim)
 
         # Build alibi for original seq_len=3 (smaller than kv_seq_len=5)
-        original_seq_len = 3
         slopes = torch.tensor([-0.5, -0.25]).view(2, 1, 1)
-        positions = torch.arange(original_seq_len).float().view(1, 1, -1)
-        alibi = (slopes * positions).reshape(batch * heads, 1, original_seq_len)
+        positions = torch.arange(3).float().view(1, 1, -1)
+        alibi = (slopes * positions).reshape(batch * heads, 1, 3)
 
-        # Should not crash — alibi will be extended internally
-        output, pattern = bridge._reconstruct_attention(q, k, v, alibi=alibi)
-
-        assert output.shape == (batch, q_seq_len, heads * head_dim)
-        assert pattern.shape == (batch, heads, q_seq_len, kv_seq_len)
-
-    def test_alibi_correct_size_unchanged(self):
-        """Alibi that already matches kv_seq_len is used as-is."""
-        from transformer_lens.model_bridge.generalized_components.bloom_attention import (
-            BloomAttentionBridge,
+        # With alibi
+        output_alibi, pattern_alibi = bridge._reconstruct_attention(
+            q.clone(), k.clone(), v.clone(), alibi=alibi
+        )
+        # Without alibi
+        output_no_alibi, pattern_no_alibi = bridge._reconstruct_attention(
+            q.clone(), k.clone(), v.clone()
         )
 
-        class BloomConfig:
-            n_heads = 2
-            d_model = 4
-            d_head = 2
+        assert output_alibi.shape == (batch, q_seq_len, heads * head_dim)
+        assert pattern_alibi.shape == (batch, heads, q_seq_len, kv_seq_len)
+        # ALiBi should produce different attention patterns
+        assert not torch.allclose(
+            pattern_alibi, pattern_no_alibi, atol=1e-6
+        ), "Extended alibi had no effect on attention pattern"
 
-        bridge = BloomAttentionBridge(name="bloom_attn", config=BloomConfig())
-        bridge.add_module("_original_component", MockOriginalAttention())
+    def test_alibi_correct_size_unchanged(self):
+        """Alibi that already matches kv_seq_len produces different patterns than no alibi."""
+        bridge = self._make_bloom_bridge()
 
         batch, heads, head_dim = 1, 2, 2
         seq_len = 4
@@ -346,12 +388,19 @@ class TestBloomAlibiWithCache:
         k = torch.randn(batch, seq_len, heads, head_dim)
         v = torch.randn(batch, seq_len, heads, head_dim)
 
-        # Alibi matches seq_len exactly
         slopes = torch.tensor([-0.5, -0.25]).view(2, 1, 1)
         positions = torch.arange(seq_len).float().view(1, 1, -1)
         alibi = (slopes * positions).reshape(batch * heads, 1, seq_len)
 
-        output, pattern = bridge._reconstruct_attention(q, k, v, alibi=alibi)
+        output_alibi, pattern_alibi = bridge._reconstruct_attention(
+            q.clone(), k.clone(), v.clone(), alibi=alibi
+        )
+        output_no_alibi, pattern_no_alibi = bridge._reconstruct_attention(
+            q.clone(), k.clone(), v.clone()
+        )
 
-        assert output.shape == (batch, seq_len, heads * head_dim)
-        assert pattern.shape == (batch, heads, seq_len, seq_len)
+        assert output_alibi.shape == (batch, seq_len, heads * head_dim)
+        # Alibi must actually change the attention distribution
+        assert not torch.allclose(
+            pattern_alibi, pattern_no_alibi, atol=1e-6
+        ), "Alibi had no effect on attention pattern"
