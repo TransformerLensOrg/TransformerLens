@@ -43,180 +43,180 @@ permissions:
   contents: write
 
 jobs:
-  # compatibility-checks:
-  #   name: Compatibility Checks
-  #   runs-on: ubuntu-latest
-  #   strategy:
-  #     fail-fast: false
-  #     max-parallel: 1
-  #     matrix:
-  #       python-version:
-  #         - "3.10"
-  #         - "3.11"
-  #         - "3.12"
-  #   steps:
-  #     - uses: actions/checkout@v3
-  #     - name: Install uv
-  #       uses: astral-sh/setup-uv@v6
-  #       with:
-  #         python-version: ${{ matrix.python-version }}
-  #         activate-environment: true
-  #         enable-cache: true
-  #     - name: Cache Models used with Tests
-  #       uses: actions/cache@v3
-  #       with:
-  #         path: |
-  #           ~/.cache/huggingface/hub/models--gpt2
-  #           ~/.cache/huggingface/hub/models--gpt2-xl
-  #           ~/.cache/huggingface/hub/models--distilgpt2
-  #           ~/.cache/huggingface/hub/models--EleutherAI--pythia-70m
-  #           ~/.cache/huggingface/hub/models--EleutherAI--gpt-neo-125M
-  #           ~/.cache/huggingface/hub/models--google--gemma-2-2b-it
-  #           ~/.cache/huggingface/hub/models--bigscience--bloom-560m
-  #           ~/.cache/huggingface/hub/models--Qwen--Qwen2-0.5B
-  #           ~/.cache/huggingface/hub/models--bert-base-cased
-  #           ~/.cache/huggingface/hub/models--NeelNanda--Attn_Only*
-  #           ~/.cache/huggingface/hub/models--roneneldan--TinyStories-1M*
-  #           ~/.cache/huggingface/hub/models--NeelNanda--SoLU*
-  #           ~/.cache/huggingface/hub/models--ArthurConmy--redwood_attn_2l
-  #           ~/.cache/huggingface/hub/models--stas--tiny-random-llama-2
-  #           ~/.cache/huggingface/hub/models--microsoft--DialoGPT-medium
-  #         key: ${{ runner.os }}-huggingface-models-v4
-  #         restore-keys: |
-  #           ${{ runner.os }}-huggingface-models-v2
-  #           ${{ runner.os }}-huggingface-models-v1
-  #           ${{ runner.os }}-huggingface-models
-  #     - name: Install dependencies
-  #       run: |
-  #         uv lock --check
-  #         uv sync
-  #     - name: Authenticate HuggingFace
-  #       if: env.HF_TOKEN != ''
-  #       run: uv run python -c "import os; from huggingface_hub import login; login(token=os.environ['HF_TOKEN'])"
-  #       env:
-  #         HF_TOKEN: ${{ secrets.HF_TOKEN }}
-  #     - name: Unit Test
-  #       run: make unit-test
-  #       env:
-  #         HF_TOKEN:  ${{ secrets.HF_TOKEN }}
-  #     - name: Acceptance Test
-  #       run: make acceptance-test
-  #     - name: Build check
-  #       run: uv build
+  compatibility-checks:
+    name: Compatibility Checks
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        python-version:
+          - "3.10"
+          - "3.11"
+          - "3.12"
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          activate-environment: true
+          enable-cache: true
+      - name: Cache Models used with Tests
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/huggingface/hub/models--gpt2
+            ~/.cache/huggingface/hub/models--gpt2-xl
+            ~/.cache/huggingface/hub/models--distilgpt2
+            ~/.cache/huggingface/hub/models--EleutherAI--pythia-70m
+            ~/.cache/huggingface/hub/models--EleutherAI--gpt-neo-125M
+            ~/.cache/huggingface/hub/models--google--gemma-2-2b-it
+            ~/.cache/huggingface/hub/models--bigscience--bloom-560m
+            ~/.cache/huggingface/hub/models--Qwen--Qwen2-0.5B
+            ~/.cache/huggingface/hub/models--bert-base-cased
+            ~/.cache/huggingface/hub/models--NeelNanda--Attn_Only*
+            ~/.cache/huggingface/hub/models--roneneldan--TinyStories-1M*
+            ~/.cache/huggingface/hub/models--NeelNanda--SoLU*
+            ~/.cache/huggingface/hub/models--ArthurConmy--redwood_attn_2l
+            ~/.cache/huggingface/hub/models--stas--tiny-random-llama-2
+            ~/.cache/huggingface/hub/models--microsoft--DialoGPT-medium
+          key: ${{ runner.os }}-huggingface-models-v4
+          restore-keys: |
+            ${{ runner.os }}-huggingface-models-v2
+            ${{ runner.os }}-huggingface-models-v1
+            ${{ runner.os }}-huggingface-models
+      - name: Install dependencies
+        run: |
+          uv lock --check
+          uv sync
+      - name: Authenticate HuggingFace
+        if: env.HF_TOKEN != ''
+        run: uv run python -c "import os; from huggingface_hub import login; login(token=os.environ['HF_TOKEN'])"
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      - name: Unit Test
+        run: make unit-test
+        env:
+          HF_TOKEN:  ${{ secrets.HF_TOKEN }}
+      - name: Acceptance Test
+        run: make acceptance-test
+      - name: Build check
+        run: uv build
 
-  # format-check:
-  #   name: Format Check
-  #   runs-on: ubuntu-latest
-  #   timeout-minutes: 10
-  #   steps:
-  #     - uses: actions/checkout@v3
-  #     - name: Install uv
-  #       uses: astral-sh/setup-uv@v6
-  #       with:
-  #         python-version: "3.12"
-  #         activate-environment: true
-  #         enable-cache: true
-  #     - name: Install dependencies
-  #       run: |
-  #         uv lock --check
-  #         uv sync
-  #     - name: Check format
-  #       run: make check-format
+  format-check:
+    name: Format Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          activate-environment: true
+          enable-cache: true
+      - name: Install dependencies
+        run: |
+          uv lock --check
+          uv sync
+      - name: Check format
+        run: make check-format
 
-  # type-check:
-  #   name: Type Check
-  #   runs-on: ubuntu-latest
-  #   timeout-minutes: 10
-  #   steps:
-  #     - uses: actions/checkout@v3
-  #     - name: Install uv
-  #       uses: astral-sh/setup-uv@v6
-  #       with:
-  #         python-version: "3.12"
-  #         activate-environment: true
-  #         enable-cache: true
-  #     - name: Install dependencies
-  #       run: |
-  #         uv lock --check
-  #         uv sync
-  #     - name: Type check
-  #       run: uv run mypy .
+  type-check:
+    name: Type Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          activate-environment: true
+          enable-cache: true
+      - name: Install dependencies
+        run: |
+          uv lock --check
+          uv sync
+      - name: Type check
+        run: uv run mypy .
 
-  # docstring-test:
-  #   name: Docstring Test
-  #   runs-on: ubuntu-latest
-  #   timeout-minutes: 15
-  #   steps:
-  #     - uses: actions/checkout@v3
-  #     - name: Install uv
-  #       uses: astral-sh/setup-uv@v6
-  #       with:
-  #         python-version: "3.12"
-  #         activate-environment: true
-  #         enable-cache: true
-  #     - name: Install dependencies
-  #       run: |
-  #         uv lock --check
-  #         uv sync
-  #     - name: Docstring test
-  #       run: make docstring-test
+  docstring-test:
+    name: Docstring Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          activate-environment: true
+          enable-cache: true
+      - name: Install dependencies
+        run: |
+          uv lock --check
+          uv sync
+      - name: Docstring test
+        run: make docstring-test
 
-  # coverage-test:
-    # name: Full Code Coverage Test
-    # runs-on: ubuntu-latest
-    # timeout-minutes: 60
-    # steps:
-    #   - uses: actions/checkout@v3
-    #   - name: Install uv
-    #     uses: astral-sh/setup-uv@v6
-    #     with:
-    #       python-version: "3.12"
-    #       activate-environment: true
-    #       enable-cache: true
-    #   - name: Cache Models used with Tests
-    #     uses: actions/cache@v3
-    #     with:
-    #       path: |
-    #         ~/.cache/huggingface/hub/models--gpt2
-    #         ~/.cache/huggingface/hub/models--gpt2-xl
-    #         ~/.cache/huggingface/hub/models--distilgpt2
-    #         ~/.cache/huggingface/hub/models--EleutherAI--pythia-70m
-    #         ~/.cache/huggingface/hub/models--EleutherAI--gpt-neo-125M
-    #         ~/.cache/huggingface/hub/models--google--gemma-2-2b-it
-    #         ~/.cache/huggingface/hub/models--bigscience--bloom-560m
-    #         ~/.cache/huggingface/hub/models--Qwen--Qwen2-0.5B
-    #         ~/.cache/huggingface/hub/models--bert-base-cased
-    #         ~/.cache/huggingface/hub/models--NeelNanda--Attn_Only*
-    #         ~/.cache/huggingface/hub/models--roneneldan--TinyStories-1M*
-    #         ~/.cache/huggingface/hub/models--NeelNanda--SoLU*
-    #         ~/.cache/huggingface/hub/models--ArthurConmy--redwood_attn_2l
-    #         ~/.cache/huggingface/hub/models--stas--tiny-random-llama-2
-    #         ~/.cache/huggingface/hub/models--microsoft--DialoGPT-medium
-    #       key: ${{ runner.os }}-huggingface-models-v4
-    #       restore-keys: |
-    #         ${{ runner.os }}-huggingface-models-v2
-    #         ${{ runner.os }}-huggingface-models-v1
-    #         ${{ runner.os }}-huggingface-models
-    #   - name: Install dependencies
-    #     run: |
-    #       uv lock --check
-    #       uv sync
-    #   - name: Authenticate HuggingFace
-    #     if: env.HF_TOKEN != ''
-    #     run: uv run python -c "import os; from huggingface_hub import login; login(token=os.environ['HF_TOKEN'])"
-    #     env:
-    #       HF_TOKEN: ${{ secrets.HF_TOKEN }}
-    #   - name: Test Suite with Coverage Report
-    #     run: make coverage-report-test
-    #     env:
-    #       HF_TOKEN:  ${{ secrets.HF_TOKEN }}
-    #   - name: Build check
-    #     run: uv build
-    #   - name: Upload Coverage Report Artifact
-    #     uses: actions/upload-artifact@v4
-    #     with:
-    #       name: test-coverage
-    #       path: htmlcov
+  coverage-test:
+    name: Full Code Coverage Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          activate-environment: true
+          enable-cache: true
+      - name: Cache Models used with Tests
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/huggingface/hub/models--gpt2
+            ~/.cache/huggingface/hub/models--gpt2-xl
+            ~/.cache/huggingface/hub/models--distilgpt2
+            ~/.cache/huggingface/hub/models--EleutherAI--pythia-70m
+            ~/.cache/huggingface/hub/models--EleutherAI--gpt-neo-125M
+            ~/.cache/huggingface/hub/models--google--gemma-2-2b-it
+            ~/.cache/huggingface/hub/models--bigscience--bloom-560m
+            ~/.cache/huggingface/hub/models--Qwen--Qwen2-0.5B
+            ~/.cache/huggingface/hub/models--bert-base-cased
+            ~/.cache/huggingface/hub/models--NeelNanda--Attn_Only*
+            ~/.cache/huggingface/hub/models--roneneldan--TinyStories-1M*
+            ~/.cache/huggingface/hub/models--NeelNanda--SoLU*
+            ~/.cache/huggingface/hub/models--ArthurConmy--redwood_attn_2l
+            ~/.cache/huggingface/hub/models--stas--tiny-random-llama-2
+            ~/.cache/huggingface/hub/models--microsoft--DialoGPT-medium
+          key: ${{ runner.os }}-huggingface-models-v4
+          restore-keys: |
+            ${{ runner.os }}-huggingface-models-v2
+            ${{ runner.os }}-huggingface-models-v1
+            ${{ runner.os }}-huggingface-models
+      - name: Install dependencies
+        run: |
+          uv lock --check
+          uv sync
+      - name: Authenticate HuggingFace
+        if: env.HF_TOKEN != ''
+        run: uv run python -c "import os; from huggingface_hub import login; login(token=os.environ['HF_TOKEN'])"
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      - name: Test Suite with Coverage Report
+        run: make coverage-report-test
+        env:
+          HF_TOKEN:  ${{ secrets.HF_TOKEN }}
+      - name: Build check
+        run: uv build
+      - name: Upload Coverage Report Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-coverage
+          path: htmlcov
 
   notebook-checks:
     name: Notebook Checks
@@ -226,23 +226,23 @@ jobs:
       fail-fast: false
       matrix:
         notebook:
-          # - "Attribution_Patching_Demo"
-          # - "Activation_Patching_in_TL_Demo"
-          # - "ARENA_Content"
-          # - "BERT"
-          # - "Exploratory_Analysis_Demo"
+          - "Attribution_Patching_Demo"
+          - "Activation_Patching_in_TL_Demo"
+          - "ARENA_Content"
+          - "BERT"
+          - "Exploratory_Analysis_Demo"
           # - "Grokking_Demo"
           # - "Head_Detector_Demo"
           # - "Interactive_Neuroscope"
           - "LLaMA"
           - "LLaMA2_GPU_Quantized"  # Requires quantization libs + too slow for CI timeout
-          # - "Main_Demo"
+          - "Main_Demo"
           # - "No_Position_Experiment"
-          # - "Othello_GPT"
-          # - "Patchscopes_Generation_Demo"
-          # - "Santa_Coder"
-          # # - "stable_lm"
-          # - "T5"
+          - "Othello_GPT"
+          - "Patchscopes_Generation_Demo"
+          - "Santa_Coder"
+          # - "stable_lm"
+          - "T5"
     steps:
       - uses: actions/checkout@v3
       - name: Add swap space
@@ -267,7 +267,7 @@ jobs:
       - name: Install dependencies
         run: |
           uv lock --check
-          uv sync --group quantization
+          uv sync
       - name: Install pandoc
         uses: awalsh128/cache-apt-pkgs-action@latest
         with:
@@ -285,66 +285,66 @@ jobs:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
 
 
-  # build-docs:
-  #   # When running on a PR, this just checks we can build the docs without errors
-  #   # When running on merge to main, it builds the docs and then another job deploys them
-  #   name: 'Build Docs'
-  #   runs-on: ubuntu-latest
-  #   if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev') || contains(github.head_ref, 'docs')
-  #   needs: coverage-test
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - name: Install uv
-  #       uses: astral-sh/setup-uv@v6
-  #       with:
-  #         python-version: "3.11"
-  #         activate-environment: true
-  #         enable-cache: true
-  #     - name: Install pandoc
-  #       uses: awalsh128/cache-apt-pkgs-action@latest
-  #       with:
-  #         packages: pandoc
-  #         version: 1.0
-  #     - name: Install dependencies
-  #       run: |
-  #         uv lock --check
-  #         uv sync
-  #     - name: Download Test Coverage Artifact
-  #       uses: actions/download-artifact@v4
-  #       with:
-  #         name: test-coverage
-  #         path: docs/source/_static/coverage
-  #     - name: Authenticate HuggingFace
-  #       if: env.HF_TOKEN != ''
-  #       run: uv run python -c "import os; from huggingface_hub import login; login(token=os.environ['HF_TOKEN'])"
-  #       env:
-  #         HF_TOKEN: ${{ secrets.HF_TOKEN }}
-  #     - name: Build Docs
-  #       run: make build-docs
-  #       env:
-  #         HF_TOKEN:  ${{ secrets.HF_TOKEN }}
-  #     - name: Upload Docs Artifact
-  #       uses: actions/upload-artifact@v4
-  #       with:
-  #         name: documentation
-  #         path: docs/build
+  build-docs:
+    # When running on a PR, this just checks we can build the docs without errors
+    # When running on merge to main, it builds the docs and then another job deploys them
+    name: 'Build Docs'
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev') || contains(github.head_ref, 'docs')
+    needs: coverage-test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.11"
+          activate-environment: true
+          enable-cache: true
+      - name: Install pandoc
+        uses: awalsh128/cache-apt-pkgs-action@latest
+        with:
+          packages: pandoc
+          version: 1.0
+      - name: Install dependencies
+        run: |
+          uv lock --check
+          uv sync
+      - name: Download Test Coverage Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: test-coverage
+          path: docs/source/_static/coverage
+      - name: Authenticate HuggingFace
+        if: env.HF_TOKEN != ''
+        run: uv run python -c "import os; from huggingface_hub import login; login(token=os.environ['HF_TOKEN'])"
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      - name: Build Docs
+        run: make build-docs
+        env:
+          HF_TOKEN:  ${{ secrets.HF_TOKEN }}
+      - name: Upload Docs Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: documentation
+          path: docs/build
 
-  # deploy-docs:
-    # name: Deploy Docs
-    # runs-on: ubuntu-latest
-    # # Only run if merging a PR into main
-    # if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    # needs: build-docs
-    # steps:
-    #   - uses: actions/checkout@v4
-    #   - name: Download Docs Artifact
-    #     uses: actions/download-artifact@v4
-    #     with:
-    #       name: documentation
-    #       path: docs/build
-    #   - name: Upload to GitHub Pages
-    #     uses: JamesIves/github-pages-deploy-action@v4
-    #     with:
-    #       folder: docs/build
-    #       clean-exclude: |
-    #         *.*.*/
+  deploy-docs:
+    name: Deploy Docs
+    runs-on: ubuntu-latest
+    # Only run if merging a PR into main
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build-docs
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download Docs Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: documentation
+          path: docs/build
+      - name: Upload to GitHub Pages
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: docs/build
+          clean-exclude: |
+            *.*.*/
