@@ -104,7 +104,6 @@ class JointQKVAttentionBridge(AttentionBridge):
             self.real_components["o"] = ("o", self.o)
 
         self._reference_model: Optional[Any] = None
-        self._layer_idx: Optional[int] = None
 
         # Exclude stale qkv combined weights from state_dict after splitting.
         self._register_state_dict_hook(JointQKVAttentionBridge._filter_qkv_state_dict)
@@ -287,11 +286,6 @@ class JointQKVAttentionBridge(AttentionBridge):
             original_component: The original attention layer to wrap
         """
         super().set_original_component(original_component)
-
-        # Capture layer index from HF attention component (e.g. GPT2Attention.layer_idx)
-        if hasattr(original_component, "layer_idx"):
-            layer_idx: int = getattr(original_component, "layer_idx")
-            self._layer_idx = layer_idx
 
         # Capture HF-specific attention flags for faithful reconstruction
         self._reorder_and_upcast_attn = getattr(

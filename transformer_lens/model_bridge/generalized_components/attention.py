@@ -100,6 +100,14 @@ class AttentionBridge(GeneralizedComponent):
         self.requires_position_embeddings = requires_position_embeddings
         self.requires_attention_mask = requires_attention_mask
         self.attention_mask_4d = attention_mask_4d
+        self._layer_idx: Optional[int] = None
+
+    def set_original_component(self, original_component: torch.nn.Module) -> None:
+        """Set original component and capture layer index for KV caching."""
+        super().set_original_component(original_component)
+        layer_idx_raw = getattr(original_component, "layer_idx", None)
+        if isinstance(layer_idx_raw, int):
+            self._layer_idx = layer_idx_raw
 
     def setup_hook_compatibility(self) -> None:
         """Setup hook compatibility transformations to match HookedTransformer behavior.
