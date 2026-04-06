@@ -156,11 +156,16 @@ class BloomAttentionBridge(JointQKVAttentionBridge):
         else:
             raise ValueError(f"Unexpected Q tensor shape: {q.shape}")
 
+        # KV cache: append current K/V and get the full sequence back
+        k, v = self._update_kv_cache(k, v, **kwargs)
+
         # BLOOM uses baddbmm: alibi + Q @ K^T * inv_norm_factor
+        # After cache update, K/V may have more positions than Q
+        kv_seq_len = k.shape[-2]
         # Reshape to [batch*heads, seq, head_dim] for baddbmm
         q_bh = q.reshape(batch_size * num_heads, seq_len, head_dim)
-        k_bh = k.reshape(batch_size * num_heads, seq_len, head_dim)
-        v_bh = v.reshape(batch_size * num_heads, seq_len, head_dim)
+        k_bh = k.reshape(batch_size * num_heads, kv_seq_len, head_dim)
+        v_bh = v.reshape(batch_size * num_heads, kv_seq_len, head_dim)
 
         inv_norm_factor = head_dim ** (-0.5)
         beta = 1.0

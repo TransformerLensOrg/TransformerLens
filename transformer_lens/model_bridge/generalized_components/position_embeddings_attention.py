@@ -250,6 +250,9 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
         if hasattr(self, "hook_rot_k"):
             key_states = self.hook_rot_k(key_states)
 
+        # --- KV cache: append current K/V and get the full sequence back ---
+        key_states, value_states = self._update_kv_cache(key_states, value_states, **kwargs)
+
         # --- GQA: Expand K/V ---
         num_key_value_groups = getattr(hf_attn, "num_key_value_groups", 1)
         if num_key_value_groups > 1:

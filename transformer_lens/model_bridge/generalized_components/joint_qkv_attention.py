@@ -449,15 +449,8 @@ class JointQKVAttentionBridge(AttentionBridge):
         else:
             raise ValueError(f"Unexpected Q tensor shape: {q.shape}. Expected 3D or 4D tensor.")
 
-        # KV cache support: read from and write to the cache if provided.
-        # This mirrors HF's native attention cache handling so that
-        # DynamicCache is properly populated during generation.
-        past_key_values = kwargs.get("past_key_values", None)
-        layer_idx = getattr(self, "_layer_idx", None)
-
-        if past_key_values is not None and layer_idx is not None:
-            # Append current K/V to cache and get the full K/V sequence
-            k, v = past_key_values.update(k, v, layer_idx)
+        # KV cache: append current K/V to cache and get the full sequence back.
+        k, v = self._update_kv_cache(k, v, **kwargs)
 
         # Attention scale: 1/sqrt(d_head) with optional inverse-layer scaling
         scale = head_dim ** (-0.5)

@@ -206,6 +206,9 @@ class JointQKVPositionEmbeddingsAttentionBridge(
             # Apply rotary embeddings to Q and K
             q, k = self._apply_rotary_pos_emb(q, k, cos, sin)
 
+        # KV cache: append current K/V and get the full sequence back
+        k, v = self._update_kv_cache(k, v, **kwargs)
+
         # GQA: expand K/V heads to match Q heads
         if num_kv_heads != num_heads:
             n_rep = num_heads // num_kv_heads
@@ -213,6 +216,8 @@ class JointQKVPositionEmbeddingsAttentionBridge(
             v = v.repeat_interleave(n_rep, dim=1)
 
         # Compute attention scores
+        # After cache update, K/V may have more positions than Q
+        kv_seq_len = k.shape[-2]
         scale = head_dim ** (-0.5)
         attn_scores = torch.matmul(q, k.transpose(-2, -1)) * scale
 
@@ -220,7 +225,7 @@ class JointQKVPositionEmbeddingsAttentionBridge(
         attn_scores = self._apply_reconstruct_attention_mask(
             attn_scores=attn_scores,
             attention_mask=attention_mask,
-            seq_len=seq_len,
+            seq_len=kv_seq_len,
         )
 
         # Apply hook to attention scores

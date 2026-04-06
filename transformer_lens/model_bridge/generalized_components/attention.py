@@ -283,6 +283,21 @@ class AttentionBridge(GeneralizedComponent):
         """Backward compatibility alias for _setup_qkv_hook_reshaping."""
         self._setup_qkv_hook_reshaping()
 
+    def _update_kv_cache(
+        self, k: torch.Tensor, v: torch.Tensor, **kwargs: Any
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Update KV cache if provided, returning the (possibly extended) K and V.
+
+        Call this after K/V projections and any positional embeddings (e.g. RoPE)
+        have been applied, but before computing attention scores. If no cache is
+        present in kwargs, K and V are returned unchanged.
+        """
+        past_key_values = kwargs.get("past_key_values", None)
+        layer_idx = getattr(self, "_layer_idx", None)
+        if past_key_values is not None and layer_idx is not None:
+            k, v = past_key_values.update(k, v, layer_idx)
+        return k, v
+
     def _get_n_heads(self, use_kv: bool = False) -> int:
         """Resolve the number of attention heads from config.
 
