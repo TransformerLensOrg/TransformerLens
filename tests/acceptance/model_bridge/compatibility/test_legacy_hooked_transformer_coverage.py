@@ -29,8 +29,10 @@ class TestLegacyHookedTransformerCoverage:
         return request.param
 
     @pytest.fixture(scope="class")
-    def bridge_model(self, model_name):
-        """Create a TransformerBridge model for testing."""
+    def bridge_model(self, model_name, gpt2_bridge):
+        """Use session-scoped fixture for gpt2, load fresh for other models."""
+        if model_name == "gpt2":
+            return gpt2_bridge
         try:
             return TransformerBridge.boot_transformers(model_name, device="cpu")
         except Exception as e:

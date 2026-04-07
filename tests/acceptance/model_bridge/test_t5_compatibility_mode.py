@@ -225,6 +225,37 @@ class TestT5CompatibilityMode:
         # Decoder blocks SHOULD have hook_resid_mid2 (3 layers - after cross-attn)
         assert hasattr(decoder_block, "hook_resid_mid2")
 
+    def test_encoder_forward_produces_valid_output(self, bridge_model):
+        """Test that T5 bridge produces valid output on a forward pass."""
+        tokens = bridge_model.to_tokens("The quick brown fox")
+        with torch.no_grad():
+            output = bridge_model(tokens)
+
+        # Output should be a tensor with reasonable shape
+        assert isinstance(output, torch.Tensor), f"Expected tensor, got {type(output)}"
+        assert output.ndim >= 2, f"Expected at least 2D output, got {output.ndim}D"
+        assert not torch.isnan(output).any(), "Output contains NaN"
+        assert not torch.isinf(output).any(), "Output contains Inf"
+
+    def test_run_with_cache_populates_encoder_and_decoder(self, bridge_model):
+        """Test that run_with_cache returns activations from both encoder and decoder."""
+        tokens = bridge_model.to_tokens("Translate this")
+        with torch.no_grad():
+            _, cache = bridge_model.run_with_cache(tokens)
+
+        cache_keys = list(cache.keys())
+        assert len(cache_keys) > 0, "Cache should not be empty"
+
+        encoder_keys = [k for k in cache_keys if "encoder" in k]
+        decoder_keys = [k for k in cache_keys if "decoder" in k]
+
+        assert (
+            len(encoder_keys) > 0
+        ), f"Cache should contain encoder activations. Keys: {cache_keys[:10]}"
+        assert (
+            len(decoder_keys) > 0
+        ), f"Cache should contain decoder activations. Keys: {cache_keys[:10]}"
+
     def test_rms_normalization_used(self, bridge_model):
         """Test that T5 uses RMSNormalizationBridge throughout."""
         from transformer_lens.model_bridge.generalized_components.rms_normalization import (

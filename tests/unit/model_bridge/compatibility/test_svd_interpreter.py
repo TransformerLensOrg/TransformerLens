@@ -132,8 +132,10 @@ def test_svd_interpreter_returns_different_answers_for_different_models(model, s
 
 
 def test_svd_interpreter_fails_on_invalid_vector_type(model):
+    from typeguard import TypeCheckError
+
     svd_interpreter = SVDInterpreter(model)
-    with pytest.raises(BeartypeCallHintParamViolation):
+    with pytest.raises((BeartypeCallHintParamViolation, TypeCheckError)):
         svd_interpreter.get_singular_vectors("test", layer_index=0, num_vectors=4, head_index=0)
 
 

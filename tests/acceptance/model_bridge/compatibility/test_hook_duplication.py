@@ -2,15 +2,13 @@
 
 import torch
 
-from transformer_lens import HookedTransformer
-from transformer_lens.model_bridge import TransformerBridge
 
-
-def test_TransformerBridge_compatibility_mode_calls_hooks_once():
+def test_TransformerBridge_compatibility_mode_calls_hooks_once(
+    gpt2_hooked_unprocessed, gpt2_bridge_compat_no_processing
+):
     """Regression test: hooks fire exactly once even with aliased HookPoint names."""
-    hooked_model = HookedTransformer.from_pretrained_no_processing("gpt2", device_map="cpu")
-    bridge_model: TransformerBridge = TransformerBridge.boot_transformers("gpt2", device="cpu")  # type: ignore
-    bridge_model.enable_compatibility_mode(no_processing=True)
+    hooked_model = gpt2_hooked_unprocessed
+    bridge_model = gpt2_bridge_compat_no_processing
 
     test_input = torch.tensor([[1, 2, 3]])
 
@@ -47,10 +45,9 @@ def test_TransformerBridge_compatibility_mode_calls_hooks_once():
     )
 
 
-def test_hook_mlp_out_aliasing():
+def test_hook_mlp_out_aliasing(gpt2_bridge_compat_no_processing):
     """Test that hook_mlp_out is properly aliased to mlp.hook_out in compatibility mode."""
-    bridge_model: TransformerBridge = TransformerBridge.boot_transformers("gpt2", device="cpu")  # type: ignore
-    bridge_model.enable_compatibility_mode(no_processing=True)
+    bridge_model = gpt2_bridge_compat_no_processing
 
     block0 = bridge_model.blocks[0]
 
@@ -61,10 +58,9 @@ def test_hook_mlp_out_aliasing():
     ), "hook_mlp_out should be aliased to mlp.hook_out (same object)"
 
 
-def test_stateful_hook_pattern():
+def test_stateful_hook_pattern(gpt2_bridge_compat_no_processing):
     """Test stateful closure pattern (circuit-tracer's cache-then-pop) with aliased hooks."""
-    bridge_model: TransformerBridge = TransformerBridge.boot_transformers("gpt2", device="cpu")  # type: ignore
-    bridge_model.enable_compatibility_mode(no_processing=True)
+    bridge_model = gpt2_bridge_compat_no_processing
 
     test_input = torch.tensor([[1, 2, 3]])
     block = bridge_model.blocks[0]

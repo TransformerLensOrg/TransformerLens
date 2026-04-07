@@ -4,7 +4,6 @@ import pytest
 import torch
 
 from transformer_lens.ActivationCache import ActivationCache
-from transformer_lens.model_bridge import TransformerBridge
 
 
 class TestActivationCacheCompatibility:
@@ -14,16 +13,15 @@ class TestActivationCacheCompatibility:
     def cleanup_after_class(self):
         """Clean up memory after each test class."""
         yield
-        # Clear GPU memory
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
         for _ in range(3):
             gc.collect()
 
     @pytest.fixture(scope="class")
-    def bridge_model(self):
-        """Create a TransformerBridge model for testing."""
-        return TransformerBridge.boot_transformers("gpt2", device="cpu")
+    def bridge_model(self, gpt2_bridge):
+        """Use session-scoped gpt2 bridge."""
+        return gpt2_bridge
 
     @pytest.fixture(scope="class")
     def sample_cache(self, bridge_model):

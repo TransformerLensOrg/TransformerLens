@@ -357,7 +357,7 @@ class AttentionBridge(GeneralizedComponent):
             dropout_fn = getattr(self.original_component, "attn_dropout", None)
             if dropout_fn is None:
                 dropout_fn = getattr(self.original_component, "attention_dropout", None)
-            if dropout_fn is not None:
+            if dropout_fn is not None and callable(dropout_fn):
                 attn_weights = dropout_fn(attn_weights)
         return attn_weights
 

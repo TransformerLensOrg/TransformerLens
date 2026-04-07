@@ -57,8 +57,12 @@ class AbstractAttention(ABC, nn.Module):
 
         if self.cfg.load_in_4bit:
             nq = int((self.cfg.d_model * self.cfg.d_head * self.cfg.n_heads) / 2)
-            self.W_Q = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
-            self.W_O = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
+            self.W_Q: Union[nn.Parameter, "Params4bit"] = Params4bit(
+                torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False
+            )
+            self.W_O: Union[nn.Parameter, "Params4bit"] = Params4bit(
+                torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False
+            )
         else:
             self.W_Q = nn.Parameter(
                 torch.empty(
@@ -333,13 +337,13 @@ class AbstractAttention(ABC, nn.Module):
         if not self.cfg.use_attn_result:
             if self.cfg.load_in_4bit:
                 # call bitsandbytes method to dequantize and multiply
+                W_O_4bit = cast(Params4bit, self.W_O)
                 out = (
                     bnb.matmul_4bit(
                         z.reshape(z.shape[0], z.shape[1], self.cfg.d_head * self.cfg.n_heads),
-                        self.W_O.t(),
-                        # bias=self.W_O.t(),
+                        W_O_4bit.t(),
                         bias=None,
-                        quant_state=self.W_O.quant_state,
+                        quant_state=W_O_4bit.quant_state,
                     )
                     + self.b_O
                 )
@@ -372,12 +376,13 @@ class AbstractAttention(ABC, nn.Module):
             # Explicitly calculate the attention result so it can be accessed by a hook
             # This is off by default because it can easily eat through your GPU memory.
             if self.cfg.load_in_4bit:
+                W_O_4bit = cast(Params4bit, self.W_O)
                 result = self.hook_result(
                     bnb.matmul_4bit(
                         z.reshape(z.shape[0], z.shape[1], self.cfg.d_head * self.cfg.n_heads),
-                        self.W_O.t(),
+                        W_O_4bit.t(),
                         bias=None,
-                        quant_state=self.W_O.quant_state,
+                        quant_state=W_O_4bit.quant_state,
                     )
                 )
             else:
@@ -447,13 +452,14 @@ class AbstractAttention(ABC, nn.Module):
             else simple_attn_linear
         )
         if self.cfg.load_in_4bit:
+            W_Q_4bit = cast(Params4bit, self.W_Q)
             q = self.hook_q(
                 # call bitsandbytes method to dequantize and multiply
                 bnb.matmul_4bit(
                     query_input,
-                    self.W_Q.t(),
+                    W_Q_4bit.t(),
                     bias=None,
-                    quant_state=self.W_Q.quant_state,
+                    quant_state=W_Q_4bit.quant_state,
                 ).reshape(
                     query_input.shape[0],
                     query_input.shape[1],
