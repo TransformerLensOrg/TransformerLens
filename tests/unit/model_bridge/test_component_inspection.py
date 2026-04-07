@@ -1,4 +1,8 @@
-"""Unit tests for bridge component inspection functionality."""
+"""Unit tests for bridge component access and properties.
+
+Tests that TransformerBridge exposes components correctly through its own API,
+not just through the underlying HuggingFace model. Uses distilgpt2 (CI-cached).
+"""
 
 import pytest
 import torch
@@ -6,189 +10,139 @@ import torch
 from transformer_lens.model_bridge.bridge import TransformerBridge
 
 
-class TestBridgeComponentInspection:
-    """Test inspection of bridge components and their properties."""
+@pytest.fixture(scope="module")
+def bridge():
+    """Create a TransformerBridge for testing."""
+    return TransformerBridge.boot_transformers("distilgpt2", device="cpu")
 
-    @pytest.fixture
-    def bridge(self):
-        """Create a TransformerBridge for testing."""
-        return TransformerBridge.boot_transformers("gpt2", device="cpu")
 
-    def test_bridge_has_required_components(self, bridge):
-        """Test that bridge has all required transformer components."""
-        # Check main transformer structure
-        assert hasattr(bridge.original_model, "transformer"), "Should have transformer module"
-        transformer = bridge.original_model.transformer
+@pytest.fixture(scope="module")
+def bridge_compat():
+    """Create a TransformerBridge with compatibility mode for weight property tests."""
+    b = TransformerBridge.boot_transformers("distilgpt2", device="cpu")
+    b.enable_compatibility_mode()
+    return b
 
-        # Check core components
-        assert hasattr(transformer, "wte"), "Should have token embedding (wte)"
-        assert hasattr(transformer, "wpe"), "Should have position embedding (wpe)"
-        assert hasattr(transformer, "h"), "Should have transformer layers (h)"
-        assert hasattr(transformer, "ln_f"), "Should have final layer norm (ln_f)"
-        assert hasattr(bridge.original_model, "lm_head"), "Should have language model head"
 
-    def test_transformer_layers_structure(self, bridge):
-        """Test the structure of transformer layers."""
-        layers = bridge.original_model.transformer.h
-        assert len(layers) > 0, "Should have at least one transformer layer"
+class TestBridgeComponentAccess:
+    """Test that bridge exposes components through its own API."""
 
-        # Check first layer structure
-        layer_0 = layers[0]
-        assert hasattr(layer_0, "ln_1"), "Layer should have first layer norm"
-        assert hasattr(layer_0, "attn"), "Layer should have attention"
-        assert hasattr(layer_0, "ln_2"), "Layer should have second layer norm"
-        assert hasattr(layer_0, "mlp"), "Layer should have MLP"
+    def test_blocks_accessible_and_indexed(self, bridge):
+        """Bridge blocks should be accessible by index."""
+        assert hasattr(bridge, "blocks"), "Bridge should have blocks attribute"
+        assert len(bridge.blocks) == bridge.cfg.n_layers
+        block_0 = bridge.blocks[0]
+        assert block_0 is not None
 
-        # Check that all layers have consistent structure
-        for i, layer in enumerate(layers):
-            assert hasattr(layer, "ln_1"), f"Layer {i} should have ln_1"
-            assert hasattr(layer, "attn"), f"Layer {i} should have attn"
-            assert hasattr(layer, "ln_2"), f"Layer {i} should have ln_2"
-            assert hasattr(layer, "mlp"), f"Layer {i} should have mlp"
+    def test_block_has_attn_and_mlp(self, bridge):
+        """Each block should have attention and MLP subcomponents."""
+        block = bridge.blocks[0]
+        assert hasattr(block, "attn"), "Block should have attn"
+        assert hasattr(block, "mlp"), "Block should have mlp"
+        assert hasattr(block, "ln1"), "Block should have ln1"
+        assert hasattr(block, "ln2"), "Block should have ln2"
 
-    def test_attention_component_structure(self, bridge):
-        """Test the structure of attention components."""
-        attn = bridge.original_model.transformer.h[0].attn
+    def test_embed_accessible(self, bridge):
+        """Token embedding should be accessible."""
+        assert hasattr(bridge, "embed"), "Bridge should have embed"
 
-        # GPT-2 style attention should have these components
-        expected_attrs = ["c_attn", "c_proj"]  # GPT-2 specific naming
-        for attr in expected_attrs:
-            assert hasattr(attn, attr), f"Attention should have {attr}"
+    def test_unembed_accessible(self, bridge):
+        """Unembedding should be accessible."""
+        assert hasattr(bridge, "unembed"), "Bridge should have unembed"
 
-        # Check weight shapes are reasonable
-        c_attn = attn.c_attn
-        if hasattr(c_attn, "weight"):
-            weight_shape = c_attn.weight.shape
-            assert len(weight_shape) == 2, f"c_attn weight should be 2D: {weight_shape}"
-            assert (
-                weight_shape[0] > 0 and weight_shape[1] > 0
-            ), f"Weight should have positive dimensions: {weight_shape}"
+    def test_ln_final_accessible(self, bridge):
+        """Final layer norm should be accessible."""
+        assert hasattr(bridge, "ln_final"), "Bridge should have ln_final"
 
-    def test_mlp_component_structure(self, bridge):
-        """Test the structure of MLP components."""
-        mlp = bridge.original_model.transformer.h[0].mlp
+    def test_cfg_accessible(self, bridge):
+        """Config should be accessible with expected fields."""
+        cfg = bridge.cfg
+        assert cfg.n_layers > 0
+        assert cfg.n_heads > 0
+        assert cfg.d_model > 0
+        assert cfg.d_vocab > 0
 
-        # GPT-2 style MLP should have these components
-        expected_attrs = ["c_fc", "c_proj"]  # GPT-2 specific naming
-        for attr in expected_attrs:
-            assert hasattr(mlp, attr), f"MLP should have {attr}"
+    def test_tokenizer_accessible(self, bridge):
+        """Tokenizer should be accessible."""
+        assert bridge.tokenizer is not None
+        tokens = bridge.to_tokens("Hello world")
+        assert tokens.shape[0] == 1  # batch dim
+        assert tokens.shape[1] > 0  # seq dim
 
-        # Check weight shapes
-        c_fc = mlp.c_fc
-        if hasattr(c_fc, "weight"):
-            weight_shape = c_fc.weight.shape
-            assert len(weight_shape) == 2, f"c_fc weight should be 2D: {weight_shape}"
 
-    def test_embedding_components(self, bridge):
-        """Test embedding component properties."""
-        transformer = bridge.original_model.transformer
+class TestBridgeForwardPass:
+    """Test that bridge produces valid outputs."""
 
-        # Token embedding
-        wte = transformer.wte
-        assert hasattr(wte, "weight"), "Token embedding should have weight"
-        wte_shape = wte.weight.shape
-        assert len(wte_shape) == 2, f"Token embedding should be 2D: {wte_shape}"
-        assert (
-            wte_shape[0] > 0 and wte_shape[1] > 0
-        ), "Token embedding should have positive dimensions"
+    def test_forward_returns_logits(self, bridge):
+        """Forward pass should return logits tensor."""
+        with torch.no_grad():
+            logits = bridge("Hello world", return_type="logits")
+        assert logits.shape == (1, 3, bridge.cfg.d_vocab)  # "Hello world" = 3 tokens with BOS
+        assert not torch.isnan(logits).any()
+        assert not torch.isinf(logits).any()
 
-        # Position embedding
-        wpe = transformer.wpe
-        assert hasattr(wpe, "weight"), "Position embedding should have weight"
-        wpe_shape = wpe.weight.shape
-        assert len(wpe_shape) == 2, f"Position embedding should be 2D: {wpe_shape}"
-        assert (
-            wpe_shape[1] == wte_shape[1]
-        ), "Position and token embeddings should have same hidden dimension"
+    def test_forward_returns_loss(self, bridge):
+        """Forward pass should return reasonable loss."""
+        with torch.no_grad():
+            loss = bridge("The cat sat on the mat", return_type="loss")
+        assert loss.ndim == 0  # scalar
+        assert 0 < loss.item() < 15
 
-    def test_lm_head_structure(self, bridge):
-        """Test language model head structure."""
-        lm_head = bridge.original_model.lm_head
-        assert hasattr(lm_head, "weight"), "LM head should have weight"
+    def test_run_with_cache_returns_activations(self, bridge):
+        """run_with_cache should return non-empty cache."""
+        with torch.no_grad():
+            _, cache = bridge.run_with_cache("Hello")
+        assert len(cache) > 0
+        # Should have block-level hooks
+        block_keys = [k for k in cache.keys() if "blocks.0" in k]
+        assert len(block_keys) > 0
 
-        lm_head_shape = lm_head.weight.shape
-        assert len(lm_head_shape) == 2, f"LM head should be 2D: {lm_head_shape}"
 
-        # LM head vocab size should match token embedding
-        wte_shape = bridge.original_model.transformer.wte.weight.shape
-        assert (
-            lm_head_shape[0] == wte_shape[0]
-        ), "LM head and token embedding should have same vocab size"
+class TestBridgeWeightProperties:
+    """Test weight property accessors on bridge with compatibility mode."""
 
-    def test_component_types(self, bridge):
-        """Test that components are of expected PyTorch types."""
-        transformer = bridge.original_model.transformer
+    def test_W_Q_shape(self, bridge_compat):
+        """W_Q should have shape [n_layers, n_heads, d_model, d_head]."""
+        W_Q = bridge_compat.W_Q
+        cfg = bridge_compat.cfg
+        assert W_Q.shape == (cfg.n_layers, cfg.n_heads, cfg.d_model, cfg.d_head)
 
-        # All components should be nn.Module subclasses
-        assert isinstance(transformer.wte, torch.nn.Module), "Token embedding should be nn.Module"
-        assert isinstance(
-            transformer.wpe, torch.nn.Module
-        ), "Position embedding should be nn.Module"
-        assert isinstance(transformer.ln_f, torch.nn.Module), "Final layer norm should be nn.Module"
+    def test_W_K_shape(self, bridge_compat):
+        """W_K should have shape [n_layers, n_heads, d_model, d_head]."""
+        W_K = bridge_compat.W_K
+        cfg = bridge_compat.cfg
+        assert W_K.shape == (cfg.n_layers, cfg.n_heads, cfg.d_model, cfg.d_head)
 
-        # Layer components
-        layer_0 = transformer.h[0]
-        assert isinstance(layer_0.ln_1, torch.nn.Module), "Layer norm 1 should be nn.Module"
-        assert isinstance(layer_0.attn, torch.nn.Module), "Attention should be nn.Module"
-        assert isinstance(layer_0.ln_2, torch.nn.Module), "Layer norm 2 should be nn.Module"
-        assert isinstance(layer_0.mlp, torch.nn.Module), "MLP should be nn.Module"
+    def test_W_V_shape(self, bridge_compat):
+        """W_V should have shape [n_layers, n_heads, d_model, d_head]."""
+        W_V = bridge_compat.W_V
+        cfg = bridge_compat.cfg
+        assert W_V.shape == (cfg.n_layers, cfg.n_heads, cfg.d_model, cfg.d_head)
 
-    def test_parameter_devices(self, bridge):
-        """Test that all parameters are on the expected device."""
-        expected_device = torch.device("cpu")
+    def test_W_O_shape(self, bridge_compat):
+        """W_O should have shape [n_layers, n_heads, d_head, d_model]."""
+        W_O = bridge_compat.W_O
+        cfg = bridge_compat.cfg
+        assert W_O.shape == (cfg.n_layers, cfg.n_heads, cfg.d_head, cfg.d_model)
 
-        # Check embedding parameters
-        transformer = bridge.original_model.transformer
-        assert transformer.wte.weight.device == expected_device, "Token embedding should be on CPU"
-        assert (
-            transformer.wpe.weight.device == expected_device
-        ), "Position embedding should be on CPU"
+    def test_QK_factored_matrix(self, bridge_compat):
+        """QK property should return a functional FactoredMatrix."""
+        QK = bridge_compat.QK
+        assert QK is not None
+        # FactoredMatrix should have A and B with correct shapes
+        cfg = bridge_compat.cfg
+        assert QK.A.shape == (cfg.n_layers, cfg.n_heads, cfg.d_model, cfg.d_head)
+        assert QK.B.shape == (cfg.n_layers, cfg.n_heads, cfg.d_head, cfg.d_model)
+        # Should be computable (not contain NaN)
+        assert not torch.isnan(QK.A).any()
+        assert not torch.isnan(QK.B).any()
 
-        # Check layer parameters
-        layer_0 = transformer.h[0]
-        for name, param in layer_0.named_parameters():
-            assert (
-                param.device == expected_device
-            ), f"Parameter {name} should be on CPU, got {param.device}"
-
-        # Check LM head
-        assert (
-            bridge.original_model.lm_head.weight.device == expected_device
-        ), "LM head should be on CPU"
-
-    def test_parameter_dtypes(self, bridge):
-        """Test that parameters have expected data types."""
-        # Most parameters should be float32 or float16
-        valid_dtypes = {torch.float32, torch.float16, torch.bfloat16}
-
-        transformer = bridge.original_model.transformer
-
-        # Check key parameters
-        assert (
-            transformer.wte.weight.dtype in valid_dtypes
-        ), f"Token embedding dtype: {transformer.wte.weight.dtype}"
-        assert (
-            transformer.wpe.weight.dtype in valid_dtypes
-        ), f"Position embedding dtype: {transformer.wpe.weight.dtype}"
-
-        # Check layer 0 parameters
-        for name, param in transformer.h[0].named_parameters():
-            assert (
-                param.dtype in valid_dtypes
-            ), f"Parameter {name} has unexpected dtype: {param.dtype}"
-
-    def test_model_configuration_accessible(self, bridge):
-        """Test that model configuration is accessible."""
-        # Should have access to the original model's config
-        assert hasattr(bridge.original_model, "config"), "Model should have configuration"
-
-        config = bridge.original_model.config
-        assert hasattr(config, "n_layer"), "Config should specify number of layers"
-        assert hasattr(config, "n_head"), "Config should specify number of heads"
-        assert hasattr(config, "n_embd"), "Config should specify embedding dimension"
-
-        # Verify config matches actual model structure
-        actual_layers = len(bridge.original_model.transformer.h)
-        assert (
-            config.n_layer == actual_layers
-        ), f"Config layers ({config.n_layer}) should match actual ({actual_layers})"
+    def test_OV_factored_matrix(self, bridge_compat):
+        """OV property should return a functional FactoredMatrix."""
+        OV = bridge_compat.OV
+        assert OV is not None
+        cfg = bridge_compat.cfg
+        assert OV.A.shape == (cfg.n_layers, cfg.n_heads, cfg.d_model, cfg.d_head)
+        assert OV.B.shape == (cfg.n_layers, cfg.n_heads, cfg.d_head, cfg.d_model)
+        assert not torch.isnan(OV.A).any()
+        assert not torch.isnan(OV.B).any()

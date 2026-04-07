@@ -148,6 +148,9 @@
             "-W ignore::beartype.roar.BeartypeDecorHintPep585DeprecationWarning",
         ]
         doctest_optionflags="NORMALIZE_WHITESPACE ELLIPSIS FLOAT_CMP"
+        markers=[
+            "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+        ]
         filterwarnings=[
             "ignore:pkg_resources is deprecated as an API:DeprecationWarning",
             # Ignore numpy.distutils deprecation warning caused by pandas

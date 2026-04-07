@@ -15,7 +15,7 @@ from transformer_lens import HookedTransformer
 from transformer_lens.benchmarks import benchmark_forward_hooks, benchmark_hook_registry
 from transformer_lens.model_bridge import TransformerBridge
 
-pytestmark = pytest.mark.skip(reason="Temporarily skipping hook completeness tests pending fixes")
+pytestmark = pytest.mark.slow
 
 # Diverse architectures for hook completeness testing
 MODELS_TO_TEST = [
