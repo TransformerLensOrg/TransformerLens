@@ -1825,10 +1825,12 @@ class TransformerBridge(nn.Module):
                 repetition by dividing positive logits and multiplying negative logits for
                 previously seen tokens. Default 1.0 (no penalty).
             use_past_kv_cache: If True, use KV caching for faster generation
-            prepend_bos: Whether to prepend BOS token when input is a string or list of strings.
-                Passed through to to_tokens(). If None, uses model default.
-            padding_side: Which side to pad on when input is a string or list of strings.
-                Passed through to to_tokens(). If None, uses tokenizer default.
+            prepend_bos: Accepted for API compatibility but not applied during generation.
+                The HF model expects tokens in its native format (tokenizer defaults).
+                Overriding BOS can silently degrade generation quality.
+            padding_side: Accepted for API compatibility but not applied during generation.
+                The generation loop always extends tokens to the right, so overriding
+                initial padding_side creates inconsistent token layout.
             return_type: The type of output to return - 'input', 'str', or 'tokens'
             verbose: Not used in Bridge (kept for API compatibility)
             output_logits: If True, return a ModelOutput with sequences and logits tuple
@@ -1840,25 +1842,36 @@ class TransformerBridge(nn.Module):
             Generated sequence as string, list of strings, or tensor depending on input type and return_type.
             If output_logits=True, returns a ModelOutput-like object with 'sequences' and 'logits' attributes.
         """
-        # Convert input to tokens using to_tokens() for consistent special token handling
+        # prepend_bos and padding_side are intentionally not applied during generation.
+        # The HF model expects tokens in its native format. Overriding BOS can silently
+        # degrade quality, and overriding padding_side conflicts with the generation loop
+        # which always extends tokens to the right.
+        if prepend_bos is not None:
+            import warnings
+
+            warnings.warn(
+                "prepend_bos is ignored during TransformerBridge.generate(). "
+                "The HF model expects tokens with the tokenizer's default BOS handling. "
+                "To control BOS, tokenize with to_tokens(prepend_bos=...) and pass the "
+                "resulting tensor to generate().",
+                stacklevel=2,
+            )
+        if padding_side is not None:
+            import warnings
+
+            warnings.warn(
+                "padding_side is ignored during TransformerBridge.generate(). "
+                "The generation loop extends tokens to the right regardless of initial "
+                "padding. To control padding, tokenize with to_tokens(padding_side=...) "
+                "and pass the resulting tensor to generate().",
+                stacklevel=2,
+            )
         _generate_from_embeds = False
         if isinstance(input, str):
-            input_tokens = self.to_tokens(
-                input,
-                prepend_bos=prepend_bos,
-                padding_side=padding_side,
-                move_to_device=True,
-                truncate=False,
-            )
+            input_tokens = self.to_tokens(input, move_to_device=True, truncate=False)
             input_type = "str"
         elif isinstance(input, list):
-            input_tokens = self.to_tokens(
-                input,
-                prepend_bos=prepend_bos,
-                padding_side=padding_side,
-                move_to_device=True,
-                truncate=False,
-            )
+            input_tokens = self.to_tokens(input, move_to_device=True, truncate=False)
             input_type = "list"
         elif isinstance(input, torch.Tensor) and input.is_floating_point():
             # inputs_embeds: pre-computed embeddings (e.g., from multimodal models)
