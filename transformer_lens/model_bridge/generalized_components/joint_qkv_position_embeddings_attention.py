@@ -205,12 +205,11 @@ class JointQKVPositionEmbeddingsAttentionBridge(
         )
 
         attn_scores = self.hook_attn_scores(attn_scores)
-        attn_weights = torch.nn.functional.softmax(attn_scores, dim=-1)
-        attn_weights = self._apply_attn_dropout(attn_weights)
-        attn_weights = self.hook_pattern(attn_weights)
+        attn_weights = self._softmax_dropout_pattern(attn_scores)
 
         attn_output = torch.matmul(attn_weights, v)
-        attn_output = attn_output.transpose(1, 2).contiguous()
-        attn_output = attn_output.view(batch_size, seq_len, num_heads * head_dim)
+        attn_output = self._reshape_attn_output(
+            attn_output, batch_size, seq_len, num_heads, head_dim
+        )
         attn_output = self._apply_output_projection(attn_output)
         return (attn_output, attn_weights)

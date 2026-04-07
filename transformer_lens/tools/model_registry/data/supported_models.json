@@ -42,14 +42,15 @@
       "architecture_id": "GPT2LMHeadModel",
       "model_id": "openai-community/gpt2",
       "status": 1,
-      "verified_date": "2026-03-10",
+      "verified_date": "2026-04-07",
       "metadata": null,
       "note": "Full verification completed",
       "phase1_score": 100.0,
       "phase2_score": 100.0,
       "phase3_score": 100.0,
       "phase4_score": 88.5,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "Qwen2ForCausalLM",
@@ -2484,14 +2485,15 @@
       "architecture_id": "MistralForCausalLM",
       "model_id": "trl-internal-testing/tiny-MistralForCausalLM-0.2",
       "status": 1,
-      "verified_date": "2026-03-10",
+      "verified_date": "2026-04-07",
       "metadata": null,
       "note": "Full verification completed with issues, low text quality",
       "phase1_score": 100.0,
       "phase2_score": 100.0,
       "phase3_score": 100.0,
       "phase4_score": 47.5,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "MistralForCausalLM",
@@ -2537,13 +2539,13 @@
       "architecture_id": "BloomForCausalLM",
       "model_id": "bigscience/bloom-560m",
       "status": 1,
-      "verified_date": "2026-04-02",
+      "verified_date": "2026-04-07",
       "metadata": null,
       "note": "Full verification completed",
       "phase1_score": 100.0,
       "phase2_score": 100.0,
       "phase3_score": 100.0,
-      "phase4_score": 89.2,
+      "phase4_score": 75.9,
       "phase7_score": null,
       "phase8_score": null
     },
@@ -73181,13 +73183,15 @@
       "architecture_id": "GPTNeoXForCausalLM",
       "model_id": "EleutherAI/pythia-70m",
       "status": 1,
-      "verified_date": "2026-03-17",
+      "verified_date": "2026-04-07",
       "metadata": null,
-      "note": "Core verification completed",
+      "note": "Full verification completed",
       "phase1_score": 100.0,
-      "phase2_score": null,
-      "phase3_score": null,
-      "phase4_score": 78.7
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "phase4_score": 70.5,
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "MistralForCausalLM",

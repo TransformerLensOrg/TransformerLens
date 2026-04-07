@@ -290,10 +290,6 @@ class AttentionBridge(GeneralizedComponent):
         if hasattr(self, "hook_rot_k"):
             self.hook_rot_k.hook_conversion = TransposeRotaryHeads()
 
-    def _setup_hook_z_reshape(self) -> None:
-        """Backward compatibility alias for _setup_qkv_hook_reshaping."""
-        self._setup_qkv_hook_reshaping()
-
     def _update_kv_cache(
         self, k: torch.Tensor, v: torch.Tensor, **kwargs: Any
     ) -> tuple[torch.Tensor, torch.Tensor]:
@@ -365,6 +361,45 @@ class AttentionBridge(GeneralizedComponent):
         """Apply the output projection (self.o) if present."""
         if hasattr(self, "o") and self.o is not None:
             attn_output = self.o(attn_output)
+        return attn_output
+
+    def _softmax_dropout_pattern(
+        self,
+        attn_scores: torch.Tensor,
+        target_dtype: torch.dtype | None = None,
+        upcast_to_fp32: bool = False,
+    ) -> torch.Tensor:
+        """Apply softmax, dropout, and hook_pattern to attention scores.
+
+        Args:
+            attn_scores: Raw attention scores [batch, heads, q_seq, kv_seq].
+            target_dtype: If set, cast weights to this dtype after softmax.
+            upcast_to_fp32: If True, compute softmax in float32 for numerical
+                stability, then cast to target_dtype.
+        """
+        if upcast_to_fp32:
+            attn_weights = torch.nn.functional.softmax(attn_scores, dim=-1, dtype=torch.float32)
+            if target_dtype is not None:
+                attn_weights = attn_weights.to(target_dtype)
+        else:
+            attn_weights = torch.nn.functional.softmax(attn_scores, dim=-1)
+            if target_dtype is not None:
+                attn_weights = attn_weights.to(target_dtype)
+        attn_weights = self._apply_attn_dropout(attn_weights)
+        attn_weights = self.hook_pattern(attn_weights)
+        return attn_weights
+
+    def _reshape_attn_output(
+        self,
+        attn_output: torch.Tensor,
+        batch_size: int,
+        seq_len: int,
+        num_heads: int,
+        head_dim: int,
+    ) -> torch.Tensor:
+        """Reshape attention output from [batch, heads, seq, dim] to [batch, seq, hidden]."""
+        attn_output = attn_output.transpose(1, 2).contiguous()
+        attn_output = attn_output.view(batch_size, seq_len, num_heads * head_dim)
         return attn_output
 
     def _apply_reconstruct_attention_mask(

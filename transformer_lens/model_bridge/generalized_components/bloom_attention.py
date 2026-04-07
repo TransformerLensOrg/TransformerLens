@@ -187,19 +187,18 @@ class BloomAttentionBridge(JointQKVAttentionBridge):
         attn_scores = self.hook_attn_scores(attn_scores)
 
         # Softmax in float32 for numerical stability (matches HF BLOOM)
-        attn_weights = torch.nn.functional.softmax(attn_scores, dim=-1, dtype=torch.float32)
-        attn_weights = attn_weights.to(q.dtype)
-
-        attn_weights = self._apply_attn_dropout(attn_weights)
-        attn_weights = self.hook_pattern(attn_weights)
+        attn_weights = self._softmax_dropout_pattern(
+            attn_scores, target_dtype=q.dtype, upcast_to_fp32=True
+        )
 
         # bmm in [batch*heads, seq, seq] format for BLOOM compatibility
         attn_weights_bh = attn_weights.reshape(batch_size * num_heads, seq_len, -1)
         attn_output = torch.bmm(attn_weights_bh, v_bh)
 
         attn_output = attn_output.view(batch_size, num_heads, seq_len, head_dim)
-        attn_output = attn_output.transpose(1, 2).contiguous()
-        attn_output = attn_output.view(batch_size, seq_len, num_heads * head_dim)
+        attn_output = self._reshape_attn_output(
+            attn_output, batch_size, seq_len, num_heads, head_dim
+        )
         attn_output = self._apply_output_projection(attn_output)
 
         return (attn_output, attn_weights)

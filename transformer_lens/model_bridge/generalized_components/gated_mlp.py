@@ -60,14 +60,7 @@ class GatedMLPBridge(MLPBridge):
         "hook_pre_linear": "in.hook_out",
         "hook_post": "out.hook_in",
     }
-    property_aliases = {
-        "W_gate": "gate.weight",
-        "b_gate": "gate.bias",
-        "W_in": "in.weight",
-        "b_in": "in.bias",
-        "W_out": "out.weight",
-        "b_out": "out.bias",
-    }
+    # property_aliases inherited from MLPBridge (W_gate, b_gate, W_in, b_in, W_out, b_out)
 
     def __init__(
         self,
@@ -99,41 +92,33 @@ class GatedMLPBridge(MLPBridge):
             Output hidden states
         """
         if hasattr(self, "_use_processed_weights") and self._use_processed_weights:
+            assert hasattr(self, "_processed_W_gate") and hasattr(self, "_processed_W_in"), (
+                "Processed weights flag is set but weights are missing. "
+                "This indicates a bug in set_processed_weights()."
+            )
+            assert self._processed_W_in is not None
+            assert self._processed_W_out is not None
             hidden_states = args[0]
             hidden_states = self.hook_in(hidden_states)
-            if hasattr(self, "_processed_W_gate") and hasattr(self, "_processed_W_in"):
-                assert self._processed_W_in is not None  # Guarded by hasattr check above
-                assert self._processed_W_out is not None
-                gate_output = torch.nn.functional.linear(
-                    hidden_states, self._processed_W_gate, self._processed_b_gate
-                )
-                if hasattr(self, "gate") and hasattr(self.gate, "hook_out"):
-                    gate_output = self.gate.hook_out(gate_output)
-                linear_output = torch.nn.functional.linear(
-                    hidden_states, self._processed_W_in, self._processed_b_in
-                )
-                in_module = getattr(self, "in", None)
-                if in_module is not None and hasattr(in_module, "hook_out"):
-                    linear_output = in_module.hook_out(linear_output)  # type: ignore[misc]
-                act_fn = resolve_activation_fn(self.config)
-                activated = act_fn(gate_output)
-                hidden = activated * linear_output
-                if hasattr(self, "out") and hasattr(self.out, "hook_in"):
-                    hidden = self.out.hook_in(hidden)
-                output = torch.nn.functional.linear(
-                    hidden, self._processed_W_out, self._processed_b_out
-                )
-            else:
-                import warnings
-
-                warnings.warn(
-                    "Processed weights flag set but weights missing — "
-                    "falling back to original component. "
-                    "Intermediate MLP hooks will not fire.",
-                    stacklevel=2,
-                )
-                new_args = (hidden_states,) + args[1:]
-                output = self.original_component(*new_args, **kwargs)  # type: ignore[misc]
+            gate_output = torch.nn.functional.linear(
+                hidden_states, self._processed_W_gate, self._processed_b_gate
+            )
+            if hasattr(self, "gate") and hasattr(self.gate, "hook_out"):
+                gate_output = self.gate.hook_out(gate_output)
+            linear_output = torch.nn.functional.linear(
+                hidden_states, self._processed_W_in, self._processed_b_in
+            )
+            in_module = getattr(self, "in", None)
+            if in_module is not None and hasattr(in_module, "hook_out"):
+                linear_output = in_module.hook_out(linear_output)  # type: ignore[misc]
+            act_fn = resolve_activation_fn(self.config)
+            activated = act_fn(gate_output)
+            hidden = activated * linear_output
+            if hasattr(self, "out") and hasattr(self.out, "hook_in"):
+                hidden = self.out.hook_in(hidden)
+            output = torch.nn.functional.linear(
+                hidden, self._processed_W_out, self._processed_b_out
+            )
             output = self.hook_out(output)
             return output
         if self.original_component is None:
