@@ -1104,12 +1104,140 @@ class TransformerBridge(nn.Module):
         return self._stack_block_params("mlp.b_out")
 
     @property
+    def W_U(self) -> torch.Tensor:
+        """Unembedding matrix (d_model, d_vocab). Maps residual stream to logits."""
+        return self.unembed.W_U
+
+    @property
+    def b_U(self) -> torch.Tensor:
+        """Unembedding bias (d_vocab)."""
+        return self.unembed.b_U
+
+    @property
+    def W_E(self) -> torch.Tensor:
+        """Token embedding matrix (d_vocab, d_model)."""
+        return self.embed.W_E
+
+    @property
     def QK(self):
         return FactoredMatrix(self.W_Q, self.W_K.transpose(-2, -1))
 
     @property
     def OV(self):
         return FactoredMatrix(self.W_V, self.W_O)
+
+    # ------------------------------------------------------------------
+    # Mechanistic interpretability analysis methods
+    # ------------------------------------------------------------------
+
+    def tokens_to_residual_directions(
+        self,
+        tokens: Union[str, int, torch.Tensor],
+    ) -> torch.Tensor:
+        """Map tokens to their unembedding vectors (residual stream directions).
+
+        Returns the columns of W_U corresponding to the given tokens — i.e. the
+        directions in the residual stream that the model dots with to produce the
+        logit for each token.
+
+        WARNING: If you use this without folding in LayerNorm (compatibility mode),
+        the results will be misleading because LN weights change the unembed map.
+
+        Args:
+            tokens: A single token (str, int, or scalar tensor), a 1-D tensor of
+                token IDs, or a 2-D batch of token IDs.
+
+        Returns:
+            Tensor of unembedding vectors with shape matching the input token shape
+            plus a trailing d_model dimension.
+        """
+        if isinstance(tokens, torch.Tensor) and tokens.numel() > 1:
+            residual_directions = self.W_U[:, tokens]
+            residual_directions = einops.rearrange(
+                residual_directions, "d_model ... -> ... d_model"
+            )
+            return residual_directions
+        else:
+            if isinstance(tokens, str):
+                token = self.to_single_token(tokens)
+            elif isinstance(tokens, int):
+                token = tokens
+            elif isinstance(tokens, torch.Tensor) and tokens.numel() == 1:
+                token = int(tokens.item())
+            else:
+                raise ValueError(f"Invalid token type: {type(tokens)}")
+            residual_direction = self.W_U[:, token]
+            return residual_direction
+
+    def accumulated_bias(
+        self,
+        layer: int,
+        mlp_input: bool = False,
+        include_mlp_biases: bool = True,
+    ) -> torch.Tensor:
+        """Sum of attention and MLP output biases up to the input of a given layer.
+
+        Args:
+            layer: Layer number in [0, n_layers]. 0 means no layers, n_layers means all.
+            mlp_input: If True, include the attention output bias of the target layer
+                (i.e. bias up to the MLP input of that layer).
+            include_mlp_biases: Whether to include MLP biases. Useful to set False when
+                expanding attn_out into individual heads but keeping mlp_out as-is.
+
+        Returns:
+            Tensor of shape [d_model] with the accumulated bias.
+        """
+        accumulated = torch.zeros(self.cfg.d_model, device=self.cfg.device)
+        for i in range(layer):
+            block = self.blocks[i]
+            b_O = getattr(block.attn, "b_O", None)
+            if b_O is not None:
+                accumulated = accumulated + b_O
+            if include_mlp_biases:
+                b_out = getattr(block.mlp, "b_out", None)
+                if b_out is not None:
+                    accumulated = accumulated + b_out
+        if mlp_input:
+            assert layer < self.cfg.n_layers, "Cannot include attn_bias from beyond the final layer"
+            block = self.blocks[layer]
+            b_O = getattr(block.attn, "b_O", None)
+            if b_O is not None:
+                accumulated = accumulated + b_O
+        return accumulated
+
+    def all_composition_scores(self, mode: str) -> torch.Tensor:
+        """Composition scores for all pairs of heads.
+
+        Returns an (n_layers, n_heads, n_layers, n_heads) tensor that is upper
+        triangular on the layer axes (a head can only compose with later heads).
+
+        See https://transformer-circuits.pub/2021/framework/index.html
+
+        Args:
+            mode: One of "Q", "K", "V" — which composition type to compute.
+        """
+        left = self.OV
+        if mode == "Q":
+            right = self.QK
+        elif mode == "K":
+            right = self.QK.T
+        elif mode == "V":
+            right = self.OV
+        else:
+            raise ValueError(f"mode must be one of ['Q', 'K', 'V'] not {mode}")
+
+        scores = utils.composition_scores(left, right, broadcast_dims=True)
+        mask = (
+            torch.arange(self.cfg.n_layers, device=self.cfg.device)[:, None, None, None]
+            < torch.arange(self.cfg.n_layers, device=self.cfg.device)[None, None, :, None]
+        )
+        scores = torch.where(mask, scores, torch.zeros_like(scores))
+        return scores
+
+    @property
+    def all_head_labels(self) -> list[str]:
+        """Human-readable labels for all attention heads, e.g. ['L0H0', 'L0H1', ...]."""
+        return [f"L{l}H{h}" for l in range(self.cfg.n_layers) for h in range(self.cfg.n_heads)]
 
     def parameters(self, recurse: bool = True) -> Iterator[nn.Parameter]:
         """Returns parameters following standard PyTorch semantics.
