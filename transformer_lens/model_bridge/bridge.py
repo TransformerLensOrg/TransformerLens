@@ -1201,7 +1201,11 @@ class TransformerBridge(nn.Module):
             loss_per_token: Whether to return loss per token
             prepend_bos: Whether to prepend BOS token
             padding_side: Which side to pad on
-            start_at_layer: Layer to start forward pass from
+            start_at_layer: Not implemented in TransformerBridge. The bridge delegates
+                to HuggingFace's model.forward() which owns the layer iteration loop,
+                making start_at_layer infeasible without monkey-patching HF internals
+                (fragile across HF versions) or exception-based layer skipping (corrupts
+                model state). Raises NotImplementedError if a non-None value is passed.
             stop_at_layer: Layer to stop forward pass at
             pixel_values: Optional image tensor for multimodal models (e.g., LLaVA, Gemma3).
                 The tensor is passed directly to the underlying HuggingFace model.
@@ -1214,6 +1218,14 @@ class TransformerBridge(nn.Module):
         Returns:
             Model output based on return_type
         """
+
+        if start_at_layer is not None:
+            raise NotImplementedError(
+                "start_at_layer is not supported in TransformerBridge. "
+                "The bridge delegates to HuggingFace's model.forward() which controls "
+                "the layer iteration loop. See the TransformerBridge review plan for a "
+                "detailed analysis of implementation approaches and their tradeoffs."
+            )
 
         # Set stop_at_layer flag on all blocks if requested
         if stop_at_layer is not None and hasattr(self, "blocks"):
@@ -1382,10 +1394,17 @@ class TransformerBridge(nn.Module):
             # Execution stopped at the requested layer
             return e.layer_output
         finally:
-            # Clean up the stop_at_layer flag on all blocks
+            # Clean up state that may be inconsistent after StopAtLayerException
             if stop_at_layer is not None and hasattr(self, "blocks"):
+                # Reset the stop flag on all blocks
                 for block in self.blocks:
                     block._stop_at_layer_idx = None
+
+                # Clear any stale KV cache — layers after the stop point didn't
+                # execute, so the cache is incomplete and would corrupt subsequent
+                # generate() calls that expect a full cache.
+                if hasattr(self, "_last_hf_cache"):
+                    del self._last_hf_cache
 
     def get_hook_point(self, hook_name: str) -> Optional[HookPoint]:
         """Get a hook point by name from the bridge's hook system."""
@@ -1465,7 +1484,7 @@ class TransformerBridge(nn.Module):
                    return_cache_object: Whether to return ActivationCache object
                    remove_batch_dim: Whether to remove batch dimension
                    names_filter: Filter for which activations to cache (str, list of str, or callable)
-                   stop_at_layer: Layer to stop forward pass at (not yet fully implemented)
+                   stop_at_layer: Layer to stop forward pass at (uses StopAtLayerException; cleans up KV cache on stop)
                    **kwargs: Additional arguments
         # type: ignore[name-defined]
                Returns:
@@ -1660,7 +1679,7 @@ class TransformerBridge(nn.Module):
             clear_contexts: Whether to clear hook contexts
             return_type: What to return ("logits", "loss", etc.)
             names_filter: Filter for hook names (not used directly, for compatibility)
-            stop_at_layer: Layer to stop at (not yet fully implemented)
+            stop_at_layer: Layer to stop at (uses StopAtLayerException; cleans up KV cache on stop)
             remove_batch_dim: Whether to remove batch dimension from hook inputs (only works for batch_size==1)
             **kwargs: Additional arguments
 
@@ -1806,8 +1825,12 @@ class TransformerBridge(nn.Module):
                 repetition by dividing positive logits and multiplying negative logits for
                 previously seen tokens. Default 1.0 (no penalty).
             use_past_kv_cache: If True, use KV caching for faster generation
-            prepend_bos: Not used in Bridge (kept for API compatibility)
-            padding_side: Not used in Bridge (kept for API compatibility)
+            prepend_bos: Accepted for API compatibility but not applied during generation.
+                The HF model expects tokens in its native format (tokenizer defaults).
+                Overriding BOS can silently degrade generation quality.
+            padding_side: Accepted for API compatibility but not applied during generation.
+                The generation loop always extends tokens to the right, so overriding
+                initial padding_side creates inconsistent token layout.
             return_type: The type of output to return - 'input', 'str', or 'tokens'
             verbose: Not used in Bridge (kept for API compatibility)
             output_logits: If True, return a ModelOutput with sequences and logits tuple
@@ -1819,7 +1842,30 @@ class TransformerBridge(nn.Module):
             Generated sequence as string, list of strings, or tensor depending on input type and return_type.
             If output_logits=True, returns a ModelOutput-like object with 'sequences' and 'logits' attributes.
         """
-        # Convert input to tokens using to_tokens() for consistent special token handling
+        # prepend_bos and padding_side are intentionally not applied during generation.
+        # The HF model expects tokens in its native format. Overriding BOS can silently
+        # degrade quality, and overriding padding_side conflicts with the generation loop
+        # which always extends tokens to the right.
+        if prepend_bos is not None:
+            import warnings
+
+            warnings.warn(
+                "prepend_bos is ignored during TransformerBridge.generate(). "
+                "The HF model expects tokens with the tokenizer's default BOS handling. "
+                "To control BOS, tokenize with to_tokens(prepend_bos=...) and pass the "
+                "resulting tensor to generate().",
+                stacklevel=2,
+            )
+        if padding_side is not None:
+            import warnings
+
+            warnings.warn(
+                "padding_side is ignored during TransformerBridge.generate(). "
+                "The generation loop extends tokens to the right regardless of initial "
+                "padding. To control padding, tokenize with to_tokens(padding_side=...) "
+                "and pass the resulting tensor to generate().",
+                stacklevel=2,
+            )
         _generate_from_embeds = False
         if isinstance(input, str):
             input_tokens = self.to_tokens(input, move_to_device=True, truncate=False)

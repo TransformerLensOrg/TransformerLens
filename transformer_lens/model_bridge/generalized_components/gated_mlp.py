@@ -87,6 +87,10 @@ class GatedMLPBridge(MLPBridge):
     def forward(self, *args, **kwargs) -> torch.Tensor:
         """Forward pass through the gated MLP bridge.
 
+        Intermediate hooks (gate.hook_out, in.hook_out, out.hook_in) only fire in
+        compatibility mode with processed weights enabled. In non-compatibility mode,
+        the HF component is called as an opaque forward and only hook_in/hook_out fire.
+
         Args:
             *args: Positional arguments for the original component
             **kwargs: Keyword arguments for the original component
@@ -98,6 +102,8 @@ class GatedMLPBridge(MLPBridge):
             hidden_states = args[0]
             hidden_states = self.hook_in(hidden_states)
             if hasattr(self, "_processed_W_gate") and hasattr(self, "_processed_W_in"):
+                assert self._processed_W_in is not None  # Guarded by hasattr check above
+                assert self._processed_W_out is not None
                 gate_output = torch.nn.functional.linear(
                     hidden_states, self._processed_W_gate, self._processed_b_gate
                 )
@@ -118,6 +124,14 @@ class GatedMLPBridge(MLPBridge):
                     hidden, self._processed_W_out, self._processed_b_out
                 )
             else:
+                import warnings
+
+                warnings.warn(
+                    "Processed weights flag set but weights missing — "
+                    "falling back to original component. "
+                    "Intermediate MLP hooks will not fire.",
+                    stacklevel=2,
+                )
                 new_args = (hidden_states,) + args[1:]
                 output = self.original_component(*new_args, **kwargs)  # type: ignore[misc]
             output = self.hook_out(output)
@@ -159,17 +173,46 @@ class GatedMLPBridge(MLPBridge):
             return
         b_gate = weights.get("gate.bias")
 
+        W_in = weights.get("in.weight")
+        b_in = weights.get("in.bias")
+        W_out = weights.get("out.weight")
+        b_out = weights.get("out.bias")
+
         if verbose:
             print(f"    Setting W_gate with shape: {W_gate.shape}")
             if b_gate is not None:
                 print(f"    Setting b_gate with shape: {b_gate.shape}")
+            if W_in is not None:
+                print(f"    Setting W_in with shape: {W_in.shape}")
+            if W_out is not None:
+                print(f"    Setting W_out with shape: {W_out.shape}")
 
-        gate_module = getattr(self, "gate", None)
         self._use_processed_weights = True
         self._processed_W_gate = W_gate
         self._processed_b_gate = b_gate
+        self._processed_W_in = W_in
+        self._processed_b_in = b_in
+        self._processed_W_out = W_out
+        self._processed_b_out = b_out
+
+        # Distribute to submodules if they support it
+        gate_module = getattr(self, "gate", None)
         if gate_module and hasattr(gate_module, "set_processed_weights"):
             gate_weights: Dict[str, torch.Tensor] = {"weight": W_gate}
             if b_gate is not None:
                 gate_weights["bias"] = b_gate
             gate_module.set_processed_weights(gate_weights, verbose=verbose)
+
+        in_module = getattr(self, "in", None)
+        if in_module and hasattr(in_module, "set_processed_weights") and W_in is not None:
+            in_weights: Dict[str, torch.Tensor] = {"weight": W_in}
+            if b_in is not None:
+                in_weights["bias"] = b_in
+            in_module.set_processed_weights(in_weights, verbose=verbose)
+
+        out_module = getattr(self, "out", None)
+        if out_module and hasattr(out_module, "set_processed_weights") and W_out is not None:
+            out_weights: Dict[str, torch.Tensor] = {"weight": W_out}
+            if b_out is not None:
+                out_weights["bias"] = b_out
+            out_module.set_processed_weights(out_weights, verbose=verbose)
