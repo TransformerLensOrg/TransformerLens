@@ -55,8 +55,7 @@ class MLAAttentionBridge(PositionEmbeddingHooksMixin, AttentionBridge):
     the submodule weight access (q_a_proj, q_b_proj, etc.) instead.
     """
 
-    # Override property_aliases from AttentionBridge — MLA has no q/k/v submodules
-    # in the standard sense. Accessing W_Q etc. would be misleading.
+    # MLA has no standard q/k/v submodules — override to empty
     property_aliases: Dict[str, str] = {}
 
     hook_aliases = {
@@ -74,22 +73,15 @@ class MLAAttentionBridge(PositionEmbeddingHooksMixin, AttentionBridge):
         super().__init__(name, config, submodules=submodules, **kwargs)
         self._init_position_embedding_hooks()
 
-        # MLA-specific hooks for compressed latent representations
-        self.hook_q_latent = HookPoint()
-        self.hook_kv_latent = HookPoint()
+        self.hook_q_latent = HookPoint()  # Compressed Q (post q_a_layernorm)
+        self.hook_kv_latent = HookPoint()  # Compressed KV (post kv_a_layernorm)
+        self.hook_q = HookPoint()  # Final Q entering attention (post-RoPE concat)
+        self.hook_k = HookPoint()  # Final K entering attention (post-RoPE concat)
+        self.hook_v = HookPoint()  # V from kv_b_proj split
+        self.hook_rot_q = HookPoint()  # Q rope portion after RoPE
+        self.hook_rot_k = HookPoint()  # K rope portion after RoPE
 
-        # Final Q/K/V hooks (post-decompression, post-RoPE)
-        self.hook_q = HookPoint()
-        self.hook_k = HookPoint()
-        self.hook_v = HookPoint()
-
-        # RoPE hooks for the rope portion splits
-        self.hook_rot_q = HookPoint()
-        self.hook_rot_k = HookPoint()
-
-        # MLA params are read from the HF attention module at first forward(),
-        # not from the bridge config — TransformerBridgeConfig doesn't propagate
-        # MLA-specific fields (q_lora_rank, kv_lora_rank, etc.).
+        # MLA params lazy-initialized from HF module (bridge config lacks these fields)
         self._mla_params_initialized = False
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:
@@ -106,8 +98,6 @@ class MLAAttentionBridge(PositionEmbeddingHooksMixin, AttentionBridge):
 
         hf_attn: Any = self.original_component
 
-        # Lazy-init MLA params from the HF attention module (not from bridge config,
-        # which doesn't propagate MLA-specific fields).
         if not self._mla_params_initialized:
             self._q_lora_rank = getattr(hf_attn, "q_lora_rank", None)
             self._kv_lora_rank = getattr(hf_attn, "kv_lora_rank", 512)
@@ -221,10 +211,7 @@ class MLAAttentionBridge(PositionEmbeddingHooksMixin, AttentionBridge):
                 key_states, value_states, hf_attn.layer_idx, cache_kwargs
             )
 
-        # --- Attention computation ---
-        # Note: No V padding needed — the bridge uses eager attention (not flash),
-        # and eager attention handles qk_head_dim != v_head_dim natively via matmul.
-        # HF only pads V when flash attention is requested.
+        # --- Attention computation (no V padding — only needed for flash attention) ---
         scaling = self._qk_head_dim ** (-0.5)
         attn_scores = torch.matmul(query_states, key_states.transpose(-2, -1)) * scaling
 
@@ -232,7 +219,6 @@ class MLAAttentionBridge(PositionEmbeddingHooksMixin, AttentionBridge):
             attn_scores = attn_scores + attention_mask
 
         attn_scores = self.hook_attn_scores(attn_scores)
-        # Upcast softmax to fp32 for numerical stability, matching HF eager attention
         attn_weights = self._softmax_dropout_pattern(
             attn_scores, upcast_to_fp32=True, target_dtype=query_states.dtype
         )
@@ -247,6 +233,54 @@ class MLAAttentionBridge(PositionEmbeddingHooksMixin, AttentionBridge):
 
         attn_output = self.hook_out(attn_output)
         return attn_output, attn_weights
+
+    def get_random_inputs(
+        self,
+        batch_size: int = 2,
+        seq_len: int = 8,
+        device: Optional[torch.device] = None,
+        dtype: Optional[torch.dtype] = None,
+    ) -> Dict[str, Any]:
+        """Generate test inputs with hidden_states, position_embeddings, and attention_mask."""
+        if device is None:
+            device = torch.device("cpu")
+        if dtype is None:
+            dtype = torch.float32
+
+        # Try bridge config (d_model), then HF attention's config (hidden_size), then fallback
+        d_model = None
+        if self.config and hasattr(self.config, "d_model"):
+            d_model = self.config.d_model
+        if d_model is None and self.original_component is not None:
+            hf_cfg = getattr(self.original_component, "config", None)
+            if hf_cfg is not None:
+                d_model = getattr(hf_cfg, "hidden_size", None)
+        if d_model is None:
+            d_model = 256
+        inputs: Dict[str, Any] = {
+            "hidden_states": torch.randn(batch_size, seq_len, d_model, device=device, dtype=dtype)
+        }
+
+        # Generate position_embeddings from rotary_emb if available,
+        # otherwise create dummy (cos=1, sin=0) embeddings
+        rope_head_dim = self._qk_rope_head_dim if self._mla_params_initialized else 64
+        if self._rotary_emb is not None:
+            try:
+                dummy_input = inputs["hidden_states"]
+                position_ids = torch.arange(seq_len, device=device).unsqueeze(0)
+                position_embeddings = self._rotary_emb(dummy_input, position_ids)
+                inputs["position_embeddings"] = position_embeddings
+            except Exception:
+                cos = torch.ones(1, seq_len, rope_head_dim, device=device, dtype=dtype)
+                sin = torch.zeros(1, seq_len, rope_head_dim, device=device, dtype=dtype)
+                inputs["position_embeddings"] = (cos, sin)
+        else:
+            cos = torch.ones(1, seq_len, rope_head_dim, device=device, dtype=dtype)
+            sin = torch.zeros(1, seq_len, rope_head_dim, device=device, dtype=dtype)
+            inputs["position_embeddings"] = (cos, sin)
+
+        inputs["attention_mask"] = None
+        return inputs
 
     def __getattr__(self, name: str) -> Any:
         """Raise clear error for standard weight properties that don't apply to MLA."""

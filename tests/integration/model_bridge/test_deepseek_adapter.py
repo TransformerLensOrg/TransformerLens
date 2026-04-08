@@ -1,8 +1,4 @@
-"""Integration tests for DeepSeek V3 architecture adapter.
-
-Uses a tiny programmatic DeepseekV3 model (~6.5M params) saved to a temp dir,
-since no small pretrained DeepSeek V3/R1 models exist (smallest is 671B).
-"""
+"""Integration tests for DeepSeek V3 architecture adapter."""
 
 import tempfile
 
@@ -15,11 +11,10 @@ from transformer_lens.model_bridge.bridge import TransformerBridge
 
 @pytest.fixture(scope="module")
 def tiny_deepseek_bridge():
-    """Create a TransformerBridge wrapping a tiny programmatic DeepSeek V3 model."""
     tiny_config = DeepseekV3Config(
         hidden_size=256,
         intermediate_size=512,
-        num_hidden_layers=4,  # 1 dense + 3 MoE
+        num_hidden_layers=4,
         num_attention_heads=8,
         q_lora_rank=64,
         kv_lora_rank=32,
@@ -47,8 +42,6 @@ def tiny_deepseek_bridge():
 
 
 class TestDeepSeekBridgeCreation:
-    """Test bridge creation and structural validation."""
-
     def test_bridge_has_correct_block_count(self, tiny_deepseek_bridge):
         assert len(tiny_deepseek_bridge.blocks) == 4
 
@@ -62,13 +55,10 @@ class TestDeepSeekBridgeCreation:
             MLAAttentionBridge,
         )
 
-        attn = tiny_deepseek_bridge.blocks[0].attn
-        assert isinstance(attn, MLAAttentionBridge)
+        assert isinstance(tiny_deepseek_bridge.blocks[0].attn, MLAAttentionBridge)
 
 
 class TestDeepSeekForwardPass:
-    """Test forward pass produces valid output."""
-
     def test_forward_returns_logits(self, tiny_deepseek_bridge):
         tokens = torch.tensor([[1, 2, 3, 4]])
         with torch.no_grad():
@@ -78,91 +68,58 @@ class TestDeepSeekForwardPass:
         assert not torch.isinf(output).any()
 
     def test_forward_matches_hf(self, tiny_deepseek_bridge):
-        """Bridge output should be close to HF model output."""
+        """SDPA vs manual matmul — small float32 differences expected."""
         tokens = torch.tensor([[1, 2, 3, 4]])
         hf_model = tiny_deepseek_bridge.original_model
         with torch.no_grad():
             bridge_out = tiny_deepseek_bridge(tokens)
             hf_out = hf_model(tokens).logits
-        # SDPA vs eager difference expected
         max_diff = (bridge_out - hf_out).abs().max().item()
-        assert max_diff < 0.2, f"Bridge vs HF max diff = {max_diff}"
+        assert max_diff < 0.15, f"Bridge vs HF max diff = {max_diff}"
 
 
 class TestDeepSeekDenseVsMoELayers:
-    """Test that dense and MoE layers are handled correctly."""
-
     def test_dense_layer_has_no_moe_hooks(self, tiny_deepseek_bridge):
-        """Dense layer (blocks[0].mlp) should NOT have gate/shared_experts hooks."""
         tokens = torch.tensor([[1, 2, 3, 4]])
         _, cache = tiny_deepseek_bridge.run_with_cache(tokens)
         cache_keys = set(cache.keys())
-
-        assert not any(
-            "blocks.0.mlp.gate" in k for k in cache_keys
-        ), "Dense layer should not have gate hooks"
-        assert not any(
-            "blocks.0.mlp.shared_experts" in k for k in cache_keys
-        ), "Dense layer should not have shared_experts hooks"
+        assert not any("blocks.0.mlp.gate" in k for k in cache_keys)
+        assert not any("blocks.0.mlp.shared_experts" in k for k in cache_keys)
 
     def test_moe_layer_has_gate_hooks(self, tiny_deepseek_bridge):
-        """MoE layer (blocks[1].mlp) SHOULD have gate hooks."""
         tokens = torch.tensor([[1, 2, 3, 4]])
         _, cache = tiny_deepseek_bridge.run_with_cache(tokens)
-        cache_keys = set(cache.keys())
-
-        assert any("blocks.1.mlp.gate" in k for k in cache_keys), "MoE layer should have gate hooks"
+        assert any("blocks.1.mlp.gate" in k for k in cache.keys())
 
     def test_moe_layer_has_shared_experts_hooks(self, tiny_deepseek_bridge):
-        """MoE layer should have shared_experts hooks."""
         tokens = torch.tensor([[1, 2, 3, 4]])
         _, cache = tiny_deepseek_bridge.run_with_cache(tokens)
-        cache_keys = set(cache.keys())
-
-        assert any(
-            "blocks.1.mlp.shared_experts" in k for k in cache_keys
-        ), "MoE layer should have shared_experts hooks"
+        assert any("blocks.1.mlp.shared_experts" in k for k in cache.keys())
 
     def test_both_layers_have_mlp_hooks(self, tiny_deepseek_bridge):
-        """Both dense and MoE layers should have basic hook_in/hook_out."""
         tokens = torch.tensor([[1, 2, 3, 4]])
         _, cache = tiny_deepseek_bridge.run_with_cache(tokens)
-        cache_keys = set(cache.keys())
-
-        assert "blocks.0.mlp.hook_in" in cache_keys
-        assert "blocks.0.mlp.hook_out" in cache_keys
-        assert "blocks.1.mlp.hook_in" in cache_keys
-        assert "blocks.1.mlp.hook_out" in cache_keys
+        for i in [0, 1]:
+            assert f"blocks.{i}.mlp.hook_in" in cache
+            assert f"blocks.{i}.mlp.hook_out" in cache
 
     def test_both_layers_produce_non_nan(self, tiny_deepseek_bridge):
-        """Both dense and MoE layers should produce non-NaN output."""
         tokens = torch.tensor([[1, 2, 3, 4]])
         _, cache = tiny_deepseek_bridge.run_with_cache(tokens)
-
         for i in [0, 1]:
-            key = f"blocks.{i}.mlp.hook_out"
-            assert key in cache, f"Missing {key}"
-            assert not torch.isnan(cache[key]).any(), f"NaN in {key}"
+            assert not torch.isnan(cache[f"blocks.{i}.mlp.hook_out"]).any()
 
 
 class TestDeepSeekAttentionHooks:
-    """Test MLA attention hooks fire on all layers."""
-
     def test_attention_hooks_fire_all_layers(self, tiny_deepseek_bridge):
-        """Attention hooks should fire on every layer."""
         tokens = torch.tensor([[1, 2, 3, 4]])
         _, cache = tiny_deepseek_bridge.run_with_cache(tokens)
-        cache_keys = set(cache.keys())
-
         for i in range(4):
-            assert f"blocks.{i}.attn.hook_in" in cache_keys, f"Layer {i} missing attn.hook_in"
-            assert f"blocks.{i}.attn.hook_out" in cache_keys, f"Layer {i} missing attn.hook_out"
+            assert f"blocks.{i}.attn.hook_in" in cache
+            assert f"blocks.{i}.attn.hook_out" in cache
 
     def test_mla_latent_hooks_fire(self, tiny_deepseek_bridge):
-        """MLA-specific latent hooks should fire."""
         tokens = torch.tensor([[1, 2, 3, 4]])
         _, cache = tiny_deepseek_bridge.run_with_cache(tokens)
-        cache_keys = set(cache.keys())
-
-        assert any("hook_q_latent" in k for k in cache_keys), "hook_q_latent should fire"
-        assert any("hook_kv_latent" in k for k in cache_keys), "hook_kv_latent should fire"
+        assert any("hook_q_latent" in k for k in cache.keys())
+        assert any("hook_kv_latent" in k for k in cache.keys())

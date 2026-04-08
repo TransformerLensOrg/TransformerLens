@@ -103,10 +103,7 @@ def setup_submodules(
                             original_model, remote_path
                         )
                     except AttributeError:
-                        # Graceful skip: the HF component doesn't have this submodule.
-                        # This is expected for architectures with per-layer variation
-                        # (e.g., DeepSeek's dense vs MoE layers where dense layers lack
-                        # gate/shared_experts submodules).
+                        # Expected for per-layer variation (e.g., DeepSeek dense vs MoE)
                         logger.debug(
                             "Skipping submodule '%s' — not found on %s",
                             module_name,

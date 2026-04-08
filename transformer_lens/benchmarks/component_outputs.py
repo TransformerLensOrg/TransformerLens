@@ -439,6 +439,17 @@ class ComponentBenchmarker:
             if last_part in ["o", "out"]:
                 return
 
+            # Skip MLA intermediates (expect compressed-dim inputs, not hidden_states)
+            if last_part in [
+                "q_a_proj",
+                "q_a_layernorm",
+                "q_b_proj",
+                "kv_a_proj_with_mqa",
+                "kv_a_layernorm",
+                "kv_b_proj",
+            ]:
+                return
+
             # Skip virtual splits from fused projections (no standalone HF equivalent)
             if last_part in ["q", "k", "v", "gate", "in"]:
                 parent_path = ".".join(path_parts[:-1])
@@ -458,6 +469,29 @@ class ComponentBenchmarker:
                             return
                 except Exception:
                     pass
+
+        # Skip components not wired on this layer (per-layer or per-config variation).
+        # Only report as failure if the HF model has it but the bridge doesn't.
+        try:
+            self.adapter.get_component(self.bridge_model, component_path)
+        except (AttributeError, ValueError):
+            parts = component_path.split(".")
+            if len(parts) >= 3 and parts[1].isdigit():
+                subpath = ".".join([parts[0]] + ["{layer}"] + parts[2:])
+                # Per-layer variation: exists on some other layer (e.g., MoE vs dense)
+                for probe_layer in range(self.cfg.n_layers):
+                    probe_path = subpath.replace("{layer}", str(probe_layer))
+                    try:
+                        self.adapter.get_component(self.bridge_model, probe_path)
+                        return  # Found on another layer — skip this one
+                    except (AttributeError, ValueError):
+                        continue
+                # Per-config absence: HF model also lacks it (e.g., q_lora_rank=None)
+                try:
+                    self.adapter.get_component(self.hf_model, component_path)
+                except (AttributeError, ValueError):
+                    return
+            # Bridge is missing a component that HF has — likely misconfiguration
 
         # Test this component
         result = self._test_component(component_path, component, test_inputs)

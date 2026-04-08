@@ -29,12 +29,8 @@ from transformer_lens.model_bridge.generalized_components.base import (
 class DeepSeekV3ArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for DeepSeek V3 / R1 models.
 
-    DeepSeek V3 uses:
-    - RMSNorm for all normalizations
-    - Multi-Head Latent Attention (MLA) with compressed Q and KV projections
-    - Rotary position embeddings (RoPE) on partial head dimensions only
-    - Mixture of Experts MLP on most layers, dense MLP on first few layers
-    - No biases on projections
+    Uses RMSNorm, MLA with compressed Q/KV projections, partial RoPE,
+    MoE on most layers (dense MLP on first few), and no biases.
     """
 
     def __init__(self, cfg: Any) -> None:
@@ -45,12 +41,9 @@ class DeepSeekV3ArchitectureAdapter(ArchitectureAdapter):
         self.cfg.gated_mlp = True
         self.cfg.final_rms = True
         self.cfg.uses_rms_norm = True
-        # Not used by MLAAttentionBridge (which reimplements forward), but needed
-        # when the HF model is used as a reference in setup_component_testing /
-        # benchmarks — SDPA doesn't support output_attentions=True.
-        self.cfg.attn_implementation = "eager"
+        # HF defaults to SDPA which handles MLA correctly.
+        # HF's eager attention crashes on MLA's asymmetric Q/K dimensions.
 
-        # MLA doesn't use standard Q/K/V/O weight rearrangements
         self.weight_processing_conversions = {}
 
         self.component_mapping = {
@@ -78,17 +71,14 @@ class DeepSeekV3ArchitectureAdapter(ArchitectureAdapter):
                             "o": LinearBridge(name="o_proj"),
                         },
                     ),
-                    # MoEBridge wraps both MoE and dense MLP layers. On dense layers
-                    # (layer_idx < first_k_dense_replace), MoE-specific submodules
-                    # (gate, shared_experts) are gracefully skipped by setup_submodules
-                    # since DeepseekV3MLP lacks those attributes. On MoE layers, all
-                    # submodules are wired and hook_router_scores fires.
+                    # On dense layers (idx < first_k_dense_replace), gate and
+                    # shared_experts are gracefully skipped since DeepseekV3MLP
+                    # lacks those attributes.
                     "mlp": MoEBridge(
                         name="mlp",
                         config=self.cfg,
                         submodules={
-                            # DeepseekV3TopkRouter is a custom Module (not nn.Linear),
-                            # so we use GeneralizedComponent instead of LinearBridge.
+                            # Router is a custom Module, not nn.Linear
                             "gate": GeneralizedComponent(name="gate"),
                             "shared_experts": GatedMLPBridge(
                                 name="shared_experts",
@@ -108,21 +98,14 @@ class DeepSeekV3ArchitectureAdapter(ArchitectureAdapter):
         }
 
     def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
-        """Set up rotary embedding references for DeepSeek V3 component testing.
-
-        Args:
-            hf_model: The HuggingFace DeepSeek V3 model instance
-            bridge_model: The TransformerBridge model (if available)
-        """
+        """Set up rotary embedding references for component testing."""
         rotary_emb = hf_model.model.rotary_emb
 
-        # Set on live block instances (used by forward passes)
         if bridge_model is not None and hasattr(bridge_model, "blocks"):
             for block in bridge_model.blocks:
                 if hasattr(block, "attn"):
                     block.attn.set_rotary_emb(rotary_emb)
 
-        # Set on template (used by get_generalized_component() callers — benchmarks,
-        # component tests)
+        # Also set on template for get_generalized_component() callers
         attn_bridge = self.get_generalized_component("blocks.0.attn")
         attn_bridge.set_rotary_emb(rotary_emb)
