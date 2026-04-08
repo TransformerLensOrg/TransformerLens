@@ -2,7 +2,10 @@ from __future__ import annotations
 
 "Component setup utilities for creating and configuring bridged components."
 import copy
+import logging
 from typing import TYPE_CHECKING, Any, cast
+
+logger = logging.getLogger(__name__)
 
 import torch.nn as nn
 
@@ -95,9 +98,21 @@ def setup_submodules(
                     original_subcomponent = original_model
                 else:
                     remote_path = submodule.name
-                    original_subcomponent = architecture_adapter.get_remote_component(
-                        original_model, remote_path
-                    )
+                    try:
+                        original_subcomponent = architecture_adapter.get_remote_component(
+                            original_model, remote_path
+                        )
+                    except AttributeError:
+                        # Graceful skip: the HF component doesn't have this submodule.
+                        # This is expected for architectures with per-layer variation
+                        # (e.g., DeepSeek's dense vs MoE layers where dense layers lack
+                        # gate/shared_experts submodules).
+                        logger.debug(
+                            "Skipping submodule '%s' — not found on %s",
+                            module_name,
+                            original_model.__class__.__name__,
+                        )
+                        continue
                 submodule.set_original_component(original_subcomponent)
                 setup_submodules(submodule, architecture_adapter, original_subcomponent)
                 if submodule.name is not None:
