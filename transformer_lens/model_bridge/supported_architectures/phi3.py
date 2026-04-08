@@ -22,6 +22,7 @@ from transformer_lens.model_bridge.generalized_components import (
     JointQKVPositionEmbeddingsAttentionBridge,
     LinearBridge,
     RMSNormalizationBridge,
+    RotaryEmbeddingBridge,
     UnembeddingBridge,
 )
 
@@ -101,6 +102,7 @@ class Phi3ArchitectureAdapter(ArchitectureAdapter):
         # Set up component mapping
         self.component_mapping = {
             "embed": EmbeddingBridge(name="model.embed_tokens"),
+            "rotary_emb": RotaryEmbeddingBridge(name="model.rotary_emb"),
             "blocks": BlockBridge(
                 name="model.layers",
                 submodules={
@@ -206,6 +208,23 @@ class Phi3ArchitectureAdapter(ArchitectureAdapter):
             v_linear.bias = torch.nn.Parameter(v_bias)
 
         return q_linear, k_linear, v_linear
+
+    def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
+        """Set up rotary embedding references for Phi-3 component testing.
+
+        Args:
+            hf_model: The HuggingFace Phi-3 model instance
+            bridge_model: The TransformerBridge model (if available)
+        """
+        rotary_emb = hf_model.model.rotary_emb
+
+        if bridge_model is not None and hasattr(bridge_model, "blocks"):
+            for block in bridge_model.blocks:
+                if hasattr(block, "attn"):
+                    block.attn.set_rotary_emb(rotary_emb)
+
+        attn_bridge = self.get_generalized_component("blocks.0.attn")
+        attn_bridge.set_rotary_emb(rotary_emb)
 
     def prepare_loading(self, model_name: str, model_kwargs: dict) -> None:
         """Patch cached Phi-3 remote code for transformers v5 compatibility."""
