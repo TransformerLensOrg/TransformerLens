@@ -2486,14 +2486,15 @@
       "architecture_id": "MistralForCausalLM",
       "model_id": "trl-internal-testing/tiny-MistralForCausalLM-0.2",
       "status": 1,
-      "verified_date": "2026-03-10",
+      "verified_date": "2026-04-07",
       "metadata": null,
       "note": "Full verification completed with issues, low text quality",
       "phase1_score": 100.0,
       "phase2_score": 100.0,
       "phase3_score": 100.0,
       "phase4_score": 47.5,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "MistralForCausalLM",

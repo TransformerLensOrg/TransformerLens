@@ -96,59 +96,75 @@ class BlockBridge(GeneralizedComponent):
                 f"Original component not set for {self.name}. Call set_original_component() first."
             )
 
-        # Check if we should stop before executing this block
-        # The _stop_at_layer_idx attribute is set by the bridge's forward method
-        if hasattr(self, "_stop_at_layer_idx") and self._stop_at_layer_idx is not None:
-            # Extract layer index (supports TL/GPT-2/LLaMA naming patterns)
-            if self.name is not None:
-                # Try multiple patterns to extract layer index
-                match = (
-                    re.search(r"blocks\.(\d+)", self.name)
-                    or re.search(r"\.h\.(\d+)", self.name)
-                    or re.search(r"\.layers\.(\d+)", self.name)
-                )
-            else:
-                match = None
-            if match:
-                layer_idx = int(match.group(1))
-                if layer_idx == self._stop_at_layer_idx:
-                    # Get the input tensor to return
-                    if len(args) > 0 and isinstance(args[0], torch.Tensor):
-                        input_tensor = args[0]
-                    elif "hidden_states" in kwargs and isinstance(
-                        kwargs["hidden_states"], torch.Tensor
-                    ):
-                        input_tensor = kwargs["hidden_states"]
-                    else:
-                        raise ValueError(f"Cannot find input tensor to stop at layer {layer_idx}")
-                    # Run hook_in on the input before stopping
-                    input_tensor = self.hook_in(input_tensor)
-                    raise StopAtLayerException(input_tensor)
-
-        if len(args) > 0 and isinstance(args[0], torch.Tensor):
-            hooked_input = self.hook_in(args[0])
-            args = (hooked_input,) + args[1:]
-        elif "hidden_states" in kwargs and isinstance(kwargs["hidden_states"], torch.Tensor):
-            kwargs["hidden_states"] = self.hook_in(kwargs["hidden_states"])
+        self._check_stop_at_layer(*args, **kwargs)
+        args, kwargs = self._hook_input_hidden_states(args, kwargs)
 
         # Filter kwargs to only include parameters accepted by the original component
         # This prevents errors when passing encoder-specific params to decoder-only models
         filtered_kwargs = self._filter_kwargs_for_forward(kwargs, len(args))
 
         output = self.original_component(*args, **filtered_kwargs)
+        return self._apply_output_hook(output)
+
+    def _apply_output_hook(self, output: Any, wrap_single_element: bool = True) -> Any:
+        """Hook the primary tensor in the output and return the result.
+
+        Args:
+            output: Raw output from the original component (tensor or tuple).
+            wrap_single_element: If True, single-element tuples stay as tuples after
+                hooking (default, required by most HF models). If False, single-element
+                tuples are unwrapped to a bare tensor (Bloom convention).
+        """
         if isinstance(output, tuple) and len(output) > 0:
             first = output[0]
             if isinstance(first, torch.Tensor):
                 first = self.hook_out(first)
-                # Always return tuple to maintain consistency with HF's expected format
-                # e.g. GPT2Model does hidden_states = outputs[0], it expects outputs to be a tuple
                 if len(output) == 1:
-                    return (first,)
+                    return (first,) if wrap_single_element else first
                 output = (first,) + output[1:]
             return output
         if isinstance(output, torch.Tensor):
             output = self.hook_out(output)
         return output
+
+    def _check_stop_at_layer(self, *args: Any, **kwargs: Any) -> None:
+        """Check if execution should stop before this block. Raises StopAtLayerException.
+
+        The _stop_at_layer_idx attribute is set by the bridge's forward method.
+        Supports TL/GPT-2/LLaMA naming patterns for layer index extraction.
+        """
+        if not (hasattr(self, "_stop_at_layer_idx") and self._stop_at_layer_idx is not None):
+            return
+        if self.name is not None:
+            match = (
+                re.search(r"blocks\.(\d+)", self.name)
+                or re.search(r"\.h\.(\d+)", self.name)
+                or re.search(r"\.layers\.(\d+)", self.name)
+            )
+        else:
+            match = None
+        if match:
+            layer_idx = int(match.group(1))
+            if layer_idx == self._stop_at_layer_idx:
+                if len(args) > 0 and isinstance(args[0], torch.Tensor):
+                    input_tensor = args[0]
+                elif "hidden_states" in kwargs and isinstance(
+                    kwargs["hidden_states"], torch.Tensor
+                ):
+                    input_tensor = kwargs["hidden_states"]
+                else:
+                    raise ValueError(f"Cannot find input tensor to stop at layer {layer_idx}")
+                input_tensor = self.hook_in(input_tensor)
+                raise StopAtLayerException(input_tensor)
+
+    def _hook_input_hidden_states(self, args: tuple, kwargs: dict) -> tuple[tuple, dict]:
+        """Apply hook_in to the hidden_states input, whether in args or kwargs."""
+        if len(args) > 0 and isinstance(args[0], torch.Tensor):
+            hooked_input = self.hook_in(args[0])
+            args = (hooked_input,) + args[1:]
+        elif "hidden_states" in kwargs and isinstance(kwargs["hidden_states"], torch.Tensor):
+            kwargs["hidden_states"] = self.hook_in(kwargs["hidden_states"])
+        return args, kwargs
 
     def _filter_kwargs_for_forward(
         self, kwargs: Dict[str, Any], num_positional_args: int = 0

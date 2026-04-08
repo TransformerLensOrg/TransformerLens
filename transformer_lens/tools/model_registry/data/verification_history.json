@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-04-07T18:30:31.307768",
+  "last_updated": "2026-04-07T18:56:31.723897",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -11102,26 +11102,6 @@
       "invalidation_reason": null
     },
     {
-      "model_id": "distilbert/distilgpt2",
-      "architecture_id": "GPT2LMHeadModel",
-      "verified_date": "2026-04-07",
-      "verified_by": "verify_models",
-      "transformerlens_version": null,
-      "notes": "Full verification completed",
-      "invalidated": false,
-      "invalidation_reason": null
-    },
-    {
-      "model_id": "distilbert/distilgpt2",
-      "architecture_id": "GPT2LMHeadModel",
-      "verified_date": "2026-04-07",
-      "verified_by": "verify_models",
-      "transformerlens_version": null,
-      "notes": "Full verification completed",
-      "invalidated": false,
-      "invalidation_reason": null
-    },
-    {
       "model_id": "openai-community/gpt2",
       "architecture_id": "GPT2LMHeadModel",
       "verified_date": "2026-04-07",
@@ -11152,12 +11132,12 @@
       "invalidation_reason": null
     },
     {
-      "model_id": "microsoft/Phi-3-mini-4k-instruct",
-      "architecture_id": "Phi3ForCausalLM",
+      "model_id": "trl-internal-testing/tiny-MistralForCausalLM-0.2",
+      "architecture_id": "MistralForCausalLM",
       "verified_date": "2026-04-07",
       "verified_by": "verify_models",
       "transformerlens_version": null,
-      "notes": "Full verification completed",
+      "notes": "Full verification completed with issues, low text quality",
       "invalidated": false,
       "invalidation_reason": null
     }

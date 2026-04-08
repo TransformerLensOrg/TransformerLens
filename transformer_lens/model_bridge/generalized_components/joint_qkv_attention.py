@@ -27,17 +27,7 @@ class JointQKVAttentionBridge(AttentionBridge):
     the individual activations from the separated q, k, and v matrices are hooked and accessible.
     """
 
-    # Property aliases point to the linear bridge weights
-    property_aliases = {
-        "W_Q": "q.weight",
-        "W_K": "k.weight",
-        "W_V": "v.weight",
-        "W_O": "o.weight",
-        "b_Q": "q.bias",
-        "b_K": "k.bias",
-        "b_V": "v.bias",
-        "b_O": "o.bias",
-    }
+    # property_aliases inherited from AttentionBridge (W_Q, W_K, W_V, W_O, b_Q, b_K, b_V, b_O)
 
     def __init__(
         self,
@@ -422,16 +412,13 @@ class JointQKVAttentionBridge(AttentionBridge):
 
         attn_scores = self.hook_attn_scores(attn_scores)
 
-        if reorder_and_upcast:
-            attn_weights = torch.nn.functional.softmax(attn_scores, dim=-1)
-            attn_weights = attn_weights.to(v.dtype)
-        else:
-            attn_weights = torch.nn.functional.softmax(attn_scores, dim=-1)
-
-        attn_weights = self._apply_attn_dropout(attn_weights)
-        attn_weights = self.hook_pattern(attn_weights)
+        attn_weights = self._softmax_dropout_pattern(
+            attn_scores,
+            target_dtype=v.dtype if reorder_and_upcast else None,
+        )
         attn_output = torch.matmul(attn_weights, v)
-        attn_output = attn_output.transpose(1, 2).contiguous()
-        attn_output = attn_output.view(batch_size, seq_len, num_heads * head_dim)
+        attn_output = self._reshape_attn_output(
+            attn_output, batch_size, seq_len, num_heads, head_dim
+        )
         attn_output = self._apply_output_projection(attn_output)
         return (attn_output, attn_weights)
