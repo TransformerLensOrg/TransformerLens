@@ -321,14 +321,15 @@
       "architecture_id": "GPT2LMHeadModel",
       "model_id": "distilbert/distilgpt2",
       "status": 1,
-      "verified_date": "2026-03-10",
+      "verified_date": "2026-04-07",
       "metadata": null,
       "note": "Full verification completed",
       "phase1_score": 100.0,
       "phase2_score": 100.0,
       "phase3_score": 100.0,
       "phase4_score": 81.0,
-      "phase7_score": null
+      "phase7_score": null,
+      "phase8_score": null
     },
     {
       "architecture_id": "Qwen3ForCausalLM",
@@ -806,7 +807,7 @@
       "architecture_id": "Phi3ForCausalLM",
       "model_id": "microsoft/Phi-3-mini-4k-instruct",
       "status": 1,
-      "verified_date": "2026-03-30",
+      "verified_date": "2026-04-07",
       "metadata": null,
       "note": "Full verification completed",
       "phase1_score": 100.0,
