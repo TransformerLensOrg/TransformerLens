@@ -10,7 +10,7 @@ Optional parameters (may be absent in some CodeGen checkpoints):
   - rotary_dim: if None, RoPE is applied to the full head dimension.
 """
 
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, cast
 
 import torch
 
@@ -23,7 +23,6 @@ from transformer_lens.model_bridge.generalized_components.base import (
 from transformer_lens.model_bridge.generalized_components.joint_qkv_attention import (
     JointQKVAttentionBridge,
 )
-
 
 # ---------------------------------------------------------------------------
 # Rotary helpers — GPT-J / CodeGen style ("rotate_every_two")
@@ -42,7 +41,7 @@ def _rotate_every_two(x: torch.Tensor) -> torch.Tensor:
     Returns:
         Tensor of the same shape with even/odd pairs rotated.
     """
-    x1 = x[:, :, :, ::2]   # even-indexed dims
+    x1 = x[:, :, :, ::2]  # even-indexed dims
     x2 = x[:, :, :, 1::2]  # odd-indexed dims
     x = torch.stack((-x2, x1), dim=-1)
     return x.flatten(-2)
@@ -170,11 +169,7 @@ class CodeGenAttentionBridge(JointQKVAttentionBridge):
         if dtype is None:
             dtype = torch.float32
 
-        d_model = (
-            self.config.d_model
-            if self.config and hasattr(self.config, "d_model")
-            else 768
-        )
+        d_model = self.config.d_model if self.config and hasattr(self.config, "d_model") else 768
 
         # Build the HF-style 4D causal mask: 0 where attended, -inf where masked.
         # Shape: [batch, 1, seq_len, seq_len]
@@ -186,9 +181,7 @@ class CodeGenAttentionBridge(JointQKVAttentionBridge):
         causal[:, 0] = causal[:, 0].masked_fill(mask_upper, min_val)
 
         return {
-            "hidden_states": torch.randn(
-                batch_size, seq_len, d_model, device=device, dtype=dtype
-            ),
+            "hidden_states": torch.randn(batch_size, seq_len, d_model, device=device, dtype=dtype),
             "position_ids": torch.arange(seq_len, device=device)
             .unsqueeze(0)
             .expand(batch_size, -1),
@@ -310,7 +303,7 @@ class CodeGenAttentionBridge(JointQKVAttentionBridge):
         # ---- RoPE ----
         position_ids: Optional[torch.Tensor] = kwargs.get("position_ids", None)
         if position_ids is not None:
-            embed_positions: torch.Tensor = self.original_component.embed_positions  # type: ignore[union-attr]
+            embed_positions = cast(torch.Tensor, self.original_component.embed_positions)  # type: ignore[union-attr]
             # Move buffer to the right device if needed (mirrors HF forward)
             if embed_positions.device != position_ids.device:
                 embed_positions = embed_positions.to(position_ids.device)
@@ -336,7 +329,7 @@ class CodeGenAttentionBridge(JointQKVAttentionBridge):
         kv_seq_len = k.shape[-2]
 
         # ---- Scaled dot-product (fp32, matching HF CodeGen._attn) ----
-        scale = self.original_component.scale_attn  # type: ignore[union-attr]
+        scale = cast(torch.Tensor, self.original_component.scale_attn)  # type: ignore[union-attr]
         q_f32 = q.to(torch.float32)
         k_f32 = k.to(torch.float32)
 
@@ -364,7 +357,9 @@ class CodeGenAttentionBridge(JointQKVAttentionBridge):
         attn_output = torch.matmul(attn_weights, v)
 
         # Reshape [batch, heads, seq, head_dim] → [batch, seq, hidden]
-        attn_output = self._reshape_attn_output(attn_output, batch_size, seq_len, num_heads, head_dim)
+        attn_output = self._reshape_attn_output(
+            attn_output, batch_size, seq_len, num_heads, head_dim
+        )
 
         # Output projection (fires hook_z via o.hook_in)
         attn_output = self._apply_output_projection(attn_output)

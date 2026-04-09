@@ -10,8 +10,7 @@ Tests cover:
 - KV cache is passed through to _update_kv_cache
 """
 
-from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import torch
 
@@ -20,7 +19,6 @@ from transformer_lens.model_bridge.generalized_components.codegen_attention impo
     _apply_rotary_pos_emb,
     _rotate_every_two,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -207,7 +205,9 @@ class TestCodeGenAttentionBridgeInit:
 
     def test_no_c_proj_attribute_needed(self):
         """Construction must succeed when the original component has no c_proj."""
-        from transformer_lens.model_bridge.generalized_components.linear import LinearBridge
+        from transformer_lens.model_bridge.generalized_components.linear import (
+            LinearBridge,
+        )
 
         config = _make_config()
         split_qkv, _, _, _ = _make_split_qkv(config.d_model)
@@ -386,9 +386,9 @@ class TestCodeGenAttentionBridgeForward:
         bridge.q.hook_out.add_hook(zeroing_hook)
         zeroed_out, _ = bridge(hs.clone(), position_ids=pos_ids)
 
-        assert not torch.allclose(baseline_out, zeroed_out), (
-            "Zeroing hook_q should change the attention output"
-        )
+        assert not torch.allclose(
+            baseline_out, zeroed_out
+        ), "Zeroing hook_q should change the attention output"
 
 
 # ---------------------------------------------------------------------------
@@ -443,7 +443,7 @@ class TestCodeGenAttentionBridgeRoPE:
 
         # Compute what scores would be WITHOUT RoPE
         raw_q = raw_q_values[0]  # [B, S, D]
-        raw_k = k_lin(hs)        # [B, S, D]
+        raw_k = k_lin(hs)  # [B, S, D]
         n_heads = config.n_heads
         head_dim = config.d_model // n_heads
         q_plain = raw_q.view(B, S, n_heads, head_dim).transpose(1, 2).to(torch.float32)
@@ -453,9 +453,9 @@ class TestCodeGenAttentionBridgeRoPE:
         actual_scores = attn_scores_with_rope[0]
 
         # The scores MUST differ because RoPE was applied
-        assert not torch.allclose(actual_scores, scores_no_rope, atol=1e-4), (
-            "Attention scores with and without RoPE should differ"
-        )
+        assert not torch.allclose(
+            actual_scores, scores_no_rope, atol=1e-4
+        ), "Attention scores with and without RoPE should differ"
 
     def test_partial_rotary_dim_leaves_pass_through_unchanged(self):
         """The head-dim slice beyond rotary_dim should not be rotated.
@@ -516,9 +516,9 @@ class TestCodeGenAttentionBridgeRoPE:
         # The slice sent into RoPE must equal the raw_q rotary slice
         q_rot_slice = q_passed[0]  # [B, H, S, rotary_dim]
         raw_q_rot_slice = raw_q_heads.transpose(1, 2)[:, :, :, :rotary_dim]
-        assert torch.allclose(q_rot_slice, raw_q_rot_slice, atol=1e-5), (
-            "Q slice sent to RoPE must equal the raw projection (pre-rotation)"
-        )
+        assert torch.allclose(
+            q_rot_slice, raw_q_rot_slice, atol=1e-5
+        ), "Q slice sent to RoPE must equal the raw projection (pre-rotation)"
 
 
 # ---------------------------------------------------------------------------
@@ -540,6 +540,6 @@ class TestCodeGenAttentionBridgeCausalMask:
         # attn_weights: [B, H, S, S]; upper triangle (future) must be ~0
         for i in range(S):
             for j in range(i + 1, S):
-                assert torch.all(attn_weights[:, :, i, j].abs() < 1e-5), (
-                    f"attn_weights[:, :, {i}, {j}] should be ~0 (future position)"
-                )
+                assert torch.all(
+                    attn_weights[:, :, i, j].abs() < 1e-5
+                ), f"attn_weights[:, :, {i}, {j}] should be ~0 (future position)"

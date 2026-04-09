@@ -28,7 +28,6 @@ from transformer_lens.model_bridge.supported_architectures.codegen import (
     CodeGenArchitectureAdapter,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -136,9 +135,7 @@ class TestCodeGenAdapterComponentMapping:
     def test_no_ln2_in_blocks(self, adapter: CodeGenArchitectureAdapter) -> None:
         """CodeGen uses parallel attn+MLP sharing ln_1 — there must be no ln2."""
         blocks = adapter.component_mapping["blocks"]
-        assert "ln2" not in blocks.submodules, (
-            "CodeGen parallel block must not have ln2"
-        )
+        assert "ln2" not in blocks.submodules, "CodeGen parallel block must not have ln2"
 
     def test_attn_is_codegen_attention_bridge(self, adapter: CodeGenArchitectureAdapter) -> None:
         blocks = adapter.component_mapping["blocks"]
@@ -316,9 +313,9 @@ class TestCodeGenFactoryRegistration:
 
         cfg = _make_cfg()
         adapter = ArchitectureAdapterFactory.select_architecture_adapter(cfg)
-        assert isinstance(adapter, CodeGenArchitectureAdapter), (
-            f"Expected CodeGenArchitectureAdapter, got {type(adapter).__name__}"
-        )
+        assert isinstance(
+            adapter, CodeGenArchitectureAdapter
+        ), f"Expected CodeGenArchitectureAdapter, got {type(adapter).__name__}"
 
     def test_factory_key_is_codegen_for_causal_lm(self) -> None:
         """SUPPORTED_ARCHITECTURES must have a 'CodeGenForCausalLM' key."""
@@ -326,6 +323,6 @@ class TestCodeGenFactoryRegistration:
             SUPPORTED_ARCHITECTURES,
         )
 
-        assert "CodeGenForCausalLM" in SUPPORTED_ARCHITECTURES, (
-            "CodeGenForCausalLM must be registered in SUPPORTED_ARCHITECTURES"
-        )
+        assert (
+            "CodeGenForCausalLM" in SUPPORTED_ARCHITECTURES
+        ), "CodeGenForCausalLM must be registered in SUPPORTED_ARCHITECTURES"

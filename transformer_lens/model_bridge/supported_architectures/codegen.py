@@ -2,7 +2,6 @@
 
 from typing import Any
 
-import torch
 import torch.nn as nn
 
 from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorConversion
@@ -54,24 +53,16 @@ class CodeGenArchitectureAdapter(ArchitectureAdapter):
         # TransformerLens format [n_heads, d_model, d_head].
         self.weight_processing_conversions = {
             "blocks.{i}.attn.q.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion(
-                    "(n h) m -> n m h", n=self.cfg.n_heads
-                ),
+                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
             ),
             "blocks.{i}.attn.k.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion(
-                    "(n h) m -> n m h", n=self.cfg.n_heads
-                ),
+                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
             ),
             "blocks.{i}.attn.v.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion(
-                    "(n h) m -> n m h", n=self.cfg.n_heads
-                ),
+                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
             ),
             "blocks.{i}.attn.o.weight": ParamProcessingConversion(
-                tensor_conversion=RearrangeTensorConversion(
-                    "m (n h) -> n h m", n=self.cfg.n_heads
-                ),
+                tensor_conversion=RearrangeTensorConversion("m (n h) -> n h m", n=self.cfg.n_heads),
             ),
         }
 
@@ -104,9 +95,7 @@ class CodeGenArchitectureAdapter(ArchitectureAdapter):
             "unembed": UnembeddingBridge(name="lm_head"),
         }
 
-    def split_qkv_matrix(
-        self, attn_component: Any
-    ) -> tuple[nn.Linear, nn.Linear, nn.Linear]:
+    def split_qkv_matrix(self, attn_component: Any) -> tuple[nn.Linear, nn.Linear, nn.Linear]:
         """Split the fused QKV weight into separate Q, K, V linear modules.
 
         CodeGen uses GPT-J-style tensor-parallel partitioning with ``mp_num=4``
