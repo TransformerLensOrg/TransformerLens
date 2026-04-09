@@ -93530,6 +93530,76 @@
       "phase4_score": null,
       "phase7_score": null,
       "phase8_score": null
+    },
+    {
+      "architecture_id": "CodeGenForCausalLM",
+      "model_id": "Salesforce/codegen-350M-mono",
+      "status": 1,
+      "verified_date": "2026-04-09",
+      "metadata": null,
+      "note": "Full verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "phase4_score": 86.2,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "CodeGenForCausalLM",
+      "model_id": "Salesforce/codegen-350M-multi",
+      "status": 1,
+      "verified_date": "2026-04-09",
+      "metadata": null,
+      "note": "Full verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "phase4_score": 84.5,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "CodeGenForCausalLM",
+      "model_id": "Salesforce/codegen-350M-nl",
+      "status": 1,
+      "verified_date": "2026-04-09",
+      "metadata": null,
+      "note": "Full verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "phase4_score": 89.2,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "CodeGenForCausalLM",
+      "model_id": "Salesforce/codegen-2B-mono",
+      "status": 1,
+      "verified_date": "2026-04-09",
+      "metadata": null,
+      "note": "Full verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "phase4_score": 85.4,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "CodeGenForCausalLM",
+      "model_id": "Salesforce/codegen-2B-multi",
+      "status": 1,
+      "verified_date": "2026-04-09",
+      "metadata": null,
+      "note": "Full verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "phase4_score": 67.5,
+      "phase7_score": null,
+      "phase8_score": null
     }
   ]
 }
