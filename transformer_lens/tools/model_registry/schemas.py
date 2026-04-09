@@ -123,25 +123,35 @@ class ModelEntry:
 
 @dataclass
 class ArchitectureGap:
-    """An unsupported architecture with model count.
+    """An unsupported architecture with model count and relevancy metrics.
 
     Attributes:
         architecture_id: The architecture type not supported by TransformerLens
         total_models: Number of models on HuggingFace using this architecture
         sample_models: Top models by downloads for this architecture (up to 10)
+        total_downloads: Aggregate download count across all models of this architecture
+        min_param_count: Parameter count of the smallest model (None if unknown)
+        relevancy_score: Composite relevancy score (0-100), or None if not computed
     """
 
     architecture_id: str
     total_models: int
     sample_models: list[str] = field(default_factory=list)
+    total_downloads: int = 0
+    min_param_count: Optional[int] = None
+    relevancy_score: Optional[float] = None
 
     def to_dict(self) -> dict:
         """Convert to a JSON-serializable dictionary."""
-        return {
+        d: dict = {
             "architecture_id": self.architecture_id,
             "total_models": self.total_models,
+            "total_downloads": self.total_downloads,
+            "min_param_count": self.min_param_count,
+            "relevancy_score": self.relevancy_score,
             "sample_models": self.sample_models,
         }
+        return d
 
     @classmethod
     def from_dict(cls, data: dict) -> "ArchitectureGap":
@@ -150,6 +160,9 @@ class ArchitectureGap:
             architecture_id=data["architecture_id"],
             total_models=data["total_models"],
             sample_models=data.get("sample_models", []),
+            total_downloads=data.get("total_downloads", 0),
+            min_param_count=data.get("min_param_count"),
+            relevancy_score=data.get("relevancy_score"),
         )
 
 
