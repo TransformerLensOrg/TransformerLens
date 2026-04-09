@@ -129,7 +129,7 @@ def scrape_all_models(
         task: HuggingFace task filter (default: text-generation)
         batch_size: Log progress every N models
         checkpoint_interval: Save checkpoint every N models
-        min_downloads: Minimum download count to include a model (default: 1000)
+        min_downloads: Minimum download count to include a model (default: 500)
 
     Returns:
         Tuple of (supported_models_dict, architecture_gaps_dict)

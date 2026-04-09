@@ -7,6 +7,9 @@ from typing import Any, Dict, Optional
 
 import torch
 
+from transformer_lens.model_bridge.generalized_components.alibi_utils import (
+    build_alibi_tensor as _build_alibi_tensor,
+)
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
@@ -45,7 +48,7 @@ class BloomBlockBridge(BlockBridge):
     ) -> torch.Tensor:
         """Build ALiBi tensor for attention biasing.
 
-        This is adapted from the HuggingFace BLOOM implementation.
+        Delegates to the shared ALiBi utility in alibi_utils.py.
 
         Args:
             attention_mask: Attention mask of shape [batch_size, seq_length]
@@ -53,40 +56,9 @@ class BloomBlockBridge(BlockBridge):
             dtype: Data type for the tensor
 
         Returns:
-            ALiBi tensor of shape [num_heads, 1, seq_length]
+            ALiBi tensor of shape [batch_size, num_heads, 1, seq_length].
         """
-        batch_size, seq_length = attention_mask.shape
-        closest_power_of_2 = 2 ** torch.floor(
-            torch.log2(torch.tensor(num_heads, dtype=torch.float32))
-        )
-        base = torch.tensor(
-            2 ** (-(2 ** -(torch.log2(closest_power_of_2) - 3))), dtype=torch.float32
-        )
-        powers = torch.arange(1, 1 + closest_power_of_2, dtype=torch.int32)
-        slopes = torch.pow(base, powers)
-
-        if closest_power_of_2 != num_heads:
-            extra_base = torch.tensor(
-                2
-                ** (
-                    -(
-                        2
-                        ** -(
-                            torch.log2(torch.tensor(2 * closest_power_of_2, dtype=torch.float32))
-                            - 3
-                        )
-                    )
-                ),
-                dtype=torch.float32,
-            )
-            num_remaining_heads = min(closest_power_of_2, num_heads - closest_power_of_2)
-            extra_powers = torch.arange(1, 1 + 2 * num_remaining_heads, 2, dtype=torch.int32)
-            slopes = torch.cat([slopes, torch.pow(extra_base, extra_powers)], dim=0)
-
-        # Shape: [num_heads, 1, seq_length]
-        arange_tensor = ((attention_mask.cumsum(dim=-1) - 1) * attention_mask)[:, None, :]
-        alibi = slopes[..., None, None] * arange_tensor
-        return alibi.to(dtype)
+        return _build_alibi_tensor(attention_mask, num_heads, dtype)
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         """Forward pass through the BLOOM block.
@@ -154,8 +126,10 @@ class BloomBlockBridge(BlockBridge):
                 # Fallback: try to infer from model
                 num_heads = 16  # BLOOM-560M has 16 heads
 
-            # Generate alibi
+            # Generate alibi — shared utility returns [batch, heads, 1, seq],
+            # reshape to [batch*heads, 1, seq] to match HF's format for baddbmm.
             alibi = self.build_alibi_tensor(attention_mask_2d, num_heads, dtype)
+            alibi = alibi.reshape(batch_size * num_heads, 1, seq_length)
 
             # Add alibi to kwargs
             kwargs["alibi"] = alibi

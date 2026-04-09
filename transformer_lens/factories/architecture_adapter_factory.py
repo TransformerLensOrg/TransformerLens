@@ -9,6 +9,7 @@ from transformer_lens.model_bridge.supported_architectures import (
     ApertusArchitectureAdapter,
     BertArchitectureAdapter,
     BloomArchitectureAdapter,
+    FalconArchitectureAdapter,
     Gemma1ArchitectureAdapter,
     Gemma2ArchitectureAdapter,
     Gemma3ArchitectureAdapter,
@@ -52,6 +53,7 @@ SUPPORTED_ARCHITECTURES = {
     "ApertusForCausalLM": ApertusArchitectureAdapter,
     "BertForMaskedLM": BertArchitectureAdapter,
     "BloomForCausalLM": BloomArchitectureAdapter,
+    "FalconForCausalLM": FalconArchitectureAdapter,
     "GemmaForCausalLM": Gemma1ArchitectureAdapter,  # Default to Gemma1 as it's the original version
     "Gemma1ForCausalLM": Gemma1ArchitectureAdapter,
     "Gemma2ForCausalLM": Gemma2ArchitectureAdapter,

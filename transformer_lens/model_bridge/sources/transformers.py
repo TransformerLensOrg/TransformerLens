@@ -320,34 +320,37 @@ def boot(
     bridge_config.architecture = architecture
     bridge_config.model_name = model_name
     bridge_config.dtype = dtype
-    # Preserve HF-specific config attributes that adapters may need
-    if getattr(hf_config, "is_gated_act", False):
-        bridge_config.is_gated_act = True
-    # OPT-350m: word_embed_proj_dim != hidden_size means the model uses
-    # project_in/project_out instead of final_layer_norm.
-    word_embed_proj_dim = getattr(hf_config, "word_embed_proj_dim", None)
-    if word_embed_proj_dim is not None:
-        bridge_config.word_embed_proj_dim = word_embed_proj_dim
-    # OPT post-norm breaks fold_ln assumptions (pre-norm only).
-    do_layer_norm_before = getattr(hf_config, "do_layer_norm_before", None)
-    if do_layer_norm_before is not None:
-        bridge_config.do_layer_norm_before = do_layer_norm_before
-    # Propagate Gemma2 logit/attn softcapping config from HF to TL fields.
+    # Propagate HF-specific config attributes that adapters may need.
+    # Any attribute present on the HF config and not None is copied to bridge_config.
+    # This is architecture-agnostic — new architectures don't need changes here.
+    _HF_PASSTHROUGH_ATTRS = [
+        # OPT
+        "is_gated_act",
+        "word_embed_proj_dim",
+        "do_layer_norm_before",
+        # Granite
+        "position_embedding_type",
+        # Falcon
+        "parallel_attn",
+        "multi_query",
+        "new_decoder_architecture",
+        "alibi",
+        "num_ln_in_parallel_attn",
+        # Multimodal
+        "vision_config",
+    ]
+    for attr in _HF_PASSTHROUGH_ATTRS:
+        val = getattr(hf_config, attr, None)
+        if val is not None:
+            setattr(bridge_config, attr, val)
+
+    # Gemma2 softcapping: HF names differ from TL names, need explicit mapping
     final_logit_softcapping = getattr(hf_config, "final_logit_softcapping", None)
     if final_logit_softcapping is not None:
         bridge_config.output_logits_soft_cap = float(final_logit_softcapping)
     attn_logit_softcapping = getattr(hf_config, "attn_logit_softcapping", None)
     if attn_logit_softcapping is not None:
         bridge_config.attn_scores_soft_cap = float(attn_logit_softcapping)
-    # Propagate position_embedding_type for Granite Hybrid models that use
-    # "nope" (no positional embeddings) instead of "rope" on some/all layers.
-    position_embedding_type = getattr(hf_config, "position_embedding_type", None)
-    if position_embedding_type is not None:
-        bridge_config.position_embedding_type = position_embedding_type
-    # Propagate vision config for multimodal models so the adapter can
-    # select the correct vision encoder bridge (CLIP vs SigLIP).
-    if hasattr(hf_config, "vision_config") and hf_config.vision_config is not None:
-        bridge_config.vision_config = hf_config.vision_config
     adapter = ArchitectureAdapterFactory.select_architecture_adapter(bridge_config)
     if device is None:
         device = get_device()
