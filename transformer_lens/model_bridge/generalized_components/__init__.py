@@ -9,6 +9,9 @@ from transformer_lens.model_bridge.generalized_components.block import BlockBrid
 from transformer_lens.model_bridge.generalized_components.bloom_attention import (
     BloomAttentionBridge,
 )
+from transformer_lens.model_bridge.generalized_components.codegen_attention import (
+    CodeGenAttentionBridge,
+)
 from transformer_lens.model_bridge.generalized_components.bloom_block import (
     BloomBlockBridge,
 )
@@ -78,6 +81,7 @@ __all__ = [
     "BlockBridge",
     "BloomBlockBridge",
     "BloomAttentionBridge",
+    "CodeGenAttentionBridge",
     "BloomMLPBridge",
     "CLIPVisionEncoderBridge",
     "CLIPVisionEncoderLayerBridge",
