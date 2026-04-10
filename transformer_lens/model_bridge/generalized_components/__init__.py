@@ -38,6 +38,9 @@ from transformer_lens.model_bridge.generalized_components.falcon_alibi_attention
 from transformer_lens.model_bridge.generalized_components.gated_mlp import (
     GatedMLPBridge,
 )
+from transformer_lens.model_bridge.generalized_components.gated_rms_norm import (
+    GatedRMSNormBridge,
+)
 from transformer_lens.model_bridge.generalized_components.joint_gate_up_mlp import (
     JointGateUpMLPBridge,
 )
@@ -69,6 +72,7 @@ from transformer_lens.model_bridge.generalized_components.siglip_vision_encoder 
     SiglipVisionEncoderBridge,
     SiglipVisionEncoderLayerBridge,
 )
+from transformer_lens.model_bridge.generalized_components.ssm2_mixer import SSM2MixerBridge
 from transformer_lens.model_bridge.generalized_components.ssm_block import SSMBlockBridge
 from transformer_lens.model_bridge.generalized_components.ssm_mixer import SSMMixerBridge
 from transformer_lens.model_bridge.generalized_components.symbolic import SymbolicBridge
@@ -105,6 +109,7 @@ __all__ = [
     "LinearBridge",
     "MLPBridge",
     "GatedMLPBridge",
+    "GatedRMSNormBridge",
     "MoEBridge",
     "PositionEmbeddingsAttentionBridge",
     "SymbolicBridge",
@@ -112,6 +117,7 @@ __all__ = [
     "T5BlockBridge",
     "SiglipVisionEncoderBridge",
     "SiglipVisionEncoderLayerBridge",
+    "SSM2MixerBridge",
     "SSMBlockBridge",
     "SSMMixerBridge",
     "VisionProjectionBridge",

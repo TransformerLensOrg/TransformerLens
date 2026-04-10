@@ -205,6 +205,7 @@ def determine_architecture_from_hf_config(hf_config):
             "hubert": "HubertModel",
             "llama": "LlamaForCausalLM",
             "mamba": "MambaForCausalLM",
+            "mamba2": "Mamba2ForCausalLM",
             "mistral": "MistralForCausalLM",
             "mixtral": "MixtralForCausalLM",
             "gemma": "GemmaForCausalLM",
@@ -350,6 +351,9 @@ def boot(
         "expand",
         "time_step_rank",
         "intermediate_size",
+        # Mamba-2 (additional SSM config)
+        "n_groups",
+        "chunk_size",
         # Multimodal
         "vision_config",
     ]

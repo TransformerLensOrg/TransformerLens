@@ -69,6 +69,9 @@ from transformer_lens.model_bridge.supported_architectures.llava_onevision impor
 from transformer_lens.model_bridge.supported_architectures.mamba import (
     MambaArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.mamba2 import (
+    Mamba2ArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.mingpt import (
     MingptArchitectureAdapter,
 )
@@ -156,6 +159,7 @@ __all__ = [
     "LlavaNextArchitectureAdapter",
     "LlavaOnevisionArchitectureAdapter",
     "MambaArchitectureAdapter",
+    "Mamba2ArchitectureAdapter",
     "MingptArchitectureAdapter",
     "MistralArchitectureAdapter",
     "MixtralArchitectureAdapter",

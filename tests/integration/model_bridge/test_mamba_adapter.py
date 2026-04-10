@@ -194,9 +194,9 @@ class TestMambaStopAtLayer:
             with torch.no_grad():
                 stopped = mamba_bridge(tokens, stop_at_layer=stop)
             expected = cache[f"blocks.{stop}.hook_in"]
-            assert torch.allclose(stopped, expected), (
-                f"stop_at_layer={stop}: max diff = {(stopped - expected).abs().max().item()}"
-            )
+            assert torch.allclose(
+                stopped, expected
+            ), f"stop_at_layer={stop}: max diff = {(stopped - expected).abs().max().item()}"
 
     def test_output_shape_is_residual_not_logits(self, mamba_bridge):
         """When stopped mid-network, output is [batch, seq, d_model], not logits."""
