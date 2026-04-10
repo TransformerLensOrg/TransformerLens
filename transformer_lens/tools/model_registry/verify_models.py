@@ -249,6 +249,7 @@ def estimate_model_params(model_id: str) -> int:
                     "mixtral",
                     "qwen2",
                     "qwen3",
+                    "qwen3_moe",
                     "phi3",
                     "stablelm",
                 )
@@ -262,8 +263,11 @@ def estimate_model_params(model_id: str) -> int:
             lang_config, "num_experts", None
         )
         if num_experts and num_experts > 1:
-            # For MoE, MLP params are multiplied by num_experts + gate params
-            mlp_per_layer = d_model * d_mlp * mlp_multiplier
+            # Qwen3MoE and similar store per-expert hidden size in moe_intermediate_size;
+            # intermediate_size refers to a dense fallback MLP that we don't use here.
+            moe_d_mlp = getattr(lang_config, "moe_intermediate_size", None) or d_mlp
+            # MLP params scale with num_experts; add gate params per expert
+            mlp_per_layer = d_model * moe_d_mlp * mlp_multiplier
             moe_per_layer = (mlp_per_layer + d_model) * num_experts
             # Replace the non-MoE MLP contribution
             n_params -= n_layers * (d_model * d_mlp * mlp_multiplier)
@@ -279,13 +283,15 @@ def estimate_benchmark_memory_gb(
     n_params: int,
     dtype: str = "float32",
     phases: Optional[list[int]] = None,
+    use_hf_reference: bool = True,
 ) -> float:
     """Estimate peak memory needed for benchmark suite.
 
     Phases run sequentially, so peak memory is the maximum of any single phase,
     not the sum. The multiplier represents how many model copies exist at peak:
 
-    Phase 1: Briefly loads HF ref + Bridge → 2.0x peak
+    Phase 1 (HF ref on):  HF ref + Bridge → 2.0x peak
+    Phase 1 (HF ref off): Bridge only     → 1.0x peak
     Phase 2: Bridge + HookedTransformer (separate copy) → 2.0x model + overhead
     Phase 3: Same as Phase 2 (processed versions) → 2.0x model + overhead
     Phase 4: Bridge + GPT-2 scorer (~500MB) → ~1.0x model + 0.5 GB
@@ -294,6 +300,8 @@ def estimate_benchmark_memory_gb(
         n_params: Number of model parameters
         dtype: Data type for memory calculation
         phases: Which phases will be run (None = all phases)
+        use_hf_reference: Whether Phase 1 loads an HF reference alongside the
+            Bridge. Mirrors the ``--no-hf-reference`` CLI flag.
 
     Returns:
         Estimated peak memory in GB
@@ -315,9 +323,12 @@ def estimate_benchmark_memory_gb(
         phases = [1, 2, 3, 4]
 
     for p in phases:
-        if p in (1, 2, 3):
-            # Phase 1: HF ref + Bridge = 2 copies briefly
-            # Phase 2/3: Bridge + HookedTransformer = 2 copies
+        if p == 1:
+            # HF ref + Bridge (2 copies) or Bridge alone
+            multiplier = 2.0 if use_hf_reference else 1.0
+            phase_peaks.append(model_size_gb * multiplier * (1 + overhead_fraction))
+        elif p in (2, 3):
+            # Bridge + HookedTransformer = 2 copies
             phase_peaks.append(model_size_gb * 2.0 * (1 + overhead_fraction))
         elif p == 4:
             # Bridge + GPT-2 scorer
@@ -781,7 +792,9 @@ def verify_models(
             continue
 
         # Step 2: Check memory
-        estimated_mem = estimate_benchmark_memory_gb(n_params, dtype, phases=phases)
+        estimated_mem = estimate_benchmark_memory_gb(
+            n_params, dtype, phases=phases, use_hf_reference=use_hf_reference
+        )
         candidate.estimated_memory_gb = estimated_mem
         if not quiet:
             print(
@@ -1087,6 +1100,7 @@ def _print_dry_run(
     dtype: str,
     max_memory_gb: float,
     phases: Optional[list[int]] = None,
+    use_hf_reference: bool = True,
 ) -> None:
     """Print what would be tested in a dry run."""
     print(f"\nDry run: {len(candidates)} models would be tested")
@@ -1107,7 +1121,9 @@ def _print_dry_run(
         for c in models:
             try:
                 n_params = estimate_model_params(c.model_id)
-                mem = estimate_benchmark_memory_gb(n_params, dtype, phases=phases)
+                mem = estimate_benchmark_memory_gb(
+                    n_params, dtype, phases=phases, use_hf_reference=use_hf_reference
+                )
                 status = "OK" if mem <= max_memory_gb else "SKIP (too large)"
                 if mem > max_memory_gb:
                     skippable += 1
@@ -1339,6 +1355,7 @@ Examples:
             args.dtype,
             max_memory_gb,
             phases=args.phases,
+            use_hf_reference=not args.no_hf_reference,
         )
         return
 
