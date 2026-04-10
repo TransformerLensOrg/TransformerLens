@@ -11142,158 +11142,18 @@
       "invalidation_reason": null
     },
     {
-      "model_id": "fxmarty/really-tiny-falcon-testing",
-      "architecture_id": "FalconForCausalLM",
+      "model_id": "Salesforce/codegen-350M-mono",
+      "architecture_id": "CodeGenForCausalLM",
       "verified_date": "2026-04-09",
       "verified_by": "verify_models",
       "transformerlens_version": null,
-      "notes": "Below threshold: P3=55.6% < 75.0% (failed: process_bridge_weights, weight_modification, hook_functio \u2014 Critical backward hooks check failed: Output 0 of BackwardHookFunctionBackward is a view and is being modified inplace. This view was created inside a",
+      "notes": "Below threshold: P1=50.0% < 100.0% (failed: all_components) \u2014 20/103 components failed (20 critical)",
       "invalidated": false,
       "invalidation_reason": null
     },
     {
-      "model_id": "yujiepan/falcon-tiny-random",
-      "architecture_id": "FalconForCausalLM",
-      "verified_date": "2026-04-09",
-      "verified_by": "verify_models",
-      "transformerlens_version": null,
-      "notes": "Below threshold: P3=55.6% < 75.0% (failed: process_bridge_weights, weight_modification, hook_functio \u2014 Critical backward hooks check failed: Output 0 of BackwardHookFunctionBackward is a view and is being modified inplace. This view was created inside a",
-      "invalidated": false,
-      "invalidation_reason": null
-    },
-    {
-      "model_id": "yujiepan/falcon-tiny-random",
-      "architecture_id": "FalconForCausalLM",
-      "verified_date": "2026-04-09",
-      "verified_by": "verify_models",
-      "transformerlens_version": null,
-      "notes": "Below threshold: P3=55.6% < 75.0% (failed: process_bridge_weights, weight_modification, hook_functio \u2014 Critical backward hooks check failed: Output 0 of BackwardHookFunctionBackward is a view and is being modified inplace. This view was created inside a",
-      "invalidated": false,
-      "invalidation_reason": null
-    },
-    {
-      "model_id": "tiiuae/falcon-rw-1b",
-      "architecture_id": "FalconForCausalLM",
-      "verified_date": "2026-04-09",
-      "verified_by": "verify_models",
-      "transformerlens_version": null,
-      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: Falcon with ALiBi is not yet supported. Only RoPE-based Falcon models are currently handled.",
-      "invalidated": false,
-      "invalidation_reason": null
-    },
-    {
-      "model_id": "tiiuae/falcon-7b",
-      "architecture_id": "FalconForCausalLM",
-      "verified_date": "2026-04-09",
-      "verified_by": "verify_models",
-      "transformerlens_version": null,
-      "notes": "Below threshold: P3=50.0% < 75.0% (failed: process_bridge_weights, layer_norm_folding, weight_modifi \u2014 Critical backward hooks check failed: Output 0 of BackwardHookFunctionBackward is a view and is being modified inplace. This view was created inside a",
-      "invalidated": false,
-      "invalidation_reason": null
-    },
-    {
-      "model_id": "tiiuae/falcon-7b",
-      "architecture_id": "FalconForCausalLM",
-      "verified_date": "2026-04-09",
-      "verified_by": "verify_models",
-      "transformerlens_version": null,
-      "notes": "Below threshold: P3=50.0% < 75.0% (failed: process_bridge_weights, layer_norm_folding, weight_modifi \u2014 Critical backward hooks check failed: Output 0 of BackwardHookFunctionBackward is a view and is being modified inplace. This view was created inside a",
-      "invalidated": false,
-      "invalidation_reason": null
-    },
-    {
-      "model_id": "fxmarty/really-tiny-falcon-testing",
-      "architecture_id": "FalconForCausalLM",
-      "verified_date": "2026-04-09",
-      "verified_by": "verify_models",
-      "transformerlens_version": null,
-      "notes": "Below threshold: P3=55.6% < 75.0% (failed: process_bridge_weights, weight_modification, hook_functio \u2014 Critical backward hooks check failed: Output 0 of BackwardHookFunctionBackward is a view and is being modified inplace. This view was created inside a",
-      "invalidated": false,
-      "invalidation_reason": null
-    },
-    {
-      "model_id": "fxmarty/really-tiny-falcon-testing",
-      "architecture_id": "FalconForCausalLM",
-      "verified_date": "2026-04-09",
-      "verified_by": "verify_models",
-      "transformerlens_version": null,
-      "notes": "Below threshold: P3=55.6% < 75.0% (failed: process_bridge_weights, weight_modification, hook_functio \u2014 Critical backward hooks check failed: Output 0 of BackwardHookFunctionBackward is a view and is being modified inplace. This view was created inside a",
-      "invalidated": false,
-      "invalidation_reason": null
-    },
-    {
-      "model_id": "tiiuae/falcon-rw-1b",
-      "architecture_id": "FalconForCausalLM",
-      "verified_date": "2026-04-09",
-      "verified_by": "verify_models",
-      "transformerlens_version": null,
-      "notes": "Below threshold: P1=50.0% < 100.0% (failed: forward_pass_logits); P3=89.5% but required tests failed \u2014 Tensors differ: max_diff=33.789673, mean_rel=2.566615",
-      "invalidated": false,
-      "invalidation_reason": null
-    },
-    {
-      "model_id": "fxmarty/really-tiny-falcon-testing",
-      "architecture_id": "FalconForCausalLM",
-      "verified_date": "2026-04-09",
-      "verified_by": "verify_models",
-      "transformerlens_version": null,
-      "notes": "Below threshold: P3=55.6% < 75.0% (failed: process_bridge_weights, weight_modification, hook_functio \u2014 Critical backward hooks check failed: Output 0 of BackwardHookFunctionBackward is a view and is being modified inplace. This view was created inside a",
-      "invalidated": false,
-      "invalidation_reason": null
-    },
-    {
-      "model_id": "fxmarty/really-tiny-falcon-testing",
-      "architecture_id": "FalconForCausalLM",
-      "verified_date": "2026-04-09",
-      "verified_by": "verify_models",
-      "transformerlens_version": null,
-      "notes": "Full verification completed with issues, low text quality: P3=95.0% (failed: process_bridge_weights)",
-      "invalidated": false,
-      "invalidation_reason": null
-    },
-    {
-      "model_id": "tiiuae/falcon-rw-1b",
-      "architecture_id": "FalconForCausalLM",
-      "verified_date": "2026-04-09",
-      "verified_by": "verify_models",
-      "transformerlens_version": null,
-      "notes": "Below threshold: P1=0.0% < 100.0% (failed: all_components, forward_pass_logits); P3=89.5% but requir \u2014 24/147 components failed (24 critical)",
-      "invalidated": false,
-      "invalidation_reason": null
-    },
-    {
-      "model_id": "tiiuae/falcon-rw-1b",
-      "architecture_id": "FalconForCausalLM",
-      "verified_date": "2026-04-09",
-      "verified_by": "verify_models",
-      "transformerlens_version": null,
-      "notes": "Below threshold: P1=50.0% < 100.0% (failed: all_components) \u2014 24/123 components failed (24 critical)",
-      "invalidated": false,
-      "invalidation_reason": null
-    },
-    {
-      "model_id": "tiiuae/falcon-rw-1b",
-      "architecture_id": "FalconForCausalLM",
-      "verified_date": "2026-04-09",
-      "verified_by": "verify_models",
-      "transformerlens_version": null,
-      "notes": "Below threshold: P1=50.0% < 100.0% (failed: all_components) \u2014 24/123 components failed (24 critical)",
-      "invalidated": false,
-      "invalidation_reason": null
-    },
-    {
-      "model_id": "tiiuae/falcon-rw-1b",
-      "architecture_id": "FalconForCausalLM",
-      "verified_date": "2026-04-09",
-      "verified_by": "verify_models",
-      "transformerlens_version": null,
-      "notes": "Below threshold: P3=89.5% but required tests failed: logits_equivalence, loss_equivalence \u2014 Text quality score: 72.2/100 (avg perplexity: 471.0) \u2014 generated text may be incoherent",
-      "invalidated": false,
-      "invalidation_reason": null
-    },
-    {
-      "model_id": "tiiuae/falcon-rw-1b",
-      "architecture_id": "FalconForCausalLM",
+      "model_id": "Salesforce/codegen-350M-mono",
+      "architecture_id": "CodeGenForCausalLM",
       "verified_date": "2026-04-09",
       "verified_by": "verify_models",
       "transformerlens_version": null,
@@ -11302,8 +11162,8 @@
       "invalidation_reason": null
     },
     {
-      "model_id": "tiiuae/falcon-rw-1b",
-      "architecture_id": "FalconForCausalLM",
+      "model_id": "Salesforce/codegen-350M-multi",
+      "architecture_id": "CodeGenForCausalLM",
       "verified_date": "2026-04-09",
       "verified_by": "verify_models",
       "transformerlens_version": null,
@@ -11312,8 +11172,28 @@
       "invalidation_reason": null
     },
     {
-      "model_id": "tiiuae/falcon-rw-1b",
-      "architecture_id": "FalconForCausalLM",
+      "model_id": "Salesforce/codegen-350M-nl",
+      "architecture_id": "CodeGenForCausalLM",
+      "verified_date": "2026-04-09",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Salesforce/codegen-2B-mono",
+      "architecture_id": "CodeGenForCausalLM",
+      "verified_date": "2026-04-09",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Salesforce/codegen-2B-multi",
+      "architecture_id": "CodeGenForCausalLM",
       "verified_date": "2026-04-09",
       "verified_by": "verify_models",
       "transformerlens_version": null,
