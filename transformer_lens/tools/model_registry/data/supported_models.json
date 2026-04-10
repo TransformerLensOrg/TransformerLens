@@ -6,8 +6,8 @@
     "min_downloads": 500,
     "scan_duration_seconds": 3.2
   },
-  "total_architectures": 36,
-  "total_models": 5553,
+  "total_architectures": 37,
+  "total_models": 5557,
   "total_verified": 690,
   "models": [
     {
@@ -77668,6 +77668,62 @@
       "phase3_score": 100.0,
       "phase4_score": 89.9,
       "phase7_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "Qwen/Qwen3-30B-A3B",
+      "status": 0,
+      "verified_date": null,
+      "metadata": null,
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "Qwen/Qwen3-30B-A3B-Instruct-2507",
+      "status": 0,
+      "verified_date": null,
+      "metadata": null,
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "status": 0,
+      "verified_date": null,
+      "metadata": null,
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "Qwen/Qwen3-30B-A3B-Thinking-2507",
+      "status": 0,
+      "verified_date": null,
+      "metadata": null,
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
     }
   ]
 }
