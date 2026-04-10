@@ -298,6 +298,70 @@ class TestMamba2EffectiveAttention:
             "math is inconsistent with HF's chunked SSD output."
         )
 
+    def test_reconstruction_without_dt_scaling_matches_ssm_output(
+        self, cache_and_mixer, mamba2_bridge
+    ):
+        """Correctness check for the include_dt_scaling=False code path.
+
+        The existing reconstruction test verifies include_dt_scaling=True by
+        computing y = M_full @ x + D*x and comparing to HF's SSD output. That
+        leaves the 'attention-like' variant (M_att) with no direct correctness
+        coverage — test_include_dt_scaling_changes_output only proves the two
+        matrices differ, not that M_att has the right values.
+
+        This test uses the algebraic identity M_full[i,j] = M_att[i,j] * dt[j]
+        to reconstruct y via the False path:
+            y[i] = sum_j M_att[i,j] * (dt[j] * x[j]) + D * x[i]
+        The ground truth is still HF's chunked SSD output (inner_norm.hook_in),
+        so this is non-tautological: it verifies M_att's values against HF's
+        independently-computed path, exercising the code branch that skips
+        the final dt multiplication.
+        """
+        cache, mixer = cache_and_mixer
+        cfg = mamba2_bridge.cfg
+        seq_len = 8
+
+        M_att = mixer.compute_effective_attention(cache, layer_idx=0, include_dt_scaling=False)
+
+        # Extract post-conv hidden_states per head (same as the dt-scaled test)
+        conv_out = cache["blocks.0.mixer.conv1d.hook_out"][..., :seq_len].float()
+        conv_activated = torch.nn.functional.silu(conv_out).transpose(1, 2)
+        split_sizes = [
+            cfg.intermediate_size,
+            cfg.n_groups * cfg.state_size,
+            cfg.n_groups * cfg.state_size,
+        ]
+        hidden_x, _, _ = conv_activated.split(split_sizes, dim=-1)
+        batch = hidden_x.shape[0]
+        x_per_head = hidden_x.view(batch, seq_len, cfg.n_heads, cfg.d_head)
+
+        # Extract dt the same way the mixer does: softplus(raw + bias), clamped.
+        in_proj_out = cache["blocks.0.mixer.in_proj.hook_out"].float()
+        dt_raw = in_proj_out[..., -cfg.n_heads :]
+        dt_bias = mixer.dt_bias.float()
+        dt = torch.nn.functional.softplus(dt_raw + dt_bias)
+        time_step_limit = getattr(cfg, "time_step_limit", (0.0, float("inf")))
+        dt = torch.clamp(dt, float(time_step_limit[0]), float(time_step_limit[1]))
+        # dt shape: [batch, seq, num_heads]
+
+        # Scale x by dt per head, then apply M_att + D skip
+        x_scaled = dt[:, :, :, None] * x_per_head  # [batch, seq, num_heads, head_dim]
+        D = mixer.D.float()
+        y_pred = torch.einsum("bhij,bjhd->bihd", M_att, x_scaled)
+        y_pred = y_pred + D[None, None, :, None] * x_per_head
+        y_pred_flat = y_pred.reshape(batch, seq_len, -1)
+
+        y_actual = cache["blocks.0.mixer.inner_norm.hook_in"].float()
+        max_diff = (y_actual - y_pred_flat).abs().max().item()
+        scale = y_actual.abs().max().item()
+        assert max_diff / max(scale, 1e-8) < 1e-5, (
+            f"M_att reconstruction mismatch: max diff {max_diff:.2e} vs scale "
+            f"{scale:.2f} (relative {max_diff/max(scale, 1e-8):.2e}). The "
+            "include_dt_scaling=False path produces incorrect values — the "
+            "L ⊙ (C B^T) computation likely has a bug independent of the "
+            "dt multiplication."
+        )
+
     def test_include_dt_scaling_changes_output(self, cache_and_mixer):
         """Toggling dt scaling must actually change the matrix (sanity check)."""
         cache, mixer = cache_and_mixer
@@ -323,6 +387,70 @@ class TestMamba2EffectiveAttention:
         assert not torch.allclose(M0, M5)
 
 
+class TestMamba2EffectiveAttentionHelper:
+    """Tests for the mamba2.compute_effective_attention helper function.
+
+    The helper wraps the mixer method so callers don't repeat the layer index
+    and can request all layers at once.
+    """
+
+    @pytest.fixture(scope="class")
+    def bridge_cache(self, mamba2_bridge):
+        tokens = torch.tensor([[1, 2, 3, 4, 5]])
+        with torch.no_grad():
+            _, cache = mamba2_bridge.run_with_cache(tokens)
+        return mamba2_bridge, cache
+
+    def test_single_layer_matches_mixer_method(self, bridge_cache):
+        """helper(bridge, cache, layer=i) must match the underlying mixer call."""
+        from transformer_lens.model_bridge.supported_architectures.mamba2 import (
+            compute_effective_attention,
+        )
+
+        bridge, cache = bridge_cache
+        for layer in [0, 5, 23]:
+            M_helper = compute_effective_attention(bridge, cache, layer=layer)
+            M_direct = bridge.blocks[layer].mixer.compute_effective_attention(
+                cache, layer_idx=layer
+            )
+            assert torch.equal(M_helper, M_direct)
+
+    def test_all_layers_shape(self, bridge_cache, mamba2_bridge):
+        """helper(bridge, cache) with layer=None stacks all layers."""
+        from transformer_lens.model_bridge.supported_architectures.mamba2 import (
+            compute_effective_attention,
+        )
+
+        bridge, cache = bridge_cache
+        M_all = compute_effective_attention(bridge, cache)
+        assert M_all.shape == (mamba2_bridge.cfg.n_layers, 1, mamba2_bridge.cfg.n_heads, 5, 5)
+
+    def test_all_layers_matches_individual_calls(self, bridge_cache):
+        """Stacked all-layers tensor must match per-layer calls along dim 0."""
+        from transformer_lens.model_bridge.supported_architectures.mamba2 import (
+            compute_effective_attention,
+        )
+
+        bridge, cache = bridge_cache
+        M_all = compute_effective_attention(bridge, cache)
+        for layer in [0, 12, 23]:
+            M_single = bridge.blocks[layer].mixer.compute_effective_attention(
+                cache, layer_idx=layer
+            )
+            assert torch.equal(M_all[layer], M_single)
+
+    def test_include_dt_scaling_propagates(self, bridge_cache):
+        """The include_dt_scaling flag must flow through the helper to the mixer."""
+        from transformer_lens.model_bridge.supported_architectures.mamba2 import (
+            compute_effective_attention,
+        )
+
+        bridge, cache = bridge_cache
+        M_att = compute_effective_attention(bridge, cache, layer=0, include_dt_scaling=False)
+        M_full = compute_effective_attention(bridge, cache, layer=0, include_dt_scaling=True)
+        assert not torch.allclose(M_att, M_full)
+
+
 class TestMamba2ParameterAccess:
     """A_log, dt_bias, D are nn.Parameters of shape [num_heads] on the mixer."""
 
@@ -341,16 +469,83 @@ class TestMamba2ParameterAccess:
         assert d.shape == (mamba2_bridge.cfg.n_heads,)
 
 
-class TestMamba2Generation:
-    """is_stateful fallback in bridge.generate() should delegate to hf_generate."""
+class TestMamba2StatefulGeneration:
+    """Phase 3: bridge.generate() runs a dedicated stateful loop with
+    Mamba2Cache. Tokens match HF's native generate() exactly, and projection
+    hooks fire on every step so interventions are possible.
+    """
 
     def test_generation_produces_tokens(self, mamba2_bridge):
         tokens = torch.tensor([[1, 2, 3, 4]])
         with torch.no_grad():
             result = mamba2_bridge.generate(tokens, max_new_tokens=3, do_sample=False)
         assert isinstance(result, torch.Tensor)
-        assert result.shape[0] == 1
-        assert result.shape[1] == 4 + 3  # input + new tokens
+        assert result.shape == (1, 7)  # input (4) + new tokens (3)
+
+    def test_greedy_matches_hf_exactly(self, mamba2_bridge):
+        """Bridge greedy generation must match HF native generate() bit-for-bit."""
+        tokens = torch.tensor([[1, 2, 3, 4]])
+        with torch.no_grad():
+            bridge_out = mamba2_bridge.generate(tokens, max_new_tokens=5, do_sample=False)
+            hf_out = mamba2_bridge.original_model.generate(
+                tokens, max_new_tokens=5, do_sample=False, pad_token_id=0
+            )
+        assert torch.equal(
+            bridge_out, hf_out
+        ), f"Mismatch: bridge={bridge_out.tolist()} vs HF={hf_out.tolist()}"
+
+    def test_hooks_fire_during_generation(self, mamba2_bridge):
+        """Projection hooks fire on every generation step.
+
+        Same caveat as Mamba-1: conv1d fires only on the prefill step because
+        HF's torch_forward bypasses `self.conv1d(...)` during decode.
+        """
+        tokens = torch.tensor([[1, 2, 3, 4]])
+        call_counts: dict[str, int] = {"in_proj": 0, "conv1d": 0, "out_proj": 0}
+
+        def make_counter(name: str):
+            def hook_fn(t, hook):
+                call_counts[name] += 1
+                return t
+
+            return hook_fn
+
+        try:
+            mamba2_bridge.blocks[0].mixer.in_proj.hook_out.add_hook(make_counter("in_proj"))
+            mamba2_bridge.blocks[0].mixer.conv1d.hook_out.add_hook(make_counter("conv1d"))
+            mamba2_bridge.blocks[0].mixer.out_proj.hook_out.add_hook(make_counter("out_proj"))
+            with torch.no_grad():
+                _ = mamba2_bridge.generate(tokens, max_new_tokens=3, do_sample=False)
+        finally:
+            mamba2_bridge.blocks[0].mixer.in_proj.hook_out.remove_hooks()
+            mamba2_bridge.blocks[0].mixer.conv1d.hook_out.remove_hooks()
+            mamba2_bridge.blocks[0].mixer.out_proj.hook_out.remove_hooks()
+
+        assert call_counts["in_proj"] == 3
+        assert call_counts["out_proj"] == 3
+        # conv1d only fires during prefill (HF bypasses forward on decode)
+        assert call_counts["conv1d"] == 1
+
+    def test_hook_modification_affects_generation(self, mamba2_bridge):
+        """Mutating activations mid-generation must change the generated tokens."""
+        tokens = torch.tensor([[1, 2, 3, 4]])
+        with torch.no_grad():
+            baseline = mamba2_bridge.generate(tokens, max_new_tokens=3, do_sample=False)
+
+        def scramble(t, hook):
+            return t * 3.0
+
+        try:
+            mamba2_bridge.blocks[12].mixer.out_proj.hook_out.add_hook(scramble)
+            with torch.no_grad():
+                perturbed = mamba2_bridge.generate(tokens, max_new_tokens=3, do_sample=False)
+        finally:
+            mamba2_bridge.blocks[12].mixer.out_proj.hook_out.remove_hooks()
+
+        assert not torch.equal(baseline, perturbed), (
+            "Mid-layer mutation had no effect on generation — the stateful "
+            "loop may be bypassing the bridge's forward() path."
+        )
 
 
 class TestMamba2StopAtLayer:

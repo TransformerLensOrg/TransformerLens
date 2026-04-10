@@ -713,6 +713,37 @@ class ArchitectureAdapter:
         """
         pass
 
+    def create_stateful_cache(
+        self,
+        hf_model: Any,
+        batch_size: int,
+        device: Any,
+        dtype: torch.dtype,
+    ) -> Any:
+        """Build the HF cache object for a stateful (SSM) generation loop.
+
+        Called by ``TransformerBridge.generate()`` once before the token loop
+        when ``cfg.is_stateful`` is True. The returned object is threaded
+        through each forward call as ``cache_params=...`` and is expected to
+        mutate itself in-place.
+
+        Subclasses for SSM architectures (Mamba, Mamba-2, etc.) must override
+        this. The base raises to catch adapters that set ``is_stateful=True``
+        without providing a cache implementation.
+
+        Args:
+            hf_model: The wrapped HF model (source of ``.config``).
+            batch_size: Number of sequences generated in parallel.
+            device: Device for cache tensors.
+            dtype: Cache tensor dtype (usually the model's param dtype).
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__}.create_stateful_cache is not implemented. "
+            "If this adapter represents a stateful model (cfg.is_stateful=True), "
+            "it must override create_stateful_cache to return the appropriate "
+            "HF cache object."
+        )
+
     def setup_component_testing(self, hf_model: RemoteModel, bridge_model: Any = None) -> None:
         """Set up model-specific references needed for component testing.
 

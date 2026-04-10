@@ -1,10 +1,4 @@
-"""SSM block bridge component.
-
-Block container for State Space Model (Mamba) layers. Unlike BlockBridge, this
-component inherits directly from GeneralizedComponent to avoid transformer-
-specific hook aliases (hook_attn_*, hook_mlp_*, hook_resid_mid → ln2.hook_in)
-which don't apply to SSM blocks. SSM blocks have the structure norm → mixer → residual.
-"""
+"""Block container for State Space Model (Mamba) layers: norm → mixer → residual."""
 from __future__ import annotations
 
 import re
@@ -19,11 +13,10 @@ from transformer_lens.model_bridge.generalized_components.base import (
 
 
 class SSMBlockBridge(GeneralizedComponent):
-    """Block bridge for SSM (Mamba) layers.
+    """Block bridge for SSM layers — direct GeneralizedComponent subclass.
 
-    Direct subclass of GeneralizedComponent (NOT BlockBridge) to avoid inheriting
-    transformer-specific hook aliases. SSM blocks contain a norm and a mixer; there
-    is no attn/mlp/ln2 structure.
+    Does not inherit from BlockBridge because BlockBridge's hook_aliases hardcode
+    transformer-specific names (hook_attn_*, hook_mlp_*, hook_resid_mid).
     """
 
     is_list_item: bool = True
@@ -49,12 +42,7 @@ class SSMBlockBridge(GeneralizedComponent):
         )
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:
-        """Forward through the wrapped HF Mamba block with hook_in/hook_out.
-
-        Delegates to the original HF component so submodule bridges (norm, mixer,
-        and the mixer's own submodules like in_proj/conv1d) fire via the swapped
-        attribute chain.
-        """
+        """Delegate to the HF block with hook_in/hook_out wrapped around it."""
         if self.original_component is None:
             raise RuntimeError(
                 f"Original component not set for {self.name}. "
@@ -67,7 +55,7 @@ class SSMBlockBridge(GeneralizedComponent):
         return self._apply_output_hook(output)
 
     def _apply_output_hook(self, output: Any) -> Any:
-        """Apply hook_out to the primary tensor in the output."""
+        """Hook the primary output tensor, preserving tuple structure if present."""
         if isinstance(output, tuple) and len(output) > 0:
             first = output[0]
             if isinstance(first, torch.Tensor):
@@ -79,7 +67,7 @@ class SSMBlockBridge(GeneralizedComponent):
         return output
 
     def _hook_input_hidden_states(self, args: tuple, kwargs: dict) -> tuple[tuple, dict]:
-        """Apply hook_in to the hidden_states input, whether in args or kwargs."""
+        """Hook the hidden_states input whether it arrives positionally or by name."""
         if len(args) > 0 and isinstance(args[0], torch.Tensor):
             hooked = self.hook_in(args[0])
             args = (hooked,) + args[1:]
@@ -88,11 +76,12 @@ class SSMBlockBridge(GeneralizedComponent):
         return args, kwargs
 
     def _check_stop_at_layer(self, *args: Any, **kwargs: Any) -> None:
-        """Raise StopAtLayerException if this block matches the configured stop index."""
+        """Raise StopAtLayerException when the configured stop index matches this block."""
         if not (hasattr(self, "_stop_at_layer_idx") and self._stop_at_layer_idx is not None):
             return
         if self.name is None:
             return
+        # Mamba uses `.layers.{i}`; `blocks.{i}` is the fallback TL convention.
         match = re.search(r"\.layers\.(\d+)", self.name) or re.search(r"blocks\.(\d+)", self.name)
         if not match:
             return

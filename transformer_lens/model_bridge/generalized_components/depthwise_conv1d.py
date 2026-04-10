@@ -1,15 +1,4 @@
-"""Depthwise 1D convolution bridge component.
-
-Wraps an `nn.Conv1d` used as a depthwise causal convolution in Mamba (and
-similar SSM) models. Distinct from `Conv1DBridge`, which wraps the GPT-2
-style Conv1D that is actually a linear layer stored in transposed form.
-
-Tensor format note: HF's MambaMixer transposes hidden states to channel-first
-(`[batch, channels, seq_len]`) before invoking `conv1d`, and transposes back
-after. The conv1d wrapper only sees this channel-first format; `hook_out`
-captures the raw conv output prior to the causal trim that MambaMixer applies
-outside the conv1d call.
-"""
+"""Bridge for Mamba-style depthwise causal Conv1d (distinct from GPT-2's Conv1D linear)."""
 from typing import Any
 
 import torch
@@ -20,16 +9,21 @@ from transformer_lens.model_bridge.generalized_components.base import (
 
 
 class DepthwiseConv1DBridge(GeneralizedComponent):
-    """Bridge component for depthwise 1D convolutions used in Mamba models.
+    """Wraps an ``nn.Conv1d`` depthwise causal convolution with input/output hooks.
 
-    Hooks:
-        hook_in:  shape [batch, channels, seq_len] (channel-first)
-        hook_out: shape [batch, channels, seq_len + conv_kernel - 1]
-                  (channel-first, before the causal trim applied by the mixer)
+    Hook shapes (channel-first, as HF's MambaMixer transposes before the call):
+        hook_in:  [batch, channels, seq_len]
+        hook_out: [batch, channels, seq_len + conv_kernel - 1]  (pre causal trim)
+
+    Decode-step limitation: on stateful generation, HF's Mamba/Mamba-2 mixers
+    bypass ``self.conv1d(...)`` and read ``self.conv1d.weight`` directly, so the
+    forward hook never fires on decode steps — only on prefill. For per-step
+    conv output during decode, compute it manually from the cached conv_states
+    and ``conv1d.original_component.weight``, or run token-by-token via
+    ``forward()`` instead of ``generate()``.
     """
 
     def forward(self, input: torch.Tensor, *args: Any, **kwargs: Any) -> torch.Tensor:
-        """Forward pass through the wrapped nn.Conv1d with input/output hooks."""
         if self.original_component is None:
             raise RuntimeError(
                 f"Original component not set for {self.name}. "

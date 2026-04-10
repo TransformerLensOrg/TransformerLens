@@ -1,14 +1,7 @@
-"""Mamba-1 architecture adapter.
-
-Wraps HF's MambaForCausalLM (state-spaces/mamba-*-hf). Uses the wrap-don't-
-reimplement pattern: the HF MambaMixer.slow_forward runs as-is; submodule
-bridges on in_proj/conv1d/x_proj/dt_proj/out_proj capture projection activations.
-
-Mamba has no attention, no position embeddings, and stateful cache semantics
-(MambaCache mutated in place). Phase 1 delegates generation to hf_generate via
-the `is_stateful` flag to sidestep KV-cache incompatibility.
-"""
+"""Architecture adapter for HF's MambaForCausalLM (Mamba-1)."""
 from typing import Any
+
+import torch
 
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
@@ -23,12 +16,16 @@ from transformer_lens.model_bridge.generalized_components import (
 
 
 class MambaArchitectureAdapter(ArchitectureAdapter):
-    """Architecture adapter for Mamba-1 models (MambaForCausalLM)."""
+    """Wraps HF's MambaForCausalLM. No attention, no positional embeddings.
+
+    SSM config fields (state_size, conv_kernel, expand, time_step_rank,
+    intermediate_size) are propagated from the HF config via
+    ``_HF_PASSTHROUGH_ATTRS`` in sources/transformers.py.
+    """
 
     def __init__(self, cfg: Any) -> None:
         super().__init__(cfg)
 
-        # Core config setup
         self.cfg.normalization_type = "RMS"
         self.cfg.uses_rms_norm = True
         self.cfg.positional_embedding_type = "none"
@@ -36,17 +33,10 @@ class MambaArchitectureAdapter(ArchitectureAdapter):
         self.cfg.attn_only = False
         self.cfg.final_rms = True
 
-        # Mamba-specific SSM config fields (state_size, conv_kernel, expand,
-        # time_step_rank, intermediate_size) are propagated from the HF config
-        # via _HF_PASSTHROUGH_ATTRS in sources/transformers.py, so they are
-        # already available on self.cfg.
-
-        # Stateful flag: signals that generation should delegate to hf_generate
-        # because the HF cache type (MambaCache) is not compatible with the
-        # standard KV-cache path in TransformerBridge.generate().
+        # Routes bridge.generate() through the dedicated SSM cache loop.
         self.cfg.is_stateful = True
 
-        # No attention weight conversions — Mamba has no Q/K/V/O.
+        # No Q/K/V/O weights to rearrange.
         self.weight_processing_conversions = {}
 
         self.component_mapping = {
@@ -71,3 +61,15 @@ class MambaArchitectureAdapter(ArchitectureAdapter):
             "ln_final": RMSNormalizationBridge(name="backbone.norm_f", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head"),
         }
+
+    def create_stateful_cache(
+        self,
+        hf_model: Any,
+        batch_size: int,
+        device: Any,
+        dtype: torch.dtype,
+    ) -> Any:
+        """Build a MambaCache for the stateful generation loop."""
+        from transformers.models.mamba.modeling_mamba import MambaCache
+
+        return MambaCache(hf_model.config, batch_size, device=device, dtype=dtype)

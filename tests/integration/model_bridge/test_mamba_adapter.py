@@ -214,3 +214,119 @@ class TestMambaStopAtLayer:
             full = mamba_bridge(tokens)
         assert full.shape == (1, 4, mamba_bridge.cfg.d_vocab)
         assert not torch.isnan(full).any()
+
+
+class TestMambaStatefulGeneration:
+    """Phase 3: bridge.generate() runs a proper stateful loop instead of
+    delegating to hf_generate(). This gives hook integration during generation.
+    """
+
+    def test_greedy_matches_hf_exactly(self, mamba_bridge):
+        """Bridge greedy generation must produce the same tokens as HF greedy.
+
+        The bridge runs its own loop with cache_params/cache_position, but the
+        underlying numerical path is HF's slow_forward — so the tokens should
+        match HF's native generate() bit-for-bit.
+        """
+        tokens = torch.tensor([[1, 2, 3, 4]])
+        with torch.no_grad():
+            bridge_out = mamba_bridge.generate(tokens, max_new_tokens=5, do_sample=False)
+            hf_out = mamba_bridge.original_model.generate(
+                tokens, max_new_tokens=5, do_sample=False, pad_token_id=0
+            )
+        assert torch.equal(
+            bridge_out, hf_out
+        ), f"Mismatch: bridge={bridge_out.tolist()} vs HF={hf_out.tolist()}"
+
+    def test_hooks_fire_during_generation(self, mamba_bridge):
+        """Projection hooks must fire on each generation forward pass.
+
+        Note: conv1d fires only during the prefill step because HF's
+        slow_forward bypasses `self.conv1d(...)` on decode steps (it accesses
+        `self.conv1d.weight` directly). in_proj, x_proj, dt_proj, out_proj
+        all fire on every step.
+        """
+        tokens = torch.tensor([[1, 2, 3, 4]])
+        call_counts: dict[str, int] = {"in_proj": 0, "conv1d": 0, "out_proj": 0}
+
+        def make_counter(name: str):
+            def hook_fn(t, hook):
+                call_counts[name] += 1
+                return t
+
+            return hook_fn
+
+        try:
+            mamba_bridge.blocks[0].mixer.in_proj.hook_out.add_hook(make_counter("in_proj"))
+            mamba_bridge.blocks[0].mixer.conv1d.hook_out.add_hook(make_counter("conv1d"))
+            mamba_bridge.blocks[0].mixer.out_proj.hook_out.add_hook(make_counter("out_proj"))
+            with torch.no_grad():
+                _ = mamba_bridge.generate(tokens, max_new_tokens=3, do_sample=False)
+        finally:
+            mamba_bridge.blocks[0].mixer.in_proj.hook_out.remove_hooks()
+            mamba_bridge.blocks[0].mixer.conv1d.hook_out.remove_hooks()
+            mamba_bridge.blocks[0].mixer.out_proj.hook_out.remove_hooks()
+
+        # 3 forward passes total: 1 prefill + 2 decode steps (max_new_tokens=3
+        # produces 3 tokens via 1 prefill that yields the first new token, plus
+        # 2 decode steps for the remaining 2 new tokens).
+        assert call_counts["in_proj"] == 3
+        assert call_counts["out_proj"] == 3
+        # conv1d fires only on prefill — decode bypasses self.conv1d(...)
+        assert call_counts["conv1d"] == 1
+
+    @pytest.mark.parametrize("prompt_len", [1, 2, 3, 4, 5, 8, 20])
+    def test_greedy_matches_hf_across_prompt_lengths(self, mamba_bridge, prompt_len):
+        """Bridge greedy must match HF for any prompt length, including short
+        prompts.
+
+        Regression: the initial Phase 3 implementation used
+        cache_position=[conv_kernel + step] on decode which worked for
+        prompt_len >= conv_kernel via HF's clamp to conv_kernel - 1, but
+        silently wrote to the wrong buffer slot for short prompts
+        (prompt_len < conv_kernel). The fix uses the actual sequence position
+        (prompt_len + step - 1), matching HF's own generate loop. This test
+        parametrizes over prompt lengths that cross the conv_kernel boundary
+        to catch any regression.
+        """
+        tokens = torch.arange(1, prompt_len + 1).unsqueeze(0)
+        with torch.no_grad():
+            bridge_out = mamba_bridge.generate(tokens, max_new_tokens=6, do_sample=False)
+            hf_out = mamba_bridge.original_model.generate(
+                tokens, max_new_tokens=6, do_sample=False, pad_token_id=0
+            )
+        assert torch.equal(bridge_out, hf_out), (
+            f"prompt_len={prompt_len}: bridge={bridge_out.tolist()} vs " f"HF={hf_out.tolist()}"
+        )
+
+    def test_hook_modification_affects_generation(self, mamba_bridge):
+        """Mutating activations mid-generation must change the generated tokens.
+
+        If the hook path worked for run_with_hooks but not bridge.generate(),
+        this test would fail — proving the stateful loop routes through
+        self.forward() and not directly to HF internals.
+
+        Note: state-spaces/mamba-130m-hf ships with a randomly initialized
+        lm_head (weight missing from checkpoint), so small perturbations to
+        mid-network activations are easily flattened by the random projection.
+        We use a large additive perturbation on an early layer's residual
+        stream to guarantee the argmax flips.
+        """
+        tokens = torch.tensor([[1, 2, 3, 4]])
+        with torch.no_grad():
+            baseline = mamba_bridge.generate(tokens, max_new_tokens=3, do_sample=False)
+
+        def perturb(t, hook):
+            return t + 50.0  # additive perturbation survives all downstream ops
+
+        try:
+            mamba_bridge.blocks[2].hook_in.add_hook(perturb)
+            with torch.no_grad():
+                perturbed = mamba_bridge.generate(tokens, max_new_tokens=3, do_sample=False)
+        finally:
+            mamba_bridge.blocks[2].hook_in.remove_hooks()
+
+        assert not torch.equal(baseline, perturbed), (
+            "Mid-layer mutation had no effect on generation — the stateful "
+            "loop may be bypassing the bridge's forward() path."
+        )
