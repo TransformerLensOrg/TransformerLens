@@ -12,6 +12,9 @@ from transformer_lens.model_bridge.supported_architectures.bert import (
 from transformer_lens.model_bridge.supported_architectures.bloom import (
     BloomArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.codegen import (
+    CodeGenArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.falcon import (
     FalconArchitectureAdapter,
 )
@@ -134,6 +137,7 @@ __all__ = [
     "ApertusArchitectureAdapter",
     "BertArchitectureAdapter",
     "BloomArchitectureAdapter",
+    "CodeGenArchitectureAdapter",
     "FalconArchitectureAdapter",
     "Gemma1ArchitectureAdapter",
     "Gemma2ArchitectureAdapter",

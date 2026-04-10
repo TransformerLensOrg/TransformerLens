@@ -45,6 +45,7 @@ HF_SUPPORTED_ARCHITECTURES: set[str] = {
     "ApertusForCausalLM",
     "BertForMaskedLM",
     "BloomForCausalLM",
+    "CodeGenForCausalLM",
     "FalconForCausalLM",
     "GemmaForCausalLM",
     "Gemma2ForCausalLM",

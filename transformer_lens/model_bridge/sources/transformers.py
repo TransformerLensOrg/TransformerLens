@@ -166,9 +166,9 @@ def map_default_transformer_lens_config(hf_config):
         tl_config.sliding_window = source_config.sliding_window
     if getattr(hf_config, "use_parallel_residual", False):
         tl_config.parallel_attn_mlp = True
-    # GPT-J: parallel attn+MLP but missing use_parallel_residual in HF config
+    # GPT-J and CodeGen: parallel attn+MLP but missing use_parallel_residual in HF config
     arch_classes = getattr(hf_config, "architectures", []) or []
-    if any(a in ("GPTJForCausalLM",) for a in arch_classes):
+    if any(a in ("GPTJForCausalLM", "CodeGenForCausalLM") for a in arch_classes):
         tl_config.parallel_attn_mlp = True
     tl_config.default_prepend_bos = True
     return tl_config
@@ -205,6 +205,7 @@ def determine_architecture_from_hf_config(hf_config):
             "gemma3": "Gemma3ForCausalLM",
             "bert": "BertForMaskedLM",
             "bloom": "BloomForCausalLM",
+            "codegen": "CodeGenForCausalLM",
             "gptj": "GPTJForCausalLM",
             "gpt_neo": "GPTNeoForCausalLM",
             "gpt_neox": "GPTNeoXForCausalLM",
