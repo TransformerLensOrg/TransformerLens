@@ -125,6 +125,7 @@ from transformer_lens.model_bridge.supported_architectures.qwen3 import (
 )
 from transformer_lens.model_bridge.supported_architectures.qwen3_moe import (
     Qwen3MoeArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.qwen3_next import (
     Qwen3NextArchitectureAdapter,
 )
