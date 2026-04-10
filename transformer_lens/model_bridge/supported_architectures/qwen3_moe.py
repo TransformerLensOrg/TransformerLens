@@ -18,76 +18,59 @@ from transformer_lens.model_bridge.generalized_components import (
 class Qwen3MoeArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for Qwen3MoE (Mixture of Experts) models.
 
-    Qwen3MoE is a sparse Mixture-of-Experts decoder-only Transformer that closely
-    mirrors OLMoE in structure.  Key architectural features:
+    Qwen3MoE is a sparse MoE decoder-only Transformer, structurally close to OLMoE.
+    Key features:
 
-    - Pre-norm: RMSNorm applied BEFORE attention (input_layernorm) and BEFORE MLP
-      (post_attention_layernorm).
-    - Q/K normalization: RMSNorm applied to queries and keys after projection and
-      before rotary embedding application.
-    - Sparse MoE: 128 experts with top-8 routing (in the public 30B-A3B checkpoints).
-    - Batched expert parameters: gate_up_proj [num_experts, 2*moe_intermediate_size,
-      hidden_size] and down_proj [num_experts, hidden_size, moe_intermediate_size] are
-      stored as single 3D tensors rather than a ModuleList.
-    - final_rms=True (Qwen3-style; differs from OLMoE which uses False).
-    - No biases on any projections (attention_bias=False in all public checkpoints).
-    - GQA: num_key_value_heads < num_attention_heads in all public models.
+    - Pre-norm: RMSNorm applied BEFORE attention and BEFORE MLP.
+    - Q/K normalization: RMSNorm applied to queries and keys after projection.
+    - Sparse MoE: 128 experts with top-8 routing (public 30B-A3B checkpoints).
+    - Batched expert parameters: gate_up_proj and down_proj as single 3D tensors,
+      not a ModuleList.
+    - final_rms=True (Qwen3-style; OLMoE uses False).
+    - No biases on any projections.
+    - GQA: n_key_value_heads < n_heads in all public checkpoints.
 
-    Limitation — all-MoE configuration only:
-        All public Qwen3MoE models have decoder_sparse_step=1 and mlp_only_layers=[]
-        (every decoder layer is a sparse MoE block).  This adapter supports only that
-        all-MoE configuration.  Models with a non-empty mlp_only_layers list are NOT
-        supported because MoEBridge cannot handle the dense Qwen3MoeMLP fallback layers.
+    Only the all-MoE configuration is supported (decoder_sparse_step=1,
+    mlp_only_layers=[]). Models with dense fallback layers cannot be wrapped
+    because MoEBridge does not handle the dense Qwen3MoeMLP path.
 
     Optional Parameters (may not exist in state_dict):
     -------------------------------------------------
-    - blocks.{i}.attn.b_Q  - No bias on query projection  (attention_bias=False)
-    - blocks.{i}.attn.b_K  - No bias on key projection    (attention_bias=False)
-    - blocks.{i}.attn.b_V  - No bias on value projection  (attention_bias=False)
-    - blocks.{i}.attn.b_O  - No bias on output projection (attention_bias=False)
-    - blocks.{i}.ln1.b    - RMSNorm has no additive bias
-    - blocks.{i}.ln2.b    - RMSNorm has no additive bias
-    - ln_final.b          - RMSNorm has no additive bias
+    - blocks.{i}.attn.b_Q - No bias on query projection
+    - blocks.{i}.attn.b_K - No bias on key projection
+    - blocks.{i}.attn.b_V - No bias on value projection
+    - blocks.{i}.attn.b_O - No bias on output projection
+    - blocks.{i}.ln1.b - RMSNorm has no bias
+    - blocks.{i}.ln2.b - RMSNorm has no bias
+    - ln_final.b - RMSNorm has no bias
     """
 
     def __init__(self, cfg: Any) -> None:
         """Initialize the Qwen3MoE architecture adapter."""
         super().__init__(cfg)
 
-        # ------------------------------------------------------------------ #
-        # Config attributes
-        # ------------------------------------------------------------------ #
+        # Set config variables for weight processing
         self.cfg.normalization_type = "RMS"
         self.cfg.positional_embedding_type = "rotary"
         self.cfg.final_rms = True  # Qwen3-style; OLMoE uses False
-        self.cfg.gated_mlp = True  # SwiGLU-style gate in every MoE expert
+        self.cfg.gated_mlp = True
         self.cfg.attn_only = False
         self.cfg.uses_rms_norm = True
         # Force eager attention for output_attentions hook support
         self.cfg.attn_implementation = "eager"
         self.cfg.default_prepend_bos = False  # Qwen3 family convention
 
-        # GQA: propagate n_key_value_heads when provided by the loaded config.
-        # map_default_transformer_lens_config() sets this from num_key_value_heads
-        # in the HF checkpoint config; we do not hard-code a fallback value.
+        # GQA support
         if hasattr(cfg, "n_key_value_heads") and cfg.n_key_value_heads is not None:
             self.cfg.n_key_value_heads = cfg.n_key_value_heads
 
-        # ------------------------------------------------------------------ #
-        # Weight processing conversions
-        # ------------------------------------------------------------------ #
-        # Standard QKVO rearrangements; _qkvo_weight_conversions() resolves
-        # n_kv_heads from self.cfg.n_key_value_heads automatically.
+        # QKVO rearrangements; MoE expert and gate weights pass through unchanged
         self.weight_processing_conversions = {
             **self._qkvo_weight_conversions(),
         }
-        # MoE expert weights (gate_up_proj, down_proj) and gate router weights
-        # (gate.weight) pass through unchanged — HF's native forward handles them.
 
-        # ------------------------------------------------------------------ #
-        # Component mapping — pre-norm architecture
-        # ------------------------------------------------------------------ #
-        # ln1 = input_layernorm  (applied BEFORE attention)
+        # Component mapping — PRE-NORM architecture:
+        # ln1 = input_layernorm (applied BEFORE attention)
         # ln2 = post_attention_layernorm (applied BEFORE MLP)
         self.component_mapping = {
             "embed": EmbeddingBridge(name="model.embed_tokens"),
@@ -111,12 +94,10 @@ class Qwen3MoeArchitectureAdapter(ArchitectureAdapter):
                         requires_attention_mask=True,
                         requires_position_embeddings=True,
                     ),
-                    # Qwen3MoeSparseMoeBlock uses batched expert parameters
-                    # (gate_up_proj / down_proj as 3D tensors) rather than a
-                    # ModuleList.  MoEBridge wraps the entire block and delegates
-                    # to HF's native forward.  The gate (Qwen3MoeTopKRouter) is
-                    # mapped as a submodule via LinearBridge for hook access —
-                    # same pattern as OLMoE.
+                    # Qwen3MoeSparseMoeBlock stores experts as batched 3D tensors
+                    # rather than a ModuleList. MoEBridge wraps the entire block and
+                    # delegates to HF's native forward. The gate (router) is mapped
+                    # as a submodule for hook access — same pattern as OLMoE.
                     "mlp": MoEBridge(
                         name="mlp",
                         config=self.cfg,
@@ -133,18 +114,17 @@ class Qwen3MoeArchitectureAdapter(ArchitectureAdapter):
     def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
         """Set up rotary embedding references for Qwen3MoE component testing.
 
-        Qwen3MoE uses RoPE (Rotary Position Embeddings) stored at model.rotary_emb.
-        We retrieve the rotary_emb instance from the HF model and attach it to all
-        attention bridge instances so that component-level tests can run the full
-        attention forward pass correctly.
+        Qwen3MoE uses RoPE (Rotary Position Embeddings). We set the rotary_emb
+        reference on all attention bridge instances for component testing.
 
         Args:
-            hf_model: The HuggingFace Qwen3MoeForCausalLM model instance.
-            bridge_model: The TransformerBridge model (if available).
+            hf_model: The HuggingFace Qwen3MoE model instance
+            bridge_model: The TransformerBridge model (if available)
         """
+        # Get rotary embedding instance from the model
         rotary_emb = hf_model.model.rotary_emb
 
-        # Force eager attention on the HF model to match bridge implementation
+        # Force HF model to use "eager" attention to match bridge implementation
         if hasattr(hf_model, "config") and hasattr(hf_model.config, "_attn_implementation"):
             hf_model.config._attn_implementation = "eager"
 
@@ -153,12 +133,12 @@ class Qwen3MoeArchitectureAdapter(ArchitectureAdapter):
                 if hasattr(layer, "self_attn") and hasattr(layer.self_attn, "config"):
                     layer.self_attn.config._attn_implementation = "eager"
 
-        # Attach rotary_emb to each block's attention bridge
+        # Set rotary_emb on actual bridge instances in bridge_model if available
         if bridge_model is not None and hasattr(bridge_model, "blocks"):
             for block in bridge_model.blocks:
                 if hasattr(block, "attn"):
                     block.attn.set_rotary_emb(rotary_emb)
 
-        # Also set on the template bridge for get_generalized_component() calls
+        # Also set on the template for get_generalized_component() calls
         attn_bridge = self.get_generalized_component("blocks.0.attn")
         attn_bridge.set_rotary_emb(rotary_emb)

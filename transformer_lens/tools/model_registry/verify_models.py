@@ -263,12 +263,10 @@ def estimate_model_params(model_id: str) -> int:
             lang_config, "num_experts", None
         )
         if num_experts and num_experts > 1:
-            # For architectures like Qwen3MoE, the per-expert MLP hidden size is stored
-            # in moe_intermediate_size rather than intermediate_size (which may refer to
-            # a separate dense MLP used in non-MoE layers).  Use moe_intermediate_size
-            # when present.
+            # Qwen3MoE and similar store per-expert hidden size in moe_intermediate_size;
+            # intermediate_size refers to a dense fallback MLP that we don't use here.
             moe_d_mlp = getattr(lang_config, "moe_intermediate_size", None) or d_mlp
-            # For MoE, MLP params are multiplied by num_experts + gate params
+            # MLP params scale with num_experts; add gate params per expert
             mlp_per_layer = d_model * moe_d_mlp * mlp_multiplier
             moe_per_layer = (mlp_per_layer + d_model) * num_experts
             # Replace the non-MoE MLP contribution
@@ -292,8 +290,8 @@ def estimate_benchmark_memory_gb(
     Phases run sequentially, so peak memory is the maximum of any single phase,
     not the sum. The multiplier represents how many model copies exist at peak:
 
-    Phase 1 (with HF ref): Briefly loads HF ref + Bridge → 2.0x peak
-    Phase 1 (no HF ref):   Bridge only → 1.0x peak
+    Phase 1 (HF ref on):  HF ref + Bridge → 2.0x peak
+    Phase 1 (HF ref off): Bridge only     → 1.0x peak
     Phase 2: Bridge + HookedTransformer (separate copy) → 2.0x model + overhead
     Phase 3: Same as Phase 2 (processed versions) → 2.0x model + overhead
     Phase 4: Bridge + GPT-2 scorer (~500MB) → ~1.0x model + 0.5 GB
@@ -302,9 +300,8 @@ def estimate_benchmark_memory_gb(
         n_params: Number of model parameters
         dtype: Data type for memory calculation
         phases: Which phases will be run (None = all phases)
-        use_hf_reference: Whether Phase 1 loads an HF reference model alongside
-            the Bridge. When False, Phase 1 only needs 1x model memory instead
-            of 2x. This matches the ``--no-hf-reference`` CLI flag.
+        use_hf_reference: Whether Phase 1 loads an HF reference alongside the
+            Bridge. Mirrors the ``--no-hf-reference`` CLI flag.
 
     Returns:
         Estimated peak memory in GB
@@ -327,14 +324,11 @@ def estimate_benchmark_memory_gb(
 
     for p in phases:
         if p == 1:
-            if use_hf_reference:
-                # Phase 1: HF ref + Bridge = 2 copies briefly
-                phase_peaks.append(model_size_gb * 2.0 * (1 + overhead_fraction))
-            else:
-                # No HF reference: Bridge alone
-                phase_peaks.append(model_size_gb * (1 + overhead_fraction))
+            # HF ref + Bridge (2 copies) or Bridge alone
+            multiplier = 2.0 if use_hf_reference else 1.0
+            phase_peaks.append(model_size_gb * multiplier * (1 + overhead_fraction))
         elif p in (2, 3):
-            # Phase 2/3: Bridge + HookedTransformer = 2 copies
+            # Bridge + HookedTransformer = 2 copies
             phase_peaks.append(model_size_gb * 2.0 * (1 + overhead_fraction))
         elif p == 4:
             # Bridge + GPT-2 scorer

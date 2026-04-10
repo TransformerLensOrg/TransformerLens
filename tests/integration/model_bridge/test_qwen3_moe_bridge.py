@@ -1,11 +1,9 @@
 """Integration tests for the Qwen3MoE TransformerBridge.
 
-All tests use a tiny programmatic Qwen3MoE config on the meta device — no
-network access and no actual weights are downloaded.  The meta device means
-tensor operations cannot execute, so forward-pass tests are explicitly skipped
-and marked for manual execution during verification.
-
-Fixture pattern mirrors tests/unit/model_bridge/test_gpt_oss_moe.py.
+Uses a tiny programmatic config on the meta device — no network access or
+weight downloads. Tensor ops can't execute on meta, so forward-pass tests are
+skipped and run manually during verification. Fixture pattern mirrors
+tests/unit/model_bridge/test_gpt_oss_moe.py.
 """
 
 import pytest
@@ -22,20 +20,16 @@ from transformer_lens.model_bridge.supported_architectures.qwen3_moe import (
     Qwen3MoeArchitectureAdapter,
 )
 
-# ---------------------------------------------------------------------------
-# Tiny programmatic model fixture (meta device, no weights)
-# ---------------------------------------------------------------------------
-
 
 class _MockTokenizer:
-    """Minimal stand-in so TransformerBridge(tokenizer=...) is satisfied."""
+    """Stand-in to satisfy TransformerBridge(tokenizer=...)."""
 
     pass
 
 
 @pytest.fixture(scope="module")
 def tiny_qwen3moe_config():
-    """Return a small Qwen3MoeConfig (2 layers, 4 heads, 4 experts)."""
+    """Small Qwen3MoeConfig: 2 layers, 4 heads, 4 experts."""
     return AutoConfig.for_model(
         "qwen3_moe",
         hidden_size=64,
@@ -55,7 +49,7 @@ def tiny_qwen3moe_config():
 
 @pytest.fixture(scope="module")
 def tiny_qwen3moe_model_meta(tiny_qwen3moe_config):
-    """Create a Qwen3MoE model structure on meta device (no weights loaded)."""
+    """Qwen3MoE model on meta device (no weights loaded)."""
     with torch.device("meta"):
         model = AutoModelForCausalLM.from_config(tiny_qwen3moe_config)
     return model
@@ -63,7 +57,7 @@ def tiny_qwen3moe_model_meta(tiny_qwen3moe_config):
 
 @pytest.fixture(scope="module")
 def tiny_qwen3moe_bridge(tiny_qwen3moe_config, tiny_qwen3moe_model_meta):
-    """Create a TransformerBridge wrapping the tiny meta-device Qwen3MoE model."""
+    """TransformerBridge wrapping the tiny meta-device Qwen3MoE model."""
     tl_config = map_default_transformer_lens_config(tiny_qwen3moe_config)
 
     bridge_config = TransformerBridgeConfig(
@@ -86,11 +80,6 @@ def tiny_qwen3moe_bridge(tiny_qwen3moe_config, tiny_qwen3moe_model_meta):
     )
 
 
-# ---------------------------------------------------------------------------
-# HF model structure
-# ---------------------------------------------------------------------------
-
-
 class TestQwen3MoeModelStructure:
     def test_model_has_layers(self, tiny_qwen3moe_model_meta) -> None:
         assert hasattr(tiny_qwen3moe_model_meta, "model")
@@ -98,13 +87,12 @@ class TestQwen3MoeModelStructure:
         assert len(tiny_qwen3moe_model_meta.model.layers) == 2
 
     def test_layer_has_sparse_moe_block(self, tiny_qwen3moe_model_meta) -> None:
+        # Qwen3MoeSparseMoeBlock stores experts as batched 3D tensors, not a ModuleList
         layer0_mlp = tiny_qwen3moe_model_meta.model.layers[0].mlp
-        # Qwen3MoeSparseMoeBlock uses batched expert parameters (not a ModuleList)
         assert hasattr(layer0_mlp, "experts")
         experts = layer0_mlp.experts
         assert hasattr(experts, "gate_up_proj")
         assert hasattr(experts, "down_proj")
-        # Experts are NOT iterable — stored as batched 3D tensors
         assert not hasattr(experts, "__iter__")
 
     def test_layer_has_gate_router(self, tiny_qwen3moe_model_meta) -> None:
@@ -117,11 +105,6 @@ class TestQwen3MoeModelStructure:
         assert hasattr(attn, "k_norm")
 
 
-# ---------------------------------------------------------------------------
-# Bridge structure
-# ---------------------------------------------------------------------------
-
-
 class TestQwen3MoeBridgeStructure:
     def test_block_count(self, tiny_qwen3moe_bridge) -> None:
         assert len(tiny_qwen3moe_bridge.blocks) == 2
@@ -132,7 +115,7 @@ class TestQwen3MoeBridgeStructure:
         assert hasattr(tiny_qwen3moe_bridge, "ln_final")
 
     def test_cfg_final_rms_is_true(self, tiny_qwen3moe_bridge) -> None:
-        """Critical Qwen3MoE config flag — differs from OLMoE which uses False."""
+        """Qwen3MoE uses final_rms=True; OLMoE uses False."""
         assert tiny_qwen3moe_bridge.cfg.final_rms is True
 
     def test_cfg_n_kv_heads(self, tiny_qwen3moe_bridge) -> None:
@@ -165,18 +148,13 @@ class TestQwen3MoeBridgeStructure:
         assert hasattr(attn, "k_norm")
 
 
-# ---------------------------------------------------------------------------
-# Forward-pass tests — skipped on meta device, run manually during verification
-# ---------------------------------------------------------------------------
+# Forward-pass tests require real weights — meta-device tensor ops raise
+# NotImplementedError. Run these manually during Step 3 verification.
 
 
 @pytest.mark.skip(reason="Requires real weights — run manually during verification")
 def test_forward_pass_matches_hf(tiny_qwen3moe_bridge) -> None:
-    """Bridge forward should produce logits identical to the HF model.
-
-    Run this test manually with a real (non-meta) model during Step 3
-    verification.  On meta device, tensor operations raise NotImplementedError.
-    """
+    """Bridge logits match the HF model."""
     tokens = torch.tensor([[1, 2, 3, 4]])
     with torch.no_grad():
         bridge_out = tiny_qwen3moe_bridge(tokens)
@@ -187,10 +165,7 @@ def test_forward_pass_matches_hf(tiny_qwen3moe_bridge) -> None:
 
 @pytest.mark.skip(reason="Requires real weights — run manually during verification")
 def test_run_with_cache_captures_moe_router_scores(tiny_qwen3moe_bridge) -> None:
-    """MoEBridge should capture router scores in the activation cache.
-
-    Run manually with real weights during Step 3 verification.
-    """
+    """MoEBridge captures router scores in the activation cache."""
     tiny_qwen3moe_bridge.enable_compatibility_mode(no_processing=True)
     tokens = torch.tensor([[1, 2, 3, 4]])
     _, cache = tiny_qwen3moe_bridge.run_with_cache(tokens)

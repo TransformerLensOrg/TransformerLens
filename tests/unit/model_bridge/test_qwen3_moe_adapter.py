@@ -1,7 +1,7 @@
 """Unit tests for the Qwen3MoeArchitectureAdapter.
 
-No network access and no model downloads — all tests use programmatic
-TransformerBridgeConfig instances.
+All tests use programmatic TransformerBridgeConfig instances — no network access
+or model downloads.
 """
 
 import pytest
@@ -24,10 +24,6 @@ from transformer_lens.model_bridge.supported_architectures.qwen3_moe import (
     Qwen3MoeArchitectureAdapter,
 )
 
-# ---------------------------------------------------------------------------
-# Shared fixture
-# ---------------------------------------------------------------------------
-
 
 @pytest.fixture
 def cfg() -> TransformerBridgeConfig:
@@ -48,11 +44,6 @@ def adapter(cfg: TransformerBridgeConfig) -> Qwen3MoeArchitectureAdapter:
     return Qwen3MoeArchitectureAdapter(cfg)
 
 
-# ---------------------------------------------------------------------------
-# Config attribute correctness
-# ---------------------------------------------------------------------------
-
-
 class TestQwen3MoeAdapterConfig:
     def test_normalization_type_is_rms(self, adapter: Qwen3MoeArchitectureAdapter) -> None:
         assert adapter.cfg.normalization_type == "RMS"
@@ -63,7 +54,7 @@ class TestQwen3MoeAdapterConfig:
         assert adapter.cfg.positional_embedding_type == "rotary"
 
     def test_final_rms_is_true(self, adapter: Qwen3MoeArchitectureAdapter) -> None:
-        """Critical: Qwen3MoE uses final_rms=True; OLMoE uses False."""
+        """Qwen3MoE uses final_rms=True; OLMoE uses False."""
         assert adapter.cfg.final_rms is True
 
     def test_gated_mlp_is_true(self, adapter: Qwen3MoeArchitectureAdapter) -> None:
@@ -79,7 +70,7 @@ class TestQwen3MoeAdapterConfig:
         assert adapter.cfg.default_prepend_bos is False
 
     def test_n_kv_heads_propagated(self) -> None:
-        """n_key_value_heads from the loaded config must be preserved."""
+        """n_key_value_heads from the loaded config is preserved."""
         cfg = TransformerBridgeConfig(
             d_model=64,
             d_head=16,
@@ -94,11 +85,6 @@ class TestQwen3MoeAdapterConfig:
         assert adapter.cfg.n_key_value_heads == 2
 
 
-# ---------------------------------------------------------------------------
-# Weight processing conversions
-# ---------------------------------------------------------------------------
-
-
 class TestQwen3MoeWeightConversions:
     def test_has_qkvo_keys(self, adapter: Qwen3MoeArchitectureAdapter) -> None:
         convs = adapter.weight_processing_conversions
@@ -109,7 +95,7 @@ class TestQwen3MoeWeightConversions:
         assert "blocks.{i}.attn.o.weight" in convs
 
     def test_q_rearrange_uses_n_heads(self, adapter: Qwen3MoeArchitectureAdapter) -> None:
-        """Q weight conversion must use n_heads (4) for the rearrange."""
+        """Q rearrange uses n_heads (4)."""
         convs = adapter.weight_processing_conversions
         assert convs is not None
         q_conv = convs["blocks.{i}.attn.q.weight"]
@@ -119,7 +105,7 @@ class TestQwen3MoeWeightConversions:
         assert axes.get("n") == 4
 
     def test_kv_rearrange_uses_n_kv_heads(self, adapter: Qwen3MoeArchitectureAdapter) -> None:
-        """K/V weight conversions must use n_key_value_heads (2) for GQA."""
+        """K/V rearrange uses n_key_value_heads (2) for GQA."""
         convs = adapter.weight_processing_conversions
         assert convs is not None
         k_conv = convs["blocks.{i}.attn.k.weight"]
@@ -132,18 +118,13 @@ class TestQwen3MoeWeightConversions:
         assert v_conv.tensor_conversion.axes_lengths.get("n") == 2
 
     def test_o_rearrange_uses_n_heads(self, adapter: Qwen3MoeArchitectureAdapter) -> None:
-        """O weight conversion must use n_heads (4)."""
+        """O rearrange uses n_heads (4)."""
         convs = adapter.weight_processing_conversions
         assert convs is not None
         o_conv = convs["blocks.{i}.attn.o.weight"]
         assert isinstance(o_conv, ParamProcessingConversion)
         assert isinstance(o_conv.tensor_conversion, RearrangeTensorConversion)
         assert o_conv.tensor_conversion.axes_lengths.get("n") == 4
-
-
-# ---------------------------------------------------------------------------
-# Component mapping structure
-# ---------------------------------------------------------------------------
 
 
 class TestQwen3MoeComponentMapping:
@@ -194,7 +175,7 @@ class TestQwen3MoeComponentMapping:
         assert isinstance(attn_subs["k_norm"], RMSNormalizationBridge)
 
     def test_hf_module_paths(self, adapter: Qwen3MoeArchitectureAdapter) -> None:
-        """Verify key HF module path names are correctly mapped."""
+        """HF module path names are mapped correctly."""
         mapping = adapter.component_mapping
         assert mapping is not None
         assert mapping["embed"].name == "model.embed_tokens"
@@ -206,11 +187,6 @@ class TestQwen3MoeComponentMapping:
         assert subs["ln2"].name == "post_attention_layernorm"
         assert subs["attn"].name == "self_attn"
         assert subs["mlp"].name == "mlp"
-
-
-# ---------------------------------------------------------------------------
-# Factory registration
-# ---------------------------------------------------------------------------
 
 
 class TestQwen3MoeFactoryRegistration:
