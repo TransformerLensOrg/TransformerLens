@@ -6,10 +6,35 @@
     "min_downloads": 500,
     "scan_duration_seconds": 3.2
   },
-  "total_architectures": 36,
-  "total_models": 5553,
+  "total_architectures": 37,
+  "total_models": 5554,
   "total_verified": 690,
   "models": [
+    {
+      "architecture_id": "Qwen3NextForCausalLM",
+      "model_id": "Qwen/Qwen3-Coder-Next",
+      "status": 2,
+      "verified_date": "2026-04-09",
+      "metadata": {
+        "downloads": 664116,
+        "likes": 0,
+        "last_modified": null,
+        "tags": [
+          "transformers",
+          "safetensors",
+          "qwen3_next",
+          "text-generation"
+        ],
+        "parameter_count": 79674391296
+      },
+      "note": "Estimated 6929.6 GB exceeds 96.0 GB limit",
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
     {
       "architecture_id": "Qwen3ForCausalLM",
       "model_id": "Qwen/Qwen3-0.6B",
