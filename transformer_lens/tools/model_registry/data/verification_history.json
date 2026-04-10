@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-04-09T16:34:36.818082",
+  "last_updated": "2026-04-10T15:08:21.930188",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -11198,6 +11198,96 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "trl-internal-testing/tiny-Qwen3MoeForCausalLM",
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "verified_date": "2026-04-10",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P3=89.5% but required tests failed: logits_equivalence \u2014 Text quality score: 72.2/100 (avg perplexity: 558.8) \u2014 generated text may be incoherent",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "huihui-ai/Huihui-MoE-0.8B-2E",
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "verified_date": "2026-04-10",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P3=89.5% but required tests failed: logits_equivalence, loss_equivalence \u2014 Tensors differ: max_diff=0.625000, mean_rel=0.002930",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "huihui-ai/Huihui-MoE-0.8B-2E",
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "verified_date": "2026-04-10",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P3=89.5% but required tests failed: logits_equivalence, loss_equivalence \u2014 Tensors differ: max_diff=0.625000, mean_rel=0.002930",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "huihui-ai/Huihui-MoE-0.8B-2E",
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "verified_date": "2026-04-10",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P3=89.5% but required tests failed: logits_equivalence, loss_equivalence \u2014 Tensors differ: max_diff=0.625000, mean_rel=0.002930",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "huihui-ai/Huihui-MoE-0.8B-2E",
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "verified_date": "2026-04-10",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "huihui-ai/Huihui-MoE-1B-A0.6B",
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "verified_date": "2026-04-10",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "imdatta0/tiny_qwen3_moe_2.8B_0.7B",
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "verified_date": "2026-04-10",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "yujiepan/qwen3-moe-tiny-random",
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "verified_date": "2026-04-10",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: 'Qwen3MoeMLP' object has no attribute 'gate'",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "optimum-internal-testing/tiny-random-qwen3_moe",
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "verified_date": "2026-04-10",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: 'Qwen3MoeMLP' object has no attribute 'gate'",
       "invalidated": false,
       "invalidation_reason": null
     }

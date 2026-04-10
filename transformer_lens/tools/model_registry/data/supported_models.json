@@ -6,9 +6,9 @@
     "min_downloads": 500,
     "scan_duration_seconds": 12.1
   },
-  "total_architectures": 37,
-  "total_models": 6691,
-  "total_verified": 690,
+  "total_architectures": 38,
+  "total_models": 6822,
+  "total_verified": 698,
   "models": [
     {
       "architecture_id": "Qwen3ForCausalLM",
@@ -93654,6 +93654,2165 @@
       "phase2_score": 100.0,
       "phase3_score": 100.0,
       "phase4_score": 67.5,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "Qwen/Qwen3-235B-A22B",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 594767,
+        "total_params": 235093634560
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "Qwen/Qwen3-30B-A3B-Instruct-2507-FP8",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 370376,
+        "total_params": 30533947392
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 354610,
+        "total_params": 30533947392
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "btbtyler09/Qwen3-Coder-30B-A3B-Instruct-gptq-8bit",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 293539,
+        "total_params": 9298753536
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "Qwen/Qwen3-235B-A22B-Instruct-2507-FP8",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 235228,
+        "total_params": 235107904512
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-4bit",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 212096,
+        "total_params": 30532122624
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "nvidia/Qwen3-30B-A3B-NVFP4",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 209682,
+        "total_params": 15583623168
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "trl-internal-testing/tiny-Qwen3MoeForCausalLM",
+      "status": 3,
+      "verified_date": "2026-04-10",
+      "metadata": {
+        "downloads": 207171,
+        "total_params": 2574656
+      },
+      "note": "Below threshold: P3=89.5% but required tests failed: logits_equivalence \u2014 Text quality score: 72.2/100 (avg perplexity: 558.8) \u2014 generated text may be incoherent",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 89.5,
+      "phase4_score": 72.2,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-5bit",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 206997,
+        "total_params": 30532122624
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-8bit",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 196979,
+        "total_params": 30532122624
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-6bit",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 194457,
+        "total_params": 30532122624
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "Qwen/Qwen3-235B-A22B-Instruct-2507",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 183785,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "Qwen/Qwen3-30B-A3B-GPTQ-Int4",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 139859,
+        "total_params": 30532122624
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 90099,
+        "total_params": 480154875392
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "stelterlab/Qwen3-30B-A3B-Instruct-2507-AWQ",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 88254,
+        "total_params": 4605856128
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "mlx-community/Qwen3-30B-A3B-4bit",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 86609,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "Qwen/Qwen3-30B-A3B-FP8",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 83207,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "Qwen/Qwen3-235B-A22B-Thinking-2507",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 81021,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "btbtyler09/Qwen3-Coder-30B-A3B-Instruct-gptq-4bit",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 75715,
+        "total_params": 30532122624
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 74870,
+        "total_params": 5306567040
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 64513,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "Qwen/Qwen3-235B-A22B-FP8",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 49515,
+        "total_params": 235107904512
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "NVFP4/Qwen3-30B-A3B-Instruct-2507-FP4",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 46285,
+        "total_params": 15583623168
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "Qwen/Qwen3-30B-A3B-Base",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 45932,
+        "total_params": 30532122624
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "QuixiAI/Qwen3-30B-A3B-AWQ",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 44268,
+        "total_params": 30532122624
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "QuantTrio/Qwen3-Coder-30B-A3B-Instruct-AWQ",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 42807,
+        "total_params": 30532122624
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "typhoon-ai/typhoon2.5-qwen3-30b-a3b",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 42205,
+        "total_params": 30532122624
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "lmstudio-community/Qwen3-30B-A3B-Instruct-2507-MLX-4bit",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 35168,
+        "total_params": 30532122624
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "lmstudio-community/Qwen3-30B-A3B-Instruct-2507-MLX-8bit",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 34301,
+        "total_params": 30532122624
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "Qwen/Qwen3-30B-A3B-Thinking-2507-FP8",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 34117,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "lmstudio-community/Qwen3-30B-A3B-Instruct-2507-MLX-6bit",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 33498,
+        "total_params": 30532122624
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "JunHowie/Qwen3-30B-A3B-Instruct-2507-GPTQ-Int4",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 33311,
+        "total_params": 30532122624
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "cyankiwi/Qwen3-30B-A3B-Instruct-2507-AWQ-4bit",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 27742,
+        "total_params": 5306567040
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "RedHatAI/Qwen3-30B-A3B-NVFP4",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 26590,
+        "total_params": 17452222848
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "nytopop/Qwen3-30B-A3B.w8a8",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 23560,
+        "total_params": 30554486784
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "NVFP4/Qwen3-Coder-30B-A3B-Instruct-FP4",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 18001,
+        "total_params": 15583623168
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "np-cr/testing-qwen3-moe",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 17816,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "Qwen/Qwen3-235B-A22B-Thinking-2507-FP8",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 16886,
+        "total_params": 235107904512
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "Alibaba-NLP/Tongyi-DeepResearch-30B-A3B",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 16568,
+        "total_params": 30532122624
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "unsloth/Qwen3-30B-A3B-GGUF",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 16377,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "RedHatAI/Qwen3-30B-A3B-FP8-block",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 15451,
+        "total_params": 30533947392
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "nvidia/Qwen3-Nemotron-235B-A22B-GenRM",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 15251,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "nightmedia/Huihui-Qwen3-30B-A3B-Instruct-2507-abliterated-dwq4-mlx",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 15234,
+        "total_params": 30532122624
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "lmstudio-community/Qwen3-30B-A3B-MLX-4bit",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 14566,
+        "total_params": 4770822144
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "lmstudio-community/Qwen3-30B-A3B-MLX-8bit",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 13999,
+        "total_params": 8587311104
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "BCCard/Qwen3-30B-A3B-FP8-Dynamic",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 9881,
+        "total_params": 30554486784
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "stelterlab/Qwen3-Coder-30B-A3B-Instruct-AWQ",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 9718,
+        "total_params": 4605856128
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "nvidia/Qwen3-235B-A22B-NVFP4",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 9521,
+        "total_params": 132806618624
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "Qwen/Qwen3-235B-A22B-GPTQ-Int4",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 7615,
+        "total_params": 235093634560
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "QuantTrio/Qwen3-30B-A3B-Thinking-2507-AWQ",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 7283,
+        "total_params": 30532122624
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "lmstudio-community/Qwen3-Coder-480B-A35B-Instruct-MLX-6bit",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 6725,
+        "total_params": 480154875392
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "unsloth/Qwen3-235B-A22B-GGUF",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 5776,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "lmstudio-community/Qwen3-Coder-480B-A35B-Instruct-MLX-4bit",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 5510,
+        "total_params": 480154875392
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "QuantTrio/Qwen3-235B-A22B-Instruct-2507-AWQ",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 5349,
+        "total_params": 235093634560
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "lmstudio-community/Qwen3-Coder-480B-A35B-Instruct-MLX-8bit",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 5217,
+        "total_params": 480154875392
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "mlx-community/Qwen3-Coder-480B-A35B-Instruct-4bit",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 5150,
+        "total_params": 480154875392
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "unsloth/Qwen3-Coder-30B-A3B-Instruct",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 4870,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "mlx-community/Qwen3-235B-A22B-Instruct-2507-4bit",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 4742,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "mlx-community/Qwen3-235B-A22B-Instruct-2507-8bit",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 4650,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "mlx-community/Qwen3-Coder-480B-A35B-Instruct-8bit",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 4326,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "yujiepan/qwen3-moe-tiny-random",
+      "status": 2,
+      "verified_date": "2026-04-10",
+      "metadata": {
+        "downloads": 4314,
+        "total_params": 9970624
+      },
+      "note": "Unsupported: decoder_sparse_step=2 creates mixed dense/sparse layers; adapter only supports all-MoE config (decoder_sparse_step=1)",
+      "phase1_score": 0.0,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "mlx-community/Qwen3-30B-A3B-8bit",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 4284,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "Applied-Innovation-Center/Karnak",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 4268,
+        "total_params": 40669136896
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "optimum-internal-testing/tiny-random-qwen3_moe",
+      "status": 2,
+      "verified_date": "2026-04-10",
+      "metadata": {
+        "downloads": 4265,
+        "total_params": 9970624
+      },
+      "note": "Unsupported: decoder_sparse_step=2 creates mixed dense/sparse layers; adapter only supports all-MoE config (decoder_sparse_step=1)",
+      "phase1_score": 0.0,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "llm-jp/llm-jp-4-32b-a3b-thinking",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 4061,
+        "total_params": 32139028992
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "RedHatAI/Qwen3-30B-A3B-FP8-dynamic",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 4060,
+        "total_params": 30554486784
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "miromind-ai/MiroThinker-1.7",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 3960,
+        "total_params": 235093634560
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "lmstudio-community/Qwen3-235B-A22B-Instruct-2507-MLX-4bit",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 3797,
+        "total_params": 235093634560
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "lmstudio-community/Qwen3-235B-A22B-Instruct-2507-MLX-8bit",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 3667,
+        "total_params": 235093634560
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 3656,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "lmstudio-community/Qwen3-235B-A22B-Instruct-2507-MLX-6bit",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 3608,
+        "total_params": 235093634560
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "mlx-community/Qwen3-235B-A22B-4bit",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 3584,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "RedHatAI/Qwen3-30B-A3B-quantized.w4a16",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 3443,
+        "total_params": 4605856128
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "RedHatAI/Qwen3-235B-A22B-FP8-dynamic",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 3029,
+        "total_params": 235181131264
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "MerbAI/Karnak",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 3013,
+        "total_params": 40669136896
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "miromind-ai/MiroThinker-v1.5-30B",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 2963,
+        "total_params": 30532122624
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "mlx-community/Qwen3-235B-A22B-8bit",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 2742,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "ig1/Qwen3-Coder-30B-A3B-Instruct-NVFP4",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 2685,
+        "total_params": 17452222848
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "nvidia/Qwen3-235B-A22B-Instruct-2507-NVFP4",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 2655,
+        "total_params": 119968378368
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "unsloth/Qwen3-30B-A3B-Instruct-2507",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 2600,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "Ravi07bec/SQL-v2-oct-16",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 2548,
+        "total_params": 30532122624
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "miromind-ai/MiroThinker-1.7-mini",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 2495,
+        "total_params": 30532122624
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "QuantTrio/Qwen3-Coder-30B-A3B-Instruct-GPTQ-Int8",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 2274,
+        "total_params": 30532122624
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "nvidia/Qwen3-Coder-480B-A35B-Instruct-NVFP4",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 2152,
+        "total_params": 241041798656
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "cyankiwi/Qwen3-30B-A3B-Thinking-2507-AWQ-4bit",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 1959,
+        "total_params": 5306567040
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "unsloth/Qwen3-30B-A3B-128K-GGUF",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 1888,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "nvidia/Qwen3-Nemotron-235B-A22B-GenRM-2603",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 1785,
+        "total_params": 235093634560
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "koushd/Qwen3-235B-A22B-Instruct-2507-AWQ",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 1697,
+        "total_params": 235093634560
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "QuantTrio/Qwen3-Coder-480B-A35B-Instruct-AWQ",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 1550,
+        "total_params": 480154875392
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "mlx-community/Qwen3-Coder-30B-A3B-Instruct-5bit",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 1525,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "mlabonne/Qwen3-30B-A3B-abliterated",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 1522,
+        "total_params": 30532122624
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "mlx-community/Qwen3-Coder-30B-A3B-Instruct-6bit",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 1499,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "Aratako/Qwen3-30B-A3B-NSFW-JP",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 1462,
+        "total_params": 30532122624
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "lmstudio-community/Qwen3-30B-A3B-Thinking-2507-MLX-8bit",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 1452,
+        "total_params": 30532122624
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "mlx-community/Qwen3-Coder-30B-A3B-Instruct-8bit",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 1142,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "lmstudio-community/Qwen3-30B-A3B-Thinking-2507-MLX-4bit",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 1108,
+        "total_params": 30532122624
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "amd/Qwen3-235B-A22B-Instruct-2507-MXFP4",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 1081,
+        "total_params": 118194187776
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "Sophia-AI/Qwen3-30B-A3B-Instruct-2507-AWQ-W4A16",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 1061,
+        "total_params": 5419812864
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "Qwen/Qwen3-235B-A22B-MLX-bf16",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 1051,
+        "total_params": 235093634560
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "QuixiAI/Qwen3-235B-A22B-AWQ",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 1046,
+        "total_params": 235093634560
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "huihui-ai/Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 1004,
+        "total_params": 30532122624
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "nvidia/Qwen3-235B-A22B-FP8",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 879,
+        "total_params": 235093634560
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit-dwq-v2",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 878,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "huihui-ai/Huihui-MoE-0.8B-2E",
+      "status": 1,
+      "verified_date": "2026-04-10",
+      "metadata": {
+        "downloads": 868,
+        "total_params": 860348416
+      },
+      "note": "Full verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "phase4_score": 91.9,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "tokyotech-llm/Qwen3-Swallow-30B-A3B-CPT-v0.2",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 855,
+        "total_params": 30532122624
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "unsloth/Qwen3-235B-A22B-128K-GGUF",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 854,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "zianglih/Qwen3-30B-A3B-Instruct-2507-MXFP8-last-8-BF16",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 845,
+        "total_params": 31310690304
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "lmstudio-community/Qwen3-30B-A3B-Thinking-2507-MLX-6bit",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 823,
+        "total_params": 30532122624
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "nvidia/Qwen3-235B-A22B-Thinking-2507-NVFP4",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 819,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "OpenMOSS-Team/SciThinker-30B",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 788,
+        "total_params": 30532122624
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "mlx-community/Qwen3-30B-A3B-Instruct-2507-6bit",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 763,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "nightmedia/Qwen3-42B-A3B-2507-Thinking-Abliterated-uncensored-TOTAL-RECALL-v2-Medium-MASTER-CODER-qx4-mlx",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 758,
+        "total_params": 42371414784
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "mlx-community/Qwen3-235B-A22B-Thinking-2507-8bit",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 743,
+        "total_params": 235093634560
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "baichuan-inc/Baichuan-M3-235B",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 737,
+        "total_params": 235093634560
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "huihui-ai/Huihui-MiroThinker-v1.5-30B-abliterated",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 728,
+        "total_params": 30532122624
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "unsloth/Qwen3-30B-A3B-Base",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 726,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "Jebadiah/Qwen3-30B-A3B-seed-0",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 719,
+        "total_params": 30531028992
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "DavidAU/Qwen3-42B-A3B-2507-Thinking-Abliterated-uncensored-TOTAL-RECALL-v2-Medium-MASTER-CODER",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 717,
+        "total_params": 42371414784
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "nytopop/Qwen3-30B-A3B.w4a16",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 691,
+        "total_params": 4605856128
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "tokyotech-llm/Qwen3-Swallow-30B-A3B-RL-v0.2",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 677,
+        "total_params": 30532122624
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "lmstudio-community/Qwen3-235B-A22B-Thinking-2507-MLX-8bit",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 673,
+        "total_params": 235093634560
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "nightmedia/Qwen3-30B-A3B-Thinking-2507-Claude-4.5-Sonnet-High-Reasoning-Distill-mxfp4-mlx",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 669,
+        "total_params": 30532122624
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "RedHatAI/Qwen3-30B-A3B-Instruct-2507-quantized.w4a16",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 663,
+        "total_params": 4594944480
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "RedHatAI/Qwen3-235B-A22B-Instruct-2507-NVFP4",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 658,
+        "total_params": 135739033600
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "unsloth/Qwen3-30B-A3B-Instruct-2507-FP8",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 647,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "huihui-ai/Huihui-MoE-1B-A0.6B",
+      "status": 1,
+      "verified_date": "2026-04-10",
+      "metadata": {
+        "downloads": 223,
+        "total_params": 1120000000
+      },
+      "note": "Full verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "phase4_score": 97.6,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "imdatta0/tiny_qwen3_moe_2.8B_0.7B",
+      "status": 1,
+      "verified_date": "2026-04-10",
+      "metadata": {
+        "downloads": 218,
+        "total_params": 2800000000
+      },
+      "note": "Full verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "phase4_score": 70.4,
       "phase7_score": null,
       "phase8_score": null
     }
