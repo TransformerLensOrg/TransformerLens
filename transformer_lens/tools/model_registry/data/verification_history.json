@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-04-09T13:22:45.115556",
+  "last_updated": "2026-04-10T00:51:34.188066",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -11315,6 +11315,106 @@
       "model_id": "tiiuae/falcon-rw-1b",
       "architecture_id": "FalconForCausalLM",
       "verified_date": "2026-04-09",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "tiny-random/qwen3-next-moe",
+      "architecture_id": "Qwen3NextForCausalLM",
+      "verified_date": "2026-04-10",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: 'Qwen3NextSparseMoeBlock' object has no attribute 'gate_proj'",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "optimum-intel-internal-testing/tiny-random-qwen3-next",
+      "architecture_id": "Qwen3NextForCausalLM",
+      "verified_date": "2026-04-10",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: 'Qwen3NextSparseMoeBlock' object has no attribute 'gate_proj'",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "yujiepan/qwen3-next-moe-tiny-random",
+      "architecture_id": "Qwen3NextForCausalLM",
+      "verified_date": "2026-04-10",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: 'Qwen3NextSparseMoeBlock' object has no attribute 'gate_proj'",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "tiny-random/qwen3-next-moe",
+      "architecture_id": "Qwen3NextForCausalLM",
+      "verified_date": "2026-04-10",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P3=83.3% but required tests failed: logits_equivalence, loss_equivalence \u2014 Text quality score: 75.7/100 (avg perplexity: 524.4) \u2014 generated text may be incoherent",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "optimum-intel-internal-testing/tiny-random-qwen3-next",
+      "architecture_id": "Qwen3NextForCausalLM",
+      "verified_date": "2026-04-10",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P3=83.3% but required tests failed: logits_equivalence, loss_equivalence \u2014 Text quality score: 55.9/100 (avg perplexity: 2921.5) \u2014 generated text may be incoherent",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "yujiepan/qwen3-next-moe-tiny-random",
+      "architecture_id": "Qwen3NextForCausalLM",
+      "verified_date": "2026-04-10",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P3=83.3% but required tests failed: logits_equivalence, loss_equivalence \u2014 Text quality score: 75.7/100 (avg perplexity: 524.4) \u2014 generated text may be incoherent",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "yujiepan/qwen3-next-moe-tiny-random",
+      "architecture_id": "Qwen3NextForCausalLM",
+      "verified_date": "2026-04-10",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "tiny-random/qwen3-next-moe",
+      "architecture_id": "Qwen3NextForCausalLM",
+      "verified_date": "2026-04-10",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "optimum-intel-internal-testing/tiny-random-qwen3-next",
+      "architecture_id": "Qwen3NextForCausalLM",
+      "verified_date": "2026-04-10",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "yujiepan/qwen3-next-moe-tiny-random",
+      "architecture_id": "Qwen3NextForCausalLM",
+      "verified_date": "2026-04-10",
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Full verification completed",

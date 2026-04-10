@@ -422,34 +422,26 @@ class TestQwen3NextComponentMapping:
 
     # ---- MLP submodules ----
 
-    def test_mlp_submodules_keys(self, adapter):
-        """mlp submodules must be gate, in, out."""
-        mlp = adapter.component_mapping["blocks"].submodules["mlp"]
-        assert set(mlp.submodules.keys()) == {"gate", "in", "out"}
+    def test_mlp_has_no_submodules(self, adapter):
+        """mlp is a MoEBridge with no enumerated submodules.
 
-    def test_mlp_gate_path(self, adapter):
-        """mlp.gate maps to gate_proj."""
+        Real Qwen3Next checkpoints use Qwen3NextSparseMoeBlock whose router
+        (`gate`) is a Qwen3NextTopKRouter rather than nn.Linear, and whose
+        experts are batched as 3D tensors inside Qwen3NextExperts. MoEBridge
+        wraps the whole block and delegates to HF's native forward, so no
+        internal submodules are mapped here.
+        """
         mlp = adapter.component_mapping["blocks"].submodules["mlp"]
-        assert mlp.submodules["gate"].name == "gate_proj"
-
-    def test_mlp_in_path(self, adapter):
-        """mlp.in maps to up_proj."""
-        mlp = adapter.component_mapping["blocks"].submodules["mlp"]
-        assert mlp.submodules["in"].name == "up_proj"
-
-    def test_mlp_out_path(self, adapter):
-        """mlp.out maps to down_proj."""
-        mlp = adapter.component_mapping["blocks"].submodules["mlp"]
-        assert mlp.submodules["out"].name == "down_proj"
+        assert mlp.submodules == {}
 
     # ---- Bridge types ----
 
     def test_mlp_bridge_type(self, adapter):
-        """mlp uses GatedMLPBridge."""
-        from transformer_lens.model_bridge.generalized_components import GatedMLPBridge
+        """mlp uses MoEBridge (sparse MoE on every real checkpoint)."""
+        from transformer_lens.model_bridge.generalized_components import MoEBridge
 
         mlp = adapter.component_mapping["blocks"].submodules["mlp"]
-        assert isinstance(mlp, GatedMLPBridge)
+        assert isinstance(mlp, MoEBridge)
 
     def test_ln1_bridge_type(self, adapter):
         """ln1 uses RMSNormalizationBridge."""
@@ -674,14 +666,15 @@ except ImportError:
 def _make_tiny_hf_model():
     """Create a tiny Qwen3Next model for integration testing.
 
-    Uses num_experts=0 to force dense (non-MoE) MLP across all layers.
-    The adapter only maps universally-present submodules (norms + MLP), so
-    this works regardless of the layer type (linear_attention or full_attention).
+    Uses num_experts=4 (sparse MoE) to exercise the real production code path.
+    Every real Qwen3Next checkpoint has mlp_only_layers=[] and
+    decoder_sparse_step=1, so every decoder layer uses Qwen3NextSparseMoeBlock.
+    Test fixtures must mirror this or the adapter's MoE wiring goes untested.
 
     Config details:
     - 8 layers: layers 3 and 7 are full-attention (full_attention_interval=4)
     - All other layers are linear_attention
-    - dense MLP on all layers (num_experts=0)
+    - sparse MoE MLP on all layers (num_experts=4, num_experts_per_tok=2)
     """
     cfg = Qwen3NextConfig(
         hidden_size=128,
@@ -699,7 +692,12 @@ def _make_tiny_hf_model():
         linear_value_head_dim=32,
         linear_num_key_heads=4,
         linear_num_value_heads=4,
-        num_experts=0,
+        num_experts=4,
+        num_experts_per_tok=2,
+        moe_intermediate_size=64,
+        shared_expert_intermediate_size=64,
+        decoder_sparse_step=1,
+        mlp_only_layers=[],
         rope_parameters={
             "rope_theta": 10000.0,
             "partial_rotary_factor": 0.25,
@@ -744,8 +742,9 @@ def _make_tiny_bridge():
 class TestQwen3NextIntegration:
     """End-to-end integration tests using a tiny programmatic Qwen3Next model.
 
-    Tests use num_experts=0 (dense MLP) to avoid the MoE layer structure, which
-    requires flash-linear-attention and causal-conv1d libraries not needed here.
+    Tests use num_experts=4 (sparse MoE) to exercise the real production code
+    path. The linear attention layers run via the torch fallback path when
+    flash-linear-attention / causal-conv1d are not installed.
     """
 
     @pytest.fixture(scope="class")
