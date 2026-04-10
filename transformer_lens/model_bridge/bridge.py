@@ -1994,6 +1994,25 @@ class TransformerBridge(nn.Module):
                 "and pass the resulting tensor to generate().",
                 stacklevel=2,
             )
+
+        # Stateful models (e.g., Mamba, Mamba-2) use cache types incompatible with
+        # the standard KV-cache path below. Delegate to HF's native generation via
+        # hf_generate() — this loses hook integration during generation but gives
+        # users working sampling without a custom stateful code path.
+        if getattr(self.cfg, "is_stateful", False):
+            hf_kwargs: dict[str, Any] = {
+                "max_new_tokens": max_new_tokens,
+                "do_sample": do_sample,
+                "temperature": temperature,
+            }
+            if top_k is not None:
+                hf_kwargs["top_k"] = top_k
+            if top_p is not None:
+                hf_kwargs["top_p"] = top_p
+            if eos_token_id is not None:
+                hf_kwargs["eos_token_id"] = eos_token_id
+            return self.hf_generate(input, **hf_kwargs)
+
         _generate_from_embeds = False
         if isinstance(input, str):
             input_tokens = self.to_tokens(input, move_to_device=True, truncate=False)

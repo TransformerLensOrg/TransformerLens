@@ -26,6 +26,9 @@ from transformer_lens.model_bridge.generalized_components.conv1d import Conv1DBr
 from transformer_lens.model_bridge.generalized_components.conv_pos_embed import (
     ConvPosEmbedBridge,
 )
+from transformer_lens.model_bridge.generalized_components.depthwise_conv1d import (
+    DepthwiseConv1DBridge,
+)
 from transformer_lens.model_bridge.generalized_components.embedding import (
     EmbeddingBridge,
 )
@@ -66,6 +69,8 @@ from transformer_lens.model_bridge.generalized_components.siglip_vision_encoder 
     SiglipVisionEncoderBridge,
     SiglipVisionEncoderLayerBridge,
 )
+from transformer_lens.model_bridge.generalized_components.ssm_block import SSMBlockBridge
+from transformer_lens.model_bridge.generalized_components.ssm_mixer import SSMMixerBridge
 from transformer_lens.model_bridge.generalized_components.symbolic import SymbolicBridge
 from transformer_lens.model_bridge.generalized_components.t5_block import T5BlockBridge
 from transformer_lens.model_bridge.generalized_components.unembedding import (
@@ -87,6 +92,7 @@ __all__ = [
     "CLIPVisionEncoderLayerBridge",
     "Conv1DBridge",
     "ConvPosEmbedBridge",
+    "DepthwiseConv1DBridge",
     "EmbeddingBridge",
     "FalconALiBiAttentionBridge",
     "RotaryEmbeddingBridge",
@@ -106,5 +112,7 @@ __all__ = [
     "T5BlockBridge",
     "SiglipVisionEncoderBridge",
     "SiglipVisionEncoderLayerBridge",
+    "SSMBlockBridge",
+    "SSMMixerBridge",
     "VisionProjectionBridge",
 ]
