@@ -196,6 +196,7 @@ def estimate_model_params(model_id: str) -> int:
         getattr(lang_config, "num_attention_heads", None)
         or getattr(lang_config, "n_head", None)
         or getattr(lang_config, "num_query_heads", None)  # OpenELM (may be per-layer list)
+        or getattr(lang_config, "num_heads", None)  # Mamba-2 SSM heads
         or 0
     )
     # OpenELM uses per-layer lists for heads; take the max for estimation
@@ -224,13 +225,23 @@ def estimate_model_params(model_id: str) -> int:
             d_mlp = 4 * d_model
     d_vocab = getattr(lang_config, "vocab_size", None) or 0
 
-    if d_model == 0 or n_heads == 0 or n_layers == 0:
+    if d_model == 0 or n_layers == 0:
         raise ValueError(f"Could not extract model dimensions from config for {model_id}")
 
-    d_head = getattr(lang_config, "head_dim", None) or (d_model // n_heads)
+    # Attention-less architectures (Mamba SSMs) have no heads. Use nominal
+    # values so the estimate doesn't attribute phantom attention params.
+    is_attention_less = n_heads == 0
+    if is_attention_less:
+        n_heads = 1
+        d_head = d_model
+    else:
+        d_head = getattr(lang_config, "head_dim", None) or (d_model // n_heads)
 
-    # Attention parameters: W_Q, W_K, W_V, W_O per layer
-    n_params = n_layers * (d_model * d_head * n_heads * 4)
+    # Attention parameters: W_Q, W_K, W_V, W_O per layer (skipped for SSMs)
+    if is_attention_less:
+        n_params = 0
+    else:
+        n_params = n_layers * (d_model * d_head * n_heads * 4)
 
     # MLP parameters (if present)
     if d_mlp is not None and d_mlp > 0:
@@ -755,6 +766,38 @@ def verify_models(
             progress.skipped.append(model_id)
             _save_checkpoint(progress)
             continue
+
+        # Step 0b: Check adapter-level phase applicability. Architectures
+        # with applicable_phases=[] (e.g. SSMs) skip verify_models entirely
+        # because the benchmark suite has transformer-shaped assumptions that
+        # would need a dedicated refactor to cover them. Verification for
+        # these architectures lives in the integration test suite.
+        from transformer_lens.factories.architecture_adapter_factory import (
+            SUPPORTED_ARCHITECTURES,
+        )
+
+        adapter_cls = SUPPORTED_ARCHITECTURES.get(arch)
+        if adapter_cls is not None:
+            applicable = getattr(adapter_cls, "applicable_phases", [1, 2, 3, 4])
+            phases_to_run = [p for p in phases if p in applicable]
+            if not phases_to_run:
+                note = (
+                    f"Architecture {arch} has applicable_phases={applicable}; "
+                    f"verify_models coverage is deferred. Verification lives "
+                    f"in integration tests."
+                )
+                if not quiet:
+                    print(f"  SKIP: {note}")
+                current_status = _get_current_model_status(model_id, arch)
+                if current_status != STATUS_VERIFIED:
+                    update_model_status(
+                        model_id, arch, STATUS_SKIPPED, note=note, sanitize_fn=_sanitize_note
+                    )
+                elif not quiet:
+                    print(f"  (preserving existing verified status)")
+                progress.skipped.append(model_id)
+                _save_checkpoint(progress)
+                continue
 
         # Step 1: Estimate parameters
         try:

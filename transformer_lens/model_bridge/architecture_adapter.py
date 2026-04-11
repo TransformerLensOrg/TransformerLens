@@ -36,6 +36,14 @@ class ArchitectureAdapter:
 
     default_cfg: dict[str, Any] = {}
 
+    # verify_models phase applicability. Architectures that cannot participate
+    # in specific phases (e.g. SSMs don't have the transformer-shaped hooks/
+    # weights the benchmark phases assume) should override. An empty list
+    # means "skip verify_models entirely; verification lives in integration
+    # tests." The full refactor that would make SSM phases meaningful is
+    # documented in ~/.claude/plans/ssm-verification-compatibility.md.
+    applicable_phases: list[int] = [1, 2, 3, 4]
+
     def __init__(self, cfg: TransformerBridgeConfig) -> None:
         """Initialize the architecture adapter.
 

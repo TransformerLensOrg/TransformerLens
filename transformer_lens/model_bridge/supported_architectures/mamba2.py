@@ -29,6 +29,11 @@ class Mamba2ArchitectureAdapter(ArchitectureAdapter):
     loop with Mamba-1.
     """
 
+    # verify_models is transformer-shaped today and would need a dedicated
+    # refactor to meaningfully cover SSMs. Verification lives in integration
+    # tests: tests/integration/model_bridge/test_mamba2_adapter.py
+    applicable_phases: list[int] = []
+
     def __init__(self, cfg: Any) -> None:
         super().__init__(cfg)
 
