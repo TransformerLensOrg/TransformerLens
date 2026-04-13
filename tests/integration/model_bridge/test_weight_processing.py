@@ -9,13 +9,12 @@ Consolidates:
 Uses distilgpt2 for fast flag matrix tests and gpt2 for Main Demo regression anchors.
 """
 
-import copy
-
 import pytest
 import torch
 from jaxtyping import Float
 
-from transformer_lens import utils
+from transformer_lens import HookedTransformer, utils
+from transformer_lens.model_bridge import TransformerBridge
 
 # ---------------------------------------------------------------------------
 # Flag combination matrix (distilgpt2 for speed)
@@ -62,8 +61,6 @@ from transformer_lens import utils
     ],
 )
 def test_weight_processing_flag_combinations(
-    distilgpt2_bridge,
-    distilgpt2_hooked_unprocessed,
     fold_ln,
     center_writing_weights,
     center_unembed,
@@ -71,13 +68,16 @@ def test_weight_processing_flag_combinations(
     expected_close_match,
 ):
     """Test that different combinations of weight processing flags work correctly."""
+    device = "cpu"
+    model_name = "distilgpt2"
     test_text = "Natural language processing"
 
-    # Deepcopy from session fixture and apply specific processing flags.
-    # Avoids 14+ redundant HF API calls from HookedTransformer.from_pretrained.
-    reference_ht = copy.deepcopy(distilgpt2_hooked_unprocessed)
-    reference_ht.load_and_process_state_dict(
-        reference_ht.state_dict(),
+    # Each parametrization needs unique processing flags applied at load time.
+    # Models are already in the HF disk cache from session fixtures, so
+    # boot_transformers / from_pretrained only read from disk (no API calls).
+    reference_ht = HookedTransformer.from_pretrained(
+        model_name,
+        device=device,
         fold_ln=fold_ln,
         center_writing_weights=center_writing_weights,
         center_unembed=center_unembed,
@@ -99,10 +99,9 @@ def test_weight_processing_flag_combinations(
     )
     ref_ablation_effect = ref_ablated_loss - ref_loss
 
-    # Deepcopy from session fixture to avoid redundant HF API calls.
     # enable_compatibility_mode() calls process_weights() internally,
     # so pass flags there directly (not via separate process_weights call).
-    bridge = copy.deepcopy(distilgpt2_bridge)
+    bridge = TransformerBridge.boot_transformers(model_name, device=device)
     bridge.enable_compatibility_mode(
         fold_ln=fold_ln,
         center_writing_weights=center_writing_weights,
@@ -140,17 +139,13 @@ def test_weight_processing_flag_combinations(
 
 
 def test_no_processing_matches_unprocessed_hooked_transformer(
-    distilgpt2_hooked_unprocessed, distilgpt2_bridge
+    distilgpt2_hooked_unprocessed, distilgpt2_bridge_compat_no_processing
 ):
     """Test that no processing flag matches HookedTransformer loaded without processing."""
     test_text = "Natural language processing"
 
     unprocessed_loss = distilgpt2_hooked_unprocessed(test_text, return_type="loss")
-
-    # Deepcopy to avoid mutating the session fixture
-    bridge = copy.deepcopy(distilgpt2_bridge)
-    bridge.enable_compatibility_mode(no_processing=True)
-    bridge_loss = bridge(test_text, return_type="loss")
+    bridge_loss = distilgpt2_bridge_compat_no_processing(test_text, return_type="loss")
 
     # Observed: < 0.00002 for distilgpt2
     loss_diff = abs(bridge_loss - unprocessed_loss)
