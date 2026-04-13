@@ -1,8 +1,9 @@
 """Wrap-don't-reimplement bridge for HF's Mamba2Mixer, plus SSD effective attention."""
-from typing import Any, Mapping
+from typing import Any
 
 import torch
 
+from transformer_lens.ActivationCache import ActivationCache
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
@@ -58,7 +59,7 @@ class SSM2MixerBridge(GeneralizedComponent):
 
     def compute_effective_attention(
         self,
-        cache: Mapping[str, torch.Tensor],
+        cache: ActivationCache,
         layer_idx: int,
         include_dt_scaling: bool = False,
     ) -> torch.Tensor:

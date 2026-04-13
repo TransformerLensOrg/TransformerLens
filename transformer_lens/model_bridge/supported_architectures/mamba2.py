@@ -1,9 +1,11 @@
 """Architecture adapter for HF's Mamba2ForCausalLM, plus the effective attention helper."""
-from typing import TYPE_CHECKING, Any, Mapping, Optional
+from typing import Any, Optional
 
 import torch
 
+from transformer_lens.ActivationCache import ActivationCache
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
+from transformer_lens.model_bridge.bridge import TransformerBridge
 from transformer_lens.model_bridge.generalized_components import (
     DepthwiseConv1DBridge,
     EmbeddingBridge,
@@ -14,9 +16,6 @@ from transformer_lens.model_bridge.generalized_components import (
     SSMBlockBridge,
     UnembeddingBridge,
 )
-
-if TYPE_CHECKING:
-    from transformer_lens.model_bridge.bridge import TransformerBridge
 
 
 class Mamba2ArchitectureAdapter(ArchitectureAdapter):
@@ -106,8 +105,8 @@ class Mamba2ArchitectureAdapter(ArchitectureAdapter):
 
 
 def compute_effective_attention(
-    bridge: "TransformerBridge",
-    cache: Mapping[str, torch.Tensor],
+    bridge: TransformerBridge,
+    cache: ActivationCache,
     layer: Optional[int] = None,
     include_dt_scaling: bool = False,
 ) -> torch.Tensor:

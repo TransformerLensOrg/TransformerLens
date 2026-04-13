@@ -373,9 +373,12 @@ class TestMamba2EffectiveAttention:
 
     def test_missing_cache_keys_raise(self, mamba2_bridge):
         """Calling with an empty cache should raise a clear RuntimeError."""
+        from transformer_lens.ActivationCache import ActivationCache
+
         mixer = mamba2_bridge.blocks[0].mixer
+        empty_cache = ActivationCache({}, model=mamba2_bridge)
         with pytest.raises(RuntimeError, match="in cache"):
-            mixer.compute_effective_attention({}, layer_idx=0)
+            mixer.compute_effective_attention(empty_cache, layer_idx=0)
 
     def test_different_layers_produce_different_attention(self, mamba2_bridge):
         """Each layer's M should be distinct (different weights → different attention)."""
