@@ -9,12 +9,13 @@ Consolidates:
 Uses distilgpt2 for fast flag matrix tests and gpt2 for Main Demo regression anchors.
 """
 
+import copy
+
 import pytest
 import torch
 from jaxtyping import Float
 
 from transformer_lens import HookedTransformer, utils
-from transformer_lens.model_bridge import TransformerBridge
 
 # ---------------------------------------------------------------------------
 # Flag combination matrix (distilgpt2 for speed)
@@ -61,7 +62,12 @@ from transformer_lens.model_bridge import TransformerBridge
     ],
 )
 def test_weight_processing_flag_combinations(
-    fold_ln, center_writing_weights, center_unembed, fold_value_biases, expected_close_match
+    distilgpt2_bridge,
+    fold_ln,
+    center_writing_weights,
+    center_unembed,
+    fold_value_biases,
+    expected_close_match,
 ):
     """Test that different combinations of weight processing flags work correctly."""
     device = "cpu"
@@ -93,16 +99,17 @@ def test_weight_processing_flag_combinations(
     )
     ref_ablation_effect = ref_ablated_loss - ref_loss
 
-    # Create TransformerBridge and apply weight processing
-    bridge = TransformerBridge.boot_transformers(model_name, device=device)
-    bridge.process_weights(
+    # Deepcopy from session fixture to avoid redundant HF API calls.
+    # enable_compatibility_mode() calls process_weights() internally,
+    # so pass flags there directly (not via separate process_weights call).
+    bridge = copy.deepcopy(distilgpt2_bridge)
+    bridge.enable_compatibility_mode(
         fold_ln=fold_ln,
         center_writing_weights=center_writing_weights,
         center_unembed=center_unembed,
         fold_value_biases=fold_value_biases,
         refactor_factored_attn_matrices=False,
     )
-    bridge.enable_compatibility_mode()
 
     # Test baseline inference
     bridge_loss = bridge(test_text, return_type="loss")
@@ -132,24 +139,17 @@ def test_weight_processing_flag_combinations(
     assert not torch.isinf(bridge_loss), "Bridge produced infinite loss"
 
 
-def test_no_processing_matches_unprocessed_hooked_transformer():
+def test_no_processing_matches_unprocessed_hooked_transformer(
+    distilgpt2_hooked_unprocessed, distilgpt2_bridge
+):
     """Test that no processing flag matches HookedTransformer loaded without processing."""
-    device = "cpu"
-    model_name = "distilgpt2"
     test_text = "Natural language processing"
 
-    unprocessed_ht = HookedTransformer.from_pretrained_no_processing(model_name, device=device)
-    unprocessed_loss = unprocessed_ht(test_text, return_type="loss")
+    unprocessed_loss = distilgpt2_hooked_unprocessed(test_text, return_type="loss")
 
-    bridge = TransformerBridge.boot_transformers(model_name, device=device)
-    bridge.process_weights(
-        fold_ln=False,
-        center_writing_weights=False,
-        center_unembed=False,
-        fold_value_biases=False,
-        refactor_factored_attn_matrices=False,
-    )
-    bridge.enable_compatibility_mode()
+    # Deepcopy to avoid mutating the session fixture
+    bridge = copy.deepcopy(distilgpt2_bridge)
+    bridge.enable_compatibility_mode(no_processing=True)
     bridge_loss = bridge(test_text, return_type="loss")
 
     # Observed: < 0.00002 for distilgpt2
@@ -157,18 +157,14 @@ def test_no_processing_matches_unprocessed_hooked_transformer():
     assert loss_diff < 0.01, f"Unprocessed models should match closely: {loss_diff:.6f}"
 
 
-def test_all_processing_matches_default_hooked_transformer():
+def test_all_processing_matches_default_hooked_transformer(
+    distilgpt2_hooked_processed, distilgpt2_bridge_compat
+):
     """Test that all processing flags match default HookedTransformer behavior."""
-    device = "cpu"
-    model_name = "distilgpt2"
     test_text = "Natural language processing"
 
-    default_ht = HookedTransformer.from_pretrained(model_name, device=device)
-    default_loss = default_ht(test_text, return_type="loss")
-
-    bridge = TransformerBridge.boot_transformers(model_name, device=device)
-    bridge.enable_compatibility_mode()
-    bridge_loss = bridge(test_text, return_type="loss")
+    default_loss = distilgpt2_hooked_processed(test_text, return_type="loss")
+    bridge_loss = distilgpt2_bridge_compat(test_text, return_type="loss")
 
     loss_diff = abs(bridge_loss - default_loss)
     assert loss_diff < 0.01, f"Fully processed models should match closely: {loss_diff:.6f}"
@@ -213,32 +209,14 @@ class TestMainDemoRegression:
     These tests pin the exact loss values produced by gpt2 with and without
     weight processing, ensuring that changes to weight processing code don't
     silently shift the numbers that published notebooks depend on.
+
+    Uses session-scoped fixtures from conftest to avoid redundant model loads.
     """
 
-    @pytest.fixture(scope="class")
-    def hooked_processed(self):
-        return HookedTransformer.from_pretrained("gpt2", device="cpu")
-
-    @pytest.fixture(scope="class")
-    def hooked_unprocessed(self):
-        return HookedTransformer.from_pretrained_no_processing("gpt2", device="cpu")
-
-    @pytest.fixture(scope="class")
-    def bridge_processed(self):
-        bridge = TransformerBridge.boot_transformers("gpt2", device="cpu")
-        bridge.enable_compatibility_mode()
-        return bridge
-
-    @pytest.fixture(scope="class")
-    def bridge_unprocessed(self):
-        bridge = TransformerBridge.boot_transformers("gpt2", device="cpu")
-        bridge.enable_compatibility_mode(no_processing=True)
-        return bridge
-
-    def test_hooked_processed_matches_main_demo(self, hooked_processed):
+    def test_hooked_processed_matches_main_demo(self, gpt2_hooked_processed):
         """HookedTransformer with processing should match Main Demo values."""
         orig, ablated = _run_ablation(
-            hooked_processed, MAIN_DEMO_TEXT, MAIN_DEMO_LAYER, MAIN_DEMO_HEAD
+            gpt2_hooked_processed, MAIN_DEMO_TEXT, MAIN_DEMO_LAYER, MAIN_DEMO_HEAD
         )
         assert (
             abs(orig - EXPECTED_PROCESSED_ORIG) < REGRESSION_TOLERANCE
@@ -247,10 +225,10 @@ class TestMainDemoRegression:
             abs(ablated - EXPECTED_PROCESSED_ABLATED) < REGRESSION_TOLERANCE
         ), f"Processed ablated {ablated:.6f} != expected {EXPECTED_PROCESSED_ABLATED}"
 
-    def test_hooked_unprocessed_matches_expected(self, hooked_unprocessed):
+    def test_hooked_unprocessed_matches_expected(self, gpt2_hooked_unprocessed):
         """HookedTransformer without processing should match expected values."""
         orig, ablated = _run_ablation(
-            hooked_unprocessed, MAIN_DEMO_TEXT, MAIN_DEMO_LAYER, MAIN_DEMO_HEAD
+            gpt2_hooked_unprocessed, MAIN_DEMO_TEXT, MAIN_DEMO_LAYER, MAIN_DEMO_HEAD
         )
         assert (
             abs(orig - EXPECTED_UNPROCESSED_ORIG) < REGRESSION_TOLERANCE
@@ -259,25 +237,27 @@ class TestMainDemoRegression:
             abs(ablated - EXPECTED_UNPROCESSED_ABLATED) < REGRESSION_TOLERANCE
         ), f"Unprocessed ablated {ablated:.6f} != expected {EXPECTED_UNPROCESSED_ABLATED}"
 
-    def test_processing_preserves_baseline(self, hooked_processed, hooked_unprocessed):
+    def test_processing_preserves_baseline(self, gpt2_hooked_processed, gpt2_hooked_unprocessed):
         """Processing should not change baseline loss (mathematical equivalence)."""
         proc_orig, _ = _run_ablation(
-            hooked_processed, MAIN_DEMO_TEXT, MAIN_DEMO_LAYER, MAIN_DEMO_HEAD
+            gpt2_hooked_processed, MAIN_DEMO_TEXT, MAIN_DEMO_LAYER, MAIN_DEMO_HEAD
         )
         unproc_orig, _ = _run_ablation(
-            hooked_unprocessed, MAIN_DEMO_TEXT, MAIN_DEMO_LAYER, MAIN_DEMO_HEAD
+            gpt2_hooked_unprocessed, MAIN_DEMO_TEXT, MAIN_DEMO_LAYER, MAIN_DEMO_HEAD
         )
         assert (
             abs(proc_orig - unproc_orig) < 0.001
         ), f"Baseline not mathematically equivalent: {proc_orig:.6f} vs {unproc_orig:.6f}"
 
-    def test_processing_enhances_ablation_signal(self, hooked_processed, hooked_unprocessed):
+    def test_processing_enhances_ablation_signal(
+        self, gpt2_hooked_processed, gpt2_hooked_unprocessed
+    ):
         """Processing should increase the ablation effect (better interpretability)."""
         _, proc_ablated = _run_ablation(
-            hooked_processed, MAIN_DEMO_TEXT, MAIN_DEMO_LAYER, MAIN_DEMO_HEAD
+            gpt2_hooked_processed, MAIN_DEMO_TEXT, MAIN_DEMO_LAYER, MAIN_DEMO_HEAD
         )
         _, unproc_ablated = _run_ablation(
-            hooked_unprocessed, MAIN_DEMO_TEXT, MAIN_DEMO_LAYER, MAIN_DEMO_HEAD
+            gpt2_hooked_unprocessed, MAIN_DEMO_TEXT, MAIN_DEMO_LAYER, MAIN_DEMO_HEAD
         )
         diff = abs(proc_ablated - unproc_ablated)
         assert diff > 0.5, (
@@ -285,13 +265,15 @@ class TestMainDemoRegression:
             f"processed={proc_ablated:.6f}, unprocessed={unproc_ablated:.6f}, diff={diff:.6f}"
         )
 
-    def test_bridge_processed_matches_hooked_processed(self, bridge_processed, hooked_processed):
+    def test_bridge_processed_matches_hooked_processed(
+        self, gpt2_bridge_compat, gpt2_hooked_processed
+    ):
         """TransformerBridge with processing should match HookedTransformer."""
         br_orig, br_ablated = _run_ablation(
-            bridge_processed, MAIN_DEMO_TEXT, MAIN_DEMO_LAYER, MAIN_DEMO_HEAD
+            gpt2_bridge_compat, MAIN_DEMO_TEXT, MAIN_DEMO_LAYER, MAIN_DEMO_HEAD
         )
         ht_orig, ht_ablated = _run_ablation(
-            hooked_processed, MAIN_DEMO_TEXT, MAIN_DEMO_LAYER, MAIN_DEMO_HEAD
+            gpt2_hooked_processed, MAIN_DEMO_TEXT, MAIN_DEMO_LAYER, MAIN_DEMO_HEAD
         )
         # Observed: 0.000000 diff for gpt2 (2026-04-07)
         assert (
@@ -302,14 +284,14 @@ class TestMainDemoRegression:
         ), f"Bridge processed ablated {br_ablated:.6f} != HT {ht_ablated:.6f}"
 
     def test_bridge_unprocessed_matches_hooked_unprocessed(
-        self, bridge_unprocessed, hooked_unprocessed
+        self, gpt2_bridge_compat_no_processing, gpt2_hooked_unprocessed
     ):
         """TransformerBridge without processing should match HookedTransformer."""
         br_orig, br_ablated = _run_ablation(
-            bridge_unprocessed, MAIN_DEMO_TEXT, MAIN_DEMO_LAYER, MAIN_DEMO_HEAD
+            gpt2_bridge_compat_no_processing, MAIN_DEMO_TEXT, MAIN_DEMO_LAYER, MAIN_DEMO_HEAD
         )
         ht_orig, ht_ablated = _run_ablation(
-            hooked_unprocessed, MAIN_DEMO_TEXT, MAIN_DEMO_LAYER, MAIN_DEMO_HEAD
+            gpt2_hooked_unprocessed, MAIN_DEMO_TEXT, MAIN_DEMO_LAYER, MAIN_DEMO_HEAD
         )
         # Observed: 0.000000 diff for gpt2 (2026-04-07)
         assert (
