@@ -26,6 +26,9 @@ from transformer_lens.model_bridge.generalized_components.conv1d import Conv1DBr
 from transformer_lens.model_bridge.generalized_components.conv_pos_embed import (
     ConvPosEmbedBridge,
 )
+from transformer_lens.model_bridge.generalized_components.depthwise_conv1d import (
+    DepthwiseConv1DBridge,
+)
 from transformer_lens.model_bridge.generalized_components.embedding import (
     EmbeddingBridge,
 )
@@ -34,6 +37,9 @@ from transformer_lens.model_bridge.generalized_components.alibi_joint_qkv_attent
 )
 from transformer_lens.model_bridge.generalized_components.gated_mlp import (
     GatedMLPBridge,
+)
+from transformer_lens.model_bridge.generalized_components.gated_rms_norm import (
+    GatedRMSNormBridge,
 )
 from transformer_lens.model_bridge.generalized_components.joint_gate_up_mlp import (
     JointGateUpMLPBridge,
@@ -66,6 +72,9 @@ from transformer_lens.model_bridge.generalized_components.siglip_vision_encoder 
     SiglipVisionEncoderBridge,
     SiglipVisionEncoderLayerBridge,
 )
+from transformer_lens.model_bridge.generalized_components.ssm2_mixer import SSM2MixerBridge
+from transformer_lens.model_bridge.generalized_components.ssm_block import SSMBlockBridge
+from transformer_lens.model_bridge.generalized_components.ssm_mixer import SSMMixerBridge
 from transformer_lens.model_bridge.generalized_components.symbolic import SymbolicBridge
 from transformer_lens.model_bridge.generalized_components.t5_block import T5BlockBridge
 from transformer_lens.model_bridge.generalized_components.unembedding import (
@@ -87,6 +96,7 @@ __all__ = [
     "CLIPVisionEncoderLayerBridge",
     "Conv1DBridge",
     "ConvPosEmbedBridge",
+    "DepthwiseConv1DBridge",
     "EmbeddingBridge",
     "ALiBiJointQKVAttentionBridge",
     "RotaryEmbeddingBridge",
@@ -99,6 +109,7 @@ __all__ = [
     "LinearBridge",
     "MLPBridge",
     "GatedMLPBridge",
+    "GatedRMSNormBridge",
     "MoEBridge",
     "PositionEmbeddingsAttentionBridge",
     "SymbolicBridge",
@@ -106,5 +117,8 @@ __all__ = [
     "T5BlockBridge",
     "SiglipVisionEncoderBridge",
     "SiglipVisionEncoderLayerBridge",
+    "SSM2MixerBridge",
+    "SSMBlockBridge",
+    "SSMMixerBridge",
     "VisionProjectionBridge",
 ]
