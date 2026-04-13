@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-04-09T16:34:36.818082",
+  "last_updated": "2026-04-10T19:09:48.784882",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -11198,6 +11198,36 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "trl-internal-testing/tiny-CohereForCausalLM",
+      "architecture_id": "CohereForCausalLM",
+      "verified_date": "2026-04-10",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P3=94.7% (failed: weight_modification)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "trl-internal-testing/tiny-CohereForCausalLM",
+      "architecture_id": "CohereForCausalLM",
+      "verified_date": "2026-04-10",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P3=94.7% (failed: weight_modification)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "trl-internal-testing/tiny-CohereForCausalLM",
+      "architecture_id": "CohereForCausalLM",
+      "verified_date": "2026-04-10",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P3=94.7% (failed: weight_modification)",
       "invalidated": false,
       "invalidation_reason": null
     }

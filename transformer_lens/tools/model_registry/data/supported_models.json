@@ -6,9 +6,9 @@
     "min_downloads": 500,
     "scan_duration_seconds": 12.1
   },
-  "total_architectures": 36,
-  "total_models": 6686,
-  "total_verified": 690,
+  "total_architectures": 38,
+  "total_models": 6704,
+  "total_verified": 696,
   "models": [
     {
       "architecture_id": "Qwen3ForCausalLM",
@@ -93598,6 +93598,227 @@
       "phase2_score": 100.0,
       "phase3_score": 100.0,
       "phase4_score": 67.5,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "CohereForCausalLM",
+      "model_id": "trl-internal-testing/tiny-CohereForCausalLM",
+      "status": 1,
+      "verified_date": "2026-04-10",
+      "metadata": {
+        "downloads": 120449,
+        "total_params": 2042176
+      },
+      "note": "Full verification completed with issues: P3=94.7% (failed: weight_modification)",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 94.7,
+      "phase4_score": 72.3,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "CohereForCausalLM",
+      "model_id": "CohereLabs/aya-expanse-8b",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 17474,
+        "total_params": 8028033024
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "CohereForCausalLM",
+      "model_id": "CohereLabs/c4ai-command-r-v01",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 14867,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "CohereForCausalLM",
+      "model_id": "CohereLabs/aya-23-8B",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 9836,
+        "total_params": 8028033024
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "CohereForCausalLM",
+      "model_id": "NLPark/AnFeng_v3_Avocet",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 8038,
+        "total_params": 34980831232
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "CohereForCausalLM",
+      "model_id": "CohereLabs/aya-expanse-32b",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 7697,
+        "total_params": 32296476672
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "CohereForCausalLM",
+      "model_id": "CohereLabs/aya-23-35B",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 5063,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "CohereForCausalLM",
+      "model_id": "CohereLabs/c4ai-command-r-plus-08-2024",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 3753,
+        "total_params": 103810674688
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "CohereForCausalLM",
+      "model_id": "CohereLabs/c4ai-command-r-08-2024",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 3516,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "CohereForCausalLM",
+      "model_id": "CohereLabs/c4ai-command-r-plus",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 2721,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "CohereForCausalLM",
+      "model_id": "TechxGenus/c4ai-command-r-v01-AWQ",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 1800,
+        "total_params": 37077983232
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "CohereForCausalLM",
+      "model_id": "Orion-zhen/aya-expanse-32b-AWQ",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 1793,
+        "total_params": 34393628672
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "CohereForCausalLM",
+      "model_id": "second-state/C4AI-Command-R-v01-GGUF",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 845,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
       "phase7_score": null,
       "phase8_score": null
     }
