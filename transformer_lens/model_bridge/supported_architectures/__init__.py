@@ -147,6 +147,9 @@ from transformer_lens.model_bridge.supported_architectures.stablelm import (
 from transformer_lens.model_bridge.supported_architectures.t5 import (
     T5ArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.xglm import (
+    XGLMArchitectureAdapter,
+)
 
 __all__ = [
     "ApertusArchitectureAdapter",
@@ -197,4 +200,5 @@ __all__ = [
     "Qwen3NextArchitectureAdapter",
     "StableLmArchitectureAdapter",
     "T5ArchitectureAdapter",
+    "XGLMArchitectureAdapter",
 ]
