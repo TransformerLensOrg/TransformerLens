@@ -57,6 +57,12 @@ from .registry_io import (
 
 logger = logging.getLogger(__name__)
 
+# Architectures added via the TransformerBridge system that need trust_remote_code=True.
+# These are not in the legacy NEED_REMOTE_CODE_MODELS tuple (loading_from_pretrained.py).
+_BRIDGE_REMOTE_CODE_PREFIXES: tuple[str, ...] = (
+    "internlm/",  # InternLM2ForCausalLM — ships own modeling_internlm2.py
+)
+
 # Data directory for registry files
 _DATA_DIR = Path(__file__).parent / "data"
 _CHECKPOINT_PATH = _DATA_DIR / "verification_checkpoint.json"
@@ -174,7 +180,8 @@ def estimate_model_params(model_id: str) -> int:
 
     from transformer_lens.loading_from_pretrained import NEED_REMOTE_CODE_MODELS
 
-    trust_remote_code = any(model_id.startswith(prefix) for prefix in NEED_REMOTE_CODE_MODELS)
+    _all_remote_prefixes = NEED_REMOTE_CODE_MODELS + _BRIDGE_REMOTE_CODE_PREFIXES
+    trust_remote_code = any(model_id.startswith(prefix) for prefix in _all_remote_prefixes)
     from transformer_lens.utilities.hf_utils import get_hf_token
 
     config = AutoConfig.from_pretrained(
@@ -812,7 +819,8 @@ def verify_models(
 
         from transformer_lens.loading_from_pretrained import NEED_REMOTE_CODE_MODELS
 
-        needs_remote_code = any(model_id.startswith(prefix) for prefix in NEED_REMOTE_CODE_MODELS)
+        _all_remote_prefixes = NEED_REMOTE_CODE_MODELS + _BRIDGE_REMOTE_CODE_PREFIXES
+        needs_remote_code = any(model_id.startswith(prefix) for prefix in _all_remote_prefixes)
 
         # Convert string dtype to torch.dtype for benchmark suite
         import torch

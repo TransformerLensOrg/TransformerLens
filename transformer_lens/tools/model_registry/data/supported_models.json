@@ -6,9 +6,9 @@
     "min_downloads": 500,
     "scan_duration_seconds": 12.1
   },
-  "total_architectures": 36,
-  "total_models": 6686,
-  "total_verified": 690,
+  "total_architectures": 38,
+  "total_models": 6715,
+  "total_verified": 697,
   "models": [
     {
       "architecture_id": "Qwen3ForCausalLM",
@@ -93598,6 +93598,414 @@
       "phase2_score": 100.0,
       "phase3_score": 100.0,
       "phase4_score": 67.5,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "InternLM2ForCausalLM",
+      "model_id": "internlm/internlm2-chat-7b",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 46960,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "InternLM2ForCausalLM",
+      "model_id": "internlm/internlm2_5-7b-chat",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 38575,
+        "total_params": 7737708544
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "InternLM2ForCausalLM",
+      "model_id": "internlm/internlm2-7b",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 24750,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "InternLM2ForCausalLM",
+      "model_id": "internlm/internlm2-20b",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 21171,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "InternLM2ForCausalLM",
+      "model_id": "internlm/internlm2-base-7b",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 19981,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "InternLM2ForCausalLM",
+      "model_id": "internlm/internlm2-chat-20b",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 19627,
+        "total_params": 19861149696
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "InternLM2ForCausalLM",
+      "model_id": "internlm/internlm2-base-20b",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 17316,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "InternLM2ForCausalLM",
+      "model_id": "chujiezheng/internlm2-chat-20b-ExPO",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 15121,
+        "total_params": 19861149696
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "InternLM2ForCausalLM",
+      "model_id": "chujiezheng/internlm2-chat-7b-ExPO",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 15102,
+        "total_params": 7737708544
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "InternLM2ForCausalLM",
+      "model_id": "internlm/internlm2-1_8b",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 5738,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "InternLM2ForCausalLM",
+      "model_id": "internlm/internlm2-chat-1_8b",
+      "status": 1,
+      "verified_date": "2026-04-13",
+      "metadata": {
+        "downloads": 5069,
+        "total_params": 1889110016
+      },
+      "note": "Full verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "phase4_score": 89.9,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "InternLM2ForCausalLM",
+      "model_id": "optimum-internal-testing/tiny-random-internlm2",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 4311,
+        "total_params": 24052864
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "InternLM2ForCausalLM",
+      "model_id": "internlm/internlm2-chat-7b-sft",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 3852,
+        "total_params": 7737708544
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "InternLM2ForCausalLM",
+      "model_id": "internlm/internlm2_5-7b",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 3290,
+        "total_params": 7737708544
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "InternLM2ForCausalLM",
+      "model_id": "internlm/internlm2_5-1_8b",
+      "status": 1,
+      "verified_date": "2026-04-13",
+      "metadata": {
+        "downloads": 3020,
+        "total_params": null
+      },
+      "note": "Full verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "phase4_score": 75.5,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "InternLM2ForCausalLM",
+      "model_id": "Mar2Ding/songcomposer_sft",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 1947,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "InternLM2ForCausalLM",
+      "model_id": "internlm/internlm2_5-step-prover",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 1783,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "InternLM2ForCausalLM",
+      "model_id": "internlm/internlm2_5-1_8b-chat",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 1491,
+        "total_params": 1889110016
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "InternLM2ForCausalLM",
+      "model_id": "AI4Chem/ChemLLM-7B-Chat-1_5-DPO",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 1350,
+        "total_params": 7737708544
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "InternLM2ForCausalLM",
+      "model_id": "internlm/internlm2-chat-20b-4bits",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 1301,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "InternLM2ForCausalLM",
+      "model_id": "internlm/internlm2_5-7b-chat-1m",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 1148,
+        "total_params": 7737708544
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "InternLM2ForCausalLM",
+      "model_id": "internlm/internlm2_5-20b-chat",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 791,
+        "total_params": 19861149696
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "InternLM2ForCausalLM",
+      "model_id": "AI4Chem/CHEMLLM-2b-1_5",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 789,
+        "total_params": 1889110016
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "InternLM2ForCausalLM",
+      "model_id": "Lin-Chen/ShareCaptioner-Video",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 754,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
       "phase7_score": null,
       "phase8_score": null
     }
