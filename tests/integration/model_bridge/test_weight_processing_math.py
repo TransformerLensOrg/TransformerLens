@@ -5,63 +5,58 @@ mathematical properties, not just that they run without error.
 Uses distilgpt2 (CI-cached).
 """
 
+import copy
+
 import pytest
 import torch
 
-from transformer_lens.model_bridge.bridge import TransformerBridge
-
 
 @pytest.fixture(scope="module")
-def bridge_fold_ln():
+def bridge_fold_ln(distilgpt2_bridge):
     """Bridge with only fold_ln applied."""
-    bridge = TransformerBridge.boot_transformers("distilgpt2", device="cpu")
-    bridge.process_weights(
+    bridge = copy.deepcopy(distilgpt2_bridge)
+    bridge.enable_compatibility_mode(
         fold_ln=True,
         center_writing_weights=False,
         center_unembed=False,
         fold_value_biases=False,
         refactor_factored_attn_matrices=False,
     )
-    bridge.enable_compatibility_mode()
     return bridge
 
 
 @pytest.fixture(scope="module")
-def bridge_center_writing():
+def bridge_center_writing(distilgpt2_bridge):
     """Bridge with fold_ln + center_writing_weights applied."""
-    bridge = TransformerBridge.boot_transformers("distilgpt2", device="cpu")
-    bridge.process_weights(
+    bridge = copy.deepcopy(distilgpt2_bridge)
+    bridge.enable_compatibility_mode(
         fold_ln=True,
         center_writing_weights=True,
         center_unembed=False,
         fold_value_biases=False,
         refactor_factored_attn_matrices=False,
     )
-    bridge.enable_compatibility_mode()
     return bridge
 
 
 @pytest.fixture(scope="module")
-def bridge_center_unembed():
+def bridge_center_unembed(distilgpt2_bridge):
     """Bridge with fold_ln + center_writing + center_unembed applied."""
-    bridge = TransformerBridge.boot_transformers("distilgpt2", device="cpu")
-    bridge.process_weights(
+    bridge = copy.deepcopy(distilgpt2_bridge)
+    bridge.enable_compatibility_mode(
         fold_ln=True,
         center_writing_weights=True,
         center_unembed=True,
         fold_value_biases=False,
         refactor_factored_attn_matrices=False,
     )
-    bridge.enable_compatibility_mode()
     return bridge
 
 
-@pytest.fixture(scope="module")
-def bridge_fold_value_biases():
+@pytest.fixture()
+def bridge_fold_value_biases(distilgpt2_bridge_compat):
     """Bridge with all processing applied."""
-    bridge = TransformerBridge.boot_transformers("distilgpt2", device="cpu")
-    bridge.enable_compatibility_mode()
-    return bridge
+    return distilgpt2_bridge_compat
 
 
 class TestFoldLayerNorm:
@@ -111,18 +106,11 @@ class TestFoldLayerNorm:
             ln.weight, torch.ones_like(ln.weight), atol=1e-6
         ), "ln_final.weight should be ones after fold_ln"
 
-    def test_fold_preserves_output(self, bridge_fold_ln):
+    def test_fold_preserves_output(self, bridge_fold_ln, distilgpt2_bridge):
         """Folding should not change model output (mathematically equivalent)."""
-        # Compare against an unprocessed bridge
-        bridge_unproc = TransformerBridge.boot_transformers("distilgpt2", device="cpu")
-        bridge_unproc.process_weights(
-            fold_ln=False,
-            center_writing_weights=False,
-            center_unembed=False,
-            fold_value_biases=False,
-            refactor_factored_attn_matrices=False,
-        )
-        bridge_unproc.enable_compatibility_mode()
+        # Compare against an unprocessed bridge (deepcopy + no-processing compat mode)
+        bridge_unproc = copy.deepcopy(distilgpt2_bridge)
+        bridge_unproc.enable_compatibility_mode(no_processing=True)
 
         text = "The quick brown fox"
         with torch.no_grad():

@@ -15,7 +15,7 @@ import pytest
 import torch
 from jaxtyping import Float
 
-from transformer_lens import HookedTransformer, utils
+from transformer_lens import utils
 
 # ---------------------------------------------------------------------------
 # Flag combination matrix (distilgpt2 for speed)
@@ -63,6 +63,7 @@ from transformer_lens import HookedTransformer, utils
 )
 def test_weight_processing_flag_combinations(
     distilgpt2_bridge,
+    distilgpt2_hooked_unprocessed,
     fold_ln,
     center_writing_weights,
     center_unembed,
@@ -70,14 +71,13 @@ def test_weight_processing_flag_combinations(
     expected_close_match,
 ):
     """Test that different combinations of weight processing flags work correctly."""
-    device = "cpu"
-    model_name = "distilgpt2"
     test_text = "Natural language processing"
 
-    # Get reference values from HookedTransformer with same settings
-    reference_ht = HookedTransformer.from_pretrained(
-        model_name,
-        device=device,
+    # Deepcopy from session fixture and apply specific processing flags.
+    # Avoids 14+ redundant HF API calls from HookedTransformer.from_pretrained.
+    reference_ht = copy.deepcopy(distilgpt2_hooked_unprocessed)
+    reference_ht.load_and_process_state_dict(
+        reference_ht.state_dict(),
         fold_ln=fold_ln,
         center_writing_weights=center_writing_weights,
         center_unembed=center_unembed,

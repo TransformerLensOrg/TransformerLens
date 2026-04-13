@@ -68,3 +68,11 @@ def gpt2_bridge_compat_no_processing():
     bridge = TransformerBridge.boot_transformers("gpt2", device="cpu")
     bridge.enable_compatibility_mode(no_processing=True)
     return bridge
+
+
+@pytest.fixture(scope="session")
+def distilgpt2_bridge_compat_no_processing():
+    """TransformerBridge wrapping distilgpt2 with compat mode, no weight processing."""
+    bridge = TransformerBridge.boot_transformers("distilgpt2", device="cpu")
+    bridge.enable_compatibility_mode(no_processing=True, disable_warnings=True)
+    return bridge

@@ -11,46 +11,29 @@ This module tests stop_at_layer functionality across different configurations:
 import pytest
 import torch
 
-from transformer_lens.model_bridge import TransformerBridge
+
+@pytest.fixture()
+def bridge_default(distilgpt2_bridge):
+    """Alias session fixture — default state (no processing, no compat mode)."""
+    return distilgpt2_bridge
 
 
-@pytest.fixture(scope="module")
-def bridge_default():
-    """Load a small model in default state (no processing, no compat mode)."""
-    bridge = TransformerBridge.boot_transformers("distilgpt2", device="cpu")
-    if bridge.tokenizer.pad_token is None:
-        bridge.tokenizer.pad_token = bridge.tokenizer.eos_token
-    return bridge
+@pytest.fixture()
+def bridge_with_processed_weights(distilgpt2_bridge_compat):
+    """Alias session fixture — with processed weights and compat mode."""
+    return distilgpt2_bridge_compat
 
 
-@pytest.fixture(scope="module")
-def bridge_with_processed_weights():
-    """Load a small model with processed weights (no compat mode)."""
-    bridge = TransformerBridge.boot_transformers("distilgpt2", device="cpu")
-    bridge.enable_compatibility_mode()
-    if bridge.tokenizer.pad_token is None:
-        bridge.tokenizer.pad_token = bridge.tokenizer.eos_token
-    return bridge
+@pytest.fixture()
+def bridge_with_compat_no_processing(distilgpt2_bridge_compat_no_processing):
+    """Alias session fixture — compat mode, no processing."""
+    return distilgpt2_bridge_compat_no_processing
 
 
-@pytest.fixture(scope="module")
-def bridge_with_compat_no_processing():
-    """Load a small model with compatibility mode but no processing."""
-    bridge = TransformerBridge.boot_transformers("distilgpt2", device="cpu")
-    bridge.enable_compatibility_mode(no_processing=True, disable_warnings=True)
-    if bridge.tokenizer.pad_token is None:
-        bridge.tokenizer.pad_token = bridge.tokenizer.eos_token
-    return bridge
-
-
-@pytest.fixture(scope="module")
-def bridge_with_compat_and_processing():
-    """Load a small model with compatibility mode and weight processing."""
-    bridge = TransformerBridge.boot_transformers("distilgpt2", device="cpu")
-    bridge.enable_compatibility_mode(disable_warnings=True)
-    if bridge.tokenizer.pad_token is None:
-        bridge.tokenizer.pad_token = bridge.tokenizer.eos_token
-    return bridge
+@pytest.fixture()
+def bridge_with_compat_and_processing(distilgpt2_bridge_compat):
+    """Alias session fixture — compat mode with weight processing."""
+    return distilgpt2_bridge_compat
 
 
 # Test 1: Default state (no processing, no compat mode)

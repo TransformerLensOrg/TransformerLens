@@ -8,12 +8,11 @@ import pytest
 import torch
 from transformers import AutoModelForCausalLM
 
-from transformer_lens.model_bridge import TransformerBridge
 
-
-@pytest.fixture(scope="module")
-def bridge_model():
-    return TransformerBridge.boot_transformers("gpt2", device="cpu")
+@pytest.fixture()
+def bridge_model(gpt2_bridge):
+    """Alias session fixture for backward compatibility with test signatures."""
+    return gpt2_bridge
 
 
 @pytest.fixture(scope="module")
