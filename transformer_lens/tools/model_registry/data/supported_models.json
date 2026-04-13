@@ -12961,12 +12961,12 @@
       "architecture_id": "FalconForCausalLM",
       "model_id": "fxmarty/really-tiny-falcon-testing",
       "status": 1,
-      "verified_date": "2026-04-09",
+      "verified_date": "2026-04-13",
       "metadata": null,
-      "note": "Full verification completed with issues, low text quality: P3=95.0% (failed: process_bridge_weights)",
+      "note": "Full verification completed with issues, low text quality",
       "phase1_score": 100.0,
       "phase2_score": 100.0,
-      "phase3_score": 95.0,
+      "phase3_score": 100.0,
       "phase4_score": 34.3,
       "phase7_score": null,
       "phase8_score": null
@@ -97802,6 +97802,23 @@
       "phase8_score": null
     },
     {
+      "architecture_id": "GPTBigCodeForCausalLM",
+      "model_id": "bigcode/gpt_bigcode-santacoder",
+      "status": 1,
+      "verified_date": "2026-04-10",
+      "metadata": {
+        "downloads": 52761,
+        "total_params": 1124886528
+      },
+      "note": "Full verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "phase4_score": 64.4,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
       "architecture_id": "CohereForCausalLM",
       "model_id": "trl-internal-testing/tiny-CohereForCausalLM",
       "status": 1,
@@ -98376,6 +98393,40 @@
       "phase2_score": 100.0,
       "phase3_score": 100.0,
       "phase4_score": 97.6,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "GPTBigCodeForCausalLM",
+      "model_id": "bigcode/tiny_starcoder_py",
+      "status": 1,
+      "verified_date": "2026-04-13",
+      "metadata": {
+        "downloads": 17845,
+        "total_params": 164144128
+      },
+      "note": "Full verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "phase4_score": 86.7,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "imdatta0/tiny_qwen3_moe_2.8B_0.7B",
+      "status": 1,
+      "verified_date": "2026-04-10",
+      "metadata": {
+        "downloads": 218,
+        "total_params": 2800000000
+      },
+      "note": "Full verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "phase4_score": 70.4,
       "phase7_score": null,
       "phase8_score": null
     },

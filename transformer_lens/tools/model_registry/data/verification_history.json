@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-04-10T19:18:41.322658",
+  "last_updated": "2026-04-13T09:46:38.844770",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -11202,38 +11202,38 @@
       "invalidation_reason": null
     },
     {
-      "model_id": "KoboldAI/fairseq-dense-125M",
-      "architecture_id": "XGLMForCausalLM",
+      "model_id": "bigcode/gpt_bigcode-santacoder",
+      "architecture_id": "GPTBigCodeForCausalLM",
       "verified_date": "2026-04-10",
       "verified_by": "verify_models",
       "transformerlens_version": null,
-      "notes": "Full verification completed with issues: P3=80.0% (failed: process_bridge_weights, layer_norm_folding, unembed_centering, value_bias_folding)",
+      "notes": "Below threshold: P1=50.0% < 100.0% (failed: all_components) \u2014 24/148 components failed (24 critical)",
       "invalidated": false,
       "invalidation_reason": null
     },
     {
-      "model_id": "KoboldAI/fairseq-dense-125M",
-      "architecture_id": "XGLMForCausalLM",
+      "model_id": "bigcode/tiny_starcoder_py",
+      "architecture_id": "GPTBigCodeForCausalLM",
       "verified_date": "2026-04-10",
       "verified_by": "verify_models",
       "transformerlens_version": null,
-      "notes": "Full verification completed with issues: P2=91.7% (failed: generation)",
+      "notes": "Below threshold: P1=50.0% < 100.0% (failed: all_components) \u2014 20/124 components failed (20 critical)",
       "invalidated": false,
       "invalidation_reason": null
     },
     {
-      "model_id": "KoboldAI/fairseq-dense-355M",
-      "architecture_id": "XGLMForCausalLM",
+      "model_id": "bigcode/tiny_starcoder_py",
+      "architecture_id": "GPTBigCodeForCausalLM",
       "verified_date": "2026-04-10",
       "verified_by": "verify_models",
       "transformerlens_version": null,
-      "notes": "Full verification completed with issues: P2=91.7% (failed: generation)",
+      "notes": "Below threshold: P1=50.0% < 100.0% (failed: all_components) \u2014 20/124 components failed (20 critical)",
       "invalidated": false,
       "invalidation_reason": null
     },
     {
-      "model_id": "KoboldAI/fairseq-dense-1.3B",
-      "architecture_id": "XGLMForCausalLM",
+      "model_id": "bigcode/tiny_starcoder_py",
+      "architecture_id": "GPTBigCodeForCausalLM",
       "verified_date": "2026-04-10",
       "verified_by": "verify_models",
       "transformerlens_version": null,
@@ -11242,8 +11242,8 @@
       "invalidation_reason": null
     },
     {
-      "model_id": "KoboldAI/fairseq-dense-2.7B",
-      "architecture_id": "XGLMForCausalLM",
+      "model_id": "bigcode/gpt_bigcode-santacoder",
+      "architecture_id": "GPTBigCodeForCausalLM",
       "verified_date": "2026-04-10",
       "verified_by": "verify_models",
       "transformerlens_version": null,
@@ -11252,9 +11252,29 @@
       "invalidation_reason": null
     },
     {
-      "model_id": "KoboldAI/fairseq-dense-2.7B",
-      "architecture_id": "XGLMForCausalLM",
-      "verified_date": "2026-04-10",
+      "model_id": "fxmarty/really-tiny-falcon-testing",
+      "architecture_id": "FalconForCausalLM",
+      "verified_date": "2026-04-13",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues, low text quality",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "bigcode/tiny_starcoder_py",
+      "architecture_id": "GPTBigCodeForCausalLM",
+      "verified_date": "2026-04-13",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=50.0% < 100.0% (failed: all_components) \u2014 20/124 components failed (20 critical)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "bigcode/tiny_starcoder_py",
+      "architecture_id": "GPTBigCodeForCausalLM",
+      "verified_date": "2026-04-13",
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Full verification completed",
@@ -11262,32 +11282,12 @@
       "invalidation_reason": null
     },
     {
-      "model_id": "facebook/xglm-564M",
-      "architecture_id": "XGLMForCausalLM",
-      "verified_date": "2026-04-10",
+      "model_id": "fxmarty/really-tiny-falcon-testing",
+      "architecture_id": "FalconForCausalLM",
+      "verified_date": "2026-04-13",
       "verified_by": "verify_models",
       "transformerlens_version": null,
-      "notes": "Full verification completed",
-      "invalidated": false,
-      "invalidation_reason": null
-    },
-    {
-      "model_id": "facebook/xglm-564M",
-      "architecture_id": "XGLMForCausalLM",
-      "verified_date": "2026-04-10",
-      "verified_by": "verify_models",
-      "transformerlens_version": null,
-      "notes": "Full verification completed",
-      "invalidated": false,
-      "invalidation_reason": null
-    },
-    {
-      "model_id": "facebook/xglm-564M",
-      "architecture_id": "XGLMForCausalLM",
-      "verified_date": "2026-04-10",
-      "verified_by": "verify_models",
-      "transformerlens_version": null,
-      "notes": "Full verification completed",
+      "notes": "Full verification completed with issues, low text quality",
       "invalidated": false,
       "invalidation_reason": null
     }

@@ -36,6 +36,9 @@ from transformer_lens.model_bridge.supported_architectures.gemma3_multimodal imp
 from transformer_lens.model_bridge.supported_architectures.gpt2 import (
     GPT2ArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.gpt_bigcode import (
+    GPTBigCodeArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.gpt2_lm_head_custom import (
     Gpt2LmHeadCustomArchitectureAdapter,
 )
@@ -163,6 +166,7 @@ __all__ = [
     "GraniteMoeArchitectureAdapter",
     "GraniteMoeHybridArchitectureAdapter",
     "GPT2ArchitectureAdapter",
+    "GPTBigCodeArchitectureAdapter",
     "GPTOSSArchitectureAdapter",
     "Gpt2LmHeadCustomArchitectureAdapter",
     "GptjArchitectureAdapter",
