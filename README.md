@@ -162,6 +162,31 @@ accompanying
 [announcement](https://transformerlensorg.github.io/TransformerLens/content/news/release-2.0.html)
 for details on what's new, and the future of TransformerLens.
 
+## Mamba / SSM support (experimental)
+
+TransformerLens includes bridge adapters for Mamba-1 (`state-spaces/mamba-*-hf`)
+and Mamba-2 (`AntonV/mamba2-130m-hf`, `state-spaces/mamba2-*`, etc.). The adapters
+cover:
+
+* Forward pass (bit-for-bit HF equivalent)
+* Hook-based introspection of projection activations (`in_proj`, `conv1d`, `x_proj`,
+  `dt_proj`, `out_proj` for Mamba-1; `in_proj`, `conv1d`, `inner_norm`, `out_proj` for
+  Mamba-2)
+* Stateful generation with cache-aware decode steps
+* The `compute_effective_attention` utility (in
+  `transformer_lens.model_bridge.supported_architectures.mamba2`) that materializes
+  Mamba-2's SSD-derived attention matrix for comparison with transformer attention
+  patterns
+
+Verification lives in the integration tests at
+`tests/integration/model_bridge/test_mamba_adapter.py` and
+`tests/integration/model_bridge/test_mamba2_adapter.py` (81 tests total). The
+`verify_models` benchmark suite does not currently cover SSM architectures — the
+benchmark has transformer-shaped assumptions (hook path patterns, layer norm
+folding, block submodule dispatch) that would need a dedicated refactor. SSM
+benchmark coverage will be revisited if hybrid architectures like Jamba or
+Falcon-H1 become priority or a user explicitly requests it.
+
 ## Credits
 
 This library was created by **[Neel Nanda](https://neelnanda.io)** and is maintained by **[Bryce Meyer](https://github.com/bryce13950)**.

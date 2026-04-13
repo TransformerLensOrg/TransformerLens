@@ -69,6 +69,12 @@ from transformer_lens.model_bridge.supported_architectures.llava_next import (
 from transformer_lens.model_bridge.supported_architectures.llava_onevision import (
     LlavaOnevisionArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.mamba import (
+    MambaArchitectureAdapter,
+)
+from transformer_lens.model_bridge.supported_architectures.mamba2 import (
+    Mamba2ArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.mingpt import (
     MingptArchitectureAdapter,
 )
@@ -126,6 +132,12 @@ from transformer_lens.model_bridge.supported_architectures.qwen2 import (
 from transformer_lens.model_bridge.supported_architectures.qwen3 import (
     Qwen3ArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.qwen3_moe import (
+    Qwen3MoeArchitectureAdapter,
+)
+from transformer_lens.model_bridge.supported_architectures.qwen3_next import (
+    Qwen3NextArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.stablelm import (
     StableLmArchitectureAdapter,
 )
@@ -156,6 +168,8 @@ __all__ = [
     "LlavaArchitectureAdapter",
     "LlavaNextArchitectureAdapter",
     "LlavaOnevisionArchitectureAdapter",
+    "MambaArchitectureAdapter",
+    "Mamba2ArchitectureAdapter",
     "MingptArchitectureAdapter",
     "MistralArchitectureAdapter",
     "MixtralArchitectureAdapter",
@@ -175,6 +189,8 @@ __all__ = [
     "QwenArchitectureAdapter",
     "Qwen2ArchitectureAdapter",
     "Qwen3ArchitectureAdapter",
+    "Qwen3MoeArchitectureAdapter",
+    "Qwen3NextArchitectureAdapter",
     "StableLmArchitectureAdapter",
     "T5ArchitectureAdapter",
 ]
