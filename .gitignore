@@ -23,4 +23,7 @@ docs/source/generated
 **.orig
 .venv
 .env
+.adapter-workspace
+.claude
+.adapter-progress.json
 transformer_lens/tools/model_registry/data/verification_checkpoint.json

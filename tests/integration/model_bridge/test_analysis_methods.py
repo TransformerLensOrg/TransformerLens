@@ -10,20 +10,17 @@ Uses distilgpt2 (CI-cached).
 import pytest
 import torch
 
-from transformer_lens import HookedTransformer
-from transformer_lens.model_bridge.bridge import TransformerBridge
+
+@pytest.fixture()
+def bridge_compat(distilgpt2_bridge_compat):
+    """Alias session fixture for backward compatibility with test signatures."""
+    return distilgpt2_bridge_compat
 
 
-@pytest.fixture(scope="module")
-def bridge_compat():
-    b = TransformerBridge.boot_transformers("distilgpt2", device="cpu")
-    b.enable_compatibility_mode()
-    return b
-
-
-@pytest.fixture(scope="module")
-def reference_ht():
-    return HookedTransformer.from_pretrained("distilgpt2", device="cpu")
+@pytest.fixture()
+def reference_ht(distilgpt2_hooked_processed):
+    """Alias session fixture for backward compatibility with test signatures."""
+    return distilgpt2_hooked_processed
 
 
 class TestTopLevelWeightProperties:

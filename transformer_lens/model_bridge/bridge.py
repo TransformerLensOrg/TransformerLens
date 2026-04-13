@@ -1994,6 +1994,11 @@ class TransformerBridge(nn.Module):
                 "and pass the resulting tensor to generate().",
                 stacklevel=2,
             )
+
+        # Stateful dispatch is decided after input parsing so we can fall back
+        # to hf_generate() for input types the stateful loop doesn't handle.
+        is_stateful_model = getattr(self.cfg, "is_stateful", False)
+
         _generate_from_embeds = False
         if isinstance(input, str):
             input_tokens = self.to_tokens(input, move_to_device=True, truncate=False)
@@ -2061,7 +2066,48 @@ class TransformerBridge(nn.Module):
             # cache path — silently disable rather than crash, since
             # use_past_kv_cache=True is the default.
             use_past_kv_cache = False
-        if use_past_kv_cache:
+
+        # SSMs (Mamba/Mamba-2) run through a dedicated cache path so hooks
+        # fire on every step. Unsupported input types fall back to hf_generate().
+        use_stateful_cache = (
+            is_stateful_model
+            and use_past_kv_cache
+            and not is_encoder_decoder
+            and not _generate_from_embeds
+            and pixel_values is None
+            and not multimodal_kwargs
+        )
+        if is_stateful_model and not use_stateful_cache:
+            hf_kwargs: dict[str, Any] = {
+                "max_new_tokens": max_new_tokens,
+                "do_sample": do_sample,
+                "temperature": temperature,
+            }
+            if top_k is not None:
+                hf_kwargs["top_k"] = top_k
+            if top_p is not None:
+                hf_kwargs["top_p"] = top_p
+            if eos_token_id is not None:
+                hf_kwargs["eos_token_id"] = eos_token_id
+            return self.hf_generate(input, **hf_kwargs)
+
+        # SSM cache is built once and mutated in place across forward calls.
+        # Adapter owns the cache-type choice; new SSMs just override
+        # create_stateful_cache().
+        mamba_cache: Any = None
+        mamba_conv_kernel: int = 0
+        if use_stateful_cache:
+            hf_model: Any = self.original_model
+            mamba_conv_kernel = int(getattr(hf_model.config, "conv_kernel", 4))
+            cache_dtype = self.cfg.dtype or torch.float32
+            mamba_cache = self.adapter.create_stateful_cache(
+                hf_model=hf_model,
+                batch_size=batch_size,
+                device=self.cfg.device,
+                dtype=cache_dtype,
+            )
+
+        if use_past_kv_cache and not use_stateful_cache:
             self._capture_hf_cache = True  # Signal forward() to stash cache
 
         # Generate tokens
@@ -2105,7 +2151,42 @@ class TransformerBridge(nn.Module):
                                 forward_kwargs["pixel_values"] = pixel_values
                             if multimodal_kwargs:
                                 forward_kwargs.update(multimodal_kwargs)
-                        if use_past_kv_cache:
+                        if use_stateful_cache:
+                            # Prefill sends arange(conv_kernel) (which both
+                            # Mamba-1's length check and Mamba-2's value check
+                            # accept as "not decode"). Decode sends the input
+                            # token's actual sequence position — a fixed value
+                            # above conv_kernel-1 silently picks the wrong
+                            # slot for short prompts (see
+                            # test_greedy_matches_hf_across_prompt_lengths).
+                            # conv1d hooks fire only on prefill; HF bypasses
+                            # the conv1d module on decode (see DepthwiseConv1DBridge).
+                            forward_kwargs["cache_params"] = mamba_cache
+                            forward_kwargs["use_cache"] = True
+                            if gen_step_idx == 0:
+                                cache_position = torch.arange(
+                                    0, mamba_conv_kernel, device=self.cfg.device
+                                )
+                                forward_kwargs["cache_position"] = cache_position
+                                logits = self(
+                                    current_tokens,
+                                    return_type="logits",
+                                    **forward_kwargs,
+                                )
+                            else:
+                                # Token generated at step N-1 lives at
+                                # sequence position prompt_len + gen_step_idx - 1
+                                input_seq_pos = input_tokens.shape[1] + gen_step_idx - 1
+                                cache_position = torch.tensor(
+                                    [input_seq_pos], device=self.cfg.device
+                                )
+                                forward_kwargs["cache_position"] = cache_position
+                                logits = self(
+                                    current_tokens[:, -1:],
+                                    return_type="logits",
+                                    **forward_kwargs,
+                                )
+                        elif use_past_kv_cache:
                             forward_kwargs["use_cache"] = True
                             if _hf_kv_cache is not None:
                                 # Cached step: pass only the last token + cache

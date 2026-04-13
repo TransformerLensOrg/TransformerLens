@@ -147,6 +147,12 @@ def map_default_transformer_lens_config(hf_config):
         tl_config.d_head = source_config.head_dim
     elif hasattr(tl_config, "d_model") and hasattr(tl_config, "n_heads"):
         tl_config.d_head = tl_config.d_model // tl_config.n_heads
+    elif hasattr(tl_config, "d_model"):
+        # Models without attention (e.g., Mamba SSMs) have no n_heads or head_dim.
+        # Set d_head = d_model so TransformerLensConfig.__post_init__ computes
+        # n_heads = 1. These values are nominal and have no functional meaning
+        # for attention-less architectures.
+        tl_config.d_head = tl_config.d_model
     if hasattr(source_config, "activation_function"):
         tl_config.act_fn = source_config.activation_function
     elif hasattr(source_config, "hidden_act"):
@@ -198,6 +204,8 @@ def determine_architecture_from_hf_config(hf_config):
             "gpt2": "GPT2LMHeadModel",
             "hubert": "HubertModel",
             "llama": "LlamaForCausalLM",
+            "mamba": "MambaForCausalLM",
+            "mamba2": "Mamba2ForCausalLM",
             "mistral": "MistralForCausalLM",
             "mixtral": "MixtralForCausalLM",
             "gemma": "GemmaForCausalLM",
@@ -337,6 +345,15 @@ def boot(
         "new_decoder_architecture",
         "alibi",
         "num_ln_in_parallel_attn",
+        # Mamba (SSM config)
+        "state_size",
+        "conv_kernel",
+        "expand",
+        "time_step_rank",
+        "intermediate_size",
+        # Mamba-2 (additional SSM config)
+        "n_groups",
+        "chunk_size",
         # Multimodal
         "vision_config",
     ]
