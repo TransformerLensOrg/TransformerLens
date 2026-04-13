@@ -25,14 +25,12 @@ from transformer_lens.factories.architecture_adapter_factory import (
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
+    JointQKVAttentionBridge,
     LinearBridge,
     MLPBridge,
     NormalizationBridge,
     PosEmbedBridge,
     UnembeddingBridge,
-)
-from transformer_lens.model_bridge.generalized_components import (
-    JointQKVAttentionBridge,
 )
 from transformer_lens.model_bridge.supported_architectures.gpt_bigcode import (
     GPTBigCodeArchitectureAdapter,
@@ -461,9 +459,7 @@ class TestGPTBigCodeHookShapes:
         return GPTBigCodeArchitectureAdapter(cfg)
 
     @pytest.fixture
-    def wired_attn_bridge(
-        self, adapter: GPTBigCodeArchitectureAdapter
-    ) -> JointQKVAttentionBridge:
+    def wired_attn_bridge(self, adapter: GPTBigCodeArchitectureAdapter) -> JointQKVAttentionBridge:
         """Return attn bridge wired to a fake MQA attention module."""
         fake_attn = FakeMQAAttention(self.D_MODEL, self.D_HEAD, multi_query=True)
         blocks = adapter.component_mapping["blocks"]
