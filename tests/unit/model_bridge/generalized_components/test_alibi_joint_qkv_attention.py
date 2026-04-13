@@ -1,4 +1,4 @@
-"""Unit tests for FalconALiBiAttentionBridge.
+"""Unit tests for ALiBiJointQKVAttentionBridge.
 
 Exercises the reimplemented ALiBi attention with mock weights — no model download needed.
 Covers MHA, MQA, and GQA head configurations to catch shape mismatches.
@@ -6,13 +6,13 @@ Covers MHA, MQA, and GQA head configurations to catch shape mismatches.
 
 import torch
 
-from transformer_lens.model_bridge.generalized_components.falcon_alibi_attention import (
-    FalconALiBiAttentionBridge,
+from transformer_lens.model_bridge.generalized_components.alibi_joint_qkv_attention import (
+    ALiBiJointQKVAttentionBridge,
 )
 
 
 class _MockConfig:
-    """Minimal config for FalconALiBiAttentionBridge."""
+    """Minimal config for ALiBiJointQKVAttentionBridge."""
 
     def __init__(self, n_heads: int, d_model: int, n_key_value_heads: int | None = None):
         self.n_heads = n_heads
@@ -33,8 +33,8 @@ class _MockAttention(torch.nn.Module):
 
 def _build_bridge(
     n_heads: int, d_model: int, n_key_value_heads: int | None = None
-) -> FalconALiBiAttentionBridge:
-    """Build a wired-up FalconALiBiAttentionBridge with random Q/K/V weights."""
+) -> ALiBiJointQKVAttentionBridge:
+    """Build a wired-up ALiBiJointQKVAttentionBridge with random Q/K/V weights."""
     cfg = _MockConfig(n_heads, d_model, n_key_value_heads)
     head_dim = d_model // n_heads
     n_kv = n_key_value_heads or n_heads
@@ -47,7 +47,7 @@ def _build_bridge(
     def split_qkv(_component):
         return q_linear, k_linear, v_linear
 
-    bridge = FalconALiBiAttentionBridge(
+    bridge = ALiBiJointQKVAttentionBridge(
         name="self_attention",
         config=cfg,
         split_qkv_matrix=split_qkv,
@@ -58,12 +58,12 @@ def _build_bridge(
     return bridge
 
 
-def _random_inputs(bridge: FalconALiBiAttentionBridge, batch: int = 2, seq: int = 6):
+def _random_inputs(bridge: ALiBiJointQKVAttentionBridge, batch: int = 2, seq: int = 6):
     """Generate random inputs via the bridge's own method."""
     return bridge.get_random_inputs(batch_size=batch, seq_len=seq)
 
 
-class TestFalconALiBiForward:
+class TestALiBiJointQKVForward:
     """Forward pass runs and produces valid output for all head configs."""
 
     def test_mha_forward(self):

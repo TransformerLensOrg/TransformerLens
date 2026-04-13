@@ -18,7 +18,7 @@ from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapt
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
-    FalconALiBiAttentionBridge,
+    ALiBiJointQKVAttentionBridge,
     JointQKVPositionEmbeddingsAttentionBridge,
     LinearBridge,
     MLPBridge,
@@ -102,7 +102,7 @@ class FalconArchitectureAdapter(ArchitectureAdapter):
         if self._is_alibi:
             # ALiBi: reimplement attention with ALiBi bias fused into scores.
             # Splits fused QKV and fires hooks at each stage for mech interp.
-            attn_bridge: Any = FalconALiBiAttentionBridge(
+            attn_bridge: Any = ALiBiJointQKVAttentionBridge(
                 name="self_attention",
                 config=self.cfg,
                 split_qkv_matrix=self._split_falcon_qkv,
