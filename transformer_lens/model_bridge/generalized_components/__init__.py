@@ -32,8 +32,8 @@ from transformer_lens.model_bridge.generalized_components.depthwise_conv1d impor
 from transformer_lens.model_bridge.generalized_components.embedding import (
     EmbeddingBridge,
 )
-from transformer_lens.model_bridge.generalized_components.falcon_alibi_attention import (
-    FalconALiBiAttentionBridge,
+from transformer_lens.model_bridge.generalized_components.alibi_joint_qkv_attention import (
+    ALiBiJointQKVAttentionBridge,
 )
 from transformer_lens.model_bridge.generalized_components.gated_mlp import (
     GatedMLPBridge,
@@ -98,7 +98,7 @@ __all__ = [
     "ConvPosEmbedBridge",
     "DepthwiseConv1DBridge",
     "EmbeddingBridge",
-    "FalconALiBiAttentionBridge",
+    "ALiBiJointQKVAttentionBridge",
     "RotaryEmbeddingBridge",
     "PosEmbedBridge",
     "NormalizationBridge",

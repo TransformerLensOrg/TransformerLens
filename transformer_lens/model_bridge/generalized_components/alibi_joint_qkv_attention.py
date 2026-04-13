@@ -1,6 +1,6 @@
-"""Falcon ALiBi attention bridge component.
+"""ALiBi joint QKV attention bridge component.
 
-Handles Falcon models that use ALiBi (Attention with Linear Biases) instead of RoPE.
+Handles models that use ALiBi (Attention with Linear Biases) with fused QKV projections.
 Splits fused QKV, reimplements attention with ALiBi bias and hooks at each stage.
 """
 
@@ -21,8 +21,8 @@ from transformer_lens.model_bridge.generalized_components.joint_qkv_attention im
 )
 
 
-class FalconALiBiAttentionBridge(JointQKVAttentionBridge):
-    """Attention bridge for Falcon models using ALiBi position encoding.
+class ALiBiJointQKVAttentionBridge(JointQKVAttentionBridge):
+    """Attention bridge for models using ALiBi position encoding with fused QKV.
 
     Splits fused QKV, reimplements attention with ALiBi bias fused into scores,
     and fires hooks at each stage (hook_q, hook_k, hook_v, hook_attn_scores,

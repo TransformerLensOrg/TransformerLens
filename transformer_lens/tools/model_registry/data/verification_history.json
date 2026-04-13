@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-04-10T19:09:48.784882",
+  "last_updated": "2026-04-13T09:46:38.844770",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -11202,32 +11202,92 @@
       "invalidation_reason": null
     },
     {
-      "model_id": "trl-internal-testing/tiny-CohereForCausalLM",
-      "architecture_id": "CohereForCausalLM",
+      "model_id": "bigcode/gpt_bigcode-santacoder",
+      "architecture_id": "GPTBigCodeForCausalLM",
       "verified_date": "2026-04-10",
       "verified_by": "verify_models",
       "transformerlens_version": null,
-      "notes": "Full verification completed with issues: P3=94.7% (failed: weight_modification)",
+      "notes": "Below threshold: P1=50.0% < 100.0% (failed: all_components) \u2014 24/148 components failed (24 critical)",
       "invalidated": false,
       "invalidation_reason": null
     },
     {
-      "model_id": "trl-internal-testing/tiny-CohereForCausalLM",
-      "architecture_id": "CohereForCausalLM",
+      "model_id": "bigcode/tiny_starcoder_py",
+      "architecture_id": "GPTBigCodeForCausalLM",
       "verified_date": "2026-04-10",
       "verified_by": "verify_models",
       "transformerlens_version": null,
-      "notes": "Full verification completed with issues: P3=94.7% (failed: weight_modification)",
+      "notes": "Below threshold: P1=50.0% < 100.0% (failed: all_components) \u2014 20/124 components failed (20 critical)",
       "invalidated": false,
       "invalidation_reason": null
     },
     {
-      "model_id": "trl-internal-testing/tiny-CohereForCausalLM",
-      "architecture_id": "CohereForCausalLM",
+      "model_id": "bigcode/tiny_starcoder_py",
+      "architecture_id": "GPTBigCodeForCausalLM",
       "verified_date": "2026-04-10",
       "verified_by": "verify_models",
       "transformerlens_version": null,
-      "notes": "Full verification completed with issues: P3=94.7% (failed: weight_modification)",
+      "notes": "Below threshold: P1=50.0% < 100.0% (failed: all_components) \u2014 20/124 components failed (20 critical)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "bigcode/tiny_starcoder_py",
+      "architecture_id": "GPTBigCodeForCausalLM",
+      "verified_date": "2026-04-10",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "bigcode/gpt_bigcode-santacoder",
+      "architecture_id": "GPTBigCodeForCausalLM",
+      "verified_date": "2026-04-10",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "fxmarty/really-tiny-falcon-testing",
+      "architecture_id": "FalconForCausalLM",
+      "verified_date": "2026-04-13",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues, low text quality",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "bigcode/tiny_starcoder_py",
+      "architecture_id": "GPTBigCodeForCausalLM",
+      "verified_date": "2026-04-13",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=50.0% < 100.0% (failed: all_components) \u2014 20/124 components failed (20 critical)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "bigcode/tiny_starcoder_py",
+      "architecture_id": "GPTBigCodeForCausalLM",
+      "verified_date": "2026-04-13",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "fxmarty/really-tiny-falcon-testing",
+      "architecture_id": "FalconForCausalLM",
+      "verified_date": "2026-04-13",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues, low text quality",
       "invalidated": false,
       "invalidation_reason": null
     }
