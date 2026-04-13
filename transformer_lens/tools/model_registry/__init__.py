@@ -66,6 +66,8 @@ HF_SUPPORTED_ARCHITECTURES: set[str] = {
     "LlavaForConditionalGeneration",
     "LlavaNextForConditionalGeneration",
     "LlavaOnevisionForConditionalGeneration",
+    "MambaForCausalLM",
+    "Mamba2ForCausalLM",
     "MistralForCausalLM",
     "MixtralForCausalLM",
     "Olmo2ForCausalLM",
