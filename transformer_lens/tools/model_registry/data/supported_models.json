@@ -6,9 +6,9 @@
     "min_downloads": 500,
     "scan_duration_seconds": 12.1
   },
-  "total_architectures": 36,
-  "total_models": 6686,
-  "total_verified": 690,
+  "total_architectures": 38,
+  "total_models": 6709,
+  "total_verified": 700,
   "models": [
     {
       "architecture_id": "Qwen3ForCausalLM",
@@ -93598,6 +93598,312 @@
       "phase2_score": 100.0,
       "phase3_score": 100.0,
       "phase4_score": 67.5,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "XGLMForCausalLM",
+      "model_id": "facebook/xglm-564M",
+      "status": 1,
+      "verified_date": "2026-04-10",
+      "metadata": {
+        "downloads": 168586,
+        "total_params": null
+      },
+      "note": "Full verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "phase4_score": 91.8,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "XGLMForCausalLM",
+      "model_id": "facebook/incoder-1B",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 12731,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "XGLMForCausalLM",
+      "model_id": "facebook/xglm-7.5B",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 3589,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "XGLMForCausalLM",
+      "model_id": "facebook/xglm-4.5B",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 3079,
+        "total_params": 5076815872
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "XGLMForCausalLM",
+      "model_id": "facebook/xglm-1.7B",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 3061,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "XGLMForCausalLM",
+      "model_id": "KoboldAI/fairseq-dense-2.7B",
+      "status": 1,
+      "verified_date": "2026-04-10",
+      "metadata": {
+        "downloads": 2907,
+        "total_params": 2774988800
+      },
+      "note": "Full verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "phase4_score": 100.0,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "XGLMForCausalLM",
+      "model_id": "KoboldAI/fairseq-dense-125M",
+      "status": 1,
+      "verified_date": "2026-04-10",
+      "metadata": {
+        "downloads": 2896,
+        "total_params": 162256896
+      },
+      "note": "Full verification completed with issues: P2=91.7% (failed: generation)",
+      "phase1_score": 100.0,
+      "phase2_score": 91.7,
+      "phase3_score": 100.0,
+      "phase4_score": 100.0,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "XGLMForCausalLM",
+      "model_id": "KoboldAI/fairseq-dense-355M",
+      "status": 1,
+      "verified_date": "2026-04-10",
+      "metadata": {
+        "downloads": 2874,
+        "total_params": 405245952
+      },
+      "note": "Full verification completed with issues: P2=91.7% (failed: generation)",
+      "phase1_score": 100.0,
+      "phase2_score": 91.7,
+      "phase3_score": 100.0,
+      "phase4_score": 93.1,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "XGLMForCausalLM",
+      "model_id": "KoboldAI/fairseq-dense-13B",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 2866,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "XGLMForCausalLM",
+      "model_id": "KoboldAI/fairseq-dense-1.3B",
+      "status": 1,
+      "verified_date": "2026-04-10",
+      "metadata": {
+        "downloads": 2864,
+        "total_params": 1414471680
+      },
+      "note": "Full verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "phase4_score": 99.2,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "XGLMForCausalLM",
+      "model_id": "KoboldAI/fairseq-dense-6.7B",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 2862,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "XGLMForCausalLM",
+      "model_id": "facebook/xglm-2.9B",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 2352,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "XGLMForCausalLM",
+      "model_id": "facebook/incoder-6B",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 2225,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "XGLMForCausalLM",
+      "model_id": "KoboldAI/fairseq-dense-6.7B-Shinen",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 2210,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "XGLMForCausalLM",
+      "model_id": "pythainlp/wangchanglm-7.5B-sft-en-sharded",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 2128,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "XGLMForCausalLM",
+      "model_id": "KoboldAI/fairseq-dense-13B-Shinen",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 2123,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "XGLMForCausalLM",
+      "model_id": "pythainlp/wangchanglm-7.5B-sft-enth",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 2102,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "XGLMForCausalLM",
+      "model_id": "hf-tiny-model-private/tiny-random-XGLMForCausalLM",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 1969,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
       "phase7_score": null,
       "phase8_score": null
     }

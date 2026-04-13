@@ -47,6 +47,7 @@ from transformer_lens.model_bridge.supported_architectures import (
     QwenArchitectureAdapter,
     StableLmArchitectureAdapter,
     T5ArchitectureAdapter,
+    XGLMArchitectureAdapter,
 )
 
 # Export supported architectures
@@ -92,6 +93,7 @@ SUPPORTED_ARCHITECTURES = {
     "Qwen3ForCausalLM": Qwen3ArchitectureAdapter,
     "StableLmForCausalLM": StableLmArchitectureAdapter,
     "T5ForConditionalGeneration": T5ArchitectureAdapter,
+    "XGLMForCausalLM": XGLMArchitectureAdapter,
     "NanoGPTForCausalLM": NanogptArchitectureAdapter,
     "MinGPTForCausalLM": MingptArchitectureAdapter,
     "GPTNeoForCausalLM": NeoArchitectureAdapter,
