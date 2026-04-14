@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-04-10T18:43:37.000957",
+  "last_updated": "2026-04-14T13:03:57.367589",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -11258,6 +11258,36 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Qwen/Qwen3.5-0.8B",
+      "architecture_id": "Qwen3_5ForCausalLM",
+      "verified_date": "2026-04-14",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: Could not determine supported architecture from config. Available architectures: ['ApertusForCausalLM', ",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Qwen/Qwen3.5-0.8B",
+      "architecture_id": "Qwen3_5ForCausalLM",
+      "verified_date": "2026-04-14",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P3=94.1% (failed: attention_output_centering)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Qwen/Qwen3.5-4B",
+      "architecture_id": "Qwen3_5ForCausalLM",
+      "verified_date": "2026-04-14",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P3=94.1% (failed: attention_output_centering)",
       "invalidated": false,
       "invalidation_reason": null
     }

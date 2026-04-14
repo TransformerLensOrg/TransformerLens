@@ -223,6 +223,12 @@ def determine_architecture_from_hf_config(hf_config):
             "qwen": "QwenForCausalLM",
             "qwen2": "Qwen2ForCausalLM",
             "qwen3": "Qwen3ForCausalLM",
+            # qwen3_5 is the top-level multimodal config type; qwen3_5_text is
+            # the text-only sub-config. Both map to the text-only adapter so
+            # Qwen3.5 checkpoints (which report qwen3_5 even when loaded as
+            # text-only) are routed to Qwen3_5ForCausalLM.
+            "qwen3_5": "Qwen3_5ForCausalLM",
+            "qwen3_5_text": "Qwen3_5ForCausalLM",
             "openelm": "OpenELMForCausalLM",
             "stablelm": "StableLmForCausalLM",
             "t5": "T5ForConditionalGeneration",
