@@ -2,6 +2,20 @@
 
 These patches are applied lazily (only when missing) so they're safe to call
 from multiple adapters — the first caller wins, subsequent calls are no-ops.
+
+WARNING: patches here mutate classes from the installed `transformers` package
+in place. They are process-global and persist for the entire Python session —
+every model loaded afterward, including ones unrelated to the caller, sees the
+patched class. This is acceptable because the shims only *add* v4-era methods
+that v5 removed; they do not change v5 behavior. But it means a bug in a shim
+affects the whole session, not just the adapter that invoked it.
+
+REMOVAL: drop the corresponding block (and its call sites) once the minimum
+supported `transformers` version provides the method natively, or once all
+remote-code models we support have been updated for v5. Track upstream status
+against `transformers.cache_utils.DynamicCache` — when `from_legacy_cache`,
+`to_legacy_cache`, and `get_usable_length` are restored or no longer needed,
+`patch_dynamic_cache_v5` can be deleted outright.
 """
 
 
@@ -11,6 +25,9 @@ def patch_dynamic_cache_v5() -> None:
     Remote-code models written for transformers v4 call from_legacy_cache,
     to_legacy_cache, and get_usable_length which were removed in v5.
     Call this from any adapter's prepare_loading() that needs them.
+
+    Side effect: mutates `transformers.cache_utils.DynamicCache` for the whole
+    process. See module docstring.
     """
     try:
         from transformers.cache_utils import DynamicCache

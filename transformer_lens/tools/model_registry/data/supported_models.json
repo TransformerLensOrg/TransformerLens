@@ -94133,7 +94133,8 @@
       "status": 0,
       "verified_date": null,
       "metadata": {
-        "downloads": 24750,"total_params": null
+        "downloads": 24750,
+        "total_params": null
       },
       "note": null,
       "phase1_score": null,
@@ -98579,23 +98580,6 @@
       "phase2_score": 100.0,
       "phase3_score": 100.0,
       "phase4_score": 86.7,
-      "phase7_score": null,
-      "phase8_score": null
-    },
-    {
-      "architecture_id": "Qwen3MoeForCausalLM",
-      "model_id": "imdatta0/tiny_qwen3_moe_2.8B_0.7B",
-      "status": 1,
-      "verified_date": "2026-04-10",
-      "metadata": {
-        "downloads": 218,
-        "total_params": 2800000000
-      },
-      "note": "Full verification completed",
-      "phase1_score": 100.0,
-      "phase2_score": 100.0,
-      "phase3_score": 100.0,
-      "phase4_score": 70.4,
       "phase7_score": null,
       "phase8_score": null
     },
