@@ -376,11 +376,20 @@ class JointQKVAttentionBridge(AttentionBridge):
         assert self.original_component is not None
         assert self.config is not None
         num_heads = self.config.n_heads
+        num_kv_heads = getattr(self.config, "n_key_value_heads", None) or num_heads
 
-        q, k, v, batch_size, seq_len, head_dim = self._reshape_qkv_to_heads(q, k, v, num_heads)
+        q, k, v, batch_size, seq_len, head_dim = self._reshape_qkv_to_heads(
+            q, k, v, num_heads, num_kv_heads
+        )
 
         # KV cache: extend K/V with cached positions.
         k, v = self._update_kv_cache(k, v, **kwargs)
+
+        # GQA/MQA: expand K/V heads to match Q heads
+        if num_kv_heads != num_heads:
+            n_rep = num_heads // num_kv_heads
+            k = k.repeat_interleave(n_rep, dim=1)
+            v = v.repeat_interleave(n_rep, dim=1)
 
         # Attention scale: 1/sqrt(d_head) with optional inverse-layer scaling
         scale = head_dim ** (-0.5)

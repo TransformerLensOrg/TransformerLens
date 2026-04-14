@@ -32,8 +32,8 @@ from transformer_lens.model_bridge.generalized_components.depthwise_conv1d impor
 from transformer_lens.model_bridge.generalized_components.embedding import (
     EmbeddingBridge,
 )
-from transformer_lens.model_bridge.generalized_components.falcon_alibi_attention import (
-    FalconALiBiAttentionBridge,
+from transformer_lens.model_bridge.generalized_components.alibi_joint_qkv_attention import (
+    ALiBiJointQKVAttentionBridge,
 )
 from transformer_lens.model_bridge.generalized_components.gated_mlp import (
     GatedMLPBridge,
@@ -52,6 +52,9 @@ from transformer_lens.model_bridge.generalized_components.joint_qkv_position_emb
 )
 from transformer_lens.model_bridge.generalized_components.linear import LinearBridge
 from transformer_lens.model_bridge.generalized_components.mlp import MLPBridge
+from transformer_lens.model_bridge.generalized_components.mpt_alibi_attention import (
+    MPTALiBiAttentionBridge,
+)
 from transformer_lens.model_bridge.generalized_components.moe import MoEBridge
 from transformer_lens.model_bridge.generalized_components.normalization import (
     NormalizationBridge,
@@ -98,7 +101,7 @@ __all__ = [
     "ConvPosEmbedBridge",
     "DepthwiseConv1DBridge",
     "EmbeddingBridge",
-    "FalconALiBiAttentionBridge",
+    "ALiBiJointQKVAttentionBridge",
     "RotaryEmbeddingBridge",
     "PosEmbedBridge",
     "NormalizationBridge",
@@ -108,6 +111,7 @@ __all__ = [
     "JointGateUpMLPBridge",
     "LinearBridge",
     "MLPBridge",
+    "MPTALiBiAttentionBridge",
     "GatedMLPBridge",
     "GatedRMSNormBridge",
     "MoEBridge",

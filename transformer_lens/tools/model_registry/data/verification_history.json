@@ -11202,32 +11202,62 @@
       "invalidation_reason": null
     },
     {
-      "model_id": "trl-internal-testing/tiny-CohereForCausalLM",
-      "architecture_id": "CohereForCausalLM",
+      "model_id": "jploski/mpt-mini-shakespeare",
+      "architecture_id": "MPTForCausalLM",
       "verified_date": "2026-04-10",
       "verified_by": "verify_models",
       "transformerlens_version": null,
-      "notes": "Full verification completed with issues: P3=94.7% (failed: weight_modification)",
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: all_components, forward_pass_logits) \u2014 8/51 components failed (8 critical)",
       "invalidated": false,
       "invalidation_reason": null
     },
     {
-      "model_id": "trl-internal-testing/tiny-CohereForCausalLM",
-      "architecture_id": "CohereForCausalLM",
+      "model_id": "jploski/mpt-mini-shakespeare",
+      "architecture_id": "MPTForCausalLM",
       "verified_date": "2026-04-10",
       "verified_by": "verify_models",
       "transformerlens_version": null,
-      "notes": "Full verification completed with issues: P3=94.7% (failed: weight_modification)",
+      "notes": "Below threshold: P1=50.0% < 100.0% (failed: forward_pass_logits) \u2014 Tensors differ: max_diff=1.952242, mean_rel=0.113042",
       "invalidated": false,
       "invalidation_reason": null
     },
     {
-      "model_id": "trl-internal-testing/tiny-CohereForCausalLM",
-      "architecture_id": "CohereForCausalLM",
+      "model_id": "jploski/mpt-mini-shakespeare",
+      "architecture_id": "MPTForCausalLM",
       "verified_date": "2026-04-10",
       "verified_by": "verify_models",
       "transformerlens_version": null,
-      "notes": "Full verification completed with issues: P3=94.7% (failed: weight_modification)",
+      "notes": "Below threshold: P1=50.0% < 100.0% (failed: forward_pass); P2=8.3% < 75.0% (failed: generation, gene \u2014 Forward pass failed: too many values to unpack (expected 2)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "jploski/mpt-mini-shakespeare",
+      "architecture_id": "MPTForCausalLM",
+      "verified_date": "2026-04-10",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=50.0% < 100.0% (failed: forward_pass); P2=8.3% < 75.0% (failed: generation, gene \u2014 Forward pass failed: too many values to unpack (expected 2)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "jploski/mpt-mini-shakespeare",
+      "architecture_id": "MPTForCausalLM",
+      "verified_date": "2026-04-10",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=50.0% < 100.0% (failed: forward_pass); P2=8.3% < 75.0% (failed: generation, gene \u2014 Forward pass failed: too many values to unpack (expected 2)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "jploski/mpt-mini-shakespeare",
+      "architecture_id": "MPTForCausalLM",
+      "verified_date": "2026-04-10",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
       "invalidated": false,
       "invalidation_reason": null
     },

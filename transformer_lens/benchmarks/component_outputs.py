@@ -415,15 +415,14 @@ class ComponentBenchmarker:
         ):
             return
 
-        # Skip BLOOM and T5 attention and MLP components - they have custom signatures that require
-        # residual connections, alibi bias, or cache_position from the full model context
+        # Skip models whose MLP/attn forward signatures require extra context from the block:
+        # - BLOOM: MLP requires residual and alibi bias
+        # - T5: requires cache_position for relative position embeddings
+        # - MPT: MLP.forward(hidden_states, residual) performs the residual addition internally
         if "attn" in component_path or "mlp" in component_path:
-            # Check if this is a BLOOM or T5 model by looking at the HF model config
             hf_model_config = getattr(self.hf_model, "config", None)
             if hf_model_config and hasattr(hf_model_config, "model_type"):
-                # BLOOM requires residual and alibi bias
-                # T5 requires cache_position for relative position embeddings
-                if hf_model_config.model_type in ["bloom", "t5"]:
+                if hf_model_config.model_type in ["bloom", "t5", "mpt"]:
                     return
 
         # Skip components that require specific shaped inputs from their parent modules
