@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-04-13T09:46:38.844770",
+  "last_updated": "2026-04-13T12:12:14.839053",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -11202,78 +11202,68 @@
       "invalidation_reason": null
     },
     {
-      "model_id": "bigcode/gpt_bigcode-santacoder",
-      "architecture_id": "GPTBigCodeForCausalLM",
-      "verified_date": "2026-04-10",
-      "verified_by": "verify_models",
-      "transformerlens_version": null,
-      "notes": "Below threshold: P1=50.0% < 100.0% (failed: all_components) \u2014 24/148 components failed (24 critical)",
-      "invalidated": false,
-      "invalidation_reason": null
-    },
-    {
-      "model_id": "bigcode/tiny_starcoder_py",
-      "architecture_id": "GPTBigCodeForCausalLM",
-      "verified_date": "2026-04-10",
-      "verified_by": "verify_models",
-      "transformerlens_version": null,
-      "notes": "Below threshold: P1=50.0% < 100.0% (failed: all_components) \u2014 20/124 components failed (20 critical)",
-      "invalidated": false,
-      "invalidation_reason": null
-    },
-    {
-      "model_id": "bigcode/tiny_starcoder_py",
-      "architecture_id": "GPTBigCodeForCausalLM",
-      "verified_date": "2026-04-10",
-      "verified_by": "verify_models",
-      "transformerlens_version": null,
-      "notes": "Below threshold: P1=50.0% < 100.0% (failed: all_components) \u2014 20/124 components failed (20 critical)",
-      "invalidated": false,
-      "invalidation_reason": null
-    },
-    {
-      "model_id": "bigcode/tiny_starcoder_py",
-      "architecture_id": "GPTBigCodeForCausalLM",
-      "verified_date": "2026-04-10",
-      "verified_by": "verify_models",
-      "transformerlens_version": null,
-      "notes": "Full verification completed",
-      "invalidated": false,
-      "invalidation_reason": null
-    },
-    {
-      "model_id": "bigcode/gpt_bigcode-santacoder",
-      "architecture_id": "GPTBigCodeForCausalLM",
-      "verified_date": "2026-04-10",
-      "verified_by": "verify_models",
-      "transformerlens_version": null,
-      "notes": "Full verification completed",
-      "invalidated": false,
-      "invalidation_reason": null
-    },
-    {
-      "model_id": "fxmarty/really-tiny-falcon-testing",
-      "architecture_id": "FalconForCausalLM",
+      "model_id": "internlm/internlm2-chat-1_8b",
+      "architecture_id": "InternLM2ForCausalLM",
       "verified_date": "2026-04-13",
       "verified_by": "verify_models",
       "transformerlens_version": null,
-      "notes": "Full verification completed with issues, low text quality",
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: all_components, forward_pass); P2=8.3% < 75.0% (failed: g \u2014 74/123 components failed (74 critical)",
       "invalidated": false,
       "invalidation_reason": null
     },
     {
-      "model_id": "bigcode/tiny_starcoder_py",
-      "architecture_id": "GPTBigCodeForCausalLM",
+      "model_id": "internlm/internlm2_5-1_8b",
+      "architecture_id": "InternLM2ForCausalLM",
       "verified_date": "2026-04-13",
       "verified_by": "verify_models",
       "transformerlens_version": null,
-      "notes": "Below threshold: P1=50.0% < 100.0% (failed: all_components) \u2014 20/124 components failed (20 critical)",
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: all_components, forward_pass); P2=8.3% < 75.0% (failed: g \u2014 74/123 components failed (74 critical)",
       "invalidated": false,
       "invalidation_reason": null
     },
     {
-      "model_id": "bigcode/tiny_starcoder_py",
-      "architecture_id": "GPTBigCodeForCausalLM",
+      "model_id": "internlm/internlm2-chat-1_8b",
+      "architecture_id": "InternLM2ForCausalLM",
+      "verified_date": "2026-04-13",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: all_components, forward_pass); P2=8.3% < 75.0% (failed: g \u2014 74/123 components failed (74 critical)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "internlm/internlm2-chat-1_8b",
+      "architecture_id": "InternLM2ForCausalLM",
+      "verified_date": "2026-04-13",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: all_components, forward_pass_logits) \u2014 74/123 components failed (74 critical)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "internlm/internlm2_5-1_8b",
+      "architecture_id": "InternLM2ForCausalLM",
+      "verified_date": "2026-04-13",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: all_components, forward_pass_logits) \u2014 74/123 components failed (74 critical)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "internlm/internlm2-chat-1_8b",
+      "architecture_id": "InternLM2ForCausalLM",
+      "verified_date": "2026-04-13",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: all_components, forward_pass_logits) \u2014 74/123 components failed (74 critical)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "internlm/internlm2-chat-1_8b",
+      "architecture_id": "InternLM2ForCausalLM",
       "verified_date": "2026-04-13",
       "verified_by": "verify_models",
       "transformerlens_version": null,
@@ -11282,12 +11272,52 @@
       "invalidation_reason": null
     },
     {
-      "model_id": "fxmarty/really-tiny-falcon-testing",
-      "architecture_id": "FalconForCausalLM",
+      "model_id": "internlm/internlm2_5-1_8b",
+      "architecture_id": "InternLM2ForCausalLM",
       "verified_date": "2026-04-13",
       "verified_by": "verify_models",
       "transformerlens_version": null,
-      "notes": "Full verification completed with issues, low text quality",
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: all_components, forward_pass_logits) \u2014 74/123 components failed (74 critical)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "internlm/internlm2_5-1_8b",
+      "architecture_id": "InternLM2ForCausalLM",
+      "verified_date": "2026-04-13",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "internlm/internlm2-chat-1_8b",
+      "architecture_id": "InternLM2ForCausalLM",
+      "verified_date": "2026-04-13",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "internlm/internlm2_5-1_8b",
+      "architecture_id": "InternLM2ForCausalLM",
+      "verified_date": "2026-04-13",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "internlm/internlm2-chat-1_8b",
+      "architecture_id": "InternLM2ForCausalLM",
+      "verified_date": "2026-04-13",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
       "invalidated": false,
       "invalidation_reason": null
     }
