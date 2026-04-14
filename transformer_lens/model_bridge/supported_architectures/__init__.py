@@ -15,6 +15,9 @@ from transformer_lens.model_bridge.supported_architectures.bloom import (
 from transformer_lens.model_bridge.supported_architectures.codegen import (
     CodeGenArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.cohere import (
+    CohereArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.falcon import (
     FalconArchitectureAdapter,
 )
@@ -32,6 +35,9 @@ from transformer_lens.model_bridge.supported_architectures.gemma3_multimodal imp
 )
 from transformer_lens.model_bridge.supported_architectures.gpt2 import (
     GPT2ArchitectureAdapter,
+)
+from transformer_lens.model_bridge.supported_architectures.gpt_bigcode import (
+    GPTBigCodeArchitectureAdapter,
 )
 from transformer_lens.model_bridge.supported_architectures.gpt2_lm_head_custom import (
     Gpt2LmHeadCustomArchitectureAdapter,
@@ -144,12 +150,16 @@ from transformer_lens.model_bridge.supported_architectures.stablelm import (
 from transformer_lens.model_bridge.supported_architectures.t5 import (
     T5ArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.xglm import (
+    XGLMArchitectureAdapter,
+)
 
 __all__ = [
     "ApertusArchitectureAdapter",
     "BertArchitectureAdapter",
     "BloomArchitectureAdapter",
     "CodeGenArchitectureAdapter",
+    "CohereArchitectureAdapter",
     "FalconArchitectureAdapter",
     "Gemma1ArchitectureAdapter",
     "Gemma2ArchitectureAdapter",
@@ -159,6 +169,7 @@ __all__ = [
     "GraniteMoeArchitectureAdapter",
     "GraniteMoeHybridArchitectureAdapter",
     "GPT2ArchitectureAdapter",
+    "GPTBigCodeArchitectureAdapter",
     "GPTOSSArchitectureAdapter",
     "Gpt2LmHeadCustomArchitectureAdapter",
     "GptjArchitectureAdapter",
@@ -193,4 +204,5 @@ __all__ = [
     "Qwen3NextArchitectureAdapter",
     "StableLmArchitectureAdapter",
     "T5ArchitectureAdapter",
+    "XGLMArchitectureAdapter",
 ]

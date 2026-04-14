@@ -7,8 +7,8 @@
     "scan_duration_seconds": 3.9
   },
   "total_architectures": 40,
-  "total_models": 6860,
-  "total_verified": 698,
+  "total_models": 6868,
+  "total_verified": 699,
   "models": [
     {
       "architecture_id": "Qwen3NextForCausalLM",
@@ -12961,12 +12961,12 @@
       "architecture_id": "FalconForCausalLM",
       "model_id": "fxmarty/really-tiny-falcon-testing",
       "status": 1,
-      "verified_date": "2026-04-09",
+      "verified_date": "2026-04-13",
       "metadata": null,
-      "note": "Full verification completed with issues, low text quality: P3=95.0% (failed: process_bridge_weights)",
+      "note": "Full verification completed with issues, low text quality",
       "phase1_score": 100.0,
       "phase2_score": 100.0,
-      "phase3_score": 95.0,
+      "phase3_score": 100.0,
       "phase4_score": 34.3,
       "phase7_score": null,
       "phase8_score": null
@@ -97971,30 +97971,47 @@
       "phase8_score": null
     },
     {
-      "architecture_id": "InternLM2ForCausalLM",
-      "model_id": "internlm/internlm2-chat-1_8b",
+      "architecture_id": "GPTBigCodeForCausalLM",
+      "model_id": "bigcode/gpt_bigcode-santacoder",
       "status": 1,
-      "verified_date": "2026-04-13",
+      "verified_date": "2026-04-10",
       "metadata": {
-        "downloads": 5069,
-        "total_params": 1889110016
+        "downloads": 52761,
+        "total_params": 1124886528
       },
       "note": "Full verification completed",
       "phase1_score": 100.0,
       "phase2_score": 100.0,
       "phase3_score": 100.0,
-      "phase4_score": 89.9,
+      "phase4_score": 64.4,
       "phase7_score": null,
       "phase8_score": null
     },
     {
-      "architecture_id": "InternLM2ForCausalLM",
-      "model_id": "optimum-internal-testing/tiny-random-internlm2",
+      "architecture_id": "CohereForCausalLM",
+      "model_id": "trl-internal-testing/tiny-CohereForCausalLM",
+      "status": 1,
+      "verified_date": "2026-04-10",
+      "metadata": {
+        "downloads": 120449,
+        "total_params": 2042176
+      },
+      "note": "Full verification completed with issues: P3=94.7% (failed: weight_modification)",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 94.7,
+      "phase4_score": 72.3,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "CohereForCausalLM",
+      "model_id": "CohereLabs/aya-expanse-8b",
       "status": 0,
       "verified_date": null,
       "metadata": {
-        "downloads": 4311,
-        "total_params": 24052864
+        "downloads": 17474,
+        "total_params": 8028033024
       },
       "note": null,
       "phase1_score": null,
@@ -98022,6 +98039,23 @@
       "phase8_score": null
     },
     {
+      "architecture_id": "CohereForCausalLM",
+      "model_id": "CohereLabs/c4ai-command-r-v01",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 14867,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
       "architecture_id": "Qwen3MoeForCausalLM",
       "model_id": "unsloth/Qwen3-235B-A22B-128K-GGUF",
       "status": 0,
@@ -98039,8 +98073,161 @@
       "phase8_score": null
     },
     {
-      "architecture_id": "Qwen3MoeForCausalLM",
-      "model_id": "zianglih/Qwen3-30B-A3B-Instruct-2507-MXFP8-last-8-BF16",
+      "architecture_id": "CohereForCausalLM",
+      "model_id": "CohereLabs/aya-23-8B",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 9836,
+        "total_params": 8028033024
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "CohereForCausalLM",
+      "model_id": "NLPark/AnFeng_v3_Avocet",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 8038,
+        "total_params": 34980831232
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "CohereForCausalLM",
+      "model_id": "CohereLabs/aya-expanse-32b",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 7697,
+        "total_params": 32296476672
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "CohereForCausalLM",
+      "model_id": "CohereLabs/aya-23-35B",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 5063,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "CohereForCausalLM",
+      "model_id": "CohereLabs/c4ai-command-r-plus-08-2024",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 3753,
+        "total_params": 103810674688
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "CohereForCausalLM",
+      "model_id": "CohereLabs/c4ai-command-r-08-2024",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 3516,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "CohereForCausalLM",
+      "model_id": "CohereLabs/c4ai-command-r-plus",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 2721,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "CohereForCausalLM",
+      "model_id": "TechxGenus/c4ai-command-r-v01-AWQ",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 1800,
+        "total_params": 37077983232
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "CohereForCausalLM",
+      "model_id": "Orion-zhen/aya-expanse-32b-AWQ",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 1793,
+        "total_params": 34393628672
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "CohereForCausalLM",
+      "model_id": "second-state/C4AI-Command-R-v01-GGUF",
       "status": 0,
       "verified_date": null,
       "metadata": {
@@ -98379,6 +98566,397 @@
       "phase8_score": null
     },
     {
+      "architecture_id": "GPTBigCodeForCausalLM",
+      "model_id": "bigcode/tiny_starcoder_py",
+      "status": 1,
+      "verified_date": "2026-04-13",
+      "metadata": {
+        "downloads": 17845,
+        "total_params": 164144128
+      },
+      "note": "Full verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "phase4_score": 86.7,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "imdatta0/tiny_qwen3_moe_2.8B_0.7B",
+      "status": 1,
+      "verified_date": "2026-04-10",
+      "metadata": {
+        "downloads": 218,
+        "total_params": 2800000000
+      },
+      "note": "Full verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "phase4_score": 70.4,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "model_id": "imdatta0/tiny_qwen3_moe_2.8B_0.7B",
+      "status": 1,
+      "verified_date": "2026-04-10",
+      "metadata": {
+        "downloads": 218,
+        "total_params": 2800000000
+      },
+      "note": "Full verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "phase4_score": 70.4,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "XGLMForCausalLM",
+      "model_id": "facebook/xglm-564M",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 168586,
+        "total_params": null
+      },
+      "note": "Full verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "phase4_score": 91.8,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "XGLMForCausalLM",
+      "model_id": "facebook/incoder-1B",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 12731,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "XGLMForCausalLM",
+      "model_id": "facebook/xglm-7.5B",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 3589,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "XGLMForCausalLM",
+      "model_id": "facebook/xglm-4.5B",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 3079,
+        "total_params": 5076815872
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "XGLMForCausalLM",
+      "model_id": "facebook/xglm-1.7B",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 3061,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "XGLMForCausalLM",
+      "model_id": "KoboldAI/fairseq-dense-2.7B",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 2907,
+        "total_params": 2774988800
+      },
+      "note": "Full verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "phase4_score": 100.0,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "XGLMForCausalLM",
+      "model_id": "KoboldAI/fairseq-dense-125M",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 2896,
+        "total_params": 162256896
+      },
+      "note": "Full verification completed with issues: P2=91.7% (failed: generation)",
+      "phase1_score": 100.0,
+      "phase2_score": 91.7,
+      "phase3_score": 100.0,
+      "phase4_score": 100.0,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "XGLMForCausalLM",
+      "model_id": "KoboldAI/fairseq-dense-355M",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 2874,
+        "total_params": 405245952
+      },
+      "note": "Full verification completed with issues: P2=91.7% (failed: generation)",
+      "phase1_score": 100.0,
+      "phase2_score": 91.7,
+      "phase3_score": 100.0,
+      "phase4_score": 93.1,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "XGLMForCausalLM",
+      "model_id": "KoboldAI/fairseq-dense-13B",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 2866,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "XGLMForCausalLM",
+      "model_id": "KoboldAI/fairseq-dense-1.3B",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 2864,
+        "total_params": 1414471680
+      },
+      "note": "Full verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "phase4_score": 99.2,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "XGLMForCausalLM",
+      "model_id": "KoboldAI/fairseq-dense-6.7B",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 2862,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "XGLMForCausalLM",
+      "model_id": "facebook/xglm-2.9B",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 2352,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "XGLMForCausalLM",
+      "model_id": "facebook/incoder-6B",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 2225,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "XGLMForCausalLM",
+      "model_id": "KoboldAI/fairseq-dense-6.7B-Shinen",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 2210,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "XGLMForCausalLM",
+      "model_id": "pythainlp/wangchanglm-7.5B-sft-en-sharded",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 2128,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "XGLMForCausalLM",
+      "model_id": "KoboldAI/fairseq-dense-13B-Shinen",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 2123,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "XGLMForCausalLM",
+      "model_id": "pythainlp/wangchanglm-7.5B-sft-enth",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 2102,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "XGLMForCausalLM",
+      "model_id": "hf-tiny-model-private/tiny-random-XGLMForCausalLM",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 1969,
+        "total_params": null
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "InternLM2ForCausalLM",
+      "model_id": "internlm/internlm2-chat-1_8b",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 5069,
+        "total_params": 1889110016
+      },
+      "note": "Full verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "phase4_score": 89.9,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "InternLM2ForCausalLM",
+      "model_id": "optimum-internal-testing/tiny-random-internlm2",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 4311,
+        "total_params": 24052864
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
       "architecture_id": "InternLM2ForCausalLM",
       "model_id": "internlm/internlm2-chat-7b-sft",
       "status": 0,
@@ -98415,17 +98993,17 @@
     {
       "architecture_id": "InternLM2ForCausalLM",
       "model_id": "internlm/internlm2_5-1_8b",
-      "status": 1,
-      "verified_date": "2026-04-13",
+      "status": 0,
+      "verified_date": null,
       "metadata": {
         "downloads": 3020,
         "total_params": null
       },
-      "note": "Full verification completed",
-      "phase1_score": 100.0,
-      "phase2_score": 100.0,
-      "phase3_score": 100.0,
-      "phase4_score": 75.5,
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
       "phase7_score": null,
       "phase8_score": null
     },
@@ -98579,23 +99157,6 @@
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
-      "phase7_score": null,
-      "phase8_score": null
-    },
-    {
-      "architecture_id": "Qwen3MoeForCausalLM",
-      "model_id": "imdatta0/tiny_qwen3_moe_2.8B_0.7B",
-      "status": 1,
-      "verified_date": "2026-04-10",
-      "metadata": {
-        "downloads": 218,
-        "total_params": 2800000000
-      },
-      "note": "Full verification completed",
-      "phase1_score": 100.0,
-      "phase2_score": 100.0,
-      "phase3_score": 100.0,
-      "phase4_score": 70.4,
       "phase7_score": null,
       "phase8_score": null
     }

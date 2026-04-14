@@ -10,6 +10,7 @@ from transformer_lens.model_bridge.supported_architectures import (
     BertArchitectureAdapter,
     BloomArchitectureAdapter,
     CodeGenArchitectureAdapter,
+    CohereArchitectureAdapter,
     FalconArchitectureAdapter,
     Gemma1ArchitectureAdapter,
     Gemma2ArchitectureAdapter,
@@ -17,6 +18,7 @@ from transformer_lens.model_bridge.supported_architectures import (
     Gemma3MultimodalArchitectureAdapter,
     GPT2ArchitectureAdapter,
     Gpt2LmHeadCustomArchitectureAdapter,
+    GPTBigCodeArchitectureAdapter,
     GptjArchitectureAdapter,
     GPTOSSArchitectureAdapter,
     GraniteArchitectureAdapter,
@@ -52,6 +54,7 @@ from transformer_lens.model_bridge.supported_architectures import (
     QwenArchitectureAdapter,
     StableLmArchitectureAdapter,
     T5ArchitectureAdapter,
+    XGLMArchitectureAdapter,
 )
 
 # Export supported architectures
@@ -60,6 +63,7 @@ SUPPORTED_ARCHITECTURES = {
     "BertForMaskedLM": BertArchitectureAdapter,
     "BloomForCausalLM": BloomArchitectureAdapter,
     "CodeGenForCausalLM": CodeGenArchitectureAdapter,
+    "CohereForCausalLM": CohereArchitectureAdapter,
     "FalconForCausalLM": FalconArchitectureAdapter,
     "GemmaForCausalLM": Gemma1ArchitectureAdapter,  # Default to Gemma1 as it's the original version
     "Gemma1ForCausalLM": Gemma1ArchitectureAdapter,
@@ -70,6 +74,7 @@ SUPPORTED_ARCHITECTURES = {
     "GraniteMoeForCausalLM": GraniteMoeArchitectureAdapter,
     "GraniteMoeHybridForCausalLM": GraniteMoeHybridArchitectureAdapter,
     "GPT2LMHeadModel": GPT2ArchitectureAdapter,
+    "GPTBigCodeForCausalLM": GPTBigCodeArchitectureAdapter,
     "GptOssForCausalLM": GPTOSSArchitectureAdapter,
     "GPT2LMHeadCustomModel": Gpt2LmHeadCustomArchitectureAdapter,
     "GPTJForCausalLM": GptjArchitectureAdapter,
@@ -102,6 +107,7 @@ SUPPORTED_ARCHITECTURES = {
     "Qwen3NextForCausalLM": Qwen3NextArchitectureAdapter,
     "StableLmForCausalLM": StableLmArchitectureAdapter,
     "T5ForConditionalGeneration": T5ArchitectureAdapter,
+    "XGLMForCausalLM": XGLMArchitectureAdapter,
     "NanoGPTForCausalLM": NanogptArchitectureAdapter,
     "MinGPTForCausalLM": MingptArchitectureAdapter,
     "GPTNeoForCausalLM": NeoArchitectureAdapter,
