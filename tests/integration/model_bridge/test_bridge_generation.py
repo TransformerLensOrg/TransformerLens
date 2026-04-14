@@ -7,21 +7,17 @@ Uses distilgpt2 (CI-cached).
 import pytest
 import torch
 
-from transformer_lens.model_bridge.bridge import TransformerBridge
+
+@pytest.fixture()
+def bridge(distilgpt2_bridge):
+    """Alias session fixture for backward compatibility with test signatures."""
+    return distilgpt2_bridge
 
 
-@pytest.fixture(scope="module")
-def bridge():
-    """TransformerBridge wrapping distilgpt2."""
-    return TransformerBridge.boot_transformers("distilgpt2", device="cpu")
-
-
-@pytest.fixture(scope="module")
-def bridge_compat():
-    """TransformerBridge wrapping distilgpt2 with compatibility mode."""
-    b = TransformerBridge.boot_transformers("distilgpt2", device="cpu")
-    b.enable_compatibility_mode()
-    return b
+@pytest.fixture()
+def bridge_compat(distilgpt2_bridge_compat):
+    """Alias session fixture for backward compatibility with test signatures."""
+    return distilgpt2_bridge_compat
 
 
 class TestGreedyGeneration:

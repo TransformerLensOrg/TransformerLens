@@ -57,6 +57,12 @@ from .registry_io import (
 
 logger = logging.getLogger(__name__)
 
+# Architectures added via the TransformerBridge system that need trust_remote_code=True.
+# These are not in the legacy NEED_REMOTE_CODE_MODELS tuple (loading_from_pretrained.py).
+_BRIDGE_REMOTE_CODE_PREFIXES: tuple[str, ...] = (
+    "internlm/",  # InternLM2ForCausalLM — ships own modeling_internlm2.py
+)
+
 # Data directory for registry files
 _DATA_DIR = Path(__file__).parent / "data"
 _CHECKPOINT_PATH = _DATA_DIR / "verification_checkpoint.json"
@@ -174,7 +180,8 @@ def estimate_model_params(model_id: str) -> int:
 
     from transformer_lens.loading_from_pretrained import NEED_REMOTE_CODE_MODELS
 
-    trust_remote_code = any(model_id.startswith(prefix) for prefix in NEED_REMOTE_CODE_MODELS)
+    _all_remote_prefixes = NEED_REMOTE_CODE_MODELS + _BRIDGE_REMOTE_CODE_PREFIXES
+    trust_remote_code = any(model_id.startswith(prefix) for prefix in _all_remote_prefixes)
     from transformer_lens.utilities.hf_utils import get_hf_token
 
     config = AutoConfig.from_pretrained(
@@ -196,6 +203,7 @@ def estimate_model_params(model_id: str) -> int:
         getattr(lang_config, "num_attention_heads", None)
         or getattr(lang_config, "n_head", None)
         or getattr(lang_config, "num_query_heads", None)  # OpenELM (may be per-layer list)
+        or getattr(lang_config, "num_heads", None)  # Mamba-2 SSM heads
         or 0
     )
     # OpenELM uses per-layer lists for heads; take the max for estimation
@@ -224,13 +232,23 @@ def estimate_model_params(model_id: str) -> int:
             d_mlp = 4 * d_model
     d_vocab = getattr(lang_config, "vocab_size", None) or 0
 
-    if d_model == 0 or n_heads == 0 or n_layers == 0:
+    if d_model == 0 or n_layers == 0:
         raise ValueError(f"Could not extract model dimensions from config for {model_id}")
 
-    d_head = getattr(lang_config, "head_dim", None) or (d_model // n_heads)
+    # Attention-less architectures (Mamba SSMs) have no heads. Use nominal
+    # values so the estimate doesn't attribute phantom attention params.
+    is_attention_less = n_heads == 0
+    if is_attention_less:
+        n_heads = 1
+        d_head = d_model
+    else:
+        d_head = getattr(lang_config, "head_dim", None) or (d_model // n_heads)
 
-    # Attention parameters: W_Q, W_K, W_V, W_O per layer
-    n_params = n_layers * (d_model * d_head * n_heads * 4)
+    # Attention parameters: W_Q, W_K, W_V, W_O per layer (skipped for SSMs)
+    if is_attention_less:
+        n_params = 0
+    else:
+        n_params = n_layers * (d_model * d_head * n_heads * 4)
 
     # MLP parameters (if present)
     if d_mlp is not None and d_mlp > 0:
@@ -249,6 +267,7 @@ def estimate_model_params(model_id: str) -> int:
                     "mixtral",
                     "qwen2",
                     "qwen3",
+                    "qwen3_moe",
                     "phi3",
                     "stablelm",
                 )
@@ -262,8 +281,11 @@ def estimate_model_params(model_id: str) -> int:
             lang_config, "num_experts", None
         )
         if num_experts and num_experts > 1:
-            # For MoE, MLP params are multiplied by num_experts + gate params
-            mlp_per_layer = d_model * d_mlp * mlp_multiplier
+            # Qwen3MoE and similar store per-expert hidden size in moe_intermediate_size;
+            # intermediate_size refers to a dense fallback MLP that we don't use here.
+            moe_d_mlp = getattr(lang_config, "moe_intermediate_size", None) or d_mlp
+            # MLP params scale with num_experts; add gate params per expert
+            mlp_per_layer = d_model * moe_d_mlp * mlp_multiplier
             moe_per_layer = (mlp_per_layer + d_model) * num_experts
             # Replace the non-MoE MLP contribution
             n_params -= n_layers * (d_model * d_mlp * mlp_multiplier)
@@ -279,13 +301,15 @@ def estimate_benchmark_memory_gb(
     n_params: int,
     dtype: str = "float32",
     phases: Optional[list[int]] = None,
+    use_hf_reference: bool = True,
 ) -> float:
     """Estimate peak memory needed for benchmark suite.
 
     Phases run sequentially, so peak memory is the maximum of any single phase,
     not the sum. The multiplier represents how many model copies exist at peak:
 
-    Phase 1: Briefly loads HF ref + Bridge → 2.0x peak
+    Phase 1 (HF ref on):  HF ref + Bridge → 2.0x peak
+    Phase 1 (HF ref off): Bridge only     → 1.0x peak
     Phase 2: Bridge + HookedTransformer (separate copy) → 2.0x model + overhead
     Phase 3: Same as Phase 2 (processed versions) → 2.0x model + overhead
     Phase 4: Bridge + GPT-2 scorer (~500MB) → ~1.0x model + 0.5 GB
@@ -294,6 +318,8 @@ def estimate_benchmark_memory_gb(
         n_params: Number of model parameters
         dtype: Data type for memory calculation
         phases: Which phases will be run (None = all phases)
+        use_hf_reference: Whether Phase 1 loads an HF reference alongside the
+            Bridge. Mirrors the ``--no-hf-reference`` CLI flag.
 
     Returns:
         Estimated peak memory in GB
@@ -315,9 +341,12 @@ def estimate_benchmark_memory_gb(
         phases = [1, 2, 3, 4]
 
     for p in phases:
-        if p in (1, 2, 3):
-            # Phase 1: HF ref + Bridge = 2 copies briefly
-            # Phase 2/3: Bridge + HookedTransformer = 2 copies
+        if p == 1:
+            # HF ref + Bridge (2 copies) or Bridge alone
+            multiplier = 2.0 if use_hf_reference else 1.0
+            phase_peaks.append(model_size_gb * multiplier * (1 + overhead_fraction))
+        elif p in (2, 3):
+            # Bridge + HookedTransformer = 2 copies
             phase_peaks.append(model_size_gb * 2.0 * (1 + overhead_fraction))
         elif p == 4:
             # Bridge + GPT-2 scorer
@@ -756,6 +785,38 @@ def verify_models(
             _save_checkpoint(progress)
             continue
 
+        # Step 0b: Check adapter-level phase applicability. Architectures
+        # with applicable_phases=[] (e.g. SSMs) skip verify_models entirely
+        # because the benchmark suite has transformer-shaped assumptions that
+        # would need a dedicated refactor to cover them. Verification for
+        # these architectures lives in the integration test suite.
+        from transformer_lens.factories.architecture_adapter_factory import (
+            SUPPORTED_ARCHITECTURES,
+        )
+
+        adapter_cls = SUPPORTED_ARCHITECTURES.get(arch)
+        if adapter_cls is not None:
+            applicable = getattr(adapter_cls, "applicable_phases", [1, 2, 3, 4])
+            phases_to_run = [p for p in phases if p in applicable]
+            if not phases_to_run:
+                note = (
+                    f"Architecture {arch} has applicable_phases={applicable}; "
+                    f"verify_models coverage is deferred. Verification lives "
+                    f"in integration tests."
+                )
+                if not quiet:
+                    print(f"  SKIP: {note}")
+                current_status = _get_current_model_status(model_id, arch)
+                if current_status != STATUS_VERIFIED:
+                    update_model_status(
+                        model_id, arch, STATUS_SKIPPED, note=note, sanitize_fn=_sanitize_note
+                    )
+                elif not quiet:
+                    print(f"  (preserving existing verified status)")
+                progress.skipped.append(model_id)
+                _save_checkpoint(progress)
+                continue
+
         # Step 1: Estimate parameters
         try:
             n_params = estimate_model_params(model_id)
@@ -781,7 +842,9 @@ def verify_models(
             continue
 
         # Step 2: Check memory
-        estimated_mem = estimate_benchmark_memory_gb(n_params, dtype, phases=phases)
+        estimated_mem = estimate_benchmark_memory_gb(
+            n_params, dtype, phases=phases, use_hf_reference=use_hf_reference
+        )
         candidate.estimated_memory_gb = estimated_mem
         if not quiet:
             print(
@@ -812,7 +875,8 @@ def verify_models(
 
         from transformer_lens.loading_from_pretrained import NEED_REMOTE_CODE_MODELS
 
-        needs_remote_code = any(model_id.startswith(prefix) for prefix in NEED_REMOTE_CODE_MODELS)
+        _all_remote_prefixes = NEED_REMOTE_CODE_MODELS + _BRIDGE_REMOTE_CODE_PREFIXES
+        needs_remote_code = any(model_id.startswith(prefix) for prefix in _all_remote_prefixes)
 
         # Convert string dtype to torch.dtype for benchmark suite
         import torch
@@ -1087,6 +1151,7 @@ def _print_dry_run(
     dtype: str,
     max_memory_gb: float,
     phases: Optional[list[int]] = None,
+    use_hf_reference: bool = True,
 ) -> None:
     """Print what would be tested in a dry run."""
     print(f"\nDry run: {len(candidates)} models would be tested")
@@ -1107,7 +1172,9 @@ def _print_dry_run(
         for c in models:
             try:
                 n_params = estimate_model_params(c.model_id)
-                mem = estimate_benchmark_memory_gb(n_params, dtype, phases=phases)
+                mem = estimate_benchmark_memory_gb(
+                    n_params, dtype, phases=phases, use_hf_reference=use_hf_reference
+                )
                 status = "OK" if mem <= max_memory_gb else "SKIP (too large)"
                 if mem > max_memory_gb:
                     skippable += 1
@@ -1339,6 +1406,7 @@ Examples:
             args.dtype,
             max_memory_gb,
             phases=args.phases,
+            use_hf_reference=not args.no_hf_reference,
         )
         return
 
