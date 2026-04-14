@@ -8,7 +8,7 @@
   },
   "total_architectures": 43,
   "total_models": 7006,
-  "total_verified": 703,
+  "total_verified": 704,
   "models": [
     {
       "architecture_id": "Qwen3NextForCausalLM",
@@ -98416,17 +98416,17 @@
     {
       "architecture_id": "Qwen3_5ForCausalLM",
       "model_id": "Qwen/Qwen3.5-4B",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-04-14",
       "metadata": {
         "downloads": 2920685,
         "total_params": 3660000000
       },
-      "note": null,
-      "phase1_score": null,
-      "phase2_score": null,
-      "phase3_score": null,
-      "phase4_score": null,
+      "note": "Full verification completed with issues: P3=94.1% (failed: attention_output_centering)",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 94.1,
+      "phase4_score": 98.5,
       "phase7_score": null,
       "phase8_score": null
     },

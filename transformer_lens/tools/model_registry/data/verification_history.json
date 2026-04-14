@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-04-14T12:15:43.792442",
+  "last_updated": "2026-04-14T13:03:57.367589",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -11243,6 +11243,16 @@
     },
     {
       "model_id": "Qwen/Qwen3.5-0.8B",
+      "architecture_id": "Qwen3_5ForCausalLM",
+      "verified_date": "2026-04-14",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P3=94.1% (failed: attention_output_centering)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Qwen/Qwen3.5-4B",
       "architecture_id": "Qwen3_5ForCausalLM",
       "verified_date": "2026-04-14",
       "verified_by": "verify_models",
