@@ -6,9 +6,9 @@
     "min_downloads": 500,
     "scan_duration_seconds": 3.9
   },
-  "total_architectures": 40,
-  "total_models": 6868,
-  "total_verified": 699,
+  "total_architectures": 43,
+  "total_models": 7006,
+  "total_verified": 703,
   "models": [
     {
       "architecture_id": "Qwen3NextForCausalLM",
@@ -98393,6 +98393,57 @@
       "phase2_score": 100.0,
       "phase3_score": 100.0,
       "phase4_score": 70.4,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3_5ForCausalLM",
+      "model_id": "Qwen/Qwen3.5-0.8B",
+      "status": 1,
+      "verified_date": "2026-04-14",
+      "metadata": {
+        "downloads": 2577198,
+        "total_params": 950000000
+      },
+      "note": "Full verification completed with issues: P3=94.1% (failed: attention_output_centering)",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 94.1,
+      "phase4_score": 91.5,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3_5ForCausalLM",
+      "model_id": "Qwen/Qwen3.5-4B",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 2920685,
+        "total_params": 3660000000
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null
+    },
+    {
+      "architecture_id": "Qwen3_5ForCausalLM",
+      "model_id": "Qwen/Qwen3.5-9B",
+      "status": 0,
+      "verified_date": null,
+      "metadata": {
+        "downloads": 5662081,
+        "total_params": 8750000000
+      },
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
       "phase7_score": null,
       "phase8_score": null
     }
