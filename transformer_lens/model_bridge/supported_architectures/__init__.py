@@ -90,6 +90,9 @@ from transformer_lens.model_bridge.supported_architectures.mistral import (
 from transformer_lens.model_bridge.supported_architectures.mixtral import (
     MixtralArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.mpt import (
+    MPTArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.nanogpt import (
     NanogptArchitectureAdapter,
 )
@@ -184,6 +187,7 @@ __all__ = [
     "MingptArchitectureAdapter",
     "MistralArchitectureAdapter",
     "MixtralArchitectureAdapter",
+    "MPTArchitectureAdapter",
     "NanogptArchitectureAdapter",
     "NeelSoluOldArchitectureAdapter",
     "NeoArchitectureAdapter",
