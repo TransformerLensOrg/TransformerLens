@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-04-15T05:08:29.426963",
+  "last_updated": "2026-04-15T09:15:26.792099",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -11484,6 +11484,26 @@
     {
       "model_id": "yujiepan/qwen3-next-moe-tiny-random",
       "architecture_id": "Qwen3NextForCausalLM",
+      "verified_date": "2026-04-15",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Qwen/Qwen3.5-0.8B",
+      "architecture_id": "Qwen3_5ForCausalLM",
+      "verified_date": "2026-04-15",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Below threshold: P1=50.0% < 100.0% (failed: all_components) \u2014 18/142 components failed (18 critical)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Qwen/Qwen3.5-0.8B",
+      "architecture_id": "Qwen3_5ForCausalLM",
       "verified_date": "2026-04-15",
       "verified_by": "verify_models",
       "transformerlens_version": null,

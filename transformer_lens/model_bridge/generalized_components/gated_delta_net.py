@@ -128,11 +128,27 @@ class GatedDeltaNetBridge(GeneralizedComponent):
         hidden_states = self.hook_in(hidden_states)
         batch_size, seq_len, _ = hidden_states.shape
 
-        # --- Projections ---
-        projected_qkvz = hf.in_proj_qkvz(hidden_states)
-        projected_ba = hf.in_proj_ba(hidden_states)
-
-        query, key, value, z, b, a = hf.fix_query_key_value_ordering(projected_qkvz, projected_ba)
+        # --- Projections (two layouts: fused vs split) ---
+        if hasattr(hf, "in_proj_qkvz"):
+            # Qwen3Next: fused Q+K+V+Z projection, fused beta+alpha
+            projected_qkvz = hf.in_proj_qkvz(hidden_states)
+            projected_ba = hf.in_proj_ba(hidden_states)
+            query, key, value, z, b, a = hf.fix_query_key_value_ordering(
+                projected_qkvz, projected_ba
+            )
+        else:
+            # Qwen3.5: separate projections (in_proj_qkv, in_proj_z, in_proj_b, in_proj_a)
+            mixed_qkv_flat = hf.in_proj_qkv(hidden_states)
+            z = hf.in_proj_z(hidden_states).reshape(batch_size, seq_len, -1, hf.head_v_dim)
+            b = hf.in_proj_b(hidden_states)
+            a = hf.in_proj_a(hidden_states)
+            # Split QKV and reshape to per-head for pre-conv hooks
+            q_flat, k_flat, v_flat = torch.split(
+                mixed_qkv_flat, [hf.key_dim, hf.key_dim, hf.value_dim], dim=-1
+            )
+            query = q_flat.reshape(batch_size, seq_len, -1, hf.head_k_dim)
+            key = k_flat.reshape(batch_size, seq_len, -1, hf.head_k_dim)
+            value = v_flat.reshape(batch_size, seq_len, -1, hf.head_v_dim)
 
         # --- Pre-conv hooks (per-head shape, before conv mixes positions) ---
         query = self.hook_q_pre_conv(query)
