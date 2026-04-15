@@ -184,7 +184,7 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
             raise RuntimeError(f"{self.name}: q_norm declared but HF module has none.")
 
         weight = getattr(q_norm, "weight", None)
-        head_dim = int(hf_attn.head_dim)
+        head_dim = int(getattr(hf_attn, "head_dim"))
         n_heads = int(getattr(self.config, "n_heads", 0))
 
         # Non-learnable norm (Gemma-3 style) broadcasts over head_dim.

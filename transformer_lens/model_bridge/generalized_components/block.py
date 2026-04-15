@@ -265,6 +265,6 @@ class ParallelBlockBridge(BlockBridge):
         )
         # Ensure instance-level copy before mutating; base may have left the
         # class-level dict shared when no overrides were passed.
-        if self.hook_aliases is type(self).__mro__[1].hook_aliases:
+        if self.hook_aliases is BlockBridge.hook_aliases:
             self.hook_aliases = dict(self.hook_aliases)
         self.hook_aliases.pop("hook_resid_mid", None)

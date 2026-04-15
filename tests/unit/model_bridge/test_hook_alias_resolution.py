@@ -37,9 +37,7 @@ def _stub_cfg(architecture: str) -> TransformerBridgeConfig:
     )
 
 
-def _iter_components(
-    root: Any, path: str = ""
-) -> Iterable[Tuple[str, GeneralizedComponent]]:
+def _iter_components(root: Any, path: str = "") -> Iterable[Tuple[str, GeneralizedComponent]]:
     """Walk component_mapping recursively, yielding (dotted-path, component)."""
     if isinstance(root, dict):
         for name, comp in root.items():
@@ -121,10 +119,9 @@ def test_every_hook_alias_resolves_to_hookpoint(architecture: str) -> None:
                     resolved = True
                     break
             if not resolved:
-                failures.append(
-                    f"{path}.{alias_name} -> {target} (type at path: unresolved)"
-                )
-    assert not failures, (
-        f"Architecture {architecture}: {len(failures)} dead hook aliases:\n  "
-        + "\n  ".join(failures)
+                failures.append(f"{path}.{alias_name} -> {target} (type at path: unresolved)")
+    assert (
+        not failures
+    ), f"Architecture {architecture}: {len(failures)} dead hook aliases:\n  " + "\n  ".join(
+        failures
     )

@@ -18,10 +18,10 @@ from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapt
 from transformer_lens.model_bridge.generalized_components import (
     EmbeddingBridge,
     JointQKVPositionEmbeddingsAttentionBridge,
-    ParallelBlockBridge,
     LinearBridge,
     MLPBridge,
     NormalizationBridge,
+    ParallelBlockBridge,
     RotaryEmbeddingBridge,
     UnembeddingBridge,
 )
