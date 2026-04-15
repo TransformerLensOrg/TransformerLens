@@ -33,6 +33,7 @@ class MLPBridge(GeneralizedComponent):
         name: Optional[str],
         config: Optional[Any] = None,
         submodules: Optional[Dict[str, GeneralizedComponent]] = {},
+        optional: bool = False,
     ):
         """Initialize the MLP bridge.
 
@@ -40,8 +41,9 @@ class MLPBridge(GeneralizedComponent):
             name: The name of the component in the model (None if no container exists)
             config: Optional configuration (unused for MLPBridge)
             submodules: Dictionary of submodules to register (e.g., gate_proj, up_proj, down_proj)
+            optional: If True, setup skips this bridge when absent (hybrid architectures).
         """
-        super().__init__(name, config, submodules=submodules)
+        super().__init__(name, config, submodules=submodules, optional=optional)
 
     def forward(self, *args, **kwargs) -> torch.Tensor:
         """Forward pass through the MLP bridge.

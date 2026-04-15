@@ -72,17 +72,18 @@ class DeepSeekV3ArchitectureAdapter(ArchitectureAdapter):
                         },
                     ),
                     # On dense layers (idx < first_k_dense_replace), gate and
-                    # shared_experts are gracefully skipped since DeepseekV3MLP
-                    # lacks those attributes.
+                    # shared_experts are marked optional so setup gracefully
+                    # skips them when the layer is DeepseekV3MLP instead of MoE.
                     "mlp": MoEBridge(
                         name="mlp",
                         config=self.cfg,
                         submodules={
                             # Router is a custom Module, not nn.Linear
-                            "gate": GeneralizedComponent(name="gate"),
+                            "gate": GeneralizedComponent(name="gate", optional=True),
                             "shared_experts": GatedMLPBridge(
                                 name="shared_experts",
                                 config=self.cfg,
+                                optional=True,
                                 submodules={
                                     "gate": LinearBridge(name="gate_proj"),
                                     "in": LinearBridge(name="up_proj"),
