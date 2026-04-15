@@ -18,11 +18,22 @@ from transformer_lens.factories.architecture_adapter_factory import (
 )
 from transformer_lens.tools.model_registry import HF_SUPPORTED_ARCHITECTURES
 
+try:
+    from transformers import Qwen3_5ForCausalLM as _Qwen3_5ForCausalLM
+    from transformers import Qwen3_5TextConfig
+
+    _QWEN3_5_AVAILABLE = True
+except ImportError:
+    _QWEN3_5_AVAILABLE = False
+
 # ============================================================================
 # Test: Registration
 # ============================================================================
 
-
+@pytest.mark.skipif(
+    not _QWEN3_5_AVAILABLE,
+    reason="Qwen3_5TextConfig / Qwen3_5ForCausalLM not available in installed transformers",
+)
 class TestQwen3_5Registration:
     """Verify the adapter is properly registered in all lookup tables."""
 
@@ -79,6 +90,10 @@ def _make_bridge_cfg(**overrides):
 # ============================================================================
 
 
+@pytest.mark.skipif(
+    not _QWEN3_5_AVAILABLE,
+    reason="Qwen3_5TextConfig / Qwen3_5ForCausalLM not available in installed transformers",
+)
 class TestQwen3_5ComponentMapping:
     """Verify the component_mapping structure for Qwen3_5.
 
@@ -267,6 +282,10 @@ class TestQwen3_5ComponentMapping:
 # ============================================================================
 
 
+@pytest.mark.skipif(
+    not _QWEN3_5_AVAILABLE,
+    reason="Qwen3_5TextConfig / Qwen3_5ForCausalLM not available in installed transformers",
+)
 class TestQwen3_5ConfigAttributes:
     """Verify all cfg attributes are set correctly by the adapter."""
 
@@ -351,6 +370,10 @@ class TestQwen3_5ConfigAttributes:
 # ============================================================================
 
 
+@pytest.mark.skipif(
+    not _QWEN3_5_AVAILABLE,
+    reason="Qwen3_5TextConfig / Qwen3_5ForCausalLM not available in installed transformers",
+)
 class TestQwen3_5PreprocessWeights:
     """Verify preprocess_weights correctly slices q_proj.weight per-head.
 
@@ -487,14 +510,6 @@ class TestQwen3_5PreprocessWeights:
 # ============================================================================
 # Test: Integration (Phase A+B)
 # ============================================================================
-
-try:
-    from transformers import Qwen3_5ForCausalLM as _Qwen3_5ForCausalLM
-    from transformers import Qwen3_5TextConfig
-
-    _QWEN3_5_AVAILABLE = True
-except ImportError:
-    _QWEN3_5_AVAILABLE = False
 
 
 def _make_tiny_hf_model():
