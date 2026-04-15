@@ -15,6 +15,7 @@ from typing import Any, Callable, Dict, Optional
 import torch
 import transformers.models.gemma2.modeling_gemma2 as gemma2_module
 
+from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.generalized_components.attention import (
     AttentionBridge,
 )
@@ -112,21 +113,29 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
     """
 
     def __init__(
-        self, name: str, config: Any, submodules: Optional[Dict[str, Any]] = None, **kwargs
+        self,
+        name: str,
+        config: Any,
+        submodules: Optional[Dict[str, Any]] = None,
+        optional: bool = False,
+        # Accepted for caller compatibility (Granite passes these explicitly)
+        # but always forced to True — this bridge reimplements attention.
+        requires_attention_mask: bool = True,
+        requires_position_embeddings: bool = True,
+        **kwargs,  # absorb any other AttentionBridge kwargs callers may pass
     ):
-        """Initialize Gemma-3 attention bridge.
-
-        Args:
-            name: Component name
-            config: Model configuration
-            submodules: Dictionary of subcomponents
-            **kwargs: Additional arguments passed to AttentionBridge
-        """
-        kwargs["requires_position_embeddings"] = True
-        kwargs["requires_attention_mask"] = True
-        kwargs["maintain_native_attention"] = True
-        super().__init__(name, config, submodules, **kwargs)
+        super().__init__(
+            name,
+            config,
+            submodules,
+            requires_position_embeddings=True,
+            requires_attention_mask=True,
+            maintain_native_attention=True,
+            optional=optional,
+        )
         self._init_position_embedding_hooks()
+        if getattr(config, "gated_q_proj", False):
+            self.hook_q_gate = HookPoint()
 
     def set_original_component(self, component: torch.nn.Module) -> None:
         """Set the original HF component and register for rotary hook firing.
@@ -201,19 +210,34 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
         key_states = hf_attn.k_proj(hidden_states)
         value_states = hf_attn.v_proj(hidden_states)
 
+        # Gated q_proj (Qwen3.5/Qwen3Next): q_proj outputs [Q|gate] interleaved
+        # per head. cfg.gated_q_proj is set by the adapter. The actual split only
+        # triggers if the output is 2x the standard width (n_heads * head_dim).
+        # In processed mode, preprocess_weights slices q_proj to standard width
+        # so this naturally passes through.
+        q_gate = None
+        if getattr(self.config, "gated_q_proj", False):
+            q_dim = query_states.shape[-1]
+            n_heads = getattr(self.config, "n_heads", q_dim // head_dim)
+            standard_q_dim = n_heads * head_dim
+            if q_dim == standard_q_dim * 2:
+                query_states, q_gate = torch.chunk(
+                    query_states.view(*input_shape, -1, head_dim * 2), 2, dim=-1
+                )
+                q_gate = q_gate.reshape(*input_shape, -1)
+                query_states = query_states.reshape(*input_shape, -1)
+
         has_q_norm = hasattr(hf_attn, "q_norm") and hf_attn.q_norm is not None
         has_k_norm = hasattr(hf_attn, "k_norm") and hf_attn.k_norm is not None
         applied_pre_reshape_norm = False
 
         if has_q_norm:
             try:
-                # Try pre-reshape norm (OLMo 2 style: norm on flat [batch, seq, hidden])
                 query_states = hf_attn.q_norm(query_states)
                 if has_k_norm:
                     key_states = hf_attn.k_norm(key_states)
                 applied_pre_reshape_norm = True
             except RuntimeError:
-                # Shape mismatch — this model uses post-reshape norms
                 pass
 
         query_states = query_states.view(hidden_shape).transpose(1, 2)
@@ -305,6 +329,12 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
         attn_output = torch.matmul(attn_weights, value_states_expanded)
         attn_output = attn_output.transpose(1, 2).contiguous()
         attn_output = attn_output.reshape(*input_shape, -1)
+
+        # --- Gated attention (Qwen3.5/Qwen3Next) ---
+        if q_gate is not None:
+            if hasattr(self, "hook_q_gate"):
+                q_gate = self.hook_q_gate(q_gate)
+            attn_output = attn_output * torch.sigmoid(q_gate)
 
         # --- Output Projection ---
         # Different architectures name this differently: o_proj (Llama, Gemma, Qwen),

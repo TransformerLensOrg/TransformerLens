@@ -18,11 +18,23 @@ from transformer_lens.factories.architecture_adapter_factory import (
 )
 from transformer_lens.tools.model_registry import HF_SUPPORTED_ARCHITECTURES
 
+try:
+    from transformers import Qwen3_5ForCausalLM as _Qwen3_5ForCausalLM
+    from transformers import Qwen3_5TextConfig
+
+    _QWEN3_5_AVAILABLE = True
+except ImportError:
+    _QWEN3_5_AVAILABLE = False
+
 # ============================================================================
 # Test: Registration
 # ============================================================================
 
 
+@pytest.mark.skipif(
+    not _QWEN3_5_AVAILABLE,
+    reason="Qwen3_5TextConfig / Qwen3_5ForCausalLM not available in installed transformers",
+)
 class TestQwen3_5Registration:
     """Verify the adapter is properly registered in all lookup tables."""
 
@@ -79,6 +91,10 @@ def _make_bridge_cfg(**overrides):
 # ============================================================================
 
 
+@pytest.mark.skipif(
+    not _QWEN3_5_AVAILABLE,
+    reason="Qwen3_5TextConfig / Qwen3_5ForCausalLM not available in installed transformers",
+)
 class TestQwen3_5ComponentMapping:
     """Verify the component_mapping structure for Qwen3_5.
 
@@ -134,18 +150,28 @@ class TestQwen3_5ComponentMapping:
     # ---- Block submodules ----
 
     def test_block_submodules_keys(self, adapter):
-        """blocks submodules must contain ln1, ln2, mlp but NOT attn.
-
-        Critical correctness test: self_attn is absent on linear-attention
-        layers, so mapping attn as a block submodule would crash on those layers.
-        """
+        """blocks submodules must contain ln1, ln2, mlp, and optional attn + linear_attn."""
         submodules = adapter.component_mapping["blocks"].submodules
-        assert set(submodules.keys()) == {"ln1", "ln2", "mlp"}
+        assert set(submodules.keys()) == {"ln1", "ln2", "mlp", "attn", "linear_attn"}
 
-    def test_no_attn_in_block_submodules(self, adapter):
-        """attn must NOT appear as a block submodule (hybrid architecture safety check)."""
+    def test_attn_is_optional(self, adapter):
+        """attn must be marked optional (absent on linear-attention layers)."""
         submodules = adapter.component_mapping["blocks"].submodules
-        assert "attn" not in submodules
+        assert submodules["attn"].optional is True
+
+    def test_linear_attn_is_optional(self, adapter):
+        """linear_attn must be marked optional (absent on full-attention layers)."""
+        submodules = adapter.component_mapping["blocks"].submodules
+        assert submodules["linear_attn"].optional is True
+
+    def test_linear_attn_bridge_type(self, adapter):
+        """linear_attn must be a GatedDeltaNetBridge."""
+        from transformer_lens.model_bridge.generalized_components.gated_delta_net import (
+            GatedDeltaNetBridge,
+        )
+
+        submodules = adapter.component_mapping["blocks"].submodules
+        assert isinstance(submodules["linear_attn"], GatedDeltaNetBridge)
 
     def test_ln1_path(self, adapter):
         """ln1 maps to input_layernorm."""
@@ -257,6 +283,10 @@ class TestQwen3_5ComponentMapping:
 # ============================================================================
 
 
+@pytest.mark.skipif(
+    not _QWEN3_5_AVAILABLE,
+    reason="Qwen3_5TextConfig / Qwen3_5ForCausalLM not available in installed transformers",
+)
 class TestQwen3_5ConfigAttributes:
     """Verify all cfg attributes are set correctly by the adapter."""
 
@@ -341,6 +371,10 @@ class TestQwen3_5ConfigAttributes:
 # ============================================================================
 
 
+@pytest.mark.skipif(
+    not _QWEN3_5_AVAILABLE,
+    reason="Qwen3_5TextConfig / Qwen3_5ForCausalLM not available in installed transformers",
+)
 class TestQwen3_5PreprocessWeights:
     """Verify preprocess_weights correctly slices q_proj.weight per-head.
 
@@ -477,14 +511,6 @@ class TestQwen3_5PreprocessWeights:
 # ============================================================================
 # Test: Integration (Phase A+B)
 # ============================================================================
-
-try:
-    from transformers import Qwen3_5ForCausalLM as _Qwen3_5ForCausalLM
-    from transformers import Qwen3_5TextConfig
-
-    _QWEN3_5_AVAILABLE = True
-except ImportError:
-    _QWEN3_5_AVAILABLE = False
 
 
 def _make_tiny_hf_model():
