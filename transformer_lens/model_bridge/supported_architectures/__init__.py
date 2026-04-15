@@ -18,6 +18,9 @@ from transformer_lens.model_bridge.supported_architectures.codegen import (
 from transformer_lens.model_bridge.supported_architectures.cohere import (
     CohereArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.deepseek_v3 import (
+    DeepSeekV3ArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.falcon import (
     FalconArchitectureAdapter,
 )
@@ -166,6 +169,7 @@ __all__ = [
     "BloomArchitectureAdapter",
     "CodeGenArchitectureAdapter",
     "CohereArchitectureAdapter",
+    "DeepSeekV3ArchitectureAdapter",
     "FalconArchitectureAdapter",
     "Gemma1ArchitectureAdapter",
     "Gemma2ArchitectureAdapter",

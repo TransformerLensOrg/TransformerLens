@@ -67,6 +67,7 @@ class GatedMLPBridge(MLPBridge):
         name: Optional[str],
         config: Optional[Any] = None,
         submodules: Optional[Dict[str, GeneralizedComponent]] = None,
+        optional: bool = False,
     ):
         """Initialize the gated MLP bridge.
 
@@ -74,8 +75,9 @@ class GatedMLPBridge(MLPBridge):
             name: The name of the component in the model (None if no container exists)
             config: Optional configuration (unused for GatedMLPBridge)
             submodules: Dictionary of submodules to register (e.g., gate_proj, up_proj, down_proj)
+            optional: If True, setup skips this bridge when absent (hybrid architectures).
         """
-        super().__init__(name, config, submodules=submodules or {})
+        super().__init__(name, config, submodules=submodules or {}, optional=optional)
 
     def forward(self, *args, **kwargs) -> torch.Tensor:
         """Forward pass through the gated MLP bridge.
