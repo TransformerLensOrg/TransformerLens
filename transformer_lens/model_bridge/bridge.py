@@ -3,7 +3,9 @@
 This module provides the bridge components that wrap remote model components and provide
 a consistent interface for accessing their weights and performing operations.
 """
+import logging
 import re
+import warnings
 from contextlib import contextmanager
 from functools import lru_cache
 from typing import (
@@ -32,9 +34,16 @@ from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.component_setup import set_original_components
+from transformer_lens.model_bridge.composition_scores import CompositionScores
 from transformer_lens.model_bridge.exceptions import StopAtLayerException
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
+)
+from transformer_lens.model_bridge.generalized_components.block import (
+    _BLOCK_INTERNAL_MODULES,
+    _NORM_PREFIXES,
+    _VARIANT_SUBMODULE_SET,
+    VARIANT_SUBMODULE_NAMES,
 )
 from transformer_lens.model_bridge.get_params_util import get_bridge_params
 from transformer_lens.utilities.aliases import resolve_alias
@@ -45,6 +54,14 @@ if TYPE_CHECKING:
     from transformer_lens.ActivationCache import ActivationCache
 
 _BLOCK_PATTERN = re.compile("blocks\\.(\\d+)")
+
+
+def _resolve_attr_path(obj: nn.Module, attr_path: str) -> torch.Tensor:
+    """Walk a dot-separated attribute path and return the final tensor."""
+    result = obj
+    for attr in attr_path.split("."):
+        result = getattr(result, attr)
+    return cast(torch.Tensor, result)
 
 
 def build_alias_to_canonical_map(hook_dict, prefix=""):
@@ -247,7 +264,7 @@ class TransformerBridge(nn.Module):
         if not hasattr(self, "blocks"):
             return
         for block in self.blocks:
-            if not hasattr(block, "attn"):
+            if "attn" not in block._modules:
                 continue
             attn = block.attn
             if not (hasattr(attn, "q") and hasattr(attn.q, "weight")):
@@ -1003,20 +1020,78 @@ class TransformerBridge(nn.Module):
             return str(token[0])
         raise AssertionError("Expected a single string token.")
 
+    def blocks_with(self, submodule: str) -> List[Tuple[int, "GeneralizedComponent"]]:
+        """Return (index, block) pairs for blocks with the named bridged submodule.
+
+        Checks _modules (not hasattr) so HF-internal attrs don't match.
+        Use instead of assuming blocks[0] is representative on hybrid models.
+        """
+        if not hasattr(self, "blocks"):
+            return []
+        return [(i, block) for i, block in enumerate(self.blocks) if submodule in block._modules]
+
+    def stack_params_for(
+        self, submodule: str, attr_path: str, reshape_fn: Optional[Callable] = None
+    ) -> Tuple[List[int], torch.Tensor]:
+        """Stack a parameter across matching blocks only. Returns (layer_indices, tensor).
+
+        Use for hybrid models where not all blocks have the submodule.
+        """
+        matching = self.blocks_with(submodule)
+        if not matching:
+            raise ValueError(
+                f"No blocks have submodule '{submodule}'. "
+                f"Available submodules can be checked with blocks_with()."
+            )
+        indices: List[int] = []
+        weights: List[torch.Tensor] = []
+        for idx, block in matching:
+            w = _resolve_attr_path(block, attr_path)
+            if reshape_fn is not None:
+                w = reshape_fn(w)
+            weights.append(w)
+            indices.append(idx)
+        return indices, torch.stack(weights, dim=0)
+
     def _stack_block_params(
         self, attr_path: str, reshape_fn: Optional[Callable] = None
     ) -> torch.Tensor:
-        """Stack a parameter across all blocks.
+        """Stack a parameter across all blocks; falls back to matching-only on hybrids.
 
-        Args:
-            attr_path: Dot-separated attribute path from block (e.g., "attn.W_K")
-            reshape_fn: Optional function to reshape each weight before stacking
+        On hybrid models, logs a warning about index mapping and returns only
+        blocks that have the submodule. First path segment is checked against
+        _modules; deeper segments resolve via getattr (intentional — W_Q etc.
+        are exposed via __getattr__ delegation).
         """
-        weights = []
-        for block in self.blocks:
-            w = block
-            for attr in attr_path.split("."):
-                w = getattr(w, attr)
+        first_attr = attr_path.split(".")[0]
+        matching_blocks = [
+            (i, block) for i, block in enumerate(self.blocks) if first_attr in block._modules
+        ]
+
+        if len(matching_blocks) == 0:
+            raise AttributeError(
+                f"No blocks have submodule '{first_attr}'. "
+                f"Use bridge.blocks_with('{first_attr}') to check availability."
+            )
+
+        if len(matching_blocks) < len(self.blocks):
+            indices = [i for i, _ in matching_blocks]
+            logging.warning(
+                "Hybrid model: only %d/%d blocks have '%s'. Returning stacked tensor "
+                "for layers %s only. Tensor index i corresponds to original layer "
+                "indices[i], not layer i. For explicit index mapping, use "
+                "bridge.stack_params_for('%s', '%s').",
+                len(matching_blocks),
+                len(self.blocks),
+                first_attr,
+                indices,
+                first_attr,
+                attr_path,
+            )
+
+        weights: List[torch.Tensor] = []
+        for _, block in matching_blocks:
+            w = _resolve_attr_path(block, attr_path)
             if reshape_fn is not None:
                 w = reshape_fn(w)
             weights.append(w)
@@ -1120,11 +1195,25 @@ class TransformerBridge(nn.Module):
 
     @property
     def QK(self):
+        """QK circuit. On hybrids, returns attn layers only (with warning). See QK_for_attn_layers()."""
         return FactoredMatrix(self.W_Q, self.W_K.transpose(-2, -1))
 
     @property
     def OV(self):
+        """OV circuit. On hybrids, returns attn layers only (with warning). See OV_for_attn_layers()."""
         return FactoredMatrix(self.W_V, self.W_O)
+
+    def QK_for_attn_layers(self) -> Tuple[List[int], FactoredMatrix]:
+        """QK circuit for attention layers only. Returns (layer_indices, FactoredMatrix)."""
+        q_indices, W_Q = self.stack_params_for("attn", "attn.W_Q", self._reshape_qkv)
+        _, W_K = self.stack_params_for("attn", "attn.W_K", self._reshape_qkv)
+        return q_indices, FactoredMatrix(W_Q, W_K.transpose(-2, -1))
+
+    def OV_for_attn_layers(self) -> Tuple[List[int], FactoredMatrix]:
+        """OV circuit for attention layers only. Returns (layer_indices, FactoredMatrix)."""
+        v_indices, W_V = self.stack_params_for("attn", "attn.W_V", self._reshape_qkv)
+        _, W_O = self.stack_params_for("attn", "attn.W_O", self._reshape_o)
+        return v_indices, FactoredMatrix(W_V, W_O)
 
     # ------------------------------------------------------------------
     # Mechanistic interpretability analysis methods
@@ -1169,75 +1258,151 @@ class TransformerBridge(nn.Module):
             residual_direction = self.W_U[:, token]
             return residual_direction
 
+    # Variant → attr paths for the output bias that feeds the residual stream.
+    _VARIANT_OUTPUT_BIAS_ATTRS: Dict[str, tuple] = {
+        "attn": ("b_O",),
+        "linear_attn": ("out_proj.bias",),
+        "mamba": ("out_proj.bias",),
+        "mixer": ("out_proj.bias",),
+        "ssm": ("out_proj.bias",),
+    }
+
+    def _get_block_variant_bias(self, block: "GeneralizedComponent") -> Optional[torch.Tensor]:
+        """Return the output bias from this block's variant submodule, or None."""
+        for name in VARIANT_SUBMODULE_NAMES:
+            if name not in block._modules:
+                continue
+            variant = block._modules[name]
+            for attr_path in self._VARIANT_OUTPUT_BIAS_ATTRS.get(name, ()):
+                obj = variant
+                try:
+                    for attr in attr_path.split("."):
+                        obj = getattr(obj, attr)
+                except AttributeError:
+                    continue
+                if obj is not None and isinstance(obj, torch.Tensor):
+                    return obj
+        return None
+
     def accumulated_bias(
         self,
         layer: int,
         mlp_input: bool = False,
         include_mlp_biases: bool = True,
     ) -> torch.Tensor:
-        """Sum of attention and MLP output biases up to the input of a given layer.
+        """Sum of variant + MLP output biases through the residual stream up to `layer`.
 
-        Args:
-            layer: Layer number in [0, n_layers]. 0 means no layers, n_layers means all.
-            mlp_input: If True, include the attention output bias of the target layer
-                (i.e. bias up to the MLP input of that layer).
-            include_mlp_biases: Whether to include MLP biases. Useful to set False when
-                expanding attn_out into individual heads but keeping mlp_out as-is.
-
-        Returns:
-            Tensor of shape [d_model] with the accumulated bias.
+        Includes all layer types (attn, SSM, linear-attn). Set mlp_input=True
+        to include the variant bias of the target layer itself.
         """
         accumulated = torch.zeros(self.cfg.d_model, device=self.cfg.device)
         for i in range(layer):
             block = self.blocks[i]
-            b_O = getattr(block.attn, "b_O", None)
+            b_O = self._get_block_variant_bias(block)
             if b_O is not None:
                 accumulated = accumulated + b_O
-            if include_mlp_biases:
+            if include_mlp_biases and "mlp" in block._modules:
                 b_out = getattr(block.mlp, "b_out", None)
                 if b_out is not None:
                     accumulated = accumulated + b_out
         if mlp_input:
             assert layer < self.cfg.n_layers, "Cannot include attn_bias from beyond the final layer"
             block = self.blocks[layer]
-            b_O = getattr(block.attn, "b_O", None)
+            b_O = self._get_block_variant_bias(block)
             if b_O is not None:
                 accumulated = accumulated + b_O
         return accumulated
 
-    def all_composition_scores(self, mode: str) -> torch.Tensor:
-        """Composition scores for all pairs of heads.
-
-        Returns an (n_layers, n_heads, n_layers, n_heads) tensor that is upper
-        triangular on the layer axes (a head can only compose with later heads).
+    def all_composition_scores(self, mode: str) -> CompositionScores:
+        """Composition scores for all attention head pairs. Returns CompositionScores.
 
         See https://transformer-circuits.pub/2021/framework/index.html
-
-        Args:
-            mode: One of "Q", "K", "V" — which composition type to compute.
+        On hybrid models, only attention layers are included; layer_indices
+        maps tensor position i to original layer number.
         """
-        left = self.OV
+        attn_blocks = self.blocks_with("attn")
+        if not attn_blocks:
+            raise ValueError("No attention layers found — cannot compute composition scores.")
+
+        indices = [idx for idx, _ in attn_blocks]
+        blocks_list = [block for _, block in attn_blocks]
+
+        def _stack(attr_path: str, reshape_fn: Optional[Callable] = None) -> torch.Tensor:
+            weights: List[torch.Tensor] = []
+            for block in blocks_list:
+                w = _resolve_attr_path(block, attr_path)
+                if reshape_fn is not None:
+                    w = reshape_fn(w)
+                weights.append(w)
+            return torch.stack(weights, dim=0)
+
+        W_V = _stack("attn.W_V", self._reshape_qkv)
+        W_O = _stack("attn.W_O", self._reshape_o)
+        left = FactoredMatrix(W_V, W_O)
+
         if mode == "Q":
-            right = self.QK
+            W_Q = _stack("attn.W_Q", self._reshape_qkv)
+            W_K = _stack("attn.W_K", self._reshape_qkv)
+            right = FactoredMatrix(W_Q, W_K.transpose(-2, -1))
         elif mode == "K":
-            right = self.QK.T
+            W_Q = _stack("attn.W_Q", self._reshape_qkv)
+            W_K = _stack("attn.W_K", self._reshape_qkv)
+            right = FactoredMatrix(W_Q, W_K.transpose(-2, -1)).T
         elif mode == "V":
-            right = self.OV
+            right = left
         else:
             raise ValueError(f"mode must be one of ['Q', 'K', 'V'] not {mode}")
 
         scores = utils.composition_scores(left, right, broadcast_dims=True)
-        mask = (
-            torch.arange(self.cfg.n_layers, device=self.cfg.device)[:, None, None, None]
-            < torch.arange(self.cfg.n_layers, device=self.cfg.device)[None, None, :, None]
-        )
+        n_attn = len(indices)
+        idx_tensor = torch.arange(n_attn, device=self.cfg.device)
+        mask = idx_tensor[:, None, None, None] < idx_tensor[None, None, :, None]
         scores = torch.where(mask, scores, torch.zeros_like(scores))
-        return scores
+
+        labels = [f"L{l}H{h}" for l in indices for h in range(self.cfg.n_heads)]
+        return CompositionScores(scores=scores, layer_indices=indices, head_labels=labels)
+
+    def composition_layer_indices(self) -> List[int]:
+        """Original layer indices for attention layers (maps composition score positions)."""
+        return [idx for idx, _ in self.blocks_with("attn")]
+
+    def block_hooks(self, layer_idx: int) -> List[str]:
+        """Sorted hook names available on block `layer_idx` (block-relative paths)."""
+        prefix = f"blocks.{layer_idx}."
+        return sorted(name[len(prefix) :] for name in self.hook_dict if name.startswith(prefix))
+
+    def block_submodules(self, layer_idx: int) -> List[str]:
+        """Return bridged submodule names on block `layer_idx`."""
+        block = self.blocks[layer_idx]
+        return [name for name in block._modules if name not in _BLOCK_INTERNAL_MODULES]
+
+    def layer_types(self) -> List[str]:
+        """Per-block type labels, e.g. ["attn+mlp", "ssm+mlp", ...]. Deterministic order."""
+        types = []
+        for block in self.blocks:
+            variants = [n for n in VARIANT_SUBMODULE_NAMES if n in block._modules]
+            universals = sorted(
+                n
+                for n in block._modules
+                if n not in _VARIANT_SUBMODULE_SET
+                and n not in _BLOCK_INTERNAL_MODULES
+                and not n.startswith(_NORM_PREFIXES)
+            )
+            parts = variants + universals
+            types.append("+".join(parts) if parts else "unknown")
+        return types
 
     @property
     def all_head_labels(self) -> list[str]:
         """Human-readable labels for all attention heads, e.g. ['L0H0', 'L0H1', ...]."""
         return [f"L{l}H{h}" for l in range(self.cfg.n_layers) for h in range(self.cfg.n_heads)]
+
+    @property
+    def attn_head_labels(self) -> list[str]:
+        """Head labels for attention layers only — matches all_composition_scores() dims."""
+        return [
+            f"L{l}H{h}" for l in self.composition_layer_indices() for h in range(self.cfg.n_heads)
+        ]
 
     def parameters(self, recurse: bool = True) -> Iterator[nn.Parameter]:
         """Returns parameters following standard PyTorch semantics.
@@ -1994,6 +2159,11 @@ class TransformerBridge(nn.Module):
                 "and pass the resulting tensor to generate().",
                 stacklevel=2,
             )
+
+        # Stateful dispatch is decided after input parsing so we can fall back
+        # to hf_generate() for input types the stateful loop doesn't handle.
+        is_stateful_model = getattr(self.cfg, "is_stateful", False)
+
         _generate_from_embeds = False
         if isinstance(input, str):
             input_tokens = self.to_tokens(input, move_to_device=True, truncate=False)
@@ -2061,7 +2231,48 @@ class TransformerBridge(nn.Module):
             # cache path — silently disable rather than crash, since
             # use_past_kv_cache=True is the default.
             use_past_kv_cache = False
-        if use_past_kv_cache:
+
+        # SSMs (Mamba/Mamba-2) run through a dedicated cache path so hooks
+        # fire on every step. Unsupported input types fall back to hf_generate().
+        use_stateful_cache = (
+            is_stateful_model
+            and use_past_kv_cache
+            and not is_encoder_decoder
+            and not _generate_from_embeds
+            and pixel_values is None
+            and not multimodal_kwargs
+        )
+        if is_stateful_model and not use_stateful_cache:
+            hf_kwargs: dict[str, Any] = {
+                "max_new_tokens": max_new_tokens,
+                "do_sample": do_sample,
+                "temperature": temperature,
+            }
+            if top_k is not None:
+                hf_kwargs["top_k"] = top_k
+            if top_p is not None:
+                hf_kwargs["top_p"] = top_p
+            if eos_token_id is not None:
+                hf_kwargs["eos_token_id"] = eos_token_id
+            return self.hf_generate(input, **hf_kwargs)
+
+        # SSM cache is built once and mutated in place across forward calls.
+        # Adapter owns the cache-type choice; new SSMs just override
+        # create_stateful_cache().
+        mamba_cache: Any = None
+        mamba_conv_kernel: int = 0
+        if use_stateful_cache:
+            hf_model: Any = self.original_model
+            mamba_conv_kernel = int(getattr(hf_model.config, "conv_kernel", 4))
+            cache_dtype = self.cfg.dtype or torch.float32
+            mamba_cache = self.adapter.create_stateful_cache(
+                hf_model=hf_model,
+                batch_size=batch_size,
+                device=self.cfg.device,
+                dtype=cache_dtype,
+            )
+
+        if use_past_kv_cache and not use_stateful_cache:
             self._capture_hf_cache = True  # Signal forward() to stash cache
 
         # Generate tokens
@@ -2105,7 +2316,42 @@ class TransformerBridge(nn.Module):
                                 forward_kwargs["pixel_values"] = pixel_values
                             if multimodal_kwargs:
                                 forward_kwargs.update(multimodal_kwargs)
-                        if use_past_kv_cache:
+                        if use_stateful_cache:
+                            # Prefill sends arange(conv_kernel) (which both
+                            # Mamba-1's length check and Mamba-2's value check
+                            # accept as "not decode"). Decode sends the input
+                            # token's actual sequence position — a fixed value
+                            # above conv_kernel-1 silently picks the wrong
+                            # slot for short prompts (see
+                            # test_greedy_matches_hf_across_prompt_lengths).
+                            # conv1d hooks fire only on prefill; HF bypasses
+                            # the conv1d module on decode (see DepthwiseConv1DBridge).
+                            forward_kwargs["cache_params"] = mamba_cache
+                            forward_kwargs["use_cache"] = True
+                            if gen_step_idx == 0:
+                                cache_position = torch.arange(
+                                    0, mamba_conv_kernel, device=self.cfg.device
+                                )
+                                forward_kwargs["cache_position"] = cache_position
+                                logits = self(
+                                    current_tokens,
+                                    return_type="logits",
+                                    **forward_kwargs,
+                                )
+                            else:
+                                # Token generated at step N-1 lives at
+                                # sequence position prompt_len + gen_step_idx - 1
+                                input_seq_pos = input_tokens.shape[1] + gen_step_idx - 1
+                                cache_position = torch.tensor(
+                                    [input_seq_pos], device=self.cfg.device
+                                )
+                                forward_kwargs["cache_position"] = cache_position
+                                logits = self(
+                                    current_tokens[:, -1:],
+                                    return_type="logits",
+                                    **forward_kwargs,
+                                )
+                        elif use_past_kv_cache:
                             forward_kwargs["use_cache"] = True
                             if _hf_kv_cache is not None:
                                 # Cached step: pass only the last token + cache

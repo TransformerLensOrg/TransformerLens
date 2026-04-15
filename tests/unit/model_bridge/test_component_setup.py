@@ -312,6 +312,7 @@ class TestComponentSetup:
             name="blocks",
             submodules={
                 "ln1": NormalizationBridge(name="ln1", config={}),
+                "ln2": NormalizationBridge(name="ln2", config={}),
                 "attn": JointQKVAttentionBridge(
                     name="attn",
                     config=SimpleNamespace(n_heads=1, d_model=10),

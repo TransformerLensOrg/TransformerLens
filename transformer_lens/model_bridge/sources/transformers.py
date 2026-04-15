@@ -147,6 +147,12 @@ def map_default_transformer_lens_config(hf_config):
         tl_config.d_head = source_config.head_dim
     elif hasattr(tl_config, "d_model") and hasattr(tl_config, "n_heads"):
         tl_config.d_head = tl_config.d_model // tl_config.n_heads
+    elif hasattr(tl_config, "d_model"):
+        # Models without attention (e.g., Mamba SSMs) have no n_heads or head_dim.
+        # Set d_head = d_model so TransformerLensConfig.__post_init__ computes
+        # n_heads = 1. These values are nominal and have no functional meaning
+        # for attention-less architectures.
+        tl_config.d_head = tl_config.d_model
     if hasattr(source_config, "activation_function"):
         tl_config.act_fn = source_config.activation_function
     elif hasattr(source_config, "hidden_act"):
@@ -166,9 +172,9 @@ def map_default_transformer_lens_config(hf_config):
         tl_config.sliding_window = source_config.sliding_window
     if getattr(hf_config, "use_parallel_residual", False):
         tl_config.parallel_attn_mlp = True
-    # GPT-J: parallel attn+MLP but missing use_parallel_residual in HF config
+    # GPT-J and CodeGen: parallel attn+MLP but missing use_parallel_residual in HF config
     arch_classes = getattr(hf_config, "architectures", []) or []
-    if any(a in ("GPTJForCausalLM",) for a in arch_classes):
+    if any(a in ("GPTJForCausalLM", "CodeGenForCausalLM") for a in arch_classes):
         tl_config.parallel_attn_mlp = True
     tl_config.default_prepend_bos = True
     return tl_config
@@ -198,6 +204,8 @@ def determine_architecture_from_hf_config(hf_config):
             "gpt2": "GPT2LMHeadModel",
             "hubert": "HubertModel",
             "llama": "LlamaForCausalLM",
+            "mamba": "MambaForCausalLM",
+            "mamba2": "Mamba2ForCausalLM",
             "mistral": "MistralForCausalLM",
             "mixtral": "MixtralForCausalLM",
             "gemma": "GemmaForCausalLM",
@@ -205,6 +213,7 @@ def determine_architecture_from_hf_config(hf_config):
             "gemma3": "Gemma3ForCausalLM",
             "bert": "BertForMaskedLM",
             "bloom": "BloomForCausalLM",
+            "codegen": "CodeGenForCausalLM",
             "gptj": "GPTJForCausalLM",
             "gpt_neo": "GPTNeoForCausalLM",
             "gpt_neox": "GPTNeoXForCausalLM",
@@ -214,6 +223,12 @@ def determine_architecture_from_hf_config(hf_config):
             "qwen": "QwenForCausalLM",
             "qwen2": "Qwen2ForCausalLM",
             "qwen3": "Qwen3ForCausalLM",
+            # qwen3_5 is the top-level multimodal config type; qwen3_5_text is
+            # the text-only sub-config. Both map to the text-only adapter so
+            # Qwen3.5 checkpoints (which report qwen3_5 even when loaded as
+            # text-only) are routed to Qwen3_5ForCausalLM.
+            "qwen3_5": "Qwen3_5ForCausalLM",
+            "qwen3_5_text": "Qwen3_5ForCausalLM",
             "openelm": "OpenELMForCausalLM",
             "stablelm": "StableLmForCausalLM",
             "t5": "T5ForConditionalGeneration",
@@ -320,34 +335,46 @@ def boot(
     bridge_config.architecture = architecture
     bridge_config.model_name = model_name
     bridge_config.dtype = dtype
-    # Preserve HF-specific config attributes that adapters may need
-    if getattr(hf_config, "is_gated_act", False):
-        bridge_config.is_gated_act = True
-    # OPT-350m: word_embed_proj_dim != hidden_size means the model uses
-    # project_in/project_out instead of final_layer_norm.
-    word_embed_proj_dim = getattr(hf_config, "word_embed_proj_dim", None)
-    if word_embed_proj_dim is not None:
-        bridge_config.word_embed_proj_dim = word_embed_proj_dim
-    # OPT post-norm breaks fold_ln assumptions (pre-norm only).
-    do_layer_norm_before = getattr(hf_config, "do_layer_norm_before", None)
-    if do_layer_norm_before is not None:
-        bridge_config.do_layer_norm_before = do_layer_norm_before
-    # Propagate Gemma2 logit/attn softcapping config from HF to TL fields.
+    # Propagate HF-specific config attributes that adapters may need.
+    # Any attribute present on the HF config and not None is copied to bridge_config.
+    # This is architecture-agnostic — new architectures don't need changes here.
+    _HF_PASSTHROUGH_ATTRS = [
+        # OPT
+        "is_gated_act",
+        "word_embed_proj_dim",
+        "do_layer_norm_before",
+        # Granite
+        "position_embedding_type",
+        # Falcon
+        "parallel_attn",
+        "multi_query",
+        "new_decoder_architecture",
+        "alibi",
+        "num_ln_in_parallel_attn",
+        # Mamba (SSM config)
+        "state_size",
+        "conv_kernel",
+        "expand",
+        "time_step_rank",
+        "intermediate_size",
+        # Mamba-2 (additional SSM config)
+        "n_groups",
+        "chunk_size",
+        # Multimodal
+        "vision_config",
+    ]
+    for attr in _HF_PASSTHROUGH_ATTRS:
+        val = getattr(hf_config, attr, None)
+        if val is not None:
+            setattr(bridge_config, attr, val)
+
+    # Gemma2 softcapping: HF names differ from TL names, need explicit mapping
     final_logit_softcapping = getattr(hf_config, "final_logit_softcapping", None)
     if final_logit_softcapping is not None:
         bridge_config.output_logits_soft_cap = float(final_logit_softcapping)
     attn_logit_softcapping = getattr(hf_config, "attn_logit_softcapping", None)
     if attn_logit_softcapping is not None:
         bridge_config.attn_scores_soft_cap = float(attn_logit_softcapping)
-    # Propagate position_embedding_type for Granite Hybrid models that use
-    # "nope" (no positional embeddings) instead of "rope" on some/all layers.
-    position_embedding_type = getattr(hf_config, "position_embedding_type", None)
-    if position_embedding_type is not None:
-        bridge_config.position_embedding_type = position_embedding_type
-    # Propagate vision config for multimodal models so the adapter can
-    # select the correct vision encoder bridge (CLIP vs SigLIP).
-    if hasattr(hf_config, "vision_config") and hf_config.vision_config is not None:
-        bridge_config.vision_config = hf_config.vision_config
     adapter = ArchitectureAdapterFactory.select_architecture_adapter(bridge_config)
     if device is None:
         device = get_device()

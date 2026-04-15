@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import inspect
+import warnings
 from collections.abc import Callable
 from typing import Any, Dict, List, Optional, Union
 
@@ -34,6 +35,7 @@ class GeneralizedComponent(nn.Module):
         submodules: Optional[Dict[str, "GeneralizedComponent"]] = None,
         conversion_rule: Optional[BaseTensorConversion] = None,
         hook_alias_overrides: Optional[Dict[str, str]] = None,
+        optional: bool = False,
     ):
         """Initialize the generalized component.
 
@@ -45,12 +47,14 @@ class GeneralizedComponent(nn.Module):
             hook_alias_overrides: Optional dictionary to override default hook aliases.
                 For example, {"hook_attn_out": "ln1_post.hook_out"} will make hook_attn_out
                 point to ln1_post.hook_out instead of the default value in self.hook_aliases.
+            optional: If True, setup skips this subtree when absent (hybrid architectures).
         """
         super().__init__()
         self.name = name
         self.config = config
         self.submodules = submodules or {}
         self.conversion_rule = conversion_rule
+        self.optional = optional
         self._hook_registry: Dict[str, HookPoint] = {}
         self._hook_alias_registry: Dict[str, Union[str, List[str]]] = {}
         self._property_alias_registry: Dict[str, str] = {}
@@ -88,24 +92,37 @@ class GeneralizedComponent(nn.Module):
         if self.property_aliases:
             self._property_alias_registry.update(self.property_aliases)
         for alias_name, target_path in self._hook_alias_registry.items():
-            try:
-                if isinstance(target_path, list):
-                    for single_target in target_path:
-                        try:
-                            target_obj = self
-                            for part in single_target.split("."):
-                                target_obj = getattr(target_obj, part)
-                            object.__setattr__(self, alias_name, target_obj)
-                            break
-                        except AttributeError:
-                            continue
-                else:
+            resolved = False
+            if isinstance(target_path, list):
+                for single_target in target_path:
+                    try:
+                        target_obj = self
+                        for part in single_target.split("."):
+                            target_obj = getattr(target_obj, part)
+                        object.__setattr__(self, alias_name, target_obj)
+                        resolved = True
+                        break
+                    except AttributeError:
+                        continue
+            else:
+                try:
                     target_obj = self
                     for part in target_path.split("."):
                         target_obj = getattr(target_obj, part)
                     object.__setattr__(self, alias_name, target_obj)
-            except AttributeError:
-                pass
+                    resolved = True
+                except AttributeError:
+                    pass
+            if not resolved:
+                # Surface drops instead of silently swallowing — some aliases are
+                # legitimately conditional on optional submodules, but an author
+                # needs to see which ones dropped at bridge-init.
+                warnings.warn(
+                    f"Hook alias '{alias_name}' -> '{target_path}' on "
+                    f"{type(self).__name__}(name={getattr(self, 'name', None)!r}) "
+                    f"did not resolve; this hook will not be accessible.",
+                    stacklevel=2,
+                )
         for alias_name, target_path in self._property_alias_registry.items():
             try:
                 target_obj = self
@@ -337,6 +354,7 @@ class GeneralizedComponent(nn.Module):
             "conversion_rule",
             "compatibility_mode",
             "disable_warnings",
+            "optional",
         ]:
             super().__setattr__(name, value)
             return

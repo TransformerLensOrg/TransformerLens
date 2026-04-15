@@ -15,6 +15,7 @@ from transformer_lens.conversion_utils.param_processing_conversion import (
     ParamProcessingConversion,
 )
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
+from transformer_lens.model_bridge.compat import patch_dynamic_cache_v5
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
@@ -238,40 +239,7 @@ class Phi3ArchitectureAdapter(ArchitectureAdapter):
             if isinstance(rope_scaling, dict) and rope_scaling.get("rope_type") == "default":
                 config.rope_scaling = None
 
-        # Monkey-patch DynamicCache methods removed in transformers v5.
-        try:
-            from transformers.cache_utils import DynamicCache
-
-            if not hasattr(DynamicCache, "from_legacy_cache"):
-
-                @classmethod  # type: ignore[misc]
-                def _from_legacy_cache(cls, past_key_values=None):
-                    cache = cls()
-                    if past_key_values is not None:
-                        for layer_idx, layer_past in enumerate(past_key_values):
-                            cache.update(layer_past[0], layer_past[1], layer_idx)
-                    return cache
-
-                DynamicCache.from_legacy_cache = _from_legacy_cache  # type: ignore[attr-defined]
-
-            if not hasattr(DynamicCache, "get_usable_length"):
-
-                def _get_usable_length(self, new_seq_len: int = 0, layer_idx: int = 0) -> int:
-                    return self.get_seq_length(layer_idx)
-
-                DynamicCache.get_usable_length = _get_usable_length  # type: ignore[attr-defined]
-
-            if not hasattr(DynamicCache, "to_legacy_cache"):
-
-                def _to_legacy_cache(self):
-                    legacy_cache = []
-                    for layer in self.layers:
-                        legacy_cache.append((layer.keys, layer.values))
-                    return tuple(legacy_cache)
-
-                DynamicCache.to_legacy_cache = _to_legacy_cache  # type: ignore[attr-defined]
-        except Exception:
-            pass
+        patch_dynamic_cache_v5()
 
     def preprocess_weights(self, state_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
         """Fold layer norms into joint QKV/gate_up projections.

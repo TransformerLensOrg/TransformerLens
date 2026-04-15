@@ -1698,6 +1698,18 @@ class ProcessWeights:
             b_V_key = ProcessWeights._get_param_key(f"blocks.{l}.attn.b_V", adapter)
             b_O_key = ProcessWeights._get_param_key(f"blocks.{l}.attn.b_O", adapter)
 
+            # Skip hybrid layers without attention (other loops already guard individually)
+            if W_Q_key not in state_dict:
+                continue
+            # If Q is present, K/V/O must be too
+            for _required_key in [W_K_key, W_V_key, W_O_key]:
+                if _required_key not in state_dict:
+                    raise ValueError(
+                        f"Inconsistent attention weights at layer {l}: "
+                        f"'{W_Q_key}' found but '{_required_key}' missing. "
+                        f"All of W_Q, W_K, W_V, W_O must be present together."
+                    )
+
             # W_QK = W_Q @ W_K.T
             # Concatenate biases to make a d_model+1 input dimension
             W_Q = ProcessWeights.convert_tensor_to_tl_format(

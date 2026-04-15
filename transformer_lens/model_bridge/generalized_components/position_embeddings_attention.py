@@ -15,6 +15,7 @@ from typing import Any, Callable, Dict, Optional
 import torch
 import transformers.models.gemma2.modeling_gemma2 as gemma2_module
 
+from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.generalized_components.attention import (
     AttentionBridge,
 )
@@ -112,39 +113,96 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
     """
 
     def __init__(
-        self, name: str, config: Any, submodules: Optional[Dict[str, Any]] = None, **kwargs
+        self,
+        name: str,
+        config: Any,
+        submodules: Optional[Dict[str, Any]] = None,
+        optional: bool = False,
+        # Accepted for caller compatibility (Granite passes these explicitly)
+        # but always forced to True — this bridge reimplements attention.
+        requires_attention_mask: bool = True,
+        requires_position_embeddings: bool = True,
+        **kwargs,  # absorb any other AttentionBridge kwargs callers may pass
     ):
-        """Initialize Gemma-3 attention bridge.
-
-        Args:
-            name: Component name
-            config: Model configuration
-            submodules: Dictionary of subcomponents
-            **kwargs: Additional arguments passed to AttentionBridge
-        """
-        kwargs["requires_position_embeddings"] = True
-        kwargs["requires_attention_mask"] = True
-        kwargs["maintain_native_attention"] = True
-        super().__init__(name, config, submodules, **kwargs)
+        super().__init__(
+            name,
+            config,
+            submodules,
+            requires_position_embeddings=True,
+            requires_attention_mask=True,
+            maintain_native_attention=True,
+            optional=optional,
+        )
         self._init_position_embedding_hooks()
+        if getattr(config, "gated_q_proj", False):
+            self.hook_q_gate = HookPoint()
+        # Gate on adapter intent; HF-vs-adapter mismatches surface in set_original_component.
+        if submodules is not None and "q_norm" in submodules:
+            self.hook_q_normed = HookPoint()
+        if submodules is not None and "k_norm" in submodules:
+            self.hook_k_normed = HookPoint()
+        self._qk_norm_phase: Optional[str] = None
 
     def set_original_component(self, component: torch.nn.Module) -> None:
-        """Set the original HF component and register for rotary hook firing.
-
-        This overrides the base class method to also:
-        1. Register this bridge in the global registry (for hook_rot_q/hook_rot_k)
-        2. Set up the eager_attention_forward wrapper if not already done
-
-        Args:
-            component: The HuggingFace attention module
-        """
+        """Wire HF module, register for rotary hooks, validate adapter declarations."""
         super().set_original_component(component)
-
-        # Register this bridge instance so the wrapped eager_attention_forward can find it
         _ATTENTION_BRIDGE_REGISTRY[id(component)] = self
-
-        # Ensure the wrapper is set up
         _setup_eager_attention_hook_wrapper()
+        self._validate_submodule_declarations(component)
+        self._qk_norm_phase = self._decide_qk_norm_phase(component)
+
+    def _validate_submodule_declarations(self, hf_attn: torch.nn.Module) -> None:
+        """Raise if adapter omits q/k/v/o or a QK-norm the HF module has."""
+        # Silent fallback to raw HF linears is exactly what caused hook_q/k/v/z
+        # to never fire on 25 adapters; require explicit declaration.
+        missing = [req for req in ("q", "k", "v", "o") if req not in self.submodules]
+        if missing:
+            raise RuntimeError(
+                f"{type(self).__name__} at '{self.name}' is missing required "
+                f"submodules: {missing}. Declare them in the adapter's "
+                f"component_mapping, e.g. submodules={{'q': LinearBridge(name='q_proj'), "
+                f"'k': LinearBridge(name='k_proj'), 'v': LinearBridge(name='v_proj'), "
+                f"'o': LinearBridge(name='o_proj')}}."
+            )
+        # Reverse mismatch (adapter declares, HF lacks) surfaces at norm forward.
+        for norm_name in ("q_norm", "k_norm"):
+            if getattr(hf_attn, norm_name, None) is not None and norm_name not in self.submodules:
+                raise RuntimeError(
+                    f"{type(self).__name__} at '{self.name}': HF module has "
+                    f"'{norm_name}' but adapter did not declare it. Forward would "
+                    f"skip the norm, producing wrong logits vs HF. Add "
+                    f"'{norm_name}': RMSNormalizationBridge(name='{norm_name}', "
+                    f"config=self.cfg) to the attention submodules."
+                )
+
+    def _decide_qk_norm_phase(self, hf_attn: torch.nn.Module) -> Optional[str]:
+        """Dispatch pre/post-reshape norm from weight shape; raise on ambiguity."""
+        if "q_norm" not in self.submodules:
+            return None
+        q_norm = getattr(hf_attn, "q_norm", None)
+        if q_norm is None:
+            raise RuntimeError(f"{self.name}: q_norm declared but HF module has none.")
+
+        weight = getattr(q_norm, "weight", None)
+        head_dim = int(getattr(hf_attn, "head_dim"))
+        n_heads = int(getattr(self.config, "n_heads", 0))
+
+        # Non-learnable norm (Gemma-3 style) broadcasts over head_dim.
+        if weight is None or weight.ndim == 0:
+            return "post_reshape"
+        shape = tuple(weight.shape)
+        if shape == (head_dim,):
+            return "post_reshape"
+        if n_heads and shape == (n_heads * head_dim,):
+            return "pre_reshape"
+        # Per-head norm (Cohere) broadcasts on the reshaped [B,H,S,D] tensor.
+        if n_heads and shape == (n_heads, head_dim):
+            return "post_reshape"
+        raise RuntimeError(
+            f"{self.name}: cannot determine QK-norm phase from q_norm weight "
+            f"shape {shape} (head_dim={head_dim}, n_heads={n_heads}). Expected "
+            f"(head_dim,), (n_heads*head_dim,), or (n_heads, head_dim)."
+        )
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         """Reimplemented forward pass with hooks at correct computation stages.
@@ -191,40 +249,49 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
         if target_dtype is not None and hidden_states.is_floating_point():
             hidden_states = hidden_states.to(dtype=target_dtype)
 
-        # --- Q/K/V Projection + Optional Q/K Norms ---
-        # Detect norm order: pre-reshape (OLMo 2) vs post-reshape (Gemma 3)
         input_shape = hidden_states.shape[:-1]
         head_dim = hf_attn.head_dim
         hidden_shape = (*input_shape, -1, head_dim)
 
-        query_states = hf_attn.q_proj(hidden_states)
-        key_states = hf_attn.k_proj(hidden_states)
-        value_states = hf_attn.v_proj(hidden_states)
+        # Route through LinearBridges so hook_q/k/v/z (aliased to q/k/v.hook_out,
+        # o.hook_in) fire on the live path.
+        query_states = self.q(hidden_states)
+        key_states = self.k(hidden_states)
+        value_states = self.v(hidden_states)
 
-        has_q_norm = hasattr(hf_attn, "q_norm") and hf_attn.q_norm is not None
-        has_k_norm = hasattr(hf_attn, "k_norm") and hf_attn.k_norm is not None
-        applied_pre_reshape_norm = False
+        # Qwen3.5/Qwen3-Next interleave [Q|gate] per head in q_proj output.
+        # Processed-weights mode slices q_proj to standard width beforehand, so
+        # the 2x-width path only triggers on unprocessed state dicts.
+        q_gate = None
+        if getattr(self.config, "gated_q_proj", False):
+            q_dim = query_states.shape[-1]
+            n_heads = getattr(self.config, "n_heads", q_dim // head_dim)
+            standard_q_dim = n_heads * head_dim
+            if q_dim == standard_q_dim * 2:
+                query_states, q_gate = torch.chunk(
+                    query_states.view(*input_shape, -1, head_dim * 2), 2, dim=-1
+                )
+                q_gate = q_gate.reshape(*input_shape, -1)
+                query_states = query_states.reshape(*input_shape, -1)
 
-        if has_q_norm:
-            try:
-                # Try pre-reshape norm (OLMo 2 style: norm on flat [batch, seq, hidden])
-                query_states = hf_attn.q_norm(query_states)
-                if has_k_norm:
-                    key_states = hf_attn.k_norm(key_states)
-                applied_pre_reshape_norm = True
-            except RuntimeError:
-                # Shape mismatch — this model uses post-reshape norms
-                pass
+        has_q_norm = "q_norm" in self.submodules
+        has_k_norm = "k_norm" in self.submodules
+
+        # Pre-reshape phase (OLMo-2): norm on [B, S, H*D].
+        if has_q_norm and self._qk_norm_phase == "pre_reshape":
+            query_states = self.hook_q_normed(self.q_norm(query_states))
+            if has_k_norm:
+                key_states = self.hook_k_normed(self.k_norm(key_states))
 
         query_states = query_states.view(hidden_shape).transpose(1, 2)
         key_states = key_states.view(hidden_shape).transpose(1, 2)
         value_states = value_states.view(hidden_shape).transpose(1, 2)
 
-        if has_q_norm and not applied_pre_reshape_norm:
-            # Post-reshape norm (Gemma 3 style: norm on [batch, heads, seq, head_dim])
-            query_states = hf_attn.q_norm(query_states)
-        if has_k_norm and not applied_pre_reshape_norm:
-            key_states = hf_attn.k_norm(key_states)
+        # Post-reshape phase (Gemma-3/Cohere): norm on [B, H, S, D].
+        if has_q_norm and self._qk_norm_phase == "post_reshape":
+            query_states = self.hook_q_normed(self.q_norm(query_states))
+            if has_k_norm:
+                key_states = self.hook_k_normed(self.k_norm(key_states))
 
         # --- RoPE ---
         if position_embeddings is not None:
@@ -306,14 +373,15 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
         attn_output = attn_output.transpose(1, 2).contiguous()
         attn_output = attn_output.reshape(*input_shape, -1)
 
-        # --- Output Projection ---
-        # Different architectures name this differently: o_proj (Llama, Gemma, Qwen),
-        # dense (Phi), out_proj (others)
-        o_proj = getattr(hf_attn, "o_proj", None) or getattr(hf_attn, "dense", None)
-        if o_proj is not None:
-            attn_output = o_proj(attn_output)
+        # --- Gated attention (Qwen3.5/Qwen3Next) ---
+        if q_gate is not None:
+            if hasattr(self, "hook_q_gate"):
+                q_gate = self.hook_q_gate(q_gate)
+            attn_output = attn_output * torch.sigmoid(q_gate)
 
-        # --- Output Hook ---
+        # Route through LinearBridge so hook_z (aliased to o.hook_in) fires.
+        # LinearBridge wraps whichever HF attr the adapter mapped (o_proj, dense, out_proj).
+        attn_output = self.o(attn_output)
         attn_output = self.hook_out(attn_output)
 
         return attn_output, attn_weights

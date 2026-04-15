@@ -311,8 +311,12 @@ class ComponentBenchmarker:
                 n_layers = self.cfg.n_layers
 
                 for layer_idx in range(n_layers):
-                    # Recursively test each subcomponent and its nested subcomponents
+                    # Get the actual block to check which submodules were bound
+                    actual_block = getattr(self.bridge_model, block_type)[layer_idx]
                     for subcomp_name, subcomponent in blocks_component.submodules.items():
+                        # Skip optional submodules absent on this layer (hybrid architectures)
+                        if subcomp_name not in actual_block._modules:
+                            continue
                         comp_path = f"{block_type}.{layer_idx}.{subcomp_name}"
                         self._test_component_recursive(
                             comp_path, subcomponent, test_inputs, results, skip_components
@@ -415,15 +419,14 @@ class ComponentBenchmarker:
         ):
             return
 
-        # Skip BLOOM and T5 attention and MLP components - they have custom signatures that require
-        # residual connections, alibi bias, or cache_position from the full model context
+        # Skip models whose MLP/attn forward signatures require extra context from the block:
+        # - BLOOM: MLP requires residual and alibi bias
+        # - T5: requires cache_position for relative position embeddings
+        # - MPT: MLP.forward(hidden_states, residual) performs the residual addition internally
         if "attn" in component_path or "mlp" in component_path:
-            # Check if this is a BLOOM or T5 model by looking at the HF model config
             hf_model_config = getattr(self.hf_model, "config", None)
             if hf_model_config and hasattr(hf_model_config, "model_type"):
-                # BLOOM requires residual and alibi bias
-                # T5 requires cache_position for relative position embeddings
-                if hf_model_config.model_type in ["bloom", "t5"]:
+                if hf_model_config.model_type in ["bloom", "t5", "mpt"]:
                     return
 
         # Skip components that require specific shaped inputs from their parent modules

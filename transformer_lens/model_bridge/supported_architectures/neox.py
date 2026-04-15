@@ -16,12 +16,12 @@ from transformer_lens.conversion_utils.param_processing_conversion import (
 )
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
-    BlockBridge,
     EmbeddingBridge,
     JointQKVPositionEmbeddingsAttentionBridge,
     LinearBridge,
     MLPBridge,
     NormalizationBridge,
+    ParallelBlockBridge,
     RotaryEmbeddingBridge,
     UnembeddingBridge,
 )
@@ -44,6 +44,7 @@ class NeoxArchitectureAdapter(ArchitectureAdapter):
         self.cfg.final_rms = False
         self.cfg.gated_mlp = False
         self.cfg.attn_only = False
+        self.cfg.parallel_attn_mlp = True
 
         # NeoX/Pythia models were not trained with BOS tokens
         self.cfg.default_prepend_bos = False
@@ -137,7 +138,7 @@ class NeoxArchitectureAdapter(ArchitectureAdapter):
         self.component_mapping = {
             "embed": EmbeddingBridge(name="gpt_neox.embed_in"),
             "rotary_emb": RotaryEmbeddingBridge(name="gpt_neox.rotary_emb"),
-            "blocks": BlockBridge(
+            "blocks": ParallelBlockBridge(
                 name="gpt_neox.layers",
                 submodules={
                     "ln1": NormalizationBridge(

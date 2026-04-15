@@ -15,6 +15,17 @@ from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
 
+# Layer-type variant submodule names. Tuple for deterministic iteration order.
+# Extend here when adding new hybrid variant types.
+VARIANT_SUBMODULE_NAMES: tuple[str, ...] = ("attn", "linear_attn", "mamba", "mixer", "ssm")
+_VARIANT_SUBMODULE_SET: frozenset[str] = frozenset(VARIANT_SUBMODULE_NAMES)
+
+# Infrastructure modules excluded from submodule introspection.
+_BLOCK_INTERNAL_MODULES: frozenset[str] = frozenset({"hook_in", "hook_out", "_original_component"})
+
+# Norm-module prefixes excluded from layer_types() labels.
+_NORM_PREFIXES: tuple[str, ...] = ("ln", "layer_norm", "norm", "rms")
+
 
 class BlockBridge(GeneralizedComponent):
     """Bridge component for transformer blocks.
@@ -54,20 +65,31 @@ class BlockBridge(GeneralizedComponent):
                 For example, {"hook_attn_out": "ln1_post.hook_out"} will make hook_attn_out
                 point to ln1_post.hook_out instead of the default attn.hook_out.
         """
-        # Apply automatic aliases based on submodules before calling parent
-        # This allows submodule-based aliases to be combined with explicit overrides
+        # ln1_post/ln2_post redirect attn_out/mlp_out to match HookedTransformer's
+        # placement (hook fires after the post-norm, not before).
         auto_overrides = {}
         if submodules is not None:
-            # If ln1_post exists, hook_attn_out should point to it instead of attn.hook_out
-            # This matches HookedTransformer behavior where ln1_post is applied before hook_attn_out
             if "ln1_post" in submodules:
                 auto_overrides["hook_attn_out"] = "ln1_post.hook_out"
-            # If ln2_post exists, hook_mlp_out should point to it instead of mlp.hook_out
             if "ln2_post" in submodules:
                 auto_overrides["hook_mlp_out"] = "ln2_post.hook_out"
-
-        # Merge automatic and explicit overrides (explicit takes precedence)
         merged_overrides = {**auto_overrides, **(hook_alias_overrides or {})}
+
+        # Guard against the C15 bug class: sequential transformer block (attn +
+        # mlp) with no ln2 would silently point hook_resid_mid at the wrong
+        # tensor. Use ParallelBlockBridge for parallel-residual architectures.
+        # Skip the check on generic-container / attn-only uses (no mlp).
+        has_attn_like = submodules is not None and any(
+            k in submodules for k in _VARIANT_SUBMODULE_SET
+        )
+        has_mlp = submodules is not None and "mlp" in submodules
+        has_ln2 = submodules is not None and "ln2" in submodules
+        if has_attn_like and has_mlp and not has_ln2 and type(self) is BlockBridge:
+            raise ValueError(
+                f"BlockBridge at '{name}': 'ln2' submodule not declared. "
+                f"Either declare ln2, or use ParallelBlockBridge for a "
+                f"parallel-residual architecture."
+            )
 
         # Call parent with merged overrides
         super().__init__(
@@ -76,6 +98,7 @@ class BlockBridge(GeneralizedComponent):
             submodules=submodules if submodules is not None else {},
             hook_alias_overrides=merged_overrides if merged_overrides else None,
         )
+
         self._original_block_forward: Optional[Callable[..., Any]] = None
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:
@@ -215,3 +238,33 @@ class BlockBridge(GeneralizedComponent):
             # If we can't inspect the signature, pass through all kwargs
             # (better to potentially fail than to silently drop important params)
             return kwargs
+
+
+class ParallelBlockBridge(BlockBridge):
+    """Block where attn and MLP both read the pre-attention residual.
+
+    For GPT-J, NeoX, Pythia, Phi, Cohere, CodeGen, and some Falcon variants,
+    output = resid_pre + attn_out + mlp_out — no distinct post-attention
+    residual exists. Matches legacy HookedTransformer which omits hook_resid_mid
+    when ``cfg.parallel_attn_mlp=True``. Type-level distinction means a reader
+    of the adapter sees ``ParallelBlockBridge`` and knows the hook is absent.
+    """
+
+    def __init__(
+        self,
+        name: str,
+        config: Optional[Any] = None,
+        submodules: Optional[Dict[str, GeneralizedComponent]] = None,
+        hook_alias_overrides: Optional[Dict[str, str]] = None,
+    ):
+        super().__init__(
+            name,
+            config=config,
+            submodules=submodules,
+            hook_alias_overrides=hook_alias_overrides,
+        )
+        # Ensure instance-level copy before mutating; base may have left the
+        # class-level dict shared when no overrides were passed.
+        if self.hook_aliases is BlockBridge.hook_aliases:
+            self.hook_aliases = dict(self.hook_aliases)
+        self.hook_aliases.pop("hook_resid_mid", None)
