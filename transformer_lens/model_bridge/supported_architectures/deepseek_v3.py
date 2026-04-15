@@ -11,11 +11,11 @@ from typing import Any
 
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
-    BlockBridge,
     EmbeddingBridge,
     GatedMLPBridge,
     LinearBridge,
     MLAAttentionBridge,
+    MLABlockBridge,
     MoEBridge,
     RMSNormalizationBridge,
     RotaryEmbeddingBridge,
@@ -49,7 +49,7 @@ class DeepSeekV3ArchitectureAdapter(ArchitectureAdapter):
         self.component_mapping = {
             "embed": EmbeddingBridge(name="model.embed_tokens"),
             "rotary_emb": RotaryEmbeddingBridge(name="model.rotary_emb", config=self.cfg),
-            "blocks": BlockBridge(
+            "blocks": MLABlockBridge(
                 name="model.layers",
                 submodules={
                     "ln1": RMSNormalizationBridge(name="input_layernorm", config=self.cfg),
