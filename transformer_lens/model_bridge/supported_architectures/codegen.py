@@ -10,12 +10,12 @@ from transformer_lens.conversion_utils.param_processing_conversion import (
 )
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
-    BlockBridge,
     CodeGenAttentionBridge,
     EmbeddingBridge,
     LinearBridge,
     MLPBridge,
     NormalizationBridge,
+    ParallelBlockBridge,
     UnembeddingBridge,
 )
 
@@ -68,7 +68,7 @@ class CodeGenArchitectureAdapter(ArchitectureAdapter):
 
         self.component_mapping = {
             "embed": EmbeddingBridge(name="transformer.wte"),
-            "blocks": BlockBridge(
+            "blocks": ParallelBlockBridge(
                 name="transformer.h",
                 submodules={
                     "ln1": NormalizationBridge(name="ln_1", config=self.cfg),
