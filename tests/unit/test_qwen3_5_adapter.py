@@ -30,6 +30,7 @@ except ImportError:
 # Test: Registration
 # ============================================================================
 
+
 @pytest.mark.skipif(
     not _QWEN3_5_AVAILABLE,
     reason="Qwen3_5TextConfig / Qwen3_5ForCausalLM not available in installed transformers",
