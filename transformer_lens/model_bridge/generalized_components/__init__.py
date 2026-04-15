@@ -5,7 +5,10 @@ from transformer_lens.model_bridge.generalized_components.attention import (
 from transformer_lens.model_bridge.generalized_components.audio_feature_extractor import (
     AudioFeatureExtractorBridge,
 )
-from transformer_lens.model_bridge.generalized_components.block import BlockBridge
+from transformer_lens.model_bridge.generalized_components.block import (
+    BlockBridge,
+    ParallelBlockBridge,
+)
 from transformer_lens.model_bridge.generalized_components.bloom_attention import (
     BloomAttentionBridge,
 )
@@ -94,6 +97,7 @@ __all__ = [
     "AttentionBridge",
     "AudioFeatureExtractorBridge",
     "BlockBridge",
+    "ParallelBlockBridge",
     "BloomBlockBridge",
     "BloomAttentionBridge",
     "CodeGenAttentionBridge",

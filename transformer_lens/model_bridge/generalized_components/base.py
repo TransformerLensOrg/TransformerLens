@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import inspect
+import warnings
 from collections.abc import Callable
 from typing import Any, Dict, List, Optional, Union
 
@@ -91,24 +92,37 @@ class GeneralizedComponent(nn.Module):
         if self.property_aliases:
             self._property_alias_registry.update(self.property_aliases)
         for alias_name, target_path in self._hook_alias_registry.items():
-            try:
-                if isinstance(target_path, list):
-                    for single_target in target_path:
-                        try:
-                            target_obj = self
-                            for part in single_target.split("."):
-                                target_obj = getattr(target_obj, part)
-                            object.__setattr__(self, alias_name, target_obj)
-                            break
-                        except AttributeError:
-                            continue
-                else:
+            resolved = False
+            if isinstance(target_path, list):
+                for single_target in target_path:
+                    try:
+                        target_obj = self
+                        for part in single_target.split("."):
+                            target_obj = getattr(target_obj, part)
+                        object.__setattr__(self, alias_name, target_obj)
+                        resolved = True
+                        break
+                    except AttributeError:
+                        continue
+            else:
+                try:
                     target_obj = self
                     for part in target_path.split("."):
                         target_obj = getattr(target_obj, part)
                     object.__setattr__(self, alias_name, target_obj)
-            except AttributeError:
-                pass
+                    resolved = True
+                except AttributeError:
+                    pass
+            if not resolved:
+                # Surface drops instead of silently swallowing — some aliases are
+                # legitimately conditional on optional submodules, but an author
+                # needs to see which ones dropped at bridge-init.
+                warnings.warn(
+                    f"Hook alias '{alias_name}' -> '{target_path}' on "
+                    f"{type(self).__name__}(name={getattr(self, 'name', None)!r}) "
+                    f"did not resolve; this hook will not be accessible.",
+                    stacklevel=2,
+                )
         for alias_name, target_path in self._property_alias_registry.items():
             try:
                 target_obj = self

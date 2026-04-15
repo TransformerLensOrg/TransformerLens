@@ -16,11 +16,11 @@ import torch
 
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
-    BlockBridge,
     EmbeddingBridge,
     GatedMLPBridge,
     LinearBridge,
     NormalizationBridge,
+    ParallelBlockBridge,
     PositionEmbeddingsAttentionBridge,
     RotaryEmbeddingBridge,
     UnembeddingBridge,
@@ -119,7 +119,7 @@ class CohereArchitectureAdapter(ArchitectureAdapter):
             # Rotary embedding: top-level, delegates to CohereRotaryEmbedding.
             # Pattern matches llama.py:75 and falcon.py:154 — NOT inside blocks.
             "rotary_emb": RotaryEmbeddingBridge(name="model.rotary_emb", config=self.cfg),
-            "blocks": BlockBridge(
+            "blocks": ParallelBlockBridge(
                 name="model.layers",
                 submodules={
                     # Single pre-norm only — Cohere has no post_attention_layernorm.

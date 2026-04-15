@@ -23,6 +23,7 @@ from transformer_lens.model_bridge.generalized_components import (
     LinearBridge,
     MLPBridge,
     NormalizationBridge,
+    ParallelBlockBridge,
     RotaryEmbeddingBridge,
     UnembeddingBridge,
 )
@@ -143,9 +144,11 @@ class FalconArchitectureAdapter(ArchitectureAdapter):
         elif self._is_new_arch and getattr(cfg, "num_ln_in_parallel_attn", None) == 2:
             block_submodules["ln2"] = NormalizationBridge(name="ln_mlp", config=self.cfg)
 
+        # Falcon has both parallel (most checkpoints) and sequential variants.
+        block_cls = ParallelBlockBridge if is_parallel else BlockBridge
         self.component_mapping: dict[str, Any] = {
             "embed": EmbeddingBridge(name="transformer.word_embeddings"),
-            "blocks": BlockBridge(name="transformer.h", submodules=block_submodules),
+            "blocks": block_cls(name="transformer.h", submodules=block_submodules),
             "ln_final": NormalizationBridge(name="transformer.ln_f", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head"),
         }
