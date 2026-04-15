@@ -68,8 +68,16 @@ def benchmark_weight_processing(
                 )
 
             # Check weight centering - writing weights should be approximately centered
-            bridge_w_out = bridge.blocks[0].mlp.W_out
-            reference_w_out = reference_model.blocks[0].mlp.W_out  # type: ignore[union-attr]
+            mlp_blocks = bridge.blocks_with("mlp")
+            if not mlp_blocks:
+                return BenchmarkResult(
+                    name="weight_processing",
+                    severity=BenchmarkSeverity.WARNING,
+                    message="No blocks have MLP submodule — cannot check centering",
+                )
+            _mlp_idx, mlp_block = mlp_blocks[0]
+            bridge_w_out = mlp_block.mlp.W_out
+            reference_w_out = reference_model.blocks[_mlp_idx].mlp.W_out  # type: ignore[union-attr]
 
             bridge_mean = torch.mean(torch.abs(torch.mean(bridge_w_out, dim=-1, keepdim=True)))
             reference_mean = torch.mean(
@@ -141,10 +149,20 @@ def benchmark_weight_sharing(
         if reference_model is not None:
             reference_original = reference_model(test_text, return_type="loss")
 
+            # Find first block with attention (hybrid models may not have attn on block 0)
+            bridge_attn_blocks = bridge.blocks_with("attn")
+            if not bridge_attn_blocks:
+                return BenchmarkResult(
+                    name="weight_sharing",
+                    severity=BenchmarkSeverity.INFO,
+                    message="No blocks have attention submodule — skipping weight sharing check",
+                )
+            bridge_attn_idx, bridge_attn_block = bridge_attn_blocks[0]
+
             # Verify weights are identical before modification
-            bridge_W_V = torch.clone(cast(torch.Tensor, bridge.blocks[0].attn.W_V))
+            bridge_W_V = torch.clone(cast(torch.Tensor, bridge_attn_block.attn.W_V))
             reference_W_V = torch.clone(
-                cast(torch.Tensor, reference_model.blocks[0].attn.W_V)  # type: ignore[union-attr]
+                cast(torch.Tensor, reference_model.blocks[bridge_attn_idx].attn.W_V)  # type: ignore[union-attr]
             )
 
             # Check if models have GQA (different head counts for K/V vs Q)
@@ -188,8 +206,8 @@ def benchmark_weight_sharing(
 
             # Modify weights in both models
             with torch.no_grad():
-                bridge.blocks[0].attn.W_V[0, :, :] = 0  # type: ignore[union-attr,operator]
-                reference_model.blocks[0].attn.W_V[0, :, :] = 0  # type: ignore[union-attr,operator]
+                bridge_attn_block.attn.W_V[0, :, :] = 0  # type: ignore[union-attr,operator]
+                reference_model.blocks[bridge_attn_idx].attn.W_V[0, :, :] = 0  # type: ignore[union-attr,operator]
 
             # Test modified losses
             bridge_modified = bridge(test_text, return_type="loss")
@@ -200,8 +218,8 @@ def benchmark_weight_sharing(
 
             # Restore weights
             with torch.no_grad():
-                bridge.blocks[0].attn.W_V.copy_(bridge_W_V)  # type: ignore[union-attr,operator,arg-type]
-                reference_model.blocks[0].attn.W_V.copy_(reference_W_V)  # type: ignore[union-attr,operator,arg-type]
+                bridge_attn_block.attn.W_V.copy_(bridge_W_V)  # type: ignore[union-attr,operator,arg-type]
+                reference_model.blocks[bridge_attn_idx].attn.W_V.copy_(reference_W_V)  # type: ignore[union-attr,operator,arg-type]
 
             diff = abs(bridge_change - reference_change)
             if diff < atol:
@@ -220,16 +238,26 @@ def benchmark_weight_sharing(
                 )
 
         # No reference model - just verify modification has an effect
-        original_W_V = bridge.blocks[0].attn.W_V.clone()
+        # Find first block with attention (hybrid models may not have attn on block 0)
+        bridge_attn_blocks = bridge.blocks_with("attn")
+        if not bridge_attn_blocks:
+            return BenchmarkResult(
+                name="weight_sharing",
+                severity=BenchmarkSeverity.INFO,
+                message="No blocks have attention submodule — skipping weight sharing check",
+            )
+        _ws_idx, ws_attn_block = bridge_attn_blocks[0]
+
+        original_W_V = ws_attn_block.attn.W_V.clone()
         with torch.no_grad():
-            bridge.blocks[0].attn.W_V[0, :, :] = 0
+            ws_attn_block.attn.W_V[0, :, :] = 0
 
         bridge_modified = bridge(test_text, return_type="loss")
         change = abs(bridge_modified - bridge_original)
 
         # Restore weights
         with torch.no_grad():
-            bridge.blocks[0].attn.W_V.copy_(original_W_V)
+            ws_attn_block.attn.W_V.copy_(original_W_V)
 
         if change < 1e-6:
             return BenchmarkResult(
@@ -274,16 +302,26 @@ def benchmark_weight_modification(
         # Get original loss
         original_loss = bridge(test_text, return_type="loss")
 
+        # Find first block with attention (hybrid models may not have attn on block 0)
+        wm_attn_blocks = bridge.blocks_with("attn")
+        if not wm_attn_blocks:
+            return BenchmarkResult(
+                name="weight_modification",
+                severity=BenchmarkSeverity.INFO,
+                message="No blocks have attention submodule — skipping weight modification check",
+            )
+        _wm_idx, wm_attn_block = wm_attn_blocks[0]
+
         # Modify W_V weights
         with torch.no_grad():
-            original_w_v = bridge.blocks[0].attn.W_V.clone()
+            original_w_v = wm_attn_block.attn.W_V.clone()
             # Check dimensionality - GQA models may have 2D tensors instead of 3D
             if original_w_v.ndim == 3:
                 # Standard 3D tensor: [n_heads, d_model, d_head]
-                bridge.blocks[0].attn.W_V[0, :, :] = 0
+                wm_attn_block.attn.W_V[0, :, :] = 0
             elif original_w_v.ndim == 2:
                 # 2D tensor (e.g., GQA models): [n_heads * d_head, d_model] or similar
-                bridge.blocks[0].attn.W_V[0, :] = 0
+                wm_attn_block.attn.W_V[0, :] = 0
             else:
                 return BenchmarkResult(
                     name="weight_modification",
@@ -298,7 +336,7 @@ def benchmark_weight_modification(
         except Exception as forward_error:
             # Restore weights before reporting error
             with torch.no_grad():
-                bridge.blocks[0].attn.W_V.copy_(original_w_v)
+                wm_attn_block.attn.W_V.copy_(original_w_v)
 
             # Some models (e.g., models with complex attention mechanisms) may have
             # forward pass issues after weight modification. Report as skipped.
@@ -311,7 +349,7 @@ def benchmark_weight_modification(
 
         # Restore weights
         with torch.no_grad():
-            bridge.blocks[0].attn.W_V.copy_(original_w_v)
+            wm_attn_block.attn.W_V.copy_(original_w_v)
 
         # Loss should change
         change = abs(modified_loss - original_loss)
@@ -321,13 +359,17 @@ def benchmark_weight_modification(
             # is separate from the combined QKV weight used in forward.
             # Try MLP weight modification as fallback.
             mlp_fallback_error = None
+            mlp_blocks = bridge.blocks_with("mlp")
+            mlp_block = mlp_blocks[0][1] if mlp_blocks else None
             try:
+                if mlp_block is None:
+                    raise AttributeError("No blocks have mlp submodule")
                 with torch.no_grad():
-                    original_mlp_w = bridge.blocks[0].mlp.out.weight.clone()
-                    bridge.blocks[0].mlp.out.weight[0, :] = 0
+                    original_mlp_w = mlp_block.mlp.out.weight.clone()
+                    mlp_block.mlp.out.weight[0, :] = 0
                 mlp_modified_loss = bridge(test_text, return_type="loss")
                 with torch.no_grad():
-                    bridge.blocks[0].mlp.out.weight.copy_(original_mlp_w)
+                    mlp_block.mlp.out.weight.copy_(original_mlp_w)
                 mlp_change = abs(mlp_modified_loss - original_loss)
                 if mlp_change > 1e-6:
                     return BenchmarkResult(
@@ -516,8 +558,19 @@ def benchmark_attention_output_centering(
                 message="Skipped for tiny/test model (random weights don't center meaningfully)",
             )
 
-        # Check if W_O exists and is accessible
-        if not hasattr(bridge.blocks[0].attn, "W_O"):
+        # Find blocks with attention (hybrid architectures may not have attn on all blocks)
+        attn_blocks = bridge.blocks_with("attn")
+        if not attn_blocks:
+            return BenchmarkResult(
+                name="attention_output_centering",
+                severity=BenchmarkSeverity.WARNING,
+                message="No blocks have attention submodule",
+                passed=False,
+            )
+
+        # Check W_O accessibility on first attention block
+        first_idx, first_attn_block = attn_blocks[0]
+        if not hasattr(first_attn_block.attn, "W_O"):
             return BenchmarkResult(
                 name="attention_output_centering",
                 severity=BenchmarkSeverity.WARNING,
@@ -525,26 +578,31 @@ def benchmark_attention_output_centering(
                 passed=False,
             )
 
-        w_o = bridge.blocks[0].attn.W_O
-
-        # Compute mean along output dimension
-        mean_abs = torch.mean(torch.abs(torch.mean(w_o, dim=-1))).item()
-
+        # Compute mean across all attention blocks
         tolerance = 0.01  # 1% tolerance
+        worst_mean = 0.0
+        for idx, block in attn_blocks:
+            w_o = block.attn.W_O
+            mean_abs = torch.mean(torch.abs(torch.mean(w_o, dim=-1))).item()
+            worst_mean = max(worst_mean, mean_abs)
 
-        if mean_abs < tolerance:
+        n_attn = len(attn_blocks)
+        n_total = len(bridge.blocks)
+        block_info = f" ({n_attn}/{n_total} blocks have attention)" if n_attn < n_total else ""
+
+        if worst_mean < tolerance:
             return BenchmarkResult(
                 name="attention_output_centering",
                 severity=BenchmarkSeverity.INFO,
-                message=f"Attention output centering verified (mean={mean_abs:.6f})",
-                details={"mean": mean_abs, "tolerance": tolerance},
+                message=f"Attention output centering verified (worst_mean={worst_mean:.6f}){block_info}",
+                details={"mean": worst_mean, "tolerance": tolerance, "n_attn_blocks": n_attn},
             )
         else:
             return BenchmarkResult(
                 name="attention_output_centering",
                 severity=BenchmarkSeverity.WARNING,
-                message=f"Attention output weights not well-centered (mean={mean_abs:.6f})",
-                details={"mean": mean_abs, "tolerance": tolerance},
+                message=f"Attention output weights not well-centered (worst_mean={worst_mean:.6f}){block_info}",
+                details={"mean": worst_mean, "tolerance": tolerance, "n_attn_blocks": n_attn},
                 passed=False,
             )
 
@@ -743,8 +801,20 @@ def benchmark_value_bias_folding(
                     },
                 )
 
+        # Find blocks with attention (hybrid architectures may not have attn on all blocks)
+        attn_blocks = bridge.blocks_with("attn")
+        if not attn_blocks:
+            return BenchmarkResult(
+                name="value_bias_folding",
+                severity=BenchmarkSeverity.INFO,
+                message="No blocks have attention submodule (expected for hybrid models without mapped attn)",
+                details={"has_bias": False},
+            )
+
+        first_idx, first_attn_block = attn_blocks[0]
+
         # Check if b_V exists
-        if not hasattr(bridge.blocks[0].attn, "b_V"):
+        if not hasattr(first_attn_block.attn, "b_V"):
             return BenchmarkResult(
                 name="value_bias_folding",
                 severity=BenchmarkSeverity.INFO,
@@ -752,7 +822,7 @@ def benchmark_value_bias_folding(
                 details={"has_bias": False},
             )
 
-        b_v = bridge.blocks[0].attn.b_V
+        b_v = first_attn_block.attn.b_V
 
         if b_v is None:
             return BenchmarkResult(

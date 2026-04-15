@@ -2,7 +2,10 @@ from __future__ import annotations
 
 "Component setup utilities for creating and configuring bridged components."
 import copy
+import logging
 from typing import TYPE_CHECKING, Any, cast
+
+logger = logging.getLogger(__name__)
 
 import torch.nn as nn
 
@@ -67,6 +70,7 @@ def setup_submodules(
         architecture_adapter: The architecture adapter
         original_model: The original model to get components from
     """
+    skipped_optional: list[str] = []
     for module_name, submodule in component.submodules.items():
         if submodule.is_list_item:
             if submodule.name is None:
@@ -95,9 +99,39 @@ def setup_submodules(
                     original_subcomponent = original_model
                 else:
                     remote_path = submodule.name
-                    original_subcomponent = architecture_adapter.get_remote_component(
-                        original_model, remote_path
-                    )
+                    is_optional = getattr(submodule, "optional", False)
+                    # Fast path: if the first path segment is absent, skip
+                    # immediately. This catches the common hybrid case (e.g.,
+                    # "self_attn" absent on an SSM layer) without entering
+                    # get_remote_component.
+                    first_segment = remote_path.split(".")[0]
+                    if is_optional and not hasattr(original_model, first_segment):
+                        logger.debug(
+                            "Optional submodule '%s' (path '%s') absent on %s — skipping",
+                            module_name,
+                            remote_path,
+                            getattr(component, "name", "unknown"),
+                        )
+                        skipped_optional.append(module_name)
+                        continue  # hybrid layer lacks this submodule; skip binding
+                    # Full resolution — also catches deeper path failures
+                    # (e.g., "self_attn.q_proj" where self_attn exists as a
+                    # stub but q_proj is missing).
+                    try:
+                        original_subcomponent = architecture_adapter.get_remote_component(
+                            original_model, remote_path
+                        )
+                    except AttributeError:
+                        if is_optional:
+                            logger.debug(
+                                "Optional submodule '%s' (path '%s') partially absent on %s — skipping",
+                                module_name,
+                                remote_path,
+                                getattr(component, "name", "unknown"),
+                            )
+                            skipped_optional.append(module_name)
+                            continue
+                        raise
                 submodule.set_original_component(original_subcomponent)
                 setup_submodules(submodule, architecture_adapter, original_subcomponent)
                 if submodule.name is not None:
@@ -110,6 +144,12 @@ def setup_submodules(
             # Add to real_components mapping (for non-list components)
             if not submodule.is_list_item and submodule.name is not None:
                 component.real_components[module_name] = (submodule.name, submodule)
+
+    # Remove skipped optional submodules from the template so that
+    # architecture_adapter traversal code (which reads .submodules) doesn't
+    # find them and try to resolve against the HF model.
+    for name in skipped_optional:
+        component.submodules.pop(name, None)
 
 
 def setup_components(

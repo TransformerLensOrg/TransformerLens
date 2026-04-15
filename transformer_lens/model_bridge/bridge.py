@@ -3,7 +3,9 @@
 This module provides the bridge components that wrap remote model components and provide
 a consistent interface for accessing their weights and performing operations.
 """
+import logging
 import re
+import warnings
 from contextlib import contextmanager
 from functools import lru_cache
 from typing import (
@@ -32,9 +34,16 @@ from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.component_setup import set_original_components
+from transformer_lens.model_bridge.composition_scores import CompositionScores
 from transformer_lens.model_bridge.exceptions import StopAtLayerException
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
+)
+from transformer_lens.model_bridge.generalized_components.block import (
+    _BLOCK_INTERNAL_MODULES,
+    _NORM_PREFIXES,
+    _VARIANT_SUBMODULE_SET,
+    VARIANT_SUBMODULE_NAMES,
 )
 from transformer_lens.model_bridge.get_params_util import get_bridge_params
 from transformer_lens.utilities.aliases import resolve_alias
@@ -45,6 +54,14 @@ if TYPE_CHECKING:
     from transformer_lens.ActivationCache import ActivationCache
 
 _BLOCK_PATTERN = re.compile("blocks\\.(\\d+)")
+
+
+def _resolve_attr_path(obj: nn.Module, attr_path: str) -> torch.Tensor:
+    """Walk a dot-separated attribute path and return the final tensor."""
+    result = obj
+    for attr in attr_path.split("."):
+        result = getattr(result, attr)
+    return cast(torch.Tensor, result)
 
 
 def build_alias_to_canonical_map(hook_dict, prefix=""):
@@ -247,7 +264,7 @@ class TransformerBridge(nn.Module):
         if not hasattr(self, "blocks"):
             return
         for block in self.blocks:
-            if not hasattr(block, "attn"):
+            if "attn" not in block._modules:
                 continue
             attn = block.attn
             if not (hasattr(attn, "q") and hasattr(attn.q, "weight")):
@@ -1003,20 +1020,114 @@ class TransformerBridge(nn.Module):
             return str(token[0])
         raise AssertionError("Expected a single string token.")
 
+    def blocks_with(self, submodule: str) -> List[Tuple[int, "GeneralizedComponent"]]:
+        """Return (index, block) pairs for blocks that have the named submodule.
+
+        Hybrid architectures have heterogeneous blocks — some layers have
+        attention, others have SSM or linear attention, etc. Use this instead
+        of assuming blocks[0] is representative.
+
+        Only returns blocks where the submodule was explicitly set up as a
+        bridged component (registered in _modules), not submodules that happen
+        to exist on the underlying HF model.
+
+        Args:
+            submodule: Name of the submodule to check for (e.g., "attn", "mamba")
+
+        Returns:
+            List of (layer_index, block) tuples for blocks that have the submodule.
+        """
+        if not hasattr(self, "blocks"):
+            return []
+        return [(i, block) for i, block in enumerate(self.blocks) if submodule in block._modules]
+
+    def stack_params_for(
+        self, submodule: str, attr_path: str, reshape_fn: Optional[Callable] = None
+    ) -> Tuple[List[int], torch.Tensor]:
+        """Stack a parameter across blocks that have a specific submodule.
+
+        For hybrid architectures where only some blocks have attention (or SSM,
+        etc.), this returns the stacked tensor for only matching blocks along
+        with their layer indices.
+
+        Args:
+            submodule: Submodule to filter on (e.g., "attn", "mamba")
+            attr_path: Dot-separated attr path from block (e.g., "attn.W_K")
+            reshape_fn: Optional function to reshape each weight before stacking
+
+        Returns:
+            Tuple of (layer_indices, stacked_tensor) where layer_indices maps
+            position i in the tensor to the original layer index.
+
+        Raises:
+            ValueError: If no blocks have the requested submodule.
+        """
+        matching = self.blocks_with(submodule)
+        if not matching:
+            raise ValueError(
+                f"No blocks have submodule '{submodule}'. "
+                f"Available submodules can be checked with blocks_with()."
+            )
+        indices: List[int] = []
+        weights: List[torch.Tensor] = []
+        for idx, block in matching:
+            w = _resolve_attr_path(block, attr_path)
+            if reshape_fn is not None:
+                w = reshape_fn(w)
+            weights.append(w)
+            indices.append(idx)
+        return indices, torch.stack(weights, dim=0)
+
     def _stack_block_params(
         self, attr_path: str, reshape_fn: Optional[Callable] = None
     ) -> torch.Tensor:
-        """Stack a parameter across all blocks.
+        """Stack a parameter across all blocks, or across matching blocks for hybrids.
+
+        For homogeneous models, returns a tensor of shape [n_layers, ...].
+        For hybrid models where some blocks lack the requested submodule,
+        returns a tensor of shape [n_matching_blocks, ...] and emits a
+        one-time warning about the index mapping.
 
         Args:
             attr_path: Dot-separated attribute path from block (e.g., "attn.W_K")
             reshape_fn: Optional function to reshape each weight before stacking
+
+        Note:
+            The guard checks only that the first path segment is a bridged
+            submodule (in _modules). Deeper segments resolve via standard
+            getattr, which may fall through to HF model attributes. This is
+            intentional — properties like W_Q are exposed via __getattr__
+            delegation to the underlying weight tensors.
         """
-        weights = []
-        for block in self.blocks:
-            w = block
-            for attr in attr_path.split("."):
-                w = getattr(w, attr)
+        first_attr = attr_path.split(".")[0]
+        matching_blocks = [
+            (i, block) for i, block in enumerate(self.blocks) if first_attr in block._modules
+        ]
+
+        if len(matching_blocks) == 0:
+            raise AttributeError(
+                f"No blocks have submodule '{first_attr}'. "
+                f"Use bridge.blocks_with('{first_attr}') to check availability."
+            )
+
+        if len(matching_blocks) < len(self.blocks):
+            indices = [i for i, _ in matching_blocks]
+            logging.warning(
+                "Hybrid model: only %d/%d blocks have '%s'. Returning stacked tensor "
+                "for layers %s only. Tensor index i corresponds to original layer "
+                "indices[i], not layer i. For explicit index mapping, use "
+                "bridge.stack_params_for('%s', '%s').",
+                len(matching_blocks),
+                len(self.blocks),
+                first_attr,
+                indices,
+                first_attr,
+                attr_path,
+            )
+
+        weights: List[torch.Tensor] = []
+        for _, block in matching_blocks:
+            w = _resolve_attr_path(block, attr_path)
             if reshape_fn is not None:
                 w = reshape_fn(w)
             weights.append(w)
@@ -1120,11 +1231,45 @@ class TransformerBridge(nn.Module):
 
     @property
     def QK(self):
+        """QK circuit as a FactoredMatrix.
+
+        On hybrid models, returns the circuit for attention layers only (with
+        a warning about index mapping). For explicit index control, use
+        QK_for_attn_layers() which returns (layer_indices, FactoredMatrix).
+        """
         return FactoredMatrix(self.W_Q, self.W_K.transpose(-2, -1))
 
     @property
     def OV(self):
+        """OV circuit as a FactoredMatrix.
+
+        On hybrid models, returns the circuit for attention layers only (with
+        a warning about index mapping). For explicit index control, use
+        OV_for_attn_layers() which returns (layer_indices, FactoredMatrix).
+        """
         return FactoredMatrix(self.W_V, self.W_O)
+
+    def QK_for_attn_layers(self) -> Tuple[List[int], FactoredMatrix]:
+        """QK circuit for attention layers only (hybrid-safe).
+
+        Returns:
+            Tuple of (layer_indices, FactoredMatrix) where layer_indices maps
+            position i in the matrix to the original layer index.
+        """
+        q_indices, W_Q = self.stack_params_for("attn", "attn.W_Q", self._reshape_qkv)
+        _, W_K = self.stack_params_for("attn", "attn.W_K", self._reshape_qkv)
+        return q_indices, FactoredMatrix(W_Q, W_K.transpose(-2, -1))
+
+    def OV_for_attn_layers(self) -> Tuple[List[int], FactoredMatrix]:
+        """OV circuit for attention layers only (hybrid-safe).
+
+        Returns:
+            Tuple of (layer_indices, FactoredMatrix) where layer_indices maps
+            position i in the matrix to the original layer index.
+        """
+        v_indices, W_V = self.stack_params_for("attn", "attn.W_V", self._reshape_qkv)
+        _, W_O = self.stack_params_for("attn", "attn.W_O", self._reshape_o)
+        return v_indices, FactoredMatrix(W_V, W_O)
 
     # ------------------------------------------------------------------
     # Mechanistic interpretability analysis methods
@@ -1169,18 +1314,56 @@ class TransformerBridge(nn.Module):
             residual_direction = self.W_U[:, token]
             return residual_direction
 
+    # Output bias attribute names by variant type. Attention uses "b_O"
+    # (a processed-weight alias). SSM/linear-attn variants use their output
+    # projection's bias. Map variant name → list of attribute paths to check.
+    _VARIANT_OUTPUT_BIAS_ATTRS: Dict[str, tuple] = {
+        "attn": ("b_O",),
+        "linear_attn": ("out_proj.bias",),
+        "mamba": ("out_proj.bias",),
+        "mixer": ("out_proj.bias",),
+        "ssm": ("out_proj.bias",),
+    }
+
+    def _get_block_variant_bias(self, block: "GeneralizedComponent") -> Optional[torch.Tensor]:
+        """Get the output bias from whatever variant submodule this block has.
+
+        Each variant type has its own output bias attribute name — attention
+        uses b_O while SSM variants use out_proj.bias. Returns the first
+        found, or None if the variant has no output bias.
+        """
+        for name in VARIANT_SUBMODULE_NAMES:
+            if name not in block._modules:
+                continue
+            variant = block._modules[name]
+            for attr_path in self._VARIANT_OUTPUT_BIAS_ATTRS.get(name, ()):
+                obj = variant
+                try:
+                    for attr in attr_path.split("."):
+                        obj = getattr(obj, attr)
+                except AttributeError:
+                    continue
+                if obj is not None and isinstance(obj, torch.Tensor):
+                    return obj
+        return None
+
     def accumulated_bias(
         self,
         layer: int,
         mlp_input: bool = False,
         include_mlp_biases: bool = True,
     ) -> torch.Tensor:
-        """Sum of attention and MLP output biases up to the input of a given layer.
+        """Sum of biases that contribute to the residual stream up to a given layer.
+
+        Includes output biases from whatever variant submodule each block has
+        (attention, Mamba, linear attention, etc.) plus MLP output biases.
+        For hybrid models, non-attention layers still contribute their variant
+        submodule's output bias to the residual stream.
 
         Args:
             layer: Layer number in [0, n_layers]. 0 means no layers, n_layers means all.
-            mlp_input: If True, include the attention output bias of the target layer
-                (i.e. bias up to the MLP input of that layer).
+            mlp_input: If True, include the variant submodule's output bias of
+                the target layer (i.e. bias up to the MLP input of that layer).
             include_mlp_biases: Whether to include MLP biases. Useful to set False when
                 expanding attn_out into individual heads but keeping mlp_out as-is.
 
@@ -1190,54 +1373,162 @@ class TransformerBridge(nn.Module):
         accumulated = torch.zeros(self.cfg.d_model, device=self.cfg.device)
         for i in range(layer):
             block = self.blocks[i]
-            b_O = getattr(block.attn, "b_O", None)
+            b_O = self._get_block_variant_bias(block)
             if b_O is not None:
                 accumulated = accumulated + b_O
-            if include_mlp_biases:
+            if include_mlp_biases and "mlp" in block._modules:
                 b_out = getattr(block.mlp, "b_out", None)
                 if b_out is not None:
                     accumulated = accumulated + b_out
         if mlp_input:
             assert layer < self.cfg.n_layers, "Cannot include attn_bias from beyond the final layer"
             block = self.blocks[layer]
-            b_O = getattr(block.attn, "b_O", None)
+            b_O = self._get_block_variant_bias(block)
             if b_O is not None:
                 accumulated = accumulated + b_O
         return accumulated
 
-    def all_composition_scores(self, mode: str) -> torch.Tensor:
-        """Composition scores for all pairs of heads.
+    def all_composition_scores(self, mode: str) -> CompositionScores:
+        """Composition scores for all pairs of attention heads.
 
-        Returns an (n_layers, n_heads, n_layers, n_heads) tensor that is upper
-        triangular on the layer axes (a head can only compose with later heads).
+        Returns a ``CompositionScores`` containing the scores tensor, the
+        original layer indices, and human-readable head labels.  The scores
+        tensor has shape (n_attn_layers, n_heads, n_attn_layers, n_heads) and
+        is upper triangular on the layer axes.
+
+        For hybrid models, only attention layers are included.  The returned
+        ``layer_indices`` maps tensor position *i* back to the original layer
+        number so that results cannot be silently misinterpreted.
 
         See https://transformer-circuits.pub/2021/framework/index.html
 
         Args:
             mode: One of "Q", "K", "V" — which composition type to compute.
         """
-        left = self.OV
+        # Single blocks_with call — all weight stacking uses these same blocks
+        attn_blocks = self.blocks_with("attn")
+        if not attn_blocks:
+            raise ValueError("No attention layers found — cannot compute composition scores.")
+
+        indices = [idx for idx, _ in attn_blocks]
+        blocks_list = [block for _, block in attn_blocks]
+
+        def _stack(attr_path: str, reshape_fn: Optional[Callable] = None) -> torch.Tensor:
+            weights: List[torch.Tensor] = []
+            for block in blocks_list:
+                w = _resolve_attr_path(block, attr_path)
+                if reshape_fn is not None:
+                    w = reshape_fn(w)
+                weights.append(w)
+            return torch.stack(weights, dim=0)
+
+        W_V = _stack("attn.W_V", self._reshape_qkv)
+        W_O = _stack("attn.W_O", self._reshape_o)
+        left = FactoredMatrix(W_V, W_O)
+
         if mode == "Q":
-            right = self.QK
+            W_Q = _stack("attn.W_Q", self._reshape_qkv)
+            W_K = _stack("attn.W_K", self._reshape_qkv)
+            right = FactoredMatrix(W_Q, W_K.transpose(-2, -1))
         elif mode == "K":
-            right = self.QK.T
+            W_Q = _stack("attn.W_Q", self._reshape_qkv)
+            W_K = _stack("attn.W_K", self._reshape_qkv)
+            right = FactoredMatrix(W_Q, W_K.transpose(-2, -1)).T
         elif mode == "V":
-            right = self.OV
+            right = left
         else:
             raise ValueError(f"mode must be one of ['Q', 'K', 'V'] not {mode}")
 
         scores = utils.composition_scores(left, right, broadcast_dims=True)
-        mask = (
-            torch.arange(self.cfg.n_layers, device=self.cfg.device)[:, None, None, None]
-            < torch.arange(self.cfg.n_layers, device=self.cfg.device)[None, None, :, None]
-        )
+        n_attn = len(indices)
+        idx_tensor = torch.arange(n_attn, device=self.cfg.device)
+        mask = idx_tensor[:, None, None, None] < idx_tensor[None, None, :, None]
         scores = torch.where(mask, scores, torch.zeros_like(scores))
-        return scores
+
+        labels = [f"L{l}H{h}" for l in indices for h in range(self.cfg.n_heads)]
+        return CompositionScores(scores=scores, layer_indices=indices, head_labels=labels)
+
+    def composition_layer_indices(self) -> List[int]:
+        """Return original layer indices for attention layers.
+
+        Maps position i in all_composition_scores() output back to the
+        original layer number. For homogeneous models, returns [0, 1, ..., n-1].
+        For hybrid models, returns only the attention layer indices.
+        """
+        return [idx for idx, _ in self.blocks_with("attn")]
+
+    def block_hooks(self, layer_idx: int) -> List[str]:
+        """Return all hook point names available on a specific block.
+
+        Useful for hybrid architectures where different layers have different
+        hookable submodules — e.g., attention layers expose hook_q/hook_k/etc.
+        while SSM layers expose hook_in_proj/hook_conv/etc.
+
+        Args:
+            layer_idx: Layer index to inspect.
+
+        Returns:
+            Sorted list of hook names (e.g., ["hook_in", "hook_out", "attn.hook_q", ...]).
+        """
+        prefix = f"blocks.{layer_idx}."
+        return sorted(name[len(prefix) :] for name in self.hook_dict if name.startswith(prefix))
+
+    def block_submodules(self, layer_idx: int) -> List[str]:
+        """Return names of bridged submodules on a specific block.
+
+        Args:
+            layer_idx: Layer index to inspect.
+
+        Returns:
+            List of submodule names (e.g., ["ln1", "ln2", "attn", "mlp"]).
+        """
+        block = self.blocks[layer_idx]
+        return [name for name in block._modules if name not in _BLOCK_INTERNAL_MODULES]
+
+    def layer_types(self) -> List[str]:
+        """Return a human-readable layer type for each block.
+
+        Inspects which bridged submodules are present on each block to infer
+        the layer type. For homogeneous models, all entries will be the same.
+        Variant submodule names are defined in
+        ``generalized_components.block.VARIANT_SUBMODULE_NAMES``.
+
+        Labels are deterministic: variants appear in VARIANT_SUBMODULE_NAMES
+        order, universals are sorted alphabetically.
+
+        Returns:
+            List of strings like ["attn+mlp", "ssm+mlp", "attn+mlp", ...].
+        """
+        types = []
+        for block in self.blocks:
+            # Variants in canonical order (tuple iteration = stable)
+            variants = [n for n in VARIANT_SUBMODULE_NAMES if n in block._modules]
+            universals = sorted(
+                n
+                for n in block._modules
+                if n not in _VARIANT_SUBMODULE_SET
+                and n not in _BLOCK_INTERNAL_MODULES
+                and not n.startswith(_NORM_PREFIXES)
+            )
+            parts = variants + universals
+            types.append("+".join(parts) if parts else "unknown")
+        return types
 
     @property
     def all_head_labels(self) -> list[str]:
         """Human-readable labels for all attention heads, e.g. ['L0H0', 'L0H1', ...]."""
         return [f"L{l}H{h}" for l in range(self.cfg.n_layers) for h in range(self.cfg.n_heads)]
+
+    @property
+    def attn_head_labels(self) -> list[str]:
+        """Labels for attention heads only, matching all_composition_scores() dimensions.
+
+        For homogeneous models, identical to all_head_labels. For hybrid models,
+        only includes heads from attention layers (skips SSM/linear-attn layers).
+        """
+        return [
+            f"L{l}H{h}" for l in self.composition_layer_indices() for h in range(self.cfg.n_heads)
+        ]
 
     def parameters(self, recurse: bool = True) -> Iterator[nn.Parameter]:
         """Returns parameters following standard PyTorch semantics.

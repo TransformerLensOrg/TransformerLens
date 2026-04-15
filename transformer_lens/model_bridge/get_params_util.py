@@ -1,7 +1,10 @@
 """Utility function for getting model parameters in TransformerLens format."""
+import logging
 from typing import Dict
 
 import torch
+
+logger = logging.getLogger(__name__)
 
 
 def _get_n_kv_heads(cfg) -> int:
@@ -36,14 +39,17 @@ def _get_or_create_bias(bias, n_heads: int, d_head: int, device, dtype) -> torch
 def get_bridge_params(bridge) -> Dict[str, torch.Tensor]:
     """Access to model parameters in the format expected by SVDInterpreter.
 
-    For missing weights, returns zero tensors of appropriate shape instead of raising exceptions.
-    This ensures compatibility across different model architectures.
+    For hybrid architectures, only layers with attention get attention keys
+    (W_Q, W_K, etc.). Non-attention layers (SSM, linear-attention) are skipped
+    rather than filled with zeros — this prevents downstream consumers like
+    SVDInterpreter from treating synthetic zeros as real weights.
 
     Args:
         bridge: TransformerBridge instance
 
     Returns:
-        dict: Dictionary of parameter tensors with TransformerLens naming convention
+        dict: Dictionary of parameter tensors with TransformerLens naming convention.
+            For hybrid models, attention keys only exist for layers that have attention.
 
     Raises:
         ValueError: If configuration is inconsistent (e.g., cfg.n_layers != len(blocks))
@@ -51,22 +57,15 @@ def get_bridge_params(bridge) -> Dict[str, torch.Tensor]:
     params_dict = {}
 
     def _get_device_dtype():
-        device = bridge.cfg.device if hasattr(bridge.cfg, "device") else torch.device("cpu")
+        """Infer device/dtype from the first available model parameter."""
+        device = getattr(bridge.cfg, "device", None) or torch.device("cpu")
         dtype = torch.float32
         try:
-            device = bridge.embed.weight.device
-            dtype = bridge.embed.weight.dtype
-        except AttributeError:
-            try:
-                device = bridge.pos_embed.weight.device
-                dtype = bridge.pos_embed.weight.dtype
-            except AttributeError:
-                if len(bridge.blocks) > 0:
-                    try:
-                        device = bridge.blocks[0].attn.q.weight.device
-                        dtype = bridge.blocks[0].attn.q.weight.dtype
-                    except AttributeError:
-                        pass
+            first_param = next(bridge.parameters())
+            device = first_param.device
+            dtype = first_param.dtype
+        except (StopIteration, TypeError, AttributeError):
+            pass
         return (device, dtype)
 
     try:
@@ -89,72 +88,59 @@ def get_bridge_params(bridge) -> Dict[str, torch.Tensor]:
                 f"Configuration mismatch: cfg.n_layers={bridge.cfg.n_layers} but only {len(bridge.blocks)} blocks found. Layer {layer_idx} does not exist."
             )
         block = bridge.blocks[layer_idx]
+
+        # Only extract attention params from blocks that have attention.
+        # Non-attention layers (SSM, linear-attention) are skipped entirely
+        # rather than filled with zeros — this prevents consumers like
+        # SVDInterpreter from treating synthetic zeros as real weights.
         try:
-            w_q = block.attn.q.weight
-            w_k = block.attn.k.weight
-            w_v = block.attn.v.weight
-            w_o = block.attn.o.weight
-            if w_q.shape == (bridge.cfg.d_model, bridge.cfg.d_model):
-                d_head = bridge.cfg.d_model // bridge.cfg.n_heads
-                w_q = w_q.reshape(bridge.cfg.n_heads, bridge.cfg.d_model, d_head)
-                w_o = w_o.reshape(bridge.cfg.n_heads, d_head, bridge.cfg.d_model)
+            has_attn = "attn" in block._modules
+        except (TypeError, AttributeError):
+            # Mock objects or non-nn.Module blocks: fall back to hasattr
+            has_attn = hasattr(block, "attn")
+        if has_attn:
+            try:
+                w_q = block.attn.q.weight
+                w_k = block.attn.k.weight
+                w_v = block.attn.v.weight
+                w_o = block.attn.o.weight
+                if w_q.shape == (bridge.cfg.d_model, bridge.cfg.d_model):
+                    d_head = bridge.cfg.d_model // bridge.cfg.n_heads
+                    w_q = w_q.reshape(bridge.cfg.n_heads, bridge.cfg.d_model, d_head)
+                    w_o = w_o.reshape(bridge.cfg.n_heads, d_head, bridge.cfg.d_model)
+                    device, dtype = _get_device_dtype()
+                    w_k = _reshape_kv_weight(w_k, bridge.cfg, device, dtype)
+                    w_v = _reshape_kv_weight(w_v, bridge.cfg, device, dtype)
+                params_dict[f"blocks.{layer_idx}.attn.W_Q"] = w_q
+                params_dict[f"blocks.{layer_idx}.attn.W_K"] = w_k
+                params_dict[f"blocks.{layer_idx}.attn.W_V"] = w_v
+                params_dict[f"blocks.{layer_idx}.attn.W_O"] = w_o
                 device, dtype = _get_device_dtype()
-                w_k = _reshape_kv_weight(w_k, bridge.cfg, device, dtype)
-                w_v = _reshape_kv_weight(w_v, bridge.cfg, device, dtype)
-            params_dict[f"blocks.{layer_idx}.attn.W_Q"] = w_q
-            params_dict[f"blocks.{layer_idx}.attn.W_K"] = w_k
-            params_dict[f"blocks.{layer_idx}.attn.W_V"] = w_v
-            params_dict[f"blocks.{layer_idx}.attn.W_O"] = w_o
-            device, dtype = _get_device_dtype()
-            n_kv_heads = _get_n_kv_heads(bridge.cfg)
-            params_dict[f"blocks.{layer_idx}.attn.b_Q"] = _get_or_create_bias(
-                block.attn.q.bias, bridge.cfg.n_heads, bridge.cfg.d_head, device, dtype
-            )
-            params_dict[f"blocks.{layer_idx}.attn.b_K"] = _get_or_create_bias(
-                block.attn.k.bias, n_kv_heads, bridge.cfg.d_head, device, dtype
-            )
-            params_dict[f"blocks.{layer_idx}.attn.b_V"] = _get_or_create_bias(
-                block.attn.v.bias, n_kv_heads, bridge.cfg.d_head, device, dtype
-            )
-            if block.attn.o.bias is not None:
-                params_dict[f"blocks.{layer_idx}.attn.b_O"] = block.attn.o.bias
-            else:
-                device, dtype = _get_device_dtype()
-                params_dict[f"blocks.{layer_idx}.attn.b_O"] = torch.zeros(
-                    bridge.cfg.d_model, device=device, dtype=dtype
+                n_kv_heads = _get_n_kv_heads(bridge.cfg)
+                params_dict[f"blocks.{layer_idx}.attn.b_Q"] = _get_or_create_bias(
+                    block.attn.q.bias, bridge.cfg.n_heads, bridge.cfg.d_head, device, dtype
                 )
-        except AttributeError:
-            device, dtype = _get_device_dtype()
-            expected_qkv_shape = (bridge.cfg.n_heads, bridge.cfg.d_model, bridge.cfg.d_head)
-            expected_o_shape = (bridge.cfg.n_heads, bridge.cfg.d_head, bridge.cfg.d_model)
-            expected_q_bias_shape = (bridge.cfg.n_heads, bridge.cfg.d_head)
-            expected_o_bias_shape = (bridge.cfg.d_model,)
-            n_kv_heads = _get_n_kv_heads(bridge.cfg)
-            expected_kv_bias_shape = (n_kv_heads, bridge.cfg.d_head)
-            params_dict[f"blocks.{layer_idx}.attn.W_Q"] = torch.zeros(
-                *expected_qkv_shape, device=device, dtype=dtype
-            )
-            params_dict[f"blocks.{layer_idx}.attn.W_K"] = torch.zeros(
-                *expected_qkv_shape, device=device, dtype=dtype
-            )
-            params_dict[f"blocks.{layer_idx}.attn.W_V"] = torch.zeros(
-                *expected_qkv_shape, device=device, dtype=dtype
-            )
-            params_dict[f"blocks.{layer_idx}.attn.W_O"] = torch.zeros(
-                *expected_o_shape, device=device, dtype=dtype
-            )
-            params_dict[f"blocks.{layer_idx}.attn.b_Q"] = torch.zeros(
-                *expected_q_bias_shape, device=device, dtype=dtype
-            )
-            params_dict[f"blocks.{layer_idx}.attn.b_K"] = torch.zeros(
-                *expected_kv_bias_shape, device=device, dtype=dtype
-            )
-            params_dict[f"blocks.{layer_idx}.attn.b_V"] = torch.zeros(
-                *expected_kv_bias_shape, device=device, dtype=dtype
-            )
-            params_dict[f"blocks.{layer_idx}.attn.b_O"] = torch.zeros(
-                *expected_o_bias_shape, device=device, dtype=dtype
-            )
+                params_dict[f"blocks.{layer_idx}.attn.b_K"] = _get_or_create_bias(
+                    block.attn.k.bias, n_kv_heads, bridge.cfg.d_head, device, dtype
+                )
+                params_dict[f"blocks.{layer_idx}.attn.b_V"] = _get_or_create_bias(
+                    block.attn.v.bias, n_kv_heads, bridge.cfg.d_head, device, dtype
+                )
+                if block.attn.o.bias is not None:
+                    params_dict[f"blocks.{layer_idx}.attn.b_O"] = block.attn.o.bias
+                else:
+                    device, dtype = _get_device_dtype()
+                    params_dict[f"blocks.{layer_idx}.attn.b_O"] = torch.zeros(
+                        bridge.cfg.d_model, device=device, dtype=dtype
+                    )
+            except AttributeError as e:
+                logger.debug(
+                    "Block %d has 'attn' in _modules but attention params could not "
+                    "be extracted (missing q/k/v/o?): %s — skipping attention weights "
+                    "for this layer",
+                    layer_idx,
+                    e,
+                )
         try:
             mlp_in = getattr(block.mlp, "in", None) or getattr(block.mlp, "input", None)
             if mlp_in is None:

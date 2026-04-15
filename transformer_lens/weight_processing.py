@@ -1698,6 +1698,21 @@ class ProcessWeights:
             b_V_key = ProcessWeights._get_param_key(f"blocks.{l}.attn.b_V", adapter)
             b_O_key = ProcessWeights._get_param_key(f"blocks.{l}.attn.b_O", adapter)
 
+            # Skip layers without attention weights (hybrid architectures where
+            # some layers are SSM/linear-attention and lack Q/K/V/O entirely).
+            # Other weight-processing loops (center_writing_weights, fold_value_biases,
+            # fold_layer_norm) already guard with `if key in state_dict:` checks.
+            if W_Q_key not in state_dict:
+                continue
+            # All four weight matrices must be present if Q is present
+            for _required_key in [W_K_key, W_V_key, W_O_key]:
+                if _required_key not in state_dict:
+                    raise ValueError(
+                        f"Inconsistent attention weights at layer {l}: "
+                        f"'{W_Q_key}' found but '{_required_key}' missing. "
+                        f"All of W_Q, W_K, W_V, W_O must be present together."
+                    )
+
             # W_QK = W_Q @ W_K.T
             # Concatenate biases to make a d_model+1 input dimension
             W_Q = ProcessWeights.convert_tensor_to_tl_format(
