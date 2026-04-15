@@ -134,18 +134,28 @@ class TestQwen3_5ComponentMapping:
     # ---- Block submodules ----
 
     def test_block_submodules_keys(self, adapter):
-        """blocks submodules must contain ln1, ln2, mlp but NOT attn.
-
-        Critical correctness test: self_attn is absent on linear-attention
-        layers, so mapping attn as a block submodule would crash on those layers.
-        """
+        """blocks submodules must contain ln1, ln2, mlp, and optional attn + linear_attn."""
         submodules = adapter.component_mapping["blocks"].submodules
-        assert set(submodules.keys()) == {"ln1", "ln2", "mlp"}
+        assert set(submodules.keys()) == {"ln1", "ln2", "mlp", "attn", "linear_attn"}
 
-    def test_no_attn_in_block_submodules(self, adapter):
-        """attn must NOT appear as a block submodule (hybrid architecture safety check)."""
+    def test_attn_is_optional(self, adapter):
+        """attn must be marked optional (absent on linear-attention layers)."""
         submodules = adapter.component_mapping["blocks"].submodules
-        assert "attn" not in submodules
+        assert submodules["attn"].optional is True
+
+    def test_linear_attn_is_optional(self, adapter):
+        """linear_attn must be marked optional (absent on full-attention layers)."""
+        submodules = adapter.component_mapping["blocks"].submodules
+        assert submodules["linear_attn"].optional is True
+
+    def test_linear_attn_bridge_type(self, adapter):
+        """linear_attn must be a GatedDeltaNetBridge."""
+        from transformer_lens.model_bridge.generalized_components.gated_delta_net import (
+            GatedDeltaNetBridge,
+        )
+
+        submodules = adapter.component_mapping["blocks"].submodules
+        assert isinstance(submodules["linear_attn"], GatedDeltaNetBridge)
 
     def test_ln1_path(self, adapter):
         """ln1 maps to input_layernorm."""

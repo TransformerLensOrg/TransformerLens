@@ -59,6 +59,7 @@ class AttentionBridge(GeneralizedComponent):
         requires_position_embeddings: bool = False,
         requires_attention_mask: bool = False,
         attention_mask_4d: bool = False,
+        **kwargs,
     ):
         """Initialize the attention bridge.
 
@@ -82,7 +83,11 @@ class AttentionBridge(GeneralizedComponent):
         if conversion_rule is None:
             conversion_rule = AttentionAutoConversion(config)
         super().__init__(
-            name, config=config, submodules=submodules or {}, conversion_rule=conversion_rule
+            name,
+            config=config,
+            submodules=submodules or {},
+            conversion_rule=conversion_rule,
+            **kwargs,
         )
         self.hook_attn_scores = HookPoint()
         self.hook_pattern = HookPoint()

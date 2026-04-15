@@ -65,11 +65,12 @@ class GraniteArchitectureAdapter(ArchitectureAdapter):
             self.default_config["n_key_value_heads"] = cfg.n_key_value_heads
             self.cfg.n_key_value_heads = cfg.n_key_value_heads
 
-    def _build_attention_bridge(self) -> PositionEmbeddingsAttentionBridge:
+    def _build_attention_bridge(self, optional: bool = False) -> PositionEmbeddingsAttentionBridge:
         """Build the standard Granite attention bridge."""
         return PositionEmbeddingsAttentionBridge(
             name="self_attn",
             config=self.cfg,
+            optional=optional,
             submodules={
                 "q": LinearBridge(name="q_proj"),
                 "k": LinearBridge(name="k_proj"),
@@ -124,11 +125,11 @@ class GraniteArchitectureAdapter(ArchitectureAdapter):
 
         if bridge_model is not None and hasattr(bridge_model, "blocks"):
             for block in bridge_model.blocks:
-                if hasattr(block, "attn"):
+                if "attn" in block._modules:
                     block.attn.set_rotary_emb(rotary_emb)
 
         try:
             attn_bridge = self.get_generalized_component("blocks.0.attn")
             attn_bridge.set_rotary_emb(rotary_emb)
-        except (AttributeError, KeyError):
+        except (AttributeError, KeyError, ValueError):
             pass

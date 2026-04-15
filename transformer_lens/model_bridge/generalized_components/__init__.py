@@ -35,6 +35,9 @@ from transformer_lens.model_bridge.generalized_components.embedding import (
 from transformer_lens.model_bridge.generalized_components.alibi_joint_qkv_attention import (
     ALiBiJointQKVAttentionBridge,
 )
+from transformer_lens.model_bridge.generalized_components.gated_delta_net import (
+    GatedDeltaNetBridge,
+)
 from transformer_lens.model_bridge.generalized_components.gated_mlp import (
     GatedMLPBridge,
 )
