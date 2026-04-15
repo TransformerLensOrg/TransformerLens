@@ -34,11 +34,15 @@ class Qwen3ArchitectureAdapter(ArchitectureAdapter):
     Serves as base class for Qwen3.5 and Qwen3Next hybrid variants.
     """
 
-    def __init__(self, cfg: Any) -> None:
+    def __init__(self, cfg: Any, *, hybrid: bool = False) -> None:
         super().__init__(cfg)
         self._setup_qwen3_config(cfg)
-        self.weight_processing_conversions = {**self._qkvo_weight_conversions()}
-        self.component_mapping = self._build_component_mapping()
+        if hybrid:
+            self.supports_fold_ln = False
+            self.weight_processing_conversions: dict = {}
+        else:
+            self.weight_processing_conversions = {**self._qkvo_weight_conversions()}
+        self.component_mapping = self._build_component_mapping(hybrid=hybrid)
 
     def _setup_qwen3_config(self, cfg: Any) -> None:
         """Config shared across all Qwen3 variants (dense, hybrid, MoE)."""
@@ -126,11 +130,15 @@ class Qwen3ArchitectureAdapter(ArchitectureAdapter):
                     block.attn.set_rotary_emb(rotary_emb)
 
         # Set on template for get_generalized_component() calls
-        try:
-            attn_template = self.get_generalized_component("blocks.0.attn")
-            attn_template.set_rotary_emb(rotary_emb)
-        except ValueError:
-            pass  # hybrid adapter with no attn in template
+        # Set on template — may not exist in hybrid adapters
+        mapping = self.component_mapping or {}
+        blocks_template = mapping.get("blocks") if isinstance(mapping, dict) else None
+        if blocks_template and "attn" in getattr(blocks_template, "submodules", {}):
+            try:
+                attn_template = self.get_generalized_component("blocks.0.attn")
+                attn_template.set_rotary_emb(rotary_emb)
+            except (ValueError, AttributeError, KeyError):
+                pass
 
     @staticmethod
     def _preprocess_gated_q_proj(

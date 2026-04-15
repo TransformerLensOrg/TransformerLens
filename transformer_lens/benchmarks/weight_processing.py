@@ -638,10 +638,24 @@ def benchmark_mlp_output_centering(
                 message="Skipped for tiny/test model (random weights don't center meaningfully)",
             )
 
-        # Check if this is an MoE model - MoE models don't have a single W_out weight
+        # Find an MLP-like submodule (may be "mlp", "shared_mlp", etc.)
         from transformer_lens.model_bridge.generalized_components.moe import MoEBridge
 
-        if isinstance(bridge.blocks[0].mlp, MoEBridge):
+        mlp_module = None
+        block = bridge.blocks[0]
+        for name in ("mlp", "shared_mlp"):
+            if name in block._modules:
+                mlp_module = block._modules[name]
+                break
+        if mlp_module is None:
+            return BenchmarkResult(
+                name="mlp_output_centering",
+                severity=BenchmarkSeverity.WARNING,
+                message="No MLP submodule found on block 0",
+                passed=False,
+            )
+
+        if isinstance(mlp_module, MoEBridge):
             return BenchmarkResult(
                 name="mlp_output_centering",
                 severity=BenchmarkSeverity.INFO,
@@ -651,11 +665,10 @@ def benchmark_mlp_output_centering(
 
         # Check if W_out exists and is accessible (HT format or bridge format)
         w_out = None
-        if hasattr(bridge.blocks[0].mlp, "W_out"):
-            w_out = bridge.blocks[0].mlp.W_out
-        elif hasattr(bridge.blocks[0].mlp, "out"):
-            # Bridge format: mlp.out is a LinearBridge wrapping nn.Linear
-            out_module = bridge.blocks[0].mlp.out
+        if hasattr(mlp_module, "W_out"):
+            w_out = mlp_module.W_out
+        elif hasattr(mlp_module, "out"):
+            out_module = mlp_module.out
             if hasattr(out_module, "original_component") and hasattr(
                 out_module.original_component, "weight"
             ):

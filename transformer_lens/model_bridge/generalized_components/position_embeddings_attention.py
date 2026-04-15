@@ -113,20 +113,26 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
     """
 
     def __init__(
-        self, name: str, config: Any, submodules: Optional[Dict[str, Any]] = None, **kwargs
+        self,
+        name: str,
+        config: Any,
+        submodules: Optional[Dict[str, Any]] = None,
+        optional: bool = False,
+        # Accepted for caller compatibility (Granite passes these explicitly)
+        # but always forced to True — this bridge reimplements attention.
+        requires_attention_mask: bool = True,
+        requires_position_embeddings: bool = True,
+        **kwargs,  # absorb any other AttentionBridge kwargs callers may pass
     ):
-        """Initialize Gemma-3 attention bridge.
-
-        Args:
-            name: Component name
-            config: Model configuration
-            submodules: Dictionary of subcomponents
-            **kwargs: Additional arguments passed to AttentionBridge
-        """
-        kwargs["requires_position_embeddings"] = True
-        kwargs["requires_attention_mask"] = True
-        kwargs["maintain_native_attention"] = True
-        super().__init__(name, config, submodules, **kwargs)
+        super().__init__(
+            name,
+            config,
+            submodules,
+            requires_position_embeddings=True,
+            requires_attention_mask=True,
+            maintain_native_attention=True,
+            optional=optional,
+        )
         self._init_position_embedding_hooks()
         if getattr(config, "gated_q_proj", False):
             self.hook_q_gate = HookPoint()

@@ -100,9 +100,10 @@ def setup_submodules(
                 else:
                     remote_path = submodule.name
                     is_optional = getattr(submodule, "optional", False)
-                    # Fast path: first segment absent → skip without entering get_remote_component
+                    # Fast path: first segment absent or None → skip
                     first_segment = remote_path.split(".")[0]
-                    if is_optional and not hasattr(original_model, first_segment):
+                    first_value = getattr(original_model, first_segment, None)
+                    if is_optional and first_value is None:
                         logger.debug(
                             "Optional '%s' (path '%s') absent on %s",
                             module_name,

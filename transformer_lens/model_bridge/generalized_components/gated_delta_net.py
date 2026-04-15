@@ -23,17 +23,20 @@ class GatedDeltaNetBridge(GeneralizedComponent):
 
     Hooks (prefill, in execution order):
         hook_in: input hidden_states [batch, seq, d_model]
-        hook_q_pre_conv: Q after projection + split, before conv [batch, seq, n_k_heads, head_k_dim]
-        hook_k_pre_conv: K before conv [batch, seq, n_k_heads, head_k_dim]
-        hook_v_pre_conv: V before conv [batch, seq, n_v_heads, head_v_dim]
-        hook_conv_out: post-conv mixed QKV [batch, seq, key_dim*2 + value_dim]
+        hook_q_pre_conv: Q after projection, before conv [batch, seq, n_k_heads, head_k_dim]
+        hook_k_pre_conv: K after projection, before conv [batch, seq, n_k_heads, head_k_dim]
+        hook_v_pre_conv: V after projection, before conv [batch, seq, n_v_heads, head_v_dim]
         hook_q: Q after conv, pre-GQA-expansion [batch, seq, n_k_heads, head_k_dim]
+            Note: on standard attn layers, hook_q is post-projection. Here it's
+            post-conv — use hook_q_pre_conv for the projection-only output.
         hook_k: K after conv [batch, seq, n_k_heads, head_k_dim]
         hook_v: V after conv [batch, seq, n_v_heads, head_v_dim]
-        hook_beta: write strength (sigmoid of b), per v-head [batch, seq, n_v_heads]
-        hook_log_decay: log-space decay g (negative; actual decay = exp(g)), per v-head [batch, seq, n_v_heads]
-        hook_recurrence_out: output of linear recurrence kernel [batch, seq, n_v_heads, head_v_dim]
-        hook_gate_input: z tensor before silu gating in GatedRMSNorm [batch, seq, n_v_heads, head_v_dim]
+        hook_beta_logit: pre-sigmoid write gate logit, per v-head [batch, seq, n_v_heads]
+        hook_beta: write strength sigmoid(b), per v-head [batch, seq, n_v_heads]
+        hook_log_decay: log-space decay g (NEGATIVE; multiplicative decay = exp(g)),
+            per v-head [batch, seq, n_v_heads]
+        hook_recurrence_out: output of linear recurrence [batch, seq, n_v_heads, head_v_dim]
+        hook_gate_input: z tensor (pre-silu) for GatedRMSNorm [batch, seq, n_v_heads, head_v_dim]
         hook_out: final output to residual stream [batch, seq, d_model]
 
     During generation (cache_params present), only hook_in/hook_out fire.
@@ -63,17 +66,16 @@ class GatedDeltaNetBridge(GeneralizedComponent):
         **kwargs,
     ):
         super().__init__(name, config=config, submodules=submodules or {}, **kwargs)
-        # Pre-conv hooks (after projection, before causal convolution mixes positions)
+        # Pre-conv (after projection split, before causal conv mixes positions)
         self.hook_q_pre_conv = HookPoint()
         self.hook_k_pre_conv = HookPoint()
         self.hook_v_pre_conv = HookPoint()
-        # Conv output
-        self.hook_conv_out = HookPoint()
-        # Post-conv hooks (pre-GQA-expansion, pre-recurrence)
+        # Post-conv (pre-GQA-expansion, pre-recurrence)
         self.hook_q = HookPoint()
         self.hook_k = HookPoint()
         self.hook_v = HookPoint()
         # Gate parameters (per v-head)
+        self.hook_beta_logit = HookPoint()
         self.hook_beta = HookPoint()
         self.hook_log_decay = HookPoint()
         # Recurrence output + gated norm input
@@ -84,7 +86,6 @@ class GatedDeltaNetBridge(GeneralizedComponent):
         if self.original_component is None:
             raise RuntimeError(f"Original component not set for {self.name}.")
 
-        # Generation step → delegate to HF with only input/output hooks
         if kwargs.get("cache_params") is not None:
             return self._native_forward(*args, **kwargs)
         return self._hooked_forward(*args, **kwargs)
@@ -98,6 +99,12 @@ class GatedDeltaNetBridge(GeneralizedComponent):
             args = (self.hook_in(args[0]),) + args[1:]
 
         output = self.original_component(*args, **kwargs)
+
+        if isinstance(output, tuple) and len(output) > 0:
+            first = output[0]
+            if isinstance(first, torch.Tensor):
+                return (self.hook_out(first),) + output[1:]
+            return output
         if isinstance(output, torch.Tensor):
             return self.hook_out(output)
         return output
@@ -115,11 +122,8 @@ class GatedDeltaNetBridge(GeneralizedComponent):
 
         attention_mask = kwargs.get("attention_mask")
         if attention_mask is not None:
-            from transformers.models.qwen3_next.modeling_qwen3_next import (
-                apply_mask_to_padding_states,
-            )
-
-            hidden_states = apply_mask_to_padding_states(hidden_states, attention_mask)
+            # Inline masking — avoids hard dependency on qwen3_next module
+            hidden_states = hidden_states * attention_mask.unsqueeze(-1)
 
         hidden_states = self.hook_in(hidden_states)
         batch_size, seq_len, _ = hidden_states.shape
@@ -128,7 +132,6 @@ class GatedDeltaNetBridge(GeneralizedComponent):
         projected_qkvz = hf.in_proj_qkvz(hidden_states)
         projected_ba = hf.in_proj_ba(hidden_states)
 
-        # Split into per-head Q, K, V, Z, beta_raw, alpha_raw
         query, key, value, z, b, a = hf.fix_query_key_value_ordering(projected_qkvz, projected_ba)
 
         # --- Pre-conv hooks (per-head shape, before conv mixes positions) ---
@@ -153,9 +156,7 @@ class GatedDeltaNetBridge(GeneralizedComponent):
             mixed_qkv = F.silu(hf.conv1d(mixed_qkv)[:, :, :seq_len])
         mixed_qkv = mixed_qkv.transpose(1, 2)
 
-        mixed_qkv = self.hook_conv_out(mixed_qkv)
-
-        # Split post-conv
+        # Split post-conv into per-head Q, K, V
         query, key, value = torch.split(
             mixed_qkv,
             [hf.key_dim, hf.key_dim, hf.value_dim],
@@ -171,9 +172,10 @@ class GatedDeltaNetBridge(GeneralizedComponent):
         value = self.hook_v(value)
 
         # --- Gate parameters (per v-head) ---
+        b = self.hook_beta_logit(b)
         beta = self.hook_beta(b.sigmoid())
 
-        # g is log-space decay (negative); actual multiplicative decay = exp(g)
+        # g is log-space decay (NEGATIVE); multiplicative decay = exp(g)
         g = -hf.A_log.float().exp() * F.softplus(a.float() + hf.dt_bias)
         g = self.hook_log_decay(g)
 
@@ -216,25 +218,27 @@ class GatedDeltaNetBridge(GeneralizedComponent):
     ) -> torch.Tensor:
         """Materialize the effective attention matrix from cached hook values.
 
-        The gated delta rule recurrence is:
+        The gated delta rule recurrence is::
+
             S_t = exp(g_t) * S_{t-1} + beta_t * v_t @ k_t^T
             o_t = S_t^T @ q_t
 
-        The effective attention M[i,j] = contribution of input j to output i:
+        The effective attention M[i,j] = contribution of input j to output i::
+
             M[i,j] = (q_i^T @ k_j) * beta_j * prod_{t=j+1}^{i} exp(g_t)
 
-        Note: the fused kernel applies L2-normalization to Q and K internally
-        (use_qk_l2norm_in_kernel=True). The hooked Q/K are pre-normalization,
-        so this reconstruction is approximate. For exact reconstruction, you'd
-        need the normalized Q/K which aren't exposed by the kernel.
+        **Approximation note:** The fused kernel applies L2-normalization to Q
+        and K internally (``use_qk_l2norm_in_kernel=True``). The hooked Q/K are
+        pre-normalization, so this reconstruction diverges when Q/K norms vary
+        significantly across positions/heads. Accuracy is best when Q/K norms
+        are roughly uniform (common after training converges).
 
         Args:
-            cache: ActivationCache from run_with_cache.
+            cache: ActivationCache from ``run_with_cache``.
             layer_idx: Block index for this linear_attn layer.
 
         Returns:
-            [batch, n_v_heads, seq, seq] causal attention matrix. Upper triangle
-            (j > i) is zero.
+            ``[batch, n_v_heads, seq, seq]`` causal matrix (upper triangle zero).
 
         Cost is O(batch * n_heads * seq^2); use on short sequences.
         """
@@ -266,24 +270,18 @@ class GatedDeltaNetBridge(GeneralizedComponent):
         batch, seq, n_heads, d_head = q.shape
 
         # QK similarity: [batch, n_heads, seq_i, seq_j]
-        q_perm = q.permute(0, 2, 1, 3)  # [batch, n_heads, seq, d_head]
+        q_perm = q.permute(0, 2, 1, 3)
         k_perm = k.permute(0, 2, 1, 3)
-        qk = torch.matmul(q_perm, k_perm.transpose(-2, -1))  # [batch, n_heads, seq, seq]
+        qk = torch.matmul(q_perm, k_perm.transpose(-2, -1))
 
-        # Cumulative decay: L[i,j] = prod_{t=j+1}^{i} exp(g_t) = exp(sum g[j+1..i])
-        # g is [batch, seq, n_heads] → cumsum along seq
+        # Cumulative decay: L[i,j] = exp(sum g[j+1..i])
         g_perm = g.permute(0, 2, 1)  # [batch, n_heads, seq]
         cumsum_g = torch.cumsum(g_perm, dim=-1)
-        # L_log[i,j] = cumsum[i] - cumsum[j]
         L_log = cumsum_g[:, :, :, None] - cumsum_g[:, :, None, :]
 
         causal_mask = torch.tril(torch.ones(seq, seq, dtype=torch.bool, device=q.device))
         L = torch.where(causal_mask[None, None], torch.exp(L_log), torch.zeros_like(L_log))
 
-        # Beta broadcast: [batch, n_heads, 1, seq_j]
-        beta_col = beta.permute(0, 2, 1)[:, :, None, :]
-
         # M[i,j] = qk[i,j] * beta[j] * L[i,j]
-        M = qk * beta_col * L
-
-        return M
+        beta_col = beta.permute(0, 2, 1)[:, :, None, :]
+        return qk * beta_col * L

@@ -9,7 +9,6 @@ from typing import Any
 
 import torch
 
-from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.supported_architectures.qwen3 import (
     Qwen3ArchitectureAdapter,
 )
@@ -19,20 +18,13 @@ class Qwen3_5ArchitectureAdapter(Qwen3ArchitectureAdapter):
     """Hybrid linear-attention + full-attention with dense gated MLP.
 
     Inherits Qwen3 config/attention/MLP structure. Differences:
-    - supports_fold_ln = False (LN target varies by layer type)
-    - Attention is optional (absent on linear-attention layers)
-    - Gated q_proj (2x wide) requires preprocess_weights slicing
-    - No weight_processing_conversions until attn is fully wired
+    - Attention + linear_attn are optional (per-layer type)
+    - Gated q_proj (2x wide) sliced by preprocess_weights for weight analysis
     """
 
     def __init__(self, cfg: Any) -> None:
-        # Call grandparent to set self.cfg, then configure ourselves
-        ArchitectureAdapter.__init__(self, cfg)
-        self._setup_qwen3_config(cfg)
-        self.supports_fold_ln = False
-        setattr(self.cfg, "gated_q_proj", True)  # q_proj outputs [Q|gate] interleaved per head
-        self.weight_processing_conversions: dict = {}
-        self.component_mapping = self._build_component_mapping(hybrid=True)
+        setattr(cfg, "gated_q_proj", True)
+        super().__init__(cfg, hybrid=True)
 
     def prepare_loading(self, model_name: str, model_kwargs: dict) -> None:
         """Swap multimodal Qwen3_5Config for text-only Qwen3_5TextConfig.
@@ -49,7 +41,7 @@ class Qwen3_5ArchitectureAdapter(Qwen3ArchitectureAdapter):
         """Slice query half from gated q_proj.weight for weight-space analysis.
 
         In processed mode, W_Q is the pure query projection (for composition
-        scores, logit lens). Gate signal available in unprocessed mode via
-        hook_q_gate.
+        scores, logit lens). Gate signal available in unprocessed mode on
+        full-attention layers via blocks.N.attn.hook_q_gate.
         """
         return self._preprocess_gated_q_proj(state_dict, self.cfg.n_heads, self.cfg.d_head)

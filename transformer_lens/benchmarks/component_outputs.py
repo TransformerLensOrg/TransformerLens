@@ -311,8 +311,12 @@ class ComponentBenchmarker:
                 n_layers = self.cfg.n_layers
 
                 for layer_idx in range(n_layers):
-                    # Recursively test each subcomponent and its nested subcomponents
+                    # Get the actual block to check which submodules were bound
+                    actual_block = getattr(self.bridge_model, block_type)[layer_idx]
                     for subcomp_name, subcomponent in blocks_component.submodules.items():
+                        # Skip optional submodules absent on this layer (hybrid architectures)
+                        if subcomp_name not in actual_block._modules:
+                            continue
                         comp_path = f"{block_type}.{layer_idx}.{subcomp_name}"
                         self._test_component_recursive(
                             comp_path, subcomponent, test_inputs, results, skip_components
