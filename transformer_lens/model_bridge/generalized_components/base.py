@@ -46,10 +46,7 @@ class GeneralizedComponent(nn.Module):
             hook_alias_overrides: Optional dictionary to override default hook aliases.
                 For example, {"hook_attn_out": "ln1_post.hook_out"} will make hook_attn_out
                 point to ln1_post.hook_out instead of the default value in self.hook_aliases.
-            optional: If True, this entire subtree may be absent on some layers.
-                When the remote model lacks this component, setup will skip it
-                cleanly instead of raising AttributeError. Used for hybrid
-                architectures where layers have structurally different submodules.
+            optional: If True, setup skips this subtree when absent (hybrid architectures).
         """
         super().__init__()
         self.name = name

@@ -1698,13 +1698,10 @@ class ProcessWeights:
             b_V_key = ProcessWeights._get_param_key(f"blocks.{l}.attn.b_V", adapter)
             b_O_key = ProcessWeights._get_param_key(f"blocks.{l}.attn.b_O", adapter)
 
-            # Skip layers without attention weights (hybrid architectures where
-            # some layers are SSM/linear-attention and lack Q/K/V/O entirely).
-            # Other weight-processing loops (center_writing_weights, fold_value_biases,
-            # fold_layer_norm) already guard with `if key in state_dict:` checks.
+            # Skip hybrid layers without attention (other loops already guard individually)
             if W_Q_key not in state_dict:
                 continue
-            # All four weight matrices must be present if Q is present
+            # If Q is present, K/V/O must be too
             for _required_key in [W_K_key, W_V_key, W_O_key]:
                 if _required_key not in state_dict:
                     raise ValueError(

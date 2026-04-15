@@ -149,7 +149,6 @@ def benchmark_weight_sharing(
         if reference_model is not None:
             reference_original = reference_model(test_text, return_type="loss")
 
-            # Find first block with attention (hybrid models may not have attn on block 0)
             bridge_attn_blocks = bridge.blocks_with("attn")
             if not bridge_attn_blocks:
                 return BenchmarkResult(
@@ -558,7 +557,6 @@ def benchmark_attention_output_centering(
                 message="Skipped for tiny/test model (random weights don't center meaningfully)",
             )
 
-        # Find blocks with attention (hybrid architectures may not have attn on all blocks)
         attn_blocks = bridge.blocks_with("attn")
         if not attn_blocks:
             return BenchmarkResult(
@@ -801,7 +799,6 @@ def benchmark_value_bias_folding(
                     },
                 )
 
-        # Find blocks with attention (hybrid architectures may not have attn on all blocks)
         attn_blocks = bridge.blocks_with("attn")
         if not attn_blocks:
             return BenchmarkResult(

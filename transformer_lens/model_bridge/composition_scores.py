@@ -1,28 +1,21 @@
-"""CompositionScores — tensor-like container for composition score results."""
+"""Tensor-like container for composition score results with layer-index metadata."""
 from typing import List
 
 import torch
 
 
 class CompositionScores:
-    """Composition scores bundled with layer-index metadata.
+    """Composition scores that behave like a tensor but carry layer-index metadata.
 
-    Behaves like a tensor for backward compatibility — indexing, .shape,
-    arithmetic, and ``torch.*`` namespace functions all delegate to the
-    underlying scores tensor via ``__torch_function__``. The additional
-    ``layer_indices`` and ``head_labels`` attributes provide metadata that
-    prevents silent misinterpretation of indices on hybrid models.
-
-    For hybrid models, the scores tensor has shape
-    (n_attn_layers, n_heads, n_attn_layers, n_heads) where n_attn_layers
-    may be less than n_layers. ``layer_indices`` maps tensor position i
+    Delegates indexing, .shape, arithmetic, and torch.* functions to the
+    underlying ``scores`` tensor via ``__torch_function__``. On hybrid models
+    where n_attn_layers < n_layers, ``layer_indices`` maps tensor position i
     to the original layer number.
 
     Attributes:
         scores: Upper-triangular composition score tensor.
-        layer_indices: Original layer numbers for each position in scores.
-            E.g., [0, 2, 5] means position 0 = layer 0, position 1 = layer 2, etc.
-        head_labels: Labels like ["L0H0", "L0H1", "L2H0", ...] matching scores dims.
+        layer_indices: Original layer numbers, e.g. [0, 2, 5].
+        head_labels: Labels matching scores dims, e.g. ["L0H0", "L0H1", ...].
     """
 
     def __init__(self, scores: torch.Tensor, layer_indices: List[int], head_labels: List[str]):
@@ -30,14 +23,11 @@ class CompositionScores:
         self.layer_indices = layer_indices
         self.head_labels = head_labels
 
-    # --- Tensor protocol ---
-
     @classmethod
     def __torch_function__(cls, func, types, args=(), kwargs=None):
-        """Delegate torch.* calls (torch.isnan, torch.where, etc.) to .scores."""
+        """Unwrap CompositionScores args so torch.isnan, torch.where, etc. work."""
         if kwargs is None:
             kwargs = {}
-        # Unwrap any CompositionScores args to their underlying tensor
         unwrapped_args = tuple(a.scores if isinstance(a, CompositionScores) else a for a in args)
         unwrapped_kwargs = {
             k: v.scores if isinstance(v, CompositionScores) else v for k, v in kwargs.items()
@@ -56,16 +46,11 @@ class CompositionScores:
     def dtype(self) -> torch.dtype:
         return self.scores.dtype
 
-    # Python 3 automatically sets __hash__ = None when __eq__ is defined,
-    # making instances unhashable. No explicit __hash__ needed.
-
     def __getitem__(self, key):
         return self.scores[key]
 
     def __getattr__(self, name):
-        # Delegate tensor methods (.abs(), .sum(), .any(), etc.) to .scores.
-        # Guard against infinite recursion during pickling/unpickling where
-        # self.scores may not exist yet.
+        # Guard against recursion during pickle/deepcopy when self.scores isn't set yet
         try:
             scores = object.__getattribute__(self, "scores")
         except AttributeError:

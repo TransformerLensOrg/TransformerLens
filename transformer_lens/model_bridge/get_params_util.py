@@ -37,23 +37,7 @@ def _get_or_create_bias(bias, n_heads: int, d_head: int, device, dtype) -> torch
 
 
 def get_bridge_params(bridge) -> Dict[str, torch.Tensor]:
-    """Access to model parameters in the format expected by SVDInterpreter.
-
-    For hybrid architectures, only layers with attention get attention keys
-    (W_Q, W_K, etc.). Non-attention layers (SSM, linear-attention) are skipped
-    rather than filled with zeros — this prevents downstream consumers like
-    SVDInterpreter from treating synthetic zeros as real weights.
-
-    Args:
-        bridge: TransformerBridge instance
-
-    Returns:
-        dict: Dictionary of parameter tensors with TransformerLens naming convention.
-            For hybrid models, attention keys only exist for layers that have attention.
-
-    Raises:
-        ValueError: If configuration is inconsistent (e.g., cfg.n_layers != len(blocks))
-    """
+    """Model parameters in SVDInterpreter format. Skips attn keys for non-attention layers."""
     params_dict = {}
 
     def _get_device_dtype():
@@ -89,15 +73,11 @@ def get_bridge_params(bridge) -> Dict[str, torch.Tensor]:
             )
         block = bridge.blocks[layer_idx]
 
-        # Only extract attention params from blocks that have attention.
-        # Non-attention layers (SSM, linear-attention) are skipped entirely
-        # rather than filled with zeros — this prevents consumers like
-        # SVDInterpreter from treating synthetic zeros as real weights.
+        # Skip non-attention layers entirely (no zero-fill — prevents SVDInterpreter garbage)
         try:
             has_attn = "attn" in block._modules
         except (TypeError, AttributeError):
-            # Mock objects or non-nn.Module blocks: fall back to hasattr
-            has_attn = hasattr(block, "attn")
+            has_attn = hasattr(block, "attn")  # Mock fallback
         if has_attn:
             try:
                 w_q = block.attn.q.weight

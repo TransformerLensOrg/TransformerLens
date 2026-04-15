@@ -100,23 +100,18 @@ def setup_submodules(
                 else:
                     remote_path = submodule.name
                     is_optional = getattr(submodule, "optional", False)
-                    # Fast path: if the first path segment is absent, skip
-                    # immediately. This catches the common hybrid case (e.g.,
-                    # "self_attn" absent on an SSM layer) without entering
-                    # get_remote_component.
+                    # Fast path: first segment absent → skip without entering get_remote_component
                     first_segment = remote_path.split(".")[0]
                     if is_optional and not hasattr(original_model, first_segment):
                         logger.debug(
-                            "Optional submodule '%s' (path '%s') absent on %s — skipping",
+                            "Optional '%s' (path '%s') absent on %s",
                             module_name,
                             remote_path,
-                            getattr(component, "name", "unknown"),
+                            getattr(component, "name", "?"),
                         )
                         skipped_optional.append(module_name)
-                        continue  # hybrid layer lacks this submodule; skip binding
-                    # Full resolution — also catches deeper path failures
-                    # (e.g., "self_attn.q_proj" where self_attn exists as a
-                    # stub but q_proj is missing).
+                        continue
+                    # Full resolution — catches deeper path failures (e.g. stub self_attn missing q_proj)
                     try:
                         original_subcomponent = architecture_adapter.get_remote_component(
                             original_model, remote_path
@@ -124,10 +119,10 @@ def setup_submodules(
                     except AttributeError:
                         if is_optional:
                             logger.debug(
-                                "Optional submodule '%s' (path '%s') partially absent on %s — skipping",
+                                "Optional '%s' (path '%s') partially absent on %s",
                                 module_name,
                                 remote_path,
-                                getattr(component, "name", "unknown"),
+                                getattr(component, "name", "?"),
                             )
                             skipped_optional.append(module_name)
                             continue
@@ -145,9 +140,7 @@ def setup_submodules(
             if not submodule.is_list_item and submodule.name is not None:
                 component.real_components[module_name] = (submodule.name, submodule)
 
-    # Remove skipped optional submodules from the template so that
-    # architecture_adapter traversal code (which reads .submodules) doesn't
-    # find them and try to resolve against the HF model.
+    # Clean up so architecture_adapter traversal won't find stale entries
     for name in skipped_optional:
         component.submodules.pop(name, None)
 
