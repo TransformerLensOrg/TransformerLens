@@ -302,12 +302,64 @@ class JointQKVAttentionBridge(AttentionBridge):
             Output tensor after qkv linear transformation
         """
         hooked_input = self._apply_attention_input_hook(*args, **kwargs)
-        q_output = self.q(hooked_input)
-        k_output = self.k(hooked_input)
-        v_output = self.v(hooked_input)
+        if self._is_split_qkv_fork_active():
+            q_output, k_output, v_output = self._split_forward_qkv(hooked_input)
+        else:
+            q_output = self.q(hooked_input)
+            k_output = self.k(hooked_input)
+            v_output = self.v(hooked_input)
         output = self._reconstruct_attention(q_output, k_output, v_output, **kwargs)
         output = self._process_output(output)
         return output
+
+    def _is_split_qkv_fork_active(self) -> bool:
+        cfg = self.config
+        if cfg is None or not getattr(cfg, "n_heads", 0):
+            return False
+        return bool(
+            getattr(cfg, "use_split_qkv_input", False) or getattr(cfg, "use_attn_in", False)
+        )
+
+    def _split_forward_qkv(
+        self, hidden_states: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Fork the residual into independent Q/K/V copies, apply per-head projection.
+
+        After `split_qkv_matrix` runs in `set_original_component`, q/k/v are
+        separate `nn.Linear` modules whose weights partition the output dim by
+        head (output row h*d_head + i ↔ head h, dim i). Plain nn.Linear applied
+        to a 4D [B, S, H, d_model] copy would broadcast the full weight over
+        every head's copy and then we'd keep only the diagonal — n_heads× extra
+        compute. The per-head einsum in `_project_per_head_qkv` slices W per
+        head directly, producing the same 4D [B, S, H, d_head] result that
+        `_reconstruct_attention` expects.
+        """
+        cfg = self.config
+        assert cfg is not None, "config required for split QKV fork"
+        n_heads = int(cfg.n_heads)
+        n_kv_heads = int(getattr(cfg, "n_key_value_heads", None) or n_heads)
+        d_head = int(getattr(cfg, "d_head", 0) or (int(cfg.d_model) // n_heads))
+        use_split = bool(getattr(cfg, "use_split_qkv_input", False))
+        if use_split:
+            q_in = einops.repeat(hidden_states, "b s d -> b s h d", h=n_heads).contiguous()
+            k_in = einops.repeat(hidden_states, "b s d -> b s h d", h=n_kv_heads).contiguous()
+            v_in = einops.repeat(hidden_states, "b s d -> b s h d", h=n_kv_heads).contiguous()
+            q_in = self.hook_q_input(q_in)
+            k_in = self.hook_k_input(k_in)
+            v_in = self.hook_v_input(v_in)
+        else:
+            attn_in = einops.repeat(hidden_states, "b s d -> b s h d", h=n_heads).contiguous()
+            attn_in = self.hook_attn_in(attn_in)
+            q_in = attn_in
+            if n_kv_heads != n_heads:
+                k_in = attn_in[..., :n_kv_heads, :].contiguous()
+                v_in = attn_in[..., :n_kv_heads, :].contiguous()
+            else:
+                k_in = v_in = attn_in
+        q_4d = self._project_per_head_qkv(self.q, q_in, n_heads, d_head)
+        k_4d = self._project_per_head_qkv(self.k, k_in, n_kv_heads, d_head)
+        v_4d = self._project_per_head_qkv(self.v, v_in, n_kv_heads, d_head)
+        return q_4d, k_4d, v_4d
 
     def _process_output(self, output: Any) -> Any:
         """Process the output from _reconstruct_attention.
@@ -429,5 +481,18 @@ class JointQKVAttentionBridge(AttentionBridge):
         attn_output = self._reshape_attn_output(
             attn_output, batch_size, seq_len, num_heads, head_dim
         )
-        attn_output = self._apply_output_projection(attn_output)
+        if (
+            bool(getattr(self.config, "use_attn_result", False))
+            and hasattr(self, "o")
+            and self.o.original_component is not None
+        ):
+            # Per-head output pre-sum. Fire hook_z on the pre-projection flat
+            # tensor first so patches at hook_z propagate into the per-head
+            # computation, matching how the default path's `self.o(...)` call
+            # fires o.hook_in before the linear.
+            attn_output = self.o.hook_in(attn_output)
+            z_4d = attn_output.view(batch_size, seq_len, num_heads, head_dim)
+            attn_output = self._compute_per_head_result(z_4d, num_heads, head_dim)
+        else:
+            attn_output = self._apply_output_projection(attn_output)
         return (attn_output, attn_weights)

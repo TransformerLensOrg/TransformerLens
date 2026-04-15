@@ -35,6 +35,16 @@ BRIDGE_EXPECTED_MISSING_PATTERNS = [
     "attn.hook_q",
     "attn.hook_k",
     "attn.hook_v",
+    # cfg-gated attention hooks. These exist unconditionally on the attention
+    # bridge (so `run_with_cache` key lookups never KeyError) but only fire
+    # when their config flag is on. `benchmark_forward_hooks` runs with
+    # defaults (flags=False) so these correctly don't fire during that
+    # benchmark — suppressing them here prevents false "didn't fire"
+    # failures. The affirmative verification that they DO fire when flags
+    # are on lives in `benchmark_gated_hooks_fire`, which toggles each flag
+    # and asserts the relevant hooks capture activations.
+    "hook_result",
+    "hook_attn_in",
     "hook_q_input",
     "hook_k_input",
     "hook_v_input",

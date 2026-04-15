@@ -35,15 +35,20 @@ class BlockBridge(GeneralizedComponent):
     """
 
     is_list_item: bool = True
+    # Block-level aliases matching HookedTransformer's hook path. hook_attn_in /
+    # hook_q_input / hook_k_input / hook_v_input forward to four *independent*
+    # HookPoints on the attention bridge (they used to collapse onto the same
+    # upstream tensor; that bug is gone — each hook now backs a distinct
+    # residual fork gated by cfg.use_split_qkv_input / cfg.use_attn_in).
     hook_aliases = {
         "hook_resid_pre": "hook_in",
         "hook_resid_mid": "ln2.hook_in",
         "hook_resid_post": "hook_out",
-        "hook_attn_in": "attn.hook_in",
+        "hook_attn_in": "attn.hook_attn_in",
         "hook_attn_out": "attn.hook_out",
-        "hook_q_input": "attn.q.hook_in",
-        "hook_k_input": "attn.k.hook_in",
-        "hook_v_input": "attn.v.hook_in",
+        "hook_q_input": "attn.hook_q_input",
+        "hook_k_input": "attn.hook_k_input",
+        "hook_v_input": "attn.hook_v_input",
         "hook_mlp_in": "mlp.hook_in",
         "hook_mlp_out": "mlp.hook_out",
     }
