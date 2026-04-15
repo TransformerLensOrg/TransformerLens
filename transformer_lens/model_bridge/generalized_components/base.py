@@ -34,6 +34,7 @@ class GeneralizedComponent(nn.Module):
         submodules: Optional[Dict[str, "GeneralizedComponent"]] = None,
         conversion_rule: Optional[BaseTensorConversion] = None,
         hook_alias_overrides: Optional[Dict[str, str]] = None,
+        optional: bool = False,
     ):
         """Initialize the generalized component.
 
@@ -45,12 +46,14 @@ class GeneralizedComponent(nn.Module):
             hook_alias_overrides: Optional dictionary to override default hook aliases.
                 For example, {"hook_attn_out": "ln1_post.hook_out"} will make hook_attn_out
                 point to ln1_post.hook_out instead of the default value in self.hook_aliases.
+            optional: If True, setup skips this subtree when absent (hybrid architectures).
         """
         super().__init__()
         self.name = name
         self.config = config
         self.submodules = submodules or {}
         self.conversion_rule = conversion_rule
+        self.optional = optional
         self._hook_registry: Dict[str, HookPoint] = {}
         self._hook_alias_registry: Dict[str, Union[str, List[str]]] = {}
         self._property_alias_registry: Dict[str, str] = {}
@@ -337,6 +340,7 @@ class GeneralizedComponent(nn.Module):
             "conversion_rule",
             "compatibility_mode",
             "disable_warnings",
+            "optional",
         ]:
             super().__setattr__(name, value)
             return

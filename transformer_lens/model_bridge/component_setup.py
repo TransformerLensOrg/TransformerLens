@@ -2,7 +2,10 @@ from __future__ import annotations
 
 "Component setup utilities for creating and configuring bridged components."
 import copy
+import logging
 from typing import TYPE_CHECKING, Any, cast
+
+logger = logging.getLogger(__name__)
 
 import torch.nn as nn
 
@@ -67,6 +70,7 @@ def setup_submodules(
         architecture_adapter: The architecture adapter
         original_model: The original model to get components from
     """
+    skipped_optional: list[str] = []
     for module_name, submodule in component.submodules.items():
         if submodule.is_list_item:
             if submodule.name is None:
@@ -95,9 +99,34 @@ def setup_submodules(
                     original_subcomponent = original_model
                 else:
                     remote_path = submodule.name
-                    original_subcomponent = architecture_adapter.get_remote_component(
-                        original_model, remote_path
-                    )
+                    is_optional = getattr(submodule, "optional", False)
+                    # Fast path: first segment absent → skip without entering get_remote_component
+                    first_segment = remote_path.split(".")[0]
+                    if is_optional and not hasattr(original_model, first_segment):
+                        logger.debug(
+                            "Optional '%s' (path '%s') absent on %s",
+                            module_name,
+                            remote_path,
+                            getattr(component, "name", "?"),
+                        )
+                        skipped_optional.append(module_name)
+                        continue
+                    # Full resolution — catches deeper path failures (e.g. stub self_attn missing q_proj)
+                    try:
+                        original_subcomponent = architecture_adapter.get_remote_component(
+                            original_model, remote_path
+                        )
+                    except AttributeError:
+                        if is_optional:
+                            logger.debug(
+                                "Optional '%s' (path '%s') partially absent on %s",
+                                module_name,
+                                remote_path,
+                                getattr(component, "name", "?"),
+                            )
+                            skipped_optional.append(module_name)
+                            continue
+                        raise
                 submodule.set_original_component(original_subcomponent)
                 setup_submodules(submodule, architecture_adapter, original_subcomponent)
                 if submodule.name is not None:
@@ -110,6 +139,10 @@ def setup_submodules(
             # Add to real_components mapping (for non-list components)
             if not submodule.is_list_item and submodule.name is not None:
                 component.real_components[module_name] = (submodule.name, submodule)
+
+    # Clean up so architecture_adapter traversal won't find stale entries
+    for name in skipped_optional:
+        component.submodules.pop(name, None)
 
 
 def setup_components(

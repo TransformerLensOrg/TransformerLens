@@ -15,6 +15,17 @@ from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
 
+# Layer-type variant submodule names. Tuple for deterministic iteration order.
+# Extend here when adding new hybrid variant types.
+VARIANT_SUBMODULE_NAMES: tuple[str, ...] = ("attn", "linear_attn", "mamba", "mixer", "ssm")
+_VARIANT_SUBMODULE_SET: frozenset[str] = frozenset(VARIANT_SUBMODULE_NAMES)
+
+# Infrastructure modules excluded from submodule introspection.
+_BLOCK_INTERNAL_MODULES: frozenset[str] = frozenset({"hook_in", "hook_out", "_original_component"})
+
+# Norm-module prefixes excluded from layer_types() labels.
+_NORM_PREFIXES: tuple[str, ...] = ("ln", "layer_norm", "norm", "rms")
+
 
 class BlockBridge(GeneralizedComponent):
     """Bridge component for transformer blocks.
