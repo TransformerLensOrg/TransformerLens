@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-04-15T09:15:26.792099",
+  "last_updated": "2026-04-15T14:01:45.090788",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -11504,6 +11504,66 @@
     {
       "model_id": "Qwen/Qwen3.5-0.8B",
       "architecture_id": "Qwen3_5ForCausalLM",
+      "verified_date": "2026-04-15",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/pythia-70m-deduped",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-04-15",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Qwen/Qwen3-0.6B",
+      "architecture_id": "Qwen3ForCausalLM",
+      "verified_date": "2026-04-15",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "openai-community/gpt2",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-04-15",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "allenai/OLMo-2-0425-1B",
+      "architecture_id": "Olmo2ForCausalLM",
+      "verified_date": "2026-04-15",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "trl-internal-testing/tiny-CohereForCausalLM",
+      "architecture_id": "CohereForCausalLM",
+      "verified_date": "2026-04-15",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P3=94.7% (failed: weight_modification)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EssentialAI/rnj-1-instruct",
+      "architecture_id": "Gemma3ForCausalLM",
       "verified_date": "2026-04-15",
       "verified_by": "verify_models",
       "transformerlens_version": null,
