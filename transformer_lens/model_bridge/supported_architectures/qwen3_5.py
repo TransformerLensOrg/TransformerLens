@@ -22,7 +22,17 @@ class Qwen3_5ArchitectureAdapter(Qwen3ArchitectureAdapter):
     - Gated q_proj (2x wide) sliced by preprocess_weights for weight analysis
     """
 
+    _MIN_TRANSFORMERS_VERSION = "5.2.0"
+
     def __init__(self, cfg: Any) -> None:
+        import transformers
+
+        if transformers.__version__ < self._MIN_TRANSFORMERS_VERSION:
+            raise ImportError(
+                f"Qwen3.5 requires transformers >= {self._MIN_TRANSFORMERS_VERSION} "
+                f"(installed: {transformers.__version__}). "
+                f"Upgrade with: pip install 'transformers>={self._MIN_TRANSFORMERS_VERSION}'"
+            )
         setattr(cfg, "gated_q_proj", True)
         super().__init__(cfg, hybrid=True)
 
