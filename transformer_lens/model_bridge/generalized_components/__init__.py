@@ -7,6 +7,7 @@ from transformer_lens.model_bridge.generalized_components.audio_feature_extracto
 )
 from transformer_lens.model_bridge.generalized_components.block import (
     BlockBridge,
+    MLABlockBridge,
     ParallelBlockBridge,
 )
 from transformer_lens.model_bridge.generalized_components.bloom_attention import (
@@ -57,6 +58,9 @@ from transformer_lens.model_bridge.generalized_components.joint_qkv_position_emb
     JointQKVPositionEmbeddingsAttentionBridge,
 )
 from transformer_lens.model_bridge.generalized_components.linear import LinearBridge
+from transformer_lens.model_bridge.generalized_components.mla_attention import (
+    MLAAttentionBridge,
+)
 from transformer_lens.model_bridge.generalized_components.mlp import MLPBridge
 from transformer_lens.model_bridge.generalized_components.mpt_alibi_attention import (
     MPTALiBiAttentionBridge,
@@ -97,6 +101,7 @@ __all__ = [
     "AttentionBridge",
     "AudioFeatureExtractorBridge",
     "BlockBridge",
+    "MLABlockBridge",
     "ParallelBlockBridge",
     "BloomBlockBridge",
     "BloomAttentionBridge",
@@ -120,6 +125,7 @@ __all__ = [
     "MLPBridge",
     "MPTALiBiAttentionBridge",
     "GatedMLPBridge",
+    "MLAAttentionBridge",
     "GatedRMSNormBridge",
     "MoEBridge",
     "PositionEmbeddingsAttentionBridge",

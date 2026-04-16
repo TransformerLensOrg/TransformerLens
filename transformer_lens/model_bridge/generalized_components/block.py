@@ -245,6 +245,36 @@ class BlockBridge(GeneralizedComponent):
             return kwargs
 
 
+class MLABlockBridge(BlockBridge):
+    """Block wrapping Multi-Head Latent Attention (DeepSeek V2/V3/R1).
+
+    MLA has no standalone q/k/v projections — Q flows through compressed
+    q_a_proj→q_a_layernorm→q_b_proj, and K/V share a joint kv_a_proj_with_mqa
+    entry point. There is no single HookPoint that represents "input that
+    becomes Q/K/V", so the block-level ``hook_q_input``/``hook_k_input``/
+    ``hook_v_input`` aliases do not apply. Type-level distinction means a reader
+    of the adapter sees ``MLABlockBridge`` and knows those hooks are absent.
+    """
+
+    def __init__(
+        self,
+        name: str,
+        config: Optional[Any] = None,
+        submodules: Optional[Dict[str, GeneralizedComponent]] = None,
+        hook_alias_overrides: Optional[Dict[str, str]] = None,
+    ):
+        super().__init__(
+            name,
+            config=config,
+            submodules=submodules,
+            hook_alias_overrides=hook_alias_overrides,
+        )
+        if self.hook_aliases is BlockBridge.hook_aliases:
+            self.hook_aliases = dict(self.hook_aliases)
+        for alias in ("hook_q_input", "hook_k_input", "hook_v_input"):
+            self.hook_aliases.pop(alias, None)
+
+
 class ParallelBlockBridge(BlockBridge):
     """Block where attn and MLP both read the pre-attention residual.
 

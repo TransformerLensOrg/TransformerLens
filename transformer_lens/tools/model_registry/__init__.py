@@ -46,6 +46,7 @@ HF_SUPPORTED_ARCHITECTURES: set[str] = {
     "BertForMaskedLM",
     "BloomForCausalLM",
     "CodeGenForCausalLM",
+    "DeepseekV3ForCausalLM",
     "FalconForCausalLM",
     "GemmaForCausalLM",
     "Gemma2ForCausalLM",

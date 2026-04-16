@@ -48,25 +48,6 @@
       "relevancy_score": 84.9
     },
     {
-      "architecture_id": "DeepseekV3ForCausalLM",
-      "total_models": 46,
-      "total_downloads": 6840308,
-      "min_param_count": 1656048,
-      "sample_models": [
-        "deepseek-ai/DeepSeek-R1",
-        "deepseek-ai/DeepSeek-R1-0528",
-        "deepseek-ai/DeepSeek-V3",
-        "deepseek-ai/DeepSeek-V3-0324",
-        "moonshotai/Kimi-K2-Instruct-0905",
-        "moonshotai/Kimi-K2-Instruct",
-        "deepseek-ai/DeepSeek-V3.1",
-        "trl-internal-testing/tiny-DeepseekV3ForCausalLM",
-        "trl-internal-testing/tiny-DeepseekV3ForCausalLM-0528",
-        "moonshotai/Moonlight-16B-A3B-Instruct"
-      ],
-      "relevancy_score": 83.1
-    },
-    {
       "architecture_id": "NemotronHForCausalLM",
       "total_models": 41,
       "total_downloads": 3587883,
@@ -185,6 +166,22 @@
       "total_models": 14,
       "total_downloads": 1062491,
       "min_param_count": 312517632,
+      "sample_models": [
+        "openbmb/MiniCPM-2B-sft-bf16",
+        "openbmb/MiniCPM4.1-8B",
+        "openbmb/MiniCPM-1B-sft-bf16",
+        "openbmb/MiniCPM4-0.5B",
+        "openbmb/MiniCPM-MoE-8x2B",
+        "katuni4ka/tiny-random-minicpm",
+        "openbmb/MiniCPM-S-1B-sft",
+        "openbmb/MiniCPM4-8B",
+        "openbmb/MiniCPM-2B-dpo-bf16",
+        "openbmb/MiniCPM-2B-sft-fp32"
+      ]
+    },
+    {
+      "architecture_id": "T5GemmaForConditionalGeneration",
+      "total_models": 9,
       "sample_models": [
         "google/t5gemma-s-s-prefixlm",
         "google/t5gemma-b-b-ul2",
@@ -2113,7 +2110,7 @@
       "relevancy_score": 32.9
     },
     {
-      "architecture_id": "XCurOSForCausalLM",
+      "architecture_id": "Step3p5ForCausalLM",
       "total_models": 1,
       "total_downloads": 66986,
       "min_param_count": 7615616512,
@@ -2293,7 +2290,7 @@
       "relevancy_score": 30.8
     },
     {
-      "architecture_id": "HymbaForCausalLM",
+      "architecture_id": "ShikraLlamaForCausalLM",
       "total_models": 1,
       "total_downloads": 645,
       "min_param_count": 1522797824,
