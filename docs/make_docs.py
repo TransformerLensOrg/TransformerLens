@@ -227,7 +227,9 @@ def get_tokenizer_info(model: HookedTransformer) -> dict:
     # basic info
     model_info["tokenizer.name"] = tokenizer.name_or_path
     model_info["tokenizer.vocab_size"] = int(tokenizer.vocab_size)
-    model_info["tokenizer.max_len"] = int(tokenizer.model_max_length)
+    # HF uses int(1e30) as a "no max length" sentinel; clamp to None so the value round-trips through pandas JSON (ujson rejects > int64).
+    max_len = int(tokenizer.model_max_length)
+    model_info["tokenizer.max_len"] = max_len if max_len <= 2**63 - 1 else None
     model_info["tokenizer.class"] = tokenizer.__class__.__name__
 
     # vocab hash
@@ -871,7 +873,7 @@ for English, and may not be the same for other languages.
     <input type="text" id="btSearch" placeholder="Search by model name or organization...">
     <select id="btArch"><option value="">All Architectures</option></select>
     <select id="btPrefix"><option value="">All Organizations</option></select>
-    <select id="btStatus"><option value="">All Statuses</option><option value="1">Verified</option><option value="0">Unverified</option><option value="2">Skipped</option><option value="3">Failed</option></select>
+    <select id="btStatus"><option value="">All Statuses</option><option value="1">Verified</option><option value="0">Unverified</option><option value="3">Failed</option></select>
     <span class="bt-count" id="btCount"></span>
   </div>
   <div class="bt-wrap">
@@ -896,7 +898,56 @@ for English, and may not be the same for other languages.
 <script>
 (function() {
     const PS = 25, COLS = 9;
-    const SM = {0:'Unverified',1:'Verified',2:'Skipped',3:'Failed'};
+    const SM = {0:'Unverified',1:'Verified',2:'Unverified',3:'Failed'};
+    // Canonical org per supported architecture. Pinned to top of the Organizations filter.
+    const OFFICIAL_ORGS = {
+        ApertusForCausalLM: ['swiss-ai'],
+        BloomForCausalLM: ['bigscience'],
+        CodeGenForCausalLM: ['Salesforce'],
+        CohereForCausalLM: ['CohereLabs'],
+        DeepseekV3ForCausalLM: ['deepseek-ai'],
+        FalconForCausalLM: ['tiiuae'],
+        GPT2LMHeadModel: ['openai-community'],
+        GPTBigCodeForCausalLM: ['bigcode'],
+        GPTJForCausalLM: ['EleutherAI'],
+        GPTNeoForCausalLM: ['EleutherAI'],
+        GPTNeoXForCausalLM: ['EleutherAI'],
+        Gemma2ForCausalLM: ['google'],
+        Gemma3ForCausalLM: ['google'],
+        Gemma3ForConditionalGeneration: ['google'],
+        GemmaForCausalLM: ['google'],
+        GptOssForCausalLM: ['openai'],
+        GraniteForCausalLM: ['ibm-granite'],
+        GraniteMoeForCausalLM: ['ibm-granite'],
+        GraniteMoeHybridForCausalLM: ['ibm-granite'],
+        HubertForCTC: ['facebook'],
+        HubertModel: ['facebook'],
+        InternLM2ForCausalLM: ['internlm'],
+        LlamaForCausalLM: ['meta-llama'],
+        LlavaForConditionalGeneration: ['llava-hf'],
+        LlavaNextForConditionalGeneration: ['llava-hf'],
+        LlavaOnevisionForConditionalGeneration: ['llava-hf'],
+        MPTForCausalLM: ['mosaicml'],
+        Mamba2ForCausalLM: ['state-spaces'],
+        MambaForCausalLM: ['state-spaces'],
+        MistralForCausalLM: ['mistralai'],
+        MixtralForCausalLM: ['mistralai'],
+        OPTForCausalLM: ['facebook'],
+        Olmo2ForCausalLM: ['allenai'],
+        Olmo3ForCausalLM: ['allenai'],
+        OlmoForCausalLM: ['allenai'],
+        OlmoeForCausalLM: ['allenai'],
+        OpenELMForCausalLM: ['apple'],
+        Phi3ForCausalLM: ['microsoft'],
+        PhiForCausalLM: ['microsoft'],
+        Qwen2ForCausalLM: ['Qwen'],
+        Qwen3ForCausalLM: ['Qwen'],
+        Qwen3MoeForCausalLM: ['Qwen'],
+        Qwen3NextForCausalLM: ['Qwen'],
+        Qwen3_5ForCausalLM: ['Qwen'],
+        StableLmForCausalLM: ['stabilityai'],
+        XGLMForCausalLM: ['facebook'],
+    };
     const cfgCache = {};
     let all=[], filt=[], pg=1, dt=null, sortCol='', sortDir='asc';
 
@@ -1074,19 +1125,32 @@ for English, and may not be the same for other languages.
         const arch = document.getElementById('btArch').value;
         const subset = arch ? all.filter(m => m.architecture_id === arch) : all;
         const pc = {};
+        const archsInScope = new Set();
         subset.forEach(m => {
+            archsInScope.add(m.architecture_id);
             const p = getPrefix(m.model_id);
             if (p) pc[p] = (pc[p] || 0) + 1;
         });
+        // Collect officials for every architecture in scope (union when "All Architectures" is active).
+        const officialSet = new Set();
+        archsInScope.forEach(a => (OFFICIAL_ORGS[a] || []).forEach(o => officialSet.add(o)));
+        const pinned = [...officialSet].filter(o => pc[o]).sort();
+        const rest = Object.keys(pc).filter(o => !officialSet.has(o)).sort();
         const sel = document.getElementById('btPrefix');
         const cur = sel.value;
-        sel.innerHTML = '<option value="">All Organizations</option>';
-        Object.keys(pc).sort().forEach(p => {
+        const addOpt = (value, text) => {
             const o = document.createElement('option');
-            o.value = p; o.textContent = p + ' (' + pc[p] + ')';
+            o.value = value; o.textContent = text;
             sel.appendChild(o);
-        });
-        // Preserve selection if still valid, otherwise reset
+        };
+        sel.innerHTML = '<option value="">All Organizations</option>';
+        pinned.forEach(p => addOpt(p, p + ' (' + pc[p] + ')'));
+        if (pinned.length && rest.length) {
+            const sep = document.createElement('option');
+            sep.disabled = true; sep.textContent = '──────── Other ────────';
+            sel.appendChild(sep);
+        }
+        rest.forEach(p => addOpt(p, p + ' (' + pc[p] + ')'));
         if (cur && pc[cur]) sel.value = cur; else sel.value = '';
     }
 
@@ -1187,6 +1251,8 @@ for English, and may not be the same for other languages.
     }
     function cleanNote(note) {
         if (!note) return '';
+        // Hide memory-limit skip notes (e.g. "Estimated 45.2 GB exceeds 24 GB limit")
+        if (/Estimated\s+[\d.]+\s*GB\s+exceeds\s+[\d.]+\s*GB\s+limit/i.test(note)) return '';
         // "Benchmark passed with issues: P1=50.0% ..." → "Benchmark passed with issues"
         const m = note.match(/^(.+?):\s/);
         if (m) return m[1];
@@ -1195,6 +1261,7 @@ for English, and may not be the same for other languages.
     function renderNote(note) {
         if (!note) return '<span class="bt-muted">&mdash;</span>';
         const clean = cleanNote(note);
+        if (!clean) return '<span class="bt-muted">&mdash;</span>';
         if (clean.length <= 50) return esc(clean);
         return '<span class="bt-note-trunc">' + esc(clean.slice(0,50)) + '&hellip; <a class="bt-note-toggle" href="javascript:void(0)">more</a></span>' +
                '<span class="bt-note-full" style="display:none">' + esc(clean) + ' <a class="bt-note-toggle" href="javascript:void(0)">less</a></span>';
@@ -1216,7 +1283,7 @@ for English, and may not be the same for other languages.
             '<td>'+org+'</td>' +
             '<td><a href="https://huggingface.co/'+id+'" target="_blank" rel="noopener">'+name+'</a></td>' +
             '<td>'+esc(m.architecture_id)+'</td>' +
-            '<td><span class="bt-badge bt-s'+m.status+'">'+SM[m.status]+'</span></td>' +
+            '<td><span class="bt-badge bt-s'+(m.status===2?0:m.status)+'">'+SM[m.status]+'</span></td>' +
             '<td>'+(m.phase4_score != null ? '<span class="bt-score'+scoreClass(m.phase4_score)+'">'+m.phase4_score.toFixed(1)+'</span>' : '<span class="bt-muted">&mdash;</span>')+'</td>' +
             '<td>'+(m.verified_date || '<span class="bt-muted">&mdash;</span>')+'</td>' +
             '<td class="bt-note">'+ renderNote(m.note) +'</td>' +
@@ -1307,11 +1374,16 @@ def docs_hot_reload():
     copy_demos()
     generate_bridge_models_page()
 
+    # Ignore docs/source/generated/: run_apidoc rewrites it on every build, which would otherwise trigger an infinite rebuild loop.
     subprocess.run(
         [
             "sphinx-autobuild",
             "--watch",
-            str(PACKAGE_DIR) + "," + str(DEMOS_DIR),
+            str(PACKAGE_DIR),
+            "--watch",
+            str(DEMOS_DIR),
+            "--ignore",
+            str(GENERATED_DIR / "*"),
             "--open-browser",
             SOURCE_PATH,
             BUILD_PATH,
