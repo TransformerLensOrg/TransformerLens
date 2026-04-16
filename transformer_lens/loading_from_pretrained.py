@@ -151,7 +151,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
         else:
             # 4B, 12B, 27B and medgemma are multimodal
             architecture = "Gemma3ForConditionalGeneration"
-    elif "gemma-2" in official_model_name.lower():
+    elif "gemma-2-" in official_model_name.lower():
         architecture = "Gemma2ForCausalLM"
     elif "gemma" in official_model_name.lower():
         architecture = "GemmaForCausalLM"
@@ -1433,7 +1433,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "n_key_value_heads": 4,
             "window_size": 4096,
             "use_local_attn": True,
-            "attn_types": ["global", "local"] * 21,  # Alternate global and local attn
+            "attn_types": ["global", "local"] * 13,  # Alternate global and local attn
             "attn_scores_soft_cap": 50.0,
             "output_logits_soft_cap": 30.0,
             "gated_mlp": True,
@@ -1999,7 +1999,7 @@ def get_pretrained_state_dict(
                 hf_model = AutoModelForCausalLM.from_pretrained(
                     official_model_name,
                     revision=f"checkpoint-{cfg.checkpoint_value}",
-                    torch_dtype=dtype,
+                    dtype=dtype,
                     token=huggingface_token if len(huggingface_token) > 0 else None,
                     **kwargs,
                 )
@@ -2007,7 +2007,7 @@ def get_pretrained_state_dict(
                 hf_model = AutoModelForCausalLM.from_pretrained(
                     official_model_name,
                     revision=f"step{cfg.checkpoint_value}",
-                    torch_dtype=dtype,
+                    dtype=dtype,
                     token=huggingface_token,
                     **kwargs,
                 )
@@ -2020,28 +2020,28 @@ def get_pretrained_state_dict(
             elif "hubert" in official_model_name:
                 hf_model = HubertModel.from_pretrained(
                     official_model_name,
-                    torch_dtype=dtype,
+                    dtype=dtype,
                     token=huggingface_token if len(huggingface_token) > 0 else None,
                     **kwargs,
                 )
             elif "wav2vec2" in official_model_name:
                 hf_model = Wav2Vec2Model.from_pretrained(
                     official_model_name,
-                    torch_dtype=dtype,
+                    dtype=dtype,
                     token=huggingface_token if len(huggingface_token) > 0 else None,
                     **kwargs,
                 )
             elif "bert" in official_model_name:
                 hf_model = BertForPreTraining.from_pretrained(
                     official_model_name,
-                    torch_dtype=dtype,
+                    dtype=dtype,
                     token=huggingface_token if len(huggingface_token) > 0 else None,
                     **kwargs,
                 )
             elif "t5" in official_model_name:
                 hf_model = T5ForConditionalGeneration.from_pretrained(
                     official_model_name,
-                    torch_dtype=dtype,
+                    dtype=dtype,
                     token=huggingface_token if len(huggingface_token) > 0 else None,
                     **kwargs,
                 )
@@ -2049,7 +2049,7 @@ def get_pretrained_state_dict(
                 # Multimodal Gemma 3 models - use AutoModel
                 hf_model = AutoModel.from_pretrained(
                     official_model_name,
-                    torch_dtype=dtype,
+                    dtype=dtype,
                     token=huggingface_token if len(huggingface_token) > 0 else None,
                     **kwargs,
                 )
@@ -2058,7 +2058,7 @@ def get_pretrained_state_dict(
                 try:
                     hf_model = AutoModelForCausalLM.from_pretrained(
                         official_model_name,
-                        torch_dtype=dtype,
+                        dtype=dtype,
                         token=huggingface_token if len(huggingface_token) > 0 else None,
                         **kwargs,
                     )
@@ -2072,7 +2072,7 @@ def get_pretrained_state_dict(
                         hf_model = AutoModelForCausalLM.from_pretrained(
                             official_model_name,
                             config=hf_config,
-                            torch_dtype=dtype,
+                            dtype=dtype,
                             token=huggingface_token if len(huggingface_token) > 0 else None,
                             **kwargs,
                         )
