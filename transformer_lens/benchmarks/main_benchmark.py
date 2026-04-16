@@ -8,6 +8,7 @@ Phase 3: Bridge (processed) + HT (processed) - Full compatibility mode testing
 Phase 4: Text Quality - Perplexity-based legibility scoring via GPT-2 Medium
 Phase 5: Granular Weight Processing Tests (optional, individual flags)
 Phase 6: Granular Weight Processing Tests (optional, combined flags)
+Phase 7: Multimodal Tests (only for multimodal models with pixel_values support)
 """
 
 import gc
@@ -109,6 +110,10 @@ MASKED_LM_ARCHITECTURES = [
 # HT's flattened convention. Phase 1 (HF comparison) remains the gold standard.
 NO_HT_COMPARISON_ARCHITECTURES = [
     "Gemma3ForCausalLM",
+    "Gemma3ForConditionalGeneration",
+    "LlavaForConditionalGeneration",
+    "LlavaNextForConditionalGeneration",
+    "LlavaOnevisionForConditionalGeneration",
 ]
 
 
@@ -181,20 +186,43 @@ def should_skip_ht_comparison(model_name: str, trust_remote_code: bool = False) 
         return False
 
 
+def _is_multimodal_model(model_name: str, trust_remote_code: bool = False) -> bool:
+    """Check if a model is a multimodal (vision-language) model."""
+    MULTIMODAL_ARCHITECTURES = [
+        "LlavaForConditionalGeneration",
+        "LlavaNextForConditionalGeneration",
+        "LlavaOnevisionForConditionalGeneration",
+        "Gemma3ForConditionalGeneration",
+    ]
+    try:
+        config = AutoConfig.from_pretrained(
+            model_name, token=_hf_token(), trust_remote_code=trust_remote_code
+        )
+        architectures = getattr(config, "architectures", []) or []
+        return any(arch in MULTIMODAL_ARCHITECTURES for arch in architectures)
+    except Exception:
+        return False
+
+
 def get_auto_model_class(model_name: str, trust_remote_code: bool = False):
     """Determine the correct AutoModel class for a given model.
 
     Some models (like T5) are encoder-decoder and need AutoModelForSeq2SeqLM
-    instead of AutoModelForCausalLM.
+    instead of AutoModelForCausalLM. Multimodal models (LLaVA, Gemma3) need
+    AutoModel to load the full vision+language architecture.
 
     Args:
         model_name: The HuggingFace model name or path
 
     Returns:
-        The appropriate AutoModel class (AutoModelForCausalLM or AutoModelForSeq2SeqLM)
+        The appropriate AutoModel class
     """
     if is_encoder_decoder_model(model_name, trust_remote_code=trust_remote_code):
         return AutoModelForSeq2SeqLM
+    if _is_multimodal_model(model_name, trust_remote_code=trust_remote_code):
+        from transformers import AutoModelForImageTextToText
+
+        return AutoModelForImageTextToText
     return AutoModelForCausalLM
 
 
@@ -1093,6 +1121,11 @@ def run_benchmark_suite(
         bridge_unprocessed = TransformerBridge.boot_transformers(model_name, device=device, dtype=bridge_dtype, trust_remote_code=trust_remote_code)  # type: ignore[attr-defined]
         if verbose:
             print("✓ TransformerBridge loaded (unprocessed)\n")
+        # Apply the adapter's prepare_model() to the HF reference model so
+        # both bridge and reference have the same fixups (e.g., weight tying).
+        # This keeps model-specific logic in the adapter, not the benchmark.
+        if hf_model is not None and hasattr(bridge_unprocessed, "adapter"):
+            bridge_unprocessed.adapter.prepare_model(hf_model)
     except Exception as e:
         import traceback
 
@@ -1496,6 +1529,60 @@ def run_benchmark_suite(
         except Exception as e:
             if verbose:
                 print(f"✗ Text quality benchmark failed: {e}\n")
+
+    # ========================================================================
+    # Phase 7: Multimodal Tests (only for multimodal models)
+    # Runs before Phase 3 so we can reuse bridge_unprocessed before cleanup.
+    # ========================================================================
+    if (
+        bridge_unprocessed is not None
+        and getattr(bridge_unprocessed.cfg, "is_multimodal", False)
+        and should_run_phase(7)
+    ):
+        current_phase[0] = 7
+        if verbose:
+            print("\n" + "=" * 80)
+            print("PHASE 7: MULTIMODAL TESTS")
+            print("=" * 80)
+            print("Testing multimodal forward pass, generation, and caching with images.")
+            print("=" * 80 + "\n")
+
+        try:
+            from transformer_lens.benchmarks.multimodal import (
+                benchmark_multimodal_cache,
+                benchmark_multimodal_forward,
+                benchmark_multimodal_generation,
+            )
+
+            mm_results = [
+                benchmark_multimodal_forward(bridge_unprocessed, test_text=test_text),
+                benchmark_multimodal_generation(bridge_unprocessed, test_text=test_text),
+                benchmark_multimodal_cache(bridge_unprocessed, test_text=test_text),
+            ]
+            for result in mm_results:
+                result.phase = 7
+                results.append(result)
+                if verbose:
+                    print(result)
+
+            if verbose:
+                print("\n" + "=" * 80)
+                print("PHASE 7 COMPLETE")
+                print("=" * 80)
+
+        except Exception as e:
+            if verbose:
+                print(f"\n⚠ Multimodal tests failed: {e}\n")
+            results.append(
+                BenchmarkResult(
+                    name="multimodal_suite",
+                    passed=False,
+                    severity=BenchmarkSeverity.ERROR,
+                    message=f"Failed to run multimodal tests: {str(e)}",
+                    details={"error": str(e)},
+                    phase=7,
+                )
+            )
 
     # ========================================================================
     # PHASE 3: Bridge (processed) + HookedTransformer (processed)

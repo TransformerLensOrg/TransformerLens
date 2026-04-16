@@ -138,6 +138,7 @@ class TransformerBridge(nn.Module):
         self._register_all_aliases_recursive()
         self._setup_hook_compatibility()
         self._initialize_hooks_to_cache()
+        self.processor = None
 
     @classmethod
     def boot_transformers(
@@ -149,6 +150,7 @@ class TransformerBridge(nn.Module):
         tokenizer: Optional[Any] = None,
         load_weights: bool = True,
         trust_remote_code: bool = False,
+        model_class: Optional[type] = None,
     ) -> "TransformerBridge":
         """Boot a model from HuggingFace (alias for sources.transformers.boot).
 
@@ -160,6 +162,8 @@ class TransformerBridge(nn.Module):
             tokenizer: Optional pre-initialized tokenizer to use; if not provided one will be created.
             load_weights: If False, load model without weights (on meta device) for config inspection only.
             trust_remote_code: Whether to trust remote code for custom model architectures.
+            model_class: Optional HuggingFace model class to use instead of the default
+                auto-detected class (e.g., BertForNextSentencePrediction).
 
         Returns:
             The bridge to the loaded model.
@@ -174,6 +178,7 @@ class TransformerBridge(nn.Module):
             tokenizer=tokenizer,
             load_weights=load_weights,
             trust_remote_code=trust_remote_code,
+            model_class=model_class,
         )
 
     @property
@@ -206,8 +211,6 @@ class TransformerBridge(nn.Module):
                                 for part in single_target.split("."):
                                     target_obj = getattr(target_obj, part)
                                 object.__setattr__(self, alias_name, target_obj)
-                                if isinstance(target_obj, HookPoint):
-                                    target_obj.name = alias_name
                                 break
                             except AttributeError:
                                 continue
@@ -216,8 +219,6 @@ class TransformerBridge(nn.Module):
                         for part in target_path.split("."):
                             target_obj = getattr(target_obj, part)
                         object.__setattr__(self, alias_name, target_obj)
-                        if isinstance(target_obj, HookPoint):
-                            target_obj.name = alias_name
                 except AttributeError:
                     pass
 
@@ -384,7 +385,6 @@ class TransformerBridge(nn.Module):
         all_aliases = {**self.hook_aliases, **component_aliases}
         if not all_aliases:
             return
-        aliased_hook_ids = set()
         for alias_name, target in all_aliases.items():
             if isinstance(target, list):
                 for single_target in target:
@@ -392,11 +392,6 @@ class TransformerBridge(nn.Module):
                         target_hook = resolve_alias(self, alias_name, {alias_name: single_target})
                         if target_hook is not None:
                             hooks[alias_name] = target_hook
-                            if isinstance(target_hook, HookPoint):
-                                hook_id = id(target_hook)
-                                if hook_id not in aliased_hook_ids:
-                                    target_hook.name = alias_name
-                                    aliased_hook_ids.add(hook_id)
                             break
                     except AttributeError:
                         continue
@@ -405,17 +400,14 @@ class TransformerBridge(nn.Module):
                     target_hook = resolve_alias(self, alias_name, {alias_name: target})
                     if target_hook is not None:
                         hooks[alias_name] = target_hook
-                        if isinstance(target_hook, HookPoint):
-                            hook_id = id(target_hook)
-                            if hook_id not in aliased_hook_ids:
-                                target_hook.name = alias_name
-                                aliased_hook_ids.add(hook_id)
                 except AttributeError:
                     continue
 
     def _scan_existing_hooks(self, module: nn.Module, prefix: str = "") -> None:
         """Scan existing modules for hooks and add them to registry."""
         visited = set()
+        # Prevent alias entries from overwriting canonical HookPoint names.
+        named_hook_ids: set = set()
 
         def scan_module(mod: nn.Module, path: str = "") -> None:
             obj_id = id(mod)
@@ -428,7 +420,10 @@ class TransformerBridge(nn.Module):
                     hooks_dict = cast(Dict[str, HookPoint], component_hooks)
                     for hook_name, hook in hooks_dict.items():
                         full_name = f"{path}.{hook_name}" if path else hook_name
-                        hook.name = full_name
+                        hook_id = id(hook)
+                        if hook_id not in named_hook_ids:
+                            hook.name = full_name
+                            named_hook_ids.add(hook_id)
                         self._hook_registry[full_name] = hook
             for attr_name in dir(mod):
                 if attr_name.startswith("_"):
@@ -459,7 +454,10 @@ class TransformerBridge(nn.Module):
                     continue
                 name = f"{path}.{attr_name}" if path else attr_name
                 if isinstance(attr, HookPoint):
-                    attr.name = name
+                    hook_id = id(attr)
+                    if hook_id not in named_hook_ids:
+                        attr.name = name
+                        named_hook_ids.add(hook_id)
                     self._hook_registry[name] = attr
             for child_name, child_module in mod.named_children():
                 if (
@@ -702,6 +700,17 @@ class TransformerBridge(nn.Module):
 
         if verbose:
             print(f"Processing weights for {self.cfg.model_name}...")
+
+        # Soft capping (tanh) is not translation-invariant; centering would change output.
+        if center_unembed and getattr(self.cfg, "output_logits_soft_cap", -1.0) > 0.0:
+            import logging
+
+            logging.warning(
+                "center_unembed=True is incompatible with logit softcapping "
+                "(output_logits_soft_cap=%.1f). Disabling center_unembed.",
+                self.cfg.output_logits_soft_cap,
+            )
+            center_unembed = False
 
         if verbose:
             print("  Extracting state dict from existing model...")
@@ -1204,19 +1213,23 @@ class TransformerBridge(nn.Module):
         attention_mask: Optional[torch.Tensor] = None,
         start_at_layer: Optional[int] = None,
         stop_at_layer: Optional[int] = None,
+        pixel_values: Optional[torch.Tensor] = None,
         **kwargs,
     ) -> Any:
         """Forward pass through the model.
 
         Args:
             input: Input to the model
-            return_type: Type of output to return ('logits', 'loss', 'both', None)
+            return_type: Type of output to return ('logits', 'loss', 'both', 'predictions', None)
             loss_per_token: Whether to return loss per token
             prepend_bos: Whether to prepend BOS token
             padding_side: Which side to pad on
             past_kv_cache: Optional TransformerLensKeyValueCache for generation
             start_at_layer: Layer to start forward pass from
             stop_at_layer: Layer to stop forward pass at
+            pixel_values: Optional image tensor for multimodal models (e.g., LLaVA, Gemma3).
+                The tensor is passed directly to the underlying HuggingFace model.
+                Only valid when cfg.is_multimodal is True.
             **kwargs: Additional arguments passed to model
 
         Returns:
@@ -1227,6 +1240,15 @@ class TransformerBridge(nn.Module):
         if stop_at_layer is not None and hasattr(self, "blocks"):
             for block in self.blocks:
                 block._stop_at_layer_idx = stop_at_layer
+
+        # Map HookedEncoderDecoder-style kwargs to HF-compatible names
+        if "decoder_input" in kwargs:
+            kwargs["decoder_input_ids"] = kwargs.pop("decoder_input")
+        if "one_zero_attention_mask" in kwargs:
+            if attention_mask is None:
+                attention_mask = kwargs.pop("one_zero_attention_mask")
+            else:
+                kwargs.pop("one_zero_attention_mask")
 
         try:
             if isinstance(input, (str, list)):
@@ -1288,6 +1310,19 @@ class TransformerBridge(nn.Module):
                 else:
                     kwargs["decoder_input_ids"] = input_ids
 
+            # Tell PosEmbedBridge to expand batch=1 position_ids to full batch.
+            if hasattr(self, "pos_embed"):
+                self.pos_embed._current_batch_size = input_ids.shape[0]
+
+            # Handle pixel_values for multimodal models
+            if pixel_values is not None:
+                if not getattr(self.cfg, "is_multimodal", False):
+                    raise ValueError(
+                        "pixel_values can only be passed to multimodal models "
+                        "(cfg.is_multimodal must be True)"
+                    )
+                kwargs["pixel_values"] = pixel_values
+
             original_tl_cache = past_kv_cache
             output = self.original_model(input_ids, **kwargs)
             if (
@@ -1339,6 +1374,26 @@ class TransformerBridge(nn.Module):
                 ), f"Expected logits tensor, got {type(logits)}"
                 loss = self.loss_fn(logits, input_ids, per_token=loss_per_token)
                 return (logits, loss)
+            elif return_type == "predictions":
+                assert (
+                    self.tokenizer is not None
+                ), "Must have a tokenizer to use return_type='predictions'"
+                if logits.shape[-1] == 2:
+                    # Next Sentence Prediction — 2-class output
+                    logprobs = logits.log_softmax(dim=-1)
+                    predictions = [
+                        "The sentences are sequential",
+                        "The sentences are NOT sequential",
+                    ]
+                    return predictions[logprobs.argmax(dim=-1).item()]
+                else:
+                    # Masked Language Modeling — decode [MASK] tokens
+                    logprobs = logits[input_ids == self.tokenizer.mask_token_id].log_softmax(dim=-1)
+                    predictions = self.tokenizer.decode(logprobs.argmax(dim=-1))
+                    if " " in predictions:
+                        predictions = predictions.split(" ")
+                        predictions = [f"Prediction {i}: {p}" for i, p in enumerate(predictions)]
+                    return predictions
             elif return_type is None:
                 return None
             else:
@@ -1465,21 +1520,24 @@ class TransformerBridge(nn.Module):
         hooks: List[Tuple[HookPoint, str]] = []
         visited: set[int] = set()
 
+        # None → no-op .to(None), tensors stay on their current device.
+        cache_device = kwargs.pop("device", None)
+
         def make_cache_hook(name: str):
             def cache_hook(tensor: torch.Tensor, *, hook: Any) -> torch.Tensor:
                 if tensor is None:
                     cache[name] = None
                 elif isinstance(tensor, torch.Tensor):
-                    cache[name] = tensor.detach().cpu()
+                    cache[name] = tensor.detach().to(cache_device)
                 elif isinstance(tensor, tuple):
                     if len(tensor) > 0 and isinstance(tensor[0], torch.Tensor):
-                        cache[name] = tensor[0].detach().cpu()
+                        cache[name] = tensor[0].detach().to(cache_device)
                     else:
                         pass
                 else:
                     try:
                         if hasattr(tensor, "detach"):
-                            cache[name] = tensor.detach().cpu()
+                            cache[name] = tensor.detach().to(cache_device)
                     except:
                         pass
                 return tensor
@@ -1535,14 +1593,13 @@ class TransformerBridge(nn.Module):
                     hook_dict[block_hook_name].add_hook(stop_hook)
                     hooks.append((hook_dict[block_hook_name], block_hook_name))
         filtered_kwargs = kwargs.copy()
-        target_device = filtered_kwargs.pop("device", None)
-        if target_device is not None:
-            self.original_model = self.original_model.to(target_device)
+        if cache_device is not None:
+            self.original_model = self.original_model.to(cache_device)
             if processed_args and isinstance(processed_args[0], torch.Tensor):
-                processed_args = [processed_args[0].to(target_device)] + list(processed_args[1:])
+                processed_args = [processed_args[0].to(cache_device)] + list(processed_args[1:])
             for key, value in filtered_kwargs.items():
                 if isinstance(value, torch.Tensor):
-                    filtered_kwargs[key] = value.to(target_device)
+                    filtered_kwargs[key] = value.to(cache_device)
         try:
             if "output_attentions" not in filtered_kwargs:
                 filtered_kwargs["output_attentions"] = True
@@ -1747,6 +1804,8 @@ class TransformerBridge(nn.Module):
         return_type: Optional[str] = "input",
         verbose: bool = True,
         output_logits: bool = False,
+        pixel_values: Optional[torch.Tensor] = None,
+        **multimodal_kwargs,
     ) -> str | list[str] | torch.Tensor | Any:  # Any for transformers.utils.ModelOutput
         # Using Any due to beartype's forward reference resolution limitations.
         # See: https://github.com/beartype/beartype/issues/546
@@ -1774,6 +1833,9 @@ class TransformerBridge(nn.Module):
             return_type: The type of output to return - 'input', 'str', or 'tokens'
             verbose: Not used in Bridge (kept for API compatibility)
             output_logits: If True, return a ModelOutput with sequences and logits tuple
+            pixel_values: Optional image tensor for multimodal models. Only passed on the
+                first generation step (the vision encoder processes the image once, then
+                embeddings are part of the token sequence for subsequent steps).
 
         Returns:
             Generated sequence as string, list of strings, or tensor depending on input type and return_type.
@@ -1826,14 +1888,49 @@ class TransformerBridge(nn.Module):
         # Optionally collect logits at each generation step for downstream tooling/tests
         logits_seq_list: list[torch.Tensor] | None = [] if output_logits else None
 
+        # Detect encoder-decoder models (T5, BART, etc.)
+        is_encoder_decoder = hasattr(self.original_model, "config") and getattr(
+            self.original_model.config, "is_encoder_decoder", False
+        )
+
         # Generate tokens
         current_tokens = input_tokens.clone()
         sampled_tokens_list = []
 
-        for _ in range(max_new_tokens):
+        # For encoder-decoder models, keep encoder input fixed and grow decoder input
+        if is_encoder_decoder:
+            encoder_input = input_tokens.clone()
+            decoder_start_token_id = getattr(
+                self.original_model.config, "decoder_start_token_id", 0
+            )
+            decoder_tokens = torch.full(
+                (batch_size, 1),
+                decoder_start_token_id,
+                dtype=input_tokens.dtype,
+                device=self.cfg.device,
+            )
+
+        for gen_step_idx in range(max_new_tokens):
             # Get logits for next token
             with torch.no_grad():
-                logits = self(current_tokens, return_type="logits")
+                if is_encoder_decoder:
+                    logits = self(
+                        encoder_input,
+                        return_type="logits",
+                        decoder_input=decoder_tokens,
+                    )
+                else:
+                    forward_kwargs: Dict[str, Any] = {}
+                    # Pass multimodal inputs only on the first step — the vision
+                    # encoder processes the image once, embedding it into the
+                    # token sequence.  This includes pixel_values plus any extra
+                    # processor outputs (e.g. image_sizes for LlavaNext).
+                    if gen_step_idx == 0:
+                        if pixel_values is not None:
+                            forward_kwargs["pixel_values"] = pixel_values
+                        if multimodal_kwargs:
+                            forward_kwargs.update(multimodal_kwargs)
+                    logits = self(current_tokens, return_type="logits", **forward_kwargs)
                 final_logits = logits[:, -1, :]
 
                 # Collect logits if requested
@@ -1849,14 +1946,14 @@ class TransformerBridge(nn.Module):
                         temperature=temperature,
                         freq_penalty=freq_penalty,
                         repetition_penalty=repetition_penalty,
-                        tokens=current_tokens,
+                        tokens=decoder_tokens if is_encoder_decoder else current_tokens,
                     ).to(self.cfg.device)
                 else:
                     sampled_tokens = utils.sample_logits(
                         final_logits,
                         temperature=0.0,
                         repetition_penalty=repetition_penalty,
-                        tokens=current_tokens,
+                        tokens=decoder_tokens if is_encoder_decoder else current_tokens,
                     ).to(self.cfg.device)
 
                 sampled_tokens_list.append(sampled_tokens.unsqueeze(1))
@@ -1872,7 +1969,10 @@ class TransformerBridge(nn.Module):
                     )
 
                 # Append sampled token to current sequence
-                current_tokens = torch.cat([current_tokens, sampled_tokens.unsqueeze(1)], dim=1)
+                if is_encoder_decoder:
+                    decoder_tokens = torch.cat([decoder_tokens, sampled_tokens.unsqueeze(1)], dim=1)
+                else:
+                    current_tokens = torch.cat([current_tokens, sampled_tokens.unsqueeze(1)], dim=1)
 
                 # Early stopping if all sequences finished
                 if stop_at_eos and finished_sequences.all():
@@ -1880,7 +1980,10 @@ class TransformerBridge(nn.Module):
 
         # Concatenate all sampled tokens
         sampled_tokens = torch.cat(sampled_tokens_list, dim=1)
-        output_tokens = torch.cat([input_tokens, sampled_tokens], dim=1)
+        if is_encoder_decoder:
+            output_tokens = decoder_tokens
+        else:
+            output_tokens = torch.cat([input_tokens, sampled_tokens], dim=1)
 
         # Return ModelOutput if output_logits was requested
         if output_logits and logits_seq_list is not None:
@@ -1934,6 +2037,7 @@ class TransformerBridge(nn.Module):
         temperature: float = 1.0,
         use_past_kv_cache: bool = True,
         return_type: str | None = "input",
+        pixel_values: torch.Tensor | None = None,
         **generation_kwargs,
     ) -> str | list[str] | torch.Tensor | Any:  # Any for HF ModelOutput types
         # Using Any due to beartype's forward reference resolution limitations.
@@ -2025,6 +2129,9 @@ class TransformerBridge(nn.Module):
         elif stop_at_eos and self.tokenizer.eos_token_id is not None:
             generation_kwargs["eos_token_id"] = self.tokenizer.eos_token_id
 
+        if pixel_values is not None:
+            generation_kwargs["pixel_values"] = pixel_values
+
         if use_past_kv_cache:
             generation_kwargs["use_cache"] = True
 
@@ -2093,6 +2200,42 @@ class TransformerBridge(nn.Module):
                 return [self.tokenizer.decode(seq, skip_special_tokens=True) for seq in outputs]
             else:
                 return outputs
+
+    def prepare_multimodal_inputs(
+        self,
+        text: Union[str, List[str]],
+        images: Optional[Any] = None,
+    ) -> Dict[str, torch.Tensor]:
+        """Prepare multimodal inputs using the model's processor.
+
+        Converts text and images into model-ready tensors (input_ids, pixel_values,
+        attention_mask, etc.) using the HuggingFace processor loaded during boot().
+
+        Args:
+            text: Text prompt(s), typically containing image placeholder tokens
+                (e.g., "<image>" for LLaVA).
+            images: PIL Image or list of PIL Images to process. Pass None for
+                text-only inputs on a multimodal model.
+
+        Returns:
+            Dictionary with 'input_ids', 'pixel_values', 'attention_mask', etc.
+            All tensors are moved to the model's device.
+
+        Raises:
+            ValueError: If model is not multimodal or processor is not available.
+        """
+        if not getattr(self.cfg, "is_multimodal", False):
+            raise ValueError(
+                "prepare_multimodal_inputs() requires a multimodal model "
+                "(cfg.is_multimodal must be True)"
+            )
+        if self.processor is None:
+            raise ValueError(
+                "No processor available. Load model with boot_transformers() or "
+                "set bridge.processor = AutoProcessor.from_pretrained(...) manually."
+            )
+        inputs = self.processor(text=text, images=images, return_tensors="pt")
+        return {k: v.to(self.cfg.device) if hasattr(v, "to") else v for k, v in inputs.items()}
 
     def to(self, *args, **kwargs) -> "TransformerBridge":
         """Move model to device and/or change dtype.
@@ -2417,7 +2560,9 @@ class TransformerBridge(nn.Module):
         # Map top-level components
         for tl_name, component in component_mapping.items():
             if component.name and tl_name != "blocks":
-                attr_to_hf[tl_name] = component.name
+                # Skip if TL name is already a suffix of the HF path (avoids doubling).
+                if tl_name != component.name and not component.name.endswith("." + tl_name):
+                    attr_to_hf[tl_name] = component.name
 
         # Map block-level components (ln1, ln2, attn, mlp)
         blocks_component = component_mapping.get("blocks")

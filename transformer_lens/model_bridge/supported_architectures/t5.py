@@ -37,8 +37,11 @@ class T5ArchitectureAdapter(ArchitectureAdapter):
         """
         super().__init__(cfg)
 
+        # T5 RMSNorm: disable fold_ln to avoid corrupting weights.
+        self.supports_fold_ln = False
+
         # Set config variables for weight processing
-        self.cfg.normalization_type = "LN"
+        self.cfg.normalization_type = "RMS"
         self.cfg.positional_embedding_type = "relative_positional_bias"
         self.cfg.final_rms = False
         self.cfg.attn_only = False

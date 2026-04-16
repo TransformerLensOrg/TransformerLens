@@ -35,6 +35,12 @@ class OptArchitectureAdapter(ArchitectureAdapter):
 
         # OPT models were trained with BOS tokens (inherits default_prepend_bos = True)
 
+        # Post-norm: disable fold_ln and center_writing_weights (pre-norm only).
+        is_post_norm = not getattr(self.cfg, "do_layer_norm_before", True)
+        if is_post_norm:
+            self.supports_fold_ln = False
+            self.supports_center_writing_weights = False
+
         self.weight_processing_conversions = {
             "blocks.{i}.attn.q.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
@@ -63,7 +69,11 @@ class OptArchitectureAdapter(ArchitectureAdapter):
             "blocks": BlockBridge(
                 name="model.decoder.layers",
                 submodules={
-                    "ln1": NormalizationBridge(name="self_attn_layer_norm", config=self.cfg),
+                    "ln1": NormalizationBridge(
+                        name="self_attn_layer_norm",
+                        config=self.cfg,
+                        use_native_layernorm_autograd=True,
+                    ),
                     "attn": AttentionBridge(
                         name="self_attn",
                         config=self.cfg,
@@ -76,7 +86,11 @@ class OptArchitectureAdapter(ArchitectureAdapter):
                             "o": LinearBridge(name="out_proj"),
                         },
                     ),
-                    "ln2": NormalizationBridge(name="final_layer_norm", config=self.cfg),
+                    "ln2": NormalizationBridge(
+                        name="final_layer_norm",
+                        config=self.cfg,
+                        use_native_layernorm_autograd=True,
+                    ),
                     # OPT has fc1/fc2 directly on the block, not in an MLP container.
                     # Use SymbolicBridge to maintain TransformerLens structure while
                     # correctly mapping to the underlying architecture.
@@ -92,5 +106,11 @@ class OptArchitectureAdapter(ArchitectureAdapter):
         }
         if has_final_layer_norm:
             self.component_mapping["ln_final"] = NormalizationBridge(
-                name="model.decoder.final_layer_norm", config=self.cfg
+                name="model.decoder.final_layer_norm",
+                config=self.cfg,
+                use_native_layernorm_autograd=True,
             )
+        # project_in/project_out bridge word_embed_proj_dim <-> hidden_size.
+        if not has_final_layer_norm:
+            self.component_mapping["project_in"] = LinearBridge(name="model.decoder.project_in")
+            self.component_mapping["project_out"] = LinearBridge(name="model.decoder.project_out")

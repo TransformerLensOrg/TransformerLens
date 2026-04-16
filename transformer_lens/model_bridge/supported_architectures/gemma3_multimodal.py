@@ -80,13 +80,13 @@ class Gemma3MultimodalArchitectureAdapter(ArchitectureAdapter):
             "blocks.{i}.attn.k.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
                     "(n h) m -> n m h",
-                    n=getattr(self.cfg, "n_key_value_heads", self.cfg.n_heads),
+                    n=getattr(self.cfg, "n_key_value_heads", None) or self.cfg.n_heads,
                 ),
             ),
             "blocks.{i}.attn.v.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion(
                     "(n h) m -> n m h",
-                    n=getattr(self.cfg, "n_key_value_heads", self.cfg.n_heads),
+                    n=getattr(self.cfg, "n_key_value_heads", None) or self.cfg.n_heads,
                 ),
             ),
             "blocks.{i}.attn.o.weight": ParamProcessingConversion(
@@ -141,7 +141,6 @@ class Gemma3MultimodalArchitectureAdapter(ArchitectureAdapter):
             # Language model components (under model.language_model)
             "embed": EmbeddingBridge(name="model.language_model.embed_tokens"),
             "rotary_emb": RotaryEmbeddingBridge(name="model.language_model.rotary_emb"),
-            "rotary_emb_local": RotaryEmbeddingBridge(name="model.language_model.rotary_emb_local"),
             "blocks": BlockBridge(
                 name="model.language_model.layers",
                 submodules={
@@ -223,9 +222,9 @@ class Gemma3MultimodalArchitectureAdapter(ArchitectureAdapter):
             hf_model: The HuggingFace Gemma-3 multimodal model instance
             bridge_model: The TransformerBridge model (if available)
         """
-        # Get rotary embedding instances from the language model
+        # Get rotary embedding from the language model
         language_model = hf_model.model.language_model
-        rotary_emb_local = language_model.rotary_emb_local
+        rotary_emb = language_model.rotary_emb
 
         # Force HF model to use "eager" attention
         if hasattr(hf_model, "config") and hasattr(hf_model.config, "_attn_implementation"):
@@ -245,7 +244,7 @@ class Gemma3MultimodalArchitectureAdapter(ArchitectureAdapter):
         if bridge_model is not None and hasattr(bridge_model, "blocks"):
             for block in bridge_model.blocks:
                 if hasattr(block, "attn"):
-                    block.attn.set_rotary_emb(rotary_emb_local)
+                    block.attn.set_rotary_emb(rotary_emb)
 
                     # Enable native autograd for q_norm/k_norm
                     if hasattr(block.attn, "original_component"):
@@ -257,4 +256,4 @@ class Gemma3MultimodalArchitectureAdapter(ArchitectureAdapter):
 
         # Also set on the template for get_generalized_component() calls
         attn_bridge = self.get_generalized_component("blocks.0.attn")
-        attn_bridge.set_rotary_emb(rotary_emb_local)
+        attn_bridge.set_rotary_emb(rotary_emb)

@@ -35,6 +35,10 @@ from transformer_lens.model_bridge.generalized_components.bloom_attention import
     BloomAttentionBridge,
 )
 from transformer_lens.model_bridge.generalized_components.bloom_mlp import BloomMLPBridge
+from transformer_lens.model_bridge.generalized_components.clip_vision_encoder import (
+    CLIPVisionEncoderBridge,
+    CLIPVisionEncoderLayerBridge,
+)
 from transformer_lens.model_bridge.generalized_components.siglip_vision_encoder import (
     SiglipVisionEncoderBridge,
     SiglipVisionEncoderLayerBridge,
@@ -49,6 +53,8 @@ __all__ = [
     "BloomBlockBridge",
     "BloomAttentionBridge",
     "BloomMLPBridge",
+    "CLIPVisionEncoderBridge",
+    "CLIPVisionEncoderLayerBridge",
     "Conv1DBridge",
     "EmbeddingBridge",
     "RotaryEmbeddingBridge",

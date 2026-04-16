@@ -179,49 +179,53 @@ def estimate_model_params(model_id: str) -> int:
     _token = os.environ.get("HF_TOKEN", "") or None
     config = AutoConfig.from_pretrained(model_id, trust_remote_code=trust_remote_code, token=_token)
 
+    # For multimodal models (LLaVA, Gemma3 multimodal), the language model config
+    # is nested under text_config. Fall through to the top-level config otherwise.
+    lang_config = getattr(config, "text_config", config)
+
     # Extract dimensions from config (different models use different attribute names)
     d_model = (
-        getattr(config, "hidden_size", None)
-        or getattr(config, "d_model", None)
-        or getattr(config, "model_dim", None)  # OpenELM
+        getattr(lang_config, "hidden_size", None)
+        or getattr(lang_config, "d_model", None)
+        or getattr(lang_config, "model_dim", None)  # OpenELM
         or 0
     )
     n_heads_raw = (
-        getattr(config, "num_attention_heads", None)
-        or getattr(config, "n_head", None)
-        or getattr(config, "num_query_heads", None)  # OpenELM (may be per-layer list)
+        getattr(lang_config, "num_attention_heads", None)
+        or getattr(lang_config, "n_head", None)
+        or getattr(lang_config, "num_query_heads", None)  # OpenELM (may be per-layer list)
         or 0
     )
     # OpenELM uses per-layer lists for heads; take the max for estimation
     n_heads = max(n_heads_raw) if isinstance(n_heads_raw, (list, tuple)) else n_heads_raw
     n_layers = (
-        getattr(config, "num_hidden_layers", None)
-        or getattr(config, "n_layer", None)
-        or getattr(config, "num_transformer_layers", None)  # OpenELM
+        getattr(lang_config, "num_hidden_layers", None)
+        or getattr(lang_config, "n_layer", None)
+        or getattr(lang_config, "num_transformer_layers", None)  # OpenELM
         or 0
     )
     d_mlp = (
-        getattr(config, "intermediate_size", None)
-        or getattr(config, "d_inner", None)
-        or getattr(config, "n_inner", None)
-        or getattr(config, "ffn_dim", None)  # OPT
-        or getattr(config, "d_ff", None)  # T5
+        getattr(lang_config, "intermediate_size", None)
+        or getattr(lang_config, "d_inner", None)
+        or getattr(lang_config, "n_inner", None)
+        or getattr(lang_config, "ffn_dim", None)  # OPT
+        or getattr(lang_config, "d_ff", None)  # T5
     )
     # OpenELM uses per-layer ffn_multipliers instead of a fixed intermediate_size
     if not d_mlp and d_model:
-        ffn_multipliers = getattr(config, "ffn_multipliers", None)
+        ffn_multipliers = getattr(lang_config, "ffn_multipliers", None)
         if isinstance(ffn_multipliers, (list, tuple)):
             d_mlp = int(max(ffn_multipliers) * d_model)
         else:
             # Many architectures (GPT-2, Bloom, GPT-Neo, GPT-J) leave d_mlp/n_inner
             # as None and default to 4 * hidden_size internally.
             d_mlp = 4 * d_model
-    d_vocab = getattr(config, "vocab_size", None) or 0
+    d_vocab = getattr(lang_config, "vocab_size", None) or 0
 
     if d_model == 0 or n_heads == 0 or n_layers == 0:
         raise ValueError(f"Could not extract model dimensions from config for {model_id}")
 
-    d_head = getattr(config, "head_dim", None) or (d_model // n_heads)
+    d_head = getattr(lang_config, "head_dim", None) or (d_model // n_heads)
 
     # Attention parameters: W_Q, W_K, W_V, W_O per layer
     n_params = n_layers * (d_model * d_head * n_heads * 4)
@@ -229,11 +233,11 @@ def estimate_model_params(model_id: str) -> int:
     # MLP parameters (if present)
     if d_mlp is not None and d_mlp > 0:
         # Check for gated MLP (LLaMA, Gemma, Mistral, Qwen, T5 gated-gelu, etc.)
-        has_gate = getattr(config, "is_gated_act", False) or (
-            hasattr(config, "intermediate_size")
+        has_gate = getattr(lang_config, "is_gated_act", False) or (
+            hasattr(lang_config, "intermediate_size")
             and (
-                getattr(config, "hidden_act", None) in ("silu", "gelu", "swiglu")
-                or getattr(config, "model_type", None)
+                getattr(lang_config, "hidden_act", None) in ("silu", "gelu", "swiglu")
+                or getattr(lang_config, "model_type", None)
                 in (
                     "llama",
                     "gemma",
@@ -252,8 +256,8 @@ def estimate_model_params(model_id: str) -> int:
         n_params += n_layers * (d_model * d_mlp * mlp_multiplier)
 
         # MoE expert scaling
-        num_experts = getattr(config, "num_local_experts", None) or getattr(
-            config, "num_experts", None
+        num_experts = getattr(lang_config, "num_local_experts", None) or getattr(
+            lang_config, "num_experts", None
         )
         if num_experts and num_experts > 1:
             # For MoE, MLP params are multiplied by num_experts + gate params
@@ -452,7 +456,7 @@ def _extract_phase_scores(results: list) -> dict[int, Optional[float]]:
     """
     from transformer_lens.benchmarks.utils import BenchmarkSeverity
 
-    phase_results: dict[int, list[bool]] = {1: [], 2: [], 3: [], 4: []}
+    phase_results: dict[int, list[bool]] = {1: [], 2: [], 3: [], 4: [], 7: []}
     for result in results:
         if result.phase in phase_results and result.severity != BenchmarkSeverity.SKIPPED:
             phase_results[result.phase].append(result.passed)
@@ -485,8 +489,18 @@ _MIN_PHASE_SCORES: dict[int, float] = {
     2: 75.0,
     3: 75.0,
     4: 50.0,
+    7: 75.0,
 }
 _DEFAULT_MIN_PHASE_SCORE = 50.0
+
+# Architectures that include a vision encoder and require Phase 7 (multimodal
+# benchmarks) as part of core verification.
+_MULTIMODAL_ARCHITECTURES = {
+    "LlavaForConditionalGeneration",
+    "LlavaNextForConditionalGeneration",
+    "LlavaOnevisionForConditionalGeneration",
+    "Gemma3ForConditionalGeneration",
+}
 
 # Tests that MUST pass for a phase to be considered passing, regardless of
 # the overall percentage score.  If any required test fails, the phase fails
@@ -494,6 +508,7 @@ _DEFAULT_MIN_PHASE_SCORE = 50.0
 _REQUIRED_PHASE_TESTS: dict[int, list[str]] = {
     2: ["logits_equivalence", "loss_equivalence"],
     3: ["logits_equivalence", "loss_equivalence"],
+    7: ["multimodal_forward"],
 }
 
 
@@ -519,6 +534,11 @@ def _check_phase_scores(
     failing_phases: list[str] = []
     for phase, score in sorted(phase_scores.items()):
         if score is None:
+            # Phase 7 (multimodal) with a NULL score means the processor was
+            # unavailable and no tests ran.  This is a verification failure,
+            # not something to silently skip.
+            if phase == 7:
+                failing_phases.append(f"P7=NULL (multimodal tests skipped — processor unavailable)")
             continue
 
         # Phase 4 is a quality metric, not a pass/fail check — skip it here.
@@ -808,6 +828,10 @@ def verify_models(
         }
         torch_dtype = _dtype_map[dtype]
 
+        # Multimodal models always use conserve_memory to avoid loading two
+        # large models simultaneously (causes MPS memory-pressure divergence).
+        effective_conserve_memory = conserve_memory or arch in _MULTIMODAL_ARCHITECTURES
+
         if not quiet:
             print(f"  Running phases {phases} in a single benchmark call...")
         try:
@@ -819,7 +843,7 @@ def verify_models(
                 use_ht_reference=use_ht_reference,
                 verbose=not quiet,
                 phases=phases,
-                conserve_memory=conserve_memory,
+                conserve_memory=effective_conserve_memory,
                 trust_remote_code=needs_remote_code,
                 scoring_model=_scoring_model,
                 scoring_tokenizer=_scoring_tokenizer,
@@ -860,7 +884,12 @@ def verify_models(
         # only update the phase scores that were run.  Don't change the
         # model's overall status or note — those reflect the full
         # verification and should only be set by a complete run.
-        is_partial_run = set(phases) != {1, 2, 3, 4}
+        is_multimodal = arch in _MULTIMODAL_ARCHITECTURES
+        # For multimodal models, Phase 7 is part of core verification.
+        # A full run is {1,2,3,4,7} for multimodal, {1,2,3,4} for text-only.
+        full_phases = {1, 2, 3, 4, 7} if is_multimodal else {1, 2, 3, 4}
+        core_required = {1, 4, 7} if is_multimodal else {1, 4}
+        is_partial_run = set(phases) != full_phases
 
         if is_partial_run and phase_scores:
             # Only write scores for phases that were actually requested.
@@ -873,8 +902,8 @@ def verify_models(
                     score_parts = [f"P{p}={s}%" for p, s in sorted(filtered_scores.items())]
                     print(f"  Partial phase update: {', '.join(score_parts)}")
 
-                # Phase 1+4 "core verification" gets custom notes and status
-                is_core_verification = set(phases) == {1, 4}
+                # Core verification: P1+P4 for text-only, P1+P4+P7 for multimodal.
+                is_core_verification = set(phases) >= core_required
                 partial_status = None
                 partial_note = None
 
@@ -888,9 +917,37 @@ def verify_models(
                         4, _DEFAULT_MIN_PHASE_SCORE
                     )
 
-                    if p1_pass and p4_pass:
+                    # For multimodal, Phase 7 is required.  A score below 75%
+                    # or a missing score (NULL — processor unavailable) both
+                    # count as failures.
+                    p7_pass = True
+                    if is_multimodal:
+                        p7 = filtered_scores.get(7)
+                        if p7 is not None:
+                            p7_pass = p7 >= _MIN_PHASE_SCORES.get(7, _DEFAULT_MIN_PHASE_SCORE)
+                        else:
+                            # Phase 7 score is NULL — either not requested or
+                            # all tests were skipped (no processor).  Either
+                            # way, multimodal verification is incomplete.
+                            p7_pass = False
+
+                    if p1_pass and p4_pass and p7_pass:
                         partial_status = STATUS_VERIFIED
                         partial_note = "Core verification completed"
+                    elif p1_pass and p4_pass and not p7_pass:
+                        p7_score = filtered_scores.get(7)
+                        if p7_score is None:
+                            partial_status = STATUS_FAILED
+                            partial_note = (
+                                "Core verification failed: multimodal tests skipped "
+                                "(processor unavailable)"
+                            )
+                        else:
+                            partial_status = STATUS_FAILED
+                            partial_note = (
+                                f"Core verification failed: multimodal tests "
+                                f"scored {p7_score}% (requires >= 75%)"
+                            )
                     elif p1_pass:
                         partial_status = STATUS_VERIFIED
                         partial_note = (
@@ -940,7 +997,7 @@ def verify_models(
                 print(
                     f"  VERIFIED: P1={phase_scores.get(1)}%, "
                     f"P2={phase_scores.get(2)}%, P3={phase_scores.get(3)}%, "
-                    f"P4={phase_scores.get(4)}%"
+                    f"P4={phase_scores.get(4)}%, P7={phase_scores.get(7)}%"
                 )
             update_model_status(
                 model_id,

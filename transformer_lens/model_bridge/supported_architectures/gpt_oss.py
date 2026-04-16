@@ -28,6 +28,7 @@ class GPTOSSArchitectureAdapter(ArchitectureAdapter):
 
         self.cfg.gated_mlp = True
 
+        self.cfg.normalization_type = "RMS"
         self.cfg.uses_rms_norm = True
         # GPT-OSS uses 'variance_epsilon' instead of 'eps' for RMSNorm
         self.cfg.eps_attr = "variance_epsilon"

@@ -18,18 +18,32 @@ from transformer_lens.model_bridge.supported_architectures.gemma2 import (
 from transformer_lens.model_bridge.supported_architectures.gemma3 import (
     Gemma3ArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.gemma3_multimodal import (
+    Gemma3MultimodalArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.gpt2 import (
     GPT2ArchitectureAdapter,
 )
-from transformer_lens.model_bridge.supported_architectures.gpt_oss import GPTOSSArchitectureAdapter
 from transformer_lens.model_bridge.supported_architectures.gpt2_lm_head_custom import (
     Gpt2LmHeadCustomArchitectureAdapter,
+)
+from transformer_lens.model_bridge.supported_architectures.gpt_oss import (
+    GPTOSSArchitectureAdapter,
 )
 from transformer_lens.model_bridge.supported_architectures.gptj import (
     GptjArchitectureAdapter,
 )
 from transformer_lens.model_bridge.supported_architectures.llama import (
     LlamaArchitectureAdapter,
+)
+from transformer_lens.model_bridge.supported_architectures.llava import (
+    LlavaArchitectureAdapter,
+)
+from transformer_lens.model_bridge.supported_architectures.llava_next import (
+    LlavaNextArchitectureAdapter,
+)
+from transformer_lens.model_bridge.supported_architectures.llava_onevision import (
+    LlavaOnevisionArchitectureAdapter,
 )
 from transformer_lens.model_bridge.supported_architectures.mingpt import (
     MingptArchitectureAdapter,
@@ -101,10 +115,15 @@ __all__ = [
     "Gemma1ArchitectureAdapter",
     "Gemma2ArchitectureAdapter",
     "Gemma3ArchitectureAdapter",
+    "Gemma3MultimodalArchitectureAdapter",
     "GPT2ArchitectureAdapter",
+    "GPTOSSArchitectureAdapter",
     "Gpt2LmHeadCustomArchitectureAdapter",
     "GptjArchitectureAdapter",
     "LlamaArchitectureAdapter",
+    "LlavaArchitectureAdapter",
+    "LlavaNextArchitectureAdapter",
+    "LlavaOnevisionArchitectureAdapter",
     "MingptArchitectureAdapter",
     "MistralArchitectureAdapter",
     "MixtralArchitectureAdapter",

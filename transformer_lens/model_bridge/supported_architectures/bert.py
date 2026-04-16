@@ -82,8 +82,7 @@ class BertArchitectureAdapter(ArchitectureAdapter):
         }
 
         # Set up component mapping
-        # The bridge loads BertForMaskedLM, so core model paths need the 'bert.' prefix.
-        # The MLM head (cls.predictions) is at the top level of BertForMaskedLM.
+        # MLM defaults; prepare_model() adjusts for other task heads (e.g., NSP).
         self.component_mapping = {
             "embed": EmbeddingBridge(name="bert.embeddings.word_embeddings"),
             "pos_embed": PosEmbedBridge(name="bert.embeddings.position_embeddings"),
@@ -98,8 +97,16 @@ class BertArchitectureAdapter(ArchitectureAdapter):
                     "hook_mlp_in": "mlp.in.hook_in",
                 },
                 submodules={
-                    "ln1": NormalizationBridge(name="attention.output.LayerNorm", config=self.cfg),
-                    "ln2": NormalizationBridge(name="output.LayerNorm", config=self.cfg),
+                    "ln1": NormalizationBridge(
+                        name="attention.output.LayerNorm",
+                        config=self.cfg,
+                        use_native_layernorm_autograd=True,
+                    ),
+                    "ln2": NormalizationBridge(
+                        name="output.LayerNorm",
+                        config=self.cfg,
+                        use_native_layernorm_autograd=True,
+                    ),
                     "attn": AttentionBridge(
                         name="attention",
                         config=self.cfg,
@@ -122,6 +129,21 @@ class BertArchitectureAdapter(ArchitectureAdapter):
             ),
             "unembed": UnembeddingBridge(name="cls.predictions.decoder"),
             "ln_final": NormalizationBridge(
-                name="cls.predictions.transform.LayerNorm", config=self.cfg
+                name="cls.predictions.transform.LayerNorm",
+                config=self.cfg,
+                use_native_layernorm_autograd=True,
             ),
         }
+
+    def prepare_model(self, hf_model: Any) -> None:
+        """Adjust component mapping based on the actual HF model variant.
+
+        BertForMaskedLM has cls.predictions (MLM head).
+        BertForNextSentencePrediction has cls.seq_relationship (NSP head)
+        and no MLM-specific LayerNorm.
+        """
+        if hasattr(hf_model, "cls") and hasattr(hf_model.cls, "seq_relationship"):
+            # NSP model — swap head components
+            assert self.component_mapping is not None
+            self.component_mapping["unembed"] = UnembeddingBridge(name="cls.seq_relationship")
+            self.component_mapping.pop("ln_final", None)
