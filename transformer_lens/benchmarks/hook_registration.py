@@ -296,6 +296,160 @@ def benchmark_forward_hooks(
         )
 
 
+# Configuration for cfg-gated attention hooks. Each entry names a config flag
+# and the hook-name stems that should fire on supporting layers when that flag
+# is on. Stems are matched against `hook_dict` keys via substring; both
+# block-level aliases (blocks.N.hook_X) and attn-level primaries
+# (blocks.N.attn.hook_X) are accepted.
+_GATED_HOOK_CONFIGS: list[tuple[str, tuple[str, ...]]] = [
+    ("use_attn_result", ("hook_result",)),
+    ("use_split_qkv_input", ("hook_q_input", "hook_k_input", "hook_v_input")),
+    ("use_attn_in", ("hook_attn_in",)),
+]
+
+
+def benchmark_gated_hooks_fire(
+    bridge: TransformerBridge,
+    test_text: str = "The quick brown fox",
+    prepend_bos: Optional[bool] = None,
+) -> BenchmarkResult:
+    """Verify each cfg-gated attention hook fires when its flag is enabled.
+
+    Hooks like `hook_result`, `hook_q_input`, `hook_attn_in` exist
+    unconditionally on the attention bridge but are only populated when the
+    corresponding config flag is set (keeping default-path cost at zero).
+    This benchmark toggles each flag in turn, runs a short forward, and asserts
+    at least one layer's matching hook actually captured an activation.
+
+    `use_attn_in` and `use_split_qkv_input` are mutually exclusive, so each
+    flag runs in its own forward pass. Plain `AttentionBridge` (non-PEA/JPEA)
+    adapters raise `NotImplementedError` from the setter — recorded as skipped
+    rather than failed, since the applicability gate is intentional.
+    """
+    try:
+        if not hasattr(bridge, "blocks") or not len(bridge.blocks):
+            return BenchmarkResult(
+                name="gated_hooks_fire",
+                severity=BenchmarkSeverity.INFO,
+                message="Bridge has no blocks attribute; gated-hook check skipped",
+            )
+
+        fired: dict[str, int] = {}
+        skipped: list[tuple[str, str]] = []
+        failed: list[tuple[str, str]] = []
+        tested_flags: list[str] = []
+
+        for flag_name, hook_stems in _GATED_HOOK_CONFIGS:
+            # Force a clean baseline: all three flags off before toggling.
+            for reset_flag in ("use_attn_result", "use_split_qkv_input", "use_attn_in"):
+                setattr(bridge.cfg, reset_flag, False)
+
+            setter = getattr(bridge, f"set_{flag_name}", None)
+            if setter is None:
+                skipped.append((flag_name, "setter missing on bridge"))
+                continue
+            try:
+                setter(True)
+            except NotImplementedError as e:
+                skipped.append((flag_name, str(e).split("\n", 1)[0][:120]))
+                continue
+            except ValueError as e:
+                # Defensive: mutual-exclusivity shouldn't trigger because we
+                # reset all flags first, but record if something upstream
+                # left the cfg dirty.
+                skipped.append((flag_name, f"setter refused: {e}"))
+                continue
+
+            tested_flags.append(flag_name)
+            try:
+                activations: dict[str, torch.Tensor] = {}
+                handles: list[tuple[str, object]] = []
+                target_hook_names = [
+                    name
+                    for name in bridge.hook_dict
+                    if any(f".{stem}" in name or name.endswith(stem) for stem in hook_stems)
+                    # Exclude the cross-stem substring collisions, e.g. a hook
+                    # named "...hook_q_input_foo" — not expected today but be
+                    # defensive.
+                    and any(name.rsplit(".", 1)[-1] == stem for stem in hook_stems)
+                ]
+                for hname in target_hook_names:
+                    hp = bridge.hook_dict[hname]
+                    h = hp.add_hook(make_capture_hook(activations, hname))  # type: ignore[func-returns-value]
+                    handles.append((hname, h))
+
+                with torch.no_grad():
+                    if prepend_bos is not None:
+                        _ = bridge(test_text, prepend_bos=prepend_bos)
+                    else:
+                        _ = bridge(test_text)
+
+                for _, h in handles:
+                    if h is not None and hasattr(h, "remove"):
+                        h.remove()
+
+                # Bucket fired counts per stem.
+                for stem in hook_stems:
+                    fired_count = sum(1 for name in activations if name.rsplit(".", 1)[-1] == stem)
+                    fired[stem] = fired_count
+                    if fired_count == 0 and any(
+                        name.rsplit(".", 1)[-1] == stem for name in target_hook_names
+                    ):
+                        failed.append((flag_name, stem))
+            finally:
+                setter(False)
+
+        for reset_flag in ("use_attn_result", "use_split_qkv_input", "use_attn_in"):
+            setattr(bridge.cfg, reset_flag, False)
+
+        if failed:
+            return BenchmarkResult(
+                name="gated_hooks_fire",
+                severity=BenchmarkSeverity.DANGER,
+                message=f"{len(failed)} gated hooks did not fire when their flag was enabled",
+                details={
+                    "failed": failed,
+                    "fired_counts": fired,
+                    "tested_flags": tested_flags,
+                    "skipped": skipped,
+                },
+                passed=False,
+            )
+
+        if not tested_flags:
+            return BenchmarkResult(
+                name="gated_hooks_fire",
+                severity=BenchmarkSeverity.INFO,
+                message=(
+                    "Architecture does not support any gated attention hooks "
+                    f"({len(skipped)} flags skipped)"
+                ),
+                details={"skipped": skipped},
+            )
+
+        msg = (
+            f"All gated hooks fired on their supporting layers "
+            f"({sum(fired.values())} activations across {len(fired)} hook stems"
+            f", {len(tested_flags)} flags tested)"
+        )
+        if skipped:
+            msg += f"; {len(skipped)} flags not applicable to this architecture"
+        return BenchmarkResult(
+            name="gated_hooks_fire",
+            severity=BenchmarkSeverity.INFO,
+            message=msg,
+            details={"fired_counts": fired, "tested_flags": tested_flags, "skipped": skipped},
+        )
+
+    except Exception as e:
+        return BenchmarkResult(
+            name="gated_hooks_fire",
+            severity=BenchmarkSeverity.ERROR,
+            message=f"Gated-hook check failed: {str(e)}",
+            passed=False,
+        )
+
+
 def benchmark_critical_forward_hooks(
     bridge: TransformerBridge,
     test_text: str,

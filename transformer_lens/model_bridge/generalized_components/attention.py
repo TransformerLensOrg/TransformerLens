@@ -31,7 +31,6 @@ class AttentionBridge(GeneralizedComponent):
     """
 
     hook_aliases = {
-        "hook_result": "hook_out",
         "hook_q": "q.hook_out",
         "hook_k": "k.hook_out",
         "hook_v": "v.hook_out",
@@ -92,6 +91,21 @@ class AttentionBridge(GeneralizedComponent):
         self.hook_attn_scores = HookPoint()
         self.hook_pattern = HookPoint()
         self.hook_hidden_states = HookPoint()
+        # Per-head attention output, pre-sum across heads.
+        # Shape [batch, pos, n_heads, d_model] when fired. Gated at fire time
+        # by cfg.use_attn_result; the HookPoint exists unconditionally so
+        # run_with_cache key lookups never miss.
+        self.hook_result = HookPoint()
+        # Independent residual copies feeding Q / K / V (and the shared
+        # `use_attn_in` fork). Fire at [batch, pos, H, d_model] only when
+        # cfg.use_split_qkv_input or cfg.use_attn_in is set. Placement is
+        # post-ln1 — see test_bridge_vs_hooked_transformer_patching.py
+        # (strict xfail) for the semantic divergence from legacy TL's pre-LN
+        # fork and the follow-up work it tracks.
+        self.hook_attn_in = HookPoint()
+        self.hook_q_input = HookPoint()
+        self.hook_k_input = HookPoint()
+        self.hook_v_input = HookPoint()
         if (
             hasattr(config, "positional_embedding_type")
             and config.positional_embedding_type == "rotary"
@@ -234,7 +248,8 @@ class AttentionBridge(GeneralizedComponent):
                 if len(input_value.shape) == 4:
                     b, s, n_h, d_h = input_value.shape
                     if n_h == self.n_heads and d_h == self.d_head:
-                        return input_value.view(b, s, n_h * d_h)
+                        # reshape (not view) — callers may pass non-contiguous tensors
+                        return input_value.reshape(b, s, n_h * d_h)
                 return input_value
 
         if self.config is None:
@@ -503,6 +518,92 @@ class AttentionBridge(GeneralizedComponent):
         return einops.rearrange(
             weight, "d_model (n_heads d_head) -> n_heads d_model d_head", n_heads=n_heads
         )
+
+    def _project_per_head_qkv(
+        self,
+        linear_bridge: "GeneralizedComponent",
+        input_4d: torch.Tensor,
+        n_heads: int,
+        d_head: int,
+    ) -> torch.Tensor:
+        """Per-head Q/K/V projection over a 4D residual fork.
+
+        Plain nn.Linear applied to [batch, pos, H, d_model] broadcasts the
+        same weight across heads' copies — which for the split-qkv fork means
+        head h's copy sees every head's W rows, not just head h's. This routes
+        head h's copy through head h's W slice only via a per-head einsum.
+
+        Fires `linear_bridge.hook_out` on the flat 3D tensor so the hook sees
+        the same shape as the default path and downstream code receives a
+        consistent 4D `[B, S, H, d_head]` regardless of whether the user's
+        hook modified the tensor (which would otherwise trigger the
+        `hook_conversion.revert` 4D→3D flatten).
+        """
+        component = linear_bridge.original_component
+        assert component is not None, "LinearBridge.original_component not set"
+        weight = component.weight
+        bias = component.bias
+        w3d = einops.rearrange(
+            weight,
+            "(n_heads d_head) d_model -> n_heads d_model d_head",
+            n_heads=n_heads,
+            d_head=d_head,
+        )
+        out = torch.einsum("bshd,hde->bshe", input_4d, w3d)
+        if bias is not None:
+            b2d = einops.rearrange(bias, "(n_heads d_head) -> n_heads d_head", n_heads=n_heads)
+            assert isinstance(b2d, torch.Tensor)
+            out = out + b2d
+        # Flatten to 3D for hook_out (matches default-path shape); the
+        # hook_conversion reshapes to 4D for the user's fwd_hook, then reverts
+        # to 3D if the hook returned a modified tensor. Return 4D always.
+        b, s = out.shape[0], out.shape[1]
+        out_flat = out.reshape(b, s, n_heads * d_head)
+        out_flat = linear_bridge.hook_out(out_flat)
+        return out_flat.reshape(b, s, n_heads, d_head)
+
+    def _compute_per_head_result(
+        self,
+        z_4d: torch.Tensor,
+        n_heads: int,
+        d_head: int,
+    ) -> torch.Tensor:
+        """Per-head attention output pre-sum across heads.
+
+        Computes (z[..., h, :] @ W_O_per_head[h]) for each head h, fires
+        hook_result on the resulting [batch, pos, n_heads, d_model], then sums
+        across heads and adds b_O. Distributive over weight folding
+        (`sum_h z_h @ W_O_h + b_O == z_flat @ W_O.T + b_O`), so compat-mode and
+        raw-weight paths produce identical logits.
+        """
+        o = self.o.original_component
+        weight = o.weight
+        bias = getattr(o, "bias", None)
+        # HF Conv1D (GPT-2, GPT-J, CodeGen) stores weight as [in, out]; nn.Linear
+        # stores [out, in]. When W_O is square (d_model == n_heads*d_head, which
+        # is the common case), shape alone is ambiguous — dispatch on module
+        # type instead.
+        weight_is_in_out = type(o).__name__ == "Conv1D"
+        if weight_is_in_out:
+            w_per_head = einops.rearrange(
+                weight,
+                "(n_heads d_head) d_model -> n_heads d_head d_model",
+                n_heads=n_heads,
+                d_head=d_head,
+            )
+        else:
+            w_per_head = einops.rearrange(
+                weight,
+                "d_model (n_heads d_head) -> n_heads d_head d_model",
+                n_heads=n_heads,
+                d_head=d_head,
+            )
+        per_head = torch.einsum("bshd,hdm->bshm", z_4d, w_per_head)
+        per_head = self.hook_result(per_head)
+        summed = per_head.sum(dim=-2)
+        if bias is not None:
+            summed = summed + bias
+        return summed
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         """Simplified forward pass - minimal wrapping around original component.

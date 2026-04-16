@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-04-08T12:05:39.889992",
+  "last_updated": "2026-04-15T16:28:06.314994",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -11488,6 +11488,246 @@
       "verified_by": "verify_models",
       "transformerlens_version": null,
       "notes": "Full verification completed with issues: P3=89.5% (failed: value_bias_folding, weight_modification)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/pythia-70m-deduped",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-04-15",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Qwen/Qwen3-0.6B",
+      "architecture_id": "Qwen3ForCausalLM",
+      "verified_date": "2026-04-15",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "openai-community/gpt2",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-04-15",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "allenai/OLMo-2-0425-1B",
+      "architecture_id": "Olmo2ForCausalLM",
+      "verified_date": "2026-04-15",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "trl-internal-testing/tiny-CohereForCausalLM",
+      "architecture_id": "CohereForCausalLM",
+      "verified_date": "2026-04-15",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P3=94.7% (failed: weight_modification)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EssentialAI/rnj-1-instruct",
+      "architecture_id": "Gemma3ForCausalLM",
+      "verified_date": "2026-04-15",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "openai-community/gpt2",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-04-15",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/pythia-70m-deduped",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-04-15",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P2=85.7% (failed: hook_registry, forward_hooks); P3=90.5% (failed: hook_registry, forward_hooks)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/pythia-70m-deduped",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-04-15",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P2=85.7% (failed: hook_registry, forward_hooks); P3=90.5% (failed: hook_registry, forward_hooks)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/pythia-70m-deduped",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-04-15",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P2=85.7% (failed: hook_registry, forward_hooks); P3=90.5% (failed: hook_registry, forward_hooks)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/pythia-70m-deduped",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-04-15",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P2=92.9% (failed: forward_hooks); P3=95.2% (failed: forward_hooks)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/pythia-70m-deduped",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-04-15",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P2=92.9% (failed: forward_hooks); P3=95.2% (failed: forward_hooks)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/pythia-70m-deduped",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-04-15",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P2=92.9% (failed: forward_hooks); P3=95.2% (failed: forward_hooks)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/pythia-70m-deduped",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-04-15",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "openai-community/gpt2",
+      "architecture_id": "GPT2LMHeadModel",
+      "verified_date": "2026-04-15",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/pythia-70m-deduped",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-04-15",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P2=93.3% (failed: forward_hooks); P3=95.5% (failed: forward_hooks)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/pythia-70m-deduped",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-04-15",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P2=93.3% (failed: forward_hooks); P3=95.5% (failed: forward_hooks)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "EleutherAI/pythia-70m-deduped",
+      "architecture_id": "GPTNeoXForCausalLM",
+      "verified_date": "2026-04-15",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "trl-internal-testing/tiny-MistralForCausalLM-0.2",
+      "architecture_id": "MistralForCausalLM",
+      "verified_date": "2026-04-15",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues, low text quality",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "JackFram/llama-68m",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-04-15",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P2=92.3% (failed: gated_hooks_fire); P3=95.0% (failed: gated_hooks_fire)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "JackFram/llama-68m",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-04-15",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues: P2=92.3% (failed: gated_hooks_fire); P3=95.0% (failed: gated_hooks_fire)",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "JackFram/llama-68m",
+      "architecture_id": "LlamaForCausalLM",
+      "verified_date": "2026-04-15",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "Qwen/Qwen3-0.6B",
+      "architecture_id": "Qwen3ForCausalLM",
+      "verified_date": "2026-04-15",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "trl-internal-testing/tiny-MistralForCausalLM-0.2",
+      "architecture_id": "MistralForCausalLM",
+      "verified_date": "2026-04-15",
+      "verified_by": "verify_models",
+      "transformerlens_version": null,
+      "notes": "Full verification completed with issues, low text quality",
       "invalidated": false,
       "invalidation_reason": null
     }

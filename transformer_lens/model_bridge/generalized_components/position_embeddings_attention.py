@@ -12,6 +12,7 @@ from __future__ import annotations
 import weakref
 from typing import Any, Callable, Dict, Optional
 
+import einops
 import torch
 import transformers.models.gemma2.modeling_gemma2 as gemma2_module
 
@@ -204,6 +205,27 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
             f"(head_dim,), (n_heads*head_dim,), or (n_heads, head_dim)."
         )
 
+    @staticmethod
+    def _apply_pre_reshape_qk_norm(
+        tensor: torch.Tensor,
+        norm_module: Any,
+        hook: Any,
+        head_dim: int,
+    ) -> torch.Tensor:
+        """Apply an OLMo-2-style pre-reshape QK norm, shape-preserving.
+
+        The norm computes RMS over the flattened (n_heads * d_head) dim. When
+        the split path hands us a 4D [B, S, H, d_head], flatten, norm, and
+        re-split so the result matches what the default 3D path produces at
+        this point.
+        """
+        if tensor.ndim == 4:
+            b, s, h, d = tensor.shape
+            flat = tensor.reshape(b, s, h * d)
+            normed = hook(norm_module(flat))
+            return normed.view(b, s, h, d)
+        return hook(norm_module(tensor))
+
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         """Reimplemented forward pass with hooks at correct computation stages.
 
@@ -253,39 +275,97 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
         head_dim = hf_attn.head_dim
         hidden_shape = (*input_shape, -1, head_dim)
 
-        # Route through LinearBridges so hook_q/k/v/z (aliased to q/k/v.hook_out,
-        # o.hook_in) fire on the live path.
-        query_states = self.q(hidden_states)
-        key_states = self.k(hidden_states)
-        value_states = self.v(hidden_states)
+        use_split_qkv = bool(getattr(self.config, "use_split_qkv_input", False))
+        use_attn_in = bool(getattr(self.config, "use_attn_in", False))
+        has_head_count = (
+            self.config is not None and hasattr(self.config, "n_heads") and self.config.n_heads
+        )
+        split_active = (use_split_qkv or use_attn_in) and has_head_count
 
         # Qwen3.5/Qwen3-Next interleave [Q|gate] per head in q_proj output.
-        # Processed-weights mode slices q_proj to standard width beforehand, so
-        # the 2x-width path only triggers on unprocessed state dicts.
-        q_gate = None
-        if getattr(self.config, "gated_q_proj", False):
-            q_dim = query_states.shape[-1]
-            n_heads = getattr(self.config, "n_heads", q_dim // head_dim)
-            standard_q_dim = n_heads * head_dim
-            if q_dim == standard_q_dim * 2:
-                query_states, q_gate = torch.chunk(
-                    query_states.view(*input_shape, -1, head_dim * 2), 2, dim=-1
-                )
-                q_gate = q_gate.reshape(*input_shape, -1)
-                query_states = query_states.reshape(*input_shape, -1)
+        # The 2×-width output breaks per-head W slicing, so the split path is
+        # not supported for gated q_proj. Raise explicitly rather than
+        # producing silently wrong logits.
+        if split_active and getattr(self.config, "gated_q_proj", False):
+            raise NotImplementedError(
+                "use_split_qkv_input / use_attn_in are not supported on gated "
+                "q_proj architectures (Qwen3.5 / Qwen3-Next). The 2×-width "
+                "q_proj output breaks per-head weight routing. If you need "
+                "this combination, file a bug describing the workflow."
+            )
+
+        if split_active:
+            assert self.config is not None  # narrowed by `has_head_count`
+            n_heads = int(self.config.n_heads)
+            n_kv_heads = int(getattr(self.config, "n_key_value_heads", None) or n_heads)
+            if use_split_qkv:
+                q_in = einops.repeat(hidden_states, "b s d -> b s h d", h=n_heads).contiguous()
+                k_in = einops.repeat(hidden_states, "b s d -> b s h d", h=n_kv_heads).contiguous()
+                v_in = einops.repeat(hidden_states, "b s d -> b s h d", h=n_kv_heads).contiguous()
+                q_in = self.hook_q_input(q_in)
+                k_in = self.hook_k_input(k_in)
+                v_in = self.hook_v_input(v_in)
+            else:
+                attn_in = einops.repeat(hidden_states, "b s d -> b s h d", h=n_heads).contiguous()
+                attn_in = self.hook_attn_in(attn_in)
+                q_in = attn_in
+                if n_kv_heads != n_heads:
+                    k_in = attn_in[..., :n_kv_heads, :].contiguous()
+                    v_in = attn_in[..., :n_kv_heads, :].contiguous()
+                else:
+                    k_in = v_in = attn_in
+            query_states = self._project_per_head_qkv(self.q, q_in, n_heads, head_dim)
+            key_states = self._project_per_head_qkv(self.k, k_in, n_kv_heads, head_dim)
+            value_states = self._project_per_head_qkv(self.v, v_in, n_kv_heads, head_dim)
+            q_gate = None
+        else:
+            # Route through LinearBridges so hook_q/k/v/z (aliased to
+            # q/k/v.hook_out, o.hook_in) fire on the live path.
+            query_states = self.q(hidden_states)
+            key_states = self.k(hidden_states)
+            value_states = self.v(hidden_states)
+
+            # Qwen3.5/Qwen3-Next interleave [Q|gate] per head in q_proj output.
+            # Processed-weights mode slices q_proj to standard width beforehand,
+            # so the 2×-width path only triggers on unprocessed state dicts.
+            q_gate = None
+            if getattr(self.config, "gated_q_proj", False):
+                q_dim = query_states.shape[-1]
+                n_heads_gated = getattr(self.config, "n_heads", q_dim // head_dim)
+                standard_q_dim = n_heads_gated * head_dim
+                if q_dim == standard_q_dim * 2:
+                    query_states, q_gate = torch.chunk(
+                        query_states.view(*input_shape, -1, head_dim * 2), 2, dim=-1
+                    )
+                    q_gate = q_gate.reshape(*input_shape, -1)
+                    query_states = query_states.reshape(*input_shape, -1)
 
         has_q_norm = "q_norm" in self.submodules
         has_k_norm = "k_norm" in self.submodules
 
-        # Pre-reshape phase (OLMo-2): norm on [B, S, H*D].
+        # Pre-reshape phase (OLMo-2): norm is RMS over the flattened H*d_head
+        # dim. When the split path produced 4D [B, S, H, d_head], flatten for
+        # the norm then re-split so the post-norm tensors share shape with the
+        # non-split path going into the transpose below.
         if has_q_norm and self._qk_norm_phase == "pre_reshape":
-            query_states = self.hook_q_normed(self.q_norm(query_states))
+            query_states = self._apply_pre_reshape_qk_norm(
+                query_states, self.q_norm, self.hook_q_normed, head_dim
+            )
             if has_k_norm:
-                key_states = self.hook_k_normed(self.k_norm(key_states))
+                key_states = self._apply_pre_reshape_qk_norm(
+                    key_states, self.k_norm, self.hook_k_normed, head_dim
+                )
 
-        query_states = query_states.view(hidden_shape).transpose(1, 2)
-        key_states = key_states.view(hidden_shape).transpose(1, 2)
-        value_states = value_states.view(hidden_shape).transpose(1, 2)
+        # For the split path, tensors are already [B, S, H, d_head]; for the
+        # default path they're flat [B, S, H*d_head] and need the view.
+        if split_active:
+            query_states = query_states.transpose(1, 2)
+            key_states = key_states.transpose(1, 2)
+            value_states = value_states.transpose(1, 2)
+        else:
+            query_states = query_states.view(hidden_shape).transpose(1, 2)
+            key_states = key_states.view(hidden_shape).transpose(1, 2)
+            value_states = value_states.view(hidden_shape).transpose(1, 2)
 
         # Post-reshape phase (Gemma-3/Cohere): norm on [B, H, S, D].
         if has_q_norm and self._qk_norm_phase == "post_reshape":
@@ -379,10 +459,26 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
                 q_gate = self.hook_q_gate(q_gate)
             attn_output = attn_output * torch.sigmoid(q_gate)
 
-        # Route through LinearBridge so hook_z (aliased to o.hook_in) fires.
-        # LinearBridge wraps whichever HF attr the adapter mapped (o_proj, dense, out_proj).
-        attn_output = self.o(attn_output)
-        attn_output = self.hook_out(attn_output)
+        if (
+            bool(getattr(self.config, "use_attn_result", False))
+            and hasattr(self, "o")
+            and self.o.original_component is not None
+        ):
+            # Per-head output pre-sum across heads. Fire hook_z on the pre-
+            # projection tensor first so any patch at hook_z flows into the
+            # per-head computation below — matches the default path where
+            # `self.o(attn_output)` calls o.hook_in before the linear.
+            n_heads = int(getattr(self.config, "n_heads"))
+            attn_output = self.o.hook_in(attn_output)
+            z_4d = attn_output.view(*input_shape, n_heads, head_dim)
+            attn_output = self._compute_per_head_result(z_4d, n_heads, head_dim)
+            attn_output = self.hook_out(attn_output)
+        else:
+            # Route through LinearBridge so hook_z (aliased to o.hook_in) fires.
+            # LinearBridge wraps whichever HF attr the adapter mapped (o_proj,
+            # dense, out_proj).
+            attn_output = self.o(attn_output)
+            attn_output = self.hook_out(attn_output)
 
         return attn_output, attn_weights
 

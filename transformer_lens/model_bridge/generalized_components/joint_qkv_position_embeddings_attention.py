@@ -211,5 +211,14 @@ class JointQKVPositionEmbeddingsAttentionBridge(
         attn_output = self._reshape_attn_output(
             attn_output, batch_size, seq_len, num_heads, head_dim
         )
-        attn_output = self._apply_output_projection(attn_output)
+        if (
+            bool(getattr(self.config, "use_attn_result", False))
+            and hasattr(self, "o")
+            and self.o.original_component is not None
+        ):
+            attn_output = self.o.hook_in(attn_output)
+            z_4d = attn_output.view(batch_size, seq_len, num_heads, head_dim)
+            attn_output = self._compute_per_head_result(z_4d, num_heads, head_dim)
+        else:
+            attn_output = self._apply_output_projection(attn_output)
         return (attn_output, attn_weights)

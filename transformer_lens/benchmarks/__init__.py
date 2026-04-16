@@ -26,6 +26,7 @@ from transformer_lens.benchmarks.generation import (
 from transformer_lens.benchmarks.hook_registration import (
     benchmark_critical_forward_hooks,
     benchmark_forward_hooks,
+    benchmark_gated_hooks_fire,
     benchmark_hook_functionality,
     benchmark_hook_registry,
 )
@@ -61,6 +62,7 @@ __all__ = [
     # Hook benchmarks
     "benchmark_forward_hooks",
     "benchmark_critical_forward_hooks",
+    "benchmark_gated_hooks_fire",
     "benchmark_hook_functionality",
     "benchmark_hook_registry",
     # Hook structure benchmarks

@@ -46,6 +46,7 @@ from transformer_lens.benchmarks.generation import (
 from transformer_lens.benchmarks.hook_registration import (
     benchmark_critical_forward_hooks,
     benchmark_forward_hooks,
+    benchmark_gated_hooks_fire,
     benchmark_hook_functionality,
     benchmark_hook_registry,
 )
@@ -409,6 +410,7 @@ def run_comparison_benchmarks(
             add_result(
                 benchmark_forward_hooks(bridge_model, test_text, reference_model=reference_model)
             )
+            add_result(benchmark_gated_hooks_fire(bridge_model, test_text))
             # Reset hooks to prevent handle leaks
             if hasattr(bridge_model, "reset_hooks"):
                 bridge_model.reset_hooks()
@@ -423,6 +425,7 @@ def run_comparison_benchmarks(
             add_result(benchmark_hook_functionality(bridge_model, test_text))
             add_result(benchmark_critical_forward_hooks(bridge_model, test_text))
             add_result(benchmark_forward_hooks(bridge_model, test_text))
+            add_result(benchmark_gated_hooks_fire(bridge_model, test_text))
             # Reset hooks to prevent handle leaks
             if hasattr(bridge_model, "reset_hooks"):
                 bridge_model.reset_hooks()

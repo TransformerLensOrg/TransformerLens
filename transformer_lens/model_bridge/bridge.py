@@ -2923,13 +2923,125 @@ class TransformerBridge(nn.Module):
 
         Useful for interpretability but can easily burn through GPU memory.
         """
+        if use_attn_result:
+            self._validate_attention_fork_supported("use_attn_result")
         self.cfg.use_attn_result = use_attn_result
+        self._propagate_attention_flag("use_attn_result", use_attn_result)
 
     def set_use_split_qkv_input(self, use_split_qkv_input: bool):
+        """Toggle independent residual copies for Q/K/V so each path can be patched alone.
+
+        Mutually exclusive with `use_attn_in` — set that flag off first if it's on.
         """
-        Toggles whether to allow editing of inputs to each attention head.
-        """
+        if use_split_qkv_input:
+            if bool(getattr(self.cfg, "use_attn_in", False)):
+                raise ValueError(
+                    "use_split_qkv_input and use_attn_in are mutually exclusive. "
+                    "Call set_use_attn_in(False) before enabling use_split_qkv_input."
+                )
+            self._validate_attention_fork_supported("use_split_qkv_input")
         self.cfg.use_split_qkv_input = use_split_qkv_input
+        self._propagate_attention_flag("use_split_qkv_input", use_split_qkv_input)
+
+    def set_use_attn_in(self, use_attn_in: bool):
+        """Toggle a single 4D residual copy feeding all three Q/K/V projections.
+
+        Mutually exclusive with `use_split_qkv_input` — set that flag off first
+        if it's on. When on, `hook_attn_in` fires at
+        `[batch, pos, n_heads, d_model]`, enabling coarse-grained interventions
+        on the residual-stream copy shared across Q/K/V.
+        """
+        if use_attn_in:
+            if bool(getattr(self.cfg, "use_split_qkv_input", False)):
+                raise ValueError(
+                    "use_attn_in and use_split_qkv_input are mutually exclusive. "
+                    "Call set_use_split_qkv_input(False) before enabling use_attn_in."
+                )
+            self._validate_attention_fork_supported("use_attn_in")
+        self.cfg.use_attn_in = use_attn_in
+        self._propagate_attention_flag("use_attn_in", use_attn_in)
+
+    def _propagate_attention_flag(self, flag_name: str, value: bool) -> None:
+        """Mirror `bridge.cfg.<flag>` onto every block's attention config.
+
+        Some adapters (Llama family) deep-copy the block template during
+        `setup_blocks_bridge`, cloning the attention bridge's config along
+        with it. Others (Pythia, GPT-2) override `__deepcopy__` to share the
+        config. Setting the flag only on `self.cfg` silently misses the
+        cloned-config case. Propagating explicitly keeps both patterns
+        honest — a no-op when configs are shared, a correctness fix when
+        they aren't.
+        """
+        if not hasattr(self, "blocks"):
+            return
+        for block in self.blocks:
+            attn = block._modules.get("attn") if hasattr(block, "_modules") else None
+            if attn is None:
+                continue
+            attn_cfg = getattr(attn, "config", None)
+            if attn_cfg is not None and attn_cfg is not self.cfg:
+                try:
+                    setattr(attn_cfg, flag_name, value)
+                except Exception:
+                    # Some cfg objects may be frozen/immutable. Skip silently —
+                    # the block simply won't honor the flag, which is the
+                    # same outcome as before this fix.
+                    pass
+
+    def _validate_attention_fork_supported(self, flag_name: str) -> None:
+        """Raise / warn if the model can't honor a fine-grained attention flag.
+
+        The post-ln1 fork path lives on JointQKVAttentionBridge and
+        PositionEmbeddingsAttentionBridge. Plain AttentionBridge delegates to
+        HF and exposes no fork point; we raise rather than setting the flag
+        silently. For hybrid models (some attention layers, some not), we warn
+        and list which layers will honor the flag.
+        """
+        # Deferred imports: tight circular dependency with bridge setup.
+        from transformer_lens.model_bridge.generalized_components.joint_qkv_attention import (
+            JointQKVAttentionBridge,
+        )
+        from transformer_lens.model_bridge.generalized_components.position_embeddings_attention import (
+            PositionEmbeddingsAttentionBridge,
+        )
+
+        if not hasattr(self, "blocks"):
+            raise NotImplementedError(
+                f"{flag_name}: this bridge has no `blocks` attribute, so no "
+                "attention bridges to apply the flag to."
+            )
+        supported_classes = (JointQKVAttentionBridge, PositionEmbeddingsAttentionBridge)
+        supporting_layers: list[int] = []
+        attn_classes: set[str] = set()
+        total_with_attn = 0
+        for idx, block in enumerate(self.blocks):
+            attn = block._modules.get("attn") if hasattr(block, "_modules") else None
+            if attn is None:
+                continue
+            total_with_attn += 1
+            attn_classes.add(type(attn).__name__)
+            if isinstance(attn, supported_classes):
+                supporting_layers.append(idx)
+        if total_with_attn == 0:
+            raise NotImplementedError(f"{flag_name}: no attention bridges found on self.blocks.")
+        if not supporting_layers:
+            raise NotImplementedError(
+                f"{flag_name}: none of this model's attention bridges support "
+                "the fine-grained Q/K/V hook fork. Found attention classes: "
+                f"{sorted(attn_classes)}. Supported classes: "
+                f"{[c.__name__ for c in supported_classes]}. Plain "
+                "AttentionBridge delegates to HuggingFace and exposes no hook "
+                "point before the Q/K/V projection."
+            )
+        if len(supporting_layers) < total_with_attn:
+            skipped = total_with_attn - len(supporting_layers)
+            warnings.warn(
+                f"{flag_name}: {skipped} of {total_with_attn} attention layers "
+                "use an attention-bridge class that cannot honor this flag "
+                f"(attention classes present: {sorted(attn_classes)}). "
+                f"The flag will affect layers: {supporting_layers}.",
+                stacklevel=3,
+            )
 
     def _is_valid_bridge_path(self, hf_path: str) -> bool:
         """Check if a HuggingFace path corresponds to a valid bridge component.

@@ -40,7 +40,7 @@ EXPECTED_HOOKS = [
     "blocks.0.attn.hook_z",
     "blocks.0.attn.hook_attn_scores",
     "blocks.0.attn.hook_pattern",
-    "blocks.0.attn.hook_result",
+    # hook_result: gated by use_attn_result in bridge; unconditional in HT
     "blocks.0.mlp.hook_pre",
     "blocks.0.mlp.hook_post",
     "blocks.0.hook_attn_out",
