@@ -1378,9 +1378,12 @@ def docs_hot_reload():
     subprocess.run(
         [
             "sphinx-autobuild",
-            "--watch", str(PACKAGE_DIR),
-            "--watch", str(DEMOS_DIR),
-            "--ignore", str(GENERATED_DIR / "*"),
+            "--watch",
+            str(PACKAGE_DIR),
+            "--watch",
+            str(DEMOS_DIR),
+            "--ignore",
+            str(GENERATED_DIR / "*"),
             "--open-browser",
             SOURCE_PATH,
             BUILD_PATH,
