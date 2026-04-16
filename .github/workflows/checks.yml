@@ -231,7 +231,7 @@ jobs:
           - "BERT"
           - "Exploratory_Analysis_Demo"
           # - "Grokking_Demo"
-          # - "Head_Detector_Demo"
+          - "Head_Detector_Demo"
           # - "Interactive_Neuroscope"
           - "LLaMA"
           - "LLaMA2_GPU_Quantized"  # Requires quantization libs + too slow for CI timeout
