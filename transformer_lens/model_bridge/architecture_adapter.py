@@ -8,6 +8,9 @@ import einops
 import torch
 
 from transformer_lens.config import TransformerBridgeConfig
+from transformer_lens.conversion_utils.conversion_steps.rearrange_tensor_conversion import (
+    RearrangeTensorConversion,
+)
 from transformer_lens.conversion_utils.param_processing_conversion import (
     ParamProcessingConversion,
 )
@@ -33,6 +36,14 @@ class ArchitectureAdapter:
 
     default_cfg: dict[str, Any] = {}
 
+    # verify_models phase applicability. Architectures that cannot participate
+    # in specific phases (e.g. SSMs don't have the transformer-shaped hooks/
+    # weights the benchmark phases assume) should override. An empty list
+    # means "skip verify_models entirely; verification lives in integration
+    # tests." The full refactor that would make SSM phases meaningful is
+    # documented in ~/.claude/plans/ssm-verification-compatibility.md.
+    applicable_phases: list[int] = [1, 2, 3, 4]
+
     def __init__(self, cfg: TransformerBridgeConfig) -> None:
         """Initialize the architecture adapter.
 
@@ -43,6 +54,7 @@ class ArchitectureAdapter:
         self.component_mapping: ComponentMapping | None = None
         self.weight_processing_conversions: Dict[str, ParamProcessingConversion | str] | None = None
         self.uses_split_attention: bool = getattr(cfg, "uses_split_attention", False)
+        self._fold_ln_requested: bool = True
         self._merge_default_config()
 
     def _merge_default_config(self) -> None:
@@ -50,6 +62,34 @@ class ArchitectureAdapter:
         for key, value in self.default_cfg.items():
             if not hasattr(self.cfg, key):
                 setattr(self.cfg, key, value)
+
+    def _qkvo_weight_conversions(
+        self, n_kv_heads: Optional[int] = None
+    ) -> Dict[str, ParamProcessingConversion]:
+        """Standard Q/K/V/O weight rearrangement conversions.
+
+        Most decoder-only models use the same rearrange patterns for attention
+        weights. Override only when your model's layout differs.
+
+        Args:
+            n_kv_heads: Number of KV heads for GQA. If None, falls back to n_heads.
+        """
+        if n_kv_heads is None:
+            n_kv_heads = getattr(self.cfg, "n_key_value_heads", None) or self.cfg.n_heads
+        return {
+            "blocks.{i}.attn.q.weight": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=self.cfg.n_heads),
+            ),
+            "blocks.{i}.attn.k.weight": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=n_kv_heads),
+            ),
+            "blocks.{i}.attn.v.weight": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion("(n h) m -> n m h", n=n_kv_heads),
+            ),
+            "blocks.{i}.attn.o.weight": ParamProcessingConversion(
+                tensor_conversion=RearrangeTensorConversion("m (n h) -> n h m", n=self.cfg.n_heads),
+            ),
+        }
 
     def preprocess_weights(self, state_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
         """Apply architecture-specific weight transformations before ProcessWeights.
@@ -680,6 +720,37 @@ class ArchitectureAdapter:
             hf_model: The loaded HuggingFace model instance
         """
         pass
+
+    def create_stateful_cache(
+        self,
+        hf_model: Any,
+        batch_size: int,
+        device: Any,
+        dtype: torch.dtype,
+    ) -> Any:
+        """Build the HF cache object for a stateful (SSM) generation loop.
+
+        Called by ``TransformerBridge.generate()`` once before the token loop
+        when ``cfg.is_stateful`` is True. The returned object is threaded
+        through each forward call as ``cache_params=...`` and is expected to
+        mutate itself in-place.
+
+        Subclasses for SSM architectures (Mamba, Mamba-2, etc.) must override
+        this. The base raises to catch adapters that set ``is_stateful=True``
+        without providing a cache implementation.
+
+        Args:
+            hf_model: The wrapped HF model (source of ``.config``).
+            batch_size: Number of sequences generated in parallel.
+            device: Device for cache tensors.
+            dtype: Cache tensor dtype (usually the model's param dtype).
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__}.create_stateful_cache is not implemented. "
+            "If this adapter represents a stateful model (cfg.is_stateful=True), "
+            "it must override create_stateful_cache to return the appropriate "
+            "HF cache object."
+        )
 
     def setup_component_testing(self, hf_model: RemoteModel, bridge_model: Any = None) -> None:
         """Set up model-specific references needed for component testing.

@@ -8,11 +8,11 @@ from transformer_lens.conversion_utils.param_processing_conversion import (
 )
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
-    BlockBridge,
     EmbeddingBridge,
     LinearBridge,
     MLPBridge,
     NormalizationBridge,
+    ParallelBlockBridge,
     PositionEmbeddingsAttentionBridge,
     RotaryEmbeddingBridge,
     UnembeddingBridge,
@@ -70,7 +70,7 @@ class PhiArchitectureAdapter(ArchitectureAdapter):
         self.component_mapping = {
             "embed": EmbeddingBridge(name="model.embed_tokens"),
             "rotary_emb": RotaryEmbeddingBridge(name="model.rotary_emb"),
-            "blocks": BlockBridge(
+            "blocks": ParallelBlockBridge(
                 name="model.layers",
                 submodules={
                     "ln1": NormalizationBridge(

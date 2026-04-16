@@ -48,7 +48,6 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      max-parallel: 1
       matrix:
         python-version:
           - "3.10"
@@ -67,6 +66,7 @@ jobs:
         with:
           path: |
             ~/.cache/huggingface/hub/models--gpt2
+            ~/.cache/huggingface/hub/models--gpt2-xl
             ~/.cache/huggingface/hub/models--distilgpt2
             ~/.cache/huggingface/hub/models--EleutherAI--pythia-70m
             ~/.cache/huggingface/hub/models--EleutherAI--gpt-neo-125M
@@ -177,6 +177,7 @@ jobs:
         with:
           path: |
             ~/.cache/huggingface/hub/models--gpt2
+            ~/.cache/huggingface/hub/models--gpt2-xl
             ~/.cache/huggingface/hub/models--distilgpt2
             ~/.cache/huggingface/hub/models--EleutherAI--pythia-70m
             ~/.cache/huggingface/hub/models--EleutherAI--gpt-neo-125M
@@ -232,12 +233,14 @@ jobs:
           # - "Grokking_Demo"
           - "Head_Detector_Demo"
           # - "Interactive_Neuroscope"
-          # - "LLaMA"
-          # - "LLaMA2_GPU_Quantized"
+          - "LLaMA"
+          - "LLaMA2_GPU_Quantized"  # Requires quantization libs + too slow for CI timeout
           - "Main_Demo"
           # - "No_Position_Experiment"
           - "Othello_GPT"
           - "Patchscopes_Generation_Demo"
+          - "Santa_Coder"
+          # - "stable_lm"
           - "T5"
     steps:
       - uses: actions/checkout@v3
@@ -263,15 +266,22 @@ jobs:
       - name: Install dependencies
         run: |
           uv lock --check
-          uv sync
+          uv sync --group quantization
       - name: Install pandoc
         uses: awalsh128/cache-apt-pkgs-action@latest
         with:
           packages: pandoc
           version: 1.0
+      - name: Authenticate HuggingFace
+        if: env.HF_TOKEN != ''
+        run: uv run python -c "import os; from huggingface_hub import login; login(token=os.environ['HF_TOKEN'])"
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
       - name: Check Notebook Output Consistency
         # Note: currently only checks notebooks we have specifically setup for this
         run: pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/${{ matrix.notebook }}.ipynb
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
 
 
   build-docs:

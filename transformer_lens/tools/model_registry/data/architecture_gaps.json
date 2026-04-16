@@ -1,2219 +1,4826 @@
 {
-  "generated_at": "2026-02-19",
+  "generated_at": "2026-04-14",
   "scan_info": {
-    "total_scanned": 7808,
+    "total_scanned": 5633,
     "task_filter": "text-generation",
     "min_downloads": 500,
-    "scan_duration_seconds": 2.2
+    "scan_duration_seconds": 4.2
   },
-  "total_unsupported_architectures": 238,
-  "total_unsupported_models": 1258,
+  "total_unsupported_architectures": 416,
+  "total_unsupported_models": 1400,
   "gaps": [
     {
-      "architecture_id": "Qwen3MoeForCausalLM",
-      "total_models": 130,
+      "architecture_id": "Qwen3_5ForConditionalGeneration",
+      "total_models": 72,
+      "total_downloads": 146334,
+      "min_param_count": 211968832,
       "sample_models": [
-        "Qwen/Qwen3-30B-A3B-Instruct-2507",
-        "Qwen/Qwen3-30B-A3B",
-        "Qwen/Qwen3-30B-A3B-Instruct-2507-FP8",
-        "Qwen/Qwen3-235B-A22B-Instruct-2507-FP8",
-        "Qwen/Qwen3-Coder-30B-A3B-Instruct",
-        "Qwen/Qwen3-235B-A22B",
-        "Qwen/Qwen3-30B-A3B-Thinking-2507",
-        "Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8",
-        "Qwen/Qwen3-30B-A3B-GPTQ-Int4",
-        "Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8"
-      ]
+        "Tesslate/OmniCoder-9B",
+        "croll83/Qwopus3.5-27B-v3-Abliterated",
+        "nightmedia/Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-qx64-hi-mlx",
+        "Brooooooklyn/Qwen3.5-27B-unsloth-mlx",
+        "aifeifei798/Qwen3.5-Queen-27B",
+        "Brooooooklyn/Qwen3.5-9B-unsloth-mlx",
+        "bigatuna/Qwen3.5-9b-Sushi-Coder-RL-MLX",
+        "Jackrong/Qwen3.5-2B-Claude-4.6-Opus-Reasoning-Distilled",
+        "alexcovo/qwen35-9b-mlx-turboquant-tq3",
+        "Oysiyl/qwen3.5-27b-unslop-good-lora-v1"
+      ],
+      "relevancy_score": 91.0
     },
     {
-      "architecture_id": "DeepseekV3ForCausalLM",
-      "total_models": 69,
+      "architecture_id": "Gemma4ForConditionalGeneration",
+      "total_models": 64,
+      "total_downloads": 90296,
+      "min_param_count": 738022691,
       "sample_models": [
-        "deepseek-ai/DeepSeek-V3",
-        "deepseek-ai/DeepSeek-R1-0528",
-        "deepseek-ai/DeepSeek-R1",
-        "moonshotai/Kimi-K2-Thinking",
-        "deepseek-ai/DeepSeek-V3-0324",
-        "moonshotai/Kimi-K2-Instruct",
-        "nvidia/DeepSeek-R1-0528-NVFP4-v2",
-        "nvidia/Kimi-K2-Thinking-NVFP4",
-        "deepseek-ai/DeepSeek-V3.1",
-        "trl-internal-testing/tiny-DeepseekV3ForCausalLM"
-      ]
+        "dealignai/Gemma-4-31B-JANG_4M-Uncensored",
+        "0xSero/gemma-4-21b-a4b-it-REAP",
+        "InfinimindCreations/gemma-4-E4B-it-uncensored",
+        "TrevorJS/gemma-4-26B-A4B-it-uncensored",
+        "WWTCyberLab/gemma-4-31B-it-abliterated",
+        "WWTCyberLab/gemma-4-26B-A4B-it-abliterated",
+        "TrevorJS/gemma-4-31B-it-uncensored",
+        "TrevorJS/gemma-4-E4B-it-uncensored",
+        "InfinimindCreations/gemma-4-31B-it-uncensored",
+        "TrevorJS/gemma-4-E2B-it-uncensored"
+      ],
+      "relevancy_score": 84.9
     },
     {
-      "architecture_id": "Qwen3NextForCausalLM",
-      "total_models": 67,
+      "architecture_id": "NemotronHForCausalLM",
+      "total_models": 41,
+      "total_downloads": 3587883,
+      "min_param_count": 4221480,
       "sample_models": [
-        "Qwen/Qwen3-Next-80B-A3B-Instruct",
-        "Qwen/Qwen3-Coder-Next",
-        "bullpoint/Qwen3-Coder-Next-AWQ-4bit",
-        "Qwen/Qwen3-Coder-Next-FP8",
-        "cyankiwi/Qwen3-Next-80B-A3B-Thinking-AWQ-4bit",
-        "GadflyII/Qwen3-Coder-Next-NVFP4",
-        "Qwen/Qwen3-Next-80B-A3B-Instruct-FP8",
-        "NexVeridian/Qwen3-Coder-Next-8bit",
-        "cyankiwi/Qwen3-Next-80B-A3B-Instruct-AWQ-4bit",
-        "Qwen/Qwen3-Next-80B-A3B-Thinking"
-      ]
-    },
-    {
-      "architecture_id": "Glm4MoeForCausalLM",
-      "total_models": 47,
-      "sample_models": [
-        "cyankiwi/GLM-4.5-Air-AWQ-4bit",
-        "zai-org/GLM-4.7-FP8",
-        "zai-org/GLM-4.5-Air",
-        "zai-org/GLM-4.7",
-        "zai-org/GLM-4.6",
-        "zai-org/GLM-4.5-Air-FP8",
-        "mlx-community/GLM-4.7-4bit",
-        "zai-org/GLM-4.5",
-        "mlx-community/GLM-4.7-8bit-gs32",
-        "mlx-community/GLM-4.7-6bit"
-      ]
-    },
-    {
-      "architecture_id": "MiniMaxM2ForCausalLM",
-      "total_models": 42,
-      "sample_models": [
-        "MiniMaxAI/MiniMax-M2",
-        "QuantTrio/MiniMax-M2-AWQ",
-        "MiniMaxAI/MiniMax-M2.5",
-        "MiniMaxAI/MiniMax-M2.1",
-        "lmstudio-community/MiniMax-M2.5-MLX-8bit",
-        "lmstudio-community/MiniMax-M2.5-MLX-4bit",
-        "lmstudio-community/MiniMax-M2.5-MLX-6bit",
-        "cyankiwi/MiniMax-M2.1-AWQ-4bit",
-        "mlx-community/MiniMax-M2.1-8bit",
-        "mlx-community/MiniMax-M2.1-3bit"
-      ]
-    },
-    {
-      "architecture_id": "Glm4MoeLiteForCausalLM",
-      "total_models": 38,
-      "sample_models": [
-        "zai-org/GLM-4.7-Flash",
-        "lmstudio-community/GLM-4.7-Flash-MLX-8bit",
-        "lmstudio-community/GLM-4.7-Flash-MLX-6bit",
-        "GadflyII/GLM-4.7-Flash-NVFP4",
-        "cyankiwi/GLM-4.7-Flash-AWQ-4bit",
-        "QuantTrio/GLM-4.7-Flash-AWQ",
-        "unsloth/GLM-4.7-Flash-FP8-Dynamic",
-        "unsloth/GLM-4.7-Flash",
-        "marksverdhei/GLM-4.7-Flash-FP8",
-        "mlx-community/GLM-4.7-Flash-4bit"
-      ]
+        "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+        "nvidia/NVIDIA-Nemotron-Nano-9B-v2",
+        "nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-BF16",
+        "nvidia/NVIDIA-Nemotron-Nano-9B-v2-Japanese",
+        "nvidia/Nemotron-Cascade-2-30B-A3B",
+        "nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16",
+        "unsloth/NVIDIA-Nemotron-3-Nano-4B",
+        "nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-Base-BF16",
+        "empero-ai/openNemo-9B",
+        "cpagac/Nemotron-Nano-9B-v2-heretic"
+      ],
+      "relevancy_score": 78.6
     },
     {
       "architecture_id": "Lfm2ForCausalLM",
-      "total_models": 33,
+      "total_models": 40,
+      "total_downloads": 1626247,
+      "min_param_count": 274754048,
       "sample_models": [
-        "lmstudio-community/LFM2.5-1.2B-Instruct-MLX-8bit",
-        "lmstudio-community/LFM2.5-1.2B-Instruct-MLX-6bit",
-        "lmstudio-community/LFM2.5-1.2B-Instruct-MLX-4bit",
-        "LiquidAI/LFM2-1.2B",
+        "farbodtavakkoli/OTel-LLM-1.2B-IT",
         "LiquidAI/LFM2.5-1.2B-Instruct",
-        "LiquidAI/LFM2-2.6B",
-        "LiquidAI/LFM2.5-1.2B-Thinking",
+        "LiquidAI/LFM2-1.2B",
+        "LiquidAI/LFM2.5-350M",
         "LiquidAI/LFM2-350M",
-        "lmstudio-community/LFM2-1.2B-MLX-8bit",
-        "lmstudio-community/LFM2-1.2B-MLX-bf16"
-      ]
-    },
-    {
-      "architecture_id": "FalconForCausalLM",
-      "total_models": 31,
-      "sample_models": [
-        "tiiuae/falcon-7b",
-        "tiiuae/falcon-7b-instruct",
-        "tiiuae/falcon-40b-instruct",
-        "tiiuae/falcon-40b",
-        "fxmarty/really-tiny-falcon-testing",
-        "vilsonrodrigues/falcon-7b-instruct-sharded",
-        "tiiuae/falcon-11B",
-        "tiiuae/falcon-rw-1b",
-        "euclaise/falcon_1b_stage2",
-        "fxmarty/tiny-testing-falcon-alibi"
-      ]
-    },
-    {
-      "architecture_id": "GraniteMoeHybridForCausalLM",
-      "total_models": 28,
-      "sample_models": [
-        "ibm-granite/granite-4.0-micro",
-        "ibm-granite/granite-4.0-h-small",
-        "ibm-granite/granite-4.0-tiny-preview",
-        "ibm-granite/granite-4.0-h-tiny",
-        "onnx-community/granite-4.0-350m-ONNX-web",
-        "cyankiwi/granite-4.0-h-tiny-AWQ-4bit",
-        "ibm-granite/granite-4.0-h-micro",
-        "ibm-granite/granite-4.0-350m-base",
-        "ibm-granite/granite-4.0-350m",
-        "ibm-granite/granite-4.0-1b"
-      ]
-    },
-    {
-      "architecture_id": "GraniteForCausalLM",
-      "total_models": 23,
-      "sample_models": [
-        "ibm-granite/granite-3.1-8b-instruct",
-        "ibm-granite/granite-3.3-8b-instruct",
-        "ibm-research/PowerLM-3b",
-        "ibm-granite/granite-3.3-2b-instruct",
-        "ibm-granite/granite-guardian-3.0-2b",
-        "ibm-granite/granite-3.0-8b-instruct",
-        "ibm-granite/granite-3.2-8b-instruct",
-        "ibm-granite/granite-3.2-2b-instruct",
-        "ibm-granite/granite-3.1-2b-instruct",
-        "ibm-granite/granite-3.0-2b-instruct"
-      ]
-    },
-    {
-      "architecture_id": "DeepseekV2ForCausalLM",
-      "total_models": 20,
-      "sample_models": [
-        "deepseek-ai/DeepSeek-V2-Lite-Chat",
-        "deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct",
-        "deepseek-ai/DeepSeek-V2-Lite",
-        "casperhansen/deepseek-coder-v2-instruct-awq",
-        "deepseek-ai/DeepSeek-V2.5",
-        "RedHatAI/DeepSeek-Coder-V2-Lite-Instruct-FP8",
-        "RedHatAI/DeepSeek-V2.5-1210-FP8",
-        "deepseek-ai/DeepSeek-V2-Chat",
-        "deepseek-ai/DeepSeek-Coder-V2-Lite-Base",
-        "TechxGenus/DeepSeek-Coder-V2-Lite-Instruct-AWQ"
-      ]
-    },
-    {
-      "architecture_id": "InternLM2ForCausalLM",
-      "total_models": 20,
-      "sample_models": [
-        "internlm/internlm2-chat-7b",
-        "internlm/internlm2_5-7b-chat",
-        "internlm/internlm2-7b",
-        "internlm/internlm2-20b",
-        "internlm/internlm2-base-7b",
-        "internlm/internlm2-chat-20b",
-        "internlm/internlm2-base-20b",
-        "chujiezheng/internlm2-chat-7b-ExPO",
-        "chujiezheng/internlm2-chat-20b-ExPO",
-        "optimum-internal-testing/tiny-random-internlm2"
-      ]
-    },
-    {
-      "architecture_id": "Gemma3ForConditionalGeneration",
-      "total_models": 20,
-      "sample_models": [
-        "DreamFast/gemma-3-12b-it-heretic",
-        "mlx-community/translategemma-4b-it-4bit",
-        "aisingapore/Gemma-SEA-LION-v4-27B-IT",
-        "vanta-research/scout-4b",
-        "gateremark/kikuyu_translategemma_12b_merged_V2",
-        "vanta-research/atom-v1-preview-4b",
-        "mlx-community/translategemma-4b-it-8bit",
-        "aisingapore/Gemma-SEA-LION-v4-27B-IT-FP8-Dynamic",
-        "vanta-research/atom-v1-preview-12b",
-        "ig1/medgemma-27b-it-FP8-Dynamic"
-      ]
-    },
-    {
-      "architecture_id": "FalconH1ForCausalLM",
-      "total_models": 19,
-      "sample_models": [
-        "tiiuae/Falcon-H1-Tiny-90M-Instruct",
-        "tiiuae/Falcon-H1-0.5B-Base",
-        "tiiuae/Falcon-H1R-7B",
-        "tiiuae/Falcon-H1-7B-Instruct",
-        "tiiuae/Falcon-H1-3B-Instruct",
-        "tiiuae/Falcon-H1-7B-Base",
-        "tiiuae/Falcon-H1-34B-Instruct",
-        "tiiuae/Falcon-H1-34B-Base",
-        "tiiuae/Falcon-H1-1.5B-Base",
-        "tiiuae/Falcon-H1-3B-Base"
-      ]
-    },
-    {
-      "architecture_id": "GPTBigCodeForCausalLM",
-      "total_models": 15,
-      "sample_models": [
-        "bigcode/gpt_bigcode-santacoder",
-        "bigcode/tiny_starcoder_py",
-        "bigcode/starcoder",
-        "bigcode/starcoderbase-3b",
-        "bigcode/starcoderbase-1b",
-        "ibm-granite/granite-20b-code-instruct-8k",
-        "ibm-granite/granite-20b-code-base-8k",
-        "HuggingFaceH4/starchat-alpha",
-        "HuggingFaceH4/starchat-beta",
-        "V-YangXu/StarCoder-Alpaca"
-      ]
-    },
-    {
-      "architecture_id": "RwkvForCausalLM",
-      "total_models": 15,
-      "sample_models": [
-        "RWKV/v5-Eagle-7B-HF",
-        "RWKV/rwkv-4-169m-pile",
-        "recursal/EagleX_1-7T_HF",
-        "beomi/KoRWKV-6B",
-        "RWKV/rwkv-4-430m-pile",
-        "RWKV/rwkv-raven-1b5",
-        "RWKV/rwkv-4-3b-pile",
-        "RWKV/rwkv-4-14b-pile",
-        "RWKV/rwkv-raven-14b",
-        "RWKV/rwkv-raven-7b"
-      ]
+        "LiquidAI/LFM2.5-1.2B-Thinking",
+        "LiquidAI/LFM2-2.6B-Exp",
+        "LiquidAI/LFM2.5-1.2B-Base",
+        "LiquidAI/LFM2-700M",
+        "unsloth/LFM2.5-1.2B-Instruct"
+      ],
+      "relevancy_score": 76.3
     },
     {
       "architecture_id": "QWenLMHeadModel",
-      "total_models": 14,
+      "total_models": 22,
+      "total_downloads": 522223,
+      "min_param_count": 19545408,
       "sample_models": [
+        "cckevinn/SeeClick",
         "Qwen/Qwen-7B-Chat",
-        "Qwen/Qwen-7B",
         "Qwen/Qwen-VL-Chat",
+        "Qwen/Qwen-7B",
         "Qwen/Qwen-VL",
-        "Qwen/Qwen-14B-Chat-Int4",
         "Qwen/Qwen-1_8B-Chat",
-        "Qwen/Qwen-Audio-Chat",
+        "Qwen/Qwen-14B-Chat",
         "Qwen/Qwen-14B",
-        "Qwen/Qwen-VL-Chat-Int4",
-        "Qwen/Qwen-72B"
-      ]
+        "Qwen/Qwen-Audio-Chat",
+        "Xingyu-Zheng/Qwen-VL-Chat"
+      ],
+      "relevancy_score": 62.5
     },
     {
       "architecture_id": "DeepseekV32ForCausalLM",
-      "total_models": 13,
+      "total_models": 12,
+      "total_downloads": 9006409,
+      "min_param_count": 136559748,
       "sample_models": [
         "deepseek-ai/DeepSeek-V3.2",
-        "deepseek-ai/DeepSeek-V3.2-Speciale",
-        "QuantTrio/DeepSeek-V3.2-AWQ",
         "deepseek-ai/DeepSeek-V3.2-Exp",
-        "nvidia/DeepSeek-V3.2-NVFP4",
+        "deepseek-ai/DeepSeek-V3.2-Speciale",
         "deepseek-ai/DeepSeek-Math-V2",
-        "mlx-community/DeepSeek-V3.2-4bit",
-        "inferencerlabs/DeepSeek-V3.2-Speciale-MLX-4.8bit",
-        "mlx-community/DeepSeek-V3.2-mlx-5bit",
-        "inferencerlabs/DeepSeek-V3.2-MLX-5.5bit"
-      ]
+        "zianglih/DeepSeek-V3.2-6layer-last-1-bf16",
+        "exolabs/DeepSeek-V3.2_bf16",
+        "deepseek-ai/DeepSeek-V3.2-Exp-Base",
+        "cs2764/DeepSeek-V3.2_dq4-mlx",
+        "zianglih/DeepSeek-V3.2-MXFP8",
+        "hyper-accel/tiny-random-deepseek-v32"
+      ],
+      "relevancy_score": 62.5
     },
     {
-      "architecture_id": "GlmMoeDsaForCausalLM",
-      "total_models": 13,
+      "architecture_id": "JambaForCausalLM",
+      "total_models": 28,
+      "total_downloads": 48565,
+      "min_param_count": 127679344,
       "sample_models": [
-        "zai-org/GLM-5-FP8",
-        "zai-org/GLM-5",
-        "inferencerlabs/GLM-5-MLX-4.8bit",
-        "mlx-community/GLM-5-4bit",
-        "mlx-community/GLM-5",
-        "mlx-community/GLM-5-MXFP4-Q8",
-        "inferencerlabs/GLM-5-MLX-5.6bit",
-        "mlx-community/GLM-5-8bit-MXFP8",
-        "mlx-community/GLM-5-4bit-gs32",
-        "INC4AI/GLM-5-int4-mixed-AutoRound"
-      ]
+        "ai21labs/AI21-Jamba-Mini-1.5",
+        "ai21labs/Jamba-tiny-random",
+        "ai21labs/AI21-Jamba-Mini-1.6",
+        "ai21labs/AI21-Jamba-Large-1.5",
+        "ai21labs/AI21-Jamba2-3B",
+        "ai21labs/AI21-Jamba-Large-1.6",
+        "ai21labs/Jamba-v0.1",
+        "ai21labs/AI21-Jamba2-Mini",
+        "ai21labs/AI21-Jamba-Reasoning-3B",
+        "microsoft/Dayhoff-170M-GRS-112000"
+      ],
+      "relevancy_score": 61.1
     },
     {
-      "architecture_id": "XGLMForCausalLM",
-      "total_models": 13,
+      "architecture_id": "Glm4MoeForCausalLM",
+      "total_models": 16,
+      "total_downloads": 751068,
+      "min_param_count": 2572352,
       "sample_models": [
-        "facebook/xglm-564M",
-        "facebook/xglm-1.7B",
-        "facebook/xglm-4.5B",
-        "facebook/xglm-7.5B",
-        "facebook/xglm-2.9B",
-        "pythainlp/wangchanglm-7.5B-sft-enth",
-        "KoboldAI/fairseq-dense-355M",
-        "KoboldAI/fairseq-dense-125M",
-        "KoboldAI/fairseq-dense-2.7B",
-        "KoboldAI/fairseq-dense-1.3B"
-      ]
+        "zai-org/GLM-4.5-Air",
+        "zai-org/GLM-4.7",
+        "trl-internal-testing/tiny-Glm4MoeForCausalLM",
+        "zai-org/GLM-4.5",
+        "zai-org/GLM-4.6",
+        "np-cr/testing-glm4-moe",
+        "PrimeIntellect/GLM-0.5B",
+        "ArliAI/GLM-4.6-Derestricted-v3",
+        "zai-org/GLM-4.5-Air-Base",
+        "PrimeIntellect/INTELLECT-3"
+      ],
+      "relevancy_score": 59.6
     },
     {
-      "architecture_id": "CohereForCausalLM",
-      "total_models": 13,
+      "architecture_id": "T5GemmaForConditionalGeneration",
+      "total_models": 14,
+      "total_downloads": 1062491,
+      "min_param_count": 312517632,
       "sample_models": [
-        "trl-internal-testing/tiny-CohereForCausalLM",
-        "CohereLabs/aya-expanse-8b",
-        "CohereLabs/aya-23-8B",
-        "CohereLabs/c4ai-command-r-v01",
-        "NLPark/AnFeng_v3_Avocet",
-        "CohereLabs/aya-expanse-32b",
-        "CohereLabs/aya-23-35B",
-        "CohereLabs/c4ai-command-r-plus",
-        "CohereLabs/c4ai-command-r-plus-08-2024",
-        "CohereLabs/c4ai-command-r-08-2024"
+        "openbmb/MiniCPM-2B-sft-bf16",
+        "openbmb/MiniCPM4.1-8B",
+        "openbmb/MiniCPM-1B-sft-bf16",
+        "openbmb/MiniCPM4-0.5B",
+        "openbmb/MiniCPM-MoE-8x2B",
+        "katuni4ka/tiny-random-minicpm",
+        "openbmb/MiniCPM-S-1B-sft",
+        "openbmb/MiniCPM4-8B",
+        "openbmb/MiniCPM-2B-dpo-bf16",
+        "openbmb/MiniCPM-2B-sft-fp32"
       ]
     },
     {
       "architecture_id": "T5GemmaForConditionalGeneration",
-      "total_models": 12,
+      "total_models": 9,
       "sample_models": [
-        "google/t5gemma-b-b-prefixlm",
-        "google/t5gemma-b-b-ul2",
-        "google/t5gemma-xl-xl-ul2",
-        "google/t5gemma-9b-9b-ul2",
         "google/t5gemma-s-s-prefixlm",
+        "google/t5gemma-b-b-ul2",
+        "google/t5gemma-9b-9b-ul2",
+        "google/t5gemma-2b-2b-prefixlm",
         "google/t5gemma-2b-2b-ul2",
-        "google/t5gemma-2b-2b-ul2-it",
-        "google/t5gemma-9b-9b-ul2-it",
-        "jordimas/t5gemma-s-s-ul2",
-        "harshaljanjani/tiny-t5gemma-test"
-      ]
+        "google/t5gemma-l-l-ul2-it",
+        "google/t5gemma-ml-ml-ul2-it",
+        "google/t5gemma-b-b-prefixlm",
+        "google/t5gemma-s-s-prefixlm-it",
+        "google/t5gemma-9b-9b-prefixlm"
+      ],
+      "relevancy_score": 59.1
     },
     {
-      "architecture_id": "NemotronHForCausalLM",
-      "total_models": 12,
+      "architecture_id": "GPTBigCodeForCausalLM",
+      "total_models": 24,
+      "total_downloads": 39369,
+      "min_param_count": 1845928,
       "sample_models": [
-        "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-FP8",
-        "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
-        "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-NVFP4",
-        "nvidia/NVIDIA-Nemotron-Nano-9B-v2",
-        "nvidia/NVIDIA-Nemotron-Nano-9B-v2-FP8",
-        "nvidia/NVIDIA-Nemotron-Nano-9B-v2-NVFP4",
-        "cybermotaz/nemotron3-nano-nvfp4-w4a16",
-        "RedHatAI/NVIDIA-Nemotron-Nano-9B-v2-FP8-dynamic",
-        "unsloth/NVIDIA-Nemotron-3-Nano-30B-A3B-NVFP4",
-        "nvidia/NVIDIA-Nemotron-Nano-9B-v2-Japanese"
-      ]
-    },
-    {
-      "architecture_id": "DeciLMForCausalLM",
-      "total_models": 12,
-      "sample_models": [
-        "nvidia/Llama-3_3-Nemotron-Super-49B-v1_5",
-        "nvidia/Llama-3_3-Nemotron-Super-49B-v1",
-        "nvidia/Llama-3_3-Nemotron-Super-49B-v1_5-FP8",
-        "nvidia/Llama-3_1-Nemotron-51B-Instruct",
-        "etsien/Llama-3_3-Nemotron-Super-49B-v1_5-GPTQ-w4a8",
-        "Deci/DeciLM-7B",
-        "NewstaR/Porpoise-6b-instruct",
-        "Danielbrdz/Barcenas-6b",
-        "nvidia/Llama-3_3-Nemotron-Super-49B-v1-FP8",
-        "Deci/DeciLM-7B-instruct"
-      ]
-    },
-    {
-      "architecture_id": "MPTForCausalLM",
-      "total_models": 11,
-      "sample_models": [
-        "anas-awadalla/mpt-7b",
-        "replit/replit-code-v1-3b",
-        "wtang06/mpt-125m-c4",
-        "lightblue/japanese-mpt-7b",
-        "vinai/PhoGPT-4B-Chat",
-        "echarlaix/tiny-mpt-random-remote-code",
-        "TehVenom/MPT-7b-Chat-Instruct-LongCTX-Merge",
-        "TehVenom/MPT-7b-InstructAndStorywriting-50_50-Merge",
-        "aisingapore/SEA-LION-v1-7B",
-        "Nethermind/Mpt-Instruct-DotNet-S"
-      ]
-    },
-    {
-      "architecture_id": "ExaoneForCausalLM",
-      "total_models": 10,
-      "sample_models": [
-        "LGAI-EXAONE/EXAONE-3.5-7.8B-Instruct",
-        "LGAI-EXAONE/EXAONE-Deep-7.8B",
-        "LGAI-EXAONE/EXAONE-3.5-2.4B-Instruct",
-        "LGAI-EXAONE/EXAONE-3.0-7.8B-Instruct",
-        "LGAI-EXAONE/EXAONE-3.5-32B-Instruct",
-        "LGAI-EXAONE/EXAONE-3.5-7.8B-Instruct-AWQ",
-        "LGAI-EXAONE/EXAONE-Deep-32B",
-        "LGAI-EXAONE/EXAONE-Deep-2.4B",
-        "OpenLLM-Korea/EXAONE-Deep-7.8B",
-        "OpenLLM-Korea/EXAONE-Deep-32B"
-      ]
-    },
-    {
-      "architecture_id": "JambaForCausalLM",
-      "total_models": 10,
-      "sample_models": [
-        "ai21labs/AI21-Jamba-Mini-1.5",
-        "ai21labs/AI21-Jamba2-3B",
-        "ai21labs/AI21-Jamba-Large-1.5",
-        "ai21labs/Jamba-tiny-random",
-        "ai21labs/AI21-Jamba-Mini-1.6",
-        "ai21labs/AI21-Jamba-Large-1.6",
-        "ai21labs/Jamba-v0.1",
-        "microsoft/Dayhoff-3b-GR-HM-c",
-        "ai21labs/AI21-Jamba-Reasoning-3B",
-        "microsoft/Dayhoff-170m-GR"
-      ]
-    },
-    {
-      "architecture_id": "GraniteMoeForCausalLM",
-      "total_models": 9,
-      "sample_models": [
-        "ibm-research/PowerMoE-3b",
-        "ibm-granite/granite-3.1-3b-a800m-instruct",
-        "ibm-granite/granite-3.0-1b-a400m-base",
-        "ibm-granite/granite-3.1-1b-a400m-instruct",
-        "ibm-granite/granite-3.1-3b-a800m-base",
-        "ibm-granite/granite-3.1-1b-a400m-base",
-        "ibm-granite/granite-3.0-3b-a800m-instruct",
-        "ibm-granite/granite-3.0-3b-a800m-base",
-        "ibm-granite/granite-guardian-3.2-3b-a800m"
-      ]
-    },
-    {
-      "architecture_id": "SeedOssForCausalLM",
-      "total_models": 9,
-      "sample_models": [
-        "lmstudio-community/Seed-OSS-36B-Instruct-MLX-8bit",
-        "lmstudio-community/Seed-OSS-36B-Instruct-MLX-4bit",
-        "lmstudio-community/Seed-OSS-36B-Instruct-MLX-5bit",
-        "lmstudio-community/Seed-OSS-36B-Instruct-MLX-6bit",
-        "ByteDance-Seed/Seed-OSS-36B-Instruct",
-        "NousResearch/Hermes-4.3-36B",
-        "ByteDance-Seed/Seed-OSS-36B-Base",
-        "unsloth/Seed-OSS-36B-Instruct",
-        "magiccodingman/Seed-OSS-36B-Instruct-unsloth-MagicQuant-Hybrid-GGUF"
-      ]
-    },
-    {
-      "architecture_id": "InductionVL2ForCausalLM",
-      "total_models": 9,
-      "sample_models": [
-        "jonathanli/induction-vl2-mdl-fswd7-20000-720p-proj-256-var",
-        "jonathanli/induction-vl2-mdl-fswd7-20000-720p-proj-256-var-img",
-        "jonathanli/induction-vl2-mdl-j9vtm-95000-720p-proj-256-var",
-        "jonathanli/induction-vl2-mdl-fswd7-20000-720p-proj-256-var-img-2x",
-        "jonathanli/induction-vl2-mdl-fswd7-20000-720p-proj-256-var-img-flow",
-        "jonathanli/induction-vl2-mdl-j9vtm-95000-720p-proj-256-var-img",
-        "jonathanli/induction-vl2-mdl-cf9rp-20000-720p-proj-256-var",
-        "jonathanli/induction-vl2-mdl-j9vtm-95000-720p-proj-256-var-2x-img",
-        "jonathanli/induction-vl2-mdl-j9vtm-165000-720p-proj-256-var"
-      ]
-    },
-    {
-      "architecture_id": "LlavaLlamaForCausalLM",
-      "total_models": 9,
-      "sample_models": [
-        "ShareGPTVideo/LLaVA-Hound-Pretrain",
-        "LanguageBind/Video-LLaVA-7B",
-        "second-state/Llava-v1.5-7B-GGUF",
-        "lmms-lab/llama3-llava-next-8b",
-        "wisdomik/Quilt-Llava-v1.5-7b",
-        "mmaaz60/LLaVA-7B-Lightening-v1-1",
-        "liuhaotian/llava-llama-2-13b-chat-lightning-preview",
-        "second-state/Llava-v1.6-Vicuna-7B-GGUF",
-        "ManishThota/Ollama_Video_llama_7B"
-      ]
-    },
-    {
-      "architecture_id": "Step3p5ForCausalLM",
-      "total_models": 8,
-      "sample_models": [
-        "stepfun-ai/Step-3.5-Flash",
-        "stepfun-ai/Step-3.5-Flash-FP8",
-        "stepfun-ai/Step-3.5-Flash-GGUF-Q4_K_S",
-        "mlx-community/Step-3.5-Flash-4bit",
-        "tacos4me/Step-3.5-Flash-NVFP4",
-        "inferencerlabs/Step-3.5-Flash-MLX-6.5bit",
-        "mlx-community/Step-3.5-Flash-8bit",
-        "mlx-community/Step-3.5-Flash-6bit"
-      ]
-    },
-    {
-      "architecture_id": "MiniCPMForCausalLM",
-      "total_models": 8,
-      "sample_models": [
-        "openbmb/MiniCPM-2B-sft-bf16",
-        "openbmb/MiniCPM4.1-8B",
-        "openbmb/MiniCPM4-0.5B",
-        "openbmb/MiniCPM-1B-sft-bf16",
-        "openbmb/AgentCPM-Report",
-        "openbmb/MiniCPM4.1-8B-GPTQ",
-        "openbmb/MiniCPM-MoE-8x2B",
-        "openbmb/MiniCPM4-8B"
-      ]
-    },
-    {
-      "architecture_id": "Glm4ForCausalLM",
-      "total_models": 8,
-      "sample_models": [
-        "zai-org/GLM-4-9B-0414",
-        "zai-org/GLM-Z1-32B-0414",
-        "unsloth/GLM-4-32B-0414-GGUF",
-        "unsloth/GLM-4-9B-0414-GGUF",
-        "zai-org/GLM-Z1-9B-0414",
-        "zai-org/GLM-4-32B-0414",
-        "allura-org/GLM4-32B-Neon-v2",
-        "zai-org/GLM-4-32B-Base-0414"
-      ]
-    },
-    {
-      "architecture_id": "ApertusForCausalLM",
-      "total_models": 7,
-      "sample_models": [
-        "swiss-ai/Apertus-8B-Instruct-2509",
-        "swiss-ai/Apertus-8B-2509",
-        "swiss-ai/Apertus-70B-Instruct-2509",
-        "RedHatAI/Apertus-70B-Instruct-2509-quantized.w4a16",
-        "unsloth/Apertus-70B-Instruct-2509-unsloth-bnb-4bit",
-        "swiss-ai/Apertus-70B-2509",
-        "tiny-random/apertus"
-      ]
-    },
-    {
-      "architecture_id": "CodeGenForCausalLM",
-      "total_models": 7,
-      "sample_models": [
-        "Salesforce/codegen-350M-mono",
-        "Salesforce/codegen-350M-multi",
-        "Salesforce/codegen-6B-multi",
-        "Salesforce/codegen2-1B_P",
-        "Salesforce/codegen-16B-nl",
-        "Salesforce/codegen-6B-nl",
-        "sharoz/codegen-350M-mono-custom-functions-dataset-python_v2"
-      ]
-    },
-    {
-      "architecture_id": "Starcoder2ForCausalLM",
-      "total_models": 7,
-      "sample_models": [
-        "bigcode/starcoder2-3b",
-        "bigcode/starcoder2-15b",
-        "bigcode/starcoder2-7b",
-        "second-state/StarCoder2-15B-GGUF",
-        "second-state/StarCoder2-3B-GGUF",
-        "second-state/StarCoder2-7B-GGUF",
-        "bigcode/starcoder2-15b-instruct-v0.1"
-      ]
-    },
-    {
-      "architecture_id": "SDARForCausalLM",
-      "total_models": 7,
-      "sample_models": [
-        "JetLM/SDAR-8B-Chat",
-        "JetLM/SDAR-4B-Chat-b32",
-        "JetLM/SDAR-8B-Chat-b32",
-        "JetLM/SDAR-4B-Chat",
-        "JetLM/SDAR-1.7B-Chat",
-        "JetLM/SDAR-1.7B-Chat-b32",
-        "JetLM/SDAR-8B-Chat-b16"
-      ]
-    },
-    {
-      "architecture_id": "LlavaLlamaModel",
-      "total_models": 7,
-      "sample_models": [
-        "Efficient-Large-Model/VILA1.5-3b",
-        "Efficient-Large-Model/NVILA-8B",
-        "Efficient-Large-Model/NVILA-15B",
-        "Efficient-Large-Model/NVILA-Lite-8B",
-        "Efficient-Large-Model/NVILA-8B-Video",
-        "Efficient-Large-Model/VILA1.5-13b",
-        "Efficient-Large-Model/Llama-3-VILA1.5-8B"
-      ]
-    },
-    {
-      "architecture_id": "Qwen3VLMoeForConditionalGeneration",
-      "total_models": 6,
-      "sample_models": [
-        "QuantTrio/Qwen3-VL-30B-A3B-Instruct-AWQ",
-        "RedHatAI/Qwen3-VL-235B-A22B-Instruct-NVFP4",
-        "QuantTrio/Qwen3-VL-30B-A3B-Thinking-AWQ",
-        "QuantTrio/Qwen3-VL-235B-A22B-Instruct-AWQ",
-        "QuantTrio/Qwen3-VL-235B-A22B-Thinking-AWQ",
-        "RedHatAI/Qwen3-VL-235B-A22B-Instruct-FP8-dynamic"
-      ]
-    },
-    {
-      "architecture_id": "LLaDAModelLM",
-      "total_models": 6,
-      "sample_models": [
-        "GSAI-ML/LLaDA-8B-Instruct",
-        "GSAI-ML/LLaDA-8B-Base",
-        "GSAI-ML/LLaDA-1.5",
-        "Fraser/LLaDA-8B-Base-gg2m",
-        "Zigeng/dParallel-LLaDA-8B-instruct",
-        "d3LLM/d3LLM_LLaDA"
-      ]
-    },
-    {
-      "architecture_id": "Exaone4ForCausalLM",
-      "total_models": 6,
-      "sample_models": [
-        "LGAI-EXAONE/EXAONE-4.0.1-32B",
-        "LGAI-EXAONE/EXAONE-4.0-1.2B",
-        "LGAI-EXAONE/EXAONE-4.0-32B-FP8",
-        "LGAI-EXAONE/EXAONE-4.0-32B",
-        "LGAI-EXAONE/EXAONE-4.0-32B-AWQ",
-        "lmstudio-community/EXAONE-4.0-32B-MLX-4bit"
-      ]
+        "bigcode/starcoder",
+        "bigcode/starcoderbase-1b",
+        "ibm-granite/granite-20b-code-base-8k",
+        "GeorgiaTechResearchInstitute/starcoder-gpteacher-code-instruct",
+        "HuggingFaceH4/starchat-alpha",
+        "defog/sqlcoder2",
+        "ibm-granite/granite-20b-code-instruct-8k",
+        "HuggingFaceH4/starchat-beta",
+        "LoupGarou/WizardCoder-Guanaco-15B-V1.0",
+        "openchat/opencoderplus"
+      ],
+      "relevancy_score": 58.1
     },
     {
       "architecture_id": "SmolLM3ForCausalLM",
-      "total_models": 6,
+      "total_models": 8,
+      "total_downloads": 1123995,
+      "min_param_count": 8245568,
       "sample_models": [
         "HuggingFaceTB/SmolLM3-3B",
         "HuggingFaceTB/SmolLM3-3B-Base",
         "optimum-internal-testing/tiny-random-SmolLM3ForCausalLM",
         "unsloth/SmolLM3-3B",
         "onnx-internal-testing/tiny-random-SmolLM3ForCausalLM",
-        "mlx-community/SmolLM3-3B-4bit"
-      ]
+        "MInAlA/SmolLM3-3B-DPO-merged",
+        "N-Bot-Int/SmolSam3-MEMGRPO",
+        "yujiepan/smollm3-tiny-random"
+      ],
+      "relevancy_score": 55.5
     },
     {
-      "architecture_id": "Ernie4_5_MoeForCausalLM",
-      "total_models": 6,
+      "architecture_id": "GlmMoeDsaForCausalLM",
+      "total_models": 10,
+      "total_downloads": 590748,
+      "min_param_count": 162774148,
       "sample_models": [
-        "baidu/ERNIE-4.5-21B-A3B-Base-PT",
-        "lmstudio-community/ERNIE-4.5-21B-A3B-MLX-4bit",
-        "lmstudio-community/ERNIE-4.5-21B-A3B-MLX-8bit",
-        "lmstudio-community/ERNIE-4.5-21B-A3B-MLX-6bit",
-        "baidu/ERNIE-4.5-21B-A3B-PT",
-        "baidu/ERNIE-4.5-21B-A3B-Thinking"
-      ]
+        "zai-org/GLM-5",
+        "zai-org/GLM-5.1",
+        "cs2764/GLM-5-abliterated-dq4-mlx",
+        "livadies/GLM-5.1-Ghetto-MoE-2-Experts",
+        "unsloth/GLM-5",
+        "JANGQ-AI/GLM-5.1-JANG_2S",
+        "0xSero/GLM-5-REAP-381B",
+        "JANGQ-AI/GLM-5.1-JANG_1L",
+        "cs2764/GLM-5-abliterated-dq3-mlx",
+        "hyper-accel/tiny-random-glm-moe-dsa"
+      ],
+      "relevancy_score": 55.3
+    },
+    {
+      "architecture_id": "BartForConditionalGeneration",
+      "total_models": 9,
+      "total_downloads": 692599,
+      "min_param_count": 6044480,
+      "sample_models": [
+        "KomeijiForce/bart-large-emojilm",
+        "antalvdb/bart-base-spelling-nl",
+        "lmqg/bart-large-squad-qg",
+        "kengurukleo/deutsch_a2_transformer",
+        "shibing624/bart4csc-base-chinese",
+        "SkitCon/gec-spanish-BARTO-SYNTHETIC",
+        "Nargizi/screeve-lemmatizer",
+        "Tianlin668/MentalBART",
+        "KomeijiForce/bart-large-emojilm-e2t"
+      ],
+      "relevancy_score": 55.0
+    },
+    {
+      "architecture_id": "BaichuanForCausalLM",
+      "total_models": 15,
+      "total_downloads": 117761,
+      "min_param_count": 16204352,
+      "sample_models": [
+        "baichuan-inc/Baichuan2-7B-Chat",
+        "baichuan-inc/Baichuan2-13B-Chat",
+        "baichuan-inc/Baichuan-13B-Chat",
+        "baichuan-inc/Baichuan2-7B-Base",
+        "baichuan-inc/Baichuan2-13B-Base",
+        "zxbsmk/NSFW_13B_sft",
+        "sakuraumi/Sakura-13B-Galgame",
+        "baichuan-inc/Baichuan-13B-Base",
+        "katuni4ka/tiny-random-baichuan2",
+        "FreedomIntelligence/HuatuoGPT2-7B"
+      ],
+      "relevancy_score": 54.9
+    },
+    {
+      "architecture_id": "FalconH1ForCausalLM",
+      "total_models": 15,
+      "total_downloads": 77408,
+      "min_param_count": 91131072,
+      "sample_models": [
+        "tiiuae/Falcon-H1-0.5B-Base",
+        "tiiuae/Falcon-H1-3B-Base",
+        "tiiuae/Falcon-H1-7B-Base",
+        "tiiuae/Falcon-H1-1.5B-Deep-Base",
+        "tiiuae/Falcon-H1-34B-Base",
+        "tiiuae/Falcon-H1-1.5B-Base",
+        "tiiuae/Falcon-H1-Tiny-90M-Instruct",
+        "tiiuae/Falcon-H1R-7B",
+        "tiiuae/Falcon-H1-3B-Instruct",
+        "tiiuae/Falcon-H1-1.5B-Deep-Instruct"
+      ],
+      "relevancy_score": 54.0
+    },
+    {
+      "architecture_id": "H2OVLChatModel",
+      "total_models": 2,
+      "total_downloads": 2009160,
+      "min_param_count": 826295808,
+      "sample_models": [
+        "h2oai/h2ovl-mississippi-800m",
+        "h2oai/h2ovl-mississippi-2b"
+      ],
+      "relevancy_score": 53.0
+    },
+    {
+      "architecture_id": "DFlashDraftModel",
+      "total_models": 11,
+      "total_downloads": 131573,
+      "min_param_count": 473995264,
+      "sample_models": [
+        "z-lab/Qwen3-4B-DFlash-b16",
+        "z-lab/Qwen3-8B-DFlash-b16",
+        "z-lab/Qwen3.5-27B-DFlash",
+        "z-lab/Qwen3.5-9B-DFlash",
+        "z-lab/Qwen3.5-4B-DFlash",
+        "z-lab/Qwen3.5-35B-A3B-DFlash",
+        "z-lab/gpt-oss-120b-DFlash",
+        "z-lab/gpt-oss-20b-DFlash",
+        "z-lab/Qwen3-Coder-30B-A3B-DFlash",
+        "z-lab/LLaMA3.1-8B-Instruct-DFlash-UltraChat"
+      ],
+      "relevancy_score": 52.6
+    },
+    {
+      "architecture_id": "Cohere2ForCausalLM",
+      "total_models": 9,
+      "total_downloads": 220158,
+      "min_param_count": 2090024,
+      "sample_models": [
+        "trl-internal-testing/tiny-Cohere2ForCausalLM",
+        "CohereLabs/tiny-aya-global",
+        "CohereLabs/c4ai-command-r7b-12-2024",
+        "CohereLabs/tiny-aya-base",
+        "CohereLabs/c4ai-command-r7b-arabic-02-2025",
+        "CohereLabs/c4ai-command-a-03-2025",
+        "CohereLabs/tiny-aya-water",
+        "CohereLabs/tiny-aya-fire",
+        "CohereLabs/tiny-aya-earth"
+      ],
+      "relevancy_score": 52.5
+    },
+    {
+      "architecture_id": "PhiMoEForCausalLM",
+      "total_models": 4,
+      "total_downloads": 902073,
+      "min_param_count": 1110112,
+      "sample_models": [
+        "microsoft/Phi-tiny-MoE-instruct",
+        "microsoft/Phi-mini-MoE-instruct",
+        "microsoft/Phi-3.5-MoE-instruct",
+        "optimum-intel-internal-testing/phi-3.5-moe-tiny-random"
+      ],
+      "relevancy_score": 52.5
+    },
+    {
+      "architecture_id": "MiniCPMForCausalLM",
+      "total_models": 12,
+      "total_downloads": 90418,
+      "min_param_count": 80000640,
+      "sample_models": [
+        "openbmb/MiniCPM-2B-sft-bf16",
+        "openbmb/MiniCPM4.1-8B",
+        "openbmb/MiniCPM-1B-sft-bf16",
+        "openbmb/MiniCPM4-0.5B",
+        "openbmb/MiniCPM-MoE-8x2B",
+        "openbmb/MiniCPM-S-1B-sft",
+        "openbmb/MiniCPM4-8B",
+        "katuni4ka/tiny-random-minicpm",
+        "openbmb/MiniCPM-2B-dpo-bf16",
+        "openbmb/MiniCPM-2B-sft-fp32"
+      ],
+      "relevancy_score": 52.4
+    },
+    {
+      "architecture_id": "RwkvForCausalLM",
+      "total_models": 15,
+      "total_downloads": 29790,
+      "min_param_count": 169342464,
+      "sample_models": [
+        "RWKV/v5-Eagle-7B-HF",
+        "RWKV/rwkv-4-169m-pile",
+        "RWKV/rwkv-4-430m-pile",
+        "beomi/KoRWKV-6B",
+        "RWKV/rwkv-4-1b5-pile",
+        "RWKV/rwkv-4-3b-pile",
+        "RWKV/rwkv-raven-1b5",
+        "RWKV/rwkv-4-7b-pile",
+        "RWKV/rwkv-raven-3b",
+        "RWKV/rwkv-raven-14b"
+      ],
+      "relevancy_score": 51.9
+    },
+    {
+      "architecture_id": "MT5ForConditionalGeneration",
+      "total_models": 13,
+      "total_downloads": 51271,
+      "min_param_count": 300176768,
+      "sample_models": [
+        "knowledgator/IUPAC2SMILES-canonical-base",
+        "bigscience/mt0-small",
+        "knowledgator/SMILES2IUPAC-canonical-base",
+        "bigscience/mt0-base",
+        "bigscience/mt0-large",
+        "bigscience/mt0-xl",
+        "bigscience/mt0-xxl",
+        "intelia-lab-uah/mt0-base_AE_SQAC",
+        "intelia-lab-uah/mt0-base_QG_SQAC",
+        "UBC-NLP/toucan-1.2B"
+      ],
+      "relevancy_score": 51.8
     },
     {
       "architecture_id": "Qwen2MoeForCausalLM",
-      "total_models": 6,
+      "total_models": 7,
+      "total_downloads": 193536,
+      "min_param_count": 1219036,
       "sample_models": [
         "Qwen/Qwen1.5-MoE-A2.7B",
         "Qwen/Qwen1.5-MoE-A2.7B-Chat",
         "Qwen/Qwen2-57B-A14B-Instruct",
         "Qwen/Qwen2-57B-A14B",
-        "Qwen/Qwen1.5-MoE-A2.7B-Chat-GPTQ-Int4",
-        "RedHatAI/Qwen2-57B-A14B-Instruct-FP8"
-      ]
+        "yujiepan/qwen1.5-moe-tiny-random",
+        "katuni4ka/tiny-random-qwen1.5-moe",
+        "xd2010/Qwen1.5-MOE-sft-math7k-densemixer"
+      ],
+      "relevancy_score": 51.0
+    },
+    {
+      "architecture_id": "FalconMambaForCausalLM",
+      "total_models": 6,
+      "total_downloads": 194376,
+      "min_param_count": 525400,
+      "sample_models": [
+        "trl-internal-testing/tiny-FalconMambaForCausalLM",
+        "tiiuae/falcon-mamba-7b-instruct",
+        "tiiuae/falcon-mamba-7b",
+        "tiiuae/falcon-mamba-tiny-dev",
+        "tiiuae/Falcon3-Mamba-7B-Instruct",
+        "tiiuae/Falcon3-Mamba-7B-Base"
+      ],
+      "relevancy_score": 50.4
+    },
+    {
+      "architecture_id": "Phi3VForCausalLM",
+      "total_models": 6,
+      "total_downloads": 173011,
+      "min_param_count": 304612720,
+      "sample_models": [
+        "microsoft/Phi-3-vision-128k-instruct",
+        "TIGER-Lab/VLM2Vec-Full",
+        "yujiepan/phi-3-vision-tiny-random",
+        "furonghuang-lab/tracevla_phi3v",
+        "Desm0nt/Phi-3-HornyVision-128k-instruct",
+        "failspy/Phi-3-vision-128k-instruct-abliterated-alpha"
+      ],
+      "relevancy_score": 50.1
+    },
+    {
+      "architecture_id": "ExaoneForCausalLM",
+      "total_models": 7,
+      "total_downloads": 626575,
+      "min_param_count": 2405327360,
+      "sample_models": [
+        "LGAI-EXAONE/EXAONE-Deep-7.8B",
+        "LGAI-EXAONE/EXAONE-3.5-7.8B-Instruct",
+        "LGAI-EXAONE/EXAONE-3.5-32B-Instruct",
+        "LGAI-EXAONE/EXAONE-3.5-2.4B-Instruct",
+        "LGAI-EXAONE/EXAONE-3.0-7.8B-Instruct",
+        "LGAI-EXAONE/EXAONE-Deep-32B",
+        "LGAI-EXAONE/EXAONE-Deep-2.4B"
+      ],
+      "relevancy_score": 49.5
+    },
+    {
+      "architecture_id": "Glm4ForCausalLM",
+      "total_models": 10,
+      "total_downloads": 32445,
+      "min_param_count": 4854928,
+      "sample_models": [
+        "zai-org/GLM-4-9B-0414",
+        "zai-org/GLM-4-32B-0414",
+        "zai-org/GLM-Z1-9B-0414",
+        "MCult01/glm-muse-v2",
+        "zai-org/GLM-Z1-32B-0414",
+        "MCult01/glm-muse-v1",
+        "zai-org/GLM-4-32B-Base-0414",
+        "yujiepan/glm-4-tiny-random",
+        "llmfan46/GLM-4-32B-0414-uncensored-heretic-v1",
+        "ccui46/cookingworld_per_chunk_act_glm_tokfix_diffPrompt_5000"
+      ],
+      "relevancy_score": 49.0
+    },
+    {
+      "architecture_id": "LlavaQwenForCausalLM",
+      "total_models": 4,
+      "total_downloads": 186477,
+      "min_param_count": 893618208,
+      "sample_models": [
+        "lmms-lab/llava-onevision-qwen2-7b-ov",
+        "lmms-lab/llava-onevision-qwen2-0.5b-ov",
+        "lmms-lab/llava-onevision-qwen2-7b-si",
+        "lmms-lab/llava-onevision-qwen2-0.5b-si"
+      ],
+      "relevancy_score": 49.0
+    },
+    {
+      "architecture_id": "MiniMaxM2ForCausalLM",
+      "total_models": 23,
+      "total_downloads": 1143531,
+      "min_param_count": 18581099008,
+      "sample_models": [
+        "MiniMaxAI/MiniMax-M2.5",
+        "cerebras/MiniMax-M2.1-REAP-139B-A10B",
+        "MiniMaxAI/MiniMax-M2",
+        "MiniMaxAI/MiniMax-M2.7",
+        "MiniMaxAI/MiniMax-M2.1",
+        "cerebras/MiniMax-M2.5-REAP-139B-A10B",
+        "JANGQ-AI/MiniMax-M2.7-JANG_2L",
+        "aspctu/MiniMax-M2.5",
+        "JANGQ-AI/MiniMax-M2.7-JANG_3L",
+        "dealignai/MiniMax-M2.5-UNCENSORED-JANG_2L"
+      ],
+      "relevancy_score": 48.9
     },
     {
       "architecture_id": "LlamaForCausalLMEagle3",
-      "total_models": 6,
+      "total_models": 11,
+      "total_downloads": 22792,
+      "min_param_count": 145422848,
       "sample_models": [
-        "nvidia/gpt-oss-120b-Eagle3-long-context",
-        "nvidia/gpt-oss-120b-Eagle3-short-context",
-        "nvidia/Qwen3-235B-A22B-Eagle3",
-        "taobao-mnn/Qwen3-VL-4B-Instruct-Eagle3",
         "taobao-mnn/Qwen3-VL-8B-Instruct-Eagle3",
-        "nvidia/gpt-oss-120b-Eagle3-throughput"
-      ]
+        "nvidia/gpt-oss-120b-Eagle3-long-context",
+        "chankhavu/c2.eagle3-test",
+        "Zjcxy-SmartAI/Eagle3-Qwen3-32B-zh",
+        "nvidia/gpt-oss-120b-Eagle3-short-context",
+        "Zjcxy-SmartAI/Eagle3-Qwen3-8B-zh",
+        "nvidia/gpt-oss-120b-Eagle3-throughput",
+        "thoughtworks/Gemma-4-31B-Eagle3",
+        "ruipeterpan/Qwen2.5-7B-Instruct_EAGLE3_UltraChat",
+        "thoughtworks/MiniMax-M2.5-Eagle3"
+      ],
+      "relevancy_score": 48.8
     },
     {
-      "architecture_id": "AfmoeForCausalLM",
-      "total_models": 6,
+      "architecture_id": "BambaForCausalLM",
+      "total_models": 3,
+      "total_downloads": 225000,
+      "min_param_count": 33110760,
       "sample_models": [
-        "arcee-ai/Trinity-Nano-Preview",
-        "arcee-ai/Trinity-Mini",
-        "arcee-ai/Trinity-Large-Preview-FP8",
-        "arcee-ai/Trinity-Large-Preview",
-        "arcee-ai/Trinity-Nano-Base",
-        "arcee-ai/Trinity-Large-Base"
-      ]
+        "hmellor/tiny-random-BambaForCausalLM",
+        "ibm-ai-platform/Bamba-9B-v1",
+        "ibm-ai-platform/Bamba-9B-v2"
+      ],
+      "relevancy_score": 48.8
     },
     {
-      "architecture_id": "MT5ForConditionalGeneration",
-      "total_models": 6,
+      "architecture_id": "Eagle3Speculator",
+      "total_models": 5,
+      "total_downloads": 104424,
+      "min_param_count": 950186496,
       "sample_models": [
-        "knowledgator/SMILES2IUPAC-canonical-base",
-        "bigscience/mt0-large",
-        "bigscience/mt0-small",
-        "bigscience/mt0-base",
-        "bigscience/mt0-xl",
-        "bigscience/mt0-xxl"
-      ]
+        "RedHatAI/Qwen3-8B-speculator.eagle3",
+        "RedHatAI/Llama-3.1-8B-Instruct-speculator.eagle3",
+        "RedHatAI/Llama-3.3-70B-Instruct-speculator.eagle3",
+        "RedHatAI/Qwen3-32B-speculator.eagle3",
+        "RedHatAI/Qwen3-14B-speculator.eagle3"
+      ],
+      "relevancy_score": 48.4
     },
     {
-      "architecture_id": "Cohere2ForCausalLM",
-      "total_models": 6,
+      "architecture_id": "OpenAIGPTLMHeadModel",
+      "total_models": 2,
+      "total_downloads": 230174,
+      "min_param_count": 119680512,
       "sample_models": [
-        "CohereLabs/c4ai-command-r7b-12-2024",
-        "CohereLabs/c4ai-command-r7b-arabic-02-2025",
-        "CohereLabs/c4ai-command-a-03-2025",
-        "trl-internal-testing/tiny-Cohere2ForCausalLM",
-        "CohereLabs/command-a-reasoning-08-2025",
-        "CohereLabs/tiny-aya-global"
-      ]
+        "openai-community/openai-gpt",
+        "lgaalves/gpt1"
+      ],
+      "relevancy_score": 48.2
+    },
+    {
+      "architecture_id": "HunYuanDenseV1ForCausalLM",
+      "total_models": 9,
+      "total_downloads": 28771,
+      "min_param_count": 539010048,
+      "sample_models": [
+        "tencent/Hunyuan-7B-Instruct",
+        "tencent/Hunyuan-0.5B-Pretrain",
+        "tencent/Hunyuan-1.8B-Pretrain",
+        "tencent/Hunyuan-7B-Instruct-0124",
+        "tencent/Hunyuan-4B-Pretrain",
+        "tencent/Hunyuan-7B-Pretrain",
+        "tencent/Hunyuan-1.8B-Instruct",
+        "tencent/Hunyuan-0.5B-Instruct",
+        "tencent/Hunyuan-4B-Instruct"
+      ],
+      "relevancy_score": 48.1
+    },
+    {
+      "architecture_id": "BloomModel",
+      "total_models": 8,
+      "total_downloads": 39579,
+      "min_param_count": 16156544,
+      "sample_models": [
+        "bigscience/bigscience-small-testing",
+        "TurkuNLP/gpt3-finnish-small",
+        "TurkuNLP/gpt3-finnish-large",
+        "TurkuNLP/gpt3-finnish-13B",
+        "BelleGroup/BELLE-7B-2M",
+        "norallm/norbloom-7b-scratch",
+        "Muennighoff/bloom-tiny-random",
+        "TurkuNLP/gpt3-finnish-xl"
+      ],
+      "relevancy_score": 48.1
+    },
+    {
+      "architecture_id": "NemotronForCausalLM",
+      "total_models": 5,
+      "total_downloads": 63951,
+      "min_param_count": 2150720,
+      "sample_models": [
+        "nvidia/Nemotron-Mini-4B-Instruct",
+        "nvidia/Minitron-8B-Base",
+        "nvidia/Minitron-4B-Base",
+        "badaoui/tiny-random-NemotronForCausalLM",
+        "thhaus/nemotron3-8b"
+      ],
+      "relevancy_score": 47.3
+    },
+    {
+      "architecture_id": "HyenaDNAForCausalLM",
+      "total_models": 6,
+      "total_downloads": 38536,
+      "min_param_count": 450712,
+      "sample_models": [
+        "LongSafari/hyenadna-small-32k-seqlen-hf",
+        "LongSafari/hyenadna-medium-450k-seqlen-hf",
+        "LongSafari/hyenadna-tiny-1k-seqlen-hf",
+        "LongSafari/hyenadna-large-1m-seqlen-hf",
+        "LongSafari/hyenadna-medium-160k-seqlen-hf",
+        "LongSafari/hyenadna-tiny-16k-seqlen-d128-hf"
+      ],
+      "relevancy_score": 46.8
+    },
+    {
+      "architecture_id": "T5WithLMHeadModel",
+      "total_models": 7,
+      "total_downloads": 25552,
+      "min_param_count": 222903936,
+      "sample_models": [
+        "unicamp-dl/ptt5-base-portuguese-vocab",
+        "Salesforce/codet5-large",
+        "Salesforce/codet5-large-ntp-py",
+        "Rostlab/prot_t5_xl_bfd",
+        "gagan3012/k2t",
+        "unicamp-dl/ptt5-small-portuguese-vocab",
+        "unicamp-dl/ptt5-large-portuguese-vocab"
+      ],
+      "relevancy_score": 46.6
+    },
+    {
+      "architecture_id": "ProGenForCausalLM",
+      "total_models": 5,
+      "total_downloads": 46959,
+      "min_param_count": 151148576,
+      "sample_models": [
+        "hugohrban/progen2-base",
+        "hugohrban/progen2-small",
+        "hugohrban/progen2-medium",
+        "hugohrban/progen2-large",
+        "hugohrban/progen2-small-mix7"
+      ],
+      "relevancy_score": 46.6
+    },
+    {
+      "architecture_id": "Zamba2ForCausalLM",
+      "total_models": 8,
+      "total_downloads": 111280,
+      "min_param_count": 1215064704,
+      "sample_models": [
+        "Zyphra/Zamba2-1.2B-instruct",
+        "Zyphra/Zamba2-7B-Instruct",
+        "Zyphra/Zamba2-2.7B",
+        "EchoLabs33/zamba2-1.2b-hxq",
+        "Zyphra/Zamba2-2.7B-instruct",
+        "EchoLabs33/zamba2-2.7b-instruct-hxq",
+        "EchoLabs33/zamba2-7b-instruct-hxq",
+        "Zyphra/Zamba2-2.7B-Instruct-v2"
+      ],
+      "relevancy_score": 46.4
+    },
+    {
+      "architecture_id": "Qwen3_5MoeForConditionalGeneration",
+      "total_models": 16,
+      "total_downloads": 65079,
+      "min_param_count": 5555793776,
+      "sample_models": [
+        "Jackrong/Qwen3.5-35B-A3B-Claude-4.6-Opus-Reasoning-Distilled",
+        "caiovicentino1/Qwopus-MoE-35B-A3B-HLWQ-Q5",
+        "nightmedia/Qwen3.5-35B-A3B-Text-qx64-hi-mlx",
+        "Brooooooklyn/Qwen3.5-35B-A3B-UD-Q4_K_XL-mlx",
+        "nivvis/Qwen3.5-35B-A3B-EQ-v5",
+        "JANGQ-AI/Qwen3.5-397B-A17B-JANG_1L",
+        "Jackrong/MLX-Qwen3.5-35B-A3B-Claude-4.6-Opus-Reasoning-Distilled-bf16",
+        "nightmedia/Qwen3.5-122B-A10B-Text-qx85-mlx",
+        "JANGQ-AI/Qwen3.5-397B-A17B-JANG_2L",
+        "Kevletesteur/Qwen3.5-35B-A3B-Chimere-Distilled-BF16"
+      ],
+      "relevancy_score": 46.2
+    },
+    {
+      "architecture_id": "Ernie4_5_MoeForCausalLM",
+      "total_models": 5,
+      "total_downloads": 38765,
+      "min_param_count": 904040,
+      "sample_models": [
+        "baidu/ERNIE-4.5-21B-A3B-PT",
+        "baidu/ERNIE-4.5-21B-A3B-Base-PT",
+        "baidu/ERNIE-4.5-21B-A3B-Thinking",
+        "yujiepan/ernie-4.5-moe-tiny-random",
+        "baidu/ERNIE-4.5-300B-A47B-PT"
+      ],
+      "relevancy_score": 46.2
+    },
+    {
+      "architecture_id": "Eagle3DraftModel",
+      "total_models": 6,
+      "total_downloads": 24433,
+      "min_param_count": 522152832,
+      "sample_models": [
+        "RedHatAI/gpt-oss-20b-speculator.eagle3",
+        "RedHatAI/gpt-oss-120b-speculator.eagle3",
+        "RedHatAI/Qwen3-30B-A3B-Thinking-2507-speculator.eagle3",
+        "RedHatAI/Qwen3-235B-A22B-Instruct-2507-speculator.eagle3",
+        "RedHatAI/Qwen3-30B-A3B-Instruct-2507-speculator.eagle3",
+        "RedHatAI/Qwen3-30B-A3B-speculator.eagle3"
+      ],
+      "relevancy_score": 45.8
+    },
+    {
+      "architecture_id": "AquilaForCausalLM",
+      "total_models": 7,
+      "total_downloads": 17374,
+      "min_param_count": 6425376,
+      "sample_models": [
+        "BAAI/AquilaChat2-7B",
+        "BAAI/Aquila2-34B",
+        "katuni4ka/tiny-random-aquilachat",
+        "katuni4ka/tiny-random-aquila2",
+        "BAAI/AquilaChat2-34B",
+        "BAAI/AquilaChat2-34B-16K",
+        "BAAI/Aquila2-70B-Expr"
+      ],
+      "relevancy_score": 45.7
+    },
+    {
+      "architecture_id": "ArceeForCausalLM",
+      "total_models": 4,
+      "total_downloads": 37111,
+      "min_param_count": 4129088,
+      "sample_models": [
+        "arcee-ai/AFM-4.5B-Base",
+        "optimum-intel-internal-testing/tiny-random-ArceeForCausalLM",
+        "onnx-internal-testing/tiny-random-ArceeForCausalLM",
+        "arcee-ai/AFM-4.5B"
+      ],
+      "relevancy_score": 45.5
+    },
+    {
+      "architecture_id": "XverseForCausalLM",
+      "total_models": 7,
+      "total_downloads": 15400,
+      "min_param_count": 6459056,
+      "sample_models": [
+        "xverse/XVERSE-7B-Chat",
+        "katuni4ka/tiny-random-xverse",
+        "xverse/XVERSE-13B-256K",
+        "xverse/XVERSE-13B",
+        "xverse/XVERSE-65B-Chat",
+        "xverse/XVERSE-13B-Chat",
+        "xverse/XVERSE-7B"
+      ],
+      "relevancy_score": 45.4
+    },
+    {
+      "architecture_id": "LlavaQwen2ForCausalLM",
+      "total_models": 5,
+      "total_downloads": 23815,
+      "min_param_count": 758833760,
+      "sample_models": [
+        "qnguyen3/nanoLLaVA",
+        "apple/FastVLM-0.5B",
+        "apple/FastVLM-1.5B",
+        "apple/FastVLM-7B",
+        "FreedomIntelligence/HuatuoGPT-Vision-7B"
+      ],
+      "relevancy_score": 45.2
+    },
+    {
+      "architecture_id": "Llama4ForCausalLM",
+      "total_models": 5,
+      "total_downloads": 22089,
+      "min_param_count": 3269144,
+      "sample_models": [
+        "trl-internal-testing/tiny-Llama4ForCausalLM",
+        "pruna-test/test-save-tiny-random-llama4-smashed",
+        "facebook/MobileLLM-R1.5-360M",
+        "facebook/MobileLLM-R1-950M",
+        "facebook/MobileLLM-R1-140M"
+      ],
+      "relevancy_score": 45.0
+    },
+    {
+      "architecture_id": "SDARForCausalLM",
+      "total_models": 6,
+      "total_downloads": 93909,
+      "min_param_count": 2031739904,
+      "sample_models": [
+        "JetLM/SDAR-1.7B-Chat",
+        "JetLM/SDAR-8B-Chat-b32",
+        "JetLM/SDAR-8B-Chat",
+        "JetLM/SDAR-1.7B-Chat-b32",
+        "JetLM/SDAR-4B-Chat",
+        "JetLM/SDAR-4B-Chat-b32"
+      ],
+      "relevancy_score": 44.8
+    },
+    {
+      "architecture_id": "SeedOssForCausalLM",
+      "total_models": 4,
+      "total_downloads": 25731,
+      "min_param_count": 2497064,
+      "sample_models": [
+        "ByteDance-Seed/Seed-OSS-36B-Instruct",
+        "NousResearch/Hermes-4.3-36B",
+        "ByteDance-Seed/Seed-OSS-36B-Base",
+        "yujiepan/seed-oss-tiny-random"
+      ],
+      "relevancy_score": 44.7
+    },
+    {
+      "architecture_id": "PldrllmForCausalLM",
+      "total_models": 5,
+      "total_downloads": 14045,
+      "min_param_count": 109689362,
+      "sample_models": [
+        "fromthesky/PLDR-LLM-v51-SOC-110M-5",
+        "fromthesky/PLDR-LLM-v51-SOC-110M-2",
+        "fromthesky/PLDR-LLM-v51-SOC-110M-4",
+        "fromthesky/PLDR-LLM-v51-SOC-110M-3",
+        "fromthesky/PLDR-LLM-v51-SOC-110M-1"
+      ],
+      "relevancy_score": 44.0
+    },
+    {
+      "architecture_id": "DeepseekV2ForCausalLM",
+      "total_models": 14,
+      "total_downloads": 1547180,
+      "min_param_count": 15706484224,
+      "sample_models": [
+        "deepseek-ai/DeepSeek-V2-Lite-Chat",
+        "deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct",
+        "deepseek-ai/DeepSeek-V2-Lite",
+        "deepseek-ai/DeepSeek-V2",
+        "deepseek-ai/DeepSeek-V2-Chat",
+        "deepseek-ai/DeepSeek-V2.5",
+        "deepseek-ai/DeepSeek-Coder-V2-Instruct",
+        "deepseek-ai/DeepSeek-V2-Chat-0628",
+        "deepseek-ai/DeepSeek-Coder-V2-Lite-Base",
+        "Kwaipilot/KwaiCoder-DS-V2-Lite-Base"
+      ],
+      "relevancy_score": 43.9
+    },
+    {
+      "architecture_id": "BitNetForCausalLM",
+      "total_models": 3,
+      "total_downloads": 23875,
+      "min_param_count": 849787090,
+      "sample_models": [
+        "microsoft/bitnet-b1.58-2B-4T",
+        "microsoft/bitnet-b1.58-2B-4T-bf16",
+        "iSolver-AI/FEnet"
+      ],
+      "relevancy_score": 43.9
+    },
+    {
+      "architecture_id": "MoAMetricLM",
+      "total_models": 5,
+      "total_downloads": 12515,
+      "min_param_count": 69130608,
+      "sample_models": [
+        "reaperdoesntknow/MoA-150M",
+        "reaperdoesntknow/MoA-400M",
+        "reaperdoesntknow/MoA-155M",
+        "reaperdoesntknow/MoA-100M",
+        "reaperdoesntknow/DiscoverLM-70M"
+      ],
+      "relevancy_score": 43.7
+    },
+    {
+      "architecture_id": "LlavaLlamaForCausalLM",
+      "total_models": 18,
+      "total_downloads": 64859,
+      "min_param_count": 7466764288,
+      "sample_models": [
+        "wisdomik/Quilt-Llava-v1.5-7b",
+        "LanguageBind/Video-LLaVA-7B",
+        "liuhaotian/llava-llama-2-13b-chat-lightning-preview",
+        "mmaaz60/LLaVA-7B-Lightening-v1-1",
+        "lmms-lab/llama3-llava-next-8b",
+        "microsoft/llava-med-7b-delta",
+        "deepcs233/VisCoT-7b-336",
+        "ManishThota/Ollama_Video_llama_7B",
+        "liuhaotian/LLaVA-Lightning-7B-delta-v1-1",
+        "EricPolaris/Quilt-Llava-v1.5-7b"
+      ],
+      "relevancy_score": 43.5
+    },
+    {
+      "architecture_id": "DeciLMForCausalLM",
+      "total_models": 13,
+      "total_downloads": 263391,
+      "min_param_count": 7043551232,
+      "sample_models": [
+        "nvidia/Llama-3_3-Nemotron-Super-49B-v1_5",
+        "nvidia/Llama-3_3-Nemotron-Super-49B-v1",
+        "nvidia/Llama-3_1-Nemotron-Ultra-253B-v1",
+        "ConicCat/Llama3_3-Nemo-Super-Writer-49B",
+        "nvidia/Llama-3_1-Nemotron-51B-Instruct",
+        "FriendliAI/Llama-3_3-Nemotron-Super-49B-v1_5",
+        "FriendliAI/Llama-3_1-Nemotron-Ultra-253B-v1",
+        "nvidia/Llama-3_1-Nemotron-Ultra-253B-CPT-v1",
+        "NewstaR/Porpoise-6b-instruct",
+        "Danielbrdz/Barcenas-6b"
+      ],
+      "relevancy_score": 43.4
+    },
+    {
+      "architecture_id": "MBartForConditionalGeneration",
+      "total_models": 6,
+      "total_downloads": 7575,
+      "min_param_count": 379691717,
+      "sample_models": [
+        "Pravopysnyk/best-unlp",
+        "DeepPavlov/mbart-large-50-ru-persona-chat",
+        "sn4kebyt3/ru-bart-large",
+        "MRNH/mbart-italian-grammar-corrector",
+        "MRNH/mbart-german-grammar-corrector",
+        "MRNH/mbart-russian-grammar-corrector"
+      ],
+      "relevancy_score": 43.3
+    },
+    {
+      "architecture_id": "DogeForCausalLM",
+      "total_models": 6,
+      "total_downloads": 7541,
+      "min_param_count": 13118728,
+      "sample_models": [
+        "SmallDoge/Doge-320M",
+        "SmallDoge/Doge-160M",
+        "SmallDoge/Doge-20M",
+        "SmallDoge/Doge-60M",
+        "SmallDoge/Doge-120M-MoE",
+        "SmallDoge/Doge-20M-MoE"
+      ],
+      "relevancy_score": 43.3
+    },
+    {
+      "architecture_id": "NemotronFlashForCausalLM",
+      "total_models": 2,
+      "total_downloads": 23953,
+      "min_param_count": 965389440,
+      "sample_models": [
+        "nvidia/Nemotron-Flash-1B",
+        "nvidia/Nemotron-Flash-3B"
+      ],
+      "relevancy_score": 43.3
+    },
+    {
+      "architecture_id": "EchoForCausalLM",
+      "total_models": 3,
+      "total_downloads": 15499,
+      "min_param_count": 114687488,
+      "sample_models": [
+        "ethicalabs/Echo-DSRN-486M-v0.7.6-SFT",
+        "ethicalabs/Echo-DSRN-114M",
+        "ethicalabs/Echo-DSRN-114M-Base"
+      ],
+      "relevancy_score": 43.0
+    },
+    {
+      "architecture_id": "MiniMaxForCausalLM",
+      "total_models": 2,
+      "total_downloads": 19980,
+      "min_param_count": 231006264,
+      "sample_models": [
+        "MiniMaxAI/MiniMax-Text-01-hf",
+        "hyper-accel/tiny-random-minimax"
+      ],
+      "relevancy_score": 42.9
+    },
+    {
+      "architecture_id": "Exaone4ForCausalLM",
+      "total_models": 3,
+      "total_downloads": 69214,
+      "min_param_count": 1279391488,
+      "sample_models": [
+        "LGAI-EXAONE/EXAONE-4.0-1.2B",
+        "LGAI-EXAONE/EXAONE-4.0-32B",
+        "LGAI-EXAONE/EXAONE-4.0.1-32B"
+      ],
+      "relevancy_score": 42.2
+    },
+    {
+      "architecture_id": "DbrxForCausalLM",
+      "total_models": 2,
+      "total_downloads": 14052,
+      "min_param_count": 1612456,
+      "sample_models": [
+        "trl-internal-testing/tiny-DbrxForCausalLM",
+        "katuni4ka/tiny-random-dbrx"
+      ],
+      "relevancy_score": 42.1
+    },
+    {
+      "architecture_id": "ModernBertForSequenceClassification",
+      "total_models": 1,
+      "total_downloads": 18432,
+      "min_param_count": 149609478,
+      "sample_models": [
+        "opendatalab/meta-rater-professionalism-rating"
+      ],
+      "relevancy_score": 42.1
     },
     {
       "architecture_id": "Mistral3ForConditionalGeneration",
       "total_models": 6,
+      "total_downloads": 163824,
+      "min_param_count": 4251743232,
       "sample_models": [
+        "farbodtavakkoli/OTel-LLM-3B-IT",
         "ArmGPT/ArmenianGPT-1.0-3B",
-        "RedHatAI/Mistral-Small-3.2-24B-Instruct-2506-NVFP4",
-        "mlx-community/Ministral-3-3B-Instruct-2512",
-        "mlx-community/mistralai_Devstral-Small-2-24B-Instruct-2512-MLX-8Bit",
-        "mlx-community/mistralai_Ministral-3-14B-Instruct-2512-MLX-MXFP4",
-        "mlx-community/Ministral-3-8B-Instruct-2512"
-      ]
+        "JANGQ-AI/Mistral-Small-4-119B-A6B-JANG_2L",
+        "odytrice/kenichi-flash",
+        "JANGQ-AI/Mistral-Small-4-119B-A6B-JANG_6M",
+        "JANGQ-AI/Mistral-Small-4-119B-A6B-JANG_4M"
+      ],
+      "relevancy_score": 42.0
+    },
+    {
+      "architecture_id": "AraGPT2LMHeadModel",
+      "total_models": 3,
+      "total_downloads": 9765,
+      "min_param_count": 829369856,
+      "sample_models": [
+        "QCRI/Fanar-2-Diwan",
+        "aubmindlab/aragpt2-mega",
+        "aubmindlab/aragpt2-large"
+      ],
+      "relevancy_score": 42.0
+    },
+    {
+      "architecture_id": "StarVectorForCausalLM",
+      "total_models": 2,
+      "total_downloads": 82922,
+      "min_param_count": 1434095620,
+      "sample_models": [
+        "starvector/starvector-1b-im2svg",
+        "starvector/starvector-8b-im2svg"
+      ],
+      "relevancy_score": 42.0
+    },
+    {
+      "architecture_id": "RITAModelForCausalLM",
+      "total_models": 3,
+      "total_downloads": 9391,
+      "min_param_count": 85096320,
+      "sample_models": [
+        "lightonai/RITA_s",
+        "lightonai/RITA_xl",
+        "lightonai/RITA_l"
+      ],
+      "relevancy_score": 41.9
+    },
+    {
+      "architecture_id": "OLMoForCausalLM",
+      "total_models": 7,
+      "total_downloads": 17805,
+      "min_param_count": 1176764416,
+      "sample_models": [
+        "allenai/OLMo-7B-Instruct",
+        "allenai/OLMo-7B",
+        "allenai/OLMo-1B",
+        "allenai/OLMo-7B-0424",
+        "Nhoodie/omni-dna-ici-dc",
+        "allenai/OLMo-7B-Twin-2T",
+        "allenai/OLMo-7B-SFT"
+      ],
+      "relevancy_score": 41.8
+    },
+    {
+      "architecture_id": "IlamaForCausalLM",
+      "total_models": 1,
+      "total_downloads": 102422,
+      "min_param_count": 1235814400,
+      "sample_models": [
+        "hmellor/Ilama-3.2-1B"
+      ],
+      "relevancy_score": 41.8
+    },
+    {
+      "architecture_id": "A2DQwen3LMHeadModel",
+      "total_models": 2,
+      "total_downloads": 11738,
+      "min_param_count": 751632384,
+      "sample_models": [
+        "dllm-hub/Qwen3-0.6B-diffusion-mdlm-v0.1",
+        "dllm-hub/Qwen3-0.6B-diffusion-bd3lm-v0.1"
+      ],
+      "relevancy_score": 41.7
+    },
+    {
+      "architecture_id": "NandiForCausalLM",
+      "total_models": 2,
+      "total_downloads": 10215,
+      "min_param_count": 153412928,
+      "sample_models": [
+        "Rta-AILabs/Nandi-Mini-150M",
+        "Rta-AILabs/Nandi-Mini-150M-Instruct"
+      ],
+      "relevancy_score": 41.4
     },
     {
       "architecture_id": "LLaMAForCausalLM",
-      "total_models": 6,
+      "total_models": 12,
+      "total_downloads": 21884,
+      "min_param_count": 6738425856,
       "sample_models": [
+        "maicomputer/alpaca-13b",
         "Enoch/llama-65b-hf",
-        "anon8231489123/gpt4-x-alpaca-13b-native-4bit-128g",
-        "James-WYang/BigTranslate",
+        "mncai/chatdoctor",
+        "AdaptLLM/law-LLM",
+        "Nitish-Garikoti/finance-LLM",
+        "boboto/LLaMA-65B-HF",
+        "AdaptLLM/finance-LLM",
+        "AdaptLLM/medicine-LLM",
         "Rardilit/Panther_v1",
-        "heegyu/LIMA-13b",
-        "mncai/chatdoctor"
-      ]
+        "James-WYang/BigTranslate"
+      ],
+      "relevancy_score": 41.3
     },
     {
-      "architecture_id": "MambaForCausalLM",
-      "total_models": 5,
+      "architecture_id": "Plamo2ForCausalLM",
+      "total_models": 1,
+      "total_downloads": 81448,
+      "min_param_count": 1291441920,
       "sample_models": [
-        "state-spaces/mamba-130m-hf",
-        "state-spaces/mamba-2.8b-hf",
-        "state-spaces/mamba-370m-hf",
-        "state-spaces/mamba-1.4b-hf",
-        "state-spaces/mamba-790m-hf"
-      ]
+        "pfnet/plamo-2-1b"
+      ],
+      "relevancy_score": 41.3
     },
     {
-      "architecture_id": "BaichuanForCausalLM",
+      "architecture_id": "Starcoder2ForCausalLM",
       "total_models": 5,
+      "total_downloads": 116878,
+      "min_param_count": 3030371328,
       "sample_models": [
-        "baichuan-inc/Baichuan2-7B-Chat",
-        "baichuan-inc/Baichuan2-13B-Chat",
-        "baichuan-inc/Baichuan-13B-Chat",
-        "Flmc/DISC-MedLLM",
-        "baichuan-inc/Baichuan2-7B-Base"
-      ]
+        "bigcode/starcoder2-3b",
+        "bigcode/starcoder2-7b",
+        "bigcode/starcoder2-15b",
+        "bigcode/starcoder2-15b-instruct-v0.1",
+        "dphn/dolphincoder-starcoder2-15b"
+      ],
+      "relevancy_score": 40.6
+    },
+    {
+      "architecture_id": "MolformerForCausalLM",
+      "total_models": 2,
+      "total_downloads": 6850,
+      "min_param_count": 46805760,
+      "sample_models": [
+        "ibm-research/GP-MoLFormer-Uniq",
+        "ralyn/NPComposer-v2"
+      ],
+      "relevancy_score": 40.6
+    },
+    {
+      "architecture_id": "GlmForCausalLM",
+      "total_models": 4,
+      "total_downloads": 23066,
+      "min_param_count": 1593427968,
+      "sample_models": [
+        "zai-org/glm-4-9b-chat-hf",
+        "zai-org/glm-4-9b-hf",
+        "zai-org/glm-edge-4b-chat",
+        "zai-org/glm-edge-1.5b-chat"
+      ],
+      "relevancy_score": 40.5
+    },
+    {
+      "architecture_id": "Glm4MoeLiteForCausalLM",
+      "total_models": 9,
+      "total_downloads": 1217856,
+      "min_param_count": 22996118432,
+      "sample_models": [
+        "zai-org/GLM-4.7-Flash",
+        "unsloth/GLM-4.7-Flash",
+        "cerebras/GLM-4.7-Flash-REAP-23B-A3B",
+        "huihui-ai/Huihui-GLM-4.7-Flash-abliterated",
+        "Olafangensan/GLM-4.7-Flash-heretic",
+        "Ex0bit/GLM-4.7-Flash-PRISM",
+        "jerrycheng233/model5_sft_16bit",
+        "aaravriyer193/chimpgpt-coder-elite",
+        "austindixson/glm-4.7-flash-Opus-Reasoning"
+      ],
+      "relevancy_score": 40.3
+    },
+    {
+      "architecture_id": "MptForCausalLM",
+      "total_models": 3,
+      "total_downloads": 4595,
+      "min_param_count": 405032,
+      "sample_models": [
+        "yujiepan/mpt-tiny-random",
+        "explosion-testing/mpt-test",
+        "team-lucid/mptk-1b"
+      ],
+      "relevancy_score": 40.3
+    },
+    {
+      "architecture_id": "Llama4ForConditionalGeneration",
+      "total_models": 2,
+      "total_downloads": 5844,
+      "min_param_count": 6686880,
+      "sample_models": [
+        "yujiepan/llama-4-tiny-random",
+        "Mogith/Llama-4-Scout-17B-16E-Instruct-Q8_0"
+      ],
+      "relevancy_score": 40.2
+    },
+    {
+      "architecture_id": "DuchifatCore",
+      "total_models": 3,
+      "total_downloads": 4086,
+      "min_param_count": 136763904,
+      "sample_models": [
+        "Raziel1234/Duchifat-2",
+        "razielAI/Duchifat-2.1-Instruct",
+        "TopAI-1/Duchifat-2-Instruct"
+      ],
+      "relevancy_score": 40.1
+    },
+    {
+      "architecture_id": "LLaDAModelLM",
+      "total_models": 4,
+      "total_downloads": 659922,
+      "min_param_count": 8015581184,
+      "sample_models": [
+        "GSAI-ML/LLaDA-8B-Instruct",
+        "GSAI-ML/LLaDA-8B-Base",
+        "GSAI-ML/LLaDA-1.5",
+        "d3LLM/d3LLM_LLaDA"
+      ],
+      "relevancy_score": 39.8
+    },
+    {
+      "architecture_id": "GLAForCausalLM",
+      "total_models": 2,
+      "total_downloads": 4823,
+      "min_param_count": 341707776,
+      "sample_models": [
+        "fla-hub/gla-1.3B-100B",
+        "fla-hub/gla-340M-15B"
+      ],
+      "relevancy_score": 39.8
+    },
+    {
+      "architecture_id": "BertLMHeadModel",
+      "total_models": 2,
+      "total_downloads": 4589,
+      "min_param_count": 184474880,
+      "sample_models": [
+        "dicta-il/BEREL_3.0",
+        "hf-tiny-model-private/tiny-random-BertLMHeadModel"
+      ],
+      "relevancy_score": 39.7
+    },
+    {
+      "architecture_id": "Lfm2MoeForCausalLM",
+      "total_models": 8,
+      "total_downloads": 187579,
+      "min_param_count": 8339929856,
+      "sample_models": [
+        "farbodtavakkoli/OTel-LLM-24B-IT",
+        "LiquidAI/LFM2-8B-A1B",
+        "LiquidAI/LFM2-24B-A2B",
+        "LiquidAI/LFM2-8B-A1B-ONNX",
+        "LiquidAI/LFM2-24B-A2B-ONNX",
+        "unsloth/LFM2-8B-A1B",
+        "MuXodious/LFM2-8B-A1B-absolute-heresy-MPOA",
+        "huihui-ai/Huihui-LFM2-24B-A2B-abliterated"
+      ],
+      "relevancy_score": 39.5
+    },
+    {
+      "architecture_id": "RWForCausalLM",
+      "total_models": 11,
+      "total_downloads": 11570,
+      "min_param_count": 6854619456,
+      "sample_models": [
+        "projecte-aina/aguila-7b",
+        "lightonai/alfred-40b-1023",
+        "explosion-testing/refined-web-model-test",
+        "h2oai/h2ogpt-gm-oasst1-en-2048-falcon-7b-v2",
+        "vilm/vulture-40b",
+        "nomic-ai/gpt4all-falcon",
+        "OpenAssistant/falcon-40b-sft-top1-560",
+        "h2oai/h2ogpt-gm-oasst1-en-2048-falcon-7b-v3",
+        "QuixiAI/WizardLM-Uncensored-Falcon-40b",
+        "mrm8488/falcoder-7b"
+      ],
+      "relevancy_score": 39.3
+    },
+    {
+      "architecture_id": "GPJTGPT2ModelForCausalLM",
+      "total_models": 4,
+      "total_downloads": 2088,
+      "min_param_count": 175592448,
+      "sample_models": [
+        "gpjt/8xa100m40-baseline-3",
+        "gpjt/8xa100m40-baseline-2",
+        "gpjt/8xa100m40-baseline-8",
+        "gpjt/8xa100m40-baseline-7"
+      ],
+      "relevancy_score": 39.2
+    },
+    {
+      "architecture_id": "AfmoeForCausalLM",
+      "total_models": 6,
+      "total_downloads": 44009,
+      "min_param_count": 6120003328,
+      "sample_models": [
+        "arcee-ai/Trinity-Large-Thinking",
+        "arcee-ai/Trinity-Nano-Preview",
+        "arcee-ai/Trinity-Mini",
+        "arcee-ai/Trinity-Nano-Base",
+        "arcee-ai/Trinity-Mini-Base",
+        "arcee-ai/Trinity-Large-Preview"
+      ],
+      "relevancy_score": 39.1
+    },
+    {
+      "architecture_id": "GPTJXMoEForCausalLM",
+      "total_models": 1,
+      "total_downloads": 4510,
+      "min_param_count": 489915648,
+      "sample_models": [
+        "Aletheia-ng/SabiYarn_MoE_translate"
+      ],
+      "relevancy_score": 39.0
+    },
+    {
+      "architecture_id": "GatedDeltaNetForCausalLM",
+      "total_models": 1,
+      "total_downloads": 4069,
+      "min_param_count": 317524480,
+      "sample_models": [
+        "deqing/gdn-300M-v5-gdn"
+      ],
+      "relevancy_score": 38.8
+    },
+    {
+      "architecture_id": "BitnetForCausalLM",
+      "total_models": 2,
+      "total_downloads": 2937,
+      "min_param_count": 728843904,
+      "sample_models": [
+        "1bitLLM/bitnet_b1_58-large",
+        "1bitLLM/bitnet_b1_58-3B"
+      ],
+      "relevancy_score": 38.7
+    },
+    {
+      "architecture_id": "RecurrentGemmaForCausalLM",
+      "total_models": 3,
+      "total_downloads": 13093,
+      "min_param_count": 2682862080,
+      "sample_models": [
+        "google/recurrentgemma-2b",
+        "google/recurrentgemma-2b-it",
+        "google/recurrentgemma-9b"
+      ],
+      "relevancy_score": 38.6
+    },
+    {
+      "architecture_id": "RecursiveLanguageModel",
+      "total_models": 1,
+      "total_downloads": 3401,
+      "min_param_count": 198464806,
+      "sample_models": [
+        "Girinath11/recursive-language-model-198m"
+      ],
+      "relevancy_score": 38.4
+    },
+    {
+      "architecture_id": "T5EncoderModel",
+      "total_models": 1,
+      "total_downloads": 119882,
+      "min_param_count": 4762310656,
+      "sample_models": [
+        "XLabs-AI/xflux_text_encoders"
+      ],
+      "relevancy_score": 38.2
+    },
+    {
+      "architecture_id": "LLM",
+      "total_models": 1,
+      "total_downloads": 3132,
+      "min_param_count": 497145984,
+      "sample_models": [
+        "rudyon/linnet-497M"
+      ],
+      "relevancy_score": 38.2
+    },
+    {
+      "architecture_id": "SwarmForCausalLM",
+      "total_models": 1,
+      "total_downloads": 3059,
+      "min_param_count": 52729731,
+      "sample_models": [
+        "reaperdoesntknow/SAGI"
+      ],
+      "relevancy_score": 38.2
+    },
+    {
+      "architecture_id": "AprielForCausalLM",
+      "total_models": 1,
+      "total_downloads": 113197,
+      "min_param_count": 4832071680,
+      "sample_models": [
+        "ServiceNow-AI/Apriel-5B-Instruct"
+      ],
+      "relevancy_score": 38.1
+    },
+    {
+      "architecture_id": "SpatialLMQwenForCausalLM",
+      "total_models": 1,
+      "total_downloads": 2930,
+      "min_param_count": 603511168,
+      "sample_models": [
+        "manycore-research/SpatialLM1.1-Qwen-0.5B"
+      ],
+      "relevancy_score": 38.1
+    },
+    {
+      "architecture_id": "MiniMindForCausalLM",
+      "total_models": 2,
+      "total_downloads": 2151,
+      "min_param_count": 38840960,
+      "sample_models": [
+        "yiwenX/MiniMind-MoE-640-120M",
+        "chujiamo/baiheng_0405"
+      ],
+      "relevancy_score": 38.0
     },
     {
       "architecture_id": "DreamModel",
-      "total_models": 5,
+      "total_models": 6,
+      "total_downloads": 153501,
+      "min_param_count": 7615616512,
       "sample_models": [
         "Dream-org/Dream-v0-Instruct-7B",
         "Dream-org/Dream-v0-Base-7B",
         "Dream-org/Dream-Coder-v0-Instruct-7B",
         "Zigeng/dParallel_Dream_7B_Instruct",
+        "Dream-org/Dream-Coder-v0-Base-7B",
         "Dream-org/DreamOn-v0-7B"
-      ]
-    },
-    {
-      "architecture_id": "LlavaQwenForCausalLM",
-      "total_models": 5,
-      "sample_models": [
-        "lmms-lab/llava-onevision-qwen2-7b-ov",
-        "lmms-lab/llava-onevision-qwen2-0.5b-ov",
-        "lmms-lab/llava-onevision-qwen2-7b-si",
-        "lmms-lab/llava-onevision-qwen2-7b-ov-chat",
-        "lmms-lab/llava-onevision-qwen2-72b-ov-sft"
-      ]
-    },
-    {
-      "architecture_id": "FalconMambaForCausalLM",
-      "total_models": 5,
-      "sample_models": [
-        "trl-internal-testing/tiny-FalconMambaForCausalLM",
-        "tiiuae/falcon-mamba-tiny-dev",
-        "tiiuae/falcon-mamba-7b",
-        "tiiuae/falcon-mamba-7b-instruct",
-        "tiiuae/Falcon3-Mamba-7B-Instruct"
-      ]
-    },
-    {
-      "architecture_id": "LLaDA2MoeModelLM",
-      "total_models": 5,
-      "sample_models": [
-        "inclusionAI/LLaDA2.0-mini",
-        "inclusionAI/LLaDA2.1-mini",
-        "inclusionAI/LLaDA2.0-mini-preview",
-        "inclusionAI/LLaDA2.0-mini-CAP",
-        "inclusionAI/LLaDA2.1-flash"
-      ]
-    },
-    {
-      "architecture_id": "NemotronForCausalLM",
-      "total_models": 5,
-      "sample_models": [
-        "nvidia/Nemotron-Mini-4B-Instruct",
-        "badaoui/tiny-random-NemotronForCausalLM",
-        "nvidia/Minitron-8B-Base",
-        "nvidia/Minitron-4B-Base",
-        "thhaus/nemotron3-8b"
-      ]
-    },
-    {
-      "architecture_id": "LlavaQwen2ForCausalLM",
-      "total_models": 5,
-      "sample_models": [
-        "apple/FastVLM-0.5B",
-        "qnguyen3/nanoLLaVA",
-        "FreedomIntelligence/HuatuoGPT-Vision-7B",
-        "apple/FastVLM-1.5B",
-        "apple/FastVLM-7B"
-      ]
-    },
-    {
-      "architecture_id": "ProGenForCausalLM",
-      "total_models": 5,
-      "sample_models": [
-        "hugohrban/progen2-base",
-        "hugohrban/progen2-small",
-        "hugohrban/progen2-large",
-        "hugohrban/progen2-medium",
-        "hugohrban/progen2-xlarge"
-      ]
-    },
-    {
-      "architecture_id": "HyenaDNAForCausalLM",
-      "total_models": 5,
-      "sample_models": [
-        "LongSafari/hyenadna-large-1m-seqlen-hf",
-        "LongSafari/hyenadna-medium-450k-seqlen-hf",
-        "LongSafari/hyenadna-medium-160k-seqlen-hf",
-        "LongSafari/hyenadna-small-32k-seqlen-hf",
-        "LongSafari/hyenadna-tiny-1k-seqlen-hf"
-      ]
-    },
-    {
-      "architecture_id": "Llama4ForConditionalGeneration",
-      "total_models": 5,
-      "sample_models": [
-        "yujiepan/llama-4-tiny-random",
-        "lmstudio-community/Llama-4-Scout-17B-16E-MLX-text-8bit",
-        "RedHatAI/Llama-4-Maverick-17B-128E-Instruct-NVFP4",
-        "RedHatAI/Llama-4-Scout-17B-16E-Instruct-NVFP4",
-        "lmstudio-community/Llama-4-Scout-17B-16E-MLX-text-4bit"
-      ]
-    },
-    {
-      "architecture_id": "PhiMoEForCausalLM",
-      "total_models": 4,
-      "sample_models": [
-        "microsoft/Phi-tiny-MoE-instruct",
-        "microsoft/Phi-3.5-MoE-instruct",
-        "microsoft/Phi-mini-MoE-instruct",
-        "optimum-intel-internal-testing/phi-3.5-moe-tiny-random"
-      ]
-    },
-    {
-      "architecture_id": "Eagle3Speculator",
-      "total_models": 4,
-      "sample_models": [
-        "RedHatAI/Qwen3-8B-speculator.eagle3",
-        "RedHatAI/gpt-oss-20b-speculator.eagle3",
-        "RedHatAI/Llama-3.1-8B-Instruct-speculator.eagle3",
-        "RedHatAI/Qwen3-32B-speculator.eagle3"
-      ]
-    },
-    {
-      "architecture_id": "KimiLinearForCausalLM",
-      "total_models": 4,
-      "sample_models": [
-        "moonshotai/Kimi-Linear-48B-A3B-Instruct",
-        "moonshotai/Kimi-Linear-48B-A3B-Base",
-        "nightmedia/Kimi-Linear-REAP-35B-A3B-Instruct-mxfp4-mlx",
-        "mlx-community/Kimi-Linear-48B-A3B-Instruct-4bit"
-      ]
-    },
-    {
-      "architecture_id": "GlmForCausalLM",
-      "total_models": 4,
-      "sample_models": [
-        "zai-org/glm-4-9b-chat-hf",
-        "zai-org/glm-edge-1.5b-chat",
-        "zai-org/glm-4-9b-hf",
-        "zai-org/glm-edge-4b-chat"
-      ]
-    },
-    {
-      "architecture_id": "OuroForCausalLM",
-      "total_models": 4,
-      "sample_models": [
-        "ByteDance/Ouro-1.4B",
-        "ByteDance/Ouro-2.6B-Thinking",
-        "ByteDance/Ouro-1.4B-Thinking",
-        "ByteDance/Ouro-2.6B"
-      ]
-    },
-    {
-      "architecture_id": "Qwen3VLForConditionalGeneration",
-      "total_models": 4,
-      "sample_models": [
-        "RedHatAI/Qwen3-VL-32B-Instruct-NVFP4",
-        "JoshXT/AGiXT-Qwen3-VL-4B-GGUF",
-        "JoshXT/AGiXT-Qwen3-VL-2B-GGUF",
-        "jedisct1/Qwen3-VL-Embedding-8B-mlx"
-      ]
-    },
-    {
-      "architecture_id": "BloomModel",
-      "total_models": 4,
-      "sample_models": [
-        "bigscience/bigscience-small-testing",
-        "TurkuNLP/gpt3-finnish-small",
-        "TurkuNLP/gpt3-finnish-large",
-        "TurkuNLP/gpt3-finnish-13B"
-      ]
-    },
-    {
-      "architecture_id": "ArceeForCausalLM",
-      "total_models": 4,
-      "sample_models": [
-        "optimum-intel-internal-testing/tiny-random-ArceeForCausalLM",
-        "onnx-internal-testing/tiny-random-ArceeForCausalLM",
-        "arcee-ai/AFM-4.5B-Base",
-        "arcee-ai/AFM-4.5B"
-      ]
-    },
-    {
-      "architecture_id": "BailingMoeV2ForCausalLM",
-      "total_models": 4,
-      "sample_models": [
-        "inclusionAI/Ling-mini-2.0",
-        "inclusionAI/Ring-1T-FP8",
-        "inclusionAI/Ling-1T",
-        "inclusionAI/Ling-flash-2.0"
-      ]
-    },
-    {
-      "architecture_id": "DFlashDraftModel",
-      "total_models": 4,
-      "sample_models": [
-        "z-lab/Qwen3-4B-DFlash-b16",
-        "z-lab/Qwen3-8B-DFlash-b16",
-        "z-lab/Qwen3-Coder-30B-A3B-DFlash",
-        "z-lab/LLaMA3.1-8B-Instruct-DFlash-UltraChat"
-      ]
-    },
-    {
-      "architecture_id": "HunYuanDenseV1ForCausalLM",
-      "total_models": 4,
-      "sample_models": [
-        "tencent/Hunyuan-7B-Instruct",
-        "tencent/Hunyuan-0.5B-Pretrain",
-        "tencent/Hunyuan-4B-Instruct",
-        "tencent/Hunyuan-4B-Pretrain"
-      ]
-    },
-    {
-      "architecture_id": "Qwen3_5MoeForConditionalGeneration",
-      "total_models": 4,
-      "sample_models": [
-        "mlx-community/Qwen3.5-397B-A17B-nvfp4",
-        "inferencerlabs/Qwen3.5-397B-A17B-MLX-9bit",
-        "mlx-community/Qwen3.5-397B-A17B-8bit-gs32",
-        "pcuenq/Qwen3.5-397B-A17B-4bit"
-      ]
-    },
-    {
-      "architecture_id": "KimiK25ForConditionalGeneration",
-      "total_models": 3,
-      "sample_models": [
-        "mlx-community/Kimi-K2.5",
-        "nvidia/Kimi-K2.5-NVFP4",
-        "mlx-community/Kimi-K2.5-3bit"
-      ]
-    },
-    {
-      "architecture_id": "XLNetLMHeadModel",
-      "total_models": 3,
-      "sample_models": [
-        "xlnet/xlnet-base-cased",
-        "xlnet/xlnet-large-cased",
-        "sshleifer/tiny-xlnet-base-cased"
-      ]
-    },
-    {
-      "architecture_id": "T5WithLMHeadModel",
-      "total_models": 3,
-      "sample_models": [
-        "Rostlab/prot_t5_xl_bfd",
-        "Salesforce/codet5-large",
-        "unicamp-dl/ptt5-base-portuguese-vocab"
-      ]
-    },
-    {
-      "architecture_id": "Zamba2ForCausalLM",
-      "total_models": 3,
-      "sample_models": [
-        "Zyphra/Zamba2-1.2B-instruct",
-        "Zyphra/Zamba2-7B-Instruct",
-        "Zyphra/Zamba2-2.7B"
-      ]
-    },
-    {
-      "architecture_id": "DeepseekForCausalLM",
-      "total_models": 3,
-      "sample_models": [
-        "deepseek-ai/deepseek-moe-16b-base",
-        "deepseek-ai/deepseek-moe-16b-chat",
-        "ai-sage/GigaChat-20B-A3B-instruct"
-      ]
-    },
-    {
-      "architecture_id": "IdeficsForVisionText2Text",
-      "total_models": 3,
-      "sample_models": [
-        "HuggingFaceM4/idefics-9b",
-        "HuggingFaceM4/idefics-80b-instruct",
-        "HuggingFaceM4/idefics-9b-instruct"
-      ]
-    },
-    {
-      "architecture_id": "Gemma3nForConditionalGeneration",
-      "total_models": 3,
-      "sample_models": [
-        "mlx-community/gemma-3n-E2B-it-lm-4bit",
-        "mlx-community/gemma-3n-E4B-it-lm-4bit",
-        "RedHatAI/gemma-3n-E4B-it-FP8-dynamic"
-      ]
-    },
-    {
-      "architecture_id": "Rwkv6ForCausalLM",
-      "total_models": 3,
-      "sample_models": [
-        "RWKV/v6-Finch-14B-HF",
-        "RWKV/v6-Finch-7B-HF",
-        "RWKV/rwkv-6-world-3b"
-      ]
-    },
-    {
-      "architecture_id": "NemotronFlashForCausalLM",
-      "total_models": 3,
-      "sample_models": [
-        "nvidia/Nemotron-Flash-3B",
-        "nvidia/Nemotron-Flash-3B-Instruct",
-        "nvidia/Nemotron-Flash-1B"
-      ]
-    },
-    {
-      "architecture_id": "StripedHyenaModelForCausalLM",
-      "total_models": 3,
-      "sample_models": [
-        "togethercomputer/evo-1-8k-base",
-        "togethercomputer/evo-1-131k-base",
-        "LongSafari/evo-1-8k-crispr"
-      ]
-    },
-    {
-      "architecture_id": "PersimmonForCausalLM",
-      "total_models": 3,
-      "sample_models": [
-        "adept/persimmon-8b-chat",
-        "adept/persimmon-8b-base",
-        "pszemraj/perSLIMmon-8b-base"
-      ]
-    },
-    {
-      "architecture_id": "RecurrentGemmaForCausalLM",
-      "total_models": 3,
-      "sample_models": [
-        "google/recurrentgemma-2b",
-        "google/recurrentgemma-2b-it",
-        "google/recurrentgemma-9b"
-      ]
-    },
-    {
-      "architecture_id": "OLMoForCausalLM",
-      "total_models": 3,
-      "sample_models": [
-        "allenai/OLMo-7B",
-        "allenai/OLMo-1B",
-        "allenai/OLMo-7B-Instruct"
-      ]
-    },
-    {
-      "architecture_id": "RWForCausalLM",
-      "total_models": 3,
-      "sample_models": [
-        "lightonai/alfred-40b-1023",
-        "vilm/vulture-40b",
-        "h2oai/h2ogpt-gm-oasst1-en-2048-falcon-7b-v2"
-      ]
-    },
-    {
-      "architecture_id": "LISAForCausalLM",
-      "total_models": 3,
-      "sample_models": [
-        "MBZUAI/GLaMM-GranD-Pretrained",
-        "xinlai/LISA-7B-v1",
-        "xinlai/LISA-13B-llama2-v1"
-      ]
-    },
-    {
-      "architecture_id": "modeling_camelidae.LlamaForCausalLM",
-      "total_models": 3,
-      "sample_models": [
-        "hywu/Camelidae-8x34B",
-        "hywu/Camelidae-8x7B",
-        "hywu/Camelidae-8x13B"
-      ]
-    },
-    {
-      "architecture_id": "H2OVLChatModel",
-      "total_models": 2,
-      "sample_models": [
-        "h2oai/h2ovl-mississippi-800m",
-        "h2oai/h2ovl-mississippi-2b"
-      ]
-    },
-    {
-      "architecture_id": "MiMoV2FlashForCausalLM",
-      "total_models": 2,
-      "sample_models": [
-        "XiaomiMiMo/MiMo-V2-Flash",
-        "cyankiwi/MiMo-V2-Flash-AWQ-4bit"
-      ]
-    },
-    {
-      "architecture_id": "OpenAIGPTLMHeadModel",
-      "total_models": 2,
-      "sample_models": [
-        "openai-community/openai-gpt",
-        "lgaalves/gpt1"
-      ]
-    },
-    {
-      "architecture_id": "BambaForCausalLM",
-      "total_models": 2,
-      "sample_models": [
-        "hmellor/tiny-random-BambaForCausalLM",
-        "ibm-ai-platform/Bamba-9B-v1"
-      ]
-    },
-    {
-      "architecture_id": "Eagle3DraftModel",
-      "total_models": 2,
-      "sample_models": [
-        "RedHatAI/Qwen3-30B-A3B-Instruct-2507-speculator.eagle3",
-        "RedHatAI/Qwen3-235B-A22B-Instruct-2507-speculator.eagle3"
-      ]
-    },
-    {
-      "architecture_id": "BioGptForCausalLM",
-      "total_models": 2,
-      "sample_models": [
-        "microsoft/biogpt",
-        "microsoft/BioGPT-Large"
-      ]
-    },
-    {
-      "architecture_id": "MoshiForConditionalGeneration",
-      "total_models": 2,
-      "sample_models": [
-        "kmhf/hf-moshiko",
-        "kmhf/hf-moshika"
-      ]
-    },
-    {
-      "architecture_id": "ReformerModelWithLMHead",
-      "total_models": 2,
-      "sample_models": [
-        "google/reformer-crime-and-punishment",
-        "google/reformer-enwik8"
-      ]
-    },
-    {
-      "architecture_id": "Phi3VForCausalLM",
-      "total_models": 2,
-      "sample_models": [
-        "microsoft/Phi-3-vision-128k-instruct",
-        "TIGER-Lab/VLM2Vec-Full"
-      ]
-    },
-    {
-      "architecture_id": "MiMoForCausalLM",
-      "total_models": 2,
-      "sample_models": [
-        "XiaomiMiMo/MiMo-7B-Base",
-        "XiaomiMiMo/MiMo-7B-RL"
-      ]
-    },
-    {
-      "architecture_id": "CLIPT5ForConditionalGeneration",
-      "total_models": 2,
-      "sample_models": [
-        "zhiqiulin/clip-flant5-xl",
-        "zhiqiulin/clip-flant5-xxl"
-      ]
-    },
-    {
-      "architecture_id": "MiniMaxM1ForCausalLM",
-      "total_models": 2,
-      "sample_models": [
-        "MiniMaxAI/MiniMax-M1-80k",
-        "MiniMaxAI/MiniMax-M1-40k"
-      ]
-    },
-    {
-      "architecture_id": "LongcatFlashForCausalLM",
-      "total_models": 2,
-      "sample_models": [
-        "meituan-longcat/LongCat-Flash-Chat",
-        "meituan-longcat/LongCat-Flash-Thinking-FP8"
-      ]
-    },
-    {
-      "architecture_id": "InternLMForCausalLM",
-      "total_models": 2,
-      "sample_models": [
-        "internlm/internlm-chat-7b",
-        "internlm/internlm-20b"
-      ]
-    },
-    {
-      "architecture_id": "Lfm2MoeForCausalLM",
-      "total_models": 2,
-      "sample_models": [
-        "LiquidAI/LFM2-8B-A1B",
-        "mlx-community/LFM2-8B-A1B-4bit"
-      ]
-    },
-    {
-      "architecture_id": "BitNetForCausalLM",
-      "total_models": 2,
-      "sample_models": [
-        "microsoft/bitnet-b1.58-2B-4T-bf16",
-        "microsoft/bitnet-b1.58-2B-4T"
-      ]
-    },
-    {
-      "architecture_id": "Phi3SmallForCausalLM",
-      "total_models": 2,
-      "sample_models": [
-        "microsoft/Phi-3-small-8k-instruct",
-        "microsoft/Phi-3-small-128k-instruct"
-      ]
-    },
-    {
-      "architecture_id": "ExaoneMoEForCausalLM",
-      "total_models": 2,
-      "sample_models": [
-        "LGAI-EXAONE/K-EXAONE-236B-A23B",
-        "LGAI-EXAONE/K-EXAONE-236B-A23B-FP8"
-      ]
-    },
-    {
-      "architecture_id": "SolarOpenForCausalLM",
-      "total_models": 2,
-      "sample_models": [
-        "upstage/Solar-Open-100B",
-        "nota-ai/Solar-Open-100B-NotaMoEQuant-Int4"
-      ]
-    },
-    {
-      "architecture_id": "DbrxForCausalLM",
-      "total_models": 2,
-      "sample_models": [
-        "trl-internal-testing/tiny-DbrxForCausalLM",
-        "alpindale/dbrx-instruct"
-      ]
-    },
-    {
-      "architecture_id": "HunYuanMoEV1ForCausalLM",
-      "total_models": 2,
-      "sample_models": [
-        "tencent/Hunyuan-A13B-Instruct",
-        "tencent/Hunyuan-A13B-Instruct-FP8"
-      ]
-    },
-    {
-      "architecture_id": "Ernie4_5ForCausalLM",
-      "total_models": 2,
-      "sample_models": [
-        "baidu/ERNIE-4.5-0.3B-PT",
-        "baidu/ERNIE-4.5-0.3B-Base-PT"
-      ]
-    },
-    {
-      "architecture_id": "ChatGLMModel",
-      "total_models": 2,
-      "sample_models": [
-        "zai-org/glm-4-9b",
-        "zai-org/codegeex4-all-9b"
-      ]
-    },
-    {
-      "architecture_id": "Jais2ForCausalLM",
-      "total_models": 2,
-      "sample_models": [
-        "inceptionai/Jais-2-8B-Chat",
-        "inceptionai/Jais-2-70B-Chat"
-      ]
-    },
-    {
-      "architecture_id": "AquilaForCausalLM",
-      "total_models": 2,
-      "sample_models": [
-        "BAAI/AquilaChat2-7B",
-        "BAAI/Aquila2-34B"
-      ]
-    },
-    {
-      "architecture_id": "BolmoForCausalLM",
-      "total_models": 2,
-      "sample_models": [
-        "allenai/Bolmo-7B",
-        "allenai/Bolmo-1B"
-      ]
-    },
-    {
-      "architecture_id": "JAISLMHeadModel",
-      "total_models": 2,
-      "sample_models": [
-        "inceptionai/jais-13b-chat",
-        "inceptionai/jais-13b"
-      ]
-    },
-    {
-      "architecture_id": "BailingMoeV2_5ForCausalLM",
-      "total_models": 2,
-      "sample_models": [
-        "inclusionAI/Ring-2.5-1T",
-        "inclusionAI/Ling-2.5-1T"
-      ]
-    },
-    {
-      "architecture_id": "InternLMXComposer2ForCausalLM",
-      "total_models": 2,
-      "sample_models": [
-        "internlm/internlm-xcomposer2-7b",
-        "internlm/internlm-xcomposer2-vl-7b-4bit"
-      ]
-    },
-    {
-      "architecture_id": "StarVectorForCausalLM",
-      "total_models": 2,
-      "sample_models": [
-        "starvector/starvector-8b-im2svg",
-        "starvector/starvector-1b-im2svg"
-      ]
-    },
-    {
-      "architecture_id": "HCXVisionV2ForCausalLM",
-      "total_models": 2,
-      "sample_models": [
-        "naver-hyperclovax/HyperCLOVAX-SEED-Think-32B",
-        "naver-hyperclovax/HyperCLOVAX-SEED-Omni-8B"
-      ]
-    },
-    {
-      "architecture_id": "BD3LM",
-      "total_models": 2,
-      "sample_models": [
-        "kuleshov-group/bd3lm-owt-block_size4",
-        "kuleshov-group/bd3lm-owt-block_size16"
-      ]
-    },
-    {
-      "architecture_id": "GiddForDiffusionLM",
-      "total_models": 2,
-      "sample_models": [
-        "dvruette/gidd-unif-3b",
-        "dvruette/gidd-unif-10b"
-      ]
-    },
-    {
-      "architecture_id": "ParamBharatGenForCausalLM",
-      "total_models": 2,
-      "sample_models": [
-        "bharatgenai/AyurParam",
-        "bharatgenai/Param-1-2.9B-Instruct"
-      ]
-    },
-    {
-      "architecture_id": "MotifForCausalLM",
-      "total_models": 2,
-      "sample_models": [
-        "Motif-Technologies/Motif-2-12.7B-Base",
-        "Motif-Technologies/Motif-2-12.7B-Reasoning"
-      ]
-    },
-    {
-      "architecture_id": "YoutuForCausalLM",
-      "total_models": 2,
-      "sample_models": [
-        "tencent/Youtu-LLM-2B-Base",
-        "tencent/Youtu-LLM-2B"
-      ]
-    },
-    {
-      "architecture_id": "DeCodon",
-      "total_models": 2,
-      "sample_models": [
-        "goodarzilab/decodon-200M",
-        "goodarzilab/decodon-200M-euk"
-      ]
-    },
-    {
-      "architecture_id": "CogVLMForCausalLM",
-      "total_models": 2,
-      "sample_models": [
-        "zai-org/cogvlm2-llama3-chat-19B",
-        "zai-org/cogvlm-chat-hf"
-      ]
-    },
-    {
-      "architecture_id": "StableLMEpochForCausalLM",
-      "total_models": 2,
-      "sample_models": [
-        "acon96/Home-3B-v3-GGUF",
-        "stabilityai/japanese-stablelm-3b-4e1t-instruct"
-      ]
-    },
-    {
-      "architecture_id": "BitnetForCausalLM",
-      "total_models": 2,
-      "sample_models": [
-        "1bitLLM/bitnet_b1_58-3B",
-        "1bitLLM/bitnet_b1_58-large"
-      ]
-    },
-    {
-      "architecture_id": "InstellaForCausalLM",
-      "total_models": 2,
-      "sample_models": [
-        "amd/Instella-3B",
-        "amd/Instella-3B-Instruct"
-      ]
-    },
-    {
-      "architecture_id": "MobileLlamaForCausalLM",
-      "total_models": 2,
-      "sample_models": [
-        "mtgv/MobileVLM_V2-1.7B",
-        "mtgv/MobileVLM-1.7B"
-      ]
-    },
-    {
-      "architecture_id": "BartForConditionalGeneration",
-      "total_models": 1,
-      "sample_models": [
-        "KomeijiForce/bart-large-emojilm"
-      ]
-    },
-    {
-      "architecture_id": "GPTRefactForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "refactai/Refact-1_6B-fim"
-      ]
-    },
-    {
-      "architecture_id": "IQuestCoderForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "IQuestLab/IQuest-Coder-V1-40B-Instruct"
-      ]
-    },
-    {
-      "architecture_id": "T5EncoderModel",
-      "total_models": 1,
-      "sample_models": [
-        "XLabs-AI/xflux_text_encoders"
-      ]
-    },
-    {
-      "architecture_id": "GPTNeoXJapaneseForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "abeja/gpt-neox-japanese-2.7b"
-      ]
-    },
-    {
-      "architecture_id": "IlamaForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "hmellor/Ilama-3.2-1B"
-      ]
-    },
-    {
-      "architecture_id": "HCXVisionForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "naver-hyperclovax/HyperCLOVAX-SEED-Vision-Instruct-3B"
-      ]
-    },
-    {
-      "architecture_id": "Plamo2ForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "pfnet/plamo-2-1b"
-      ]
-    },
-    {
-      "architecture_id": "TarsierForConditionalGeneration",
-      "total_models": 1,
-      "sample_models": [
-        "omni-research/Tarsier-7b"
-      ]
-    },
-    {
-      "architecture_id": "Phi4FlashForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "microsoft/Phi-4-mini-flash-reasoning"
-      ]
-    },
-    {
-      "architecture_id": "BaiChuanForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "baichuan-inc/Baichuan-7B"
-      ]
-    },
-    {
-      "architecture_id": "CPMAntForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "openbmb/cpm-ant-10b"
-      ]
-    },
-    {
-      "architecture_id": "SolarForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "upstage/solar-pro-preview-instruct"
-      ]
-    },
-    {
-      "architecture_id": "Moondream",
-      "total_models": 1,
-      "sample_models": [
-        "vikhyatk/moondream1"
-      ]
-    },
-    {
-      "architecture_id": "Grok1ModelForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "hpcai-tech/grok-1"
-      ]
-    },
-    {
-      "architecture_id": "GritLM",
-      "total_models": 1,
-      "sample_models": [
-        "parasail-ai/GritLM-7B-vllm"
-      ]
-    },
-    {
-      "architecture_id": "BailingMoeForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "inclusionAI/Ling-lite-1.5"
-      ]
-    },
-    {
-      "architecture_id": "MiniCPM3ForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "openbmb/MiniCPM3-4B"
-      ]
-    },
-    {
-      "architecture_id": "InternLM3ForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "internlm/internlm3-8b-instruct"
-      ]
-    },
-    {
-      "architecture_id": "MiniMaxForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "MiniMaxAI/MiniMax-Text-01-hf"
-      ]
-    },
-    {
-      "architecture_id": "IQuestLoopCoderForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "IQuestLab/IQuest-Coder-V1-40B-Loop-Instruct"
-      ]
-    },
-    {
-      "architecture_id": "TrillionForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "trillionlabs/Tri-21B"
-      ]
-    },
-    {
-      "architecture_id": "OrionForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "OrionStarAI/Orion-14B-Chat"
-      ]
-    },
-    {
-      "architecture_id": "JetNemotronForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "jet-ai/Jet-Nemotron-2B"
-      ]
-    },
-    {
-      "architecture_id": "Llama4ForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "trl-internal-testing/tiny-Llama4ForCausalLM"
-      ]
-    },
-    {
-      "architecture_id": "HyperCLOVAXForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "naver-hyperclovax/HyperCLOVAX-SEED-Think-14B"
-      ]
-    },
-    {
-      "architecture_id": "Plamo3ForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "pfnet/plamo-3-nict-2b-base"
-      ]
-    },
-    {
-      "architecture_id": "CheXagentForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "StanfordAIMI/CheXagent-2-3b"
-      ]
-    },
-    {
-      "architecture_id": "ArcticForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "Snowflake/snowflake-arctic-instruct"
-      ]
-    },
-    {
-      "architecture_id": "MolformerForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "ibm-research/GP-MoLFormer-Uniq"
-      ]
-    },
-    {
-      "architecture_id": "XverseForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "xverse/XVERSE-7B-Chat"
-      ]
-    },
-    {
-      "architecture_id": "LongcatCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "meituan-longcat/LongCat-Flash-Thinking-2601"
-      ]
-    },
-    {
-      "architecture_id": "Qwen2_5_VLForConditionalGeneration",
-      "total_models": 1,
-      "sample_models": [
-        "nvidia/Qwen2.5-VL-7B-Instruct-NVFP4"
-      ]
-    },
-    {
-      "architecture_id": "AXK1ForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "skt/A.X-K1"
-      ]
+      ],
+      "relevancy_score": 37.9
     },
     {
       "architecture_id": "AV2TextForConditionalGeneration",
       "total_models": 1,
+      "total_downloads": 2689,
+      "min_param_count": 480465000,
       "sample_models": [
         "nguyenvulebinh/AV-HuBERT-MuAViC-en"
-      ]
+      ],
+      "relevancy_score": 37.9
     },
     {
-      "architecture_id": "Dots1ForCausalLM",
-      "total_models": 1,
+      "architecture_id": "BD3LM",
+      "total_models": 2,
+      "total_downloads": 1953,
+      "min_param_count": 169627250,
       "sample_models": [
-        "rednote-hilab/dots.llm1.inst"
-      ]
+        "kuleshov-group/bd3lm-owt-block_size4",
+        "kuleshov-group/bd3lm-owt-block_size16"
+      ],
+      "relevancy_score": 37.8
     },
     {
-      "architecture_id": "FlexOlmoForCausalLM",
-      "total_models": 1,
+      "architecture_id": "ForCausalLM",
+      "total_models": 2,
+      "total_downloads": 1725,
+      "min_param_count": 748801603,
       "sample_models": [
-        "allenai/Flex-reddit-2x7B-1T"
-      ]
+        "kyr0/Gemma-4-Waldwicht-Sproessling",
+        "kyr0/Gemma-4-Waldwicht-Winzling"
+      ],
+      "relevancy_score": 37.5
     },
     {
-      "architecture_id": "MiniCPMSALAForCausalLM",
+      "architecture_id": "BlenderbotForConditionalGeneration",
       "total_models": 1,
+      "total_downloads": 2289,
+      "min_param_count": 364810568,
       "sample_models": [
-        "openbmb/MiniCPM-SALA"
-      ]
+        "thu-coai/blenderbot-400M-esconv"
+      ],
+      "relevancy_score": 37.5
     },
     {
-      "architecture_id": "Bagel",
+      "architecture_id": "Autoencoder",
       "total_models": 1,
+      "total_downloads": 2278,
+      "min_param_count": 75832064,
       "sample_models": [
-        "lmms-lab/BAGEL-7B-MoT-ver.LE"
-      ]
+        "cccczshao/CALM-Autoencoder"
+      ],
+      "relevancy_score": 37.5
     },
     {
-      "architecture_id": "VaultGemmaForCausalLM",
+      "architecture_id": "EveMoEForCausalLM",
       "total_models": 1,
+      "total_downloads": 2174,
+      "min_param_count": 271970816,
       "sample_models": [
-        "google/vaultgemma-1b"
-      ]
+        "anthonym21/Eve-2-MoE-IT-272M"
+      ],
+      "relevancy_score": 37.4
     },
     {
-      "architecture_id": "RavenForCausalLM",
+      "architecture_id": "FusionInDecoderForConditionalGeneration",
       "total_models": 1,
+      "total_downloads": 2146,
+      "min_param_count": 247577856,
       "sample_models": [
-        "tomg-group-umd/huginn-0125"
-      ]
+        "Intel/fid_flan_t5_base_nq"
+      ],
+      "relevancy_score": 37.4
     },
     {
-      "architecture_id": "SpatialLMQwenForCausalLM",
+      "architecture_id": "Plamo3ForCausalLM",
       "total_models": 1,
+      "total_downloads": 12925,
+      "min_param_count": 2603344384,
       "sample_models": [
-        "manycore-research/SpatialLM1.1-Qwen-0.5B"
-      ]
-    },
-    {
-      "architecture_id": "TorchMultiOmicsModel",
-      "total_models": 1,
-      "sample_models": [
-        "InstaDeepAI/ChatNT"
-      ]
+        "pfnet/plamo-3-nict-2b-base"
+      ],
+      "relevancy_score": 37.3
     },
     {
       "architecture_id": "TransformerForCausalLM",
       "total_models": 1,
+      "total_downloads": 12840,
+      "min_param_count": 1364297728,
       "sample_models": [
         "fla-hub/transformer-1.3B-100B"
-      ]
+      ],
+      "relevancy_score": 37.3
     },
     {
-      "architecture_id": "InternLMXComposerForCausalLM",
+      "architecture_id": "LIMEForCausalLM",
       "total_models": 1,
+      "total_downloads": 2102,
+      "min_param_count": 984405504,
       "sample_models": [
-        "internlm/internlm-xcomposer-7b"
-      ]
+        "anarlavrenov/lime-1b-instruct"
+      ],
+      "relevancy_score": 37.3
     },
     {
-      "architecture_id": "GPT2LMHeadCustomModel",
+      "architecture_id": "ModernBertForMaskedLM",
       "total_models": 1,
+      "total_downloads": 2068,
+      "min_param_count": 590367063,
       "sample_models": [
-        "bigcode/santacoder"
-      ]
+        "JorgeVanco/diffusionGPT"
+      ],
+      "relevancy_score": 37.3
     },
     {
-      "architecture_id": "MosaicGPT",
-      "total_models": 1,
+      "architecture_id": "HCXVisionV2ForCausalLM",
+      "total_models": 2,
+      "total_downloads": 354662,
+      "min_param_count": 10741664520,
       "sample_models": [
-        "anas-awadalla/mpt-1b-redpajama-200b"
-      ]
+        "naver-hyperclovax/HyperCLOVAX-SEED-Omni-8B",
+        "naver-hyperclovax/HyperCLOVAX-SEED-Think-32B"
+      ],
+      "relevancy_score": 37.2
     },
     {
-      "architecture_id": "LongcatFlashNgramForCausalLM",
+      "architecture_id": "MoEGPTForCausalLM",
       "total_models": 1,
+      "total_downloads": 1943,
+      "min_param_count": 149603328,
       "sample_models": [
-        "meituan-longcat/LongCat-Flash-Lite"
-      ]
+        "arnomatic/german-moe-gpt-v8-pretrained"
+      ],
+      "relevancy_score": 37.2
     },
     {
-      "architecture_id": "AprielForCausalLM",
-      "total_models": 1,
+      "architecture_id": "ParamBharatGenForCausalLM",
+      "total_models": 4,
+      "total_downloads": 5035,
+      "min_param_count": 2860664832,
       "sample_models": [
-        "ServiceNow-AI/Apriel-5B-Instruct"
-      ]
+        "bharatgenai/Param-1-5B",
+        "bharatgenai/AyurParam",
+        "bharatgenai/Param-1-2.9B-Instruct",
+        "bharatgenai/AgriParam"
+      ],
+      "relevancy_score": 37.1
     },
     {
-      "architecture_id": "Maira2ForConditionalGeneration",
+      "architecture_id": "LanceAI",
       "total_models": 1,
+      "total_downloads": 1887,
+      "min_param_count": 137022720,
       "sample_models": [
-        "microsoft/maira-2"
-      ]
+        "NeuraCraft/Lance-AI-V2"
+      ],
+      "relevancy_score": 37.1
     },
     {
-      "architecture_id": "MllamaForConditionalGeneration",
-      "total_models": 1,
+      "architecture_id": "RWKV7ForCausalLM",
+      "total_models": 2,
+      "total_downloads": 1332,
+      "min_param_count": 381332480,
       "sample_models": [
-        "RedHatAI/Llama-3.2-90B-Vision-Instruct-FP8-dynamic"
-      ]
+        "puigde/rwkv7-380M-15B-slimpajama",
+        "fla-hub/rwkv7-1.5B-world"
+      ],
+      "relevancy_score": 37.0
     },
     {
-      "architecture_id": "TransfoXLLMHeadModel",
+      "architecture_id": "LSTMForCausalLM",
       "total_models": 1,
+      "total_downloads": 1772,
+      "min_param_count": 164921344,
       "sample_models": [
-        "transfo-xl/transfo-xl-wt103"
-      ]
+        "deqing/lstm-window-4-v5"
+      ],
+      "relevancy_score": 37.0
     },
     {
-      "architecture_id": "JetMoEForCausalLM",
-      "total_models": 1,
+      "architecture_id": "NanoChatForCausalLM",
+      "total_models": 3,
+      "total_downloads": 6167,
+      "min_param_count": 2217082880,
       "sample_models": [
-        "jetmoe/jetmoe-8b"
-      ]
+        "Twobombs/nanochat-d34-sft-hf",
+        "pankajmathur/nanochat-d34-sft-hf",
+        "Nekochu/nanochat-d24"
+      ],
+      "relevancy_score": 36.9
     },
     {
-      "architecture_id": "Qwen2VLForConditionalGeneration",
-      "total_models": 1,
+      "architecture_id": "PenguinVLQwen3ForCausalLM",
+      "total_models": 2,
+      "total_downloads": 7957,
+      "min_param_count": 2167941120,
       "sample_models": [
-        "yujiepan/qwen2-vl-tiny-random"
-      ]
+        "tencent/Penguin-VL-8B",
+        "tencent/Penguin-VL-2B"
+      ],
+      "relevancy_score": 36.9
     },
     {
-      "architecture_id": "VibeVoiceAsrForConditionalGeneration",
+      "architecture_id": "Moondream",
       "total_models": 1,
+      "total_downloads": 10509,
+      "min_param_count": 1857482608,
       "sample_models": [
-        "bezzam/VibeVoice-ASR-7B"
-      ]
+        "vikhyatk/moondream1"
+      ],
+      "relevancy_score": 36.9
     },
     {
-      "architecture_id": "PolyLMHeadModel",
-      "total_models": 1,
+      "architecture_id": "GPT3DevLMHeadModel",
+      "total_models": 2,
+      "total_downloads": 1135,
+      "min_param_count": 125226240,
       "sample_models": [
-        "DAMO-NLP-MT/polylm-13b"
-      ]
+        "k050506koch/GPT3-dev-350m-2805",
+        "k050506koch/GPT3-dev-125m-0104"
+      ],
+      "relevancy_score": 36.6
     },
     {
-      "architecture_id": "Qwen3TSForCausalLM",
+      "architecture_id": "D3LMForMaskedLM",
       "total_models": 1,
+      "total_downloads": 1260,
+      "min_param_count": 55905164,
       "sample_models": [
-        "bytedance-research/ChatTS-8B"
-      ]
-    },
-    {
-      "architecture_id": "SpatialLMLlamaForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "manycore-research/SpatialLM1.1-Llama-1B"
-      ]
-    },
-    {
-      "architecture_id": "LlamaMoEForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "llama-moe/LLaMA-MoE-v1-3_5B-2_8"
-      ]
-    },
-    {
-      "architecture_id": "HGRNBitForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "ridger/MMfreeLM-370M"
-      ]
-    },
-    {
-      "architecture_id": "XMistralForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "Hannibal046/xrag-7b"
-      ]
-    },
-    {
-      "architecture_id": "StableLMAlphaForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "stabilityai/stablelm-base-alpha-7b-v2"
-      ]
-    },
-    {
-      "architecture_id": "TridaForDLM",
-      "total_models": 1,
-      "sample_models": [
-        "trillionlabs/Trida-7B"
-      ]
-    },
-    {
-      "architecture_id": "WeDLMForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "tencent/WeDLM-8B-Instruct"
-      ]
-    },
-    {
-      "architecture_id": "PointLLMLlamaForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "RunsenXu/PointLLM_7B_v1.2"
-      ]
-    },
-    {
-      "architecture_id": "CambrianQwenForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "nyu-visionx/Scale-RAE-Qwen1.5B_DiT2.4B"
-      ]
-    },
-    {
-      "architecture_id": "CheXagentForConditionalGeneration",
-      "total_models": 1,
-      "sample_models": [
-        "StanfordAIMI/CheXagent-8b"
-      ]
-    },
-    {
-      "architecture_id": "CambrianLlamaForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "nyu-visionx/cambrian-8b"
-      ]
-    },
-    {
-      "architecture_id": "BottleneckT5LMWithPerturb",
-      "total_models": 1,
-      "sample_models": [
-        "thesephist/contra-bottleneck-t5-base-wikipedia"
-      ]
-    },
-    {
-      "architecture_id": "Kanana2VecModel",
-      "total_models": 1,
-      "sample_models": [
-        "kakaocorp/kanana-nano-2.1b-embedding"
-      ]
-    },
-    {
-      "architecture_id": "DeltaNetForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "fla-hub/delta_net-1.3B-100B"
-      ]
-    },
-    {
-      "architecture_id": "DetikzifyForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "nllg/detikzify-tl-1.1b"
-      ]
-    },
-    {
-      "architecture_id": "OtterForConditionalGeneration",
-      "total_models": 1,
-      "sample_models": [
-        "luodian/OTTER-MPT1B-RPJama-Init"
-      ]
-    },
-    {
-      "architecture_id": "DeciCoderForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "Deci/DeciCoder-1b"
-      ]
-    },
-    {
-      "architecture_id": "MiniMaxText01ForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "MiniMaxAI/MiniMax-Text-01"
-      ]
-    },
-    {
-      "architecture_id": "ChatGLMForConditionalGeneration",
-      "total_models": 1,
-      "sample_models": [
-        "IAAR-Shanghai/xVerify-9B-C"
-      ]
-    },
-    {
-      "architecture_id": "Qwen2ForSequenceClassification",
-      "total_models": 1,
-      "sample_models": [
-        "nvidia/AceMath-7B-RM"
-      ]
-    },
-    {
-      "architecture_id": "SeerAttnLlamaForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "SeerAttention/SeerAttention-Llama-3.1-8B-AttnGates"
-      ]
-    },
-    {
-      "architecture_id": "GAD2ForAgenticModeling",
-      "total_models": 1,
-      "sample_models": [
-        "Raziel1234/GAD-2"
-      ]
-    },
-    {
-      "architecture_id": "LlavaMistralForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "billborkowski/llava-NousResearch_Nous-Hermes-2-Vision-GGUF"
-      ]
-    },
-    {
-      "architecture_id": "ICONNForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "ICONNAI/ICONN-1-Mini-Beta"
-      ]
-    },
-    {
-      "architecture_id": "LamedPhi3ForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "GoodBaiBai88/M3D-LaMed-Phi-3-4B"
-      ]
-    },
-    {
-      "architecture_id": "MobileLLMForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "facebook/MobileLLM-125M"
-      ]
-    },
-    {
-      "architecture_id": "CogVLMVideoForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "zai-org/VisionReward-Video"
-      ]
-    },
-    {
-      "architecture_id": "LLaDAMoEModel",
-      "total_models": 1,
-      "sample_models": [
-        "inclusionAI/LLaDA-MoE-7B-A1B-Base"
-      ]
-    },
-    {
-      "architecture_id": "SokaForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "soka0000/vclm-korean-7b"
-      ]
-    },
-    {
-      "architecture_id": "HeliumForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "kyutai/helium-1-preview-2b"
-      ]
-    },
-    {
-      "architecture_id": "GPT2Model",
-      "total_models": 1,
-      "sample_models": [
-        "cerebras/Cerebras-GPT-13B"
-      ]
-    },
-    {
-      "architecture_id": "GLaMMForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "MBZUAI/GLaMM-FullScope"
-      ]
-    },
-    {
-      "architecture_id": "Emu3ForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "BAAI/Emu3-Chat"
-      ]
-    },
-    {
-      "architecture_id": "Ministral3ForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "mlx-community/Devstral-2-123B-Instruct-2512-4bit"
-      ]
-    },
-    {
-      "architecture_id": "FP8Qwen2ForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "xihc-ucb/Qwen2.5-7B-train-Quasar-1214"
-      ]
-    },
-    {
-      "architecture_id": "DogeForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "SmallDoge/Doge-20M"
-      ]
-    },
-    {
-      "architecture_id": "Qwen2TSForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "bytedance-research/ChatTS-14B"
-      ]
-    },
-    {
-      "architecture_id": "MptForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "team-lucid/mptk-1b"
-      ]
-    },
-    {
-      "architecture_id": "MegaForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "BEE-spoke-data/mega-ar-126m-4k"
-      ]
-    },
-    {
-      "architecture_id": "ZambaForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "Zyphra/Zamba-7B-v1"
-      ]
-    },
-    {
-      "architecture_id": "OpenMoeForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "hpcai-tech/openmoe-8B"
-      ]
-    },
-    {
-      "architecture_id": "Typhoon2Audio2AudioForConditionalGeneration",
-      "total_models": 1,
-      "sample_models": [
-        "typhoon-ai/llama3.1-typhoon2-audio-8b-instruct"
-      ]
-    },
-    {
-      "architecture_id": "KORMoForCausalLM",
-      "total_models": 1,
-      "sample_models": [
-        "KORMo-Team/KORMo-10B-sft"
-      ]
+        "Hengchang-Liu/D3LM-from-nt"
+      ],
+      "relevancy_score": 36.2
     },
     {
       "architecture_id": "CircuitGPTForCausalLM",
       "total_models": 1,
+      "total_downloads": 1247,
+      "min_param_count": 419124736,
       "sample_models": [
         "openai/circuit-sparsity"
-      ]
+      ],
+      "relevancy_score": 36.2
+    },
+    {
+      "architecture_id": "PanguEmbeddedForCausalLM",
+      "total_models": 1,
+      "total_downloads": 7396,
+      "min_param_count": 1391497728,
+      "sample_models": [
+        "FreedomIntelligence/openPangu-Embedded-1B"
+      ],
+      "relevancy_score": 36.1
+    },
+    {
+      "architecture_id": "RubiRLM",
+      "total_models": 1,
+      "total_downloads": 1142,
+      "min_param_count": 988446027,
+      "sample_models": [
+        "DevHunterAI/RubiRLM-1B-Base"
+      ],
+      "relevancy_score": 36.0
+    },
+    {
+      "architecture_id": "Rwkv7ForCausalLM",
+      "total_models": 1,
+      "total_downloads": 1092,
+      "min_param_count": 34158592,
+      "sample_models": [
+        "admijgjtjtjtjjg/dfdfdf"
+      ],
+      "relevancy_score": 35.9
+    },
+    {
+      "architecture_id": "SliderGPT",
+      "total_models": 1,
+      "total_downloads": 1069,
+      "min_param_count": 47420936,
+      "sample_models": [
+        "c-bone/CrystaLLM-pi_Mattergen-XRD"
+      ],
+      "relevancy_score": 35.9
+    },
+    {
+      "architecture_id": "YoutuForCausalLM",
+      "total_models": 2,
+      "total_downloads": 4259,
+      "min_param_count": 1961560064,
+      "sample_models": [
+        "tencent/Youtu-LLM-2B-Base",
+        "tencent/Youtu-LLM-2B"
+      ],
+      "relevancy_score": 35.5
+    },
+    {
+      "architecture_id": "GTLMForCausalLM",
+      "total_models": 2,
+      "total_downloads": 4210,
+      "min_param_count": 2095989760,
+      "sample_models": [
+        "Madras1/GTLM-1-2B-A350M",
+        "Madras1/GTLM-1-2B-A350M-fp16"
+      ],
+      "relevancy_score": 35.5
+    },
+    {
+      "architecture_id": "SoraForSLM",
+      "total_models": 1,
+      "total_downloads": 915,
+      "min_param_count": 450707456,
+      "sample_models": [
+        "Conlanger-LLM-CLEM/Sorie"
+      ],
+      "relevancy_score": 35.5
+    },
+    {
+      "architecture_id": "HGRNBitForCausalLM",
+      "total_models": 1,
+      "total_downloads": 874,
+      "min_param_count": 374108160,
+      "sample_models": [
+        "ridger/MMfreeLM-370M"
+      ],
+      "relevancy_score": 35.4
+    },
+    {
+      "architecture_id": "DotLMForCausalLM",
+      "total_models": 1,
+      "total_downloads": 825,
+      "min_param_count": 176204544,
+      "sample_models": [
+        "tensorfiend/DotLM-165M"
+      ],
+      "relevancy_score": 35.3
+    },
+    {
+      "architecture_id": "LLaDA2MoeModelLM",
+      "total_models": 6,
+      "total_downloads": 289792,
+      "min_param_count": 16255643392,
+      "sample_models": [
+        "inclusionAI/LLaDA2.1-flash",
+        "inclusionAI/LLaDA2.0-mini",
+        "inclusionAI/LLaDA2.1-mini",
+        "inclusionAI/LLaDA2.0-mini-CAP",
+        "inclusionAI/LLaDA2.0-flash",
+        "Zigeng/DMax-Coder-16B"
+      ],
+      "relevancy_score": 35.2
+    },
+    {
+      "architecture_id": "RavenForCausalLM",
+      "total_models": 2,
+      "total_downloads": 3635,
+      "min_param_count": 1385228288,
+      "sample_models": [
+        "tomg-group-umd/huginn-0125",
+        "smcleish/Recurrent-Llama-3.2-train-recurrence-32"
+      ],
+      "relevancy_score": 35.2
+    },
+    {
+      "architecture_id": "DUO",
+      "total_models": 1,
+      "total_downloads": 789,
+      "min_param_count": 169627250,
+      "sample_models": [
+        "s-sahoo/duo-distilled"
+      ],
+      "relevancy_score": 35.2
+    },
+    {
+      "architecture_id": "DeltaNetForCausalLM",
+      "total_models": 1,
+      "total_downloads": 4682,
+      "min_param_count": 1365677056,
+      "sample_models": [
+        "fla-hub/delta_net-1.3B-100B"
+      ],
+      "relevancy_score": 35.1
+    },
+    {
+      "architecture_id": "MoshiForConditionalGeneration",
+      "total_models": 2,
+      "total_downloads": 128966,
+      "min_param_count": 7783880545,
+      "sample_models": [
+        "kmhf/hf-moshiko",
+        "kmhf/hf-moshika"
+      ],
+      "relevancy_score": 35.0
+    },
+    {
+      "architecture_id": "MiMoForCausalLM",
+      "total_models": 2,
+      "total_downloads": 132837,
+      "min_param_count": 7833409536,
+      "sample_models": [
+        "XiaomiMiMo/MiMo-7B-Base",
+        "XiaomiMiMo/MiMo-7B-RL"
+      ],
+      "relevancy_score": 35.0
     },
     {
       "architecture_id": "Rwkv5ForCausalLM",
-      "total_models": 1,
+      "total_models": 2,
+      "total_downloads": 3092,
+      "min_param_count": 1577754624,
       "sample_models": [
-        "RWKV/rwkv-5-world-3b"
-      ]
+        "RWKV/rwkv-5-world-3b",
+        "RWKV/rwkv-5-world-1b5"
+      ],
+      "relevancy_score": 34.8
+    },
+    {
+      "architecture_id": "VaultGemmaForCausalLM",
+      "total_models": 1,
+      "total_downloads": 4072,
+      "min_param_count": 1038741120,
+      "sample_models": [
+        "google/vaultgemma-1b"
+      ],
+      "relevancy_score": 34.8
+    },
+    {
+      "architecture_id": "WordLatentTransformerForCausalLM",
+      "total_models": 1,
+      "total_downloads": 654,
+      "min_param_count": 6861056,
+      "sample_models": [
+        "sign/WeLT-string-repetition"
+      ],
+      "relevancy_score": 34.8
+    },
+    {
+      "architecture_id": "LilleForCausalLM",
+      "total_models": 1,
+      "total_downloads": 604,
+      "min_param_count": 127236768,
+      "sample_models": [
+        "Nikity/lille-130m-instruct"
+      ],
+      "relevancy_score": 34.6
+    },
+    {
+      "architecture_id": "KimiK2ForCausalLM",
+      "total_models": 1,
+      "total_downloads": 586,
+      "min_param_count": 170595012,
+      "sample_models": [
+        "hyper-accel/tiny-random-kimi-k2"
+      ],
+      "relevancy_score": 34.6
+    },
+    {
+      "architecture_id": "RuGPT3XLForCausalLM",
+      "total_models": 2,
+      "total_downloads": 2650,
+      "min_param_count": 1431261184,
+      "sample_models": [
+        "evilfreelancer/ruGPT3XL",
+        "evilfreelancer/ruGPT3XL-8k"
+      ],
+      "relevancy_score": 34.5
+    },
+    {
+      "architecture_id": "GPT2CompetitiveMoE",
+      "total_models": 1,
+      "total_downloads": 528,
+      "min_param_count": 497796864,
+      "sample_models": [
+        "Fu01978/gpt2-4x124M-competitive-moe"
+      ],
+      "relevancy_score": 34.3
+    },
+    {
+      "architecture_id": "MegaForCausalLM",
+      "total_models": 1,
+      "total_downloads": 522,
+      "min_param_count": 126132108,
+      "sample_models": [
+        "BEE-spoke-data/mega-ar-126m-4k"
+      ],
+      "relevancy_score": 34.3
+    },
+    {
+      "architecture_id": "Qwen3ASRForConditionalGeneration",
+      "total_models": 1,
+      "total_downloads": 516,
+      "min_param_count": 782426112,
+      "sample_models": [
+        "hypaai/Qwen3-ASR-0.6B_2026-03-22_04-35-10"
+      ],
+      "relevancy_score": 34.3
+    },
+    {
+      "architecture_id": "BolmoForCausalLM",
+      "total_models": 2,
+      "total_downloads": 2003,
+      "min_param_count": 1468911776,
+      "sample_models": [
+        "allenai/Bolmo-1B",
+        "allenai/Bolmo-7B"
+      ],
+      "relevancy_score": 33.9
+    },
+    {
+      "architecture_id": "MoELLaVAQwen2ForCausalLM",
+      "total_models": 1,
+      "total_downloads": 2702,
+      "min_param_count": 1406119552,
+      "sample_models": [
+        "KKHYA/llavaqwen2.5-0.5b-finetune-moe-4e-2k_20260331_194516"
+      ],
+      "relevancy_score": 33.9
+    },
+    {
+      "architecture_id": "GiddForDiffusionLM",
+      "total_models": 2,
+      "total_downloads": 1803,
+      "min_param_count": 2844349440,
+      "sample_models": [
+        "dvruette/gidd-unif-3b",
+        "dvruette/gidd-mask-3b"
+      ],
+      "relevancy_score": 33.6
+    },
+    {
+      "architecture_id": "TarsierForConditionalGeneration",
+      "total_models": 1,
+      "total_downloads": 86089,
+      "min_param_count": 7063427072,
+      "sample_models": [
+        "omni-research/Tarsier-7b"
+      ],
+      "relevancy_score": 33.5
+    },
+    {
+      "architecture_id": "OlmoHybridForCausalLM",
+      "total_models": 4,
+      "total_downloads": 35503,
+      "min_param_count": 7430870688,
+      "sample_models": [
+        "allenai/Olmo-Hybrid-7B",
+        "allenai/Olmo-Hybrid-Instruct-DPO-7B",
+        "allenai/Olmo-Hybrid-Instruct-SFT-7B",
+        "allenai/Olmo-Hybrid-Think-SFT-7B"
+      ],
+      "relevancy_score": 33.4
+    },
+    {
+      "architecture_id": "ArgonneModel",
+      "total_models": 2,
+      "total_downloads": 1627,
+      "min_param_count": 1273807360,
+      "sample_models": [
+        "PursuitOfDataScience/Argonne2.5-instruct",
+        "PursuitOfDataScience/Argonne2.5-base"
+      ],
+      "relevancy_score": 33.4
+    },
+    {
+      "architecture_id": "MobileLLMP1ForCausalLM",
+      "total_models": 1,
+      "total_downloads": 2086,
+      "min_param_count": 1084453120,
+      "sample_models": [
+        "facebook/MobileLLM-Pro-base"
+      ],
+      "relevancy_score": 33.3
+    },
+    {
+      "architecture_id": "HybridQwen3ForCausalLM",
+      "total_models": 9,
+      "total_downloads": 7439,
+      "min_param_count": 8495712960,
+      "sample_models": [
+        "amazon/GKA-primed-HQwen3-8B-Instruct",
+        "amazon/Mamba2-primed-HQwen3-8B-Instruct",
+        "amazon/GDN-primed-HQwen3-32B-Instruct",
+        "amazon/GDN-primed-HQwen3-8B-Instruct",
+        "amazon/GKA-primed-HQwen3-32B-Instruct",
+        "amazon/BMOJOF-primed-HQwen3-8B-Instruct",
+        "amazon/GKA-primed-HQwen3-8B-Reasoner",
+        "amazon/GDN-primed-HQwen3-8B-Reasoner",
+        "amazon/GKA-primed-HQwen3-32B-Reasoner"
+      ],
+      "relevancy_score": 33.1
+    },
+    {
+      "architecture_id": "JetNemotronForCausalLM",
+      "total_models": 2,
+      "total_downloads": 8242,
+      "min_param_count": 3960424768,
+      "sample_models": [
+        "jet-ai/Jet-Nemotron-2B",
+        "jet-ai/Jet-Nemotron-4B"
+      ],
+      "relevancy_score": 33.0
+    },
+    {
+      "architecture_id": "Rwkv6ForCausalLM",
+      "total_models": 8,
+      "total_downloads": 8905,
+      "min_param_count": 7635746816,
+      "sample_models": [
+        "RWKV/v6-Finch-7B-HF",
+        "RWKV/v6-Finch-1B6-HF",
+        "RWKV/rwkv-6-world-3b",
+        "RWKV/rwkv-6-world-1b6",
+        "RWKV/rwkv-6-world-7b",
+        "RWKV/v6-Finch-14B-HF",
+        "RWKV/v6-Finch-3B-HF",
+        "RWKV/rwkv-6-world-3b-v2.1"
+      ],
+      "relevancy_score": 32.9
+    },
+    {
+      "architecture_id": "Step3p5ForCausalLM",
+      "total_models": 1,
+      "total_downloads": 66986,
+      "min_param_count": 7615616512,
+      "sample_models": [
+        "XCurOS/XCurOS-0.1-8B-Instruct"
+      ],
+      "relevancy_score": 32.9
+    },
+    {
+      "architecture_id": "SongGenMixedForConditionalGeneration",
+      "total_models": 1,
+      "total_downloads": 1723,
+      "min_param_count": 1363657956,
+      "sample_models": [
+        "LiuZH-19/SongGen_mixed_pro"
+      ],
+      "relevancy_score": 32.9
+    },
+    {
+      "architecture_id": "JAISLMHeadModel",
+      "total_models": 6,
+      "total_downloads": 15081,
+      "min_param_count": 7142689824,
+      "sample_models": [
+        "inceptionai/jais-13b-chat",
+        "katuni4ka/tiny-random-jais",
+        "inceptionai/jais-family-30b-8k",
+        "inceptionai/jais-family-13b-chat",
+        "inceptionai/jais-13b",
+        "inceptionai/jais-family-6p7b-chat"
+      ],
+      "relevancy_score": 32.8
+    },
+    {
+      "architecture_id": "OmniASRForConditionalGeneration",
+      "total_models": 1,
+      "total_downloads": 1633,
+      "min_param_count": 1631506944,
+      "sample_models": [
+        "bezzam/omniasr-llm-300m-v2"
+      ],
+      "relevancy_score": 32.8
+    },
+    {
+      "architecture_id": "OpensciForCausalLM",
+      "total_models": 2,
+      "total_downloads": 1031,
+      "min_param_count": 1714377728,
+      "sample_models": [
+        "ali-elganzory/1.7b-Comma0.1-300BT-longsft_16k-DPO-Tulu3-decontaminated",
+        "ali-elganzory/open-sci-ref-v0.02-1.7b-fineweb-edu-1.4t-300B-4096-longsft_16k-DPO-Tulu3-decontaminated"
+      ],
+      "relevancy_score": 32.4
+    },
+    {
+      "architecture_id": "Kanana2VecModel",
+      "total_models": 1,
+      "total_downloads": 1330,
+      "min_param_count": 2086979328,
+      "sample_models": [
+        "kakaocorp/kanana-nano-2.1b-embedding"
+      ],
+      "relevancy_score": 32.3
+    },
+    {
+      "architecture_id": "DeciCoderForCausalLM",
+      "total_models": 1,
+      "total_downloads": 1212,
+      "min_param_count": 1113671680,
+      "sample_models": [
+        "Deci/DeciCoder-1b"
+      ],
+      "relevancy_score": 32.1
+    },
+    {
+      "architecture_id": "StableLMAlphaForCausalLM",
+      "total_models": 1,
+      "total_downloads": 7022,
+      "min_param_count": 6889414656,
+      "sample_models": [
+        "stabilityai/stablelm-base-alpha-7b-v2"
+      ],
+      "relevancy_score": 32.0
+    },
+    {
+      "architecture_id": "IQuestCoderForCausalLM",
+      "total_models": 4,
+      "total_downloads": 17001,
+      "min_param_count": 7612810240,
+      "sample_models": [
+        "IQuestLab/IQuest-Coder-V1-40B-Instruct",
+        "IQuestLab/IQuest-Coder-V1-7B-Instruct",
+        "Multilingual-Multimodal-NLP/IndustrialCoder",
+        "IQuestLab/IQuest-Coder-V1-40B-Thinking"
+      ],
+      "relevancy_score": 31.8
+    },
+    {
+      "architecture_id": "XLNetLMHeadModel",
+      "total_models": 5,
+      "total_downloads": 433085,
+      "min_param_count": null,
+      "sample_models": [
+        "xlnet/xlnet-base-cased",
+        "xlnet/xlnet-large-cased",
+        "hfl/chinese-xlnet-base",
+        "sshleifer/tiny-xlnet-base-cased",
+        "textattack/xlnet-base-cased-imdb"
+      ],
+      "relevancy_score": 31.5
+    },
+    {
+      "architecture_id": "AeroForConditionalGeneration",
+      "total_models": 1,
+      "total_downloads": 902,
+      "min_param_count": 2416221184,
+      "sample_models": [
+        "lmms-lab/Aero-1-Audio"
+      ],
+      "relevancy_score": 31.5
+    },
+    {
+      "architecture_id": "Qwen3VLForConditionalGeneration",
+      "total_models": 1,
+      "total_downloads": 863,
+      "min_param_count": 2127532032,
+      "sample_models": [
+        "Oysiyl/qwen3-vl-2b-unslop-good-lora-v1"
+      ],
+      "relevancy_score": 31.4
+    },
+    {
+      "architecture_id": "Qwen3MoeForCausalLM",
+      "total_models": 7,
+      "total_downloads": 5780,
+      "min_param_count": 8001454080,
+      "sample_models": [
+        "AIDC-AI/Marco-Nano-Instruct",
+        "zianglih/Qwen3-30B-A3B-Instruct-2507-MXFP8-last-8-BF16",
+        "AIDC-AI/Marco-Mini-Instruct",
+        "Dynamical-Systems/Dynamical-30B-A3B",
+        "bineric/lynx-instruct-30b",
+        "OpenMOSS-Team/SciJudge-30B",
+        "unsloth/Qwen3-30B-A3B-Thinking-2507"
+      ],
+      "relevancy_score": 31.3
+    },
+    {
+      "architecture_id": "GritLM",
+      "total_models": 1,
+      "total_downloads": 31461,
+      "min_param_count": 7241732096,
+      "sample_models": [
+        "parasail-ai/GritLM-7B-vllm"
+      ],
+      "relevancy_score": 31.3
+    },
+    {
+      "architecture_id": "AXK1ForCausalLM",
+      "total_models": 2,
+      "total_downloads": 19319,
+      "min_param_count": 11448603648,
+      "sample_models": [
+        "skt/A.X-K1",
+        "thkim93/axk1-2layers"
+      ],
+      "relevancy_score": 30.8
+    },
+    {
+      "architecture_id": "VeridianForCausalLM",
+      "total_models": 1,
+      "total_downloads": 662,
+      "min_param_count": 1659913728,
+      "sample_models": [
+        "MagistrTheOne/veridian-beta"
+      ],
+      "relevancy_score": 30.8
+    },
+    {
+      "architecture_id": "ShikraLlamaForCausalLM",
+      "total_models": 1,
+      "total_downloads": 645,
+      "min_param_count": 1522797824,
+      "sample_models": [
+        "nvidia/Hymba-1.5B-Instruct"
+      ],
+      "relevancy_score": 30.8
+    },
+    {
+      "architecture_id": "IdeficsForVisionText2Text",
+      "total_models": 4,
+      "total_downloads": 10405,
+      "min_param_count": 8929682192,
+      "sample_models": [
+        "HuggingFaceM4/idefics-80b-instruct",
+        "HuggingFaceM4/idefics-9b",
+        "HuggingFaceM4/idefics-9b-instruct",
+        "HuggingFaceM4/idefics-80b"
+      ],
+      "relevancy_score": 30.7
+    },
+    {
+      "architecture_id": "Lfm2Prototype1ForCausalLM",
+      "total_models": 1,
+      "total_downloads": 634,
+      "min_param_count": 1212304128,
+      "sample_models": [
+        "nntsuzu/LFM2-SFT-Prototype01-1.2B-JP"
+      ],
+      "relevancy_score": 30.7
+    },
+    {
+      "architecture_id": "ChatGLMModel",
+      "total_models": 2,
+      "total_downloads": 17564,
+      "min_param_count": 9399951392,
+      "sample_models": [
+        "zai-org/codegeex4-all-9b",
+        "zai-org/glm-4-9b"
+      ],
+      "relevancy_score": 30.6
+    },
+    {
+      "architecture_id": "PersimmonForCausalLM",
+      "total_models": 3,
+      "total_downloads": 12300,
+      "min_param_count": 8823735296,
+      "sample_models": [
+        "adept/persimmon-8b-chat",
+        "adept/persimmon-8b-base",
+        "pszemraj/perSLIMmon-8b-base"
+      ],
+      "relevancy_score": 30.5
+    },
+    {
+      "architecture_id": "FlexOlmoForCausalLM",
+      "total_models": 3,
+      "total_downloads": 12280,
+      "min_param_count": 11627401216,
+      "sample_models": [
+        "allenai/Flex-reddit-2x7B-1T",
+        "allenai/FlexOlmo-7x7B-1T-RT",
+        "shanearora/Flex-reddit-2x7B-1T"
+      ],
+      "relevancy_score": 30.5
+    },
+    {
+      "architecture_id": "TinyChartPhiForCausalLM",
+      "total_models": 1,
+      "total_downloads": 3551,
+      "min_param_count": 3189407648,
+      "sample_models": [
+        "mPLUG/TinyChart-3B-768"
+      ],
+      "relevancy_score": 30.5
+    },
+    {
+      "architecture_id": "MixFormerSequentialForCausalLM",
+      "total_models": 1,
+      "total_downloads": 562,
+      "min_param_count": 2779683840,
+      "sample_models": [
+        "SkunkworksAI/phi-2"
+      ],
+      "relevancy_score": 30.5
+    },
+    {
+      "architecture_id": "Phi3SmallForCausalLM",
+      "total_models": 2,
+      "total_downloads": 15892,
+      "min_param_count": 7392272384,
+      "sample_models": [
+        "microsoft/Phi-3-small-8k-instruct",
+        "microsoft/Phi-3-small-128k-instruct"
+      ],
+      "relevancy_score": 30.4
+    },
+    {
+      "architecture_id": "SpatialLMLlamaForCausalLM",
+      "total_models": 1,
+      "total_downloads": 515,
+      "min_param_count": 1247355840,
+      "sample_models": [
+        "manycore-research/SpatialLM-Llama-1B"
+      ],
+      "relevancy_score": 30.3
+    },
+    {
+      "architecture_id": "CambrianQwenForCausalLM",
+      "total_models": 1,
+      "total_downloads": 2935,
+      "min_param_count": 3986951616,
+      "sample_models": [
+        "nyu-visionx/Scale-RAE-Qwen1.5B_DiT2.4B"
+      ],
+      "relevancy_score": 30.1
+    },
+    {
+      "architecture_id": "StripedHyenaModelForCausalLM",
+      "total_models": 3,
+      "total_downloads": 9917,
+      "min_param_count": 7646024704,
+      "sample_models": [
+        "togethercomputer/evo-1-131k-base",
+        "togethercomputer/evo-1-8k-base",
+        "togethercomputer/StripedHyena-Nous-7B"
+      ],
+      "relevancy_score": 30.0
+    },
+    {
+      "architecture_id": "Maira2ForConditionalGeneration",
+      "total_models": 1,
+      "total_downloads": 2692,
+      "min_param_count": 6880185600,
+      "sample_models": [
+        "microsoft/maira-2"
+      ],
+      "relevancy_score": 29.9
+    },
+    {
+      "architecture_id": "CheXagentForCausalLM",
+      "total_models": 1,
+      "total_downloads": 2648,
+      "min_param_count": 3140746752,
+      "sample_models": [
+        "StanfordAIMI/CheXagent-2-3b"
+      ],
+      "relevancy_score": 29.9
+    },
+    {
+      "architecture_id": "BioGptForCausalLM",
+      "total_models": 5,
+      "total_downloads": 174528,
+      "min_param_count": null,
+      "sample_models": [
+        "microsoft/biogpt",
+        "microsoft/BioGPT-Large",
+        "microsoft/BioGPT-Large-PubMedQA",
+        "hf-tiny-model-private/tiny-random-BioGptForCausalLM",
+        "zequnl/molxpt"
+      ],
+      "relevancy_score": 29.5
+    },
+    {
+      "architecture_id": "InternVLChatModel",
+      "total_models": 1,
+      "total_downloads": 2229,
+      "min_param_count": 3712637952,
+      "sample_models": [
+        "numind/NuExtract-2-4B-experimental"
+      ],
+      "relevancy_score": 29.5
+    },
+    {
+      "architecture_id": "MatriochkaForCausalLM",
+      "total_models": 1,
+      "total_downloads": 2159,
+      "min_param_count": 3358735360,
+      "sample_models": [
+        "nthngdy/matryoshka-3B"
+      ],
+      "relevancy_score": 29.4
+    },
+    {
+      "architecture_id": "SolarOpenForCausalLM",
+      "total_models": 2,
+      "total_downloads": 343068,
+      "min_param_count": null,
+      "sample_models": [
+        "upstage/Solar-Open-100B",
+        "nota-ai/Solar-Open-100B-NotaMoEQuant-Int4"
+      ],
+      "relevancy_score": 29.1
+    },
+    {
+      "architecture_id": "LatentMoELLaVAPhiForCausalLM",
+      "total_models": 1,
+      "total_downloads": 1792,
+      "min_param_count": 3093139456,
+      "sample_models": [
+        "KKHYA/llavaphi2-2.7b-finetune-latent-sparse-moe-4e-2k-freeze-1.0_20260304_075653"
+      ],
+      "relevancy_score": 29.0
+    },
+    {
+      "architecture_id": "LlamaForCasualLM",
+      "total_models": 1,
+      "total_downloads": 1613,
+      "min_param_count": 3212749824,
+      "sample_models": [
+        "CoRover/BharatGPT-3B-Indic"
+      ],
+      "relevancy_score": 28.8
+    },
+    {
+      "architecture_id": "Qwen2ForSequenceClassification",
+      "total_models": 2,
+      "total_downloads": 7132,
+      "min_param_count": 7070622720,
+      "sample_models": [
+        "nvidia/AceMath-7B-RM",
+        "nvidia/Qwen2.5-CascadeRL-RM-72B"
+      ],
+      "relevancy_score": 28.6
+    },
+    {
+      "architecture_id": "DeepseekForCausalLM",
+      "total_models": 2,
+      "total_downloads": 41625,
+      "min_param_count": 16375728128,
+      "sample_models": [
+        "deepseek-ai/deepseek-moe-16b-base",
+        "deepseek-ai/deepseek-moe-16b-chat"
+      ],
+      "relevancy_score": 28.5
+    },
+    {
+      "architecture_id": "MobilintLlamaForCausalLM",
+      "total_models": 9,
+      "total_downloads": 31316,
+      "min_param_count": null,
+      "sample_models": [
+        "mobilint/Llama-3.2-1B-Instruct",
+        "mobilint/Llama-3.2-3B-Instruct",
+        "mobilint/Llama-3.1-8B-Instruct",
+        "mobilint/HyperCLOVAX-SEED-Text-Instruct-1.5B",
+        "mobilint/Llama-3.2-1B-Instruct-Batch16",
+        "mobilint/Llama-3.1-8B-Instruct-Batch16",
+        "mobilint/Llama-3.2-3B-Instruct-Batch16",
+        "mobilint/Llama-3.2-3B-Instruct-Batch32",
+        "mobilint/Llama-3.1-8B-Instruct-Batch32"
+      ],
+      "relevancy_score": 28.3
+    },
+    {
+      "architecture_id": "Jais2ForCausalLM",
+      "total_models": 2,
+      "total_downloads": 6100,
+      "min_param_count": 8090401280,
+      "sample_models": [
+        "inceptionai/Jais-2-8B-Chat",
+        "inceptionai/Jais-2-70B-Chat"
+      ],
+      "relevancy_score": 28.3
+    },
+    {
+      "architecture_id": "BailingMoeV2ForCausalLM",
+      "total_models": 4,
+      "total_downloads": 19076,
+      "min_param_count": 16255643392,
+      "sample_models": [
+        "inclusionAI/Ling-mini-2.0",
+        "inclusionAI/Ling-1T",
+        "inclusionAI/Ling-flash-2.0",
+        "inclusionAI/Ling-flash-base-2.0"
+      ],
+      "relevancy_score": 28.0
+    },
+    {
+      "architecture_id": "ChatGLMForConditionalGeneration",
+      "total_models": 2,
+      "total_downloads": 4797,
+      "min_param_count": 9399951392,
+      "sample_models": [
+        "IAAR-Shanghai/xVerify-9B-C",
+        "qiuhuachuan/MeChat"
+      ],
+      "relevancy_score": 27.8
+    },
+    {
+      "architecture_id": "LamedPhi3ForCausalLM",
+      "total_models": 1,
+      "total_downloads": 975,
+      "min_param_count": 4049101904,
+      "sample_models": [
+        "GoodBaiBai88/M3D-LaMed-Phi-3-4B"
+      ],
+      "relevancy_score": 27.7
+    },
+    {
+      "architecture_id": "Gemma4TextModel",
+      "total_models": 1,
+      "total_downloads": 967,
+      "min_param_count": 4647449856,
+      "sample_models": [
+        "bRadu/gemma-4-E2B-it-textonly"
+      ],
+      "relevancy_score": 27.7
+    },
+    {
+      "architecture_id": "WeDLMForCausalLM",
+      "total_models": 2,
+      "total_downloads": 4219,
+      "min_param_count": 8190735360,
+      "sample_models": [
+        "tencent/WeDLM-8B-Base",
+        "tencent/WeDLM-8B-Instruct"
+      ],
+      "relevancy_score": 27.5
+    },
+    {
+      "architecture_id": "SarvamMLAForCausalLM",
+      "total_models": 2,
+      "total_downloads": 151877,
+      "min_param_count": 55732545631,
+      "sample_models": [
+        "aoxo/sarvam-105b-uncensored",
+        "sarvamai/sarvam-105b"
+      ],
+      "relevancy_score": 27.3
+    },
+    {
+      "architecture_id": "ReformerModelWithLMHead",
+      "total_models": 2,
+      "total_downloads": 150609,
+      "min_param_count": null,
+      "sample_models": [
+        "google/reformer-crime-and-punishment",
+        "google/reformer-enwik8"
+      ],
+      "relevancy_score": 27.3
+    },
+    {
+      "architecture_id": "HyperCLOVAXForCausalLM",
+      "total_models": 1,
+      "total_downloads": 31859,
+      "min_param_count": 14748112896,
+      "sample_models": [
+        "naver-hyperclovax/HyperCLOVAX-SEED-Think-14B"
+      ],
+      "relevancy_score": 27.3
+    },
+    {
+      "architecture_id": "LongLlamaForCausalLM",
+      "total_models": 1,
+      "total_downloads": 780,
+      "min_param_count": 3426474900,
+      "sample_models": [
+        "syzymon/long_llama_3b"
+      ],
+      "relevancy_score": 27.2
+    },
+    {
+      "architecture_id": "InternLMForCausalLM",
+      "total_models": 4,
+      "total_downloads": 71468,
+      "min_param_count": null,
+      "sample_models": [
+        "internlm/internlm-chat-7b",
+        "internlm/internlm-20b",
+        "internlm/internlm-7b",
+        "internlm/internlm-chat-20b"
+      ],
+      "relevancy_score": 26.9
+    },
+    {
+      "architecture_id": "SarvamMoEForCausalLM",
+      "total_models": 2,
+      "total_downloads": 123774,
+      "min_param_count": 32152650368,
+      "sample_models": [
+        "aoxo/sarvam-30b-uncensored",
+        "sarvamai/sarvam-30b"
+      ],
+      "relevancy_score": 26.9
+    },
+    {
+      "architecture_id": "ZambaForCausalLM",
+      "total_models": 1,
+      "total_downloads": 4128,
+      "min_param_count": 7232490496,
+      "sample_models": [
+        "Zyphra/Zamba-7B-v1"
+      ],
+      "relevancy_score": 26.8
+    },
+    {
+      "architecture_id": "GPTNeoXJapaneseForCausalLM",
+      "total_models": 2,
+      "total_downloads": 110049,
+      "min_param_count": null,
+      "sample_models": [
+        "abeja/gpt-neox-japanese-2.7b",
+        "hf-tiny-model-private/tiny-random-GPTNeoXJapaneseForCausalLM"
+      ],
+      "relevancy_score": 26.6
+    },
+    {
+      "architecture_id": "JetMoEForCausalLM",
+      "total_models": 1,
+      "total_downloads": 3627,
+      "min_param_count": 8522237952,
+      "sample_models": [
+        "jetmoe/jetmoe-8b"
+      ],
+      "relevancy_score": 26.5
+    },
+    {
+      "architecture_id": "CXRMate2ForConditionalGeneration",
+      "total_models": 1,
+      "total_downloads": 572,
+      "min_param_count": 3322260224,
+      "sample_models": [
+        "aehrc/cxrmate-2"
+      ],
+      "relevancy_score": 26.5
+    },
+    {
+      "architecture_id": "BunnyPhiForCausalLM",
+      "total_models": 1,
+      "total_downloads": 564,
+      "min_param_count": 3182254624,
+      "sample_models": [
+        "BAAI/Bunny-v1_0-3B"
+      ],
+      "relevancy_score": 26.5
+    },
+    {
+      "architecture_id": "Step3p5ForCausalLM",
+      "total_models": 1,
+      "total_downloads": 133597,
+      "min_param_count": 199384301376,
+      "sample_models": [
+        "stepfun-ai/Step-3.5-Flash"
+      ],
+      "relevancy_score": 26.4
+    },
+    {
+      "architecture_id": "BailingMoeForCausalLM",
+      "total_models": 1,
+      "total_downloads": 20878,
+      "min_param_count": 16801974272,
+      "sample_models": [
+        "inclusionAI/Ling-lite-1.5"
+      ],
+      "relevancy_score": 26.4
+    },
+    {
+      "architecture_id": "SparseLlamaForCausalLM",
+      "total_models": 1,
+      "total_downloads": 3131,
+      "min_param_count": 8185270336,
+      "sample_models": [
+        "openbmb/NOSA-8B"
+      ],
+      "relevancy_score": 26.2
+    },
+    {
+      "architecture_id": "Esm2LlamaInstructForCausalLM",
+      "total_models": 1,
+      "total_downloads": 2589,
+      "min_param_count": 10878983201,
+      "sample_models": [
+        "xiao-fei/Prot2Text-V2-11B-Instruct-hf"
+      ],
+      "relevancy_score": 25.8
+    },
+    {
+      "architecture_id": "Qwen2VLAudioForConditionalGeneration",
+      "total_models": 1,
+      "total_downloads": 2177,
+      "min_param_count": 8932935680,
+      "sample_models": [
+        "MayaKD/qwen2-vl-audio"
+      ],
+      "relevancy_score": 25.4
+    },
+    {
+      "architecture_id": "OuroForCausalLM",
+      "total_models": 4,
+      "total_downloads": 34507,
+      "min_param_count": null,
+      "sample_models": [
+        "ByteDance/Ouro-1.4B",
+        "ByteDance/Ouro-2.6B-Thinking",
+        "ByteDance/Ouro-2.6B",
+        "ByteDance/Ouro-1.4B-Thinking"
+      ],
+      "relevancy_score": 25.3
+    },
+    {
+      "architecture_id": "FP8Qwen3ForCausalLM",
+      "total_models": 1,
+      "total_downloads": 1945,
+      "min_param_count": 8190735360,
+      "sample_models": [
+        "xihc-ucb/Qwen3-8B-Base-train-Quasar-0809"
+      ],
+      "relevancy_score": 25.2
+    },
+    {
+      "architecture_id": "CheXagentForConditionalGeneration",
+      "total_models": 1,
+      "total_downloads": 1878,
+      "min_param_count": 8362401664,
+      "sample_models": [
+        "StanfordAIMI/CheXagent-8b"
+      ],
+      "relevancy_score": 25.1
+    },
+    {
+      "architecture_id": "FP8Qwen2ForCausalLM",
+      "total_models": 1,
+      "total_downloads": 1781,
+      "min_param_count": 7615616512,
+      "sample_models": [
+        "xihc-ucb/Qwen2.5-7B-train-Quasar-1214"
+      ],
+      "relevancy_score": 25.0
+    },
+    {
+      "architecture_id": "BaiChuanForCausalLM",
+      "total_models": 2,
+      "total_downloads": 50672,
+      "min_param_count": null,
+      "sample_models": [
+        "baichuan-inc/Baichuan-7B",
+        "FreedomIntelligence/HuatuoGPT-7B"
+      ],
+      "relevancy_score": 24.9
+    },
+    {
+      "architecture_id": "MobilintQwen2ForCausalLM",
+      "total_models": 4,
+      "total_downloads": 27256,
+      "min_param_count": null,
+      "sample_models": [
+        "mobilint/Qwen2.5-0.5B-Instruct",
+        "mobilint/Qwen2.5-1.5B-Instruct",
+        "mobilint/Qwen2.5-3B-Instruct",
+        "mobilint/Qwen2.5-7B-Instruct"
+      ],
+      "relevancy_score": 24.8
+    },
+    {
+      "architecture_id": "KORMoForCausalLM",
+      "total_models": 1,
+      "total_downloads": 1616,
+      "min_param_count": 10756624384,
+      "sample_models": [
+        "KORMo-Team/KORMo-10B-sft"
+      ],
+      "relevancy_score": 24.8
+    },
+    {
+      "architecture_id": "MobilintQwen3ForCausalLM",
+      "total_models": 4,
+      "total_downloads": 25791,
+      "min_param_count": null,
+      "sample_models": [
+        "mobilint/Qwen3-0.6B",
+        "mobilint/Qwen3-1.7B",
+        "mobilint/Qwen3-4B",
+        "mobilint/Qwen3-8B"
+      ],
+      "relevancy_score": 24.7
+    },
+    {
+      "architecture_id": "MiMoV2FlashForCausalLM",
+      "total_models": 1,
+      "total_downloads": 61449,
+      "min_param_count": 309785318400,
+      "sample_models": [
+        "XiaomiMiMo/MiMo-V2-Flash"
+      ],
+      "relevancy_score": 24.7
+    },
+    {
+      "architecture_id": "KimiLinearForCausalLM",
+      "total_models": 1,
+      "total_downloads": 61051,
+      "min_param_count": 49122681728,
+      "sample_models": [
+        "moonshotai/Kimi-Linear-48B-A3B-Instruct"
+      ],
+      "relevancy_score": 24.7
+    },
+    {
+      "architecture_id": "HCXVisionForCausalLM",
+      "total_models": 1,
+      "total_downloads": 60376,
+      "min_param_count": null,
+      "sample_models": [
+        "naver-hyperclovax/HyperCLOVAX-SEED-Vision-Instruct-3B"
+      ],
+      "relevancy_score": 24.7
+    },
+    {
+      "architecture_id": "Param2MoEForCausalLM",
+      "total_models": 1,
+      "total_downloads": 8281,
+      "min_param_count": 17151140480,
+      "sample_models": [
+        "bharatgenai/Param2-17B-A2.4B-Thinking"
+      ],
+      "relevancy_score": 24.3
+    },
+    {
+      "architecture_id": "MobilintExaoneForCausalLM",
+      "total_models": 4,
+      "total_downloads": 20759,
+      "min_param_count": null,
+      "sample_models": [
+        "mobilint/EXAONE-Deep-2.4B",
+        "mobilint/EXAONE-3.5-2.4B-Instruct",
+        "mobilint/EXAONE-3.5-7.8B-Instruct",
+        "mobilint/EXAONE-Deep-7.8B"
+      ],
+      "relevancy_score": 24.2
+    },
+    {
+      "architecture_id": "CogVLMForCausalLM",
+      "total_models": 2,
+      "total_downloads": 5861,
+      "min_param_count": 17639687424,
+      "sample_models": [
+        "zai-org/cogvlm2-llama3-chat-19B",
+        "zai-org/cogvlm-chat-hf"
+      ],
+      "relevancy_score": 24.2
+    },
+    {
+      "architecture_id": "MiniCPMSALAForCausalLM",
+      "total_models": 1,
+      "total_downloads": 1254,
+      "min_param_count": 9477203968,
+      "sample_models": [
+        "openbmb/MiniCPM-SALA"
+      ],
+      "relevancy_score": 24.2
+    },
+    {
+      "architecture_id": "Emu3ForCausalLM",
+      "total_models": 1,
+      "total_downloads": 1228,
+      "min_param_count": 8492011520,
+      "sample_models": [
+        "BAAI/Emu3-Chat"
+      ],
+      "relevancy_score": 24.2
+    },
+    {
+      "architecture_id": "BunnyLlamaForCausalLM",
+      "total_models": 1,
+      "total_downloads": 1195,
+      "min_param_count": 8479990848,
+      "sample_models": [
+        "typhoon-ai/llama-3-typhoon-v1.5-8b-vision-preview"
+      ],
+      "relevancy_score": 24.1
+    },
+    {
+      "architecture_id": "LongcatFlashForCausalLM",
+      "total_models": 1,
+      "total_downloads": 43995,
+      "min_param_count": 561862880256,
+      "sample_models": [
+        "meituan-longcat/LongCat-Flash-Chat"
+      ],
+      "relevancy_score": 24.0
+    },
+    {
+      "architecture_id": "InternLM3ForCausalLM",
+      "total_models": 1,
+      "total_downloads": 43400,
+      "min_param_count": null,
+      "sample_models": [
+        "internlm/internlm3-8b-instruct"
+      ],
+      "relevancy_score": 24.0
+    },
+    {
+      "architecture_id": "SteerlingForCausalLM",
+      "total_models": 1,
+      "total_downloads": 1099,
+      "min_param_count": 8391778304,
+      "sample_models": [
+        "guidelabs/steerling-8b"
+      ],
+      "relevancy_score": 23.9
+    },
+    {
+      "architecture_id": "ExaoneMoEForCausalLM",
+      "total_models": 1,
+      "total_downloads": 37191,
+      "min_param_count": 237099669632,
+      "sample_models": [
+        "LGAI-EXAONE/K-EXAONE-236B-A23B"
+      ],
+      "relevancy_score": 23.6
+    },
+    {
+      "architecture_id": "StableDiffcoderForCausalLM",
+      "total_models": 1,
+      "total_downloads": 871,
+      "min_param_count": 8250462208,
+      "sample_models": [
+        "ByteDance-Seed/Stable-DiffCoder-8B-Instruct"
+      ],
+      "relevancy_score": 23.4
+    },
+    {
+      "architecture_id": "MiniMaxM1ForCausalLM",
+      "total_models": 2,
+      "total_downloads": 23252,
+      "min_param_count": null,
+      "sample_models": [
+        "MiniMaxAI/MiniMax-M1-40k",
+        "MiniMaxAI/MiniMax-M1-80k"
+      ],
+      "relevancy_score": 23.2
+    },
+    {
+      "architecture_id": "ICONNForCausalLM",
+      "total_models": 1,
+      "total_downloads": 745,
+      "min_param_count": 7833409536,
+      "sample_models": [
+        "ICONNAI/ICONN-1-Mini-Beta"
+      ],
+      "relevancy_score": 23.1
+    },
+    {
+      "architecture_id": "Qwen2VLForConditionalGeneration",
+      "total_models": 1,
+      "total_downloads": 726,
+      "min_param_count": 8291375616,
+      "sample_models": [
+        "typhoon-ai/typhoon2-qwen2vl-7b-vision-instruct"
+      ],
+      "relevancy_score": 23.0
+    },
+    {
+      "architecture_id": "Qwen2Model",
+      "total_models": 1,
+      "total_downloads": 681,
+      "min_param_count": 7070619136,
+      "sample_models": [
+        "NewBeeKing/MemPO_Qwen2.5-SFT-RL"
+      ],
+      "relevancy_score": 22.9
+    },
+    {
+      "architecture_id": "LLaDAMoEModel",
+      "total_models": 1,
+      "total_downloads": 665,
+      "min_param_count": 7356880896,
+      "sample_models": [
+        "inclusionAI/LLaDA-MoE-7B-A1B-Base"
+      ],
+      "relevancy_score": 22.8
+    },
+    {
+      "architecture_id": "Gemma4ForCausalLM",
+      "total_models": 1,
+      "total_downloads": 664,
+      "min_param_count": 7518069034,
+      "sample_models": [
+        "aqweteddy/gemma-4-E4B-it-text"
+      ],
+      "relevancy_score": 22.8
+    },
+    {
+      "architecture_id": "BailingMoeV2_5ForCausalLM",
+      "total_models": 1,
+      "total_downloads": 24448,
+      "min_param_count": 1012474606720,
+      "sample_models": [
+        "inclusionAI/Ring-2.5-1T"
+      ],
+      "relevancy_score": 22.7
+    },
+    {
+      "architecture_id": "CogVLMVideoForCausalLM",
+      "total_models": 1,
+      "total_downloads": 622,
+      "min_param_count": 12507532544,
+      "sample_models": [
+        "zai-org/VisionReward-Video"
+      ],
+      "relevancy_score": 22.7
+    },
+    {
+      "architecture_id": "Ernie4_5ForCausalLM",
+      "total_models": 2,
+      "total_downloads": 17079,
+      "min_param_count": null,
+      "sample_models": [
+        "baidu/ERNIE-4.5-0.3B-PT",
+        "baidu/ERNIE-4.5-0.3B-Base-PT"
+      ],
+      "relevancy_score": 22.6
+    },
+    {
+      "architecture_id": "CLIPT5ForConditionalGeneration",
+      "total_models": 2,
+      "total_downloads": 17282,
+      "min_param_count": null,
+      "sample_models": [
+        "zhiqiulin/clip-flant5-xl",
+        "zhiqiulin/clip-flant5-xxl"
+      ],
+      "relevancy_score": 22.6
+    },
+    {
+      "architecture_id": "CodeShellForCausalLM",
+      "total_models": 1,
+      "total_downloads": 610,
+      "min_param_count": 7688051328,
+      "sample_models": [
+        "WisdomShell/CodeShell-7B"
+      ],
+      "relevancy_score": 22.6
+    },
+    {
+      "architecture_id": "SolarForCausalLM",
+      "total_models": 1,
+      "total_downloads": 21092,
+      "min_param_count": null,
+      "sample_models": [
+        "upstage/solar-pro-preview-instruct"
+      ],
+      "relevancy_score": 22.4
+    },
+    {
+      "architecture_id": "Grok1ModelForCausalLM",
+      "total_models": 1,
+      "total_downloads": 20827,
+      "min_param_count": null,
+      "sample_models": [
+        "hpcai-tech/grok-1"
+      ],
+      "relevancy_score": 22.4
+    },
+    {
+      "architecture_id": "InternLM2ForCausalLM",
+      "total_models": 1,
+      "total_downloads": 513,
+      "min_param_count": 7737708544,
+      "sample_models": [
+        "AI4Chem/ChemLLM-7B-Chat"
+      ],
+      "relevancy_score": 22.3
+    },
+    {
+      "architecture_id": "GptOssPuzzleForCausalLM",
+      "total_models": 1,
+      "total_downloads": 18998,
+      "min_param_count": 90837823680,
+      "sample_models": [
+        "nvidia/gpt-oss-puzzle-88B"
+      ],
+      "relevancy_score": 22.2
+    },
+    {
+      "architecture_id": "TrillionForCausalLM",
+      "total_models": 1,
+      "total_downloads": 3124,
+      "min_param_count": 20725519360,
+      "sample_models": [
+        "trillionlabs/Tri-21B-Think"
+      ],
+      "relevancy_score": 22.2
+    },
+    {
+      "architecture_id": "RecaLLMLlamaForCausalLM",
+      "total_models": 1,
+      "total_downloads": 506,
+      "min_param_count": 8030294016,
+      "sample_models": [
+        "kswhitecross/RecaLLM-Llama-3.1-8B"
+      ],
+      "relevancy_score": 22.2
+    },
+    {
+      "architecture_id": "CohereForCausalLM",
+      "total_models": 1,
+      "total_downloads": 504,
+      "min_param_count": 8028033024,
+      "sample_models": [
+        "Yousefbahr/Turjman-Cold-Start"
+      ],
+      "relevancy_score": 22.2
+    },
+    {
+      "architecture_id": "LISAForCausalLM",
+      "total_models": 5,
+      "total_downloads": 5924,
+      "min_param_count": null,
+      "sample_models": [
+        "xinlai/LISA-13B-llama2-v1",
+        "xinlai/LISA-7B-v1",
+        "xinlai/LISA-7B-v1-explanatory",
+        "xinlai/LISA-13B-llama2-v1-explanatory",
+        "MBZUAI/GLaMM-GranD-Pretrained"
+      ],
+      "relevancy_score": 22.1
+    },
+    {
+      "architecture_id": "Qwen2_5_VLForConditionalGeneration",
+      "total_models": 3,
+      "total_downloads": 10615,
+      "min_param_count": null,
+      "sample_models": [
+        "OmniSVG/OmniSVG1.1_4B",
+        "OmniSVG/OmniSVG1.1_8B",
+        "OmniSVG/OmniSVG"
+      ],
+      "relevancy_score": 22.1
+    },
+    {
+      "architecture_id": "OutlierMoEForCausalLM",
+      "total_models": 3,
+      "total_downloads": 1690,
+      "min_param_count": 22813220976,
+      "sample_models": [
+        "Outlier-Ai/Outlier-40B-V3.2",
+        "Outlier-Ai/Outlier-10B-V3.2",
+        "Outlier-Ai/Outlier-70B-V3.2"
+      ],
+      "relevancy_score": 22.1
+    },
+    {
+      "architecture_id": "OrionForCausalLM",
+      "total_models": 2,
+      "total_downloads": 13391,
+      "min_param_count": null,
+      "sample_models": [
+        "OrionStarAI/Orion-14B-Chat",
+        "OrionStarAI/Orion-14B-Base"
+      ],
+      "relevancy_score": 22.0
+    },
+    {
+      "architecture_id": "HunYuanMoEV1ForCausalLM",
+      "total_models": 1,
+      "total_downloads": 15552,
+      "min_param_count": null,
+      "sample_models": [
+        "tencent/Hunyuan-A13B-Instruct"
+      ],
+      "relevancy_score": 21.7
+    },
+    {
+      "architecture_id": "GravityMoEForCausalLM",
+      "total_models": 2,
+      "total_downloads": 1655,
+      "min_param_count": 16242181824,
+      "sample_models": [
+        "learning-unit/L1-16B-A3B",
+        "trillionlabs/Gravity-16B-A3B-Base"
+      ],
+      "relevancy_score": 21.5
+    },
+    {
+      "architecture_id": "MiniCPM3ForCausalLM",
+      "total_models": 1,
+      "total_downloads": 14024,
+      "min_param_count": null,
+      "sample_models": [
+        "openbmb/MiniCPM3-4B"
+      ],
+      "relevancy_score": 21.5
+    },
+    {
+      "architecture_id": "ArcticForCausalLM",
+      "total_models": 1,
+      "total_downloads": 13989,
+      "min_param_count": null,
+      "sample_models": [
+        "Snowflake/snowflake-arctic-instruct"
+      ],
+      "relevancy_score": 21.5
+    },
+    {
+      "architecture_id": "Dots1ForCausalLM",
+      "total_models": 2,
+      "total_downloads": 10143,
+      "min_param_count": 142774381696,
+      "sample_models": [
+        "rednote-hilab/dots.llm1.inst",
+        "rednote-hilab/dots.llm1.base"
+      ],
+      "relevancy_score": 21.4
+    },
+    {
+      "architecture_id": "IQuestLoopCoderForCausalLM",
+      "total_models": 1,
+      "total_downloads": 13700,
+      "min_param_count": 39794696320,
+      "sample_models": [
+        "IQuestLab/IQuest-Coder-V1-40B-Loop-Instruct"
+      ],
+      "relevancy_score": 21.4
+    },
+    {
+      "architecture_id": "GPT2LMHeadCustomModel",
+      "total_models": 2,
+      "total_downloads": 8718,
+      "min_param_count": null,
+      "sample_models": [
+        "bigcode/santacoder",
+        "rbiojout/santacoder-odoo-15"
+      ],
+      "relevancy_score": 21.1
+    },
+    {
+      "architecture_id": "MiniMaxText01ForCausalLM",
+      "total_models": 1,
+      "total_downloads": 11872,
+      "min_param_count": null,
+      "sample_models": [
+        "MiniMaxAI/MiniMax-Text-01"
+      ],
+      "relevancy_score": 21.1
+    },
+    {
+      "architecture_id": "GPTRefactForCausalLM",
+      "total_models": 2,
+      "total_downloads": 8406,
+      "min_param_count": null,
+      "sample_models": [
+        "refactai/Refact-1_6B-fim",
+        "refactai/Refact-1_6-base"
+      ],
+      "relevancy_score": 21.0
+    },
+    {
+      "architecture_id": "CrystalCoderLMHeadModel",
+      "total_models": 2,
+      "total_downloads": 8126,
+      "min_param_count": null,
+      "sample_models": [
+        "LLM360/Crystal",
+        "LLM360/CrystalChat"
+      ],
+      "relevancy_score": 20.9
+    },
+    {
+      "architecture_id": "OpenMoeForCausalLM",
+      "total_models": 5,
+      "total_downloads": 3190,
+      "min_param_count": null,
+      "sample_models": [
+        "hpcai-tech/openmoe-8B",
+        "OrionZheng/openmoe-base",
+        "hpcai-tech/openmoe-base",
+        "OrionZheng/openmoe-8b",
+        "OrionZheng/openmoe-8b-chat"
+      ],
+      "relevancy_score": 20.8
+    },
+    {
+      "architecture_id": "Bagel",
+      "total_models": 1,
+      "total_downloads": 1657,
+      "min_param_count": 14691079811,
+      "sample_models": [
+        "lmms-lab/BAGEL-7B-MoT-ver.LE"
+      ],
+      "relevancy_score": 20.8
+    },
+    {
+      "architecture_id": "MobileLlamaForCausalLM",
+      "total_models": 4,
+      "total_downloads": 4211,
+      "min_param_count": null,
+      "sample_models": [
+        "mtgv/MobileVLM_V2-1.7B",
+        "mtgv/MobileVLM-1.7B",
+        "mtgv/MobileVLM_V2-7B",
+        "mtgv/MobileVLM_V2-3B"
+      ],
+      "relevancy_score": 20.7
+    },
+    {
+      "architecture_id": "BlueLMForCausalLM",
+      "total_models": 3,
+      "total_downloads": 5311,
+      "min_param_count": null,
+      "sample_models": [
+        "vivo-ai/BlueLM-7B-Chat",
+        "vivo-ai/BlueLM-7B-Chat-32K",
+        "vivo-ai/BlueLM-7B-Base"
+      ],
+      "relevancy_score": 20.6
+    },
+    {
+      "architecture_id": "modeling_camelidae.LlamaForCausalLM",
+      "total_models": 3,
+      "total_downloads": 5073,
+      "min_param_count": null,
+      "sample_models": [
+        "hywu/Camelidae-8x34B",
+        "hywu/Camelidae-8x7B",
+        "hywu/Camelidae-8x13B"
+      ],
+      "relevancy_score": 20.5
+    },
+    {
+      "architecture_id": "MosaicGPT",
+      "total_models": 3,
+      "total_downloads": 4781,
+      "min_param_count": null,
+      "sample_models": [
+        "anas-awadalla/mpt-1b-redpajama-200b",
+        "anas-awadalla/mpt-1b-redpajama-200b-dolly",
+        "anas-awadalla/mpt-1b-redpajama-200b-hf-style"
+      ],
+      "relevancy_score": 20.4
+    },
+    {
+      "architecture_id": "MultiScaleForCausalLM",
+      "total_models": 3,
+      "total_downloads": 4272,
+      "min_param_count": null,
+      "sample_models": [
+        "KoinicLabs/AXL-Translate",
+        "KoinicLabs/AXL-Vision-v2",
+        "KoinicLabs/AXL-Chat-10M"
+      ],
+      "relevancy_score": 20.1
+    },
+    {
+      "architecture_id": "ModernBertDecoderForCausalLM",
+      "total_models": 2,
+      "total_downloads": 5509,
+      "min_param_count": null,
+      "sample_models": [
+        "jhu-clsp/ettin-decoder-400m",
+        "jhu-clsp/ettin-decoder-32m"
+      ],
+      "relevancy_score": 20.1
+    },
+    {
+      "architecture_id": "LiquidForCausalLM",
+      "total_models": 2,
+      "total_downloads": 5676,
+      "min_param_count": null,
+      "sample_models": [
+        "reaperdoesntknow/DNA-175M",
+        "reaperdoesntknow/DNA-50M"
+      ],
+      "relevancy_score": 20.1
+    },
+    {
+      "architecture_id": "LlavaLlamaModel",
+      "total_models": 3,
+      "total_downloads": 4035,
+      "min_param_count": null,
+      "sample_models": [
+        "Efficient-Large-Model/VILA1.5-3b",
+        "Efficient-Large-Model/NVILA-8B",
+        "Efficient-Large-Model/VILA1.5-13b"
+      ],
+      "relevancy_score": 20.0
+    },
+    {
+      "architecture_id": "GPT2Model",
+      "total_models": 2,
+      "total_downloads": 5435,
+      "min_param_count": null,
+      "sample_models": [
+        "cerebras/Cerebras-GPT-13B",
+        "keshan/sinhala-gpt2"
+      ],
+      "relevancy_score": 20.0
+    },
+    {
+      "architecture_id": "KonkanGPT",
+      "total_models": 2,
+      "total_downloads": 5113,
+      "min_param_count": null,
+      "sample_models": [
+        "omdeep22/Gonyai-teo2",
+        "omdeep22/Gonyai-v1"
+      ],
+      "relevancy_score": 19.9
+    },
+    {
+      "architecture_id": "InternLMXComposer2ForCausalLM",
+      "total_models": 1,
+      "total_downloads": 6712,
+      "min_param_count": null,
+      "sample_models": [
+        "internlm/internlm-xcomposer2-7b"
+      ],
+      "relevancy_score": 19.9
+    },
+    {
+      "architecture_id": "BottleneckT5LMWithPerturb",
+      "total_models": 4,
+      "total_downloads": 2779,
+      "min_param_count": null,
+      "sample_models": [
+        "thesephist/contra-bottleneck-t5-small-wikipedia",
+        "thesephist/contra-bottleneck-t5-base-wikipedia",
+        "thesephist/contra-bottleneck-t5-large-wikipedia",
+        "thesephist/contra-bottleneck-t5-xl-wikipedia"
+      ],
+      "relevancy_score": 19.8
+    },
+    {
+      "architecture_id": "NanochatWasmFusedModel",
+      "total_models": 2,
+      "total_downloads": 4952,
+      "min_param_count": null,
+      "sample_models": [
+        "eastlondoner/nanochat-wasm-fused-preview-01",
+        "eastlondoner/nanochat-wasm-fused-preview-02"
+      ],
+      "relevancy_score": 19.8
+    },
+    {
+      "architecture_id": "MobilintExaone4ForCausalLM",
+      "total_models": 1,
+      "total_downloads": 6518,
+      "min_param_count": null,
+      "sample_models": [
+        "mobilint/EXAONE-4.0-1.2B"
+      ],
+      "relevancy_score": 19.8
+    },
+    {
+      "architecture_id": "LlamaMoEForCausalLM",
+      "total_models": 3,
+      "total_downloads": 3452,
+      "min_param_count": null,
+      "sample_models": [
+        "llama-moe/LLaMA-MoE-v1-3_5B-2_8",
+        "llama-moe/LLaMA-MoE-v1-3_0B-2_16",
+        "llama-moe/LLaMA-MoE-v1-3_5B-4_16"
+      ],
+      "relevancy_score": 19.7
+    },
+    {
+      "architecture_id": "RobertaForCausalLM",
+      "total_models": 2,
+      "total_downloads": 4451,
+      "min_param_count": null,
+      "sample_models": [
+        "uf-aice-lab/math-roberta",
+        "gokceuludogan/ChemBERTaLM"
+      ],
+      "relevancy_score": 19.6
+    },
+    {
+      "architecture_id": "MossForCausalLM",
+      "total_models": 2,
+      "total_downloads": 4390,
+      "min_param_count": null,
+      "sample_models": [
+        "OpenMOSS-Team/moss-moon-003-sft",
+        "OpenMOSS-Team/moss-moon-003-base"
+      ],
+      "relevancy_score": 19.6
+    },
+    {
+      "architecture_id": "Qwen3TSForCausalLM",
+      "total_models": 1,
+      "total_downloads": 5950,
+      "min_param_count": null,
+      "sample_models": [
+        "bytedance-research/ChatTS-8B"
+      ],
+      "relevancy_score": 19.6
+    },
+    {
+      "architecture_id": "Int8OPTForCausalLM",
+      "total_models": 2,
+      "total_downloads": 4242,
+      "min_param_count": null,
+      "sample_models": [
+        "mit-han-lab/opt-125m-smoothquant",
+        "mit-han-lab/opt-6.7b-smoothquant"
+      ],
+      "relevancy_score": 19.5
+    },
+    {
+      "architecture_id": "BartForCausalLM",
+      "total_models": 2,
+      "total_downloads": 4186,
+      "min_param_count": null,
+      "sample_models": [
+        "sanchit-gandhi/tiny-random-bart-fp16",
+        "hf-tiny-model-private/tiny-random-BartForCausalLM"
+      ],
+      "relevancy_score": 19.5
+    },
+    {
+      "architecture_id": "TranceptionLMHeadModel",
+      "total_models": 2,
+      "total_downloads": 4081,
+      "min_param_count": null,
+      "sample_models": [
+        "PascalNotin/Tranception_Large",
+        "PascalNotin/Tranception_Small"
+      ],
+      "relevancy_score": 19.4
+    },
+    {
+      "architecture_id": "InternLMXComposerForCausalLM",
+      "total_models": 1,
+      "total_downloads": 5363,
+      "min_param_count": null,
+      "sample_models": [
+        "internlm/internlm-xcomposer-7b"
+      ],
+      "relevancy_score": 19.4
+    },
+    {
+      "architecture_id": "ModelStarOLMhead",
+      "total_models": 1,
+      "total_downloads": 5178,
+      "min_param_count": null,
+      "sample_models": [
+        "Hawa-Al-Akram/StarO-Ai"
+      ],
+      "relevancy_score": 19.3
+    },
+    {
+      "architecture_id": "Olmo2ForSequenceClassification",
+      "total_models": 2,
+      "total_downloads": 3565,
+      "min_param_count": null,
+      "sample_models": [
+        "allenai/OLMo-2-1124-7B-RM",
+        "LifeWiki-ai/OLMo-2-1124-7B-RM"
+      ],
+      "relevancy_score": 19.1
+    },
+    {
+      "architecture_id": "GraphT5TransformerForConditionalGeneration",
+      "total_models": 1,
+      "total_downloads": 4795,
+      "min_param_count": null,
+      "sample_models": [
+        "haitengzhao/gimlet"
+      ],
+      "relevancy_score": 19.1
+    },
+    {
+      "architecture_id": "EvafrillMoForCausalLM",
+      "total_models": 1,
+      "total_downloads": 4556,
+      "min_param_count": null,
+      "sample_models": [
+        "pathcosmos/EVAFRILL-Mo-3B"
+      ],
+      "relevancy_score": 19.0
+    },
+    {
+      "architecture_id": "Qwen2TSForCausalLM",
+      "total_models": 1,
+      "total_downloads": 4042,
+      "min_param_count": null,
+      "sample_models": [
+        "bytedance-research/ChatTS-14B"
+      ],
+      "relevancy_score": 18.8
+    },
+    {
+      "architecture_id": "QEDForCausalLM",
+      "total_models": 1,
+      "total_downloads": 4040,
+      "min_param_count": null,
+      "sample_models": [
+        "levossadtchi/QED-75M"
+      ],
+      "relevancy_score": 18.8
+    },
+    {
+      "architecture_id": "MochivaForCausalLM",
+      "total_models": 1,
+      "total_downloads": 3969,
+      "min_param_count": null,
+      "sample_models": [
+        "Mochiva-team/Mochiva-model"
+      ],
+      "relevancy_score": 18.7
+    },
+    {
+      "architecture_id": "TransfoXLLMHeadModel",
+      "total_models": 1,
+      "total_downloads": 3909,
+      "min_param_count": null,
+      "sample_models": [
+        "transfo-xl/transfo-xl-wt103"
+      ],
+      "relevancy_score": 18.7
+    },
+    {
+      "architecture_id": "LongcatCausalLM",
+      "total_models": 1,
+      "total_downloads": 3688,
+      "min_param_count": 561862880256,
+      "sample_models": [
+        "meituan-longcat/LongCat-Flash-Thinking-2601"
+      ],
+      "relevancy_score": 18.6
+    },
+    {
+      "architecture_id": "GomeForCausalLM",
+      "total_models": 1,
+      "total_downloads": 3500,
+      "min_param_count": null,
+      "sample_models": [
+        "Prositron/gome"
+      ],
+      "relevancy_score": 18.5
+    },
+    {
+      "architecture_id": "YuanForCausalLM",
+      "total_models": 3,
+      "total_downloads": 1888,
+      "min_param_count": null,
+      "sample_models": [
+        "IEITYuan/Yuan2-M32-hf",
+        "IEITYuan/Yuan2-2B-Mars-hf",
+        "IEITYuan/Yuan2-2B-Janus-hf"
+      ],
+      "relevancy_score": 18.4
+    },
+    {
+      "architecture_id": "MyAwesomeModelForCausalLM",
+      "total_models": 1,
+      "total_downloads": 3098,
+      "min_param_count": null,
+      "sample_models": [
+        "dongbobo/MyAwesomeModel"
+      ],
+      "relevancy_score": 18.2
+    },
+    {
+      "architecture_id": "QHEARTForECGQA",
+      "total_models": 1,
+      "total_downloads": 2956,
+      "min_param_count": null,
+      "sample_models": [
+        "Manhph2211/Q-HEART"
+      ],
+      "relevancy_score": 18.1
+    },
+    {
+      "architecture_id": "CTRLLMHeadModel",
+      "total_models": 1,
+      "total_downloads": 2941,
+      "min_param_count": null,
+      "sample_models": [
+        "sshleifer/tiny-ctrl"
+      ],
+      "relevancy_score": 18.1
+    },
+    {
+      "architecture_id": "GPT2CustomLMHeadModel",
+      "total_models": 1,
+      "total_downloads": 2852,
+      "min_param_count": null,
+      "sample_models": [
+        "fxmarty/tiny-testing-gpt2-remote-code"
+      ],
+      "relevancy_score": 18.0
+    },
+    {
+      "architecture_id": "TAMELM",
+      "total_models": 1,
+      "total_downloads": 2823,
+      "min_param_count": null,
+      "sample_models": [
+        "reaperdoesntknow/TameForCasualLM"
+      ],
+      "relevancy_score": 18.0
+    },
+    {
+      "architecture_id": "CoherenceMomentumModel",
+      "total_models": 1,
+      "total_downloads": 2756,
+      "min_param_count": null,
+      "sample_models": [
+        "aisingapore/coherence-momentum"
+      ],
+      "relevancy_score": 17.9
+    },
+    {
+      "architecture_id": "GPT2",
+      "total_models": 1,
+      "total_downloads": 2709,
+      "min_param_count": null,
+      "sample_models": [
+        "NamrataThakur/Small_Language_Model_MHA_53M_Pretrained"
+      ],
+      "relevancy_score": 17.9
+    },
+    {
+      "architecture_id": "GQAGPT2",
+      "total_models": 1,
+      "total_downloads": 2699,
+      "min_param_count": null,
+      "sample_models": [
+        "NamrataThakur/Small_Language_Model_GQA_48M_Pretrained"
+      ],
+      "relevancy_score": 17.9
+    },
+    {
+      "architecture_id": "ThinkerLM",
+      "total_models": 1,
+      "total_downloads": 2697,
+      "min_param_count": null,
+      "sample_models": [
+        "prskid1000/micro-Omni"
+      ],
+      "relevancy_score": 17.9
+    },
+    {
+      "architecture_id": "CPMAntForCausalLM",
+      "total_models": 1,
+      "total_downloads": 2693,
+      "min_param_count": null,
+      "sample_models": [
+        "openbmb/cpm-ant-10b"
+      ],
+      "relevancy_score": 17.9
+    },
+    {
+      "architecture_id": "D3PMSanskritModel",
+      "total_models": 1,
+      "total_downloads": 2676,
+      "min_param_count": null,
+      "sample_models": [
+        "bhsinghgrid/sanskrit-translation"
+      ],
+      "relevancy_score": 17.9
+    },
+    {
+      "architecture_id": "GuppyLM",
+      "total_models": 1,
+      "total_downloads": 2655,
+      "min_param_count": null,
+      "sample_models": [
+        "arman-bd/guppylm-9M"
+      ],
+      "relevancy_score": 17.9
+    },
+    {
+      "architecture_id": "MoEGPT2",
+      "total_models": 1,
+      "total_downloads": 2552,
+      "min_param_count": null,
+      "sample_models": [
+        "NamrataThakur/Small_Language_Model_MOE_127M_Pretrained"
+      ],
+      "relevancy_score": 17.8
+    },
+    {
+      "architecture_id": "JiRackTernary1B",
+      "total_models": 1,
+      "total_downloads": 2529,
+      "min_param_count": null,
+      "sample_models": [
+        "kgrabko/JiRackTernary_1b"
+      ],
+      "relevancy_score": 17.8
+    },
+    {
+      "architecture_id": "Speech2TextTransformerForConditionalGeneration",
+      "total_models": 1,
+      "total_downloads": 2373,
+      "min_param_count": null,
+      "sample_models": [
+        "valhalla/s2t_mustc_multilinguial_medium"
+      ],
+      "relevancy_score": 17.6
+    },
+    {
+      "architecture_id": "Eagle3DeepseekV2ForCausalLM",
+      "total_models": 1,
+      "total_downloads": 2367,
+      "min_param_count": null,
+      "sample_models": [
+        "nvidia/Kimi-K2.5-Thinking-Eagle3"
+      ],
+      "relevancy_score": 17.6
+    },
+    {
+      "architecture_id": "GPTXForCausalLM",
+      "total_models": 1,
+      "total_downloads": 2295,
+      "min_param_count": null,
+      "sample_models": [
+        "AxiomicLabs/GPT-X-125M"
+      ],
+      "relevancy_score": 17.5
+    },
+    {
+      "architecture_id": "WhisperMixStyleForConditionalGeneration",
+      "total_models": 1,
+      "total_downloads": 2258,
+      "min_param_count": null,
+      "sample_models": [
+        "wago5090/mixstyle_multi-s"
+      ],
+      "relevancy_score": 17.5
+    },
+    {
+      "architecture_id": "Videollama2Qwen2ForCausalLM",
+      "total_models": 1,
+      "total_downloads": 2223,
+      "min_param_count": null,
+      "sample_models": [
+        "QuangTuan/MultiMood-7B-GRPO-VisualAudioText-Comp"
+      ],
+      "relevancy_score": 17.5
+    },
+    {
+      "architecture_id": "GPT",
+      "total_models": 2,
+      "total_downloads": 1600,
+      "min_param_count": null,
+      "sample_models": [
+        "LH-Tech-AI/Apex-1.5-Coder-Instruct-350M",
+        "LH-Tech-AI/Apex-1.5-Instruct-350M"
+      ],
+      "relevancy_score": 17.4
+    },
+    {
+      "architecture_id": "SeerAttnLlamaForCausalLM",
+      "total_models": 1,
+      "total_downloads": 2171,
+      "min_param_count": null,
+      "sample_models": [
+        "SeerAttention/SeerAttention-Llama-3.1-8B-AttnGates"
+      ],
+      "relevancy_score": 17.4
+    },
+    {
+      "architecture_id": "Typhoon2Audio2AudioForConditionalGeneration",
+      "total_models": 1,
+      "total_downloads": 2169,
+      "min_param_count": null,
+      "sample_models": [
+        "typhoon-ai/llama3.1-typhoon2-audio-8b-instruct"
+      ],
+      "relevancy_score": 17.4
+    },
+    {
+      "architecture_id": "LlamaForCausalLMEagle",
+      "total_models": 1,
+      "total_downloads": 2167,
+      "min_param_count": null,
+      "sample_models": [
+        "thunlp/LLaMA3-Instruct-8B-FR-Spec"
+      ],
+      "relevancy_score": 17.4
+    },
+    {
+      "architecture_id": "DenseLLM",
+      "total_models": 1,
+      "total_downloads": 2167,
+      "min_param_count": null,
+      "sample_models": [
+        "AlgoDriveAI/Sanskrit_Akkadian_LLM_v1.0"
+      ],
+      "relevancy_score": 17.4
+    },
+    {
+      "architecture_id": "AlinlightForCausalLM",
+      "total_models": 1,
+      "total_downloads": 2158,
+      "min_param_count": null,
+      "sample_models": [
+        "EngineerGL/Alinlight"
+      ],
+      "relevancy_score": 17.4
+    },
+    {
+      "architecture_id": "TeleFLMForCausalLM",
+      "total_models": 1,
+      "total_downloads": 2150,
+      "min_param_count": null,
+      "sample_models": [
+        "CofeAI/Tele-FLM-1T"
+      ],
+      "relevancy_score": 17.4
+    },
+    {
+      "architecture_id": "TFGPT2LMHeadModel",
+      "total_models": 1,
+      "total_downloads": 2140,
+      "min_param_count": null,
+      "sample_models": [
+        "mymusise/gpt2-medium-chinese"
+      ],
+      "relevancy_score": 17.4
+    },
+    {
+      "architecture_id": "LlaMAForCausalLM",
+      "total_models": 1,
+      "total_downloads": 2121,
+      "min_param_count": null,
+      "sample_models": [
+        "circulus/alpaca-7b"
+      ],
+      "relevancy_score": 17.4
+    },
+    {
+      "architecture_id": "GeoVForCausalLM",
+      "total_models": 1,
+      "total_downloads": 2118,
+      "min_param_count": null,
+      "sample_models": [
+        "GeoV/GeoV-9b"
+      ],
+      "relevancy_score": 17.4
+    },
+    {
+      "architecture_id": "GPTModelForTextGeneration",
+      "total_models": 1,
+      "total_downloads": 2107,
+      "min_param_count": null,
+      "sample_models": [
+        "samkeet/GPT_124M-Instruct"
+      ],
+      "relevancy_score": 17.4
+    },
+    {
+      "architecture_id": "IndexForCausalLM",
+      "total_models": 2,
+      "total_downloads": 1559,
+      "min_param_count": null,
+      "sample_models": [
+        "IndexTeam/Index-1.9B-Chat",
+        "IndexTeam/Index-1.9B-Pure"
+      ],
+      "relevancy_score": 17.3
+    },
+    {
+      "architecture_id": "ElectraForCausalLM",
+      "total_models": 1,
+      "total_downloads": 2103,
+      "min_param_count": null,
+      "sample_models": [
+        "smeoni/nbme-electra-large-generator"
+      ],
+      "relevancy_score": 17.3
+    },
+    {
+      "architecture_id": "PegasusForCausalLM",
+      "total_models": 1,
+      "total_downloads": 2056,
+      "min_param_count": null,
+      "sample_models": [
+        "hf-tiny-model-private/tiny-random-PegasusForCausalLM"
+      ],
+      "relevancy_score": 17.3
+    },
+    {
+      "architecture_id": "RobertaPreLayerNormForCausalLM",
+      "total_models": 1,
+      "total_downloads": 2047,
+      "min_param_count": null,
+      "sample_models": [
+        "hf-tiny-model-private/tiny-random-RobertaPreLayerNormForCausalLM"
+      ],
+      "relevancy_score": 17.3
+    },
+    {
+      "architecture_id": "BlenderbotForCausalLM",
+      "total_models": 1,
+      "total_downloads": 2046,
+      "min_param_count": null,
+      "sample_models": [
+        "hf-tiny-model-private/tiny-random-BlenderbotForCausalLM"
+      ],
+      "relevancy_score": 17.3
+    },
+    {
+      "architecture_id": "XModelForCausalLM",
+      "total_models": 1,
+      "total_downloads": 2037,
+      "min_param_count": null,
+      "sample_models": [
+        "XiaoduoAILab/Xmodel_LM"
+      ],
+      "relevancy_score": 17.3
+    },
+    {
+      "architecture_id": "EnergyTransformer",
+      "total_models": 1,
+      "total_downloads": 2031,
+      "min_param_count": null,
+      "sample_models": [
+        "cccczshao/CALM-M"
+      ],
+      "relevancy_score": 17.3
+    },
+    {
+      "architecture_id": "MvpForCausalLM",
+      "total_models": 1,
+      "total_downloads": 2018,
+      "min_param_count": null,
+      "sample_models": [
+        "hf-tiny-model-private/tiny-random-MvpForCausalLM"
+      ],
+      "relevancy_score": 17.3
+    },
+    {
+      "architecture_id": "OtterForConditionalGeneration",
+      "total_models": 2,
+      "total_downloads": 1473,
+      "min_param_count": null,
+      "sample_models": [
+        "luodian/OTTER-Video-LLaMA7B-DenseCaption",
+        "luodian/OTTER-MPT1B-RPJama-Init"
+      ],
+      "relevancy_score": 17.2
+    },
+    {
+      "architecture_id": "MonkeyLMHeadModel",
+      "total_models": 2,
+      "total_downloads": 1496,
+      "min_param_count": null,
+      "sample_models": [
+        "echo840/Monkey-Chat",
+        "echo840/Monkey"
+      ],
+      "relevancy_score": 17.2
+    },
+    {
+      "architecture_id": "PointLLMLlamaForCausalLM",
+      "total_models": 2,
+      "total_downloads": 1497,
+      "min_param_count": null,
+      "sample_models": [
+        "RunsenXu/PointLLM_7B_v1.1_init",
+        "RunsenXu/PointLLM_7B_v1.2"
+      ],
+      "relevancy_score": 17.2
+    },
+    {
+      "architecture_id": "ConditionalGPT2LMHeadModel",
+      "total_models": 1,
+      "total_downloads": 1991,
+      "min_param_count": null,
+      "sample_models": [
+        "entropy/roberta_zinc_decoder"
+      ],
+      "relevancy_score": 17.2
+    },
+    {
+      "architecture_id": "Qwen35ForCausalLM",
+      "total_models": 1,
+      "total_downloads": 1971,
+      "min_param_count": null,
+      "sample_models": [
+        "JeffGreen311/Eve-V2-Unleashed-Qwen3.5-8B-Liberated-4K-4B-Merged"
+      ],
+      "relevancy_score": 17.2
+    },
+    {
+      "architecture_id": "DebertaV2ForCausalLM",
+      "total_models": 1,
+      "total_downloads": 1960,
+      "min_param_count": null,
+      "sample_models": [
+        "ltg/deberta-xxlarge-fixed"
+      ],
+      "relevancy_score": 17.2
+    },
+    {
+      "architecture_id": "SpectusForConditionalGeneration",
+      "total_models": 1,
+      "total_downloads": 1945,
+      "min_param_count": null,
+      "sample_models": [
+        "MS-ML/SpecTUS_pretrained_only"
+      ],
+      "relevancy_score": 17.2
+    },
+    {
+      "architecture_id": "TelechatForCausalLM",
+      "total_models": 2,
+      "total_downloads": 1426,
+      "min_param_count": null,
+      "sample_models": [
+        "Tele-AI/telechat-7B",
+        "Tele-AI/TeleChat-12B"
+      ],
+      "relevancy_score": 17.1
+    },
+    {
+      "architecture_id": "BTLMLMHeadModel",
+      "total_models": 2,
+      "total_downloads": 1437,
+      "min_param_count": null,
+      "sample_models": [
+        "cerebras/btlm-3b-8k-base",
+        "EleutherAI/Hermes-btlm-3b-8k"
+      ],
+      "relevancy_score": 17.1
+    },
+    {
+      "architecture_id": "LSGBartForConditionalGeneration",
+      "total_models": 1,
+      "total_downloads": 1871,
+      "min_param_count": null,
+      "sample_models": [
+        "morenolq/LEGIT-BART-LSG-4096"
+      ],
+      "relevancy_score": 17.1
+    },
+    {
+      "architecture_id": "CloverLMForCausalLM",
+      "total_models": 1,
+      "total_downloads": 1833,
+      "min_param_count": null,
+      "sample_models": [
+        "daslab-testing/CloverLM"
+      ],
+      "relevancy_score": 17.0
+    },
+    {
+      "architecture_id": "LlavaCrystalForCausalLM",
+      "total_models": 1,
+      "total_downloads": 1614,
+      "min_param_count": null,
+      "sample_models": [
+        "LLM360/CrystalChat-7B-Web2Code"
+      ],
+      "relevancy_score": 16.8
+    },
+    {
+      "architecture_id": "InternLM2ForRewardModel",
+      "total_models": 1,
+      "total_downloads": 1562,
+      "min_param_count": null,
+      "sample_models": [
+        "internlm/internlm2_5-step-prover-critic"
+      ],
+      "relevancy_score": 16.7
+    },
+    {
+      "architecture_id": "MobilintEagle3Qwen2ForCausalLM",
+      "total_models": 1,
+      "total_downloads": 1543,
+      "min_param_count": null,
+      "sample_models": [
+        "mobilint/EAGLE3-JPharmatron-7B"
+      ],
+      "relevancy_score": 16.7
+    },
+    {
+      "architecture_id": "MPTForCausalLM",
+      "total_models": 2,
+      "total_downloads": 1115,
+      "min_param_count": null,
+      "sample_models": [
+        "hyungtae/mpt-30b",
+        "manojpreveen/mpt-30b-v5"
+      ],
+      "relevancy_score": 16.6
+    },
+    {
+      "architecture_id": "MobileLLMForCausalLM",
+      "total_models": 1,
+      "total_downloads": 1522,
+      "min_param_count": null,
+      "sample_models": [
+        "facebook/MobileLLM-125M"
+      ],
+      "relevancy_score": 16.6
     },
     {
       "architecture_id": "GeoChatLlamaForCausalLM",
       "total_models": 1,
+      "total_downloads": 1416,
+      "min_param_count": null,
       "sample_models": [
         "MBZUAI/geochat-7B"
-      ]
+      ],
+      "relevancy_score": 16.5
     },
     {
-      "architecture_id": "GLAForCausalLM",
+      "architecture_id": "Qwen3VLMoeForConditionalGeneration",
       "total_models": 1,
+      "total_downloads": 1385,
+      "min_param_count": 31070754032,
       "sample_models": [
-        "fla-hub/gla-1.3B-100B"
-      ]
+        "Oysiyl/qwen3-vl-30b-a3b-unslop-good-lora-v1"
+      ],
+      "relevancy_score": 16.4
     },
     {
-      "architecture_id": "RND1",
+      "architecture_id": "HeliumForCausalLM",
       "total_models": 1,
+      "total_downloads": 1309,
+      "min_param_count": null,
       "sample_models": [
-        "radicalnumerics/RND1-Base-0910"
-      ]
+        "kyutai/helium-1-preview-2b"
+      ],
+      "relevancy_score": 16.3
+    },
+    {
+      "architecture_id": "JiRackTernaryModel",
+      "total_models": 1,
+      "total_downloads": 1292,
+      "min_param_count": null,
+      "sample_models": [
+        "kgrabko/JiRackTernary_70b"
+      ],
+      "relevancy_score": 16.3
+    },
+    {
+      "architecture_id": "Papagan",
+      "total_models": 1,
+      "total_downloads": 1216,
+      "min_param_count": null,
+      "sample_models": [
+        "SutskeverFanBoy/papagan_1.3b"
+      ],
+      "relevancy_score": 16.2
+    },
+    {
+      "architecture_id": "PolyLMHeadModel",
+      "total_models": 1,
+      "total_downloads": 1129,
+      "min_param_count": null,
+      "sample_models": [
+        "DAMO-NLP-MT/polylm-13b"
+      ],
+      "relevancy_score": 16.0
+    },
+    {
+      "architecture_id": "CambrianLlamaForCausalLM",
+      "total_models": 1,
+      "total_downloads": 1124,
+      "min_param_count": null,
+      "sample_models": [
+        "nyu-visionx/cambrian-8b"
+      ],
+      "relevancy_score": 16.0
+    },
+    {
+      "architecture_id": "ErnieForCausalLM",
+      "total_models": 1,
+      "total_downloads": 1018,
+      "min_param_count": null,
+      "sample_models": [
+        "mohitsha/tiny-ernie-random-remote-code"
+      ],
+      "relevancy_score": 15.8
+    },
+    {
+      "architecture_id": "Qwen3_5MoeForCausalLM",
+      "total_models": 1,
+      "total_downloads": 1000,
+      "min_param_count": 122111526912,
+      "sample_models": [
+        "wangzhang/Qwen3.5-122B-A10B-abliterix"
+      ],
+      "relevancy_score": 15.7
+    },
+    {
+      "architecture_id": "XMistralForCausalLM",
+      "total_models": 1,
+      "total_downloads": 984,
+      "min_param_count": null,
+      "sample_models": [
+        "Hannibal046/xrag-7b"
+      ],
+      "relevancy_score": 15.7
+    },
+    {
+      "architecture_id": "TransnormerForCausalLM",
+      "total_models": 1,
+      "total_downloads": 973,
+      "min_param_count": null,
+      "sample_models": [
+        "OpenNLPLab/TransNormerLLM-385M"
+      ],
+      "relevancy_score": 15.7
+    },
+    {
+      "architecture_id": "YiForCausalLM",
+      "total_models": 1,
+      "total_downloads": 955,
+      "min_param_count": null,
+      "sample_models": [
+        "llmware/dragon-yi-6b-v0"
+      ],
+      "relevancy_score": 15.6
+    },
+    {
+      "architecture_id": "SOVYN85M",
+      "total_models": 1,
+      "total_downloads": 949,
+      "min_param_count": null,
+      "sample_models": [
+        "SOVYN/SOVYN-85M"
+      ],
+      "relevancy_score": 15.6
     },
     {
       "architecture_id": "LlamaModel",
       "total_models": 1,
+      "total_downloads": 948,
+      "min_param_count": 33930165248,
       "sample_models": [
         "ngoan/NgoanYi"
-      ]
+      ],
+      "relevancy_score": 15.6
+    },
+    {
+      "architecture_id": "ShikraLlamaForCausalLM",
+      "total_models": 1,
+      "total_downloads": 928,
+      "min_param_count": null,
+      "sample_models": [
+        "shikras/shikra-7b-delta-v1"
+      ],
+      "relevancy_score": 15.6
+    },
+    {
+      "architecture_id": "CpmBeeForCausalLM",
+      "total_models": 1,
+      "total_downloads": 911,
+      "min_param_count": null,
+      "sample_models": [
+        "openbmb/cpm-bee-10b"
+      ],
+      "relevancy_score": 15.5
+    },
+    {
+      "architecture_id": "ZsGPT2LMHeadModel",
+      "total_models": 1,
+      "total_downloads": 902,
+      "min_param_count": null,
+      "sample_models": [
+        "claritylab/zero-shot-vanilla-gpt2"
+      ],
+      "relevancy_score": 15.5
+    },
+    {
+      "architecture_id": "HumanGPTForCausalLM",
+      "total_models": 1,
+      "total_downloads": 876,
+      "min_param_count": null,
+      "sample_models": [
+        "YaoFeng/CHATPOSE-V0"
+      ],
+      "relevancy_score": 15.4
+    },
+    {
+      "architecture_id": "Phi4FlashForCausalLM",
+      "total_models": 1,
+      "total_downloads": 839,
+      "min_param_count": null,
+      "sample_models": [
+        "microsoft/Phi-4-mini-flash-reasoning"
+      ],
+      "relevancy_score": 15.3
+    },
+    {
+      "architecture_id": "KimiK25ForConditionalGeneration",
+      "total_models": 1,
+      "total_downloads": 824,
+      "min_param_count": 91383180528,
+      "sample_models": [
+        "Ex0bit/Kimi-K2.5-PRISM-REAP-530B-A32B"
+      ],
+      "relevancy_score": 15.3
+    },
+    {
+      "architecture_id": "FlamingoForCausalLM",
+      "total_models": 1,
+      "total_downloads": 820,
+      "min_param_count": null,
+      "sample_models": [
+        "babylm/flamingo-2024"
+      ],
+      "relevancy_score": 15.3
+    },
+    {
+      "architecture_id": "AquilaDenseForCausalLM",
+      "total_models": 1,
+      "total_downloads": 820,
+      "min_param_count": null,
+      "sample_models": [
+        "BAAI/AquilaDense-7B"
+      ],
+      "relevancy_score": 15.3
+    },
+    {
+      "architecture_id": "EmuForCausalLM",
+      "total_models": 1,
+      "total_downloads": 795,
+      "min_param_count": null,
+      "sample_models": [
+        "BAAI/Emu2-Chat"
+      ],
+      "relevancy_score": 15.2
+    },
+    {
+      "architecture_id": "VStreamLlamaForCausalLM",
+      "total_models": 1,
+      "total_downloads": 780,
+      "min_param_count": null,
+      "sample_models": [
+        "IVGSZ/Flash-VStream-7b"
+      ],
+      "relevancy_score": 15.2
+    },
+    {
+      "architecture_id": "MoELLaVAQWenForCausalLM",
+      "total_models": 1,
+      "total_downloads": 729,
+      "min_param_count": null,
+      "sample_models": [
+        "LanguageBind/MoE-LLaVA-Qwen-1.8B-4e"
+      ],
+      "relevancy_score": 15.0
+    },
+    {
+      "architecture_id": "YayiForCausalLM",
+      "total_models": 1,
+      "total_downloads": 724,
+      "min_param_count": null,
+      "sample_models": [
+        "wenge-research/yayi2-30b"
+      ],
+      "relevancy_score": 15.0
+    },
+    {
+      "architecture_id": "STLlamaForCausalLM",
+      "total_models": 1,
+      "total_downloads": 723,
+      "min_param_count": null,
+      "sample_models": [
+        "bjdwh/UrbanGPT"
+      ],
+      "relevancy_score": 15.0
+    },
+    {
+      "architecture_id": "SkyworkForCausalLM",
+      "total_models": 1,
+      "total_downloads": 698,
+      "min_param_count": null,
+      "sample_models": [
+        "Skywork/Skywork-13B-base"
+      ],
+      "relevancy_score": 14.9
+    },
+    {
+      "architecture_id": "MobiLlamaForCausalLM",
+      "total_models": 1,
+      "total_downloads": 667,
+      "min_param_count": null,
+      "sample_models": [
+        "MBZUAI/MobiLlama-05B"
+      ],
+      "relevancy_score": 14.8
+    },
+    {
+      "architecture_id": "JapaneseStableLMAlphaForCausalLM",
+      "total_models": 1,
+      "total_downloads": 656,
+      "min_param_count": null,
+      "sample_models": [
+        "stabilityai/japanese-stablelm-base-alpha-7b"
+      ],
+      "relevancy_score": 14.8
+    },
+    {
+      "architecture_id": "GPTBigCodeLMHeadModel",
+      "total_models": 1,
+      "total_downloads": 654,
+      "min_param_count": null,
+      "sample_models": [
+        "bigcode/santacoderpack"
+      ],
+      "relevancy_score": 14.8
+    },
+    {
+      "architecture_id": "SDARMoeForCausalLM",
+      "total_models": 1,
+      "total_downloads": 653,
+      "min_param_count": 30532122624,
+      "sample_models": [
+        "JetLM/SDAR-30B-A3B-Chat-b32"
+      ],
+      "relevancy_score": 14.8
+    },
+    {
+      "architecture_id": "GPTJiangForCausalLM",
+      "total_models": 1,
+      "total_downloads": 650,
+      "min_param_count": null,
+      "sample_models": [
+        "kdf/jiang-base"
+      ],
+      "relevancy_score": 14.8
+    },
+    {
+      "architecture_id": "HebrewGPTForCausalLM",
+      "total_models": 1,
+      "total_downloads": 646,
+      "min_param_count": null,
+      "sample_models": [
+        "Slasky/HebrewGPT-1B"
+      ],
+      "relevancy_score": 14.8
+    },
+    {
+      "architecture_id": "BunnyQwenForCausalLM",
+      "total_models": 1,
+      "total_downloads": 622,
+      "min_param_count": 73210991680,
+      "sample_models": [
+        "dphn/dolphin-vision-72b"
+      ],
+      "relevancy_score": 14.7
+    },
+    {
+      "architecture_id": "GrokForCausalLM",
+      "total_models": 1,
+      "total_downloads": 619,
+      "min_param_count": null,
+      "sample_models": [
+        "keyfan/grok-1-hf"
+      ],
+      "relevancy_score": 14.7
+    },
+    {
+      "architecture_id": "LongcatFlashNgramForCausalLM",
+      "total_models": 1,
+      "total_downloads": 615,
+      "min_param_count": null,
+      "sample_models": [
+        "meituan-longcat/LongCat-Flash-Lite"
+      ],
+      "relevancy_score": 14.7
+    },
+    {
+      "architecture_id": "LingoWhaleForCausalLM",
+      "total_models": 1,
+      "total_downloads": 595,
+      "min_param_count": null,
+      "sample_models": [
+        "deeplang-ai/LingoWhale-8B"
+      ],
+      "relevancy_score": 14.6
+    },
+    {
+      "architecture_id": "Llama2ForCausalLM",
+      "total_models": 1,
+      "total_downloads": 592,
+      "min_param_count": null,
+      "sample_models": [
+        "llmware/dragon-llama-7b-v0"
+      ],
+      "relevancy_score": 14.6
+    },
+    {
+      "architecture_id": "MPLUGOwl2LlamaForCausalLM",
+      "total_models": 1,
+      "total_downloads": 592,
+      "min_param_count": null,
+      "sample_models": [
+        "q-future/q-align-quality"
+      ],
+      "relevancy_score": 14.6
+    },
+    {
+      "architecture_id": "GLaMMForCausalLM",
+      "total_models": 1,
+      "total_downloads": 585,
+      "min_param_count": null,
+      "sample_models": [
+        "MBZUAI/GLaMM-FullScope"
+      ],
+      "relevancy_score": 14.6
+    },
+    {
+      "architecture_id": "OLMoModelForCausalLM",
+      "total_models": 1,
+      "total_downloads": 585,
+      "min_param_count": null,
+      "sample_models": [
+        "NousResearch/OLMo-Bitnet-1B"
+      ],
+      "relevancy_score": 14.6
+    },
+    {
+      "architecture_id": "OpenBAForConditionalGeneration",
+      "total_models": 1,
+      "total_downloads": 576,
+      "min_param_count": null,
+      "sample_models": [
+        "OpenNLG/OpenBA-V1-Based"
+      ],
+      "relevancy_score": 14.5
+    },
+    {
+      "architecture_id": "GPTJXForCausalLM",
+      "total_models": 1,
+      "total_downloads": 574,
+      "min_param_count": null,
+      "sample_models": [
+        "KnutJaegersberg/GPT-JX-3b"
+      ],
+      "relevancy_score": 14.5
+    },
+    {
+      "architecture_id": "LlavaStableLMEpochForCausalLM",
+      "total_models": 1,
+      "total_downloads": 540,
+      "min_param_count": null,
+      "sample_models": [
+        "NousResearch/Obsidian-3B-V0.5"
+      ],
+      "relevancy_score": 14.4
+    },
+    {
+      "architecture_id": "AprielHForCausalLM",
+      "total_models": 1,
+      "total_downloads": 538,
+      "min_param_count": null,
+      "sample_models": [
+        "ServiceNow-AI/Apriel-H1-15b-Thinker-SFT"
+      ],
+      "relevancy_score": 14.4
+    },
+    {
+      "architecture_id": "CacaForCausalLM",
+      "total_models": 1,
+      "total_downloads": 530,
+      "min_param_count": null,
+      "sample_models": [
+        "Lyon28/caca-1B-untrained"
+      ],
+      "relevancy_score": 14.3
+    },
+    {
+      "architecture_id": "M2M100ForConditionalGeneration",
+      "total_models": 1,
+      "total_downloads": 529,
+      "min_param_count": null,
+      "sample_models": [
+        "dsfsi/nso-en-m2m100-gov"
+      ],
+      "relevancy_score": 14.3
+    },
+    {
+      "architecture_id": "HgrnForCausalLM",
+      "total_models": 1,
+      "total_downloads": 526,
+      "min_param_count": null,
+      "sample_models": [
+        "OpenNLPLab/HGRN-150M"
+      ],
+      "relevancy_score": 14.3
+    },
+    {
+      "architecture_id": "LlavaSearchLlamaForCausalLM",
+      "total_models": 1,
+      "total_downloads": 524,
+      "min_param_count": null,
+      "sample_models": [
+        "craigwu/seal_vqa_7b"
+      ],
+      "relevancy_score": 14.3
+    },
+    {
+      "architecture_id": "SeerAttnQwen3ForCausalLM",
+      "total_models": 1,
+      "total_downloads": 523,
+      "min_param_count": null,
+      "sample_models": [
+        "jiwonsong/SeerAttention-Qwen3-8B-AttnGates"
+      ],
+      "relevancy_score": 14.3
+    },
+    {
+      "architecture_id": "MedHemoModel",
+      "total_models": 1,
+      "total_downloads": 522,
+      "min_param_count": null,
+      "sample_models": [
+        "amewebstudio/medhemo-earcp"
+      ],
+      "relevancy_score": 14.3
+    },
+    {
+      "architecture_id": "VSMForCausalLM",
+      "total_models": 1,
+      "total_downloads": 521,
+      "min_param_count": null,
+      "sample_models": [
+        "craigwu/seal_vsm_7b"
+      ],
+      "relevancy_score": 14.3
+    },
+    {
+      "architecture_id": "LlavaMistralForCausalLM",
+      "total_models": 1,
+      "total_downloads": 510,
+      "min_param_count": null,
+      "sample_models": [
+        "NousResearch/Nous-Hermes-2-Vision-Alpha"
+      ],
+      "relevancy_score": 14.3
     }
   ]
 }

@@ -5,7 +5,7 @@ import torch
 
 from transformer_lens.model_bridge import TransformerBridge
 
-# Small models for basic testing - focus on those that work with TransformerBridge
+# Small models for TransformerBridge testing
 PUBLIC_MODEL_NAMES = [
     "gpt2",  # Use the base model name that TransformerBridge supports
 ]
@@ -29,8 +29,10 @@ class TestLegacyHookedTransformerCoverage:
         return request.param
 
     @pytest.fixture(scope="class")
-    def bridge_model(self, model_name):
-        """Create a TransformerBridge model for testing."""
+    def bridge_model(self, model_name, gpt2_bridge):
+        """Use session-scoped fixture for gpt2, load fresh for other models."""
+        if model_name == "gpt2":
+            return gpt2_bridge
         try:
             return TransformerBridge.boot_transformers(model_name, device="cpu")
         except Exception as e:

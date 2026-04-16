@@ -109,10 +109,14 @@ class SiglipVisionEncoderBridge(GeneralizedComponent):
         """Initialize the SigLIP vision encoder bridge.
 
         Args:
-            name: The name of this component (e.g., "vision_tower")
+            name: The name of this component (e.g., "model.vision_tower")
             config: Optional configuration object
             submodules: Dictionary of submodules to register
         """
+        # All submodule names are resolved relative to the parent's
+        # original_component (a SiglipVisionModel) by setup_submodules().
+        # SiglipVisionModel wraps SiglipVisionTransformer as .vision_model,
+        # so all paths go through vision_model.*.
         default_submodules = {
             "embeddings": GeneralizedComponent(name="vision_model.embeddings"),
             "encoder_layers": SiglipVisionEncoderLayerBridge(name="vision_model.encoder.layers"),

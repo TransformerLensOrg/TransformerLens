@@ -57,8 +57,12 @@ class AbstractAttention(ABC, nn.Module):
 
         if self.cfg.load_in_4bit:
             nq = int((self.cfg.d_model * self.cfg.d_head * self.cfg.n_heads) / 2)
-            self.W_Q = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
-            self.W_O = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
+            self.W_Q: Union[nn.Parameter, "Params4bit"] = Params4bit(
+                torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False
+            )
+            self.W_O: Union[nn.Parameter, "Params4bit"] = Params4bit(
+                torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False
+            )
         else:
             self.W_Q = nn.Parameter(
                 torch.empty(
@@ -333,13 +337,13 @@ class AbstractAttention(ABC, nn.Module):
         if not self.cfg.use_attn_result:
             if self.cfg.load_in_4bit:
                 # call bitsandbytes method to dequantize and multiply
+                W_O_4bit = cast(Params4bit, self.W_O)
                 out = (
                     bnb.matmul_4bit(
                         z.reshape(z.shape[0], z.shape[1], self.cfg.d_head * self.cfg.n_heads),
-                        self.W_O.t(),
-                        # bias=self.W_O.t(),
+                        W_O_4bit.t(),
                         bias=None,
-                        quant_state=self.W_O.quant_state,
+                        quant_state=W_O_4bit.quant_state,
                     )
                     + self.b_O
                 )
@@ -359,21 +363,26 @@ class AbstractAttention(ABC, nn.Module):
                 if z.dtype != w.dtype:
                     z = z.to(w.dtype)
 
-                out = F.linear(
-                    z.reshape(z.shape[0], z.shape[1], self.cfg.d_head * self.cfg.n_heads),
-                    w,
-                    b_O,
-                )
+                z = z.reshape(z.shape[0], z.shape[1], self.cfg.d_head * self.cfg.n_heads)
+
+                # F.linear is a fused matmul+bias that matches HuggingFace exactly,
+                # but has a bug on MPS with PyTorch 2.8 (pytorch#161640).
+                # Fall back to manual matmul on MPS to work around it.
+                if z.device.type == "mps":
+                    out = torch.matmul(z, w.T) + b_O
+                else:
+                    out = F.linear(z, w, b_O)
         else:
             # Explicitly calculate the attention result so it can be accessed by a hook
             # This is off by default because it can easily eat through your GPU memory.
             if self.cfg.load_in_4bit:
+                W_O_4bit = cast(Params4bit, self.W_O)
                 result = self.hook_result(
                     bnb.matmul_4bit(
                         z.reshape(z.shape[0], z.shape[1], self.cfg.d_head * self.cfg.n_heads),
-                        self.W_O.t(),
+                        W_O_4bit.t(),
                         bias=None,
-                        quant_state=self.W_O.quant_state,
+                        quant_state=W_O_4bit.quant_state,
                     )
                 )
             else:
@@ -443,13 +452,14 @@ class AbstractAttention(ABC, nn.Module):
             else simple_attn_linear
         )
         if self.cfg.load_in_4bit:
+            W_Q_4bit = cast(Params4bit, self.W_Q)
             q = self.hook_q(
                 # call bitsandbytes method to dequantize and multiply
                 bnb.matmul_4bit(
                     query_input,
-                    self.W_Q.t(),
+                    W_Q_4bit.t(),
                     bias=None,
-                    quant_state=self.W_Q.quant_state,
+                    quant_state=W_Q_4bit.quant_state,
                 ).reshape(
                     query_input.shape[0],
                     query_input.shape[1],
@@ -662,6 +672,11 @@ class AbstractAttention(ABC, nn.Module):
             freq = 1.0 / inv_freq
         else:
             freq = base ** (dim / (rotary_dim / 2))
+            # Apply linear RoPE scaling for global attention layers if configured
+            # (e.g., Gemma 3 4B uses factor=8.0 for global layers, but not local ones)
+            scaling_factor = getattr(self.cfg, "rotary_scaling_factor", 1.0)
+            if scaling_factor != 1.0 and self.attn_type != "local":
+                freq = freq * scaling_factor
         if self.cfg.rotary_adjacent_pairs:
             freq = einops.repeat(freq, "d -> (d 2)")
         else:

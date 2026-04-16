@@ -9,7 +9,12 @@ from typing import Dict, Optional
 import torch
 
 from transformer_lens import HookedTransformer
-from transformer_lens.benchmarks.utils import BenchmarkResult, BenchmarkSeverity
+from transformer_lens.benchmarks.utils import (
+    BenchmarkResult,
+    BenchmarkSeverity,
+    make_capture_hook,
+    make_grad_capture_hook,
+)
 from transformer_lens.model_bridge import TransformerBridge
 
 
@@ -47,23 +52,12 @@ def benchmark_forward_hooks_structure(
             hook_names = list(bridge.hook_dict.keys())
 
         # Register hooks on bridge and track missing hooks
-        def make_bridge_hook(name: str):
-            def hook_fn(tensor, hook):
-                if isinstance(tensor, torch.Tensor):
-                    bridge_activations[name] = tensor.detach().clone()
-                elif isinstance(tensor, tuple) and len(tensor) > 0:
-                    if isinstance(tensor[0], torch.Tensor):
-                        bridge_activations[name] = tensor[0].detach().clone()
-                return tensor
-
-            return hook_fn
-
         bridge_handles = []
         missing_from_bridge = []
         for hook_name in hook_names:
             if hook_name in bridge.hook_dict:
                 hook_point = bridge.hook_dict[hook_name]
-                handle = hook_point.add_hook(make_bridge_hook(hook_name))  # type: ignore[func-returns-value]
+                handle = hook_point.add_hook(make_capture_hook(bridge_activations, hook_name))  # type: ignore[func-returns-value]
                 bridge_handles.append((hook_name, handle))
             else:
                 missing_from_bridge.append(hook_name)
@@ -106,22 +100,11 @@ def benchmark_forward_hooks_structure(
             )
 
         # Register hooks on reference model
-        def make_reference_hook(name: str):
-            def hook_fn(tensor, hook):
-                if isinstance(tensor, torch.Tensor):
-                    reference_activations[name] = tensor.detach().clone()
-                elif isinstance(tensor, tuple) and len(tensor) > 0:
-                    if isinstance(tensor[0], torch.Tensor):
-                        reference_activations[name] = tensor[0].detach().clone()
-                return tensor
-
-            return hook_fn
-
         reference_handles = []
         for hook_name in hook_names:
             if hook_name in reference_model.hook_dict:
                 hook_point = reference_model.hook_dict[hook_name]
-                handle = hook_point.add_hook(make_reference_hook(hook_name))  # type: ignore[func-returns-value]
+                handle = hook_point.add_hook(make_capture_hook(reference_activations, hook_name))  # type: ignore[func-returns-value]
                 reference_handles.append(handle)
 
         # Run reference forward pass
@@ -262,23 +245,12 @@ def benchmark_backward_hooks_structure(
         ]
 
         # Register backward hooks on bridge
-        def make_bridge_backward_hook(name: str):
-            def hook_fn(grad):
-                if grad is not None and isinstance(grad, torch.Tensor):
-                    bridge_grads[name] = grad.detach().clone()
-                elif isinstance(grad, tuple) and len(grad) > 0:
-                    if grad[0] is not None and isinstance(grad[0], torch.Tensor):
-                        bridge_grads[name] = grad[0].detach().clone()
-                return grad
-
-            return hook_fn
-
         bridge_handles = []
         missing_from_bridge = []
         for hook_name in grad_hook_names:
             if hook_name in bridge.hook_dict:
                 hook_point = bridge.hook_dict[hook_name]
-                handle = hook_point.add_hook(make_bridge_backward_hook(hook_name), dir="bwd")  # type: ignore[func-returns-value]
+                handle = hook_point.add_hook(make_grad_capture_hook(bridge_grads, hook_name), dir="bwd")  # type: ignore[func-returns-value]
                 bridge_handles.append((hook_name, handle))
             else:
                 missing_from_bridge.append(hook_name)
@@ -323,22 +295,11 @@ def benchmark_backward_hooks_structure(
             )
 
         # Register backward hooks on reference
-        def make_reference_backward_hook(name: str):
-            def hook_fn(grad):
-                if grad is not None and isinstance(grad, torch.Tensor):
-                    reference_grads[name] = grad.detach().clone()
-                elif isinstance(grad, tuple) and len(grad) > 0:
-                    if grad[0] is not None and isinstance(grad[0], torch.Tensor):
-                        reference_grads[name] = grad[0].detach().clone()
-                return grad
-
-            return hook_fn
-
         reference_handles = []
         for hook_name in grad_hook_names:
             if hook_name in reference_model.hook_dict:
                 hook_point = reference_model.hook_dict[hook_name]
-                handle = hook_point.add_hook(make_reference_backward_hook(hook_name), dir="bwd")  # type: ignore[func-returns-value]
+                handle = hook_point.add_hook(make_grad_capture_hook(reference_grads, hook_name), dir="bwd")  # type: ignore[func-returns-value]
                 reference_handles.append(handle)
 
         # Run reference forward + backward pass

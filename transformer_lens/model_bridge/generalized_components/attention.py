@@ -2,10 +2,13 @@
 
 This module contains the bridge component for attention layers.
 """
+import logging
 from typing import Any, Dict, Optional
 
 import einops
 import torch
+
+logger = logging.getLogger(__name__)
 
 from transformer_lens.conversion_utils.conversion_steps.attention_auto_conversion import (
     AttentionAutoConversion,
@@ -28,7 +31,6 @@ class AttentionBridge(GeneralizedComponent):
     """
 
     hook_aliases = {
-        "hook_result": "hook_out",
         "hook_q": "q.hook_out",
         "hook_k": "k.hook_out",
         "hook_v": "v.hook_out",
@@ -56,6 +58,7 @@ class AttentionBridge(GeneralizedComponent):
         requires_position_embeddings: bool = False,
         requires_attention_mask: bool = False,
         attention_mask_4d: bool = False,
+        optional: bool = False,
     ):
         """Initialize the attention bridge.
 
@@ -79,11 +82,30 @@ class AttentionBridge(GeneralizedComponent):
         if conversion_rule is None:
             conversion_rule = AttentionAutoConversion(config)
         super().__init__(
-            name, config=config, submodules=submodules or {}, conversion_rule=conversion_rule
+            name,
+            config=config,
+            submodules=submodules or {},
+            conversion_rule=conversion_rule,
+            optional=optional,
         )
         self.hook_attn_scores = HookPoint()
         self.hook_pattern = HookPoint()
         self.hook_hidden_states = HookPoint()
+        # Per-head attention output, pre-sum across heads.
+        # Shape [batch, pos, n_heads, d_model] when fired. Gated at fire time
+        # by cfg.use_attn_result; the HookPoint exists unconditionally so
+        # run_with_cache key lookups never miss.
+        self.hook_result = HookPoint()
+        # Independent residual copies feeding Q / K / V (and the shared
+        # `use_attn_in` fork). Fire at [batch, pos, H, d_model] only when
+        # cfg.use_split_qkv_input or cfg.use_attn_in is set. Placement is
+        # post-ln1 — see test_bridge_vs_hooked_transformer_patching.py
+        # (strict xfail) for the semantic divergence from legacy TL's pre-LN
+        # fork and the follow-up work it tracks.
+        self.hook_attn_in = HookPoint()
+        self.hook_q_input = HookPoint()
+        self.hook_k_input = HookPoint()
+        self.hook_v_input = HookPoint()
         if (
             hasattr(config, "positional_embedding_type")
             and config.positional_embedding_type == "rotary"
@@ -100,6 +122,14 @@ class AttentionBridge(GeneralizedComponent):
         self.requires_position_embeddings = requires_position_embeddings
         self.requires_attention_mask = requires_attention_mask
         self.attention_mask_4d = attention_mask_4d
+        self._layer_idx: Optional[int] = None
+
+    def set_original_component(self, original_component: torch.nn.Module) -> None:
+        """Set original component and capture layer index for KV caching."""
+        super().set_original_component(original_component)
+        layer_idx_raw = getattr(original_component, "layer_idx", None)
+        if layer_idx_raw is not None:
+            self._layer_idx = int(layer_idx_raw)
 
     def setup_hook_compatibility(self) -> None:
         """Setup hook compatibility transformations to match HookedTransformer behavior.
@@ -218,7 +248,8 @@ class AttentionBridge(GeneralizedComponent):
                 if len(input_value.shape) == 4:
                     b, s, n_h, d_h = input_value.shape
                     if n_h == self.n_heads and d_h == self.d_head:
-                        return input_value.view(b, s, n_h * d_h)
+                        # reshape (not view) — callers may pass non-contiguous tensors
+                        return input_value.reshape(b, s, n_h * d_h)
                 return input_value
 
         if self.config is None:
@@ -279,9 +310,300 @@ class AttentionBridge(GeneralizedComponent):
         if hasattr(self, "hook_rot_k"):
             self.hook_rot_k.hook_conversion = TransposeRotaryHeads()
 
-    def _setup_hook_z_reshape(self) -> None:
-        """Backward compatibility alias for _setup_qkv_hook_reshaping."""
-        self._setup_qkv_hook_reshaping()
+    def _update_kv_cache(
+        self, k: torch.Tensor, v: torch.Tensor, **kwargs: Any
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Update KV cache if provided, returning the (possibly extended) K and V.
+
+        Call this after K/V projections and any positional embeddings (e.g. RoPE)
+        have been applied, but before computing attention scores. If no cache is
+        present in kwargs, K and V are returned unchanged.
+        """
+        past_key_values = kwargs.get("past_key_values", None)
+        if past_key_values is None:
+            return k, v
+        layer_idx = getattr(self, "_layer_idx", None)
+        if layer_idx is None:
+            logger.warning(
+                "%s: past_key_values provided but _layer_idx is None "
+                "(HF component missing layer_idx attribute). "
+                "KV cache update skipped — generation will be slow.",
+                self.name,
+            )
+            return k, v
+        k, v = past_key_values.update(k, v, layer_idx)
+        return k, v
+
+    def _reshape_qkv_to_heads(
+        self,
+        q: torch.Tensor,
+        k: torch.Tensor,
+        v: torch.Tensor,
+        num_heads: int,
+        num_kv_heads: int | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, int, int, int]:
+        """Reshape Q/K/V from [batch, seq, hidden] or [batch, seq, heads, head_dim]
+        to [batch, heads, seq, head_dim]. Returns (q, k, v, batch_size, seq_len, head_dim).
+
+        Args:
+            num_kv_heads: If provided and differs from num_heads (GQA), K/V use
+                this head count for the 3D reshape path.
+        """
+        if num_kv_heads is None:
+            num_kv_heads = num_heads
+        if q.ndim == 3:
+            batch_size, seq_len, q_hidden = q.shape
+            head_dim: int = q_hidden // num_heads
+            q = q.view(batch_size, seq_len, num_heads, head_dim).transpose(1, 2)
+            k = k.view(batch_size, seq_len, num_kv_heads, head_dim).transpose(1, 2)
+            v = v.view(batch_size, seq_len, num_kv_heads, head_dim).transpose(1, 2)
+        elif q.ndim == 4:
+            batch_size, seq_len = q.shape[0], q.shape[1]
+            head_dim = q.shape[-1]
+            q = q.transpose(1, 2)
+            k = k.transpose(1, 2)
+            v = v.transpose(1, 2)
+        else:
+            raise ValueError(f"Unexpected Q tensor shape: {q.shape}. Expected 3D or 4D.")
+        return q, k, v, batch_size, seq_len, head_dim
+
+    def _apply_attn_dropout(self, attn_weights: torch.Tensor) -> torch.Tensor:
+        """Apply attention dropout from the original HF component if present."""
+        if self.original_component is not None:
+            dropout_fn = getattr(self.original_component, "attn_dropout", None)
+            if dropout_fn is None:
+                dropout_fn = getattr(self.original_component, "attention_dropout", None)
+            if dropout_fn is not None and callable(dropout_fn):
+                attn_weights = dropout_fn(attn_weights)
+        return attn_weights
+
+    def _apply_output_projection(self, attn_output: torch.Tensor) -> torch.Tensor:
+        """Apply the output projection (self.o) if present."""
+        if hasattr(self, "o") and self.o is not None:
+            attn_output = self.o(attn_output)
+        return attn_output
+
+    def _softmax_dropout_pattern(
+        self,
+        attn_scores: torch.Tensor,
+        target_dtype: torch.dtype | None = None,
+        upcast_to_fp32: bool = False,
+    ) -> torch.Tensor:
+        """Apply softmax, dropout, and hook_pattern to attention scores.
+
+        Args:
+            attn_scores: Raw attention scores [batch, heads, q_seq, kv_seq].
+            target_dtype: If set, cast weights to this dtype after softmax.
+            upcast_to_fp32: If True, compute softmax in float32 for numerical
+                stability, then cast to target_dtype.
+        """
+        if upcast_to_fp32:
+            attn_weights = torch.nn.functional.softmax(attn_scores, dim=-1, dtype=torch.float32)
+            if target_dtype is not None:
+                attn_weights = attn_weights.to(target_dtype)
+        else:
+            attn_weights = torch.nn.functional.softmax(attn_scores, dim=-1)
+            if target_dtype is not None:
+                attn_weights = attn_weights.to(target_dtype)
+        attn_weights = self._apply_attn_dropout(attn_weights)
+        attn_weights = self.hook_pattern(attn_weights)
+        return attn_weights
+
+    def _reshape_attn_output(
+        self,
+        attn_output: torch.Tensor,
+        batch_size: int,
+        seq_len: int,
+        num_heads: int,
+        head_dim: int,
+    ) -> torch.Tensor:
+        """Reshape attention output from [batch, heads, seq, dim] to [batch, seq, hidden]."""
+        attn_output = attn_output.transpose(1, 2).contiguous()
+        attn_output = attn_output.view(batch_size, seq_len, num_heads * head_dim)
+        return attn_output
+
+    def _apply_reconstruct_attention_mask(
+        self,
+        attn_scores: torch.Tensor,
+        attention_mask: torch.Tensor | None,
+        seq_len: int,
+        q_seq_len: int | None = None,
+    ) -> torch.Tensor:
+        """Apply causal and optional attention masking to reconstructed scores.
+
+        HuggingFace-style 4D masks already encode causal semantics, so they are
+        treated as authoritative. Lower-rank masks do not, so the local causal
+        mask is still applied before adding the caller-provided padding mask.
+
+        Args:
+            attn_scores: Attention scores [batch, heads, q_seq_len, kv_seq_len].
+            attention_mask: Optional mask from the caller.
+            seq_len: The KV sequence length (total positions including cache).
+            q_seq_len: The query sequence length. When using KV cache this is
+                shorter than seq_len. Defaults to seq_len when not provided.
+        """
+        if q_seq_len is None:
+            q_seq_len = seq_len
+        min_dtype = torch.finfo(attn_scores.dtype).min
+        use_direct_hf_mask = attention_mask is not None and attention_mask.ndim >= 4
+        if not use_direct_hf_mask:
+            # Rectangular causal mask: query i attends to KV 0..(offset+i)
+            # where offset = kv_seq_len - q_seq_len (cached positions).
+            causal_mask = torch.ones(
+                q_seq_len, seq_len, device=attn_scores.device, dtype=torch.bool
+            )
+            causal_mask = torch.tril(causal_mask, diagonal=seq_len - q_seq_len)
+            attn_scores = attn_scores.masked_fill(~causal_mask, min_dtype)
+
+        if attention_mask is None:
+            return attn_scores
+
+        if attention_mask.shape[-1] != seq_len:
+            attention_mask = attention_mask[..., :seq_len]
+        if attention_mask.ndim >= 3 and attention_mask.shape[-2] != q_seq_len:
+            attention_mask = attention_mask[..., :q_seq_len, :]
+
+        if attention_mask.dtype == torch.bool:
+            attention_mask = torch.where(
+                attention_mask,
+                torch.zeros((), dtype=attn_scores.dtype, device=attn_scores.device),
+                torch.full((), min_dtype, dtype=attn_scores.dtype, device=attn_scores.device),
+            )
+        else:
+            attention_mask = attention_mask.to(dtype=attn_scores.dtype)
+
+        return attn_scores + attention_mask
+
+    def _get_n_heads(self, use_kv: bool = False) -> int:
+        """Resolve the number of attention heads from config.
+
+        Args:
+            use_kv: If True, return n_key_value_heads (for GQA) when available.
+        """
+        assert self.config is not None, "config required to resolve n_heads"
+        if use_kv:
+            if hasattr(self.config, "n_key_value_heads") and self.config.n_key_value_heads:
+                return self.config.n_key_value_heads
+        if hasattr(self.config, "n_heads"):
+            return self.config.n_heads
+        return self.config.n_head
+
+    def _reshape_weight_to_3d(
+        self, weight: torch.Tensor, n_heads: int, pattern: str = "qkv"
+    ) -> torch.Tensor:
+        """Reshape a 2D weight to 3D by splitting heads, auto-detecting Linear vs Conv1D.
+
+        Args:
+            weight: 2D weight tensor
+            n_heads: Number of heads to split into
+            pattern: "qkv" for [n_heads, d_model, d_head], "o" for [n_heads, d_head, d_model]
+        """
+        if pattern == "o":
+            if weight.shape[0] == n_heads * (
+                weight.shape[1] // n_heads
+                if weight.shape[1] % n_heads == 0
+                else weight.shape[0] // n_heads
+            ):
+                return einops.rearrange(
+                    weight, "(n_heads d_head) d_model -> n_heads d_head d_model", n_heads=n_heads
+                )
+            return einops.rearrange(
+                weight.T, "(n_heads d_head) d_model -> n_heads d_head d_model", n_heads=n_heads
+            )
+        # QKV pattern
+        if weight.shape[0] % n_heads == 0:
+            return einops.rearrange(
+                weight, "(n_heads d_head) d_model -> n_heads d_model d_head", n_heads=n_heads
+            )
+        return einops.rearrange(
+            weight, "d_model (n_heads d_head) -> n_heads d_model d_head", n_heads=n_heads
+        )
+
+    def _project_per_head_qkv(
+        self,
+        linear_bridge: "GeneralizedComponent",
+        input_4d: torch.Tensor,
+        n_heads: int,
+        d_head: int,
+    ) -> torch.Tensor:
+        """Per-head Q/K/V projection over a 4D residual fork.
+
+        Plain nn.Linear applied to [batch, pos, H, d_model] broadcasts the
+        same weight across heads' copies — which for the split-qkv fork means
+        head h's copy sees every head's W rows, not just head h's. This routes
+        head h's copy through head h's W slice only via a per-head einsum.
+
+        Fires `linear_bridge.hook_out` on the flat 3D tensor so the hook sees
+        the same shape as the default path and downstream code receives a
+        consistent 4D `[B, S, H, d_head]` regardless of whether the user's
+        hook modified the tensor (which would otherwise trigger the
+        `hook_conversion.revert` 4D→3D flatten).
+        """
+        component = linear_bridge.original_component
+        assert component is not None, "LinearBridge.original_component not set"
+        weight = component.weight
+        bias = component.bias
+        w3d = einops.rearrange(
+            weight,
+            "(n_heads d_head) d_model -> n_heads d_model d_head",
+            n_heads=n_heads,
+            d_head=d_head,
+        )
+        out = torch.einsum("bshd,hde->bshe", input_4d, w3d)
+        if bias is not None:
+            b2d = einops.rearrange(bias, "(n_heads d_head) -> n_heads d_head", n_heads=n_heads)
+            assert isinstance(b2d, torch.Tensor)
+            out = out + b2d
+        # Flatten to 3D for hook_out (matches default-path shape); the
+        # hook_conversion reshapes to 4D for the user's fwd_hook, then reverts
+        # to 3D if the hook returned a modified tensor. Return 4D always.
+        b, s = out.shape[0], out.shape[1]
+        out_flat = out.reshape(b, s, n_heads * d_head)
+        out_flat = linear_bridge.hook_out(out_flat)
+        return out_flat.reshape(b, s, n_heads, d_head)
+
+    def _compute_per_head_result(
+        self,
+        z_4d: torch.Tensor,
+        n_heads: int,
+        d_head: int,
+    ) -> torch.Tensor:
+        """Per-head attention output pre-sum across heads.
+
+        Computes (z[..., h, :] @ W_O_per_head[h]) for each head h, fires
+        hook_result on the resulting [batch, pos, n_heads, d_model], then sums
+        across heads and adds b_O. Distributive over weight folding
+        (`sum_h z_h @ W_O_h + b_O == z_flat @ W_O.T + b_O`), so compat-mode and
+        raw-weight paths produce identical logits.
+        """
+        o = self.o.original_component
+        weight = o.weight
+        bias = getattr(o, "bias", None)
+        # HF Conv1D (GPT-2, GPT-J, CodeGen) stores weight as [in, out]; nn.Linear
+        # stores [out, in]. When W_O is square (d_model == n_heads*d_head, which
+        # is the common case), shape alone is ambiguous — dispatch on module
+        # type instead.
+        weight_is_in_out = type(o).__name__ == "Conv1D"
+        if weight_is_in_out:
+            w_per_head = einops.rearrange(
+                weight,
+                "(n_heads d_head) d_model -> n_heads d_head d_model",
+                n_heads=n_heads,
+                d_head=d_head,
+            )
+        else:
+            w_per_head = einops.rearrange(
+                weight,
+                "d_model (n_heads d_head) -> n_heads d_head d_model",
+                n_heads=n_heads,
+                d_head=d_head,
+            )
+        per_head = torch.einsum("bshd,hdm->bshm", z_4d, w_per_head)
+        per_head = self.hook_result(per_head)
+        summed = per_head.sum(dim=-2)
+        if bias is not None:
+            summed = summed + bias
+        return summed
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         """Simplified forward pass - minimal wrapping around original component.
@@ -359,146 +681,59 @@ class AttentionBridge(GeneralizedComponent):
 
     @property
     def W_Q(self) -> torch.Tensor:
-        """Get W_Q in 3D format [n_heads, d_model, d_head] from 2D linear bridge weight."""
-
-        weight = (
-            self.q.weight
-        )  # 2D: [d_model, n_heads*d_head] for Conv1D or [n_heads*d_head, d_model] for Linear
+        """Get W_Q in 3D format [n_heads, d_model, d_head]."""
+        weight = self.q.weight
         if weight.ndim == 2 and self.config is not None:
-            n_heads = self.config.n_heads if hasattr(self.config, "n_heads") else self.config.n_head
-            # Detect format based on weight shape
-            # Linear format: [(n_heads*d_head), d_model]
-            # Conv1D format: [d_model, (n_heads*d_head)]
-            if weight.shape[0] % n_heads == 0:
-                # Linear format - first dimension is (n_heads*d_head)
-                return einops.rearrange(
-                    weight, "(n_heads d_head) d_model -> n_heads d_model d_head", n_heads=n_heads
-                )
-            else:
-                # Conv1D format - second dimension is (n_heads*d_head)
-                return einops.rearrange(
-                    weight, "d_model (n_heads d_head) -> n_heads d_model d_head", n_heads=n_heads
-                )
+            return self._reshape_weight_to_3d(weight, self._get_n_heads())
         return weight
 
     @property
     def W_K(self) -> torch.Tensor:
-        """Get W_K in 3D format [n_heads, d_model, d_head] from 2D linear bridge weight."""
-
+        """Get W_K in 3D format [n_heads, d_model, d_head] (uses n_kv_heads for GQA)."""
         weight = self.k.weight
         if weight.ndim == 2 and self.config is not None:
-            n_heads = (
-                self.config.n_key_value_heads
-                if hasattr(self.config, "n_key_value_heads") and self.config.n_key_value_heads
-                else (
-                    self.config.n_heads if hasattr(self.config, "n_heads") else self.config.n_head
-                )
-            )
-            # Detect format based on weight shape
-            # Linear format: [(n_heads*d_head), d_model]
-            # Conv1D format: [d_model, (n_heads*d_head)]
-            if weight.shape[0] % n_heads == 0:
-                # Linear format - first dimension is (n_heads*d_head)
-                return einops.rearrange(
-                    weight, "(n_heads d_head) d_model -> n_heads d_model d_head", n_heads=n_heads
-                )
-            else:
-                # Conv1D format - second dimension is (n_heads*d_head)
-                return einops.rearrange(
-                    weight, "d_model (n_heads d_head) -> n_heads d_model d_head", n_heads=n_heads
-                )
+            return self._reshape_weight_to_3d(weight, self._get_n_heads(use_kv=True))
         return weight
 
     @property
     def W_V(self) -> torch.Tensor:
-        """Get W_V in 3D format [n_heads, d_model, d_head] from 2D linear bridge weight."""
-
+        """Get W_V in 3D format [n_heads, d_model, d_head] (uses n_kv_heads for GQA)."""
         weight = self.v.weight
         if weight.ndim == 2 and self.config is not None:
-            n_heads = (
-                self.config.n_key_value_heads
-                if hasattr(self.config, "n_key_value_heads") and self.config.n_key_value_heads
-                else (
-                    self.config.n_heads if hasattr(self.config, "n_heads") else self.config.n_head
-                )
-            )
-            # Detect format based on weight shape
-            # Linear format: [(n_heads*d_head), d_model]
-            # Conv1D format: [d_model, (n_heads*d_head)]
-            if weight.shape[0] % n_heads == 0:
-                # Linear format - first dimension is (n_heads*d_head)
-                return einops.rearrange(
-                    weight, "(n_heads d_head) d_model -> n_heads d_model d_head", n_heads=n_heads
-                )
-            else:
-                # Conv1D format - second dimension is (n_heads*d_head)
-                return einops.rearrange(
-                    weight, "d_model (n_heads d_head) -> n_heads d_model d_head", n_heads=n_heads
-                )
+            return self._reshape_weight_to_3d(weight, self._get_n_heads(use_kv=True))
         return weight
 
     @property
     def W_O(self) -> torch.Tensor:
-        """Get W_O in 3D format [n_heads, d_head, d_model] from 2D linear bridge weight."""
-
+        """Get W_O in 3D format [n_heads, d_head, d_model]."""
         weight = self.o.weight
         if weight.ndim == 2 and self.config is not None:
-            n_heads = self.config.n_heads if hasattr(self.config, "n_heads") else self.config.n_head
-            if weight.shape[0] == n_heads * (
-                weight.shape[1] // n_heads
-                if weight.shape[1] % n_heads == 0
-                else weight.shape[0] // n_heads
-            ):
-                return einops.rearrange(
-                    weight, "(n_heads d_head) d_model -> n_heads d_head d_model", n_heads=n_heads
-                )
-            else:
-                return einops.rearrange(
-                    weight.T, "(n_heads d_head) d_model -> n_heads d_head d_model", n_heads=n_heads
-                )
+            return self._reshape_weight_to_3d(weight, self._get_n_heads(), pattern="o")
         return weight
+
+    def _reshape_bias(
+        self, bias: Optional[torch.Tensor], use_kv: bool = False
+    ) -> Optional[torch.Tensor]:
+        """Reshape 1D bias to [n_heads, d_head]."""
+        if bias is not None and bias.ndim == 1 and self.config is not None:
+            n_heads = self._get_n_heads(use_kv=use_kv)
+            return einops.rearrange(bias, "(n_heads d_head) -> n_heads d_head", n_heads=n_heads)
+        return bias
 
     @property
     def b_Q(self) -> Optional[torch.Tensor]:
-        """Get b_Q in 2D format [n_heads, d_head] from 1D linear bridge bias."""
-
-        bias = self.q.bias
-        if bias is not None and bias.ndim == 1 and self.config is not None:
-            n_heads = self.config.n_heads if hasattr(self.config, "n_heads") else self.config.n_head
-            return einops.rearrange(bias, "(n_heads d_head) -> n_heads d_head", n_heads=n_heads)
-        return bias
+        """Get b_Q in 2D format [n_heads, d_head]."""
+        return self._reshape_bias(self.q.bias)
 
     @property
     def b_K(self) -> Optional[torch.Tensor]:
-        """Get b_K in 2D format [n_heads, d_head] from 1D linear bridge bias."""
-
-        bias = self.k.bias
-        if bias is not None and bias.ndim == 1 and self.config is not None:
-            n_heads = (
-                self.config.n_key_value_heads
-                if hasattr(self.config, "n_key_value_heads") and self.config.n_key_value_heads
-                else (
-                    self.config.n_heads if hasattr(self.config, "n_heads") else self.config.n_head
-                )
-            )
-            return einops.rearrange(bias, "(n_heads d_head) -> n_heads d_head", n_heads=n_heads)
-        return bias
+        """Get b_K in 2D format [n_heads, d_head] (uses n_kv_heads for GQA)."""
+        return self._reshape_bias(self.k.bias, use_kv=True)
 
     @property
     def b_V(self) -> Optional[torch.Tensor]:
-        """Get b_V in 2D format [n_heads, d_head] from 1D linear bridge bias."""
-
-        bias = self.v.bias
-        if bias is not None and bias.ndim == 1 and self.config is not None:
-            n_heads = (
-                self.config.n_key_value_heads
-                if hasattr(self.config, "n_key_value_heads") and self.config.n_key_value_heads
-                else (
-                    self.config.n_heads if hasattr(self.config, "n_heads") else self.config.n_head
-                )
-            )
-            return einops.rearrange(bias, "(n_heads d_head) -> n_heads d_head", n_heads=n_heads)
-        return bias
+        """Get b_V in 2D format [n_heads, d_head] (uses n_kv_heads for GQA)."""
+        return self._reshape_bias(self.v.bias, use_kv=True)
 
     @property
     def b_O(self) -> Optional[torch.Tensor]:

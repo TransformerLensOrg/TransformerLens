@@ -33,14 +33,12 @@ def resolve_alias(
         def _resolve_single_target(target_name: str) -> Any:
             """Helper function to resolve a single target name."""
             target_name_split = target_name.split(".")
-            # there are multiple target names, so we need to check all of them
-            # this is the case for hook_pos_embed, which can be either pos_embed.hook_out (gpt2-style) or rotary_emb.hook_out (gemma/etc-style)
+            # Resolve dotted paths; list-based aliases try each option
             if len(target_name_split) > 1:
                 current_attr = target_object
                 for i in range(len(target_name_split) - 1):
                     if not hasattr(current_attr, target_name_split[i]):
-                        # If an intermediate attribute doesn't exist, raise AttributeError
-                        # so that list-based aliases can try the next option
+                        # Raise so list-based aliases can try next option
                         raise AttributeError(
                             f"'{type(current_attr).__name__}' object has no attribute '{target_name_split[i]}'"
                         )

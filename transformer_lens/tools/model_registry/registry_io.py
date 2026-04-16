@@ -56,6 +56,14 @@ _QUANTIZED_PATTERNS = [
     "_fp8",
     "-FP8",
     "_FP8",
+    "-nvfp4",
+    "_nvfp4",
+    "-NVFP4",
+    "_NVFP4",
+    "-mxfp4",
+    "_mxfp4",
+    "-MXFP4",
+    "_MXFP4",
     "-int4",
     "_int4",
     "-int8",
@@ -64,6 +72,14 @@ _QUANTIZED_PATTERNS = [
     "-w8a8",
     "-W4A16",
     "-W8A8",
+    ".w4a16",
+    ".W4A16",
+    "-3bit",
+    "_3bit",
+    "-2bit",
+    "_2bit",
+    "-oQ",
+    "_oQ",
     "-quantized.",
     "_Quantized",
     "-Quantized",
@@ -165,10 +181,39 @@ def update_model_status(
                     date.today().isoformat() if status != STATUS_UNVERIFIED else None
                 )
                 entry["note"] = note
-            for phase_num in (1, 2, 3, 4, 7):
+            elif note is not None:
+                # Score-only update with an explicit note — overwrite stale notes
+                entry["note"] = note
+            elif phase_scores and "exceeds" in (entry.get("note") or "").lower():
+                # Writing real scores clears a stale memory-skip note
+                entry["note"] = None
+            for phase_num in (1, 2, 3, 4, 7, 8):
                 key = f"phase{phase_num}_score"
                 if phase_num in phase_scores:
                     entry[key] = phase_scores[phase_num]
+                elif key not in entry:
+                    entry[key] = None
+            # Reorder keys so phase scores are always in numerical order
+            _KEY_ORDER = [
+                "architecture_id",
+                "model_id",
+                "status",
+                "verified_date",
+                "metadata",
+                "note",
+                "phase1_score",
+                "phase2_score",
+                "phase3_score",
+                "phase4_score",
+                "phase7_score",
+                "phase8_score",
+            ]
+            reordered = {k: entry[k] for k in _KEY_ORDER if k in entry}
+            for k in entry:
+                if k not in reordered:
+                    reordered[k] = entry[k]
+            entry.clear()
+            entry.update(reordered)
             updated = True
             break
 
@@ -187,6 +232,7 @@ def update_model_status(
                 "phase3_score": phase_scores.get(3),
                 "phase4_score": phase_scores.get(4),
                 "phase7_score": phase_scores.get(7),
+                "phase8_score": phase_scores.get(8),
             }
         )
         updated = True

@@ -12,7 +12,15 @@ from .defaults_utils import (
     LocallyOverridenDefaults,
     override_or_use_default_value,
 )
-from .devices import get_device, move_to_and_update_config
+from .devices import (
+    ModelWithCfg,
+    _MPS_MIN_SAFE_TORCH_VERSION,
+    _mps_warned,
+    _torch_version_tuple,
+    get_device,
+    move_to_and_update_config,
+    warn_if_mps,
+)
 from .exploratory_utils import test_prompt
 from .gpu_utils import print_gpu_mem
 from .hf_utils import (

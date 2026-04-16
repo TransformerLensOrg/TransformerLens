@@ -311,8 +311,12 @@ class ComponentBenchmarker:
                 n_layers = self.cfg.n_layers
 
                 for layer_idx in range(n_layers):
-                    # Recursively test each subcomponent and its nested subcomponents
+                    # Get the actual block to check which submodules were bound
+                    actual_block = getattr(self.bridge_model, block_type)[layer_idx]
                     for subcomp_name, subcomponent in blocks_component.submodules.items():
+                        # Skip optional submodules absent on this layer (hybrid architectures)
+                        if subcomp_name not in actual_block._modules:
+                            continue
                         comp_path = f"{block_type}.{layer_idx}.{subcomp_name}"
                         self._test_component_recursive(
                             comp_path, subcomponent, test_inputs, results, skip_components
@@ -415,15 +419,14 @@ class ComponentBenchmarker:
         ):
             return
 
-        # Skip BLOOM and T5 attention and MLP components - they have custom signatures that require
-        # residual connections, alibi bias, or cache_position from the full model context
+        # Skip models whose MLP/attn forward signatures require extra context from the block:
+        # - BLOOM: MLP requires residual and alibi bias
+        # - T5: requires cache_position for relative position embeddings
+        # - MPT: MLP.forward(hidden_states, residual) performs the residual addition internally
         if "attn" in component_path or "mlp" in component_path:
-            # Check if this is a BLOOM or T5 model by looking at the HF model config
             hf_model_config = getattr(self.hf_model, "config", None)
             if hf_model_config and hasattr(hf_model_config, "model_type"):
-                # BLOOM requires residual and alibi bias
-                # T5 requires cache_position for relative position embeddings
-                if hf_model_config.model_type in ["bloom", "t5"]:
+                if hf_model_config.model_type in ["bloom", "t5", "mpt"]:
                     return
 
         # Skip components that require specific shaped inputs from their parent modules
@@ -439,30 +442,59 @@ class ComponentBenchmarker:
             if last_part in ["o", "out"]:
                 return
 
-            # Check if this is a q/k/v subcomponent and parent is joint QKV
-            if last_part in ["q", "k", "v"]:
-                # Check if parent component is JointQKVAttentionBridge
-                parent_type = type(component).__name__
-                # The component passed in is actually the q/k/v component itself
-                # We need to check if we should skip based on parent context
-                # For now, we'll check if the parent path exists and is a joint module
-                # This is a heuristic - skip q/k/v that are children of attention
-                # if the attention module has "qkv" or "c_attn" in its submodules
-                # (indicating joint QKV projection)
+            # Skip MLA intermediates (expect compressed-dim inputs, not hidden_states)
+            if last_part in [
+                "q_a_proj",
+                "q_a_layernorm",
+                "q_b_proj",
+                "kv_a_proj_with_mqa",
+                "kv_a_layernorm",
+                "kv_b_proj",
+            ]:
+                return
+
+            # Skip virtual splits from fused projections (no standalone HF equivalent)
+            if last_part in ["q", "k", "v", "gate", "in"]:
                 parent_path = ".".join(path_parts[:-1])
                 try:
                     parent_component = self.adapter.get_component(self.bridge_model, parent_path)
-                    # Check if parent has a joint qkv module
                     if hasattr(parent_component, "submodules"):
-                        if (
-                            "qkv" in parent_component.submodules  # type: ignore[operator]
-                            or "c_attn" in parent_component.submodules  # type: ignore[operator]
+                        parent_bridge = cast(GeneralizedComponent, parent_component)
+                        subs = parent_bridge.submodules
+                        # Joint QKV: q/k/v are splits from fused qkv_proj/c_attn
+                        if last_part in ["q", "k", "v"] and ("qkv" in subs or "c_attn" in subs):
+                            return
+                        # Joint gate+up: gate/in are splits from fused gate_up_proj
+                        if last_part in ["gate", "in"] and (
+                            "gate_up" in subs
+                            or type(parent_bridge).__name__ == "JointGateUpMLPBridge"
                         ):
-                            # Skip - this is a virtual q/k/v split from joint projection
                             return
                 except Exception:
-                    # If we can't get parent, proceed with testing
                     pass
+
+        # Skip components not wired on this layer (per-layer or per-config variation).
+        # Only report as failure if the HF model has it but the bridge doesn't.
+        try:
+            self.adapter.get_component(self.bridge_model, component_path)
+        except (AttributeError, ValueError):
+            parts = component_path.split(".")
+            if len(parts) >= 3 and parts[1].isdigit():
+                subpath = ".".join([parts[0]] + ["{layer}"] + parts[2:])
+                # Per-layer variation: exists on some other layer (e.g., MoE vs dense)
+                for probe_layer in range(self.cfg.n_layers):
+                    probe_path = subpath.replace("{layer}", str(probe_layer))
+                    try:
+                        self.adapter.get_component(self.bridge_model, probe_path)
+                        return  # Found on another layer — skip this one
+                    except (AttributeError, ValueError):
+                        continue
+                # Per-config absence: HF model also lacks it (e.g., q_lora_rank=None)
+                try:
+                    self.adapter.get_component(self.hf_model, component_path)
+                except (AttributeError, ValueError):
+                    return
+            # Bridge is missing a component that HF has — likely misconfiguration
 
         # Test this component
         result = self._test_component(component_path, component, test_inputs)
@@ -651,7 +683,7 @@ class ComponentBenchmarker:
         Returns:
             The component output
         """
-        # Special handling for q_norm/k_norm: they expect (batch, seq, d_head) not (batch, seq, d_model)
+        # q_norm/k_norm expect d_head, not d_model
         if component_path.endswith(".q_norm") or component_path.endswith(".k_norm"):
             # Reshape test_input from (batch, seq, d_model) to (batch, seq, d_head)
             batch, seq, d_model = test_input.shape

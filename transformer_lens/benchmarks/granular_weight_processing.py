@@ -370,20 +370,6 @@ def run_granular_weight_processing_benchmarks(
                     for key, value in forward_hooks_result.details.items():
                         print(f"  {key}: {value}")
 
-            # Clean up
-            del bridge
-            del ht_ref
-            # Force garbage collection (multiple passes to break circular references)
-            import gc
-
-            for _ in range(3):
-                gc.collect()
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-            if hasattr(torch, "mps") and hasattr(torch.mps, "empty_cache"):
-                torch.mps.synchronize()
-                torch.mps.empty_cache()
-
         except Exception as e:
             # Record failure
             results.append(
@@ -395,6 +381,20 @@ def run_granular_weight_processing_benchmarks(
                     details={"error": str(e), "config": str(config)},
                 )
             )
+        finally:
+            # Always clean up models after each config (success or failure)
+            # to prevent memory leaks on large models
+            import gc
+
+            bridge = None  # type: ignore[assignment]
+            ht_ref = None  # type: ignore[assignment]
+            for _ in range(3):
+                gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            if hasattr(torch, "mps") and hasattr(torch.mps, "empty_cache"):
+                torch.mps.synchronize()
+                torch.mps.empty_cache()
 
         # Store results
         all_results[config.name] = results

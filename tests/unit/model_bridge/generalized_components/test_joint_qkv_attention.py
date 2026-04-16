@@ -1,5 +1,7 @@
 """Unit tests for Joint QKV Attention bridge."""
 
+import copy
+
 import torch
 
 from transformer_lens.model_bridge.generalized_components.joint_qkv_attention import (
@@ -485,3 +487,46 @@ class TestJointQKVAttention:
             bridge,
             position_embeddings=position_embeddings,
         )
+
+    def test_deepcopy_does_not_copy_bound_method_self(self):
+        """Deepcopy shares split_qkv_matrix and config instead of copying them."""
+
+        class FakeAdapter:
+            def __init__(self):
+                self.heavy_data = torch.randn(100, 100)
+
+            def split_qkv(self, component):
+                return (torch.nn.Linear(4, 4), torch.nn.Linear(4, 4), torch.nn.Linear(4, 4))
+
+        class TestConfig:
+            n_heads = 2
+            d_model = 4
+
+        adapter = FakeAdapter()
+        bridge = JointQKVAttentionBridge(
+            name="attn",
+            config=TestConfig(),
+            split_qkv_matrix=adapter.split_qkv,
+        )
+
+        clone = copy.deepcopy(bridge)
+
+        assert clone.split_qkv_matrix is bridge.split_qkv_matrix
+        assert clone.split_qkv_matrix.__self__ is adapter
+        assert clone.config is bridge.config
+
+    def test_deepcopy_produces_independent_hooks(self):
+        """Deepcopy produces independent HookPoint and LinearBridge instances."""
+
+        class TestConfig:
+            n_heads = 2
+            d_model = 4
+
+        bridge = JointQKVAttentionBridge(name="attn", config=TestConfig())
+        clone = copy.deepcopy(bridge)
+
+        assert clone.hook_in is not bridge.hook_in
+        assert clone.hook_out is not bridge.hook_out
+        assert clone.q is not bridge.q
+        assert clone.k is not bridge.k
+        assert clone.v is not bridge.v

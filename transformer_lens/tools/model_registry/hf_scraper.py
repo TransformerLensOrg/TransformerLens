@@ -27,7 +27,6 @@ Usage:
 import argparse
 import json
 import logging
-import os
 import time
 from datetime import date, datetime
 from pathlib import Path
@@ -54,6 +53,52 @@ def _extract_architecture(model_info) -> Optional[str]:  # type: ignore[no-untyp
         archs = config.get("architectures", [])
         if archs:
             return archs[0]
+    return None
+
+
+def _extract_param_count(model_info) -> Optional[int]:  # type: ignore[no-untyped-def]
+    """Extract parameter count from a model's safetensors metadata or config.
+
+    Tries safetensors metadata first (most reliable), then falls back to
+    config fields like num_parameters or n_params.
+
+    Args:
+        model_info: ModelInfo object from list_models(expand=['config', 'safetensors'])
+
+    Returns:
+        Total parameter count or None if not available
+    """
+    # Try safetensors metadata (most reliable source)
+    safetensors = getattr(model_info, "safetensors", None)
+    if safetensors and isinstance(safetensors, dict):
+        # safetensors metadata has a 'total' field with total parameter count
+        total = safetensors.get("total")
+        if total is not None:
+            try:
+                return int(total)
+            except (ValueError, TypeError):
+                pass
+        # Some models store it under 'parameters' -> 'total'
+        params = safetensors.get("parameters")
+        if params and isinstance(params, dict):
+            total = params.get("total")
+            if total is not None:
+                try:
+                    return int(total)
+                except (ValueError, TypeError):
+                    pass
+
+    # Fall back to config fields
+    config = getattr(model_info, "config", None)
+    if config and isinstance(config, dict):
+        for key in ("num_parameters", "n_params", "num_params"):
+            val = config.get(key)
+            if val is not None:
+                try:
+                    return int(val)
+                except (ValueError, TypeError):
+                    pass
+
     return None
 
 
@@ -97,6 +142,9 @@ def _build_model_entry(model_id: str, architecture_id: str) -> dict:
         "phase1_score": None,
         "phase2_score": None,
         "phase3_score": None,
+        "phase4_score": None,
+        "phase7_score": None,
+        "phase8_score": None,
     }
 
 
@@ -127,7 +175,7 @@ def scrape_all_models(
         task: HuggingFace task filter (default: text-generation)
         batch_size: Log progress every N models
         checkpoint_interval: Save checkpoint every N models
-        min_downloads: Minimum download count to include a model (default: 1000)
+        min_downloads: Minimum download count to include a model (default: 500)
 
     Returns:
         Tuple of (supported_models_dict, architecture_gaps_dict)
@@ -140,8 +188,9 @@ def scrape_all_models(
             "Install it with: pip install huggingface_hub"
         )
 
-    token = os.environ.get("HF_TOKEN", None)
-    api = HfApi(token=token)
+    from transformer_lens.utilities.hf_utils import get_hf_token
+
+    api = HfApi(token=get_hf_token())
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -152,6 +201,8 @@ def scrape_all_models(
     supported_models: list[dict] = list(existing_models)  # Preserve existing
     unsupported_arch_counts: dict[str, int] = {}  # arch -> count
     unsupported_arch_samples: dict[str, list[str]] = {}  # arch -> top model IDs
+    unsupported_arch_downloads: dict[str, int] = {}  # arch -> total downloads
+    unsupported_arch_min_params: dict[str, int] = {}  # arch -> smallest param count
     max_samples = 10  # Keep top N sample models per unsupported architecture
 
     scanned = 0
@@ -176,6 +227,8 @@ def scrape_all_models(
                 existing_model_ids.add(model["model_id"])
         unsupported_arch_counts = checkpoint.get("unsupported_arch_counts", {})
         unsupported_arch_samples = checkpoint.get("unsupported_arch_samples", {})
+        unsupported_arch_downloads = checkpoint.get("unsupported_arch_downloads", {})
+        unsupported_arch_min_params = checkpoint.get("unsupported_arch_min_params", {})
         seen_models.update(checkpoint.get("seen_models", []))
         scanned = checkpoint.get("scanned", 0)
         skipped = checkpoint.get("skipped", 0)
@@ -191,14 +244,14 @@ def scrape_all_models(
         logger.info("Will scan ALL new models (this may take a while)")
 
     try:
-        # Use expand=['config'] to get architecture data inline with the listing,
-        # avoiding per-model API calls and rate limits entirely.
+        # Use expand=['config', 'safetensors'] to get architecture and parameter
+        # count data inline with the listing, avoiding per-model API calls.
         # With ~1000 models per page, a full scan of 200K+ models needs only
         # ~200 paginated requests (well within the 1000 req / 5 min limit).
         list_kwargs: dict = {
             "pipeline_tag": task,
             "sort": "downloads",
-            "expand": ["config"],
+            "expand": ["config", "safetensors"],
         }
         if max_models is not None:
             list_kwargs["limit"] = max_models + len(seen_models)
@@ -251,6 +304,16 @@ def scrape_all_models(
                         samples = unsupported_arch_samples.setdefault(arch, [])
                         if len(samples) < max_samples:
                             samples.append(model.id)
+                        # Accumulate downloads for relevancy scoring
+                        unsupported_arch_downloads[arch] = (
+                            unsupported_arch_downloads.get(arch, 0) + downloads
+                        )
+                        # Track smallest model per arch for benchmarkability
+                        param_count = _extract_param_count(model)
+                        if param_count is not None:
+                            current_min = unsupported_arch_min_params.get(arch)
+                            if current_min is None or param_count < current_min:
+                                unsupported_arch_min_params[arch] = param_count
 
                     # Progress logging
                     if scanned % batch_size == 0:
@@ -276,6 +339,8 @@ def scrape_all_models(
                             list(seen_models),
                             scanned,
                             skipped,
+                            unsupported_arch_downloads,
+                            unsupported_arch_min_params,
                         )
                         logger.info(f"Saved checkpoint at {scanned} models")
 
@@ -296,6 +361,8 @@ def scrape_all_models(
                         list(seen_models),
                         scanned,
                         skipped,
+                        unsupported_arch_downloads,
+                        unsupported_arch_min_params,
                     )
                     time.sleep(wait)
                     skipped = 0  # Reset skip counter for restart
@@ -312,6 +379,8 @@ def scrape_all_models(
             list(seen_models),
             scanned,
             skipped,
+            unsupported_arch_downloads,
+            unsupported_arch_min_params,
         )
         raise
     except Exception as e:
@@ -324,6 +393,8 @@ def scrape_all_models(
             list(seen_models),
             scanned,
             skipped,
+            unsupported_arch_downloads,
+            unsupported_arch_min_params,
         )
         raise
 
@@ -369,14 +440,22 @@ def scrape_all_models(
     logger.info(f"Wrote {len(supported_models)} supported models to supported_models.json")
 
     # Build architecture gaps report (matches ArchitectureGapsReport schema)
+    # Include download and param count data, then compute relevancy scores
+    from transformer_lens.tools.model_registry.relevancy import compute_scores_for_gaps
+
     gaps: list[dict] = [
         {
             "architecture_id": arch,
             "total_models": count,
+            "total_downloads": unsupported_arch_downloads.get(arch, 0),
+            "min_param_count": unsupported_arch_min_params.get(arch),
             "sample_models": unsupported_arch_samples.get(arch, []),
         }
-        for arch, count in sorted(unsupported_arch_counts.items(), key=lambda x: -x[1])
+        for arch, count in unsupported_arch_counts.items()
     ]
+
+    # Compute relevancy scores and sort by score descending
+    compute_scores_for_gaps(gaps)
 
     gaps_report = {
         "generated_at": date.today().isoformat(),
@@ -419,9 +498,15 @@ def scrape_all_models(
     for arch, count in sorted(supported_arch_counts.items(), key=lambda x: -x[1]):
         logger.info(f"  {arch}: {count} models")
 
-    logger.info(f"\nTOP 20 UNSUPPORTED ARCHITECTURES (of {len(gaps)}):")
+    logger.info(f"\nTOP 20 UNSUPPORTED ARCHITECTURES by relevancy (of {len(gaps)}):")
     for gap in gaps[:20]:
-        logger.info(f"  {gap['architecture_id']}: {gap['total_models']} models")
+        score = gap.get("relevancy_score", 0)
+        logger.info(
+            f"  {gap['architecture_id']}: "
+            f"score={score:.1f}, "
+            f"{gap['total_models']} models, "
+            f"{gap.get('total_downloads', 0):,} downloads"
+        )
 
     if len(gaps) > 20:
         remaining = sum(g["total_models"] for g in gaps[20:])
@@ -440,12 +525,16 @@ def _save_checkpoint(
     seen_models: list,
     scanned: int,
     skipped: int = 0,
+    unsupported_arch_downloads: Optional[dict] = None,
+    unsupported_arch_min_params: Optional[dict] = None,
 ):
     """Save scraping progress to a checkpoint file."""
     checkpoint = {
         "supported_models": supported_models,
         "unsupported_arch_counts": unsupported_arch_counts,
         "unsupported_arch_samples": unsupported_arch_samples,
+        "unsupported_arch_downloads": unsupported_arch_downloads or {},
+        "unsupported_arch_min_params": unsupported_arch_min_params or {},
         "seen_models": seen_models,
         "scanned": scanned,
         "skipped": skipped,

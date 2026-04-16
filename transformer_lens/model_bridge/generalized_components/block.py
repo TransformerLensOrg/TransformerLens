@@ -15,6 +15,17 @@ from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
 
+# Layer-type variant submodule names. Tuple for deterministic iteration order.
+# Extend here when adding new hybrid variant types.
+VARIANT_SUBMODULE_NAMES: tuple[str, ...] = ("attn", "linear_attn", "mamba", "mixer", "ssm")
+_VARIANT_SUBMODULE_SET: frozenset[str] = frozenset(VARIANT_SUBMODULE_NAMES)
+
+# Infrastructure modules excluded from submodule introspection.
+_BLOCK_INTERNAL_MODULES: frozenset[str] = frozenset({"hook_in", "hook_out", "_original_component"})
+
+# Norm-module prefixes excluded from layer_types() labels.
+_NORM_PREFIXES: tuple[str, ...] = ("ln", "layer_norm", "norm", "rms")
+
 
 class BlockBridge(GeneralizedComponent):
     """Bridge component for transformer blocks.
@@ -24,15 +35,20 @@ class BlockBridge(GeneralizedComponent):
     """
 
     is_list_item: bool = True
+    # Block-level aliases matching HookedTransformer's hook path. hook_attn_in /
+    # hook_q_input / hook_k_input / hook_v_input forward to four *independent*
+    # HookPoints on the attention bridge (they used to collapse onto the same
+    # upstream tensor; that bug is gone — each hook now backs a distinct
+    # residual fork gated by cfg.use_split_qkv_input / cfg.use_attn_in).
     hook_aliases = {
         "hook_resid_pre": "hook_in",
         "hook_resid_mid": "ln2.hook_in",
         "hook_resid_post": "hook_out",
-        "hook_attn_in": "attn.hook_in",
+        "hook_attn_in": "attn.hook_attn_in",
         "hook_attn_out": "attn.hook_out",
-        "hook_q_input": "attn.q.hook_in",
-        "hook_k_input": "attn.k.hook_in",
-        "hook_v_input": "attn.v.hook_in",
+        "hook_q_input": "attn.hook_q_input",
+        "hook_k_input": "attn.hook_k_input",
+        "hook_v_input": "attn.hook_v_input",
         "hook_mlp_in": "mlp.hook_in",
         "hook_mlp_out": "mlp.hook_out",
     }
@@ -54,20 +70,31 @@ class BlockBridge(GeneralizedComponent):
                 For example, {"hook_attn_out": "ln1_post.hook_out"} will make hook_attn_out
                 point to ln1_post.hook_out instead of the default attn.hook_out.
         """
-        # Apply automatic aliases based on submodules before calling parent
-        # This allows submodule-based aliases to be combined with explicit overrides
+        # ln1_post/ln2_post redirect attn_out/mlp_out to match HookedTransformer's
+        # placement (hook fires after the post-norm, not before).
         auto_overrides = {}
         if submodules is not None:
-            # If ln1_post exists, hook_attn_out should point to it instead of attn.hook_out
-            # This matches HookedTransformer behavior where ln1_post is applied before hook_attn_out
             if "ln1_post" in submodules:
                 auto_overrides["hook_attn_out"] = "ln1_post.hook_out"
-            # If ln2_post exists, hook_mlp_out should point to it instead of mlp.hook_out
             if "ln2_post" in submodules:
                 auto_overrides["hook_mlp_out"] = "ln2_post.hook_out"
-
-        # Merge automatic and explicit overrides (explicit takes precedence)
         merged_overrides = {**auto_overrides, **(hook_alias_overrides or {})}
+
+        # Guard against the C15 bug class: sequential transformer block (attn +
+        # mlp) with no ln2 would silently point hook_resid_mid at the wrong
+        # tensor. Use ParallelBlockBridge for parallel-residual architectures.
+        # Skip the check on generic-container / attn-only uses (no mlp).
+        has_attn_like = submodules is not None and any(
+            k in submodules for k in _VARIANT_SUBMODULE_SET
+        )
+        has_mlp = submodules is not None and "mlp" in submodules
+        has_ln2 = submodules is not None and "ln2" in submodules
+        if has_attn_like and has_mlp and not has_ln2 and type(self) is BlockBridge:
+            raise ValueError(
+                f"BlockBridge at '{name}': 'ln2' submodule not declared. "
+                f"Either declare ln2, or use ParallelBlockBridge for a "
+                f"parallel-residual architecture."
+            )
 
         # Call parent with merged overrides
         super().__init__(
@@ -76,6 +103,7 @@ class BlockBridge(GeneralizedComponent):
             submodules=submodules if submodules is not None else {},
             hook_alias_overrides=merged_overrides if merged_overrides else None,
         )
+
         self._original_block_forward: Optional[Callable[..., Any]] = None
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:
@@ -96,63 +124,75 @@ class BlockBridge(GeneralizedComponent):
                 f"Original component not set for {self.name}. Call set_original_component() first."
             )
 
-        # Check if we should stop before executing this block
-        # The _stop_at_layer_idx attribute is set by the bridge's forward method
-        if hasattr(self, "_stop_at_layer_idx") and self._stop_at_layer_idx is not None:
-            # Extract layer index from name
-            # Supports multiple naming patterns:
-            # - "blocks.0" (TransformerLens style)
-            # - "transformer.h.0" (HuggingFace GPT-2 style)
-            # - "model.layers.0" (HuggingFace LLaMA style)
-            if self.name is not None:
-                # Try multiple patterns to extract layer index
-                match = (
-                    re.search(r"blocks\.(\d+)", self.name)
-                    or re.search(r"\.h\.(\d+)", self.name)
-                    or re.search(r"\.layers\.(\d+)", self.name)
-                )
-            else:
-                match = None
-            if match:
-                layer_idx = int(match.group(1))
-                if layer_idx == self._stop_at_layer_idx:
-                    # Get the input tensor to return
-                    if len(args) > 0 and isinstance(args[0], torch.Tensor):
-                        input_tensor = args[0]
-                    elif "hidden_states" in kwargs and isinstance(
-                        kwargs["hidden_states"], torch.Tensor
-                    ):
-                        input_tensor = kwargs["hidden_states"]
-                    else:
-                        raise ValueError(f"Cannot find input tensor to stop at layer {layer_idx}")
-                    # Run hook_in on the input before stopping
-                    input_tensor = self.hook_in(input_tensor)
-                    raise StopAtLayerException(input_tensor)
-
-        if len(args) > 0 and isinstance(args[0], torch.Tensor):
-            hooked_input = self.hook_in(args[0])
-            args = (hooked_input,) + args[1:]
-        elif "hidden_states" in kwargs and isinstance(kwargs["hidden_states"], torch.Tensor):
-            kwargs["hidden_states"] = self.hook_in(kwargs["hidden_states"])
+        self._check_stop_at_layer(*args, **kwargs)
+        args, kwargs = self._hook_input_hidden_states(args, kwargs)
 
         # Filter kwargs to only include parameters accepted by the original component
         # This prevents errors when passing encoder-specific params to decoder-only models
         filtered_kwargs = self._filter_kwargs_for_forward(kwargs, len(args))
 
         output = self.original_component(*args, **filtered_kwargs)
+        return self._apply_output_hook(output)
+
+    def _apply_output_hook(self, output: Any, wrap_single_element: bool = True) -> Any:
+        """Hook the primary tensor in the output and return the result.
+
+        Args:
+            output: Raw output from the original component (tensor or tuple).
+            wrap_single_element: If True, single-element tuples stay as tuples after
+                hooking (default, required by most HF models). If False, single-element
+                tuples are unwrapped to a bare tensor (Bloom convention).
+        """
         if isinstance(output, tuple) and len(output) > 0:
             first = output[0]
             if isinstance(first, torch.Tensor):
                 first = self.hook_out(first)
-                # Always return tuple to maintain consistency with HF's expected format
-                # e.g. GPT2Model does hidden_states = outputs[0], it expects outputs to be a tuple
                 if len(output) == 1:
-                    return (first,)
+                    return (first,) if wrap_single_element else first
                 output = (first,) + output[1:]
             return output
         if isinstance(output, torch.Tensor):
             output = self.hook_out(output)
         return output
+
+    def _check_stop_at_layer(self, *args: Any, **kwargs: Any) -> None:
+        """Check if execution should stop before this block. Raises StopAtLayerException.
+
+        The _stop_at_layer_idx attribute is set by the bridge's forward method.
+        Supports TL/GPT-2/LLaMA naming patterns for layer index extraction.
+        """
+        if not (hasattr(self, "_stop_at_layer_idx") and self._stop_at_layer_idx is not None):
+            return
+        if self.name is not None:
+            match = (
+                re.search(r"blocks\.(\d+)", self.name)
+                or re.search(r"\.h\.(\d+)", self.name)
+                or re.search(r"\.layers\.(\d+)", self.name)
+            )
+        else:
+            match = None
+        if match:
+            layer_idx = int(match.group(1))
+            if layer_idx == self._stop_at_layer_idx:
+                if len(args) > 0 and isinstance(args[0], torch.Tensor):
+                    input_tensor = args[0]
+                elif "hidden_states" in kwargs and isinstance(
+                    kwargs["hidden_states"], torch.Tensor
+                ):
+                    input_tensor = kwargs["hidden_states"]
+                else:
+                    raise ValueError(f"Cannot find input tensor to stop at layer {layer_idx}")
+                input_tensor = self.hook_in(input_tensor)
+                raise StopAtLayerException(input_tensor)
+
+    def _hook_input_hidden_states(self, args: tuple, kwargs: dict) -> tuple[tuple, dict]:
+        """Apply hook_in to the hidden_states input, whether in args or kwargs."""
+        if len(args) > 0 and isinstance(args[0], torch.Tensor):
+            hooked_input = self.hook_in(args[0])
+            args = (hooked_input,) + args[1:]
+        elif "hidden_states" in kwargs and isinstance(kwargs["hidden_states"], torch.Tensor):
+            kwargs["hidden_states"] = self.hook_in(kwargs["hidden_states"])
+        return args, kwargs
 
     def _filter_kwargs_for_forward(
         self, kwargs: Dict[str, Any], num_positional_args: int = 0
@@ -188,8 +228,7 @@ class BlockBridge(GeneralizedComponent):
             if accepts_var_keyword:
                 return kwargs
 
-            # Determine which parameters are already satisfied by positional args
-            # (to avoid "multiple values for argument" errors)
+            # Skip params already provided positionally
             positional_param_names = set(param_list[:num_positional_args])
 
             # Filter kwargs: include only if in signature AND not already provided positionally
@@ -204,3 +243,63 @@ class BlockBridge(GeneralizedComponent):
             # If we can't inspect the signature, pass through all kwargs
             # (better to potentially fail than to silently drop important params)
             return kwargs
+
+
+class MLABlockBridge(BlockBridge):
+    """Block wrapping Multi-Head Latent Attention (DeepSeek V2/V3/R1).
+
+    MLA has no standalone q/k/v projections — Q flows through compressed
+    q_a_proj→q_a_layernorm→q_b_proj, and K/V share a joint kv_a_proj_with_mqa
+    entry point. There is no single HookPoint that represents "input that
+    becomes Q/K/V", so the block-level ``hook_q_input``/``hook_k_input``/
+    ``hook_v_input`` aliases do not apply. Type-level distinction means a reader
+    of the adapter sees ``MLABlockBridge`` and knows those hooks are absent.
+    """
+
+    def __init__(
+        self,
+        name: str,
+        config: Optional[Any] = None,
+        submodules: Optional[Dict[str, GeneralizedComponent]] = None,
+        hook_alias_overrides: Optional[Dict[str, str]] = None,
+    ):
+        super().__init__(
+            name,
+            config=config,
+            submodules=submodules,
+            hook_alias_overrides=hook_alias_overrides,
+        )
+        if self.hook_aliases is BlockBridge.hook_aliases:
+            self.hook_aliases = dict(self.hook_aliases)
+        for alias in ("hook_q_input", "hook_k_input", "hook_v_input"):
+            self.hook_aliases.pop(alias, None)
+
+
+class ParallelBlockBridge(BlockBridge):
+    """Block where attn and MLP both read the pre-attention residual.
+
+    For GPT-J, NeoX, Pythia, Phi, Cohere, CodeGen, and some Falcon variants,
+    output = resid_pre + attn_out + mlp_out — no distinct post-attention
+    residual exists. Matches legacy HookedTransformer which omits hook_resid_mid
+    when ``cfg.parallel_attn_mlp=True``. Type-level distinction means a reader
+    of the adapter sees ``ParallelBlockBridge`` and knows the hook is absent.
+    """
+
+    def __init__(
+        self,
+        name: str,
+        config: Optional[Any] = None,
+        submodules: Optional[Dict[str, GeneralizedComponent]] = None,
+        hook_alias_overrides: Optional[Dict[str, str]] = None,
+    ):
+        super().__init__(
+            name,
+            config=config,
+            submodules=submodules,
+            hook_alias_overrides=hook_alias_overrides,
+        )
+        # Ensure instance-level copy before mutating; base may have left the
+        # class-level dict shared when no overrides were passed.
+        if self.hook_aliases is BlockBridge.hook_aliases:
+            self.hook_aliases = dict(self.hook_aliases)
+        self.hook_aliases.pop("hook_resid_mid", None)

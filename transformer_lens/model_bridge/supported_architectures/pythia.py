@@ -16,12 +16,12 @@ from transformer_lens.conversion_utils.param_processing_conversion import (
 )
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
-    BlockBridge,
     EmbeddingBridge,
     JointQKVPositionEmbeddingsAttentionBridge,
     LinearBridge,
     MLPBridge,
     NormalizationBridge,
+    ParallelBlockBridge,
     RotaryEmbeddingBridge,
     UnembeddingBridge,
 )
@@ -38,8 +38,8 @@ class PythiaArchitectureAdapter(ArchitectureAdapter):
         """
         super().__init__(cfg)
         self.cfg.positional_embedding_type = "rotary"
-        # Pythia wasn't trained with BOS tokens, so match HuggingFace behavior
-        self.cfg.default_prepend_bos = False
+        self.cfg.parallel_attn_mlp = True  # GPT-NeoX: attn + MLP both read resid_pre
+        self.cfg.default_prepend_bos = False  # Pythia wasn't trained with BOS
 
         self.weight_processing_conversions = {
             "blocks.{i}.attn.q": ParamProcessingConversion(
@@ -130,7 +130,7 @@ class PythiaArchitectureAdapter(ArchitectureAdapter):
         self.component_mapping = {
             "embed": EmbeddingBridge(name="gpt_neox.embed_in"),
             "rotary_emb": RotaryEmbeddingBridge(name="gpt_neox.rotary_emb", config=self.cfg),
-            "blocks": BlockBridge(
+            "blocks": ParallelBlockBridge(
                 name="gpt_neox.layers",
                 submodules={
                     "ln1": NormalizationBridge(name="input_layernorm", config=self.cfg),

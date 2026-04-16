@@ -5,7 +5,7 @@ from transformer_lens.config import HookedTransformerConfig
 from transformer_lens.factories.activation_function_factory import (
     ActivationFunctionFactory,
 )
-from transformer_lens.utilities.activation_functions import SUPPORTED_ACTIVATIONS
+from transformer_lens.utilities.activation_functions import SUPPORTED_ACTIVATIONS, XIELU
 
 
 @pytest.mark.parametrize("act_function", SUPPORTED_ACTIVATIONS.keys())
@@ -18,3 +18,15 @@ def test_pick_activation_function_runs(act_function):
     dummy_data = torch.zeros((1, 4, 32))
     result = function(dummy_data)
     assert isinstance(result, torch.Tensor)
+
+
+def test_xielu_returns_trainable_instance():
+    """XIeLU should return a XIELU class instance (not the fixed function)
+    so that pretrained activation parameters can be loaded via load_state_dict."""
+    config = HookedTransformerConfig.unwrap(
+        {"n_layers": 1, "n_ctx": 32, "d_head": 16, "d_model": 64, "act_fn": "xielu", "d_mlp": 128}
+    )
+    fn = ActivationFunctionFactory.pick_activation_function(config)
+    assert isinstance(fn, XIELU), f"Expected XIELU instance, got {type(fn)}"
+    assert hasattr(fn, "alpha_p"), "XIELU should have trainable alpha_p"
+    assert hasattr(fn, "alpha_n"), "XIELU should have trainable alpha_n"

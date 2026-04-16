@@ -74,8 +74,6 @@ __all__ = [
     # Server utilities
     "serve",
     "LITWidget",
-    # Configuration
-    "HookedTransformerLITConfig",
     # Constants
     "INPUT_FIELDS",
     "OUTPUT_FIELDS",

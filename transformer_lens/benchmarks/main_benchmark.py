@@ -12,23 +12,15 @@ Phase 7: Multimodal Tests (only for multimodal models with pixel_values support)
 """
 
 import gc
-import os
 from typing import Dict, List, Optional, Union
 
 import torch
 from transformers import (
     AutoConfig,
     AutoModelForCausalLM,
-    AutoModelForSeq2SeqLM,
     PreTrainedModel,
     PreTrainedTokenizerBase,
 )
-
-
-def _hf_token() -> Optional[str]:
-    """Get HuggingFace token from environment for gated model access."""
-    return os.environ.get("HF_TOKEN", "") or None
-
 
 from transformer_lens import HookedTransformer
 from transformer_lens.benchmarks.activation_cache import (
@@ -54,6 +46,7 @@ from transformer_lens.benchmarks.generation import (
 from transformer_lens.benchmarks.hook_registration import (
     benchmark_critical_forward_hooks,
     benchmark_forward_hooks,
+    benchmark_gated_hooks_fire,
     benchmark_hook_functionality,
     benchmark_hook_registry,
 )
@@ -83,147 +76,44 @@ from transformer_lens.factories.architecture_adapter_factory import (
 )
 from transformer_lens.model_bridge import TransformerBridge
 
-# Architecture names that indicate encoder-decoder models
-ENCODER_DECODER_ARCHITECTURES = [
-    "T5ForConditionalGeneration",
-    "BartForConditionalGeneration",
-    "MBartForConditionalGeneration",
-    "MT5ForConditionalGeneration",
-    "PegasusForConditionalGeneration",
-    "BlenderbotForConditionalGeneration",
-    "MarianMTModel",
-]
-
-# Architecture names that indicate masked language models (not suited for text generation)
-MASKED_LM_ARCHITECTURES = [
-    "BertForMaskedLM",
-    "RobertaForMaskedLM",
-    "AlbertForMaskedLM",
-    "DistilBertForMaskedLM",
-    "ElectraForMaskedLM",
-]
-
-# Architectures where the Bridge intentionally uses different hook shapes than
-# HookedTransformer. These models skip Phase 2/3 (HT comparison) because the
-# Bridge preserves HuggingFace's native tensor layouts for interpretability
-# (e.g., 4D [batch, heads, seq, d_head] QK norm hooks) rather than matching
-# HT's flattened convention. Phase 1 (HF comparison) remains the gold standard.
-NO_HT_COMPARISON_ARCHITECTURES = [
-    "Gemma3ForCausalLM",
-    "Gemma3ForConditionalGeneration",
-    "LlavaForConditionalGeneration",
-    "LlavaNextForConditionalGeneration",
-    "LlavaOnevisionForConditionalGeneration",
-]
-
-
-def is_masked_lm_model(model_name: str, trust_remote_code: bool = False) -> bool:
-    """Check if a model is a masked language model (not suited for text generation).
-
-    Args:
-        model_name: The HuggingFace model name or path
-        trust_remote_code: Whether to trust remote code for custom architectures.
-
-    Returns:
-        True if the model is a masked LM (like BERT), False otherwise
-    """
-    try:
-        config = AutoConfig.from_pretrained(
-            model_name, trust_remote_code=trust_remote_code, token=_hf_token()
-        )
-        architectures = getattr(config, "architectures", []) or []
-        return any(arch in MASKED_LM_ARCHITECTURES for arch in architectures)
-    except Exception:
-        return False
-
-
-def is_encoder_decoder_model(model_name: str, trust_remote_code: bool = False) -> bool:
-    """Check if a model is an encoder-decoder architecture.
-
-    Args:
-        model_name: The HuggingFace model name or path
-        trust_remote_code: Whether to trust remote code for custom architectures.
-
-    Returns:
-        True if the model is encoder-decoder (like T5), False otherwise
-    """
-    try:
-        config = AutoConfig.from_pretrained(
-            model_name, trust_remote_code=trust_remote_code, token=_hf_token()
-        )
-        # Check config attribute first
-        if getattr(config, "is_encoder_decoder", False):
-            return True
-        # Fallback to architecture check
-        architectures = getattr(config, "architectures", []) or []
-        return any(arch in ENCODER_DECODER_ARCHITECTURES for arch in architectures)
-    except Exception:
-        return False
+# Architecture classification — single source of truth in utilities.architectures
+from transformer_lens.utilities.architectures import (
+    NO_HT_COMPARISON_ARCHITECTURES,
+    get_architectures_for_config,
+    is_audio_model,
+    is_encoder_decoder_model,
+    is_masked_lm_model,
+)
+from transformer_lens.utilities.hf_utils import get_hf_token as _hf_token
 
 
 def should_skip_ht_comparison(model_name: str, trust_remote_code: bool = False) -> bool:
-    """Check if a model's architecture should skip HookedTransformer comparison.
-
-    Some architectures (e.g., Gemma3) intentionally use different hook tensor
-    layouts in the Bridge than HookedTransformer. For these models, Phase 1
-    (Bridge vs HuggingFace) is the gold standard; Phase 2/3 HT comparisons
-    are skipped since shape differences are by design, not bugs.
-
-    Args:
-        model_name: The HuggingFace model name or path
-        trust_remote_code: Whether to trust remote code for custom architectures.
-
-    Returns:
-        True if the model should skip HT comparison, False otherwise
-    """
+    """Benchmark-specific: skip Phase 2/3 for architectures with different hook shapes."""
     try:
         config = AutoConfig.from_pretrained(
             model_name, trust_remote_code=trust_remote_code, token=_hf_token()
         )
-        architectures = getattr(config, "architectures", []) or []
+        architectures = get_architectures_for_config(config)
         return any(arch in NO_HT_COMPARISON_ARCHITECTURES for arch in architectures)
     except Exception:
         return False
 
 
-def _is_multimodal_model(model_name: str, trust_remote_code: bool = False) -> bool:
-    """Check if a model is a multimodal (vision-language) model."""
-    MULTIMODAL_ARCHITECTURES = [
-        "LlavaForConditionalGeneration",
-        "LlavaNextForConditionalGeneration",
-        "LlavaOnevisionForConditionalGeneration",
-        "Gemma3ForConditionalGeneration",
-    ]
+def get_auto_model_class(model_name: str, trust_remote_code: bool = False):
+    """Delegates to the bridge's architecture detection for consistency."""
+    from transformer_lens.model_bridge.sources.transformers import (
+        determine_architecture_from_hf_config,
+        get_hf_model_class_for_architecture,
+    )
+
     try:
         config = AutoConfig.from_pretrained(
-            model_name, token=_hf_token(), trust_remote_code=trust_remote_code
+            model_name, trust_remote_code=trust_remote_code, token=_hf_token()
         )
-        architectures = getattr(config, "architectures", []) or []
-        return any(arch in MULTIMODAL_ARCHITECTURES for arch in architectures)
+        architecture = determine_architecture_from_hf_config(config)
+        return get_hf_model_class_for_architecture(architecture)
     except Exception:
-        return False
-
-
-def get_auto_model_class(model_name: str, trust_remote_code: bool = False):
-    """Determine the correct AutoModel class for a given model.
-
-    Some models (like T5) are encoder-decoder and need AutoModelForSeq2SeqLM
-    instead of AutoModelForCausalLM. Multimodal models (LLaVA, Gemma3) need
-    AutoModel to load the full vision+language architecture.
-
-    Args:
-        model_name: The HuggingFace model name or path
-
-    Returns:
-        The appropriate AutoModel class
-    """
-    if is_encoder_decoder_model(model_name, trust_remote_code=trust_remote_code):
-        return AutoModelForSeq2SeqLM
-    if _is_multimodal_model(model_name, trust_remote_code=trust_remote_code):
-        from transformers import AutoModelForImageTextToText
-
-        return AutoModelForImageTextToText
-    return AutoModelForCausalLM
+        return AutoModelForCausalLM
 
 
 def _fixup_custom_model(hf_model) -> None:
@@ -520,6 +410,7 @@ def run_comparison_benchmarks(
             add_result(
                 benchmark_forward_hooks(bridge_model, test_text, reference_model=reference_model)
             )
+            add_result(benchmark_gated_hooks_fire(bridge_model, test_text))
             # Reset hooks to prevent handle leaks
             if hasattr(bridge_model, "reset_hooks"):
                 bridge_model.reset_hooks()
@@ -534,6 +425,7 @@ def run_comparison_benchmarks(
             add_result(benchmark_hook_functionality(bridge_model, test_text))
             add_result(benchmark_critical_forward_hooks(bridge_model, test_text))
             add_result(benchmark_forward_hooks(bridge_model, test_text))
+            add_result(benchmark_gated_hooks_fire(bridge_model, test_text))
             # Reset hooks to prevent handle leaks
             if hasattr(bridge_model, "reset_hooks"):
                 bridge_model.reset_hooks()
@@ -658,7 +550,6 @@ def run_benchmark_suite(
     test_weight_processing_individually: bool = False,
     phases: list[int] | None = None,
     trust_remote_code: bool = False,
-    conserve_memory: bool = False,
     scoring_model: PreTrainedModel | None = None,
     scoring_tokenizer: PreTrainedTokenizerBase | None = None,
 ) -> List[BenchmarkResult]:
@@ -691,11 +582,6 @@ def run_benchmark_suite(
             tests that check each processing flag individually (default: False)
         phases: Optional list of phase numbers to run (e.g., [1, 2, 3]). If None, runs all phases.
         trust_remote_code: Whether to trust remote code for custom architectures.
-        conserve_memory: When True, Phase 1 avoids loading a separate HF model
-            and instead uses bridge.original_model for component benchmarks and
-            forward pass comparison. This halves Phase 1 peak memory (1.0x vs 2.0x)
-            at the cost of losing the independent HF loading cross-check (~5%
-            weakening). Default is False (full dual-load for maximum test coverage).
         scoring_model: Optional pre-loaded GPT-2 scoring model for Phase 4. When
             provided with scoring_tokenizer, avoids reloading for each model in batch.
         scoring_tokenizer: Optional pre-loaded tokenizer for Phase 4 scoring model.
@@ -1024,24 +910,10 @@ def run_benchmark_suite(
                 if verbose:
                     print(f"⚠ Could not apply architecture patches: {patch_err}")
 
-    # ----------------------------------------------------------------
-    # Phase 1 memory strategy (controlled by conserve_memory flag):
-    #
-    # conserve_memory=False (default):
-    #   Load separate HF model, capture logits to CPU, load Bridge,
-    #   run component benchmark with both models (brief 2.0x), delete
-    #   HF immediately after, forward pass uses saved logits (1.0x).
-    #
-    # conserve_memory=True:
-    #   Skip separate HF model entirely.  Load Bridge only (1.0x
-    #   throughout).  Component benchmark uses bridge.original_model
-    #   as the HF reference.  Forward pass compares bridge output
-    #   against bridge.original_model logits.
-    # ----------------------------------------------------------------
     hf_saved_logits = None
     hf_saved_loss = None
 
-    if use_hf_reference and not conserve_memory and should_run_phase(1):
+    if use_hf_reference and should_run_phase(1):
         try:
             if verbose:
                 print("Loading HuggingFace reference model...")
@@ -1143,31 +1015,22 @@ def run_benchmark_suite(
             print(f"\nStack trace:\n{error_trace}")
         return results
 
+    # Detect audio model once for use across all phases
+    _is_audio = bridge_unprocessed is not None and getattr(
+        bridge_unprocessed.cfg, "is_audio_model", False
+    )
+    # Shared waveform for audio model benchmarks (consistent across HF capture and bridge forward)
+    _test_audio = torch.randn(1, 16000, device=device, dtype=dtype) if _is_audio else None
+
     # Run Phase 1 benchmarks
     if should_run_phase(1) and bridge_unprocessed:
         if verbose:
-            mode_label = " [conserve-memory]" if conserve_memory else ""
-            print(f"Running Phase 1 benchmarks{mode_label}...\n")
+            print("Running Phase 1 benchmarks...\n")
 
         # Component-level benchmarks
         if verbose:
             print("1. Component-Level Benchmarks")
-        if conserve_memory:
-            # conserve_memory mode: use bridge.original_model as the HF
-            # reference (no separate HF load, 1.0x peak throughout).
-            try:
-                component_result = benchmark_all_components(
-                    bridge_unprocessed, bridge_unprocessed.original_model
-                )
-                add_result(component_result)
-                if verbose:
-                    status = "✓" if component_result.passed else "✗"
-                    print(f"{status} {component_result.message}")
-                    print("  (reference: bridge.original_model)\n")
-            except Exception as e:
-                if verbose:
-                    print(f"✗ Component benchmark failed: {e}\n")
-        elif hf_model is not None:
+        if hf_model is not None:
             # Full mode: component benchmark with independent HF model (brief 2.0x)
             try:
                 component_result = benchmark_all_components(bridge_unprocessed, hf_model)
@@ -1185,38 +1048,52 @@ def run_benchmark_suite(
                 if verbose:
                     print(f"✗ Component benchmark failed: {e}\n")
 
-            # Capture HF reference logits using bridge.to_tokens() for
-            # consistent tokenization (BOS prepending, etc.).  Both models
-            # are still in memory so this is still within the 2.0x window.
+            # Capture HF reference outputs. Both models are still in memory (2.0x window).
             if verbose:
                 print("Capturing HF reference outputs to CPU...")
             try:
-                hf_tokens = bridge_unprocessed.to_tokens(test_text)
-                is_enc_dec = is_encoder_decoder_model(
-                    model_name, trust_remote_code=trust_remote_code
-                )
-                with torch.no_grad():
-                    if is_enc_dec:
-                        decoder_start_id = getattr(
-                            getattr(hf_model, "config", None),
-                            "decoder_start_token_id",
-                            0,
+                if _is_audio:
+                    # Audio models: use the shared waveform for HF vs bridge comparison
+                    with torch.no_grad():
+                        hf_out = hf_model(input_values=_test_audio)
+                        # Audio encoders output last_hidden_state, not logits
+                        if hasattr(hf_out, "logits") and hf_out.logits is not None:
+                            hf_saved_logits = hf_out.logits.detach().cpu().clone()
+                        else:
+                            hf_saved_logits = hf_out.last_hidden_state.detach().cpu().clone()
+                        # No loss computation for audio — CTC requires aligned labels
+                    if verbose:
+                        print(
+                            f"✓ Captured HF audio output {hf_saved_logits.shape}, "
+                            f"loss=N/A (CTC requires labels)\n"
                         )
-                        dec_ids = torch.tensor([[decoder_start_id]]).to(hf_tokens.device)
-                        hf_out = hf_model(hf_tokens, decoder_input_ids=dec_ids)
-                    else:
-                        hf_out = hf_model(hf_tokens)
-                    hf_saved_logits = hf_out.logits.detach().cpu().clone()
+                else:
+                    hf_tokens = bridge_unprocessed.to_tokens(test_text)
+                    is_enc_dec = is_encoder_decoder_model(
+                        model_name, trust_remote_code=trust_remote_code
+                    )
+                    with torch.no_grad():
+                        if is_enc_dec:
+                            decoder_start_id = getattr(
+                                getattr(hf_model, "config", None),
+                                "decoder_start_token_id",
+                                0,
+                            )
+                            dec_ids = torch.tensor([[decoder_start_id]]).to(hf_tokens.device)
+                            hf_out = hf_model(hf_tokens, decoder_input_ids=dec_ids)
+                        else:
+                            hf_out = hf_model(hf_tokens)
+                        hf_saved_logits = hf_out.logits.detach().cpu().clone()
 
-                    # Compute causal LM loss (shift logits and labels)
-                    if not is_enc_dec and hf_saved_logits.shape[1] > 1:
-                        shift_logits = hf_out.logits[..., :-1, :].contiguous()
-                        shift_labels = hf_tokens[..., 1:].contiguous()
-                        loss_fn = torch.nn.CrossEntropyLoss()
-                        hf_saved_loss = loss_fn(
-                            shift_logits.view(-1, shift_logits.size(-1)),
-                            shift_labels.view(-1),
-                        ).item()
+                        # Compute causal LM loss (shift logits and labels)
+                        if not is_enc_dec and hf_saved_logits.shape[1] > 1:
+                            shift_logits = hf_out.logits[..., :-1, :].contiguous()
+                            shift_labels = hf_tokens[..., 1:].contiguous()
+                            loss_fn = torch.nn.CrossEntropyLoss()
+                            hf_saved_loss = loss_fn(
+                                shift_logits.view(-1, shift_logits.size(-1)),
+                                shift_labels.view(-1),
+                            ).item()
 
                 if verbose:
                     loss_str = f"{hf_saved_loss:.4f}" if hf_saved_loss is not None else "N/A"
@@ -1242,33 +1119,18 @@ def run_benchmark_suite(
         # matmul non-determinism can exceed the float32 default of 1e-3
         p1_atol = 1e-3 if dtype == torch.float32 else 5e-3
 
-        if conserve_memory:
-            # conserve_memory mode: capture reference logits from
-            # bridge.original_model (same tokenization as bridge).
-            try:
-                tokens = bridge_unprocessed.to_tokens(test_text)
-                with torch.no_grad():
-                    hf_out = bridge_unprocessed.original_model(tokens)
-                    ref_logits = hf_out.logits.detach()
-                add_result(
-                    benchmark_forward_pass(
-                        bridge_unprocessed,
-                        test_text,
-                        reference_logits=ref_logits,
-                        atol=p1_atol,
-                    )
-                )
-                del ref_logits
-            except Exception as e:
-                if verbose:
-                    print(f"✗ Forward pass benchmark failed: {e}\n")
-        elif hf_saved_logits is not None:
+        # For audio models, reuse the waveform from HF reference capture
+        _p1_input: Union[str, torch.Tensor] = test_text
+        if _is_audio and _test_audio is not None:
+            _p1_input = _test_audio
+
+        if hf_saved_logits is not None:
             # Full mode: use pre-captured HF logits (bridge only, 1.0x)
             try:
                 add_result(
                     benchmark_forward_pass(
                         bridge_unprocessed,
-                        test_text,
+                        _p1_input,
                         reference_logits=hf_saved_logits.to(device),
                         atol=p1_atol,
                     )
@@ -1278,17 +1140,18 @@ def run_benchmark_suite(
                     print(f"✗ Forward pass benchmark failed: {e}\n")
         else:
             try:
-                add_result(benchmark_forward_pass(bridge_unprocessed, test_text, atol=p1_atol))
+                add_result(benchmark_forward_pass(bridge_unprocessed, _p1_input, atol=p1_atol))
             except Exception as e:
                 if verbose:
                     print(f"✗ Forward pass benchmark failed: {e}\n")
 
         # Capture Phase 1 reference for Phase 3 equivalence comparison.
+        # Skip for audio models (Phase 3 won't run — no HookedTransformer support).
         # When dtype==float32 (default) and the model natively uses reduced
         # precision, upcast for maximum accuracy.  When the user explicitly
         # requested a non-float32 dtype, run the reference pass in that dtype
         # so the entire pipeline honours the requested precision.
-        if bridge_unprocessed is not None:
+        if bridge_unprocessed is not None and not _is_audio:
             try:
                 original_dtype = bridge_unprocessed.cfg.dtype
                 needs_upcast = dtype == torch.float32 and original_dtype not in (
@@ -1357,11 +1220,13 @@ def run_benchmark_suite(
             print("Running Phase 2 benchmarks...\n")
 
         # Generation benchmarks (unprocessed only) - RUN FIRST
-        # Skip for encoder-decoder models (T5, etc.) which require different generation API
-        is_enc_dec = is_encoder_decoder_model(model_name)
+        # Skip for encoder-decoder and audio models (no text generation capability)
+        _skip_generation = is_encoder_decoder_model(model_name) or getattr(
+            bridge_unprocessed.cfg, "is_audio_model", False
+        )
         if verbose:
             print("1. Generation Benchmarks (unprocessed)")
-        if is_enc_dec:
+        if _skip_generation:
             if verbose:
                 print("⏭️ Skipped (encoder-decoder model - requires decoder_input_ids)\n")
             add_result(
@@ -1507,6 +1372,7 @@ def run_benchmark_suite(
         should_run_phase(4)
         and bridge_unprocessed is not None
         and not is_masked_lm_model(model_name, trust_remote_code=trust_remote_code)
+        and not is_audio_model(model_name, trust_remote_code=trust_remote_code)
     ):
         if verbose:
             print(f"\n{'='*80}")
@@ -1581,6 +1447,57 @@ def run_benchmark_suite(
                     message=f"Failed to run multimodal tests: {str(e)}",
                     details={"error": str(e)},
                     phase=7,
+                )
+            )
+
+    # ========================================================================
+    # Phase 8: Audio Tests (only for audio encoder models)
+    # Runs before Phase 3 so we can reuse bridge_unprocessed before cleanup.
+    # ========================================================================
+    if (
+        bridge_unprocessed is not None
+        and getattr(bridge_unprocessed.cfg, "is_audio_model", False)
+        and should_run_phase(8)
+    ):
+        current_phase[0] = 8
+        if verbose:
+            print("\n" + "=" * 80)
+            print("PHASE 8: AUDIO TESTS")
+            print("=" * 80)
+            print("Testing audio forward pass, caching, representation stability, and features.")
+            print("=" * 80 + "\n")
+
+        try:
+            from transformer_lens.benchmarks.audio import run_audio_benchmarks
+
+            test_audio = torch.randn(1, 16000, device=device, dtype=dtype)
+            audio_results = run_audio_benchmarks(
+                bridge_unprocessed,
+                test_audio=test_audio,
+                verbose=verbose,
+            )
+            for result in audio_results:
+                result.phase = 8
+                results.append(result)
+                if verbose:
+                    print(result)
+
+            if verbose:
+                print("\n" + "=" * 80)
+                print("PHASE 8 COMPLETE")
+                print("=" * 80)
+
+        except Exception as e:
+            if verbose:
+                print(f"\n⚠ Audio tests failed: {e}\n")
+            results.append(
+                BenchmarkResult(
+                    name="audio_suite",
+                    passed=False,
+                    severity=BenchmarkSeverity.ERROR,
+                    message=f"Failed to run audio tests: {str(e)}",
+                    details={"error": str(e)},
+                    phase=8,
                 )
             )
 
@@ -2028,13 +1945,6 @@ def main():
         action="store_true",
         help="Trust remote code for custom architectures (e.g., OpenELM)",
     )
-    parser.add_argument(
-        "--conserve-memory",
-        action="store_true",
-        help="Reduce Phase 1 peak memory from 2.0x to 1.0x by using "
-        "bridge.original_model instead of loading a separate HF model",
-    )
-
     args = parser.parse_args()
 
     results = run_benchmark_suite(
@@ -2045,7 +1955,6 @@ def main():
         enable_compatibility_mode=not args.no_compat,
         verbose=not args.quiet,
         trust_remote_code=args.trust_remote_code,
-        conserve_memory=args.conserve_memory,
     )
 
     if args.update_registry:

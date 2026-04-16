@@ -1,43 +1,55 @@
 """Utility function for getting model parameters in TransformerLens format."""
+import logging
 from typing import Dict
 
 import torch
 
+logger = logging.getLogger(__name__)
+
+
+def _get_n_kv_heads(cfg) -> int:
+    """Resolve the number of key/value heads, falling back to n_heads."""
+    if hasattr(cfg, "n_key_value_heads") and isinstance(cfg.n_key_value_heads, int):
+        return cfg.n_key_value_heads
+    return cfg.n_heads
+
+
+def _reshape_kv_weight(weight: torch.Tensor, cfg, device, dtype) -> torch.Tensor:
+    """Reshape a K or V weight matrix to (n_heads, d_model, d_head)."""
+    d_head = cfg.d_model // cfg.n_heads
+    if weight.shape == (cfg.d_model, cfg.d_model):
+        return weight.reshape(cfg.n_heads, cfg.d_model, d_head)
+    if weight.shape == (cfg.d_head, cfg.d_model) or weight.shape == (
+        cfg.d_model // cfg.n_heads,
+        cfg.d_model,
+    ):
+        return weight.transpose(0, 1).unsqueeze(0).expand(cfg.n_heads, -1, -1)
+    if weight.numel() == cfg.n_heads * cfg.d_model * cfg.d_head:
+        return weight.view(cfg.n_heads, cfg.d_model, cfg.d_head)
+    return torch.zeros(cfg.n_heads, cfg.d_model, cfg.d_head, device=device, dtype=dtype)
+
+
+def _get_or_create_bias(bias, n_heads: int, d_head: int, device, dtype) -> torch.Tensor:
+    """Reshape existing bias to (n_heads, d_head), or create zeros if None."""
+    if bias is not None:
+        return bias.reshape(n_heads, -1)
+    return torch.zeros(n_heads, d_head, device=device, dtype=dtype)
+
 
 def get_bridge_params(bridge) -> Dict[str, torch.Tensor]:
-    """Access to model parameters in the format expected by SVDInterpreter.
-
-    For missing weights, returns zero tensors of appropriate shape instead of raising exceptions.
-    This ensures compatibility across different model architectures.
-
-    Args:
-        bridge: TransformerBridge instance
-
-    Returns:
-        dict: Dictionary of parameter tensors with TransformerLens naming convention
-
-    Raises:
-        ValueError: If configuration is inconsistent (e.g., cfg.n_layers != len(blocks))
-    """
+    """Model parameters in SVDInterpreter format. Skips attn keys for non-attention layers."""
     params_dict = {}
 
     def _get_device_dtype():
-        device = bridge.cfg.device if hasattr(bridge.cfg, "device") else torch.device("cpu")
+        """Infer device/dtype from the first available model parameter."""
+        device = getattr(bridge.cfg, "device", None) or torch.device("cpu")
         dtype = torch.float32
         try:
-            device = bridge.embed.weight.device
-            dtype = bridge.embed.weight.dtype
-        except AttributeError:
-            try:
-                device = bridge.pos_embed.weight.device
-                dtype = bridge.pos_embed.weight.dtype
-            except AttributeError:
-                if len(bridge.blocks) > 0:
-                    try:
-                        device = bridge.blocks[0].attn.q.weight.device
-                        dtype = bridge.blocks[0].attn.q.weight.dtype
-                    except AttributeError:
-                        pass
+            first_param = next(bridge.parameters())
+            device = first_param.device
+            dtype = first_param.dtype
+        except (StopIteration, TypeError, AttributeError):
+            pass
         return (device, dtype)
 
     try:
@@ -60,145 +72,55 @@ def get_bridge_params(bridge) -> Dict[str, torch.Tensor]:
                 f"Configuration mismatch: cfg.n_layers={bridge.cfg.n_layers} but only {len(bridge.blocks)} blocks found. Layer {layer_idx} does not exist."
             )
         block = bridge.blocks[layer_idx]
+
+        # Skip non-attention layers entirely (no zero-fill — prevents SVDInterpreter garbage)
         try:
-            w_q = block.attn.q.weight
-            w_k = block.attn.k.weight
-            w_v = block.attn.v.weight
-            w_o = block.attn.o.weight
-            if w_q.shape == (bridge.cfg.d_model, bridge.cfg.d_model):
-                d_head = bridge.cfg.d_model // bridge.cfg.n_heads
-                w_q = w_q.reshape(bridge.cfg.n_heads, bridge.cfg.d_model, d_head)
-                w_o = w_o.reshape(bridge.cfg.n_heads, d_head, bridge.cfg.d_model)
-                if w_k.shape == (bridge.cfg.d_model, bridge.cfg.d_model):
-                    w_k = w_k.reshape(bridge.cfg.n_heads, bridge.cfg.d_model, d_head)
-                elif w_k.shape == (bridge.cfg.d_head, bridge.cfg.d_model) or w_k.shape == (
-                    bridge.cfg.d_model // bridge.cfg.n_heads,
-                    bridge.cfg.d_model,
-                ):
-                    w_k = w_k.transpose(0, 1).unsqueeze(0).expand(bridge.cfg.n_heads, -1, -1)
-                elif w_k.numel() == bridge.cfg.n_heads * bridge.cfg.d_model * bridge.cfg.d_head:
-                    w_k = w_k.view(bridge.cfg.n_heads, bridge.cfg.d_model, bridge.cfg.d_head)
+            has_attn = "attn" in block._modules
+        except (TypeError, AttributeError):
+            has_attn = hasattr(block, "attn")  # Mock fallback
+        if has_attn:
+            try:
+                w_q = block.attn.q.weight
+                w_k = block.attn.k.weight
+                w_v = block.attn.v.weight
+                w_o = block.attn.o.weight
+                if w_q.shape == (bridge.cfg.d_model, bridge.cfg.d_model):
+                    d_head = bridge.cfg.d_model // bridge.cfg.n_heads
+                    w_q = w_q.reshape(bridge.cfg.n_heads, bridge.cfg.d_model, d_head)
+                    w_o = w_o.reshape(bridge.cfg.n_heads, d_head, bridge.cfg.d_model)
+                    device, dtype = _get_device_dtype()
+                    w_k = _reshape_kv_weight(w_k, bridge.cfg, device, dtype)
+                    w_v = _reshape_kv_weight(w_v, bridge.cfg, device, dtype)
+                params_dict[f"blocks.{layer_idx}.attn.W_Q"] = w_q
+                params_dict[f"blocks.{layer_idx}.attn.W_K"] = w_k
+                params_dict[f"blocks.{layer_idx}.attn.W_V"] = w_v
+                params_dict[f"blocks.{layer_idx}.attn.W_O"] = w_o
+                device, dtype = _get_device_dtype()
+                n_kv_heads = _get_n_kv_heads(bridge.cfg)
+                params_dict[f"blocks.{layer_idx}.attn.b_Q"] = _get_or_create_bias(
+                    block.attn.q.bias, bridge.cfg.n_heads, bridge.cfg.d_head, device, dtype
+                )
+                params_dict[f"blocks.{layer_idx}.attn.b_K"] = _get_or_create_bias(
+                    block.attn.k.bias, n_kv_heads, bridge.cfg.d_head, device, dtype
+                )
+                params_dict[f"blocks.{layer_idx}.attn.b_V"] = _get_or_create_bias(
+                    block.attn.v.bias, n_kv_heads, bridge.cfg.d_head, device, dtype
+                )
+                if block.attn.o.bias is not None:
+                    params_dict[f"blocks.{layer_idx}.attn.b_O"] = block.attn.o.bias
                 else:
                     device, dtype = _get_device_dtype()
-                    w_k = torch.zeros(
-                        bridge.cfg.n_heads,
-                        bridge.cfg.d_model,
-                        bridge.cfg.d_head,
-                        device=device,
-                        dtype=dtype,
+                    params_dict[f"blocks.{layer_idx}.attn.b_O"] = torch.zeros(
+                        bridge.cfg.d_model, device=device, dtype=dtype
                     )
-                if w_v.shape == (bridge.cfg.d_model, bridge.cfg.d_model):
-                    w_v = w_v.reshape(bridge.cfg.n_heads, bridge.cfg.d_model, d_head)
-                elif w_v.shape == (bridge.cfg.d_head, bridge.cfg.d_model) or w_v.shape == (
-                    bridge.cfg.d_model // bridge.cfg.n_heads,
-                    bridge.cfg.d_model,
-                ):
-                    w_v = w_v.transpose(0, 1).unsqueeze(0).expand(bridge.cfg.n_heads, -1, -1)
-                elif w_v.numel() == bridge.cfg.n_heads * bridge.cfg.d_model * bridge.cfg.d_head:
-                    w_v = w_v.view(bridge.cfg.n_heads, bridge.cfg.d_model, bridge.cfg.d_head)
-                else:
-                    device, dtype = _get_device_dtype()
-                    w_v = torch.zeros(
-                        bridge.cfg.n_heads,
-                        bridge.cfg.d_model,
-                        bridge.cfg.d_head,
-                        device=device,
-                        dtype=dtype,
-                    )
-            params_dict[f"blocks.{layer_idx}.attn.W_Q"] = w_q
-            params_dict[f"blocks.{layer_idx}.attn.W_K"] = w_k
-            params_dict[f"blocks.{layer_idx}.attn.W_V"] = w_v
-            params_dict[f"blocks.{layer_idx}.attn.W_O"] = w_o
-            if block.attn.q.bias is not None:
-                params_dict[f"blocks.{layer_idx}.attn.b_Q"] = block.attn.q.bias.reshape(
-                    bridge.cfg.n_heads, -1
+            except AttributeError as e:
+                logger.debug(
+                    "Block %d has 'attn' in _modules but attention params could not "
+                    "be extracted (missing q/k/v/o?): %s — skipping attention weights "
+                    "for this layer",
+                    layer_idx,
+                    e,
                 )
-            else:
-                device, dtype = _get_device_dtype()
-                params_dict[f"blocks.{layer_idx}.attn.b_Q"] = torch.zeros(
-                    bridge.cfg.n_heads, bridge.cfg.d_head, device=device, dtype=dtype
-                )
-            if block.attn.k.bias is not None:
-                n_kv_heads = bridge.cfg.n_heads
-                if hasattr(bridge.cfg, "n_key_value_heads") and isinstance(
-                    bridge.cfg.n_key_value_heads, int
-                ):
-                    n_kv_heads = bridge.cfg.n_key_value_heads
-                params_dict[f"blocks.{layer_idx}.attn.b_K"] = block.attn.k.bias.reshape(
-                    n_kv_heads, -1
-                )
-            else:
-                device, dtype = _get_device_dtype()
-                n_kv_heads = bridge.cfg.n_heads
-                if hasattr(bridge.cfg, "n_key_value_heads") and isinstance(
-                    bridge.cfg.n_key_value_heads, int
-                ):
-                    n_kv_heads = bridge.cfg.n_key_value_heads
-                params_dict[f"blocks.{layer_idx}.attn.b_K"] = torch.zeros(
-                    n_kv_heads, bridge.cfg.d_head, device=device, dtype=dtype
-                )
-            if block.attn.v.bias is not None:
-                n_kv_heads = bridge.cfg.n_heads
-                if hasattr(bridge.cfg, "n_key_value_heads") and isinstance(
-                    bridge.cfg.n_key_value_heads, int
-                ):
-                    n_kv_heads = bridge.cfg.n_key_value_heads
-                params_dict[f"blocks.{layer_idx}.attn.b_V"] = block.attn.v.bias.reshape(
-                    n_kv_heads, -1
-                )
-            else:
-                device, dtype = _get_device_dtype()
-                n_kv_heads = bridge.cfg.n_heads
-                if hasattr(bridge.cfg, "n_key_value_heads") and isinstance(
-                    bridge.cfg.n_key_value_heads, int
-                ):
-                    n_kv_heads = bridge.cfg.n_key_value_heads
-                params_dict[f"blocks.{layer_idx}.attn.b_V"] = torch.zeros(
-                    n_kv_heads, bridge.cfg.d_head, device=device, dtype=dtype
-                )
-            if block.attn.o.bias is not None:
-                params_dict[f"blocks.{layer_idx}.attn.b_O"] = block.attn.o.bias
-            else:
-                device, dtype = _get_device_dtype()
-                params_dict[f"blocks.{layer_idx}.attn.b_O"] = torch.zeros(
-                    bridge.cfg.d_model, device=device, dtype=dtype
-                )
-        except AttributeError:
-            device, dtype = _get_device_dtype()
-            expected_qkv_shape = (bridge.cfg.n_heads, bridge.cfg.d_model, bridge.cfg.d_head)
-            expected_o_shape = (bridge.cfg.n_heads, bridge.cfg.d_head, bridge.cfg.d_model)
-            expected_q_bias_shape = (bridge.cfg.n_heads, bridge.cfg.d_head)
-            expected_o_bias_shape = (bridge.cfg.d_model,)
-            n_kv_heads = bridge.cfg.n_heads
-            if hasattr(bridge.cfg, "n_key_value_heads") and isinstance(
-                bridge.cfg.n_key_value_heads, int
-            ):
-                n_kv_heads = bridge.cfg.n_key_value_heads
-            expected_kv_bias_shape = (n_kv_heads, bridge.cfg.d_head)
-            params_dict[f"blocks.{layer_idx}.attn.W_Q"] = torch.zeros(
-                *expected_qkv_shape, device=device, dtype=dtype
-            )
-            params_dict[f"blocks.{layer_idx}.attn.W_K"] = torch.zeros(
-                *expected_qkv_shape, device=device, dtype=dtype
-            )
-            params_dict[f"blocks.{layer_idx}.attn.W_V"] = torch.zeros(
-                *expected_qkv_shape, device=device, dtype=dtype
-            )
-            params_dict[f"blocks.{layer_idx}.attn.W_O"] = torch.zeros(
-                *expected_o_shape, device=device, dtype=dtype
-            )
-            params_dict[f"blocks.{layer_idx}.attn.b_Q"] = torch.zeros(
-                *expected_q_bias_shape, device=device, dtype=dtype
-            )
-            params_dict[f"blocks.{layer_idx}.attn.b_K"] = torch.zeros(
-                *expected_kv_bias_shape, device=device, dtype=dtype
-            )
-            params_dict[f"blocks.{layer_idx}.attn.b_V"] = torch.zeros(
-                *expected_kv_bias_shape, device=device, dtype=dtype
-            )
-            params_dict[f"blocks.{layer_idx}.attn.b_O"] = torch.zeros(
-                *expected_o_bias_shape, device=device, dtype=dtype
-            )
         try:
             mlp_in = getattr(block.mlp, "in", None) or getattr(block.mlp, "input", None)
             if mlp_in is None:
