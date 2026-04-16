@@ -46,6 +46,7 @@ HF_SUPPORTED_ARCHITECTURES: set[str] = {
     "BertForMaskedLM",
     "BloomForCausalLM",
     "CodeGenForCausalLM",
+    "CohereForCausalLM",
     "DeepseekV3ForCausalLM",
     "FalconForCausalLM",
     "GemmaForCausalLM",
@@ -56,6 +57,7 @@ HF_SUPPORTED_ARCHITECTURES: set[str] = {
     "GraniteMoeForCausalLM",
     "GraniteMoeHybridForCausalLM",
     "GPT2LMHeadModel",
+    "GPTBigCodeForCausalLM",
     "GptOssForCausalLM",
     "GPTJForCausalLM",
     "GPTNeoForCausalLM",
@@ -63,12 +65,14 @@ HF_SUPPORTED_ARCHITECTURES: set[str] = {
     "GPTNeoXForCausalLM",
     "HubertForCTC",
     "HubertModel",
+    "InternLM2ForCausalLM",
     "LlamaForCausalLM",
     "LlavaForConditionalGeneration",
     "LlavaNextForConditionalGeneration",
     "LlavaOnevisionForConditionalGeneration",
     "MambaForCausalLM",
     "Mamba2ForCausalLM",
+    "MPTForCausalLM",
     "MistralForCausalLM",
     "MixtralForCausalLM",
     "Olmo2ForCausalLM",
@@ -85,6 +89,7 @@ HF_SUPPORTED_ARCHITECTURES: set[str] = {
     "Qwen3_5ForCausalLM",
     "StableLmForCausalLM",
     "T5ForConditionalGeneration",
+    "XGLMForCausalLM",
 }
 
 __all__ = [
