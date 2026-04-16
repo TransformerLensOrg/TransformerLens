@@ -12,8 +12,7 @@ TransformerBridge wraps a Hugging Face model behind a consistent TransformerLens
 Construct a bridge from a HF model id:
 
 ```python
-from transformer_lens.model_bridge.bridge import TransformerBridge
-from transformer_lens.model_bridge.sources import transformers as bridge_sources  # registers boot
+from transformer_lens.model_bridge import TransformerBridge
 
 bridge = TransformerBridge.boot_transformers("gpt2", device="cpu")
 ```

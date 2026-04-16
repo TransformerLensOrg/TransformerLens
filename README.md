@@ -41,19 +41,21 @@ pip install 'transformer_lens~=2.0'
 ### Use
 
 ```python
-import transformer_lens
+from transformer_lens.model_bridge import TransformerBridge
 
 # Load a model (eg GPT-2 Small)
-model = transformer_lens.HookedTransformer.from_pretrained("gpt2-small")
+bridge = TransformerBridge.boot_transformers("gpt2", device="cpu")
 
 # Run the model and get logits and activations
-logits, activations = model.run_with_cache("Hello World")
+logits, activations = bridge.run_with_cache("Hello World")
 ```
+
+`TransformerBridge` is the recommended 3.0 path and supports 50+ architectures. The legacy `HookedTransformer.from_pretrained` API is still available through a compatibility layer but is deprecated - see the [Migrating to TransformerLens 3](https://TransformerLensOrg.github.io/TransformerLens/content/migrating_to_v3.html) guide for conversion recipes.
 
 ## Key Tutorials
 
 * [Introduction to the Library and Mech
-  Interp](https://arena-chapter1-transformer-interp.streamlit.app/[1.2]_Intro_to_Mech_Interp)
+  Interp](https://learn.arena.education/chapter1_transformer_interp/02_intro_mech_interp/)
 * [Demo of Main TransformerLens Features](https://neelnanda.io/transformer-lens-demo)
 
 ## Gallery
@@ -108,20 +110,20 @@ you would like to help, please try working on one! The standard answer to "why h
 yet" is just that there aren't enough people! Key resources:
 
 * [A Guide to Getting Started in Mechanistic Interpretability](https://neelnanda.io/getting-started)
-* [ARENA Mechanistic Interpretability Tutorials](https://arena3-chapter1-transformer-interp.streamlit.app/) from
+* [ARENA Mechanistic Interpretability Tutorials](https://learn.arena.education/chapter1_transformer_interp/) from
   Callum McDougall. A comprehensive practical introduction to mech interp, written in
   TransformerLens - full of snippets to copy and they come with exercises and solutions! Notable
   tutorials:
   * [Coding GPT-2 from
-    scratch](https://arena3-chapter1-transformer-interp.streamlit.app/[1.1]_Transformer_from_Scratch), with
+    scratch](https://learn.arena.education/chapter1_transformer_interp/01_transformers/), with
     accompanying video tutorial from me ([1](https://neelnanda.io/transformer-tutorial)
     [2](https://neelnanda.io/transformer-tutorial-2)) - a good introduction to transformers
   * [Introduction to Mech Interp and
-    TransformerLens](https://arena3-chapter1-transformer-interp.streamlit.app/[1.2]_Intro_to_Mech_Interp): An
+    TransformerLens](https://learn.arena.education/chapter1_transformer_interp/02_intro_mech_interp/): An
     introduction to TransformerLens and mech interp via studying induction heads. Covers the
     foundational concepts of the library
   * [Indirect Object
-    Identification](https://arena3-chapter1-transformer-interp.streamlit.app/[1.3]_Indirect_Object_Identification):
+    Identification](https://learn.arena.education/chapter1_transformer_interp/21_ioi/):
     a replication of interpretability in the wild, that covers standard techniques in mech interp
     such as [direct logit
     attribution](https://dynalist.io/d/n2ZWtnoYHrU1s4vnFSAQ519J#z=disz2gTx-jooAcR0a5r8e7LZ),
