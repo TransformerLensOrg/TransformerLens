@@ -278,9 +278,7 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
         use_split_qkv = bool(getattr(self.config, "use_split_qkv_input", False))
         use_attn_in = bool(getattr(self.config, "use_attn_in", False))
         has_head_count = (
-            self.config is not None
-            and hasattr(self.config, "n_heads")
-            and self.config.n_heads
+            self.config is not None and hasattr(self.config, "n_heads") and self.config.n_heads
         )
         split_active = (use_split_qkv or use_attn_in) and has_head_count
 

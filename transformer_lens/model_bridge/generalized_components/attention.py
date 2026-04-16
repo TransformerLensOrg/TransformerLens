@@ -551,9 +551,7 @@ class AttentionBridge(GeneralizedComponent):
         )
         out = torch.einsum("bshd,hde->bshe", input_4d, w3d)
         if bias is not None:
-            b2d = einops.rearrange(
-                bias, "(n_heads d_head) -> n_heads d_head", n_heads=n_heads
-            )
+            b2d = einops.rearrange(bias, "(n_heads d_head) -> n_heads d_head", n_heads=n_heads)
             assert isinstance(b2d, torch.Tensor)
             out = out + b2d
         # Flatten to 3D for hook_out (matches default-path shape); the
