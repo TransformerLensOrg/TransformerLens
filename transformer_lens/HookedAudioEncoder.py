@@ -30,7 +30,7 @@ T = TypeVar("T", bound="HookedAudioEncoder")
 
 class HookedAudioEncoder(HookedRootModule):
     """
-    This class implements a BERT-style encoder using the components in ./components.py, with HookPoints on every interesting activation. It inherits from HookedRootModule.
+    This class implements a HuBERT-style encoder using the components in ./components.py, with HookPoints on every interesting activation. It inherits from HookedRootModule.
 
     Limitations:
     - The model does not include dropouts, which may lead to inconsistent results from training or fine-tuning.
@@ -58,7 +58,7 @@ class HookedAudioEncoder(HookedRootModule):
             )
         self.cfg = cfg
 
-        assert self.cfg.n_devices == 1, "Multiple devices not supported for HookedEncoder"
+        assert self.cfg.n_devices == 1, "Multiple devices not supported for HookedAudioEncoder"
 
         self.blocks = nn.ModuleList([BertBlock(self.cfg) for _ in range(self.cfg.n_layers)])
 
