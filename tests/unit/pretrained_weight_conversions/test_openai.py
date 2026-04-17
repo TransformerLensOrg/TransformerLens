@@ -1,6 +1,6 @@
 import torch
 
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.pretrained.weight_conversions.openai import (
     convert_gpt_oss_weights,
 )

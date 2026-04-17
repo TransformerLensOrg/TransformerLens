@@ -5,14 +5,13 @@ Contains a BERT style model specifically for Next Sentence Prediction. This is s
 to e.g. GPT style transformers.
 """
 
-from typing import Dict, List, Optional, Tuple, Union, overload
+from typing import Any, Dict, List, Optional, Tuple, Union, overload
 
 import torch
 from jaxtyping import Float, Int
 from typing_extensions import Literal
 
 from transformer_lens.ActivationCache import ActivationCache
-from transformer_lens.HookedEncoder import HookedEncoder
 
 
 class BertNextSentencePrediction:
@@ -31,7 +30,7 @@ class BertNextSentencePrediction:
         or inputs without proper sentence separation will raise errors.
     """
 
-    def __init__(self, model: HookedEncoder):
+    def __init__(self, model: Any):
         self.model = model
 
     def __call__(
