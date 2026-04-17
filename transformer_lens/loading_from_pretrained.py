@@ -1495,6 +1495,31 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "final_rms": True,
             "use_normalization_before_and_after": True,
         }
+
+    elif architecture == "ViTForImageClassification":
+        cfg_dict = {
+            # core transformer sizes
+            "d_model": hf_config.hidden_size,
+            "d_head": hf_config.hidden_size // hf_config.num_attention_heads,
+            "n_heads": hf_config.num_attention_heads,
+            "d_mlp": hf_config.intermediate_size,
+            "n_layers": hf_config.num_hidden_layers,
+    
+            # ViT sequence length = num_patches + CLS
+            "image_size": hf_config.image_size,
+            "patch_size": hf_config.patch_size,
+            "num_channels": hf_config.num_channels,
+            "n_ctx": (hf_config.image_size // hf_config.patch_size) ** 2 + 1,
+    
+            # normalization / activation
+            "eps": hf_config.layer_norm_eps,
+            "act_fn": hf_config.hidden_act,
+            "attention_dir": "bidirectional",
+    
+            # classification head
+            "num_labels": 1000
+            "d_vocab": -1,
+        }
     elif official_model_name.startswith("allenai/OLMo-1B") and official_model_name.endswith("hf"):
         cfg_dict = {
             "d_model": 2048,
