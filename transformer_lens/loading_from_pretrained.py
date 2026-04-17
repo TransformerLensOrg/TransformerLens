@@ -2056,6 +2056,13 @@ def get_pretrained_state_dict(
                     token=huggingface_token if len(huggingface_token) > 0 else None,
                     **kwargs,
                 )
+             elif cfg.original_architecture == "ViTForImageClassification":
+                hf_model = ViTForImageClassification.from_pretrained(
+                    official_model_name,
+                    dtype=dtype,
+                    token=huggingface_token if len(huggingface_token) > 0 else None,
+                    **kwargs,
+                )
             elif "bert" in official_model_name:
                 hf_model = BertForPreTraining.from_pretrained(
                     official_model_name,
