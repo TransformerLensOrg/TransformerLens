@@ -79,6 +79,7 @@ class HookedVisualEncoder(HookedRootModule):
         
 
         self.blocks = nn.ModuleList([BertBlock(self.cfg) for _ in range(self.cfg.n_layers)])
+        self.classifier = ClassifierHead(self.cfg)
 
         if move_to_device:
             if self.cfg.device is None:
@@ -291,39 +292,13 @@ class HookedVisualEncoder(HookedRootModule):
         return model
 
     @property
-    def W_U(self) -> Float[torch.Tensor, "d_model d_vocab"]:
-        """
-        Convenience to get the unembedding matrix (ie the linear map from the final residual stream to the output logits)
-        """
-        return self.unembed.W_U
-
+    def W_C(self) -> Float[torch.Tensor, "d_model num_labels"]:
+        return self.classifier.W
+    
+    
     @property
-    def b_U(self) -> Float[torch.Tensor, "d_vocab"]:
-        """
-        Convenience to get the unembedding bias
-        """
-        return self.unembed.b_U
-
-    @property
-    def W_E(self) -> Float[torch.Tensor, "d_vocab d_model"]:
-        """
-        Convenience to get the embedding matrix
-        """
-        return self.embed.embed.W_E
-
-    @property
-    def W_pos(self) -> Float[torch.Tensor, "n_ctx d_model"]:
-        """
-        Convenience function to get the positional embedding. Only works on models with absolute positional embeddings!
-        """
-        return self.embed.pos_embed.W_pos
-
-    @property
-    def W_E_pos(self) -> Float[torch.Tensor, "d_vocab+n_ctx d_model"]:
-        """
-        Concatenated W_E and W_pos. Used as a full (overcomplete) basis of the input space, useful for full QK and full OV circuits.
-        """
-        return torch.cat([self.W_E, self.W_pos], dim=0)
+    def b_C(self) -> Float[torch.Tensor, "num_labels"]:
+        return self.classifier.b
 
     @property
     def W_K(self) -> Float[torch.Tensor, "n_layers n_heads d_model d_head"]:
