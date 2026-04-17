@@ -1,5 +1,5 @@
-transformer\_lens.pretrained.weight\_conversions.mistral
-========================================================
+transformer\_lens.pretrained.weight\_conversions.mistral module
+===============================================================
 
 .. automodule:: transformer_lens.pretrained.weight_conversions.mistral
    :members:

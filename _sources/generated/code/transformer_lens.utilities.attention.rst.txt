@@ -1,5 +1,5 @@
-transformer\_lens.utilities.attention
-=====================================
+transformer\_lens.utilities.attention module
+============================================
 
 .. automodule:: transformer_lens.utilities.attention
    :members:

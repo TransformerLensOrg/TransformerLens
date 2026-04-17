@@ -1,0 +1,20 @@
+transformer\_lens.factories package
+===================================
+
+Submodules
+----------
+
+.. toctree::
+   :maxdepth: 4
+
+   transformer_lens.factories.activation_function_factory
+   transformer_lens.factories.architecture_adapter_factory
+   transformer_lens.factories.mlp_factory
+
+Module contents
+---------------
+
+.. automodule:: transformer_lens.factories
+   :members:
+   :undoc-members:
+   :show-inheritance:

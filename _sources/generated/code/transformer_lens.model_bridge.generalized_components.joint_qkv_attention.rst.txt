@@ -1,0 +1,7 @@
+transformer\_lens.model\_bridge.generalized\_components.joint\_qkv\_attention module
+====================================================================================
+
+.. automodule:: transformer_lens.model_bridge.generalized_components.joint_qkv_attention
+   :members:
+   :undoc-members:
+   :show-inheritance:

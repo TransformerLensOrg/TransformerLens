@@ -1,13 +1,40 @@
-transformer\_lens.utilities
-===========================
+transformer\_lens.utilities package
+===================================
 
 Submodules
 ----------
 
 .. toctree::
-   :maxdepth: 1
+   :maxdepth: 4
 
    transformer_lens.utilities.activation_functions
    transformer_lens.utilities.addmm
+   transformer_lens.utilities.aliases
+   transformer_lens.utilities.architectures
    transformer_lens.utilities.attention
+   transformer_lens.utilities.attribute_utils
+   transformer_lens.utilities.bridge_components
+   transformer_lens.utilities.cache
+   transformer_lens.utilities.components_utils
+   transformer_lens.utilities.defaults_utils
    transformer_lens.utilities.devices
+   transformer_lens.utilities.exploratory_utils
+   transformer_lens.utilities.gpu_utils
+   transformer_lens.utilities.hf_utils
+   transformer_lens.utilities.initialization_utils
+   transformer_lens.utilities.library_utils
+   transformer_lens.utilities.lm_utils
+   transformer_lens.utilities.logits_utils
+   transformer_lens.utilities.matrix
+   transformer_lens.utilities.multi_gpu
+   transformer_lens.utilities.slice
+   transformer_lens.utilities.tensors
+   transformer_lens.utilities.tokenize_utils
+
+Module contents
+---------------
+
+.. automodule:: transformer_lens.utilities
+   :members:
+   :undoc-members:
+   :show-inheritance:

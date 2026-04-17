@@ -1,5 +1,5 @@
-transformer\_lens.components.grouped\_query\_attention
-======================================================
+transformer\_lens.components.grouped\_query\_attention module
+=============================================================
 
 .. automodule:: transformer_lens.components.grouped_query_attention
    :members:

@@ -1,5 +1,5 @@
-transformer\_lens.hook\_points
-==============================
+transformer\_lens.hook\_points module
+=====================================
 
 .. automodule:: transformer_lens.hook_points
    :members:

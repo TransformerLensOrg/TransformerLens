@@ -1,0 +1,20 @@
+transformer\_lens.config package
+================================
+
+Submodules
+----------
+
+.. toctree::
+   :maxdepth: 4
+
+   transformer_lens.config.TransformerBridgeConfig
+   transformer_lens.config.TransformerLensConfig
+
+Module contents
+---------------
+
+.. automodule:: transformer_lens.config
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :exclude-members: HookedTransformerConfig, TransformerBridgeConfig, TransformerLensConfig

@@ -1,0 +1,7 @@
+transformer\_lens.tools.model\_registry.registry\_io module
+===========================================================
+
+.. automodule:: transformer_lens.tools.model_registry.registry_io
+   :members:
+   :undoc-members:
+   :show-inheritance:

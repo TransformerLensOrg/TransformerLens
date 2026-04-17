@@ -1,0 +1,7 @@
+transformer\_lens.tools.model\_registry.verify\_models module
+=============================================================
+
+.. automodule:: transformer_lens.tools.model_registry.verify_models
+   :members:
+   :undoc-members:
+   :show-inheritance:

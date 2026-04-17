@@ -1,0 +1,7 @@
+transformer\_lens.conversion\_utils.conversion\_steps.repeat\_tensor\_conversion module
+=======================================================================================
+
+.. automodule:: transformer_lens.conversion_utils.conversion_steps.repeat_tensor_conversion
+   :members:
+   :undoc-members:
+   :show-inheritance:

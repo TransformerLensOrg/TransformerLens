@@ -1,0 +1,19 @@
+transformer\_lens.conversion\_utils.helpers package
+===================================================
+
+Submodules
+----------
+
+.. toctree::
+   :maxdepth: 4
+
+   transformer_lens.conversion_utils.helpers.find_property
+   transformer_lens.conversion_utils.helpers.merge_quantiziation_fields
+
+Module contents
+---------------
+
+.. automodule:: transformer_lens.conversion_utils.helpers
+   :members:
+   :undoc-members:
+   :show-inheritance:

@@ -1,0 +1,7 @@
+transformer\_lens.model\_bridge.supported\_architectures.phi module
+===================================================================
+
+.. automodule:: transformer_lens.model_bridge.supported_architectures.phi
+   :members:
+   :undoc-members:
+   :show-inheritance:

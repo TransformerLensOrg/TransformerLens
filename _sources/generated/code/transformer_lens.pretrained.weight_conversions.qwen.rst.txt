@@ -1,5 +1,5 @@
-transformer\_lens.pretrained.weight\_conversions.qwen
-=====================================================
+transformer\_lens.pretrained.weight\_conversions.qwen module
+============================================================
 
 .. automodule:: transformer_lens.pretrained.weight_conversions.qwen
    :members:

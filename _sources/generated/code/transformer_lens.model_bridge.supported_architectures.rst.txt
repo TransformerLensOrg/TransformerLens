@@ -1,0 +1,70 @@
+transformer\_lens.model\_bridge.supported\_architectures package
+================================================================
+
+Submodules
+----------
+
+.. toctree::
+   :maxdepth: 4
+
+   transformer_lens.model_bridge.supported_architectures.apertus
+   transformer_lens.model_bridge.supported_architectures.bert
+   transformer_lens.model_bridge.supported_architectures.bloom
+   transformer_lens.model_bridge.supported_architectures.codegen
+   transformer_lens.model_bridge.supported_architectures.cohere
+   transformer_lens.model_bridge.supported_architectures.deepseek_v3
+   transformer_lens.model_bridge.supported_architectures.falcon
+   transformer_lens.model_bridge.supported_architectures.gemma1
+   transformer_lens.model_bridge.supported_architectures.gemma2
+   transformer_lens.model_bridge.supported_architectures.gemma3
+   transformer_lens.model_bridge.supported_architectures.gemma3_multimodal
+   transformer_lens.model_bridge.supported_architectures.gpt2
+   transformer_lens.model_bridge.supported_architectures.gpt2_lm_head_custom
+   transformer_lens.model_bridge.supported_architectures.gpt_bigcode
+   transformer_lens.model_bridge.supported_architectures.gpt_oss
+   transformer_lens.model_bridge.supported_architectures.gptj
+   transformer_lens.model_bridge.supported_architectures.granite
+   transformer_lens.model_bridge.supported_architectures.granite_moe
+   transformer_lens.model_bridge.supported_architectures.granite_moe_hybrid
+   transformer_lens.model_bridge.supported_architectures.hubert
+   transformer_lens.model_bridge.supported_architectures.internlm2
+   transformer_lens.model_bridge.supported_architectures.llama
+   transformer_lens.model_bridge.supported_architectures.llava
+   transformer_lens.model_bridge.supported_architectures.llava_next
+   transformer_lens.model_bridge.supported_architectures.llava_onevision
+   transformer_lens.model_bridge.supported_architectures.mamba
+   transformer_lens.model_bridge.supported_architectures.mamba2
+   transformer_lens.model_bridge.supported_architectures.mingpt
+   transformer_lens.model_bridge.supported_architectures.mistral
+   transformer_lens.model_bridge.supported_architectures.mixtral
+   transformer_lens.model_bridge.supported_architectures.mpt
+   transformer_lens.model_bridge.supported_architectures.nanogpt
+   transformer_lens.model_bridge.supported_architectures.neel_solu_old
+   transformer_lens.model_bridge.supported_architectures.neo
+   transformer_lens.model_bridge.supported_architectures.neox
+   transformer_lens.model_bridge.supported_architectures.olmo
+   transformer_lens.model_bridge.supported_architectures.olmo2
+   transformer_lens.model_bridge.supported_architectures.olmo3
+   transformer_lens.model_bridge.supported_architectures.olmoe
+   transformer_lens.model_bridge.supported_architectures.openelm
+   transformer_lens.model_bridge.supported_architectures.opt
+   transformer_lens.model_bridge.supported_architectures.phi
+   transformer_lens.model_bridge.supported_architectures.phi3
+   transformer_lens.model_bridge.supported_architectures.pythia
+   transformer_lens.model_bridge.supported_architectures.qwen
+   transformer_lens.model_bridge.supported_architectures.qwen2
+   transformer_lens.model_bridge.supported_architectures.qwen3
+   transformer_lens.model_bridge.supported_architectures.qwen3_5
+   transformer_lens.model_bridge.supported_architectures.qwen3_moe
+   transformer_lens.model_bridge.supported_architectures.qwen3_next
+   transformer_lens.model_bridge.supported_architectures.stablelm
+   transformer_lens.model_bridge.supported_architectures.t5
+   transformer_lens.model_bridge.supported_architectures.xglm
+
+Module contents
+---------------
+
+.. automodule:: transformer_lens.model_bridge.supported_architectures
+   :members:
+   :undoc-members:
+   :show-inheritance:

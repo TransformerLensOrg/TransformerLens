@@ -1,0 +1,7 @@
+transformer\_lens.model\_bridge.supported\_architectures.qwen3\_moe module
+==========================================================================
+
+.. automodule:: transformer_lens.model_bridge.supported_architectures.qwen3_moe
+   :members:
+   :undoc-members:
+   :show-inheritance:

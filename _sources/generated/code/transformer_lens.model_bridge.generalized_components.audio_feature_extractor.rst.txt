@@ -1,0 +1,7 @@
+transformer\_lens.model\_bridge.generalized\_components.audio\_feature\_extractor module
+========================================================================================
+
+.. automodule:: transformer_lens.model_bridge.generalized_components.audio_feature_extractor
+   :members:
+   :undoc-members:
+   :show-inheritance:

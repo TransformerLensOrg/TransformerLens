@@ -1,0 +1,7 @@
+transformer\_lens.pretrained.weight\_conversions.olmo module
+============================================================
+
+.. automodule:: transformer_lens.pretrained.weight_conversions.olmo
+   :members:
+   :undoc-members:
+   :show-inheritance:

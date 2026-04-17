@@ -1,0 +1,7 @@
+transformer\_lens.model\_bridge.supported\_architectures.t5 module
+==================================================================
+
+.. automodule:: transformer_lens.model_bridge.supported_architectures.t5
+   :members:
+   :undoc-members:
+   :show-inheritance:

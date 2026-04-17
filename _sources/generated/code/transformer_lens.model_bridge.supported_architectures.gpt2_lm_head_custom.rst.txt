@@ -1,0 +1,7 @@
+transformer\_lens.model\_bridge.supported\_architectures.gpt2\_lm\_head\_custom module
+======================================================================================
+
+.. automodule:: transformer_lens.model_bridge.supported_architectures.gpt2_lm_head_custom
+   :members:
+   :undoc-members:
+   :show-inheritance:

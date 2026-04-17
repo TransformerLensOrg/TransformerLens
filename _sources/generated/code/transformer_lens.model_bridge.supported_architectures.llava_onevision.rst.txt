@@ -1,0 +1,7 @@
+transformer\_lens.model\_bridge.supported\_architectures.llava\_onevision module
+================================================================================
+
+.. automodule:: transformer_lens.model_bridge.supported_architectures.llava_onevision
+   :members:
+   :undoc-members:
+   :show-inheritance:

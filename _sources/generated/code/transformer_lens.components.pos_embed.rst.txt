@@ -1,5 +1,5 @@
-transformer\_lens.components.pos\_embed
-=======================================
+transformer\_lens.components.pos\_embed module
+==============================================
 
 .. automodule:: transformer_lens.components.pos_embed
    :members:

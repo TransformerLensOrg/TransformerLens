@@ -1,0 +1,7 @@
+transformer\_lens.utilities.aliases module
+==========================================
+
+.. automodule:: transformer_lens.utilities.aliases
+   :members:
+   :undoc-members:
+   :show-inheritance:

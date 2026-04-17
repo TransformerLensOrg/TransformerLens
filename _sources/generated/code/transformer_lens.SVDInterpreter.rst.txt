@@ -1,7 +1,0 @@
-transformer\_lens.SVDInterpreter
-================================
-
-.. automodule:: transformer_lens.SVDInterpreter
-   :members:
-   :undoc-members:
-   :show-inheritance:

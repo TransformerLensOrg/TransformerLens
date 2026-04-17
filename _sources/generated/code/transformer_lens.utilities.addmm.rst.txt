@@ -1,5 +1,5 @@
-transformer\_lens.utilities.addmm
-=================================
+transformer\_lens.utilities.addmm module
+========================================
 
 .. automodule:: transformer_lens.utilities.addmm
    :members:

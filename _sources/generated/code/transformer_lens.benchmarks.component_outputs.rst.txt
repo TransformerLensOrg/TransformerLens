@@ -1,0 +1,7 @@
+transformer\_lens.benchmarks.component\_outputs module
+======================================================
+
+.. automodule:: transformer_lens.benchmarks.component_outputs
+   :members:
+   :undoc-members:
+   :show-inheritance:

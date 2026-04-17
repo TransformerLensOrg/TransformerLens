@@ -1,0 +1,7 @@
+transformer\_lens.model\_bridge.generalized\_components.mla\_attention module
+=============================================================================
+
+.. automodule:: transformer_lens.model_bridge.generalized_components.mla_attention
+   :members:
+   :undoc-members:
+   :show-inheritance:

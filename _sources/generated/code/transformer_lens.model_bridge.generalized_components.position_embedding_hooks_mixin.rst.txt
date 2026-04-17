@@ -1,0 +1,7 @@
+transformer\_lens.model\_bridge.generalized\_components.position\_embedding\_hooks\_mixin module
+================================================================================================
+
+.. automodule:: transformer_lens.model_bridge.generalized_components.position_embedding_hooks_mixin
+   :members:
+   :undoc-members:
+   :show-inheritance:

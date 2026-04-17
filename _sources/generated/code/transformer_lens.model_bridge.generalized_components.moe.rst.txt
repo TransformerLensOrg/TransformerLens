@@ -1,0 +1,7 @@
+transformer\_lens.model\_bridge.generalized\_components.moe module
+==================================================================
+
+.. automodule:: transformer_lens.model_bridge.generalized_components.moe
+   :members:
+   :undoc-members:
+   :show-inheritance:

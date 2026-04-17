@@ -1,7 +1,0 @@
-transformer\_lens.HookedTransformerConfig
-=========================================
-
-.. automodule:: transformer_lens.HookedTransformerConfig
-   :members:
-   :undoc-members:
-   :show-inheritance:

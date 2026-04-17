@@ -1,0 +1,7 @@
+transformer\_lens.model\_bridge.supported\_architectures.olmoe module
+=====================================================================
+
+.. automodule:: transformer_lens.model_bridge.supported_architectures.olmoe
+   :members:
+   :undoc-members:
+   :show-inheritance:

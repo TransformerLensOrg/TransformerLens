@@ -1,0 +1,29 @@
+transformer\_lens.conversion\_utils.conversion\_steps package
+=============================================================
+
+Submodules
+----------
+
+.. toctree::
+   :maxdepth: 4
+
+   transformer_lens.conversion_utils.conversion_steps.arithmetic_tensor_conversion
+   transformer_lens.conversion_utils.conversion_steps.attention_auto_conversion
+   transformer_lens.conversion_utils.conversion_steps.base_tensor_conversion
+   transformer_lens.conversion_utils.conversion_steps.callable_tensor_conversion
+   transformer_lens.conversion_utils.conversion_steps.chain_tensor_conversion
+   transformer_lens.conversion_utils.conversion_steps.rearrange_tensor_conversion
+   transformer_lens.conversion_utils.conversion_steps.repeat_tensor_conversion
+   transformer_lens.conversion_utils.conversion_steps.split_tensor_conversion
+   transformer_lens.conversion_utils.conversion_steps.tensor_conversion_set
+   transformer_lens.conversion_utils.conversion_steps.ternary_tensor_conversion
+   transformer_lens.conversion_utils.conversion_steps.transpose_tensor_conversion
+   transformer_lens.conversion_utils.conversion_steps.zeros_like_conversion
+
+Module contents
+---------------
+
+.. automodule:: transformer_lens.conversion_utils.conversion_steps
+   :members:
+   :undoc-members:
+   :show-inheritance:

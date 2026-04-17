@@ -1,0 +1,7 @@
+transformer\_lens.utilities.slice module
+========================================
+
+.. automodule:: transformer_lens.utilities.slice
+   :members:
+   :undoc-members:
+   :show-inheritance:

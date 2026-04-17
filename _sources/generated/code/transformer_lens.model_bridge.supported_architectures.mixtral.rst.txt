@@ -1,0 +1,7 @@
+transformer\_lens.model\_bridge.supported\_architectures.mixtral module
+=======================================================================
+
+.. automodule:: transformer_lens.model_bridge.supported_architectures.mixtral
+   :members:
+   :undoc-members:
+   :show-inheritance:

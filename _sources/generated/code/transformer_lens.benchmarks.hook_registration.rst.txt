@@ -1,0 +1,7 @@
+transformer\_lens.benchmarks.hook\_registration module
+======================================================
+
+.. automodule:: transformer_lens.benchmarks.hook_registration
+   :members:
+   :undoc-members:
+   :show-inheritance:

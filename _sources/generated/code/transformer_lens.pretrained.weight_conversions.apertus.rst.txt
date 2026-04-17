@@ -1,5 +1,5 @@
-transformer\_lens.pretrained.weight\_conversions.apertus
-========================================================
+transformer\_lens.pretrained.weight\_conversions.apertus module
+===============================================================
 
 .. automodule:: transformer_lens.pretrained.weight_conversions.apertus
    :members:

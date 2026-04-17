@@ -1,0 +1,7 @@
+transformer\_lens.model\_bridge.get\_params\_util module
+========================================================
+
+.. automodule:: transformer_lens.model_bridge.get_params_util
+   :members:
+   :undoc-members:
+   :show-inheritance:

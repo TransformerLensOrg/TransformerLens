@@ -1,5 +1,5 @@
-transformer\_lens.components.bert\_nsp\_head
-============================================
+transformer\_lens.components.bert\_nsp\_head module
+===================================================
 
 .. automodule:: transformer_lens.components.bert_nsp_head
    :members:

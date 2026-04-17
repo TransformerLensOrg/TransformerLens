@@ -1,0 +1,7 @@
+transformer\_lens.conversion\_utils.param\_processing\_conversion module
+========================================================================
+
+.. automodule:: transformer_lens.conversion_utils.param_processing_conversion
+   :members:
+   :undoc-members:
+   :show-inheritance:

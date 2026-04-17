@@ -1,5 +1,5 @@
-transformer\_lens.components.layer\_norm
-========================================
+transformer\_lens.components.layer\_norm module
+===============================================
 
 .. automodule:: transformer_lens.components.layer_norm
    :members:

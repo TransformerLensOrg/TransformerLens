@@ -1,0 +1,620 @@
+<!doctype html>
+<html class="no-js" lang="en" data-content_root="../../">
+  <head><meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width,initial-scale=1"/>
+    <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="index" title="Index" href="../../genindex.html" /><link rel="search" title="Search" href="../../search.html" /><link rel="next" title="transformer_lens.train module" href="transformer_lens.train.html" /><link rel="prev" title="transformer_lens.patching module" href="transformer_lens.patching.html" />
+
+    <link rel="shortcut icon" href="../../_static/favicon.ico"/><!-- Generated with Sphinx 7.4.7 and Furo 2023.09.10 -->
+        <title>transformer_lens.supported_models module - TransformerLens Documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../../_static/styles/furo.css?v=135e06be" />
+    <link rel="stylesheet" type="text/css" href="../../_static/styles/furo-extensions.css?v=36a5483c" />
+    <link rel="stylesheet" type="text/css" href="../../_static/custom.css?v=b3055e52" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #f8f8f8;
+  --color-code-foreground: black;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-half" viewBox="0 0 24 24">
+    <title>Auto light/dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-shadow">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M13 12h5" />
+      <path d="M13 15h4" />
+      <path d="M13 18h1" />
+      <path d="M13 9h4" />
+      <path d="M13 6h1" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc">
+<label class="overlay sidebar-overlay" for="__navigation">
+  <div class="visually-hidden">Hide navigation sidebar</div>
+</label>
+<label class="overlay toc-overlay" for="__toc">
+  <div class="visually-hidden">Hide table of contents sidebar</div>
+</label>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <div class="visually-hidden">Toggle site navigation sidebar</div>
+        <i class="icon"><svg><use href="#svg-menu"></use></svg></i>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="../../index.html"><div class="brand">TransformerLens Documentation</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle">
+          <div class="visually-hidden">Toggle Light / Dark / Auto color theme</div>
+          <svg class="theme-icon-when-auto"><use href="#svg-sun-half"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon" for="__toc">
+        <div class="visually-hidden">Toggle table of contents sidebar</div>
+        <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand" href="../../index.html">
+  
+  <div class="sidebar-logo-container">
+    <img class="sidebar-logo" src="../../_static/transformer_lens_logo.png" alt="Logo"/>
+  </div>
+  
+  <span class="sidebar-brand-text">TransformerLens Documentation</span>
+  
+</a><form class="sidebar-search-container" method="get" action="../../search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Introduction</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../content/getting_started.html">Getting Started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../content/getting_started_mech_interp.html">Getting Started in Mechanistic Interpretability</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../content/gallery.html">Gallery</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">News</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../content/news/release-3.0.html">TransformerLens 3.0</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../content/news/release-2.0.html">TransformerLens 2.0</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Documentation</span></p>
+<ul class="current">
+<li class="toctree-l1 current has-children"><a class="reference internal" href="modules.html">transformer_lens</a><input checked="" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><div class="visually-hidden">Toggle navigation of transformer_lens</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul class="current">
+<li class="toctree-l2 current has-children"><a class="reference internal" href="transformer_lens.html">transformer_lens package</a><input checked="" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><div class="visually-hidden">Toggle navigation of transformer_lens package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul class="current">
+<li class="toctree-l3 has-children"><a class="reference internal" href="transformer_lens.benchmarks.html">transformer_lens.benchmarks package</a><input class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><div class="visually-hidden">Toggle navigation of transformer_lens.benchmarks package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.activation_cache.html">transformer_lens.benchmarks.activation_cache module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.audio.html">transformer_lens.benchmarks.audio module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.backward_gradients.html">transformer_lens.benchmarks.backward_gradients module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.component_benchmark.html">transformer_lens.benchmarks.component_benchmark module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.component_outputs.html">transformer_lens.benchmarks.component_outputs module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.forward_pass.html">transformer_lens.benchmarks.forward_pass module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.generation.html">transformer_lens.benchmarks.generation module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.granular_weight_processing.html">transformer_lens.benchmarks.granular_weight_processing module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.hook_registration.html">transformer_lens.benchmarks.hook_registration module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.hook_structure.html">transformer_lens.benchmarks.hook_structure module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.main_benchmark.html">transformer_lens.benchmarks.main_benchmark module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.multimodal.html">transformer_lens.benchmarks.multimodal module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.text_quality.html">transformer_lens.benchmarks.text_quality module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.utils.html">transformer_lens.benchmarks.utils module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.weight_processing.html">transformer_lens.benchmarks.weight_processing module</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="transformer_lens.cache.html">transformer_lens.cache package</a><input class="toctree-checkbox" id="toctree-checkbox-4" name="toctree-checkbox-4" role="switch" type="checkbox"/><label for="toctree-checkbox-4"><div class="visually-hidden">Toggle navigation of transformer_lens.cache package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.cache.key_value_cache.html">transformer_lens.cache.key_value_cache module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.cache.key_value_cache_entry.html">transformer_lens.cache.key_value_cache_entry module</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="transformer_lens.components.html">transformer_lens.components package</a><input class="toctree-checkbox" id="toctree-checkbox-5" name="toctree-checkbox-5" role="switch" type="checkbox"/><label for="toctree-checkbox-5"><div class="visually-hidden">Toggle navigation of transformer_lens.components package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.abstract_attention.html">transformer_lens.components.abstract_attention module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.attention.html">transformer_lens.components.attention module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.bert_block.html">transformer_lens.components.bert_block module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.bert_embed.html">transformer_lens.components.bert_embed module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.bert_mlm_head.html">transformer_lens.components.bert_mlm_head module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.bert_nsp_head.html">transformer_lens.components.bert_nsp_head module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.bert_pooler.html">transformer_lens.components.bert_pooler module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.embed.html">transformer_lens.components.embed module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.grouped_query_attention.html">transformer_lens.components.grouped_query_attention module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.layer_norm.html">transformer_lens.components.layer_norm module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.layer_norm_pre.html">transformer_lens.components.layer_norm_pre module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.pos_embed.html">transformer_lens.components.pos_embed module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.rms_norm.html">transformer_lens.components.rms_norm module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.rms_norm_pre.html">transformer_lens.components.rms_norm_pre module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.t5_attention.html">transformer_lens.components.t5_attention module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.t5_block.html">transformer_lens.components.t5_block module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.token_typed_embed.html">transformer_lens.components.token_typed_embed module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.transformer_block.html">transformer_lens.components.transformer_block module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.unembed.html">transformer_lens.components.unembed module</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="transformer_lens.config.html">transformer_lens.config package</a><input class="toctree-checkbox" id="toctree-checkbox-6" name="toctree-checkbox-6" role="switch" type="checkbox"/><label for="toctree-checkbox-6"><div class="visually-hidden">Toggle navigation of transformer_lens.config package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.config.TransformerBridgeConfig.html">transformer_lens.config.TransformerBridgeConfig module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.config.TransformerLensConfig.html">transformer_lens.config.TransformerLensConfig module</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="transformer_lens.conversion_utils.html">transformer_lens.conversion_utils package</a><input class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" role="switch" type="checkbox"/><label for="toctree-checkbox-7"><div class="visually-hidden">Toggle navigation of transformer_lens.conversion_utils package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4 has-children"><a class="reference internal" href="transformer_lens.conversion_utils.conversion_steps.html">transformer_lens.conversion_utils.conversion_steps package</a><input class="toctree-checkbox" id="toctree-checkbox-8" name="toctree-checkbox-8" role="switch" type="checkbox"/><label for="toctree-checkbox-8"><div class="visually-hidden">Toggle navigation of transformer_lens.conversion_utils.conversion_steps package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.conversion_utils.conversion_steps.arithmetic_tensor_conversion.html">transformer_lens.conversion_utils.conversion_steps.arithmetic_tensor_conversion module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.conversion_utils.conversion_steps.attention_auto_conversion.html">transformer_lens.conversion_utils.conversion_steps.attention_auto_conversion module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.conversion_utils.conversion_steps.base_tensor_conversion.html">transformer_lens.conversion_utils.conversion_steps.base_tensor_conversion module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.conversion_utils.conversion_steps.callable_tensor_conversion.html">transformer_lens.conversion_utils.conversion_steps.callable_tensor_conversion module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.conversion_utils.conversion_steps.chain_tensor_conversion.html">transformer_lens.conversion_utils.conversion_steps.chain_tensor_conversion module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.conversion_utils.conversion_steps.rearrange_tensor_conversion.html">transformer_lens.conversion_utils.conversion_steps.rearrange_tensor_conversion module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.conversion_utils.conversion_steps.repeat_tensor_conversion.html">transformer_lens.conversion_utils.conversion_steps.repeat_tensor_conversion module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.conversion_utils.conversion_steps.split_tensor_conversion.html">transformer_lens.conversion_utils.conversion_steps.split_tensor_conversion module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.conversion_utils.conversion_steps.tensor_conversion_set.html">transformer_lens.conversion_utils.conversion_steps.tensor_conversion_set module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.conversion_utils.conversion_steps.ternary_tensor_conversion.html">transformer_lens.conversion_utils.conversion_steps.ternary_tensor_conversion module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.conversion_utils.conversion_steps.transpose_tensor_conversion.html">transformer_lens.conversion_utils.conversion_steps.transpose_tensor_conversion module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.conversion_utils.conversion_steps.zeros_like_conversion.html">transformer_lens.conversion_utils.conversion_steps.zeros_like_conversion module</a></li>
+</ul>
+</li>
+<li class="toctree-l4 has-children"><a class="reference internal" href="transformer_lens.conversion_utils.helpers.html">transformer_lens.conversion_utils.helpers package</a><input class="toctree-checkbox" id="toctree-checkbox-9" name="toctree-checkbox-9" role="switch" type="checkbox"/><label for="toctree-checkbox-9"><div class="visually-hidden">Toggle navigation of transformer_lens.conversion_utils.helpers package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.conversion_utils.helpers.find_property.html">transformer_lens.conversion_utils.helpers.find_property module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.conversion_utils.helpers.merge_quantiziation_fields.html">transformer_lens.conversion_utils.helpers.merge_quantiziation_fields module</a></li>
+</ul>
+</li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.conversion_utils.hook_conversion_utils.html">transformer_lens.conversion_utils.hook_conversion_utils module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.conversion_utils.param_processing_conversion.html">transformer_lens.conversion_utils.param_processing_conversion module</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="transformer_lens.factories.html">transformer_lens.factories package</a><input class="toctree-checkbox" id="toctree-checkbox-10" name="toctree-checkbox-10" role="switch" type="checkbox"/><label for="toctree-checkbox-10"><div class="visually-hidden">Toggle navigation of transformer_lens.factories package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.factories.activation_function_factory.html">transformer_lens.factories.activation_function_factory module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.factories.architecture_adapter_factory.html">transformer_lens.factories.architecture_adapter_factory module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.factories.mlp_factory.html">transformer_lens.factories.mlp_factory module</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="transformer_lens.lit.html">transformer_lens.lit package</a><input class="toctree-checkbox" id="toctree-checkbox-11" name="toctree-checkbox-11" role="switch" type="checkbox"/><label for="toctree-checkbox-11"><div class="visually-hidden">Toggle navigation of transformer_lens.lit package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.lit.constants.html">transformer_lens.lit.constants module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.lit.dataset.html">transformer_lens.lit.dataset module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.lit.model.html">transformer_lens.lit.model module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.lit.utils.html">transformer_lens.lit.utils module</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="transformer_lens.model_bridge.html">transformer_lens.model_bridge package</a><input class="toctree-checkbox" id="toctree-checkbox-12" name="toctree-checkbox-12" role="switch" type="checkbox"/><label for="toctree-checkbox-12"><div class="visually-hidden">Toggle navigation of transformer_lens.model_bridge package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4 has-children"><a class="reference internal" href="transformer_lens.model_bridge.generalized_components.html">transformer_lens.model_bridge.generalized_components package</a><input class="toctree-checkbox" id="toctree-checkbox-13" name="toctree-checkbox-13" role="switch" type="checkbox"/><label for="toctree-checkbox-13"><div class="visually-hidden">Toggle navigation of transformer_lens.model_bridge.generalized_components package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.generalized_components.alibi_joint_qkv_attention.html">transformer_lens.model_bridge.generalized_components.alibi_joint_qkv_attention module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.generalized_components.alibi_utils.html">transformer_lens.model_bridge.generalized_components.alibi_utils module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.generalized_components.attention.html">transformer_lens.model_bridge.generalized_components.attention module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.generalized_components.audio_feature_extractor.html">transformer_lens.model_bridge.generalized_components.audio_feature_extractor module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.generalized_components.base.html">transformer_lens.model_bridge.generalized_components.base module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.generalized_components.block.html">transformer_lens.model_bridge.generalized_components.block module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.generalized_components.bloom_attention.html">transformer_lens.model_bridge.generalized_components.bloom_attention module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.generalized_components.bloom_block.html">transformer_lens.model_bridge.generalized_components.bloom_block module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.generalized_components.bloom_mlp.html">transformer_lens.model_bridge.generalized_components.bloom_mlp module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.generalized_components.clip_vision_encoder.html">transformer_lens.model_bridge.generalized_components.clip_vision_encoder module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.generalized_components.codegen_attention.html">transformer_lens.model_bridge.generalized_components.codegen_attention module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.generalized_components.conv1d.html">transformer_lens.model_bridge.generalized_components.conv1d module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.generalized_components.conv_pos_embed.html">transformer_lens.model_bridge.generalized_components.conv_pos_embed module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.generalized_components.depthwise_conv1d.html">transformer_lens.model_bridge.generalized_components.depthwise_conv1d module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.generalized_components.embedding.html">transformer_lens.model_bridge.generalized_components.embedding module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.generalized_components.gated_delta_net.html">transformer_lens.model_bridge.generalized_components.gated_delta_net module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.generalized_components.gated_mlp.html">transformer_lens.model_bridge.generalized_components.gated_mlp module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.generalized_components.gated_rms_norm.html">transformer_lens.model_bridge.generalized_components.gated_rms_norm module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.generalized_components.joint_gate_up_mlp.html">transformer_lens.model_bridge.generalized_components.joint_gate_up_mlp module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.generalized_components.joint_qkv_attention.html">transformer_lens.model_bridge.generalized_components.joint_qkv_attention module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.generalized_components.joint_qkv_position_embeddings_attention.html">transformer_lens.model_bridge.generalized_components.joint_qkv_position_embeddings_attention module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.generalized_components.linear.html">transformer_lens.model_bridge.generalized_components.linear module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.generalized_components.mla_attention.html">transformer_lens.model_bridge.generalized_components.mla_attention module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.generalized_components.mlp.html">transformer_lens.model_bridge.generalized_components.mlp module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.generalized_components.moe.html">transformer_lens.model_bridge.generalized_components.moe module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.generalized_components.mpt_alibi_attention.html">transformer_lens.model_bridge.generalized_components.mpt_alibi_attention module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.generalized_components.normalization.html">transformer_lens.model_bridge.generalized_components.normalization module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.generalized_components.pos_embed.html">transformer_lens.model_bridge.generalized_components.pos_embed module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.generalized_components.position_embedding_hooks_mixin.html">transformer_lens.model_bridge.generalized_components.position_embedding_hooks_mixin module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.generalized_components.position_embeddings_attention.html">transformer_lens.model_bridge.generalized_components.position_embeddings_attention module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.generalized_components.rms_normalization.html">transformer_lens.model_bridge.generalized_components.rms_normalization module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.generalized_components.rotary_embedding.html">transformer_lens.model_bridge.generalized_components.rotary_embedding module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.generalized_components.siglip_vision_encoder.html">transformer_lens.model_bridge.generalized_components.siglip_vision_encoder module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.generalized_components.ssm2_mixer.html">transformer_lens.model_bridge.generalized_components.ssm2_mixer module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.generalized_components.ssm_block.html">transformer_lens.model_bridge.generalized_components.ssm_block module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.generalized_components.ssm_mixer.html">transformer_lens.model_bridge.generalized_components.ssm_mixer module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.generalized_components.symbolic.html">transformer_lens.model_bridge.generalized_components.symbolic module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.generalized_components.t5_block.html">transformer_lens.model_bridge.generalized_components.t5_block module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.generalized_components.unembedding.html">transformer_lens.model_bridge.generalized_components.unembedding module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.generalized_components.vision_projection.html">transformer_lens.model_bridge.generalized_components.vision_projection module</a></li>
+</ul>
+</li>
+<li class="toctree-l4 has-children"><a class="reference internal" href="transformer_lens.model_bridge.sources.html">transformer_lens.model_bridge.sources package</a><input class="toctree-checkbox" id="toctree-checkbox-14" name="toctree-checkbox-14" role="switch" type="checkbox"/><label for="toctree-checkbox-14"><div class="visually-hidden">Toggle navigation of transformer_lens.model_bridge.sources package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.sources.transformers.html">transformer_lens.model_bridge.sources.transformers module</a></li>
+</ul>
+</li>
+<li class="toctree-l4 has-children"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.html">transformer_lens.model_bridge.supported_architectures package</a><input class="toctree-checkbox" id="toctree-checkbox-15" name="toctree-checkbox-15" role="switch" type="checkbox"/><label for="toctree-checkbox-15"><div class="visually-hidden">Toggle navigation of transformer_lens.model_bridge.supported_architectures package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.apertus.html">transformer_lens.model_bridge.supported_architectures.apertus module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.bert.html">transformer_lens.model_bridge.supported_architectures.bert module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.bloom.html">transformer_lens.model_bridge.supported_architectures.bloom module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.codegen.html">transformer_lens.model_bridge.supported_architectures.codegen module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.cohere.html">transformer_lens.model_bridge.supported_architectures.cohere module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.deepseek_v3.html">transformer_lens.model_bridge.supported_architectures.deepseek_v3 module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.falcon.html">transformer_lens.model_bridge.supported_architectures.falcon module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.gemma1.html">transformer_lens.model_bridge.supported_architectures.gemma1 module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.gemma2.html">transformer_lens.model_bridge.supported_architectures.gemma2 module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.gemma3.html">transformer_lens.model_bridge.supported_architectures.gemma3 module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.gemma3_multimodal.html">transformer_lens.model_bridge.supported_architectures.gemma3_multimodal module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.gpt2.html">transformer_lens.model_bridge.supported_architectures.gpt2 module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.gpt2_lm_head_custom.html">transformer_lens.model_bridge.supported_architectures.gpt2_lm_head_custom module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.gpt_bigcode.html">transformer_lens.model_bridge.supported_architectures.gpt_bigcode module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.gpt_oss.html">transformer_lens.model_bridge.supported_architectures.gpt_oss module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.gptj.html">transformer_lens.model_bridge.supported_architectures.gptj module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.granite.html">transformer_lens.model_bridge.supported_architectures.granite module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.granite_moe.html">transformer_lens.model_bridge.supported_architectures.granite_moe module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.granite_moe_hybrid.html">transformer_lens.model_bridge.supported_architectures.granite_moe_hybrid module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.hubert.html">transformer_lens.model_bridge.supported_architectures.hubert module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.internlm2.html">transformer_lens.model_bridge.supported_architectures.internlm2 module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.llama.html">transformer_lens.model_bridge.supported_architectures.llama module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.llava.html">transformer_lens.model_bridge.supported_architectures.llava module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.llava_next.html">transformer_lens.model_bridge.supported_architectures.llava_next module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.llava_onevision.html">transformer_lens.model_bridge.supported_architectures.llava_onevision module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.mamba.html">transformer_lens.model_bridge.supported_architectures.mamba module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.mamba2.html">transformer_lens.model_bridge.supported_architectures.mamba2 module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.mingpt.html">transformer_lens.model_bridge.supported_architectures.mingpt module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.mistral.html">transformer_lens.model_bridge.supported_architectures.mistral module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.mixtral.html">transformer_lens.model_bridge.supported_architectures.mixtral module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.mpt.html">transformer_lens.model_bridge.supported_architectures.mpt module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.nanogpt.html">transformer_lens.model_bridge.supported_architectures.nanogpt module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.neel_solu_old.html">transformer_lens.model_bridge.supported_architectures.neel_solu_old module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.neo.html">transformer_lens.model_bridge.supported_architectures.neo module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.neox.html">transformer_lens.model_bridge.supported_architectures.neox module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.olmo.html">transformer_lens.model_bridge.supported_architectures.olmo module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.olmo2.html">transformer_lens.model_bridge.supported_architectures.olmo2 module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.olmo3.html">transformer_lens.model_bridge.supported_architectures.olmo3 module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.olmoe.html">transformer_lens.model_bridge.supported_architectures.olmoe module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.openelm.html">transformer_lens.model_bridge.supported_architectures.openelm module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.opt.html">transformer_lens.model_bridge.supported_architectures.opt module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.phi.html">transformer_lens.model_bridge.supported_architectures.phi module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.phi3.html">transformer_lens.model_bridge.supported_architectures.phi3 module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.pythia.html">transformer_lens.model_bridge.supported_architectures.pythia module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.qwen.html">transformer_lens.model_bridge.supported_architectures.qwen module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.qwen2.html">transformer_lens.model_bridge.supported_architectures.qwen2 module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.qwen3.html">transformer_lens.model_bridge.supported_architectures.qwen3 module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.qwen3_5.html">transformer_lens.model_bridge.supported_architectures.qwen3_5 module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.qwen3_moe.html">transformer_lens.model_bridge.supported_architectures.qwen3_moe module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.qwen3_next.html">transformer_lens.model_bridge.supported_architectures.qwen3_next module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.stablelm.html">transformer_lens.model_bridge.supported_architectures.stablelm module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.t5.html">transformer_lens.model_bridge.supported_architectures.t5 module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.xglm.html">transformer_lens.model_bridge.supported_architectures.xglm module</a></li>
+</ul>
+</li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.model_bridge.architecture_adapter.html">transformer_lens.model_bridge.architecture_adapter module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.model_bridge.bridge.html">transformer_lens.model_bridge.bridge module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.model_bridge.compat.html">transformer_lens.model_bridge.compat module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.model_bridge.component_setup.html">transformer_lens.model_bridge.component_setup module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.model_bridge.composition_scores.html">transformer_lens.model_bridge.composition_scores module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.model_bridge.exceptions.html">transformer_lens.model_bridge.exceptions module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.model_bridge.get_params_util.html">transformer_lens.model_bridge.get_params_util module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.model_bridge.types.html">transformer_lens.model_bridge.types module</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="transformer_lens.pretrained.html">transformer_lens.pretrained package</a><input class="toctree-checkbox" id="toctree-checkbox-16" name="toctree-checkbox-16" role="switch" type="checkbox"/><label for="toctree-checkbox-16"><div class="visually-hidden">Toggle navigation of transformer_lens.pretrained package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4 has-children"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.html">transformer_lens.pretrained.weight_conversions package</a><input class="toctree-checkbox" id="toctree-checkbox-17" name="toctree-checkbox-17" role="switch" type="checkbox"/><label for="toctree-checkbox-17"><div class="visually-hidden">Toggle navigation of transformer_lens.pretrained.weight_conversions package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.apertus.html">transformer_lens.pretrained.weight_conversions.apertus module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.bert.html">transformer_lens.pretrained.weight_conversions.bert module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.bloom.html">transformer_lens.pretrained.weight_conversions.bloom module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.coder.html">transformer_lens.pretrained.weight_conversions.coder module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.gemma.html">transformer_lens.pretrained.weight_conversions.gemma module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.gpt2.html">transformer_lens.pretrained.weight_conversions.gpt2 module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.gptj.html">transformer_lens.pretrained.weight_conversions.gptj module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.hubert.html">transformer_lens.pretrained.weight_conversions.hubert module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.llama.html">transformer_lens.pretrained.weight_conversions.llama module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.mingpt.html">transformer_lens.pretrained.weight_conversions.mingpt module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.mistral.html">transformer_lens.pretrained.weight_conversions.mistral module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.mixtral.html">transformer_lens.pretrained.weight_conversions.mixtral module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.nanogpt.html">transformer_lens.pretrained.weight_conversions.nanogpt module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.neel_solu_old.html">transformer_lens.pretrained.weight_conversions.neel_solu_old module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.neo.html">transformer_lens.pretrained.weight_conversions.neo module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.neox.html">transformer_lens.pretrained.weight_conversions.neox module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.olmo.html">transformer_lens.pretrained.weight_conversions.olmo module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.olmo2.html">transformer_lens.pretrained.weight_conversions.olmo2 module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.olmo3.html">transformer_lens.pretrained.weight_conversions.olmo3 module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.olmoe.html">transformer_lens.pretrained.weight_conversions.olmoe module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.openai.html">transformer_lens.pretrained.weight_conversions.openai module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.opt.html">transformer_lens.pretrained.weight_conversions.opt module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.phi.html">transformer_lens.pretrained.weight_conversions.phi module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.phi3.html">transformer_lens.pretrained.weight_conversions.phi3 module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.qwen.html">transformer_lens.pretrained.weight_conversions.qwen module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.qwen2.html">transformer_lens.pretrained.weight_conversions.qwen2 module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.qwen3.html">transformer_lens.pretrained.weight_conversions.qwen3 module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.t5.html">transformer_lens.pretrained.weight_conversions.t5 module</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="transformer_lens.tools.html">transformer_lens.tools package</a><input class="toctree-checkbox" id="toctree-checkbox-18" name="toctree-checkbox-18" role="switch" type="checkbox"/><label for="toctree-checkbox-18"><div class="visually-hidden">Toggle navigation of transformer_lens.tools package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4 has-children"><a class="reference internal" href="transformer_lens.tools.model_registry.html">transformer_lens.tools.model_registry package</a><input class="toctree-checkbox" id="toctree-checkbox-19" name="toctree-checkbox-19" role="switch" type="checkbox"/><label for="toctree-checkbox-19"><div class="visually-hidden">Toggle navigation of transformer_lens.tools.model_registry package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.model_registry.alias_drift.html">transformer_lens.tools.model_registry.alias_drift module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.model_registry.api.html">transformer_lens.tools.model_registry.api module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.model_registry.discover_architectures.html">transformer_lens.tools.model_registry.discover_architectures module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.model_registry.exceptions.html">transformer_lens.tools.model_registry.exceptions module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.model_registry.generate_report.html">transformer_lens.tools.model_registry.generate_report module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.model_registry.hf_scraper.html">transformer_lens.tools.model_registry.hf_scraper module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.model_registry.registry_io.html">transformer_lens.tools.model_registry.registry_io module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.model_registry.relevancy.html">transformer_lens.tools.model_registry.relevancy module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.model_registry.schemas.html">transformer_lens.tools.model_registry.schemas module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.model_registry.validate.html">transformer_lens.tools.model_registry.validate module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.model_registry.verification.html">transformer_lens.tools.model_registry.verification module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.model_registry.verify_models.html">transformer_lens.tools.model_registry.verify_models module</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="transformer_lens.utilities.html">transformer_lens.utilities package</a><input class="toctree-checkbox" id="toctree-checkbox-20" name="toctree-checkbox-20" role="switch" type="checkbox"/><label for="toctree-checkbox-20"><div class="visually-hidden">Toggle navigation of transformer_lens.utilities package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.activation_functions.html">transformer_lens.utilities.activation_functions module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.addmm.html">transformer_lens.utilities.addmm module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.aliases.html">transformer_lens.utilities.aliases module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.architectures.html">transformer_lens.utilities.architectures module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.attention.html">transformer_lens.utilities.attention module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.attribute_utils.html">transformer_lens.utilities.attribute_utils module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.bridge_components.html">transformer_lens.utilities.bridge_components module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.cache.html">transformer_lens.utilities.cache module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.components_utils.html">transformer_lens.utilities.components_utils module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.defaults_utils.html">transformer_lens.utilities.defaults_utils module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.devices.html">transformer_lens.utilities.devices module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.exploratory_utils.html">transformer_lens.utilities.exploratory_utils module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.gpu_utils.html">transformer_lens.utilities.gpu_utils module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.hf_utils.html">transformer_lens.utilities.hf_utils module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.initialization_utils.html">transformer_lens.utilities.initialization_utils module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.library_utils.html">transformer_lens.utilities.library_utils module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.lm_utils.html">transformer_lens.utilities.lm_utils module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.logits_utils.html">transformer_lens.utilities.logits_utils module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.matrix.html">transformer_lens.utilities.matrix module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.multi_gpu.html">transformer_lens.utilities.multi_gpu module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.slice.html">transformer_lens.utilities.slice module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.tensors.html">transformer_lens.utilities.tensors module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.tokenize_utils.html">transformer_lens.utilities.tokenize_utils module</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.HookedAudioEncoder.html">transformer_lens.HookedAudioEncoder module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.evals.html">transformer_lens.evals module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.head_detector.html">transformer_lens.head_detector module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.hook_points.html">transformer_lens.hook_points module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.loading_from_pretrained.html">transformer_lens.loading_from_pretrained module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.patching.html">transformer_lens.patching module</a></li>
+<li class="toctree-l3 current current-page"><a class="current reference internal" href="#">transformer_lens.supported_models module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.train.html">transformer_lens.train module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.utils.html">transformer_lens.utils module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.weight_processing.html">transformer_lens.weight_processing module</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../content/model_tables.html">Model Tables</a><input class="toctree-checkbox" id="toctree-checkbox-21" name="toctree-checkbox-21" role="switch" type="checkbox"/><label for="toctree-checkbox-21"><div class="visually-hidden">Toggle navigation of Model Tables</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../model_properties_table.html">HookedTransformer Model Properties</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../transformer_bridge_models.html">TransformerBridge Models</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../../content/model_structure.html">TransformerBridge Model Structure</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Resources</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../content/migrating_to_v3.html">Migrating to TransformerLens 3</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../content/tutorials.html">Tutorials</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../content/citation.html">Citation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../content/contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html">Transformer Lens Main Demo Notebook</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html#Setup">Setup</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html#Introduction">Introduction</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html#Features">Features</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../demos/Exploratory_Analysis_Demo.html">Exploratory Analysis Demo</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../content/special_cases.html">Special Cases</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Development</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../content/contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://transformerlensorg.github.io/TransformerLens/_static/coverage/">Code Coverage</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/TransformerLensOrg/TransformerLens">Github</a></li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          
+<div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle">
+              <div class="visually-hidden">Toggle Light / Dark / Auto color theme</div>
+              <svg class="theme-icon-when-auto"><use href="#svg-sun-half"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon" for="__toc">
+            <div class="visually-hidden">Toggle table of contents sidebar</div>
+            <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
+          </label>
+        </div>
+        <article role="main">
+          <section id="module-transformer_lens.supported_models">
+<span id="transformer-lens-supported-models-module"></span><h1>transformer_lens.supported_models module<a class="headerlink" href="#module-transformer_lens.supported_models" title="Link to this heading">¶</a></h1>
+<dl class="py data">
+<dt class="sig sig-object py" id="transformer_lens.supported_models.MODEL_ALIASES">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.supported_models.</span></span><span class="sig-name descname"><span class="pre">MODEL_ALIASES</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">{'01-ai/Yi-34B':</span> <span class="pre">['yi-34b',</span> <span class="pre">'Yi-34B'],</span> <span class="pre">'01-ai/Yi-34B-Chat':</span> <span class="pre">['yi-34b-chat',</span> <span class="pre">'Yi-34B-Chat'],</span> <span class="pre">'01-ai/Yi-6B':</span> <span class="pre">['yi-6b',</span> <span class="pre">'Yi-6B'],</span> <span class="pre">'01-ai/Yi-6B-Chat':</span> <span class="pre">['yi-6b-chat',</span> <span class="pre">'Yi-6B-Chat'],</span> <span class="pre">'ArthurConmy/redwood_attn_2l':</span> <span class="pre">['redwood_attn_2l'],</span> <span class="pre">'Baidicoot/Othello-GPT-Transformer-Lens':</span> <span class="pre">['othello-gpt'],</span> <span class="pre">'EleutherAI/gpt-j-6B':</span> <span class="pre">['gpt-j-6B',</span> <span class="pre">'gpt-j',</span> <span class="pre">'gptj'],</span> <span class="pre">'EleutherAI/gpt-neo-1.3B':</span> <span class="pre">['gpt-neo-1.3B',</span> <span class="pre">'gpt-neo-medium',</span> <span class="pre">'neo-medium'],</span> <span class="pre">'EleutherAI/gpt-neo-125M':</span> <span class="pre">['gpt-neo-125M',</span> <span class="pre">'gpt-neo-small',</span> <span class="pre">'neo-small',</span> <span class="pre">'neo'],</span> <span class="pre">'EleutherAI/gpt-neo-2.7B':</span> <span class="pre">['gpt-neo-2.7B',</span> <span class="pre">'gpt-neo-large',</span> <span class="pre">'neo-large'],</span> <span class="pre">'EleutherAI/gpt-neox-20b':</span> <span class="pre">['gpt-neox-20b',</span> <span class="pre">'gpt-neox',</span> <span class="pre">'neox'],</span> <span class="pre">'EleutherAI/pythia-1.4b':</span> <span class="pre">['pythia-1.4b',</span> <span class="pre">'EleutherAI/pythia-1.3b',</span> <span class="pre">'pythia-1.3b'],</span> <span class="pre">'EleutherAI/pythia-1.4b-deduped':</span> <span class="pre">['pythia-1.4b-deduped',</span> <span class="pre">'EleutherAI/pythia-1.3b-deduped',</span> <span class="pre">'pythia-1.3b-deduped'],</span> <span class="pre">'EleutherAI/pythia-1.4b-deduped-v0':</span> <span class="pre">['pythia-1.4b-deduped-v0',</span> <span class="pre">'EleutherAI/pythia-1.3b-deduped-v0',</span> <span class="pre">'pythia-1.3b-deduped-v0'],</span> <span class="pre">'EleutherAI/pythia-1.4b-v0':</span> <span class="pre">['pythia-1.4b-v0',</span> <span class="pre">'EleutherAI/pythia-1.3b-v0',</span> <span class="pre">'pythia-1.3b-v0'],</span> <span class="pre">'EleutherAI/pythia-12b':</span> <span class="pre">['pythia-12b',</span> <span class="pre">'EleutherAI/pythia-13b',</span> <span class="pre">'pythia-13b'],</span> <span class="pre">'EleutherAI/pythia-12b-deduped':</span> <span class="pre">['pythia-12b-deduped',</span> <span class="pre">'EleutherAI/pythia-13b-deduped',</span> <span class="pre">'pythia-13b-deduped'],</span> <span class="pre">'EleutherAI/pythia-12b-deduped-v0':</span> <span class="pre">['pythia-12b-deduped-v0',</span> <span class="pre">'EleutherAI/pythia-13b-deduped-v0',</span> <span class="pre">'pythia-13b-deduped-v0'],</span> <span class="pre">'EleutherAI/pythia-12b-v0':</span> <span class="pre">['pythia-12b-v0',</span> <span class="pre">'EleutherAI/pythia-13b-v0',</span> <span class="pre">'pythia-13b-v0'],</span> <span class="pre">'EleutherAI/pythia-14m':</span> <span class="pre">['pythia-14m'],</span> <span class="pre">'EleutherAI/pythia-160m':</span> <span class="pre">['pythia-160m',</span> <span class="pre">'EleutherAI/pythia-125m',</span> <span class="pre">'pythia-125m'],</span> <span class="pre">'EleutherAI/pythia-160m-deduped':</span> <span class="pre">['pythia-160m-deduped',</span> <span class="pre">'EleutherAI/pythia-125m-deduped',</span> <span class="pre">'pythia-125m-deduped'],</span> <span class="pre">'EleutherAI/pythia-160m-deduped-v0':</span> <span class="pre">['pythia-160m-deduped-v0',</span> <span class="pre">'EleutherAI/pythia-125m-deduped-v0',</span> <span class="pre">'pythia-125m-deduped-v0'],</span> <span class="pre">'EleutherAI/pythia-160m-seed1':</span> <span class="pre">['pythia-160m-seed1',</span> <span class="pre">'EleutherAI/pythia-125m-seed1',</span> <span class="pre">'pythia-125m-seed1'],</span> <span class="pre">'EleutherAI/pythia-160m-seed2':</span> <span class="pre">['pythia-160m-seed2',</span> <span class="pre">'EleutherAI/pythia-125m-seed2',</span> <span class="pre">'pythia-125m-seed2'],</span> <span class="pre">'EleutherAI/pythia-160m-seed3':</span> <span class="pre">['pythia-160m-seed3',</span> <span class="pre">'EleutherAI/pythia-125m-seed3',</span> <span class="pre">'pythia-125m-seed3'],</span> <span class="pre">'EleutherAI/pythia-160m-v0':</span> <span class="pre">['pythia-160m-v0',</span> <span class="pre">'EleutherAI/pythia-125m-v0',</span> <span class="pre">'pythia-125m-v0'],</span> <span class="pre">'EleutherAI/pythia-1b':</span> <span class="pre">['pythia-1b',</span> <span class="pre">'EleutherAI/pythia-800m',</span> <span class="pre">'pythia-800m'],</span> <span class="pre">'EleutherAI/pythia-1b-deduped':</span> <span class="pre">['pythia-1b-deduped',</span> <span class="pre">'EleutherAI/pythia-800m-deduped',</span> <span class="pre">'pythia-800m-deduped'],</span> <span class="pre">'EleutherAI/pythia-1b-deduped-v0':</span> <span class="pre">['pythia-1b-deduped-v0',</span> <span class="pre">'EleutherAI/pythia-800m-deduped-v0',</span> <span class="pre">'pythia-800m-deduped-v0'],</span> <span class="pre">'EleutherAI/pythia-1b-v0':</span> <span class="pre">['pythia-1b-v0',</span> <span class="pre">'EleutherAI/pythia-800m-v0',</span> <span class="pre">'pythia-800m-v0'],</span> <span class="pre">'EleutherAI/pythia-2.8b':</span> <span class="pre">['pythia-2.8b',</span> <span class="pre">'EleutherAI/pythia-2.7b',</span> <span class="pre">'pythia-2.7b'],</span> <span class="pre">'EleutherAI/pythia-2.8b-deduped':</span> <span class="pre">['pythia-2.8b-deduped',</span> <span class="pre">'EleutherAI/pythia-2.7b-deduped',</span> <span class="pre">'pythia-2.7b-deduped'],</span> <span class="pre">'EleutherAI/pythia-2.8b-deduped-v0':</span> <span class="pre">['pythia-2.8b-deduped-v0',</span> <span class="pre">'EleutherAI/pythia-2.7b-deduped-v0',</span> <span class="pre">'pythia-2.7b-deduped-v0'],</span> <span class="pre">'EleutherAI/pythia-2.8b-v0':</span> <span class="pre">['pythia-2.8b-v0',</span> <span class="pre">'EleutherAI/pythia-2.7b-v0',</span> <span class="pre">'pythia-2.7b-v0'],</span> <span class="pre">'EleutherAI/pythia-31m':</span> <span class="pre">['pythia-31m'],</span> <span class="pre">'EleutherAI/pythia-410m':</span> <span class="pre">['pythia-410m',</span> <span class="pre">'EleutherAI/pythia-350m',</span> <span class="pre">'pythia-350m'],</span> <span class="pre">'EleutherAI/pythia-410m-deduped':</span> <span class="pre">['pythia-410m-deduped',</span> <span class="pre">'EleutherAI/pythia-350m-deduped',</span> <span class="pre">'pythia-350m-deduped'],</span> <span class="pre">'EleutherAI/pythia-410m-deduped-v0':</span> <span class="pre">['pythia-410m-deduped-v0',</span> <span class="pre">'EleutherAI/pythia-350m-deduped-v0',</span> <span class="pre">'pythia-350m-deduped-v0'],</span> <span class="pre">'EleutherAI/pythia-410m-v0':</span> <span class="pre">['pythia-410m-v0',</span> <span class="pre">'EleutherAI/pythia-350m-v0',</span> <span class="pre">'pythia-350m-v0'],</span> <span class="pre">'EleutherAI/pythia-6.9b':</span> <span class="pre">['pythia-6.9b',</span> <span class="pre">'EleutherAI/pythia-6.7b',</span> <span class="pre">'pythia-6.7b'],</span> <span class="pre">'EleutherAI/pythia-6.9b-deduped':</span> <span class="pre">['pythia-6.9b-deduped',</span> <span class="pre">'EleutherAI/pythia-6.7b-deduped',</span> <span class="pre">'pythia-6.7b-deduped'],</span> <span class="pre">'EleutherAI/pythia-6.9b-deduped-v0':</span> <span class="pre">['pythia-6.9b-deduped-v0',</span> <span class="pre">'EleutherAI/pythia-6.7b-deduped-v0',</span> <span class="pre">'pythia-6.7b-deduped-v0'],</span> <span class="pre">'EleutherAI/pythia-6.9b-v0':</span> <span class="pre">['pythia-6.9b-v0',</span> <span class="pre">'EleutherAI/pythia-6.7b-v0',</span> <span class="pre">'pythia-6.7b-v0'],</span> <span class="pre">'EleutherAI/pythia-70m':</span> <span class="pre">['pythia-70m',</span> <span class="pre">'pythia',</span> <span class="pre">'EleutherAI/pythia-19m',</span> <span class="pre">'pythia-19m'],</span> <span class="pre">'EleutherAI/pythia-70m-deduped':</span> <span class="pre">['pythia-70m-deduped',</span> <span class="pre">'EleutherAI/pythia-19m-deduped',</span> <span class="pre">'pythia-19m-deduped'],</span> <span class="pre">'EleutherAI/pythia-70m-deduped-v0':</span> <span class="pre">['pythia-70m-deduped-v0',</span> <span class="pre">'EleutherAI/pythia-19m-deduped-v0',</span> <span class="pre">'pythia-19m-deduped-v0'],</span> <span class="pre">'EleutherAI/pythia-70m-v0':</span> <span class="pre">['pythia-70m-v0',</span> <span class="pre">'pythia-v0',</span> <span class="pre">'EleutherAI/pythia-19m-v0',</span> <span class="pre">'pythia-19m-v0'],</span> <span class="pre">'NeelNanda/Attn-Only-2L512W-Shortformer-6B-big-lr':</span> <span class="pre">['attn-only-2l-demo',</span> <span class="pre">'attn-only-2l-shortformer-6b-big-lr',</span> <span class="pre">'attn-only-2l-induction-demo',</span> <span class="pre">'attn-only-demo'],</span> <span class="pre">'NeelNanda/Attn_Only_1L512W_C4_Code':</span> <span class="pre">['attn-only-1l',</span> <span class="pre">'attn-only-1l-new',</span> <span class="pre">'attn-only-1l-c4-code'],</span> <span class="pre">'NeelNanda/Attn_Only_2L512W_C4_Code':</span> <span class="pre">['attn-only-2l',</span> <span class="pre">'attn-only-2l-new',</span> <span class="pre">'attn-only-2l-c4-code'],</span> <span class="pre">'NeelNanda/Attn_Only_3L512W_C4_Code':</span> <span class="pre">['attn-only-3l',</span> <span class="pre">'attn-only-3l-new',</span> <span class="pre">'attn-only-3l-c4-code'],</span> <span class="pre">'NeelNanda/Attn_Only_4L512W_C4_Code':</span> <span class="pre">['attn-only-4l',</span> <span class="pre">'attn-only-4l-new',</span> <span class="pre">'attn-only-4l-c4-code'],</span> <span class="pre">'NeelNanda/GELU_1L512W_C4_Code':</span> <span class="pre">['gelu-1l',</span> <span class="pre">'gelu-1l-new',</span> <span class="pre">'gelu-1l-c4-code'],</span> <span class="pre">'NeelNanda/GELU_2L512W_C4_Code':</span> <span class="pre">['gelu-2l',</span> <span class="pre">'gelu-2l-new',</span> <span class="pre">'gelu-2l-c4-code'],</span> <span class="pre">'NeelNanda/GELU_3L512W_C4_Code':</span> <span class="pre">['gelu-3l',</span> <span class="pre">'gelu-3l-new',</span> <span class="pre">'gelu-3l-c4-code'],</span> <span class="pre">'NeelNanda/GELU_4L512W_C4_Code':</span> <span class="pre">['gelu-4l',</span> <span class="pre">'gelu-4l-new',</span> <span class="pre">'gelu-4l-c4-code'],</span> <span class="pre">'NeelNanda/SoLU_10L1280W_C4_Code':</span> <span class="pre">['solu-10l',</span> <span class="pre">'solu-10l-new',</span> <span class="pre">'solu-10l-c4-code'],</span> <span class="pre">'NeelNanda/SoLU_10L_v22_old':</span> <span class="pre">['solu-10l-pile',</span> <span class="pre">'solu-10l-old'],</span> <span class="pre">'NeelNanda/SoLU_12L1536W_C4_Code':</span> <span class="pre">['solu-12l',</span> <span class="pre">'solu-12l-new',</span> <span class="pre">'solu-12l-c4-code'],</span> <span class="pre">'NeelNanda/SoLU_12L_v23_old':</span> <span class="pre">['solu-12l-pile',</span> <span class="pre">'solu-12l-old'],</span> <span class="pre">'NeelNanda/SoLU_1L512W_C4_Code':</span> <span class="pre">['solu-1l',</span> <span class="pre">'solu-1l-new',</span> <span class="pre">'solu-1l-c4-code'],</span> <span class="pre">'NeelNanda/SoLU_1L512W_Wiki_Finetune':</span> <span class="pre">['solu-1l-wiki',</span> <span class="pre">'solu-1l-wiki-finetune',</span> <span class="pre">'solu-1l-finetune'],</span> <span class="pre">'NeelNanda/SoLU_1L_v9_old':</span> <span class="pre">['solu-1l-pile',</span> <span class="pre">'solu-1l-old'],</span> <span class="pre">'NeelNanda/SoLU_2L512W_C4_Code':</span> <span class="pre">['solu-2l',</span> <span class="pre">'solu-2l-new',</span> <span class="pre">'solu-2l-c4-code'],</span> <span class="pre">'NeelNanda/SoLU_2L_v10_old':</span> <span class="pre">['solu-2l-pile',</span> <span class="pre">'solu-2l-old'],</span> <span class="pre">'NeelNanda/SoLU_3L512W_C4_Code':</span> <span class="pre">['solu-3l',</span> <span class="pre">'solu-3l-new',</span> <span class="pre">'solu-3l-c4-code'],</span> <span class="pre">'NeelNanda/SoLU_4L512W_C4_Code':</span> <span class="pre">['solu-4l',</span> <span class="pre">'solu-4l-new',</span> <span class="pre">'solu-4l-c4-code'],</span> <span class="pre">'NeelNanda/SoLU_4L512W_Wiki_Finetune':</span> <span class="pre">['solu-4l-wiki',</span> <span class="pre">'solu-4l-wiki-finetune',</span> <span class="pre">'solu-4l-finetune'],</span> <span class="pre">'NeelNanda/SoLU_4L_v11_old':</span> <span class="pre">['solu-4l-pile',</span> <span class="pre">'solu-4l-old'],</span> <span class="pre">'NeelNanda/SoLU_6L768W_C4_Code':</span> <span class="pre">['solu-6l',</span> <span class="pre">'solu-6l-new',</span> <span class="pre">'solu-6l-c4-code'],</span> <span class="pre">'NeelNanda/SoLU_6L_v13_old':</span> <span class="pre">['solu-6l-pile',</span> <span class="pre">'solu-6l-old'],</span> <span class="pre">'NeelNanda/SoLU_8L1024W_C4_Code':</span> <span class="pre">['solu-8l',</span> <span class="pre">'solu-8l-new',</span> <span class="pre">'solu-8l-c4-code'],</span> <span class="pre">'NeelNanda/SoLU_8L_v21_old':</span> <span class="pre">['solu-8l-pile',</span> <span class="pre">'solu-8l-old'],</span> <span class="pre">'Qwen/QwQ-32B-Preview':</span> <span class="pre">['qwen-32b-preview'],</span> <span class="pre">'Qwen/Qwen-14B':</span> <span class="pre">['qwen-14b'],</span> <span class="pre">'Qwen/Qwen-14B-Chat':</span> <span class="pre">['qwen-14b-chat'],</span> <span class="pre">'Qwen/Qwen-1_8B':</span> <span class="pre">['qwen-1.8b'],</span> <span class="pre">'Qwen/Qwen-1_8B-Chat':</span> <span class="pre">['qwen-1.8b-chat'],</span> <span class="pre">'Qwen/Qwen-7B':</span> <span class="pre">['qwen-7b'],</span> <span class="pre">'Qwen/Qwen-7B-Chat':</span> <span class="pre">['qwen-7b-chat'],</span> <span class="pre">'Qwen/Qwen1.5-0.5B':</span> <span class="pre">['qwen1.5-0.5b'],</span> <span class="pre">'Qwen/Qwen1.5-0.5B-Chat':</span> <span class="pre">['qwen1.5-0.5b-chat'],</span> <span class="pre">'Qwen/Qwen1.5-1.8B':</span> <span class="pre">['qwen1.5-1.8b'],</span> <span class="pre">'Qwen/Qwen1.5-1.8B-Chat':</span> <span class="pre">['qwen1.5-1.8b-chat'],</span> <span class="pre">'Qwen/Qwen1.5-14B':</span> <span class="pre">['qwen1.5-14b'],</span> <span class="pre">'Qwen/Qwen1.5-14B-Chat':</span> <span class="pre">['qwen1.5-14b-chat'],</span> <span class="pre">'Qwen/Qwen1.5-4B':</span> <span class="pre">['qwen1.5-4b'],</span> <span class="pre">'Qwen/Qwen1.5-4B-Chat':</span> <span class="pre">['qwen1.5-4b-chat'],</span> <span class="pre">'Qwen/Qwen1.5-7B':</span> <span class="pre">['qwen1.5-7b'],</span> <span class="pre">'Qwen/Qwen1.5-7B-Chat':</span> <span class="pre">['qwen1.5-7b-chat'],</span> <span class="pre">'Qwen/Qwen2-0.5B':</span> <span class="pre">['qwen2-0.5b'],</span> <span class="pre">'Qwen/Qwen2-0.5B-Instruct':</span> <span class="pre">['qwen2-0.5b-instruct'],</span> <span class="pre">'Qwen/Qwen2-1.5B':</span> <span class="pre">['qwen2-1.5b'],</span> <span class="pre">'Qwen/Qwen2-1.5B-Instruct':</span> <span class="pre">['qwen2-1.5b-instruct'],</span> <span class="pre">'Qwen/Qwen2-7B':</span> <span class="pre">['qwen2-7b'],</span> <span class="pre">'Qwen/Qwen2-7B-Instruct':</span> <span class="pre">['qwen2-7b-instruct'],</span> <span class="pre">'Qwen/Qwen2.5-0.5B':</span> <span class="pre">['qwen2.5-0.5b'],</span> <span class="pre">'Qwen/Qwen2.5-0.5B-Instruct':</span> <span class="pre">['qwen2.5-0.5b-instruct'],</span> <span class="pre">'Qwen/Qwen2.5-1.5B':</span> <span class="pre">['qwen2.5-1.5b'],</span> <span class="pre">'Qwen/Qwen2.5-1.5B-Instruct':</span> <span class="pre">['qwen2.5-1.5b-instruct'],</span> <span class="pre">'Qwen/Qwen2.5-14B':</span> <span class="pre">['qwen2.5-14b'],</span> <span class="pre">'Qwen/Qwen2.5-14B-Instruct':</span> <span class="pre">['qwen2.5-14b-instruct'],</span> <span class="pre">'Qwen/Qwen2.5-32B':</span> <span class="pre">['qwen2.5-32b'],</span> <span class="pre">'Qwen/Qwen2.5-32B-Instruct':</span> <span class="pre">['qwen2.5-32b-instruct'],</span> <span class="pre">'Qwen/Qwen2.5-3B':</span> <span class="pre">['qwen2.5-3b'],</span> <span class="pre">'Qwen/Qwen2.5-3B-Instruct':</span> <span class="pre">['qwen2.5-3b-instruct'],</span> <span class="pre">'Qwen/Qwen2.5-72B':</span> <span class="pre">['qwen2.5-72b'],</span> <span class="pre">'Qwen/Qwen2.5-72B-Instruct':</span> <span class="pre">['qwen2.5-72b-instruct'],</span> <span class="pre">'Qwen/Qwen2.5-7B':</span> <span class="pre">['qwen2.5-7b'],</span> <span class="pre">'Qwen/Qwen2.5-7B-Instruct':</span> <span class="pre">['qwen2.5-7b-instruct'],</span> <span class="pre">'Qwen/Qwen3-0.6B':</span> <span class="pre">['qwen3-0.6b'],</span> <span class="pre">'Qwen/Qwen3-0.6B-Base':</span> <span class="pre">['qwen3-0.6b-base'],</span> <span class="pre">'Qwen/Qwen3-1.7B':</span> <span class="pre">['qwen3-1.7b'],</span> <span class="pre">'Qwen/Qwen3-14B':</span> <span class="pre">['qwen3-14b'],</span> <span class="pre">'Qwen/Qwen3-4B':</span> <span class="pre">['qwen3-4b'],</span> <span class="pre">'Qwen/Qwen3-8B':</span> <span class="pre">['qwen3-8b'],</span> <span class="pre">'ai-forever/mGPT':</span> <span class="pre">['mGPT'],</span> <span class="pre">'allenai/OLMo-1B-hf':</span> <span class="pre">['olmo-1b'],</span> <span class="pre">'allenai/OLMo-2-0425-1B':</span> <span class="pre">['olmo-2-1b'],</span> <span class="pre">'allenai/OLMo-2-1124-7B':</span> <span class="pre">['olmo-2-7b'],</span> <span class="pre">'allenai/OLMo-7B-hf':</span> <span class="pre">['olmo-7b'],</span> <span class="pre">'allenai/OLMoE-1B-7B-0924':</span> <span class="pre">['olmoe'],</span> <span class="pre">'allenai/Olmo-3-32B-Think':</span> <span class="pre">['olmo-3-32b-think'],</span> <span class="pre">'allenai/Olmo-3-7B-Instruct':</span> <span class="pre">['olmo-3-7b-instruct'],</span> <span class="pre">'allenai/Olmo-3-7B-Think':</span> <span class="pre">['olmo-3-7b-think'],</span> <span class="pre">'allenai/Olmo-3.1-32B-Instruct':</span> <span class="pre">['olmo-3.1-32b-instruct'],</span> <span class="pre">'allenai/Olmo-3.1-32B-Think':</span> <span class="pre">['olmo-3.1-32b-think'],</span> <span class="pre">'bigcode/santacoder':</span> <span class="pre">['santacoder'],</span> <span class="pre">'bigscience/bloom-1b1':</span> <span class="pre">['bloom-1b1'],</span> <span class="pre">'bigscience/bloom-1b7':</span> <span class="pre">['bloom-1b7'],</span> <span class="pre">'bigscience/bloom-3b':</span> <span class="pre">['bloom-3b'],</span> <span class="pre">'bigscience/bloom-560m':</span> <span class="pre">['bloom-560m'],</span> <span class="pre">'bigscience/bloom-7b1':</span> <span class="pre">['bloom-7b1'],</span> <span class="pre">'codellama/CodeLlama-7b-Instruct-hf':</span> <span class="pre">['CodeLlama-7b-instruct'],</span> <span class="pre">'codellama/CodeLlama-7b-Python-hf':</span> <span class="pre">['CodeLlama-7b-python'],</span> <span class="pre">'codellama/CodeLlama-7b-hf':</span> <span class="pre">['CodeLlamallama-2-7b'],</span> <span class="pre">'distilgpt2':</span> <span class="pre">['distillgpt2',</span> <span class="pre">'distill-gpt2',</span> <span class="pre">'distil-gpt2',</span> <span class="pre">'gpt2-xs'],</span> <span class="pre">'facebook/hubert-base-ls960':</span> <span class="pre">['hubert-base-ls960'],</span> <span class="pre">'facebook/opt-1.3b':</span> <span class="pre">['opt-1.3b',</span> <span class="pre">'opt-medium'],</span> <span class="pre">'facebook/opt-125m':</span> <span class="pre">['opt-125m',</span> <span class="pre">'opt-small',</span> <span class="pre">'opt'],</span> <span class="pre">'facebook/opt-13b':</span> <span class="pre">['opt-13b',</span> <span class="pre">'opt-xxl'],</span> <span class="pre">'facebook/opt-2.7b':</span> <span class="pre">['opt-2.7b',</span> <span class="pre">'opt-large'],</span> <span class="pre">'facebook/opt-30b':</span> <span class="pre">['opt-30b',</span> <span class="pre">'opt-xxxl'],</span> <span class="pre">'facebook/opt-6.7b':</span> <span class="pre">['opt-6.7b',</span> <span class="pre">'opt-xl'],</span> <span class="pre">'facebook/opt-66b':</span> <span class="pre">['opt-66b',</span> <span class="pre">'opt-xxxxl'],</span> <span class="pre">'facebook/wav2vec2-base':</span> <span class="pre">['wav2vec2-base',</span> <span class="pre">'w2v2-base'],</span> <span class="pre">'facebook/wav2vec2-large':</span> <span class="pre">['wav2vec2-large',</span> <span class="pre">'w2v2-large'],</span> <span class="pre">'google-bert/bert-base-cased':</span> <span class="pre">['bert-base-cased'],</span> <span class="pre">'google-bert/bert-base-uncased':</span> <span class="pre">['bert-base-uncased'],</span> <span class="pre">'google-bert/bert-large-cased':</span> <span class="pre">['bert-large-cased'],</span> <span class="pre">'google-bert/bert-large-uncased':</span> <span class="pre">['bert-large-uncased'],</span> <span class="pre">'google-t5/t5-base':</span> <span class="pre">['t5-base'],</span> <span class="pre">'google-t5/t5-large':</span> <span class="pre">['t5-large'],</span> <span class="pre">'google-t5/t5-small':</span> <span class="pre">['t5-small'],</span> <span class="pre">'google/gemma-2-27b':</span> <span class="pre">['gemma-2-27b'],</span> <span class="pre">'google/gemma-2-27b-it':</span> <span class="pre">['gemma-2-27b-it'],</span> <span class="pre">'google/gemma-2-2b':</span> <span class="pre">['gemma-2-2b'],</span> <span class="pre">'google/gemma-2-2b-it':</span> <span class="pre">['gemma-2-2b-it'],</span> <span class="pre">'google/gemma-2-9b':</span> <span class="pre">['gemma-2-9b'],</span> <span class="pre">'google/gemma-2-9b-it':</span> <span class="pre">['gemma-2-9b-it'],</span> <span class="pre">'google/gemma-2b':</span> <span class="pre">['gemma-2b'],</span> <span class="pre">'google/gemma-2b-it':</span> <span class="pre">['gemma-2b-it'],</span> <span class="pre">'google/gemma-3-12b-it':</span> <span class="pre">['gemma-3-12b-it'],</span> <span class="pre">'google/gemma-3-12b-pt':</span> <span class="pre">['gemma-3-12b-pt'],</span> <span class="pre">'google/gemma-3-1b-it':</span> <span class="pre">['gemma-3-1b-it'],</span> <span class="pre">'google/gemma-3-1b-pt':</span> <span class="pre">['gemma-3-1b-pt'],</span> <span class="pre">'google/gemma-3-270m':</span> <span class="pre">['gemma-3-270m'],</span> <span class="pre">'google/gemma-3-270m-it':</span> <span class="pre">['gemma-3-270m-it'],</span> <span class="pre">'google/gemma-3-27b-it':</span> <span class="pre">['gemma-3-27b-it'],</span> <span class="pre">'google/gemma-3-27b-pt':</span> <span class="pre">['gemma-3-27b-pt'],</span> <span class="pre">'google/gemma-3-4b-it':</span> <span class="pre">['gemma-3-4b-it'],</span> <span class="pre">'google/gemma-3-4b-pt':</span> <span class="pre">['gemma-3-4b-pt'],</span> <span class="pre">'google/gemma-7b':</span> <span class="pre">['gemma-7b'],</span> <span class="pre">'google/gemma-7b-it':</span> <span class="pre">['gemma-7b-it'],</span> <span class="pre">'google/medgemma-27b-it':</span> <span class="pre">['medgemma-27b-it'],</span> <span class="pre">'google/medgemma-27b-text-it':</span> <span class="pre">['medgemma-27b-text-it'],</span> <span class="pre">'google/medgemma-4b-it':</span> <span class="pre">['medgemma-4b-it'],</span> <span class="pre">'google/medgemma-4b-pt':</span> <span class="pre">['medgemma-4b-pt'],</span> <span class="pre">'gpt2':</span> <span class="pre">['gpt2-small'],</span> <span class="pre">'llama-13b-hf':</span> <span class="pre">['llama-13b'],</span> <span class="pre">'llama-30b-hf':</span> <span class="pre">['llama-30b'],</span> <span class="pre">'llama-65b-hf':</span> <span class="pre">['llama-65b'],</span> <span class="pre">'llama-7b-hf':</span> <span class="pre">['llama-7b'],</span> <span class="pre">'meta-llama/Llama-2-13b-chat-hf':</span> <span class="pre">['Llama-2-13b-chat'],</span> <span class="pre">'meta-llama/Llama-2-13b-hf':</span> <span class="pre">['Llama-2-13b'],</span> <span class="pre">'meta-llama/Llama-2-70b-chat-hf':</span> <span class="pre">['Llama-2-70b-chat',</span> <span class="pre">'meta-llama-2-70b-chat-hf'],</span> <span class="pre">'meta-llama/Llama-2-7b-chat-hf':</span> <span class="pre">['Llama-2-7b-chat'],</span> <span class="pre">'meta-llama/Llama-2-7b-hf':</span> <span class="pre">['Llama-2-7b'],</span> <span class="pre">'microsoft/Phi-3-mini-4k-instruct':</span> <span class="pre">['phi-3'],</span> <span class="pre">'microsoft/phi-1':</span> <span class="pre">['phi-1'],</span> <span class="pre">'microsoft/phi-1_5':</span> <span class="pre">['phi-1_5'],</span> <span class="pre">'microsoft/phi-2':</span> <span class="pre">['phi-2'],</span> <span class="pre">'microsoft/phi-4':</span> <span class="pre">['phi-4'],</span> <span class="pre">'mistralai/Mistral-7B-Instruct-v0.1':</span> <span class="pre">['mistral-7b-instruct'],</span> <span class="pre">'mistralai/Mistral-7B-v0.1':</span> <span class="pre">['mistral-7b'],</span> <span class="pre">'mistralai/Mistral-Nemo-Base-2407':</span> <span class="pre">['mistral-nemo-base-2407'],</span> <span class="pre">'mistralai/Mixtral-8x7B-Instruct-v0.1':</span> <span class="pre">['mixtral-instruct',</span> <span class="pre">'mixtral-8x7b-instruct'],</span> <span class="pre">'mistralai/Mixtral-8x7B-v0.1':</span> <span class="pre">['mixtral',</span> <span class="pre">'mixtral-8x7b'],</span> <span class="pre">'openai/gpt-oss-20b':</span> <span class="pre">['gpt-oss-20b',</span> <span class="pre">'gpt-oss'],</span> <span class="pre">'roneneldan/TinyStories-1Layer-21M':</span> <span class="pre">['tiny-stories-1L-21M'],</span> <span class="pre">'roneneldan/TinyStories-1M':</span> <span class="pre">['tiny-stories-1M'],</span> <span class="pre">'roneneldan/TinyStories-28M':</span> <span class="pre">['tiny-stories-28M'],</span> <span class="pre">'roneneldan/TinyStories-2Layers-33M':</span> <span class="pre">['tiny-stories-2L-33M'],</span> <span class="pre">'roneneldan/TinyStories-33M':</span> <span class="pre">['tiny-stories-33M'],</span> <span class="pre">'roneneldan/TinyStories-3M':</span> <span class="pre">['tiny-stories-3M'],</span> <span class="pre">'roneneldan/TinyStories-8M':</span> <span class="pre">['tiny-stories-8M'],</span> <span class="pre">'roneneldan/TinyStories-Instruct-1M':</span> <span class="pre">['tiny-stories-instruct-1M'],</span> <span class="pre">'roneneldan/TinyStories-Instruct-28M':</span> <span class="pre">['tiny-stories-instruct-28M'],</span> <span class="pre">'roneneldan/TinyStories-Instruct-2Layers-33M':</span> <span class="pre">['tiny-stories-instruct-2L-33M'],</span> <span class="pre">'roneneldan/TinyStories-Instruct-33M':</span> <span class="pre">['tiny-stories-instruct-33M'],</span> <span class="pre">'roneneldan/TinyStories-Instruct-3M':</span> <span class="pre">['tiny-stories-instruct-3M'],</span> <span class="pre">'roneneldan/TinyStories-Instruct-8M':</span> <span class="pre">['tiny-stories-instruct-8M'],</span> <span class="pre">'roneneldan/TinyStories-Instuct-1Layer-21M':</span> <span class="pre">['tiny-stories-instruct-1L-21M'],</span> <span class="pre">'stabilityai/stablelm-base-alpha-3b':</span> <span class="pre">['stablelm-base-alpha-3b',</span> <span class="pre">'stablelm-base-3b'],</span> <span class="pre">'stabilityai/stablelm-base-alpha-7b':</span> <span class="pre">['stablelm-base-alpha-7b',</span> <span class="pre">'stablelm-base-7b'],</span> <span class="pre">'stabilityai/stablelm-tuned-alpha-3b':</span> <span class="pre">['stablelm-tuned-alpha-3b',</span> <span class="pre">'stablelm-tuned-3b'],</span> <span class="pre">'stabilityai/stablelm-tuned-alpha-7b':</span> <span class="pre">['stablelm-tuned-alpha-7b',</span> <span class="pre">'stablelm-tuned-7b'],</span> <span class="pre">'stanford-crfm/alias-gpt2-small-x21':</span> <span class="pre">['stanford-gpt2-small-a',</span> <span class="pre">'alias-gpt2-small-x21',</span> <span class="pre">'gpt2-mistral-small-a',</span> <span class="pre">'gpt2-stanford-small-a'],</span> <span class="pre">'stanford-crfm/arwen-gpt2-medium-x21':</span> <span class="pre">['stanford-gpt2-medium-a',</span> <span class="pre">'arwen-gpt2-medium-x21',</span> <span class="pre">'gpt2-medium-small-a',</span> <span class="pre">'gpt2-stanford-medium-a'],</span> <span class="pre">'stanford-crfm/battlestar-gpt2-small-x49':</span> <span class="pre">['stanford-gpt2-small-b',</span> <span class="pre">'battlestar-gpt2-small-x49',</span> <span class="pre">'gpt2-mistral-small-b',</span> <span class="pre">'gpt2-mistral-small-b'],</span> <span class="pre">'stanford-crfm/beren-gpt2-medium-x49':</span> <span class="pre">['stanford-gpt2-medium-b',</span> <span class="pre">'beren-gpt2-medium-x49',</span> <span class="pre">'gpt2-medium-small-b',</span> <span class="pre">'gpt2-stanford-medium-b'],</span> <span class="pre">'stanford-crfm/caprica-gpt2-small-x81':</span> <span class="pre">['stanford-gpt2-small-c',</span> <span class="pre">'caprica-gpt2-small-x81',</span> <span class="pre">'gpt2-mistral-small-c',</span> <span class="pre">'gpt2-stanford-small-c'],</span> <span class="pre">'stanford-crfm/celebrimbor-gpt2-medium-x81':</span> <span class="pre">['stanford-gpt2-medium-c',</span> <span class="pre">'celebrimbor-gpt2-medium-x81',</span> <span class="pre">'gpt2-medium-small-c',</span> <span class="pre">'gpt2-medium-small-c'],</span> <span class="pre">'stanford-crfm/darkmatter-gpt2-small-x343':</span> <span class="pre">['stanford-gpt2-small-d',</span> <span class="pre">'darkmatter-gpt2-small-x343',</span> <span class="pre">'gpt2-mistral-small-d',</span> <span class="pre">'gpt2-mistral-small-d'],</span> <span class="pre">'stanford-crfm/durin-gpt2-medium-x343':</span> <span class="pre">['stanford-gpt2-medium-d',</span> <span class="pre">'durin-gpt2-medium-x343',</span> <span class="pre">'gpt2-medium-small-d',</span> <span class="pre">'gpt2-stanford-medium-d'],</span> <span class="pre">'stanford-crfm/eowyn-gpt2-medium-x777':</span> <span class="pre">['stanford-gpt2-medium-e',</span> <span class="pre">'eowyn-gpt2-medium-x777',</span> <span class="pre">'gpt2-medium-small-e',</span> <span class="pre">'gpt2-stanford-medium-e'],</span> <span class="pre">'stanford-crfm/expanse-gpt2-small-x777':</span> <span class="pre">['stanford-gpt2-small-e',</span> <span class="pre">'expanse-gpt2-small-x777',</span> <span class="pre">'gpt2-mistral-small-e',</span> <span class="pre">'gpt2-mistral-small-e'],</span> <span class="pre">'swiss-ai/Apertus-8B-2509':</span> <span class="pre">['apertus-8b',</span> <span class="pre">'apertus'],</span> <span class="pre">'swiss-ai/Apertus-8B-Instruct-2509':</span> <span class="pre">['apertus-8b-instruct',</span> <span class="pre">'apertus-instruct']}</span></em><a class="headerlink" href="#transformer_lens.supported_models.MODEL_ALIASES" title="Link to this definition">¶</a></dt>
+<dd><p>Model aliases for models on HuggingFace.</p>
+</dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py" id="transformer_lens.supported_models.OFFICIAL_MODEL_NAMES">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.supported_models.</span></span><span class="sig-name descname"><span class="pre">OFFICIAL_MODEL_NAMES</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">['01-ai/Yi-34B',</span> <span class="pre">'01-ai/Yi-34B-Chat',</span> <span class="pre">'01-ai/Yi-6B',</span> <span class="pre">'01-ai/Yi-6B-Chat',</span> <span class="pre">'ai-forever/mGPT',</span> <span class="pre">'allenai/OLMo-1B-hf',</span> <span class="pre">'allenai/OLMo-2-0425-1B',</span> <span class="pre">'allenai/OLMo-2-1124-7B',</span> <span class="pre">'allenai/Olmo-3-32B-Think',</span> <span class="pre">'allenai/Olmo-3-7B-Instruct',</span> <span class="pre">'allenai/Olmo-3-7B-Think',</span> <span class="pre">'allenai/Olmo-3.1-32B-Instruct',</span> <span class="pre">'allenai/Olmo-3.1-32B-Think',</span> <span class="pre">'allenai/OLMo-7B-hf',</span> <span class="pre">'allenai/OLMoE-1B-7B-0924',</span> <span class="pre">'ArthurConmy/redwood_attn_2l',</span> <span class="pre">'Baidicoot/Othello-GPT-Transformer-Lens',</span> <span class="pre">'bigcode/santacoder',</span> <span class="pre">'bigscience/bloom-1b1',</span> <span class="pre">'bigscience/bloom-1b7',</span> <span class="pre">'bigscience/bloom-3b',</span> <span class="pre">'bigscience/bloom-560m',</span> <span class="pre">'bigscience/bloom-7b1',</span> <span class="pre">'codellama/CodeLlama-7b-hf',</span> <span class="pre">'codellama/CodeLlama-7b-Instruct-hf',</span> <span class="pre">'codellama/CodeLlama-7b-Python-hf',</span> <span class="pre">'distilgpt2',</span> <span class="pre">'EleutherAI/gpt-j-6B',</span> <span class="pre">'EleutherAI/gpt-neo-1.3B',</span> <span class="pre">'EleutherAI/gpt-neo-125M',</span> <span class="pre">'EleutherAI/gpt-neo-2.7B',</span> <span class="pre">'EleutherAI/gpt-neox-20b',</span> <span class="pre">'EleutherAI/pythia-1.4b',</span> <span class="pre">'EleutherAI/pythia-1.4b-deduped',</span> <span class="pre">'EleutherAI/pythia-1.4b-deduped-v0',</span> <span class="pre">'EleutherAI/pythia-1.4b-v0',</span> <span class="pre">'EleutherAI/pythia-12b',</span> <span class="pre">'EleutherAI/pythia-12b-deduped',</span> <span class="pre">'EleutherAI/pythia-12b-deduped-v0',</span> <span class="pre">'EleutherAI/pythia-12b-v0',</span> <span class="pre">'EleutherAI/pythia-14m',</span> <span class="pre">'EleutherAI/pythia-160m',</span> <span class="pre">'EleutherAI/pythia-160m-deduped',</span> <span class="pre">'EleutherAI/pythia-160m-deduped-v0',</span> <span class="pre">'EleutherAI/pythia-160m-seed1',</span> <span class="pre">'EleutherAI/pythia-160m-seed2',</span> <span class="pre">'EleutherAI/pythia-160m-seed3',</span> <span class="pre">'EleutherAI/pythia-160m-v0',</span> <span class="pre">'EleutherAI/pythia-1b',</span> <span class="pre">'EleutherAI/pythia-1b-deduped',</span> <span class="pre">'EleutherAI/pythia-1b-deduped-v0',</span> <span class="pre">'EleutherAI/pythia-1b-v0',</span> <span class="pre">'EleutherAI/pythia-2.8b',</span> <span class="pre">'EleutherAI/pythia-2.8b-deduped',</span> <span class="pre">'EleutherAI/pythia-2.8b-deduped-v0',</span> <span class="pre">'EleutherAI/pythia-2.8b-v0',</span> <span class="pre">'EleutherAI/pythia-31m',</span> <span class="pre">'EleutherAI/pythia-410m',</span> <span class="pre">'EleutherAI/pythia-410m-deduped',</span> <span class="pre">'EleutherAI/pythia-410m-deduped-v0',</span> <span class="pre">'EleutherAI/pythia-410m-v0',</span> <span class="pre">'EleutherAI/pythia-6.9b',</span> <span class="pre">'EleutherAI/pythia-6.9b-deduped',</span> <span class="pre">'EleutherAI/pythia-6.9b-deduped-v0',</span> <span class="pre">'EleutherAI/pythia-6.9b-v0',</span> <span class="pre">'EleutherAI/pythia-70m',</span> <span class="pre">'EleutherAI/pythia-70m-deduped',</span> <span class="pre">'EleutherAI/pythia-70m-deduped-v0',</span> <span class="pre">'EleutherAI/pythia-70m-v0',</span> <span class="pre">'facebook/hubert-base-ls960',</span> <span class="pre">'facebook/opt-1.3b',</span> <span class="pre">'facebook/opt-125m',</span> <span class="pre">'facebook/opt-13b',</span> <span class="pre">'facebook/opt-2.7b',</span> <span class="pre">'facebook/opt-30b',</span> <span class="pre">'facebook/opt-6.7b',</span> <span class="pre">'facebook/opt-66b',</span> <span class="pre">'facebook/wav2vec2-base',</span> <span class="pre">'facebook/wav2vec2-large',</span> <span class="pre">'google-bert/bert-base-cased',</span> <span class="pre">'google-bert/bert-base-uncased',</span> <span class="pre">'google-bert/bert-large-cased',</span> <span class="pre">'google-bert/bert-large-uncased',</span> <span class="pre">'google-t5/t5-base',</span> <span class="pre">'google-t5/t5-large',</span> <span class="pre">'google-t5/t5-small',</span> <span class="pre">'google/gemma-2-27b',</span> <span class="pre">'google/gemma-2-27b-it',</span> <span class="pre">'google/gemma-2-2b',</span> <span class="pre">'google/gemma-2-2b-it',</span> <span class="pre">'google/gemma-2-9b',</span> <span class="pre">'google/gemma-2-9b-it',</span> <span class="pre">'google/gemma-2b',</span> <span class="pre">'google/gemma-2b-it',</span> <span class="pre">'google/gemma-3-12b-it',</span> <span class="pre">'google/gemma-3-12b-pt',</span> <span class="pre">'google/gemma-3-1b-it',</span> <span class="pre">'google/gemma-3-1b-pt',</span> <span class="pre">'google/gemma-3-270m',</span> <span class="pre">'google/gemma-3-270m-it',</span> <span class="pre">'google/gemma-3-27b-it',</span> <span class="pre">'google/gemma-3-27b-pt',</span> <span class="pre">'google/gemma-3-4b-it',</span> <span class="pre">'google/gemma-3-4b-pt',</span> <span class="pre">'google/gemma-7b',</span> <span class="pre">'google/gemma-7b-it',</span> <span class="pre">'google/medgemma-27b-it',</span> <span class="pre">'google/medgemma-27b-text-it',</span> <span class="pre">'google/medgemma-4b-it',</span> <span class="pre">'google/medgemma-4b-pt',</span> <span class="pre">'gpt2',</span> <span class="pre">'gpt2-large',</span> <span class="pre">'gpt2-medium',</span> <span class="pre">'gpt2-xl',</span> <span class="pre">'llama-13b-hf',</span> <span class="pre">'llama-30b-hf',</span> <span class="pre">'llama-65b-hf',</span> <span class="pre">'llama-7b-hf',</span> <span class="pre">'meta-llama/Llama-2-13b-chat-hf',</span> <span class="pre">'meta-llama/Llama-2-13b-hf',</span> <span class="pre">'meta-llama/Llama-2-70b-chat-hf',</span> <span class="pre">'meta-llama/Llama-2-7b-chat-hf',</span> <span class="pre">'meta-llama/Llama-2-7b-hf',</span> <span class="pre">'meta-llama/Llama-3.1-70B',</span> <span class="pre">'meta-llama/Llama-3.1-70B-Instruct',</span> <span class="pre">'meta-llama/Llama-3.1-8B',</span> <span class="pre">'meta-llama/Llama-3.1-8B-Instruct',</span> <span class="pre">'meta-llama/Llama-3.2-1B',</span> <span class="pre">'meta-llama/Llama-3.2-1B-Instruct',</span> <span class="pre">'meta-llama/Llama-3.2-3B',</span> <span class="pre">'meta-llama/Llama-3.2-3B-Instruct',</span> <span class="pre">'meta-llama/Llama-3.3-70B-Instruct',</span> <span class="pre">'meta-llama/Meta-Llama-3-70B',</span> <span class="pre">'meta-llama/Meta-Llama-3-70B-Instruct',</span> <span class="pre">'meta-llama/Meta-Llama-3-8B',</span> <span class="pre">'meta-llama/Meta-Llama-3-8B-Instruct',</span> <span class="pre">'microsoft/phi-1',</span> <span class="pre">'microsoft/phi-1_5',</span> <span class="pre">'microsoft/phi-2',</span> <span class="pre">'microsoft/Phi-3-mini-4k-instruct',</span> <span class="pre">'microsoft/phi-4',</span> <span class="pre">'mistralai/Mistral-7B-Instruct-v0.1',</span> <span class="pre">'mistralai/Mistral-7B-v0.1',</span> <span class="pre">'mistralai/Mistral-Nemo-Base-2407',</span> <span class="pre">'mistralai/Mistral-Small-24B-Base-2501',</span> <span class="pre">'mistralai/Mixtral-8x7B-Instruct-v0.1',</span> <span class="pre">'mistralai/Mixtral-8x7B-v0.1',</span> <span class="pre">'NeelNanda/Attn-Only-2L512W-Shortformer-6B-big-lr',</span> <span class="pre">'NeelNanda/Attn_Only_1L512W_C4_Code',</span> <span class="pre">'NeelNanda/Attn_Only_2L512W_C4_Code',</span> <span class="pre">'NeelNanda/Attn_Only_3L512W_C4_Code',</span> <span class="pre">'NeelNanda/Attn_Only_4L512W_C4_Code',</span> <span class="pre">'NeelNanda/GELU_1L512W_C4_Code',</span> <span class="pre">'NeelNanda/GELU_2L512W_C4_Code',</span> <span class="pre">'NeelNanda/GELU_3L512W_C4_Code',</span> <span class="pre">'NeelNanda/GELU_4L512W_C4_Code',</span> <span class="pre">'NeelNanda/SoLU_10L1280W_C4_Code',</span> <span class="pre">'NeelNanda/SoLU_10L_v22_old',</span> <span class="pre">'NeelNanda/SoLU_12L1536W_C4_Code',</span> <span class="pre">'NeelNanda/SoLU_12L_v23_old',</span> <span class="pre">'NeelNanda/SoLU_1L512W_C4_Code',</span> <span class="pre">'NeelNanda/SoLU_1L512W_Wiki_Finetune',</span> <span class="pre">'NeelNanda/SoLU_1L_v9_old',</span> <span class="pre">'NeelNanda/SoLU_2L512W_C4_Code',</span> <span class="pre">'NeelNanda/SoLU_2L_v10_old',</span> <span class="pre">'NeelNanda/SoLU_3L512W_C4_Code',</span> <span class="pre">'NeelNanda/SoLU_4L512W_C4_Code',</span> <span class="pre">'NeelNanda/SoLU_4L512W_Wiki_Finetune',</span> <span class="pre">'NeelNanda/SoLU_4L_v11_old',</span> <span class="pre">'NeelNanda/SoLU_6L768W_C4_Code',</span> <span class="pre">'NeelNanda/SoLU_6L_v13_old',</span> <span class="pre">'NeelNanda/SoLU_8L1024W_C4_Code',</span> <span class="pre">'NeelNanda/SoLU_8L_v21_old',</span> <span class="pre">'openai/gpt-oss-20b',</span> <span class="pre">'Qwen/Qwen-14B',</span> <span class="pre">'Qwen/Qwen-14B-Chat',</span> <span class="pre">'Qwen/Qwen-1_8B',</span> <span class="pre">'Qwen/Qwen-1_8B-Chat',</span> <span class="pre">'Qwen/Qwen-7B',</span> <span class="pre">'Qwen/Qwen-7B-Chat',</span> <span class="pre">'Qwen/Qwen1.5-0.5B',</span> <span class="pre">'Qwen/Qwen1.5-0.5B-Chat',</span> <span class="pre">'Qwen/Qwen1.5-1.8B',</span> <span class="pre">'Qwen/Qwen1.5-1.8B-Chat',</span> <span class="pre">'Qwen/Qwen1.5-14B',</span> <span class="pre">'Qwen/Qwen1.5-14B-Chat',</span> <span class="pre">'Qwen/Qwen1.5-4B',</span> <span class="pre">'Qwen/Qwen1.5-4B-Chat',</span> <span class="pre">'Qwen/Qwen1.5-7B',</span> <span class="pre">'Qwen/Qwen1.5-7B-Chat',</span> <span class="pre">'Qwen/Qwen2-0.5B',</span> <span class="pre">'Qwen/Qwen2-0.5B-Instruct',</span> <span class="pre">'Qwen/Qwen2-1.5B',</span> <span class="pre">'Qwen/Qwen2-1.5B-Instruct',</span> <span class="pre">'Qwen/Qwen2-7B',</span> <span class="pre">'Qwen/Qwen2-7B-Instruct',</span> <span class="pre">'Qwen/Qwen2.5-0.5B',</span> <span class="pre">'Qwen/Qwen2.5-0.5B-Instruct',</span> <span class="pre">'Qwen/Qwen2.5-1.5B',</span> <span class="pre">'Qwen/Qwen2.5-1.5B-Instruct',</span> <span class="pre">'Qwen/Qwen2.5-14B',</span> <span class="pre">'Qwen/Qwen2.5-14B-Instruct',</span> <span class="pre">'Qwen/Qwen2.5-32B',</span> <span class="pre">'Qwen/Qwen2.5-32B-Instruct',</span> <span class="pre">'Qwen/Qwen2.5-3B',</span> <span class="pre">'Qwen/Qwen2.5-3B-Instruct',</span> <span class="pre">'Qwen/Qwen2.5-72B',</span> <span class="pre">'Qwen/Qwen2.5-72B-Instruct',</span> <span class="pre">'Qwen/Qwen2.5-7B',</span> <span class="pre">'Qwen/Qwen2.5-7B-Instruct',</span> <span class="pre">'Qwen/Qwen3-0.6B',</span> <span class="pre">'Qwen/Qwen3-0.6B-Base',</span> <span class="pre">'Qwen/Qwen3-1.7B',</span> <span class="pre">'Qwen/Qwen3-14B',</span> <span class="pre">'Qwen/Qwen3-4B',</span> <span class="pre">'Qwen/Qwen3-8B',</span> <span class="pre">'Qwen/QwQ-32B-Preview',</span> <span class="pre">'roneneldan/TinyStories-1Layer-21M',</span> <span class="pre">'roneneldan/TinyStories-1M',</span> <span class="pre">'roneneldan/TinyStories-28M',</span> <span class="pre">'roneneldan/TinyStories-2Layers-33M',</span> <span class="pre">'roneneldan/TinyStories-33M',</span> <span class="pre">'roneneldan/TinyStories-3M',</span> <span class="pre">'roneneldan/TinyStories-8M',</span> <span class="pre">'roneneldan/TinyStories-Instruct-1M',</span> <span class="pre">'roneneldan/TinyStories-Instruct-28M',</span> <span class="pre">'roneneldan/TinyStories-Instruct-2Layers-33M',</span> <span class="pre">'roneneldan/TinyStories-Instruct-33M',</span> <span class="pre">'roneneldan/TinyStories-Instruct-3M',</span> <span class="pre">'roneneldan/TinyStories-Instruct-8M',</span> <span class="pre">'roneneldan/TinyStories-Instuct-1Layer-21M',</span> <span class="pre">'stabilityai/stablelm-base-alpha-3b',</span> <span class="pre">'stabilityai/stablelm-base-alpha-7b',</span> <span class="pre">'stabilityai/stablelm-tuned-alpha-3b',</span> <span class="pre">'stabilityai/stablelm-tuned-alpha-7b',</span> <span class="pre">'stanford-crfm/alias-gpt2-small-x21',</span> <span class="pre">'stanford-crfm/arwen-gpt2-medium-x21',</span> <span class="pre">'stanford-crfm/battlestar-gpt2-small-x49',</span> <span class="pre">'stanford-crfm/beren-gpt2-medium-x49',</span> <span class="pre">'stanford-crfm/caprica-gpt2-small-x81',</span> <span class="pre">'stanford-crfm/celebrimbor-gpt2-medium-x81',</span> <span class="pre">'stanford-crfm/darkmatter-gpt2-small-x343',</span> <span class="pre">'stanford-crfm/durin-gpt2-medium-x343',</span> <span class="pre">'stanford-crfm/eowyn-gpt2-medium-x777',</span> <span class="pre">'stanford-crfm/expanse-gpt2-small-x777',</span> <span class="pre">'swiss-ai/Apertus-8B-2509',</span> <span class="pre">'swiss-ai/Apertus-8B-Instruct-2509']</span></em><a class="headerlink" href="#transformer_lens.supported_models.OFFICIAL_MODEL_NAMES" title="Link to this definition">¶</a></dt>
+<dd><p>Official model names for models on HuggingFace.</p>
+</dd></dl>
+
+</section>
+
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          <a class="next-page" href="transformer_lens.train.html">
+              <div class="page-info">
+                <div class="context">
+                  <span>Next</span>
+                </div>
+                <div class="title">transformer_lens.train module</div>
+              </div>
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+            </a>
+          <a class="prev-page" href="transformer_lens.patching.html">
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+              <div class="page-info">
+                <div class="context">
+                  <span>Previous</span>
+                </div>
+                
+                <div class="title">transformer_lens.patching module</div>
+                
+              </div>
+            </a>
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2023, Neel Nanda
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer">
+      
+      
+      <div class="toc-sticky toc-scroll">
+        <div class="toc-title-container">
+          <span class="toc-title">
+            On this page
+          </span>
+        </div>
+        <div class="toc-tree-container">
+          <div class="toc-tree">
+            <ul>
+<li><a class="reference internal" href="#">transformer_lens.supported_models module</a><ul>
+<li><a class="reference internal" href="#transformer_lens.supported_models.MODEL_ALIASES"><code class="docutils literal notranslate"><span class="pre">MODEL_ALIASES</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.supported_models.OFFICIAL_MODEL_NAMES"><code class="docutils literal notranslate"><span class="pre">OFFICIAL_MODEL_NAMES</span></code></a></li>
+</ul>
+</li>
+</ul>
+
+          </div>
+        </div>
+      </div>
+      
+      
+    </aside>
+  </div>
+</div><script src="../../_static/documentation_options.js?v=7026087e"></script>
+    <script src="../../_static/doctools.js?v=9a2dae69"></script>
+    <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../_static/scripts/furo.js?v=32e29ea5"></script>
+    <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+    </body>
+</html>

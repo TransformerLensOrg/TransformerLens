@@ -1,5 +1,5 @@
-transformer\_lens.pretrained.weight\_conversions.gpt2
-=====================================================
+transformer\_lens.pretrained.weight\_conversions.gpt2 module
+============================================================
 
 .. automodule:: transformer_lens.pretrained.weight_conversions.gpt2
    :members:

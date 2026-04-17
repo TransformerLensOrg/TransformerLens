@@ -1,0 +1,7 @@
+transformer\_lens.conversion\_utils.helpers.merge\_quantiziation\_fields module
+===============================================================================
+
+.. automodule:: transformer_lens.conversion_utils.helpers.merge_quantiziation_fields
+   :members:
+   :undoc-members:
+   :show-inheritance:

@@ -1,5 +1,5 @@
-transformer\_lens.lit.constants
-===============================
+transformer\_lens.lit.constants module
+======================================
 
 .. automodule:: transformer_lens.lit.constants
    :members:

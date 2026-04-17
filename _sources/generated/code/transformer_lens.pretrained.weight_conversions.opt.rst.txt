@@ -1,5 +1,5 @@
-transformer\_lens.pretrained.weight\_conversions.opt
-====================================================
+transformer\_lens.pretrained.weight\_conversions.opt module
+===========================================================
 
 .. automodule:: transformer_lens.pretrained.weight_conversions.opt
    :members:

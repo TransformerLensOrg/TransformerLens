@@ -1,5 +1,5 @@
-transformer\_lens.pretrained.weight\_conversions.neox
-=====================================================
+transformer\_lens.pretrained.weight\_conversions.neox module
+============================================================
 
 .. automodule:: transformer_lens.pretrained.weight_conversions.neox
    :members:

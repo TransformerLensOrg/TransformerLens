@@ -1,0 +1,18 @@
+transformer\_lens.model\_bridge.sources package
+===============================================
+
+Submodules
+----------
+
+.. toctree::
+   :maxdepth: 4
+
+   transformer_lens.model_bridge.sources.transformers
+
+Module contents
+---------------
+
+.. automodule:: transformer_lens.model_bridge.sources
+   :members:
+   :undoc-members:
+   :show-inheritance:

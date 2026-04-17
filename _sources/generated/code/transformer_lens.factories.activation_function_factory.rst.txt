@@ -1,0 +1,7 @@
+transformer\_lens.factories.activation\_function\_factory module
+================================================================
+
+.. automodule:: transformer_lens.factories.activation_function_factory
+   :members:
+   :undoc-members:
+   :show-inheritance:

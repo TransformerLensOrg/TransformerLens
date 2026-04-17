@@ -1,0 +1,7 @@
+transformer\_lens.model\_bridge.generalized\_components.gated\_delta\_net module
+================================================================================
+
+.. automodule:: transformer_lens.model_bridge.generalized_components.gated_delta_net
+   :members:
+   :undoc-members:
+   :show-inheritance:

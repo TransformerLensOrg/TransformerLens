@@ -1,0 +1,7 @@
+transformer\_lens.model\_bridge.generalized\_components.linear module
+=====================================================================
+
+.. automodule:: transformer_lens.model_bridge.generalized_components.linear
+   :members:
+   :undoc-members:
+   :show-inheritance:

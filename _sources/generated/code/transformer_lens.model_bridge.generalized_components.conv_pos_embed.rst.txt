@@ -1,0 +1,7 @@
+transformer\_lens.model\_bridge.generalized\_components.conv\_pos\_embed module
+===============================================================================
+
+.. automodule:: transformer_lens.model_bridge.generalized_components.conv_pos_embed
+   :members:
+   :undoc-members:
+   :show-inheritance:

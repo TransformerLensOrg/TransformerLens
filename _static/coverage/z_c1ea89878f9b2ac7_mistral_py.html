@@ -4,7 +4,7 @@
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
     <title>Coverage for transformer_lens/pretrained/weight_conversions/mistral.py: 13%</title>
     <link rel="icon" sizes="32x32" href="favicon_32_cb_58284776.png">
-    <link rel="stylesheet" href="style_cb_8e611ae1.css" type="text/css">
+    <link rel="stylesheet" href="style_cb_6b508a39.css" type="text/css">
     <script src="coverage_html_cb_6fb7b396.js" defer></script>
 </head>
 <body class="pyfile">
@@ -66,8 +66,8 @@
             <a id="indexLink" class="nav" href="index.html">&Hat; index</a> &nbsp; &nbsp;
             <a id="nextFileLink" class="nav" href="z_c1ea89878f9b2ac7_mixtral_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
-            <a class="nav" href="https://coverage.readthedocs.io/en/7.6.1">coverage.py v7.6.1</a>,
-            created at 2026-03-31 20:38 +0000
+            <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
+            created at 2026-04-17 18:55 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -85,7 +85,7 @@
     <p class="run"><span class="n"><a id="t1" href="#t1">1</a></span><span class="t"><span class="key">import</span> <span class="nam">einops</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t2" href="#t2">2</a></span><span class="t"><span class="key">import</span> <span class="nam">torch</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t3" href="#t3">3</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t4" href="#t4">4</a></span><span class="t"><span class="key">from</span> <span class="nam">transformer_lens</span><span class="op">.</span><span class="nam">HookedTransformerConfig</span> <span class="key">import</span> <span class="nam">HookedTransformerConfig</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t4" href="#t4">4</a></span><span class="t"><span class="key">from</span> <span class="nam">transformer_lens</span><span class="op">.</span><span class="nam">config</span><span class="op">.</span><span class="nam">HookedTransformerConfig</span> <span class="key">import</span> <span class="nam">HookedTransformerConfig</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t5" href="#t5">5</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t6" href="#t6">6</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t7" href="#t7">7</a></span><span class="t"><span class="key">def</span> <span class="nam">convert_mistral_weights</span><span class="op">(</span><span class="nam">mistral</span><span class="op">,</span> <span class="nam">cfg</span><span class="op">:</span> <span class="nam">HookedTransformerConfig</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
@@ -112,11 +112,11 @@
     <p class="pln"><span class="n"><a id="t28" href="#t28">28</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t29" href="#t29">29</a></span><span class="t">        <span class="nam">state_dict</span><span class="op">[</span><span class="fst">f"</span><span class="fst">blocks.</span><span class="op">{</span><span class="nam">l</span><span class="op">}</span><span class="fst">.attn.b_Q</span><span class="fst">"</span><span class="op">]</span> <span class="op">=</span> <span class="nam">torch</span><span class="op">.</span><span class="nam">zeros</span><span class="op">(</span><span class="nam">cfg</span><span class="op">.</span><span class="nam">n_heads</span><span class="op">,</span> <span class="nam">cfg</span><span class="op">.</span><span class="nam">d_head</span><span class="op">,</span> <span class="nam">dtype</span><span class="op">=</span><span class="nam">cfg</span><span class="op">.</span><span class="nam">dtype</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t30" href="#t30">30</a></span><span class="t">        <span class="nam">state_dict</span><span class="op">[</span><span class="fst">f"</span><span class="fst">blocks.</span><span class="op">{</span><span class="nam">l</span><span class="op">}</span><span class="fst">.attn._b_K</span><span class="fst">"</span><span class="op">]</span> <span class="op">=</span> <span class="nam">torch</span><span class="op">.</span><span class="nam">zeros</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t31" href="#t31">31</a></span><span class="t">            <span class="nam">cfg</span><span class="op">.</span><span class="nam">n_key_value_heads</span><span class="op">,</span> <span class="nam">cfg</span><span class="op">.</span><span class="nam">d_head</span><span class="op">,</span> <span class="nam">dtype</span><span class="op">=</span><span class="nam">cfg</span><span class="op">.</span><span class="nam">dtype</span>&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t32" href="#t32">32</a></span><span class="t">        <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t31" href="#t31">31</a></span><span class="t">            <span class="nam">cfg</span><span class="op">.</span><span class="nam">n_key_value_heads</span><span class="op">,</span> <span class="nam">cfg</span><span class="op">.</span><span class="nam">d_head</span><span class="op">,</span> <span class="nam">dtype</span><span class="op">=</span><span class="nam">cfg</span><span class="op">.</span><span class="nam">dtype</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t32" href="#t32">32</a></span><span class="t">        <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t33" href="#t33">33</a></span><span class="t">        <span class="nam">state_dict</span><span class="op">[</span><span class="fst">f"</span><span class="fst">blocks.</span><span class="op">{</span><span class="nam">l</span><span class="op">}</span><span class="fst">.attn._b_V</span><span class="fst">"</span><span class="op">]</span> <span class="op">=</span> <span class="nam">torch</span><span class="op">.</span><span class="nam">zeros</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t34" href="#t34">34</a></span><span class="t">            <span class="nam">cfg</span><span class="op">.</span><span class="nam">n_key_value_heads</span><span class="op">,</span> <span class="nam">cfg</span><span class="op">.</span><span class="nam">d_head</span><span class="op">,</span> <span class="nam">dtype</span><span class="op">=</span><span class="nam">cfg</span><span class="op">.</span><span class="nam">dtype</span>&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t35" href="#t35">35</a></span><span class="t">        <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t34" href="#t34">34</a></span><span class="t">            <span class="nam">cfg</span><span class="op">.</span><span class="nam">n_key_value_heads</span><span class="op">,</span> <span class="nam">cfg</span><span class="op">.</span><span class="nam">d_head</span><span class="op">,</span> <span class="nam">dtype</span><span class="op">=</span><span class="nam">cfg</span><span class="op">.</span><span class="nam">dtype</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t35" href="#t35">35</a></span><span class="t">        <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t36" href="#t36">36</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t37" href="#t37">37</a></span><span class="t">        <span class="nam">W_O</span> <span class="op">=</span> <span class="nam">mistral</span><span class="op">.</span><span class="nam">model</span><span class="op">.</span><span class="nam">layers</span><span class="op">[</span><span class="nam">l</span><span class="op">]</span><span class="op">.</span><span class="nam">self_attn</span><span class="op">.</span><span class="nam">o_proj</span><span class="op">.</span><span class="nam">weight</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t38" href="#t38">38</a></span><span class="t">        <span class="nam">W_O</span> <span class="op">=</span> <span class="nam">einops</span><span class="op">.</span><span class="nam">rearrange</span><span class="op">(</span><span class="nam">W_O</span><span class="op">,</span> <span class="str">"m (n h)->n h m"</span><span class="op">,</span> <span class="nam">n</span><span class="op">=</span><span class="nam">cfg</span><span class="op">.</span><span class="nam">n_heads</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
@@ -147,8 +147,8 @@
             <a class="nav" href="index.html">&Hat; index</a> &nbsp; &nbsp;
             <a class="nav" href="z_c1ea89878f9b2ac7_mixtral_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
-            <a class="nav" href="https://coverage.readthedocs.io/en/7.6.1">coverage.py v7.6.1</a>,
-            created at 2026-03-31 20:38 +0000
+            <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
+            created at 2026-04-17 18:55 +0000
         </p>
     </div>
 </footer>

@@ -1,0 +1,7 @@
+transformer\_lens.utilities.cache module
+========================================
+
+.. automodule:: transformer_lens.utilities.cache
+   :members:
+   :undoc-members:
+   :show-inheritance:

@@ -1,5 +1,5 @@
-transformer\_lens.pretrained.weight\_conversions.phi
-====================================================
+transformer\_lens.pretrained.weight\_conversions.phi module
+===========================================================
 
 .. automodule:: transformer_lens.pretrained.weight_conversions.phi
    :members:

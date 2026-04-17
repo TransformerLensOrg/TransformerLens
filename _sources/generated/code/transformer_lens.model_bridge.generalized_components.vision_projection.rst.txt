@@ -1,0 +1,7 @@
+transformer\_lens.model\_bridge.generalized\_components.vision\_projection module
+=================================================================================
+
+.. automodule:: transformer_lens.model_bridge.generalized_components.vision_projection
+   :members:
+   :undoc-members:
+   :show-inheritance:

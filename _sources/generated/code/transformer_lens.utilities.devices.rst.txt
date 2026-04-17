@@ -1,5 +1,5 @@
-transformer\_lens.utilities.devices
-===================================
+transformer\_lens.utilities.devices module
+==========================================
 
 .. automodule:: transformer_lens.utilities.devices
    :members:

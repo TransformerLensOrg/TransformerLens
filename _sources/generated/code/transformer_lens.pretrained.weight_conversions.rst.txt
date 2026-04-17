@@ -1,11 +1,11 @@
-transformer\_lens.pretrained.weight\_conversions
-================================================
+transformer\_lens.pretrained.weight\_conversions package
+========================================================
 
 Submodules
 ----------
 
 .. toctree::
-   :maxdepth: 1
+   :maxdepth: 4
 
    transformer_lens.pretrained.weight_conversions.apertus
    transformer_lens.pretrained.weight_conversions.bert
@@ -23,6 +23,10 @@ Submodules
    transformer_lens.pretrained.weight_conversions.neel_solu_old
    transformer_lens.pretrained.weight_conversions.neo
    transformer_lens.pretrained.weight_conversions.neox
+   transformer_lens.pretrained.weight_conversions.olmo
+   transformer_lens.pretrained.weight_conversions.olmo2
+   transformer_lens.pretrained.weight_conversions.olmo3
+   transformer_lens.pretrained.weight_conversions.olmoe
    transformer_lens.pretrained.weight_conversions.openai
    transformer_lens.pretrained.weight_conversions.opt
    transformer_lens.pretrained.weight_conversions.phi
@@ -31,3 +35,11 @@ Submodules
    transformer_lens.pretrained.weight_conversions.qwen2
    transformer_lens.pretrained.weight_conversions.qwen3
    transformer_lens.pretrained.weight_conversions.t5
+
+Module contents
+---------------
+
+.. automodule:: transformer_lens.pretrained.weight_conversions
+   :members:
+   :undoc-members:
+   :show-inheritance:

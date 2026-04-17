@@ -1,0 +1,7 @@
+transformer\_lens.tools.model\_registry.hf\_scraper module
+==========================================================
+
+.. automodule:: transformer_lens.tools.model_registry.hf_scraper
+   :members:
+   :undoc-members:
+   :show-inheritance:

@@ -4,7 +4,7 @@
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
     <title>Coverage for transformer_lens/components/bert_block.py: 89%</title>
     <link rel="icon" sizes="32x32" href="favicon_32_cb_58284776.png">
-    <link rel="stylesheet" href="style_cb_8e611ae1.css" type="text/css">
+    <link rel="stylesheet" href="style_cb_6b508a39.css" type="text/css">
     <script src="coverage_html_cb_6fb7b396.js" defer></script>
 </head>
 <body class="pyfile">
@@ -66,8 +66,8 @@
             <a id="indexLink" class="nav" href="index.html">&Hat; index</a> &nbsp; &nbsp;
             <a id="nextFileLink" class="nav" href="z_db46118ef83ad831_bert_embed_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
-            <a class="nav" href="https://coverage.readthedocs.io/en/7.6.1">coverage.py v7.6.1</a>,
-            created at 2026-03-31 20:38 +0000
+            <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
+            created at 2026-04-17 18:55 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -94,9 +94,9 @@
     <p class="run"><span class="n"><a id="t10" href="#t10">10</a></span><span class="t"><span class="key">from</span> <span class="nam">jaxtyping</span> <span class="key">import</span> <span class="nam">Float</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t11" href="#t11">11</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t12" href="#t12">12</a></span><span class="t"><span class="key">from</span> <span class="nam">transformer_lens</span><span class="op">.</span><span class="nam">components</span> <span class="key">import</span> <span class="nam">Attention</span><span class="op">,</span> <span class="nam">LayerNorm</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t13" href="#t13">13</a></span><span class="t"><span class="key">from</span> <span class="nam">transformer_lens</span><span class="op">.</span><span class="nam">factories</span><span class="op">.</span><span class="nam">mlp_factory</span> <span class="key">import</span> <span class="nam">MLPFactory</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t14" href="#t14">14</a></span><span class="t"><span class="key">from</span> <span class="nam">transformer_lens</span><span class="op">.</span><span class="nam">hook_points</span> <span class="key">import</span> <span class="nam">HookPoint</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t15" href="#t15">15</a></span><span class="t"><span class="key">from</span> <span class="nam">transformer_lens</span><span class="op">.</span><span class="nam">HookedTransformerConfig</span> <span class="key">import</span> <span class="nam">HookedTransformerConfig</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t13" href="#t13">13</a></span><span class="t"><span class="key">from</span> <span class="nam">transformer_lens</span><span class="op">.</span><span class="nam">config</span><span class="op">.</span><span class="nam">HookedTransformerConfig</span> <span class="key">import</span> <span class="nam">HookedTransformerConfig</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t14" href="#t14">14</a></span><span class="t"><span class="key">from</span> <span class="nam">transformer_lens</span><span class="op">.</span><span class="nam">factories</span><span class="op">.</span><span class="nam">mlp_factory</span> <span class="key">import</span> <span class="nam">MLPFactory</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t15" href="#t15">15</a></span><span class="t"><span class="key">from</span> <span class="nam">transformer_lens</span><span class="op">.</span><span class="nam">hook_points</span> <span class="key">import</span> <span class="nam">HookPoint</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t16" href="#t16">16</a></span><span class="t"><span class="key">from</span> <span class="nam">transformer_lens</span><span class="op">.</span><span class="nam">utils</span> <span class="key">import</span> <span class="nam">repeat_along_head_dimension</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t17" href="#t17">17</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t18" href="#t18">18</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
@@ -127,10 +127,10 @@
     <p class="run"><span class="n"><a id="t43" href="#t43">43</a></span><span class="t">        <span class="nam">self</span><span class="op">.</span><span class="nam">hook_normalized_resid_post</span> <span class="op">=</span> <span class="nam">HookPoint</span><span class="op">(</span><span class="op">)</span>  <span class="com"># [batch, pos, d_model]</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t44" href="#t44">44</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t45" href="#t45">45</a></span><span class="t">    <span class="key">def</span> <span class="nam">forward</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t46" href="#t46">46</a></span><span class="t">        <span class="nam">self</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t47" href="#t47">47</a></span><span class="t">        <span class="nam">resid_pre</span><span class="op">:</span> <span class="nam">Float</span><span class="op">[</span><span class="nam">torch</span><span class="op">.</span><span class="nam">Tensor</span><span class="op">,</span> <span class="str">"batch pos d_model"</span><span class="op">]</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t48" href="#t48">48</a></span><span class="t">        <span class="nam">additive_attention_mask</span><span class="op">:</span> <span class="nam">Optional</span><span class="op">[</span><span class="nam">Float</span><span class="op">[</span><span class="nam">torch</span><span class="op">.</span><span class="nam">Tensor</span><span class="op">,</span> <span class="str">"batch 1 1 pos"</span><span class="op">]</span><span class="op">]</span> <span class="op">=</span> <span class="key">None</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t49" href="#t49">49</a></span><span class="t">    <span class="op">)</span> <span class="op">-></span> <span class="nam">Float</span><span class="op">[</span><span class="nam">torch</span><span class="op">.</span><span class="nam">Tensor</span><span class="op">,</span> <span class="str">"batch pos d_model"</span><span class="op">]</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t46" href="#t46">46</a></span><span class="t">        <span class="nam">self</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t47" href="#t47">47</a></span><span class="t">        <span class="nam">resid_pre</span><span class="op">:</span> <span class="nam">Float</span><span class="op">[</span><span class="nam">torch</span><span class="op">.</span><span class="nam">Tensor</span><span class="op">,</span> <span class="str">"batch pos d_model"</span><span class="op">]</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t48" href="#t48">48</a></span><span class="t">        <span class="nam">additive_attention_mask</span><span class="op">:</span> <span class="nam">Optional</span><span class="op">[</span><span class="nam">Float</span><span class="op">[</span><span class="nam">torch</span><span class="op">.</span><span class="nam">Tensor</span><span class="op">,</span> <span class="str">"batch 1 1 pos"</span><span class="op">]</span><span class="op">]</span> <span class="op">=</span> <span class="key">None</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t49" href="#t49">49</a></span><span class="t">    <span class="op">)</span> <span class="op">-></span> <span class="nam">Float</span><span class="op">[</span><span class="nam">torch</span><span class="op">.</span><span class="nam">Tensor</span><span class="op">,</span> <span class="str">"batch pos d_model"</span><span class="op">]</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t50" href="#t50">50</a></span><span class="t">        <span class="nam">resid_pre</span> <span class="op">=</span> <span class="nam">self</span><span class="op">.</span><span class="nam">hook_resid_pre</span><span class="op">(</span><span class="nam">resid_pre</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t51" href="#t51">51</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t52" href="#t52">52</a></span><span class="t">        <span class="nam">query_input</span> <span class="op">=</span> <span class="nam">resid_pre</span>&nbsp;</span><span class="r"></span></p>
@@ -144,13 +144,13 @@
     <p class="mis show_mis"><span class="n"><a id="t60" href="#t60">60</a></span><span class="t">            <span class="nam">value_input</span> <span class="op">=</span> <span class="nam">self</span><span class="op">.</span><span class="nam">hook_v_input</span><span class="op">(</span><span class="nam">repeat_along_head_dimension</span><span class="op">(</span><span class="nam">value_input</span><span class="op">,</span> <span class="nam">n_heads</span><span class="op">)</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t61" href="#t61">61</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t62" href="#t62">62</a></span><span class="t">        <span class="nam">attn_out</span> <span class="op">=</span> <span class="nam">self</span><span class="op">.</span><span class="nam">hook_attn_out</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t63" href="#t63">63</a></span><span class="t">            <span class="nam">self</span><span class="op">.</span><span class="nam">attn</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t64" href="#t64">64</a></span><span class="t">                <span class="nam">query_input</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t65" href="#t65">65</a></span><span class="t">                <span class="nam">key_input</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t66" href="#t66">66</a></span><span class="t">                <span class="nam">value_input</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t67" href="#t67">67</a></span><span class="t">                <span class="nam">additive_attention_mask</span><span class="op">=</span><span class="nam">additive_attention_mask</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t68" href="#t68">68</a></span><span class="t">            <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t69" href="#t69">69</a></span><span class="t">        <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t63" href="#t63">63</a></span><span class="t">            <span class="nam">self</span><span class="op">.</span><span class="nam">attn</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t64" href="#t64">64</a></span><span class="t">                <span class="nam">query_input</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t65" href="#t65">65</a></span><span class="t">                <span class="nam">key_input</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t66" href="#t66">66</a></span><span class="t">                <span class="nam">value_input</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t67" href="#t67">67</a></span><span class="t">                <span class="nam">additive_attention_mask</span><span class="op">=</span><span class="nam">additive_attention_mask</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t68" href="#t68">68</a></span><span class="t">            <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t69" href="#t69">69</a></span><span class="t">        <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t70" href="#t70">70</a></span><span class="t">        <span class="nam">resid_mid</span> <span class="op">=</span> <span class="nam">self</span><span class="op">.</span><span class="nam">hook_resid_mid</span><span class="op">(</span><span class="nam">resid_pre</span> <span class="op">+</span> <span class="nam">attn_out</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t71" href="#t71">71</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t72" href="#t72">72</a></span><span class="t">        <span class="nam">mlp_in</span> <span class="op">=</span> <span class="nam">resid_mid</span> <span class="key">if</span> <span class="key">not</span> <span class="nam">self</span><span class="op">.</span><span class="nam">cfg</span><span class="op">.</span><span class="nam">use_hook_mlp_in</span> <span class="key">else</span> <span class="nam">self</span><span class="op">.</span><span class="nam">hook_mlp_in</span><span class="op">(</span><span class="nam">resid_mid</span><span class="op">.</span><span class="nam">clone</span><span class="op">(</span><span class="op">)</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
@@ -168,8 +168,8 @@
             <a class="nav" href="index.html">&Hat; index</a> &nbsp; &nbsp;
             <a class="nav" href="z_db46118ef83ad831_bert_embed_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
-            <a class="nav" href="https://coverage.readthedocs.io/en/7.6.1">coverage.py v7.6.1</a>,
-            created at 2026-03-31 20:38 +0000
+            <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
+            created at 2026-04-17 18:55 +0000
         </p>
     </div>
 </footer>

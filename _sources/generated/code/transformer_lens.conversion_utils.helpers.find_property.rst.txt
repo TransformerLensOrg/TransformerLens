@@ -1,0 +1,7 @@
+transformer\_lens.conversion\_utils.helpers.find\_property module
+=================================================================
+
+.. automodule:: transformer_lens.conversion_utils.helpers.find_property
+   :members:
+   :undoc-members:
+   :show-inheritance:

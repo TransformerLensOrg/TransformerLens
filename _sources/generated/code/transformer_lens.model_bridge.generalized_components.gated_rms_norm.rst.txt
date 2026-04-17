@@ -1,0 +1,7 @@
+transformer\_lens.model\_bridge.generalized\_components.gated\_rms\_norm module
+===============================================================================
+
+.. automodule:: transformer_lens.model_bridge.generalized_components.gated_rms_norm
+   :members:
+   :undoc-members:
+   :show-inheritance:

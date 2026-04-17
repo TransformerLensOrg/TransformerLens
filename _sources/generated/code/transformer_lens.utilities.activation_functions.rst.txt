@@ -1,5 +1,5 @@
-transformer\_lens.utilities.activation\_functions
-=================================================
+transformer\_lens.utilities.activation\_functions module
+========================================================
 
 .. automodule:: transformer_lens.utilities.activation_functions
    :members:

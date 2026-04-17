@@ -1,0 +1,7 @@
+transformer\_lens.model\_bridge.generalized\_components.bloom\_mlp module
+=========================================================================
+
+.. automodule:: transformer_lens.model_bridge.generalized_components.bloom_mlp
+   :members:
+   :undoc-members:
+   :show-inheritance:

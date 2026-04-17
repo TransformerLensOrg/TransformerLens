@@ -1,0 +1,7 @@
+transformer\_lens.model\_bridge.composition\_scores module
+==========================================================
+
+.. automodule:: transformer_lens.model_bridge.composition_scores
+   :members:
+   :undoc-members:
+   :show-inheritance:

@@ -1,5 +1,5 @@
-transformer\_lens.pretrained.weight\_conversions.mixtral
-========================================================
+transformer\_lens.pretrained.weight\_conversions.mixtral module
+===============================================================
 
 .. automodule:: transformer_lens.pretrained.weight_conversions.mixtral
    :members:

@@ -1,0 +1,32 @@
+transformer\_lens.benchmarks package
+====================================
+
+Submodules
+----------
+
+.. toctree::
+   :maxdepth: 4
+
+   transformer_lens.benchmarks.activation_cache
+   transformer_lens.benchmarks.audio
+   transformer_lens.benchmarks.backward_gradients
+   transformer_lens.benchmarks.component_benchmark
+   transformer_lens.benchmarks.component_outputs
+   transformer_lens.benchmarks.forward_pass
+   transformer_lens.benchmarks.generation
+   transformer_lens.benchmarks.granular_weight_processing
+   transformer_lens.benchmarks.hook_registration
+   transformer_lens.benchmarks.hook_structure
+   transformer_lens.benchmarks.main_benchmark
+   transformer_lens.benchmarks.multimodal
+   transformer_lens.benchmarks.text_quality
+   transformer_lens.benchmarks.utils
+   transformer_lens.benchmarks.weight_processing
+
+Module contents
+---------------
+
+.. automodule:: transformer_lens.benchmarks
+   :members:
+   :undoc-members:
+   :show-inheritance:

@@ -1,0 +1,7 @@
+transformer\_lens.model\_bridge.bridge module
+=============================================
+
+.. automodule:: transformer_lens.model_bridge.bridge
+   :members:
+   :undoc-members:
+   :show-inheritance:

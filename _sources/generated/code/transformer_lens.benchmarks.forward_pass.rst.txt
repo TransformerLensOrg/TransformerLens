@@ -1,0 +1,7 @@
+transformer\_lens.benchmarks.forward\_pass module
+=================================================
+
+.. automodule:: transformer_lens.benchmarks.forward_pass
+   :members:
+   :undoc-members:
+   :show-inheritance:

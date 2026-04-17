@@ -1,7 +1,0 @@
-transformer\_lens.FactoredMatrix
-================================
-
-.. automodule:: transformer_lens.FactoredMatrix
-   :members:
-   :undoc-members:
-   :show-inheritance:

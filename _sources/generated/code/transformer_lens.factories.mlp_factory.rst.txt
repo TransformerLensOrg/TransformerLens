@@ -1,0 +1,7 @@
+transformer\_lens.factories.mlp\_factory module
+===============================================
+
+.. automodule:: transformer_lens.factories.mlp_factory
+   :members:
+   :undoc-members:
+   :show-inheritance:

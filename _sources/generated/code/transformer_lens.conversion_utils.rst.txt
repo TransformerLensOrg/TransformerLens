@@ -1,0 +1,29 @@
+transformer\_lens.conversion\_utils package
+===========================================
+
+Subpackages
+-----------
+
+.. toctree::
+   :maxdepth: 4
+
+   transformer_lens.conversion_utils.conversion_steps
+   transformer_lens.conversion_utils.helpers
+
+Submodules
+----------
+
+.. toctree::
+   :maxdepth: 4
+
+   transformer_lens.conversion_utils.hook_conversion_utils
+   transformer_lens.conversion_utils.param_processing_conversion
+
+Module contents
+---------------
+
+.. automodule:: transformer_lens.conversion_utils
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :exclude-members: HookConversionSet

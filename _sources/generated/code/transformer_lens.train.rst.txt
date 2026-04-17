@@ -1,5 +1,5 @@
-transformer\_lens.train
-=======================
+transformer\_lens.train module
+==============================
 
 .. automodule:: transformer_lens.train
    :members:

@@ -1,0 +1,18 @@
+transformer\_lens.tools package
+===============================
+
+Subpackages
+-----------
+
+.. toctree::
+   :maxdepth: 4
+
+   transformer_lens.tools.model_registry
+
+Module contents
+---------------
+
+.. automodule:: transformer_lens.tools
+   :members:
+   :undoc-members:
+   :show-inheritance:

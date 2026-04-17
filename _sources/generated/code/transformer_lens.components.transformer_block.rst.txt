@@ -1,5 +1,5 @@
-transformer\_lens.components.transformer\_block
-===============================================
+transformer\_lens.components.transformer\_block module
+======================================================
 
 .. automodule:: transformer_lens.components.transformer_block
    :members:

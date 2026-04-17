@@ -1,13 +1,21 @@
-transformer\_lens.lit
-=====================
+transformer\_lens.lit package
+=============================
 
 Submodules
 ----------
 
 .. toctree::
-   :maxdepth: 1
+   :maxdepth: 4
 
    transformer_lens.lit.constants
    transformer_lens.lit.dataset
    transformer_lens.lit.model
    transformer_lens.lit.utils
+
+Module contents
+---------------
+
+.. automodule:: transformer_lens.lit
+   :members:
+   :undoc-members:
+   :show-inheritance:

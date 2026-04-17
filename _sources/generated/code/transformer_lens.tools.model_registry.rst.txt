@@ -1,0 +1,29 @@
+transformer\_lens.tools.model\_registry package
+===============================================
+
+Submodules
+----------
+
+.. toctree::
+   :maxdepth: 4
+
+   transformer_lens.tools.model_registry.alias_drift
+   transformer_lens.tools.model_registry.api
+   transformer_lens.tools.model_registry.discover_architectures
+   transformer_lens.tools.model_registry.exceptions
+   transformer_lens.tools.model_registry.generate_report
+   transformer_lens.tools.model_registry.hf_scraper
+   transformer_lens.tools.model_registry.registry_io
+   transformer_lens.tools.model_registry.relevancy
+   transformer_lens.tools.model_registry.schemas
+   transformer_lens.tools.model_registry.validate
+   transformer_lens.tools.model_registry.verification
+   transformer_lens.tools.model_registry.verify_models
+
+Module contents
+---------------
+
+.. automodule:: transformer_lens.tools.model_registry
+   :members:
+   :undoc-members:
+   :show-inheritance:

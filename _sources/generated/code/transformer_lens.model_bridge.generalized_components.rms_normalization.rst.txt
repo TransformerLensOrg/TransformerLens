@@ -1,0 +1,7 @@
+transformer\_lens.model\_bridge.generalized\_components.rms\_normalization module
+=================================================================================
+
+.. automodule:: transformer_lens.model_bridge.generalized_components.rms_normalization
+   :members:
+   :undoc-members:
+   :show-inheritance:

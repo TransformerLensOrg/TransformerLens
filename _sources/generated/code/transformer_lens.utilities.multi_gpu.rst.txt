@@ -1,0 +1,7 @@
+transformer\_lens.utilities.multi\_gpu module
+=============================================
+
+.. automodule:: transformer_lens.utilities.multi_gpu
+   :members:
+   :undoc-members:
+   :show-inheritance:

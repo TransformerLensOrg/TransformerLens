@@ -1,0 +1,7 @@
+transformer\_lens.utilities.logits\_utils module
+================================================
+
+.. automodule:: transformer_lens.utilities.logits_utils
+   :members:
+   :undoc-members:
+   :show-inheritance:

@@ -1,0 +1,35 @@
+transformer\_lens.model\_bridge package
+=======================================
+
+Subpackages
+-----------
+
+.. toctree::
+   :maxdepth: 4
+
+   transformer_lens.model_bridge.generalized_components
+   transformer_lens.model_bridge.sources
+   transformer_lens.model_bridge.supported_architectures
+
+Submodules
+----------
+
+.. toctree::
+   :maxdepth: 4
+
+   transformer_lens.model_bridge.architecture_adapter
+   transformer_lens.model_bridge.bridge
+   transformer_lens.model_bridge.compat
+   transformer_lens.model_bridge.component_setup
+   transformer_lens.model_bridge.composition_scores
+   transformer_lens.model_bridge.exceptions
+   transformer_lens.model_bridge.get_params_util
+   transformer_lens.model_bridge.types
+
+Module contents
+---------------
+
+.. automodule:: transformer_lens.model_bridge
+   :members:
+   :undoc-members:
+   :show-inheritance:

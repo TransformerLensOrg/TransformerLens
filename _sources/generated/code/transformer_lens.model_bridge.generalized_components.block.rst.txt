@@ -1,0 +1,7 @@
+transformer\_lens.model\_bridge.generalized\_components.block module
+====================================================================
+
+.. automodule:: transformer_lens.model_bridge.generalized_components.block
+   :members:
+   :undoc-members:
+   :show-inheritance:

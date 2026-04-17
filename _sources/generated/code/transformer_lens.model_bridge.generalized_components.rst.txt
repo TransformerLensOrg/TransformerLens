@@ -1,0 +1,57 @@
+transformer\_lens.model\_bridge.generalized\_components package
+===============================================================
+
+Submodules
+----------
+
+.. toctree::
+   :maxdepth: 4
+
+   transformer_lens.model_bridge.generalized_components.alibi_joint_qkv_attention
+   transformer_lens.model_bridge.generalized_components.alibi_utils
+   transformer_lens.model_bridge.generalized_components.attention
+   transformer_lens.model_bridge.generalized_components.audio_feature_extractor
+   transformer_lens.model_bridge.generalized_components.base
+   transformer_lens.model_bridge.generalized_components.block
+   transformer_lens.model_bridge.generalized_components.bloom_attention
+   transformer_lens.model_bridge.generalized_components.bloom_block
+   transformer_lens.model_bridge.generalized_components.bloom_mlp
+   transformer_lens.model_bridge.generalized_components.clip_vision_encoder
+   transformer_lens.model_bridge.generalized_components.codegen_attention
+   transformer_lens.model_bridge.generalized_components.conv1d
+   transformer_lens.model_bridge.generalized_components.conv_pos_embed
+   transformer_lens.model_bridge.generalized_components.depthwise_conv1d
+   transformer_lens.model_bridge.generalized_components.embedding
+   transformer_lens.model_bridge.generalized_components.gated_delta_net
+   transformer_lens.model_bridge.generalized_components.gated_mlp
+   transformer_lens.model_bridge.generalized_components.gated_rms_norm
+   transformer_lens.model_bridge.generalized_components.joint_gate_up_mlp
+   transformer_lens.model_bridge.generalized_components.joint_qkv_attention
+   transformer_lens.model_bridge.generalized_components.joint_qkv_position_embeddings_attention
+   transformer_lens.model_bridge.generalized_components.linear
+   transformer_lens.model_bridge.generalized_components.mla_attention
+   transformer_lens.model_bridge.generalized_components.mlp
+   transformer_lens.model_bridge.generalized_components.moe
+   transformer_lens.model_bridge.generalized_components.mpt_alibi_attention
+   transformer_lens.model_bridge.generalized_components.normalization
+   transformer_lens.model_bridge.generalized_components.pos_embed
+   transformer_lens.model_bridge.generalized_components.position_embedding_hooks_mixin
+   transformer_lens.model_bridge.generalized_components.position_embeddings_attention
+   transformer_lens.model_bridge.generalized_components.rms_normalization
+   transformer_lens.model_bridge.generalized_components.rotary_embedding
+   transformer_lens.model_bridge.generalized_components.siglip_vision_encoder
+   transformer_lens.model_bridge.generalized_components.ssm2_mixer
+   transformer_lens.model_bridge.generalized_components.ssm_block
+   transformer_lens.model_bridge.generalized_components.ssm_mixer
+   transformer_lens.model_bridge.generalized_components.symbolic
+   transformer_lens.model_bridge.generalized_components.t5_block
+   transformer_lens.model_bridge.generalized_components.unembedding
+   transformer_lens.model_bridge.generalized_components.vision_projection
+
+Module contents
+---------------
+
+.. automodule:: transformer_lens.model_bridge.generalized_components
+   :members:
+   :undoc-members:
+   :show-inheritance:

@@ -1,0 +1,7 @@
+transformer\_lens.tools.model\_registry.discover\_architectures module
+======================================================================
+
+.. automodule:: transformer_lens.tools.model_registry.discover_architectures
+   :members:
+   :undoc-members:
+   :show-inheritance:

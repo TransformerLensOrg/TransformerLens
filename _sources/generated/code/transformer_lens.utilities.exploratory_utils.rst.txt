@@ -1,0 +1,7 @@
+transformer\_lens.utilities.exploratory\_utils module
+=====================================================
+
+.. automodule:: transformer_lens.utilities.exploratory_utils
+   :members:
+   :undoc-members:
+   :show-inheritance:

@@ -1,14 +1,7 @@
-Transformer Lens API
---------------------
-
-If browsing the docs for the first time, we recommend initially looking at :doc:`HookedTransformer
-</generated/code/transformer_lens.HookedTransformer>` and :doc:`ActivationCache
-</generated/code/transformer_lens.ActivationCache>` modules.
-
-Contents
-^^^^^^^^
+transformer_lens
+================
 
 .. toctree::
-   :maxdepth: 3
+   :maxdepth: 4
 
    transformer_lens

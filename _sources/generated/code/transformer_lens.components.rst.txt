@@ -1,11 +1,11 @@
-transformer\_lens.components
-============================
+transformer\_lens.components package
+====================================
 
 Submodules
 ----------
 
 .. toctree::
-   :maxdepth: 1
+   :maxdepth: 4
 
    transformer_lens.components.abstract_attention
    transformer_lens.components.attention
@@ -26,3 +26,11 @@ Submodules
    transformer_lens.components.token_typed_embed
    transformer_lens.components.transformer_block
    transformer_lens.components.unembed
+
+Module contents
+---------------
+
+.. automodule:: transformer_lens.components
+   :members:
+   :undoc-members:
+   :show-inheritance:

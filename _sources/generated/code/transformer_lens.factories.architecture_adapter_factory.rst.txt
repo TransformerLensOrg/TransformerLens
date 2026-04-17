@@ -1,0 +1,7 @@
+transformer\_lens.factories.architecture\_adapter\_factory module
+=================================================================
+
+.. automodule:: transformer_lens.factories.architecture_adapter_factory
+   :members:
+   :undoc-members:
+   :show-inheritance:
