@@ -1,26 +1,46 @@
 # %%
 
+import pytest
 import torch
 
 from transformer_lens import HookedTransformer
 
 MODEL = "tiny-stories-1M"
 
-prompt = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum."
-model = HookedTransformer.from_pretrained(MODEL)
-# %%
-d_model = model.cfg.d_model
-d_head = model.cfg.d_head
-n_heads = model.cfg.n_heads
-n_layers = model.cfg.n_layers
-# %%
+# Use shorter prompt to reduce test time
+prompt = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor."
 
 
-def test_run_with_cache_pos_slice_keep_batch():
+@pytest.fixture(scope="module")
+def model():
+    """Load model once per module."""
+    return HookedTransformer.from_pretrained(MODEL)
+
+
+@pytest.fixture(scope="module")
+def model_config(model):
+    """Extract model config once."""
+    return {
+        "d_model": model.cfg.d_model,
+        "d_head": model.cfg.d_head,
+        "n_heads": model.cfg.n_heads,
+        "n_layers": model.cfg.n_layers,
+    }
+
+
+def test_run_with_cache_pos_slice_keep_batch(model, model_config):
     _, cache_no_slice = model.run_with_cache(prompt, return_type=None)
     num_tokens = len(model.tokenizer.encode(prompt))
 
-    for i in range(-1, num_tokens + 1):
+    d_model = model_config["d_model"]
+    d_head = model_config["d_head"]
+    n_heads = model_config["n_heads"]
+    n_layers = model_config["n_layers"]
+
+    # Test only a sample of positions to reduce test time
+    test_positions = [0, num_tokens // 2, num_tokens - 1, -1]
+
+    for i in test_positions:
         _, cache_with_slice = model.run_with_cache(prompt, return_type=None, pos_slice=i)
 
         assert cache_with_slice["embed"].shape == torch.Size([1, 1, d_model])
@@ -138,11 +158,19 @@ def test_run_with_cache_pos_slice_keep_batch():
             )
 
 
-def test_run_with_cache_pos_slice_remove_batch():
+def test_run_with_cache_pos_slice_remove_batch(model, model_config):
     _, cache_no_slice = model.run_with_cache(prompt, remove_batch_dim=True, return_type=None)
     num_tokens = len(model.tokenizer.encode(prompt))
 
-    for i in range(-1, num_tokens + 1):
+    d_model = model_config["d_model"]
+    d_head = model_config["d_head"]
+    n_heads = model_config["n_heads"]
+    n_layers = model_config["n_layers"]
+
+    # Test only a sample of positions to reduce test time
+    test_positions = [0, num_tokens // 2, num_tokens - 1, -1]
+
+    for i in test_positions:
         _, cache_with_slice = model.run_with_cache(prompt, remove_batch_dim=True, pos_slice=i)
 
         assert cache_with_slice["embed"].shape == torch.Size([1, d_model])

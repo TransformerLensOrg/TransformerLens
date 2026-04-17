@@ -9,8 +9,15 @@ import torch
 import torch.nn as nn
 from jaxtyping import Float
 
+from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.hook_points import HookPoint
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+
+# RMSNorm operates on the last dimension and supports both 2D and 3D inputs.
+# The 2D case arises when callers (e.g. QK normalization) reshape before normalizing.
+RMSNormInput = Union[
+    Float[torch.Tensor, "batch pos length"],
+    Float[torch.Tensor, "batch_pos length"],
+]
 
 
 class RMSNorm(nn.Module):
@@ -34,9 +41,7 @@ class RMSNorm(nn.Module):
         self.hook_scale = HookPoint()  # [batch, pos, 1]
         self.hook_normalized = HookPoint()  # [batch, pos, length]
 
-    def forward(
-        self, x: Float[torch.Tensor, "batch pos length"]
-    ) -> Float[torch.Tensor, "batch pos length"]:
+    def forward(self, x: RMSNormInput) -> RMSNormInput:
         if self.cfg.dtype not in [torch.float32, torch.float64]:
             x = x.to(torch.float32)
         scale: Float[torch.Tensor, "batch pos 1"] = self.hook_scale(

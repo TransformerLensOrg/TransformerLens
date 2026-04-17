@@ -7,6 +7,7 @@ import multiprocessing
 import os
 import shutil
 import subprocess
+import sys
 import warnings
 from copy import deepcopy
 from functools import lru_cache, partial
@@ -28,6 +29,7 @@ from transformer_lens import (
     HookedTransformer,
     HookedTransformerConfig,
     loading,
+    supported_models,
 )
 from transformer_lens.loading_from_pretrained import (  # type: ignore[import-untyped]
     NON_HF_HOSTED_MODEL_NAMES,
@@ -225,7 +227,9 @@ def get_tokenizer_info(model: HookedTransformer) -> dict:
     # basic info
     model_info["tokenizer.name"] = tokenizer.name_or_path
     model_info["tokenizer.vocab_size"] = int(tokenizer.vocab_size)
-    model_info["tokenizer.max_len"] = int(tokenizer.model_max_length)
+    # HF uses int(1e30) as a "no max length" sentinel; clamp to None so the value round-trips through pandas JSON (ujson rejects > int64).
+    max_len = int(tokenizer.model_max_length)
+    model_info["tokenizer.max_len"] = max_len if max_len <= 2**63 - 1 else None
     model_info["tokenizer.class"] = tokenizer.__class__.__name__
 
     # vocab hash
@@ -261,7 +265,7 @@ def get_model_info(
     """
 
     # assumes the input is a default alias
-    if model_name not in transformer_lens.loading.DEFAULT_MODEL_ALIASES:
+    if model_name not in supported_models.DEFAULT_MODEL_ALIASES:
         raise ValueError(f"Model name '{model_name}' not found in default aliases")
 
     # get the names and model types
@@ -270,7 +274,7 @@ def get_model_info(
         "name.default_alias": model_name,
         "name.huggingface": official_name,
         "name.aliases": ", ".join(
-            list(transformer_lens.loading.MODEL_ALIASES.get(official_name, []))  # type: ignore[arg-type]
+            list(supported_models.MODEL_ALIASES.get(official_name, []))  # type: ignore[arg-type]
         ),
         "model_type": None,
     }
@@ -403,7 +407,7 @@ def make_model_table(
     **kwargs,
 ) -> pd.DataFrame:
     """make table of all models. kwargs passed to `get_model_info()`"""
-    model_names: list[str] = list(transformer_lens.loading.DEFAULT_MODEL_ALIASES)
+    model_names: list[str] = list(supported_models.DEFAULT_MODEL_ALIASES)
     model_data: list[tuple[str, Union[dict, Exception]]] = list()
 
     # filter by regex pattern if provided
@@ -436,7 +440,7 @@ def make_model_table(
     else:
         # serial
         with tqdm.tqdm(
-            transformer_lens.loading.DEFAULT_MODEL_ALIASES,
+            supported_models.DEFAULT_MODEL_ALIASES,
             desc="Loading model info",
             disable=not verbose,
         ) as pbar:
@@ -490,10 +494,10 @@ def huggingface_name_to_url(df: pd.DataFrame) -> pd.DataFrame:
 
 
 MD_TABLE_HEARDER: str = """---
-title: Model Properties Table
+title: HookedTransformer
 hide-toc: true
 ---
-# Model Properties Table
+# HookedTransformer Model Properties
 
 also see the [interactive model table](../_static/model_properties_table_interactive.html)
 """
@@ -628,44 +632,32 @@ def get_model_table(
     return model_table
 
 
-def copy_demos(_app: Optional[Any] = None):
-    """Copy demo notebooks to the generated directory."""
-    copy_to_dir = GENERATED_DIR / "demos"
-    notebooks_to_copy = [
-        "Exploratory_Analysis_Demo.ipynb",
-        "Main_Demo.ipynb",
-    ]
-
-    if copy_to_dir.exists():
-        shutil.rmtree(copy_to_dir)
-
-    copy_to_dir.mkdir()
-    for filename in notebooks_to_copy:
-        shutil.copy(DEMOS_DIR / filename, copy_to_dir)
-
-
 def build_docs():
     """Build the docs."""
     get_model_table(
         model_table_path=GENERATED_DIR / "model_properties_table.jsonl",
         force_reload=True,
+        allow_except=True,
     )
     copy_demos()
+    generate_bridge_models_page()
 
-    # Generating docs
+    # Generate docs using venv's sphinx
     subprocess.run(
         [
-            "sphinx-build",
+            sys.executable,
+            "-m",
+            "sphinx",
             SOURCE_PATH,
             BUILD_PATH,
             # "-n",  # Nitpicky mode (warn about all missing references)
-            "-W",  # Turn warnings into errors
+            # "-W",  # Turn warnings into errors - temporarily disabled due to duplicate object warnings
         ],
         check=True,
     )
 
 
-def get_property(name, model_name):
+def get_property(name: str, model_name: str) -> Any:
     """Retrieve a specific property of a pretrained model.
 
     Args:
@@ -705,18 +697,693 @@ def get_property(name, model_name):
     return cfg.to_dict()[name]
 
 
+def generate_model_table(_app: Optional[Any] = None):
+    """Generate a markdown table summarizing properties of pretrained models.
+
+    This script extracts various properties of pretrained models from the `easy_transformer`
+    library, such as the number of parameters, layers, and heads, among others, and generates a
+    markdown table.
+    """
+
+    column_names = [
+        "n_params",
+        "n_layers",
+        "d_model",
+        "n_heads",
+        "act_fn",
+        "n_ctx",
+        "d_vocab",
+        "d_head",
+        "d_mlp",
+        "n_key_value_heads",
+    ]
+    df = pd.DataFrame(
+        {
+            name: [
+                get_property(name, model_name)
+                for model_name in supported_models.DEFAULT_MODEL_ALIASES
+            ]
+            for name in column_names
+        },
+        index=supported_models.DEFAULT_MODEL_ALIASES,
+    )
+
+    df["n_key_value_heads"] = df["n_key_value_heads"].fillna(-1).astype(int).replace(-1, "")
+    markdown_string = df.to_markdown()
+    markdown_string = "# Model Properties Table\n\n" + markdown_string
+
+    GENERATED_DIR.mkdir(exist_ok=True)
+    file_path = GENERATED_DIR / "model_properties_table.md"
+    with open(file_path, "w", encoding="utf-8") as file:
+        file.write(markdown_string)
+
+
+def copy_demos(_app: Optional[Any] = None):
+    """Copy demo notebooks to the generated directory."""
+    copy_to_dir = GENERATED_DIR / "demos"
+    notebooks_to_copy = [
+        "Exploratory_Analysis_Demo.ipynb",
+        "Main_Demo.ipynb",
+    ]
+
+    if copy_to_dir.exists():
+        shutil.rmtree(copy_to_dir)
+
+    copy_to_dir.mkdir()
+    for filename in notebooks_to_copy:
+        shutil.copy(DEMOS_DIR / filename, copy_to_dir)
+
+
+BRIDGE_MODELS_PAGE: str = """---
+title: TransformerBridge Models
+hide-toc: true
+---
+# TransformerBridge Models
+
+The TransformerBridge provides automatic model compatibility for HuggingFace models
+across supported architectures. The models are categorized by architecture, and you
+can search and filter them using the interactive table below. As time goes on, we will
+continue to verify and test the text quality of additional models. Note, text quality is tested
+for English, and may not be the same for other languages.
+
+```{raw} html
+<style>
+/* Widen the Furo content area for this page */
+.main > .content {
+    width: 80vw !important;
+    max-width: 80vw !important;
+}
+
+#bt-root { font-size: 14px; }
+#bt-root .bt-controls {
+    display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 16px;
+}
+#bt-root .bt-controls input[type="text"] {
+    padding: 6px 10px; border: 1px solid var(--color-foreground-border, #ccc);
+    border-radius: 4px; font-size: 14px; min-width: 260px;
+    background: var(--color-background-primary, #fff); color: var(--color-foreground-primary, #333);
+}
+#bt-root .bt-controls select {
+    padding: 6px 10px; border: 1px solid var(--color-foreground-border, #ccc);
+    border-radius: 4px; font-size: 14px; min-width: 220px;
+    background: var(--color-background-primary, #fff); color: var(--color-foreground-primary, #333);
+}
+#bt-root .bt-controls label {
+    display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; white-space: nowrap;
+}
+#bt-root .bt-count {
+    margin-left: auto; font-size: 13px; color: var(--color-foreground-muted, #666); white-space: nowrap;
+}
+#bt-root .bt-wrap { overflow-x: auto; }
+#bt-root table {
+    width: 100%; border-collapse: collapse; font-size: 13px;
+}
+#bt-root thead th {
+    background: var(--color-background-secondary, #f5f5f5);
+    border-bottom: 2px solid var(--color-foreground-border, #ddd);
+    padding: 8px 12px; text-align: left; font-weight: 600; white-space: nowrap;
+    position: sticky; top: 0; z-index: 1;
+}
+#bt-root tbody td {
+    padding: 6px 12px; border-bottom: 1px solid var(--color-background-border, #eee); white-space: nowrap;
+}
+#bt-root tbody tr:hover { background: var(--color-background-hover, #f8f8ff); }
+#bt-root tbody td a { color: var(--color-link, #0366d6); text-decoration: none; }
+#bt-root tbody td a:hover { text-decoration: underline; }
+#bt-root .bt-rn { color: var(--color-foreground-muted, #999); font-size: 12px; width: 36px; text-align: right; }
+#bt-root .bt-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+#bt-root .bt-s0 { background: #e8e8e8; color: #666; }
+#bt-root .bt-s1 { background: #d4edda; color: #155724; }
+#bt-root .bt-s2 { background: #fff3cd; color: #856404; }
+#bt-root .bt-s3 { background: #f8d7da; color: #721c24; }
+#bt-root .bt-muted { color: var(--color-foreground-muted, #999); }
+#bt-root .bt-score { font-weight: 600; font-size: 12px; }
+#bt-root .bt-score-high { color: #155724; }
+#bt-root .bt-score-mid { color: #856404; }
+#bt-root .bt-score-low { color: #721c24; }
+#bt-root .bt-note { max-width: 280px; white-space: normal; word-wrap: break-word; font-size: 12px; line-height: 1.4; }
+#bt-root .bt-note-toggle { color: var(--color-link, #2962ff); cursor: pointer; font-size: 11px; margin-left: 4px; white-space: nowrap; }
+#bt-root .bt-detail-link { cursor: pointer; font-size: 12px; }
+#bt-root .bt-detail-row td { padding: 0; border-bottom: 2px solid var(--color-foreground-border, #ddd); }
+#bt-root .bt-detail-row:hover { background: transparent; }
+#bt-root .bt-detail {
+    padding: 12px 16px 12px 48px;
+    background: var(--color-background-secondary, #f9f9f9);
+    font-size: 13px;
+}
+#bt-root .bt-detail-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 6px 24px;
+}
+#bt-root .bt-detail-grid dt {
+    font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em;
+    color: var(--color-foreground-muted, #888); margin: 0;
+}
+#bt-root .bt-detail-grid dd {
+    margin: 0 0 6px 0; font-family: monospace; font-size: 13px;
+}
+#bt-root .bt-detail-loading { color: var(--color-foreground-muted, #999); font-style: italic; }
+#bt-root .bt-detail-error { color: #dc3545; font-style: italic; }
+#bt-root .bt-pag {
+    display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 16px; flex-wrap: wrap;
+}
+#bt-root .bt-pag button {
+    padding: 6px 14px; border: 1px solid var(--color-foreground-border, #ccc); border-radius: 4px;
+    background: var(--color-background-primary, #fff); color: var(--color-foreground-primary, #333);
+    cursor: pointer; font-size: 13px;
+}
+#bt-root .bt-pag button:hover:not(:disabled) { background: var(--color-background-hover, #f0f0f0); }
+#bt-root .bt-pag button:disabled { opacity: 0.4; cursor: default; }
+#bt-root .bt-pag .bt-pinfo { font-size: 13px; color: var(--color-foreground-muted, #666); }
+#bt-root .bt-pag .bt-pnums { display: flex; gap: 4px; }
+#bt-root .bt-pag .bt-pbtn { padding: 4px 10px; min-width: 32px; text-align: center; }
+#bt-root .bt-pag .bt-pbtn.active {
+    background: var(--color-link, #0366d6); color: #fff; border-color: var(--color-link, #0366d6);
+}
+#bt-root .bt-pag .bt-ellip { padding: 4px 6px; color: var(--color-foreground-muted, #999); }
+#bt-root .bt-empty { text-align: center; padding: 40px 20px; color: var(--color-foreground-muted, #999); }
+#bt-root thead th[data-sort] { cursor: pointer; user-select: none; }
+#bt-root thead th[data-sort]::after { content: ' \\25B2\\25BC'; font-size: 9px; opacity: 0.3; margin-left: 4px; }
+#bt-root thead th[data-sort].bt-asc::after { content: ' \\25B2'; opacity: 0.8; }
+#bt-root thead th[data-sort].bt-desc::after { content: ' \\25BC'; opacity: 0.8; }
+</style>
+
+<div id="bt-root">
+  <div class="bt-controls">
+    <input type="text" id="btSearch" placeholder="Search by model name or organization...">
+    <select id="btArch"><option value="">All Architectures</option></select>
+    <select id="btPrefix"><option value="">All Organizations</option></select>
+    <select id="btStatus"><option value="">All Statuses</option><option value="1">Verified</option><option value="0">Unverified</option><option value="3">Failed</option></select>
+    <span class="bt-count" id="btCount"></span>
+  </div>
+  <div class="bt-wrap">
+    <table>
+      <thead><tr>
+        <th class="bt-rn">#</th>
+        <th data-sort="org">Organization</th>
+        <th data-sort="name">Model Name</th>
+        <th data-sort="arch">Architecture</th>
+        <th data-sort="status">Status</th>
+        <th data-sort="score" title="English language generation quality scored out of 100. Scores for non-English models may be invalid.">Text Quality</th>
+        <th data-sort="date">Verified Date</th>
+        <th>Note</th>
+        <th></th>
+      </tr></thead>
+      <tbody id="btBody"><tr><td colspan="9" class="bt-empty">Loading models...</td></tr></tbody>
+    </table>
+  </div>
+  <div class="bt-pag" id="btPag"></div>
+</div>
+
+<script>
+(function() {
+    const PS = 25, COLS = 9;
+    const SM = {0:'Unverified',1:'Verified',2:'Unverified',3:'Failed'};
+    // Canonical org per supported architecture. Pinned to top of the Organizations filter.
+    const OFFICIAL_ORGS = {
+        ApertusForCausalLM: ['swiss-ai'],
+        BloomForCausalLM: ['bigscience'],
+        CodeGenForCausalLM: ['Salesforce'],
+        CohereForCausalLM: ['CohereLabs'],
+        DeepseekV3ForCausalLM: ['deepseek-ai'],
+        FalconForCausalLM: ['tiiuae'],
+        GPT2LMHeadModel: ['openai-community'],
+        GPTBigCodeForCausalLM: ['bigcode'],
+        GPTJForCausalLM: ['EleutherAI'],
+        GPTNeoForCausalLM: ['EleutherAI'],
+        GPTNeoXForCausalLM: ['EleutherAI'],
+        Gemma2ForCausalLM: ['google'],
+        Gemma3ForCausalLM: ['google'],
+        Gemma3ForConditionalGeneration: ['google'],
+        GemmaForCausalLM: ['google'],
+        GptOssForCausalLM: ['openai'],
+        GraniteForCausalLM: ['ibm-granite'],
+        GraniteMoeForCausalLM: ['ibm-granite'],
+        GraniteMoeHybridForCausalLM: ['ibm-granite'],
+        HubertForCTC: ['facebook'],
+        HubertModel: ['facebook'],
+        InternLM2ForCausalLM: ['internlm'],
+        LlamaForCausalLM: ['meta-llama'],
+        LlavaForConditionalGeneration: ['llava-hf'],
+        LlavaNextForConditionalGeneration: ['llava-hf'],
+        LlavaOnevisionForConditionalGeneration: ['llava-hf'],
+        MPTForCausalLM: ['mosaicml'],
+        Mamba2ForCausalLM: ['state-spaces'],
+        MambaForCausalLM: ['state-spaces'],
+        MistralForCausalLM: ['mistralai'],
+        MixtralForCausalLM: ['mistralai'],
+        OPTForCausalLM: ['facebook'],
+        Olmo2ForCausalLM: ['allenai'],
+        Olmo3ForCausalLM: ['allenai'],
+        OlmoForCausalLM: ['allenai'],
+        OlmoeForCausalLM: ['allenai'],
+        OpenELMForCausalLM: ['apple'],
+        Phi3ForCausalLM: ['microsoft'],
+        PhiForCausalLM: ['microsoft'],
+        Qwen2ForCausalLM: ['Qwen'],
+        Qwen3ForCausalLM: ['Qwen'],
+        Qwen3MoeForCausalLM: ['Qwen'],
+        Qwen3NextForCausalLM: ['Qwen'],
+        Qwen3_5ForCausalLM: ['Qwen'],
+        StableLmForCausalLM: ['stabilityai'],
+        XGLMForCausalLM: ['facebook'],
+    };
+    const cfgCache = {};
+    let all=[], filt=[], pg=1, dt=null, sortCol='', sortDir='asc';
+
+    /* Fields to extract from HuggingFace config.json, with beautified labels.
+       Each entry: [label, ...candidate keys to try in order].
+       Keys starting with _ are computed/inferred fields handled in extractField(). */
+    const CFG_FIELDS = [
+        /* Size & Shape */
+        ['Parameters',          '_n_params'],
+        ['Layers',              'num_hidden_layers', 'n_layer', 'num_layers'],
+        ['Heads',               'num_attention_heads', 'n_head', 'num_heads'],
+        ['KV Heads',            'num_key_value_heads'],
+        ['Model Dim (d_model)', 'hidden_size', 'n_embd', 'd_model'],
+        ['Head Dim (d_head)',   'head_dim'],
+        ['MLP Dim (d_mlp)',     'intermediate_size', 'd_ff'],
+        ['Vocab Size',          'vocab_size'],
+        ['Context Length',      'max_position_embeddings', 'n_positions', 'n_ctx'],
+        /* Architecture details relevant for MI */
+        ['Activation',          'hidden_act', 'activation_function', 'feed_forward_proj'],
+        ['Normalization',       '_norm_type'],
+        ['Positional Embedding','_pos_embed_type'],
+        ['Parallel Attn & MLP', '_parallel_attn_mlp'],
+        ['Gated MLP',           '_gated_mlp'],
+        ['Tie Embeddings',      'tie_word_embeddings'],
+        /* Tokenizer */
+        ['Tokenizer',           '_tokenizer'],
+    ];
+
+    function fmtParam(n) {
+        if (n === null || n === undefined) return null;
+        if (n >= 1e12) return (n/1e12).toFixed(1) + 'T';
+        if (n >= 1e9)  return (n/1e9).toFixed(1) + 'B';
+        if (n >= 1e6)  return (n/1e6).toFixed(0) + 'M';
+        if (n >= 1e3)  return (n/1e3).toFixed(0) + 'K';
+        return String(n);
+    }
+
+    function estimateParams(cfg) {
+        const d = cfg.hidden_size || cfg.n_embd || cfg.d_model;
+        const L = cfg.num_hidden_layers || cfg.n_layer || cfg.num_layers;
+        const V = cfg.vocab_size;
+        const dff = cfg.intermediate_size || cfg.d_ff;
+        if (!d || !L) return null;
+        /* Rough: 2*V*d + L*(4*d^2 + 2*d*dff) */
+        let p = 2 * (V||0) * d;
+        p += L * (4 * d * d + (dff ? 2 * d * dff : 8 * d * d));
+        return p;
+    }
+
+    function inferNormType(cfg) {
+        if (cfg.rms_norm_eps !== undefined) return 'RMSNorm';
+        if (cfg.layer_norm_epsilon !== undefined || cfg.layer_norm_eps !== undefined) return 'LayerNorm';
+        if (cfg.norm_eps !== undefined) return 'LayerNorm';
+        return null;
+    }
+
+    function inferPosEmbedType(cfg) {
+        /* Check for rotary indicators */
+        if (cfg.rope_theta || cfg.rope_parameters || cfg.rope_scaling ||
+            cfg.rotary_pct || cfg.rotary_dim || cfg.rotary_emb_base) return 'Rotary (RoPE)';
+        if (cfg.partial_rotary_factor !== undefined) return 'Partial Rotary (RoPE)';
+        /* ALiBi */
+        if (cfg.alibi || cfg.position_embedding_type === 'alibi') return 'ALiBi';
+        /* Relative position bias (T5-style) */
+        if (cfg.relative_attention_num_buckets !== undefined) return 'Relative Bias (T5)';
+        /* Explicit type */
+        if (cfg.position_embedding_type) return cfg.position_embedding_type;
+        /* If max_position_embeddings is set and no rotary found, likely learned */
+        if (cfg.max_position_embeddings || cfg.n_positions) return 'Learned';
+        return null;
+    }
+
+    function inferParallelAttnMlp(cfg) {
+        /* Explicit flags in some configs */
+        if (cfg.parallel_attn !== undefined) return cfg.parallel_attn;
+        /* Phi models use parallel attention+MLP */
+        const arch = cfg.architectures?.[0] || cfg.model_type || '';
+        if (/^phi$/i.test(cfg.model_type) && cfg.model_type !== 'phi3') return true;
+        if (arch === 'GPTJForCausalLM' || cfg.model_type === 'gptj') return true;
+        return null;
+    }
+
+    function inferGatedMlp(cfg) {
+        /* SwiGLU / gated MLPs are used by LLaMA, Mistral, Qwen, Gemma, OLMo, etc.
+           The tell-tale sign is hidden_act being 'silu' + intermediate_size present,
+           or an explicit gate_proj in the architecture. */
+        const act = cfg.hidden_act || '';
+        const arch = cfg.architectures?.[0] || '';
+        const gatedArchs = ['LlamaForCausalLM', 'MistralForCausalLM', 'MixtralForCausalLM',
+            'Qwen2ForCausalLM', 'Qwen3ForCausalLM', 'GemmaForCausalLM', 'Gemma2ForCausalLM',
+            'Gemma3ForCausalLM', 'Phi3ForCausalLM', 'OlmoForCausalLM', 'Olmo2ForCausalLM',
+            'Olmo3ForCausalLM', 'OlmoeForCausalLM', 'StableLmForCausalLM', 'GptOssForCausalLM'];
+        if (gatedArchs.includes(arch)) return true;
+        /* T5 with gated-gelu or gated-silu */
+        if (cfg.feed_forward_proj && cfg.feed_forward_proj.includes('gated')) return true;
+        if (arch === 'GPT2LMHeadModel' || arch === 'GPTNeoForCausalLM' ||
+            arch === 'GPTNeoXForCausalLM' || arch === 'GPTJForCausalLM' ||
+            arch === 'OPTForCausalLM' || arch === 'BloomForCausalLM') return false;
+        return null;
+    }
+
+    function inferTokenizer(cfg) {
+        return cfg.tokenizer_class || null;
+    }
+
+    function extractField(cfg, keys) {
+        for (const k of keys) {
+            if (k === '_n_params') {
+                const est = estimateParams(cfg);
+                return est ? fmtParam(est) + ' (est.)' : null;
+            }
+            if (k === '_norm_type') return inferNormType(cfg);
+            if (k === '_pos_embed_type') return inferPosEmbedType(cfg);
+            if (k === '_parallel_attn_mlp') return inferParallelAttnMlp(cfg);
+            if (k === '_gated_mlp') return inferGatedMlp(cfg);
+            if (k === '_tokenizer') return inferTokenizer(cfg);
+            if (cfg[k] !== undefined && cfg[k] !== null) return cfg[k];
+        }
+        return null;
+    }
+
+    async function fetchDetail(modelId) {
+        if (cfgCache[modelId]) return cfgCache[modelId];
+        const url = 'https://huggingface.co/' + modelId + '/resolve/main/config.json';
+        const r = await fetch(url);
+        if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
+        const cfg = await r.json();
+        cfgCache[modelId] = cfg;
+        return cfg;
+    }
+
+    function renderDetail(cfg) {
+        let html = '<dl class="bt-detail-grid">';
+        for (const [label, ...keys] of CFG_FIELDS) {
+            let val = extractField(cfg, keys);
+            if (val === null || val === undefined) continue;
+            if (typeof val === 'boolean') val = val ? 'Yes' : 'No';
+            if (typeof val === 'number') val = val.toLocaleString();
+            html += '<div><dt>' + esc(label) + '</dt><dd>' + esc(String(val)) + '</dd></div>';
+        }
+        html += '</dl>';
+        return html;
+    }
+
+    async function toggleDetail(modelId, rowEl) {
+        const nextRow = rowEl.nextElementSibling;
+        if (nextRow && nextRow.classList.contains('bt-detail-row')) {
+            nextRow.remove();
+            rowEl.querySelector('.bt-detail-link').textContent = 'Details';
+            return;
+        }
+        const detailRow = document.createElement('tr');
+        detailRow.className = 'bt-detail-row';
+        detailRow.innerHTML = '<td colspan="' + COLS + '"><div class="bt-detail"><span class="bt-detail-loading">Loading config from HuggingFace...</span></div></td>';
+        rowEl.after(detailRow);
+        rowEl.querySelector('.bt-detail-link').textContent = 'Hide';
+        try {
+            const cfg = await fetchDetail(modelId);
+            detailRow.querySelector('.bt-detail').innerHTML = renderDetail(cfg);
+        } catch(e) {
+            detailRow.querySelector('.bt-detail').innerHTML = '<span class="bt-detail-error">Could not load config: ' + esc(String(e.message)) + '</span>';
+        }
+    }
+
+    function getPrefix(modelId) {
+        const i = modelId.indexOf('/');
+        return i > 0 ? modelId.slice(0, i) : '';
+    }
+    function getModelName(modelId) {
+        const i = modelId.indexOf('/');
+        return i > 0 ? modelId.slice(i + 1) : modelId;
+    }
+
+    function populatePrefixFilter() {
+        const arch = document.getElementById('btArch').value;
+        const subset = arch ? all.filter(m => m.architecture_id === arch) : all;
+        const pc = {};
+        const archsInScope = new Set();
+        subset.forEach(m => {
+            archsInScope.add(m.architecture_id);
+            const p = getPrefix(m.model_id);
+            if (p) pc[p] = (pc[p] || 0) + 1;
+        });
+        // Collect officials for every architecture in scope (union when "All Architectures" is active).
+        const officialSet = new Set();
+        archsInScope.forEach(a => (OFFICIAL_ORGS[a] || []).forEach(o => officialSet.add(o)));
+        const pinned = [...officialSet].filter(o => pc[o]).sort();
+        const rest = Object.keys(pc).filter(o => !officialSet.has(o)).sort();
+        const sel = document.getElementById('btPrefix');
+        const cur = sel.value;
+        const addOpt = (value, text) => {
+            const o = document.createElement('option');
+            o.value = value; o.textContent = text;
+            sel.appendChild(o);
+        };
+        sel.innerHTML = '<option value="">All Organizations</option>';
+        pinned.forEach(p => addOpt(p, p + ' (' + pc[p] + ')'));
+        if (pinned.length && rest.length) {
+            const sep = document.createElement('option');
+            sep.disabled = true; sep.textContent = '──────── Other ────────';
+            sel.appendChild(sep);
+        }
+        rest.forEach(p => addOpt(p, p + ' (' + pc[p] + ')'));
+        if (cur && pc[cur]) sel.value = cur; else sel.value = '';
+    }
+
+    async function init() {
+        try {
+            const r = await fetch('../_static/supported_models.json');
+            const d = await r.json();
+            all = d.models;
+            const ac = {};
+            all.forEach(m => ac[m.architecture_id] = (ac[m.architecture_id]||0)+1);
+            const sel = document.getElementById('btArch');
+            Object.keys(ac).sort().forEach(a => {
+                const o = document.createElement('option');
+                o.value = a; o.textContent = a+' ('+ac[a]+')';
+                sel.appendChild(o);
+            });
+            populatePrefixFilter();
+            /* Restore state from URL params */
+            const up = new URLSearchParams(location.search);
+            if (up.get('q')) document.getElementById('btSearch').value = up.get('q');
+            if (up.get('arch')) document.getElementById('btArch').value = up.get('arch');
+            if (up.get('org')) { populatePrefixFilter(); document.getElementById('btPrefix').value = up.get('org'); }
+            if (up.has('status')) document.getElementById('btStatus').value = up.get('status');
+            if (up.get('sort')) { sortCol = up.get('sort'); sortDir = up.get('dir') || 'asc'; updateSortHeaders(); }
+            apply();
+        } catch(e) {
+            document.getElementById('btBody').innerHTML =
+                '<tr><td colspan="'+COLS+'" class="bt-empty">Failed to load model data.</td></tr>';
+        }
+    }
+
+    function apply() {
+        const s = document.getElementById('btSearch').value.toLowerCase().trim();
+        const a = document.getElementById('btArch').value;
+        const pf = document.getElementById('btPrefix').value;
+        const sv = document.getElementById('btStatus').value;
+        filt = all.filter(m => {
+            if (s && !m.model_id.toLowerCase().includes(s)) return false;
+            if (a && m.architecture_id !== a) return false;
+            if (pf && getPrefix(m.model_id) !== pf) return false;
+            if (sv !== '' && m.status !== +sv) return false;
+            return true;
+        });
+        sortFilt();
+        pg = 1; render(); pag(); count(); syncUrl();
+    }
+
+    function esc(str) { const d=document.createElement('div'); d.textContent=str; return d.innerHTML; }
+    function scoreClass(v) { return v >= 70 ? ' bt-score-high' : v >= 40 ? ' bt-score-mid' : ' bt-score-low'; }
+
+    /* Sort accessor: returns a comparable value for each sort key */
+    function sortVal(m, key) {
+        switch(key) {
+            case 'org': return getPrefix(m.model_id).toLowerCase();
+            case 'name': return getModelName(m.model_id).toLowerCase();
+            case 'arch': return m.architecture_id.toLowerCase();
+            case 'status': return m.status;
+            case 'score': return m.phase4_score;
+            case 'date': return m.verified_date || '';
+            default: return '';
+        }
+    }
+    function sortFilt() {
+        if (!sortCol) return;
+        const dir = sortDir === 'desc' ? -1 : 1;
+        const isNum = (sortCol === 'status' || sortCol === 'score');
+        filt.sort((a, b) => {
+            let va = sortVal(a, sortCol), vb = sortVal(b, sortCol);
+            /* nulls/empty always last */
+            const aN = (va === null || va === undefined || va === '');
+            const bN = (vb === null || vb === undefined || vb === '');
+            if (aN && bN) return 0;
+            if (aN) return 1;
+            if (bN) return -1;
+            if (isNum) return (va - vb) * dir;
+            return String(va).localeCompare(String(vb)) * dir;
+        });
+    }
+    function updateSortHeaders() {
+        document.querySelectorAll('#bt-root th[data-sort]').forEach(th => {
+            th.classList.remove('bt-asc', 'bt-desc');
+            if (th.dataset.sort === sortCol) th.classList.add(sortDir === 'desc' ? 'bt-desc' : 'bt-asc');
+        });
+    }
+    function syncUrl() {
+        const p = new URLSearchParams();
+        const s = document.getElementById('btSearch').value.trim();
+        const a = document.getElementById('btArch').value;
+        const pf = document.getElementById('btPrefix').value;
+        const sv = document.getElementById('btStatus').value;
+        if (s) p.set('q', s);
+        if (a) p.set('arch', a);
+        if (pf) p.set('org', pf);
+        if (sv !== '') p.set('status', sv);
+        if (sortCol) { p.set('sort', sortCol); p.set('dir', sortDir); }
+        const qs = p.toString();
+        history.replaceState(null, '', qs ? '?' + qs : location.pathname);
+    }
+    function cleanNote(note) {
+        if (!note) return '';
+        // Hide memory-limit skip notes (e.g. "Estimated 45.2 GB exceeds 24 GB limit")
+        if (/Estimated\s+[\d.]+\s*GB\s+exceeds\s+[\d.]+\s*GB\s+limit/i.test(note)) return '';
+        // "Benchmark passed with issues: P1=50.0% ..." → "Benchmark passed with issues"
+        const m = note.match(/^(.+?):\s/);
+        if (m) return m[1];
+        return note;
+    }
+    function renderNote(note) {
+        if (!note) return '<span class="bt-muted">&mdash;</span>';
+        const clean = cleanNote(note);
+        if (!clean) return '<span class="bt-muted">&mdash;</span>';
+        if (clean.length <= 50) return esc(clean);
+        return '<span class="bt-note-trunc">' + esc(clean.slice(0,50)) + '&hellip; <a class="bt-note-toggle" href="javascript:void(0)">more</a></span>' +
+               '<span class="bt-note-full" style="display:none">' + esc(clean) + ' <a class="bt-note-toggle" href="javascript:void(0)">less</a></span>';
+    }
+
+    function render() {
+        const tb = document.getElementById('btBody');
+        const st = (pg-1)*PS, pm = filt.slice(st, st+PS);
+        if (!pm.length) {
+            tb.innerHTML='<tr><td colspan="'+COLS+'" class="bt-empty">No models match your filters.</td></tr>';
+            return;
+        }
+        tb.innerHTML = pm.map((m,i) => {
+            const id = esc(m.model_id);
+            const org = esc(getPrefix(m.model_id));
+            const name = esc(getModelName(m.model_id));
+            return '<tr data-model="'+id+'">' +
+            '<td class="bt-rn">'+(st+i+1)+'</td>' +
+            '<td>'+org+'</td>' +
+            '<td><a href="https://huggingface.co/'+id+'" target="_blank" rel="noopener">'+name+'</a></td>' +
+            '<td>'+esc(m.architecture_id)+'</td>' +
+            '<td><span class="bt-badge bt-s'+(m.status===2?0:m.status)+'">'+SM[m.status]+'</span></td>' +
+            '<td>'+(m.phase4_score != null ? '<span class="bt-score'+scoreClass(m.phase4_score)+'">'+m.phase4_score.toFixed(1)+'</span>' : '<span class="bt-muted">&mdash;</span>')+'</td>' +
+            '<td>'+(m.verified_date || '<span class="bt-muted">&mdash;</span>')+'</td>' +
+            '<td class="bt-note">'+ renderNote(m.note) +'</td>' +
+            '<td><a class="bt-detail-link" href="javascript:void(0)">Details</a></td>' +
+            '</tr>';
+        }).join('');
+
+        tb.querySelectorAll('.bt-detail-link').forEach(link => {
+            link.addEventListener('click', function(e) {
+                e.preventDefault();
+                const row = this.closest('tr');
+                toggleDetail(row.dataset.model, row);
+            });
+        });
+        tb.querySelectorAll('.bt-note-toggle').forEach(link => {
+            link.addEventListener('click', function(e) {
+                e.preventDefault();
+                const cell = this.closest('.bt-note');
+                const trunc = cell.querySelector('.bt-note-trunc');
+                const full = cell.querySelector('.bt-note-full');
+                const showing = trunc.style.display === 'none';
+                trunc.style.display = showing ? '' : 'none';
+                full.style.display = showing ? 'none' : '';
+            });
+        });
+    }
+
+    function pag() {
+        const tp = Math.max(1, Math.ceil(filt.length/PS)), c = document.getElementById('btPag');
+        if (tp<=1) { c.innerHTML=''; return; }
+        let h = '<button id="btPrev" '+(pg===1?'disabled':'')+'>Previous</button><div class="bt-pnums">';
+        const pages=[1]; if(tp>1) pages.push(tp);
+        for(let i=Math.max(2,pg-1);i<=Math.min(tp-1,pg+1);i++) if(!pages.includes(i)) pages.push(i);
+        pages.sort((a,b)=>a-b);
+        let last=0;
+        pages.forEach(p => {
+            if(last&&p-last>1) h+='<span class="bt-ellip">...</span>';
+            h+='<button class="bt-pbtn'+(p===pg?' active':'')+'" data-p="'+p+'">'+p+'</button>';
+            last=p;
+        });
+        h += '</div><button id="btNext" '+(pg===tp?'disabled':'')+'>Next</button>';
+        h += '<span class="bt-pinfo">Page '+pg+' of '+tp+'</span>';
+        c.innerHTML = h;
+        document.getElementById('btPrev').addEventListener('click', () => go(pg-1));
+        document.getElementById('btNext').addEventListener('click', () => go(pg+1));
+        c.querySelectorAll('.bt-pbtn').forEach(b => b.addEventListener('click', () => go(+b.dataset.p)));
+    }
+
+    function go(p) { const tp=Math.ceil(filt.length/PS); if(p<1||p>tp) return; pg=p; render(); pag(); count(); }
+    function count() { document.getElementById('btCount').textContent='Showing '+filt.length+' of '+all.length+' models'; }
+
+    document.getElementById('btSearch').addEventListener('input', () => { clearTimeout(dt); dt=setTimeout(apply,200); });
+    document.getElementById('btArch').addEventListener('change', () => { populatePrefixFilter(); apply(); });
+    document.getElementById('btPrefix').addEventListener('change', apply);
+    document.getElementById('btStatus').addEventListener('change', apply);
+    document.querySelectorAll('#bt-root th[data-sort]').forEach(th => {
+        th.addEventListener('click', () => {
+            const key = th.dataset.sort;
+            if (sortCol === key) { sortDir = sortDir === 'asc' ? 'desc' : 'asc'; }
+            else { sortCol = key; sortDir = 'asc'; }
+            updateSortHeaders(); sortFilt(); pg = 1; render(); pag(); count(); syncUrl();
+        });
+    });
+    init();
+})();
+</script>
+```
+"""
+
+
+def generate_bridge_models_page():
+    """Generate the TransformerBridge models markdown page.
+
+    The page fetches supported_models.json from _static/, which is a symlink
+    to the canonical source at transformer_lens/tools/model_registry/data/.
+    """
+    GENERATED_DIR.mkdir(exist_ok=True)
+    (GENERATED_DIR / "transformer_bridge_models.md").write_text(
+        BRIDGE_MODELS_PAGE, encoding="utf-8"
+    )
+
+
 def docs_hot_reload():
     """Hot reload the docs."""
     get_model_table(
         model_table_path=GENERATED_DIR / "model_properties_table.jsonl", force_reload=False
     )
     copy_demos()
+    generate_bridge_models_page()
 
+    # Ignore docs/source/generated/: run_apidoc rewrites it on every build, which would otherwise trigger an infinite rebuild loop.
     subprocess.run(
         [
             "sphinx-autobuild",
             "--watch",
-            str(PACKAGE_DIR) + "," + str(DEMOS_DIR),
+            str(PACKAGE_DIR),
+            "--watch",
+            str(DEMOS_DIR),
+            "--ignore",
+            str(GENERATED_DIR / "*"),
             "--open-browser",
             SOURCE_PATH,
             BUILD_PATH,

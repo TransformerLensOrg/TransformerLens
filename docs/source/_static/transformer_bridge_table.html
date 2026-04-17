@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TransformerBridge Supported Models</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            font-size: 14px;
+            color: #333;
+            background: #fff;
+            padding: 16px;
+        }
+
+        /* Controls */
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .controls input[type="text"] {
+            padding: 6px 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 14px;
+            min-width: 240px;
+        }
+
+        .controls select {
+            padding: 6px 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 14px;
+            min-width: 200px;
+        }
+
+        .controls label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 13px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .controls input[type="checkbox"] {
+            cursor: pointer;
+        }
+
+        .model-count {
+            margin-left: auto;
+            font-size: 13px;
+            color: #666;
+            white-space: nowrap;
+        }
+
+        /* Table */
+        .table-container {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        thead th {
+            background: #f5f5f5;
+            border-bottom: 2px solid #ddd;
+            padding: 8px 12px;
+            text-align: left;
+            font-weight: 600;
+            white-space: nowrap;
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+
+        tbody td {
+            padding: 6px 12px;
+            border-bottom: 1px solid #eee;
+            white-space: nowrap;
+        }
+
+        tbody td:last-child {
+            white-space: normal;
+            max-width: 350px;
+            font-size: 12px;
+        }
+
+        tbody tr:hover {
+            background: #f8f8ff;
+        }
+
+        tbody td a {
+            color: #0366d6;
+            text-decoration: none;
+        }
+
+        tbody td a:hover {
+            text-decoration: underline;
+        }
+
+        /* Row number column */
+        .row-num {
+            color: #999;
+            font-size: 12px;
+            width: 40px;
+            text-align: right;
+        }
+
+        /* Status badges */
+        .status-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .status-0 { background: #e8e8e8; color: #666; }
+        .status-1 { background: #d4edda; color: #155724; }
+        .status-2 { background: #fff3cd; color: #856404; }
+        .status-3 { background: #f8d7da; color: #721c24; }
+
+        /* Score colors */
+        .score { font-weight: 600; font-size: 12px; }
+        .score-high { color: #155724; }
+        .score-mid { color: #856404; }
+        .score-low { color: #721c24; }
+        .muted { color: #999; }
+
+        /* Sortable headers */
+        thead th[data-sort] { cursor: pointer; user-select: none; }
+        thead th[data-sort]::after { content: ' \25B2\25BC'; font-size: 9px; opacity: 0.3; margin-left: 4px; }
+        thead th[data-sort].sort-asc::after { content: ' \25B2'; opacity: 0.8; }
+        thead th[data-sort].sort-desc::after { content: ' \25BC'; opacity: 0.8; }
+
+        /* Pagination */
+        .pagination {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            margin-top: 16px;
+            flex-wrap: wrap;
+        }
+
+        .pagination button {
+            padding: 6px 14px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            background: #fff;
+            cursor: pointer;
+            font-size: 13px;
+        }
+
+        .pagination button:hover:not(:disabled) {
+            background: #f0f0f0;
+        }
+
+        .pagination button:disabled {
+            opacity: 0.4;
+            cursor: default;
+        }
+
+        .pagination .page-info {
+            font-size: 13px;
+            color: #666;
+        }
+
+        .pagination .page-numbers {
+            display: flex;
+            gap: 4px;
+        }
+
+        .pagination .page-btn {
+            padding: 4px 10px;
+            min-width: 32px;
+            text-align: center;
+        }
+
+        .pagination .page-btn.active {
+            background: #0366d6;
+            color: #fff;
+            border-color: #0366d6;
+        }
+
+        .pagination .page-ellipsis {
+            padding: 4px 6px;
+            color: #999;
+        }
+
+        /* Empty state */
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: #999;
+            font-size: 14px;
+        }
+
+        /* Loading */
+        .loading {
+            text-align: center;
+            padding: 40px 20px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="controls">
+        <input type="text" id="searchInput" placeholder="Search by model name or organization...">
+        <select id="archFilter">
+            <option value="">All Architectures</option>
+        </select>
+        <label>
+            <input type="checkbox" id="hideUnverified">
+            Hide unverified
+        </label>
+        <span class="model-count" id="modelCount"></span>
+    </div>
+
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th class="row-num">#</th>
+                    <th data-sort="org">Organization</th>
+                    <th data-sort="name">Model Name</th>
+                    <th data-sort="arch">Architecture</th>
+                    <th data-sort="status">Status</th>
+                    <th data-sort="score" title="English language generation quality scored out of 100. Scores for non-English models may be invalid.">Text Quality</th>
+                    <th data-sort="note">Note</th>
+                </tr>
+            </thead>
+            <tbody id="tableBody">
+                <tr><td colspan="7" class="loading">Loading models...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="pagination" id="pagination"></div>
+
+    <script>
+        const PAGE_SIZE = 25, COLS = 7;
+        const STATUS_MAP = { 0: 'Unverified', 1: 'Verified', 2: 'Skipped', 3: 'Failed' };
+
+        let allModels = [];
+        let filteredModels = [];
+        let currentPage = 1;
+        let debounceTimer = null;
+        let sortCol = '', sortDir = 'asc';
+
+        function getPrefix(id) { const i = id.indexOf('/'); return i > 0 ? id.slice(0, i) : ''; }
+        function getModelName(id) { const i = id.indexOf('/'); return i > 0 ? id.slice(i + 1) : id; }
+        function scoreClass(v) { return v >= 70 ? ' score-high' : v >= 40 ? ' score-mid' : ' score-low'; }
+
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        function sortVal(m, key) {
+            switch(key) {
+                case 'org': return getPrefix(m.model_id).toLowerCase();
+                case 'name': return getModelName(m.model_id).toLowerCase();
+                case 'arch': return m.architecture_id.toLowerCase();
+                case 'status': return m.status;
+                case 'score': return m.phase4_score;
+                case 'note': return (m.note || '').toLowerCase();
+                default: return '';
+            }
+        }
+
+        function sortFiltered() {
+            if (!sortCol) return;
+            const dir = sortDir === 'desc' ? -1 : 1;
+            const isNum = (sortCol === 'status' || sortCol === 'score');
+            filteredModels.sort((a, b) => {
+                let va = sortVal(a, sortCol), vb = sortVal(b, sortCol);
+                const aN = (va === null || va === undefined || va === '');
+                const bN = (vb === null || vb === undefined || vb === '');
+                if (aN && bN) return 0;
+                if (aN) return 1;
+                if (bN) return -1;
+                if (isNum) return (va - vb) * dir;
+                return String(va).localeCompare(String(vb)) * dir;
+            });
+        }
+
+        function updateSortHeaders() {
+            document.querySelectorAll('th[data-sort]').forEach(th => {
+                th.classList.remove('sort-asc', 'sort-desc');
+                if (th.dataset.sort === sortCol) th.classList.add(sortDir === 'desc' ? 'sort-desc' : 'sort-asc');
+            });
+        }
+
+        function syncUrl() {
+            const p = new URLSearchParams();
+            const s = document.getElementById('searchInput').value.trim();
+            const a = document.getElementById('archFilter').value;
+            const h = document.getElementById('hideUnverified').checked;
+            if (s) p.set('q', s);
+            if (a) p.set('arch', a);
+            if (h) p.set('hide', '1');
+            if (sortCol) { p.set('sort', sortCol); p.set('dir', sortDir); }
+            const qs = p.toString();
+            history.replaceState(null, '', qs ? '?' + qs : location.pathname);
+        }
+
+        async function init() {
+            try {
+                const response = await fetch('supported_models.json');
+                const data = await response.json();
+                allModels = data.models;
+                populateArchFilter(allModels);
+                /* Restore state from URL params */
+                const up = new URLSearchParams(location.search);
+                if (up.get('q')) document.getElementById('searchInput').value = up.get('q');
+                if (up.get('arch')) document.getElementById('archFilter').value = up.get('arch');
+                if (up.get('hide') === '1') document.getElementById('hideUnverified').checked = true;
+                if (up.get('sort')) { sortCol = up.get('sort'); sortDir = up.get('dir') || 'asc'; updateSortHeaders(); }
+                applyFilters();
+            } catch (err) {
+                document.getElementById('tableBody').innerHTML =
+                    '<tr><td colspan="' + COLS + '" class="empty-state">Failed to load model data.</td></tr>';
+            }
+        }
+
+        function populateArchFilter(models) {
+            const archCounts = {};
+            models.forEach(m => {
+                archCounts[m.architecture_id] = (archCounts[m.architecture_id] || 0) + 1;
+            });
+            const select = document.getElementById('archFilter');
+            Object.keys(archCounts).sort().forEach(arch => {
+                const opt = document.createElement('option');
+                opt.value = arch;
+                opt.textContent = arch + ' (' + archCounts[arch] + ')';
+                select.appendChild(opt);
+            });
+        }
+
+        function applyFilters() {
+            const search = document.getElementById('searchInput').value.toLowerCase().trim();
+            const arch = document.getElementById('archFilter').value;
+            const hideUnverified = document.getElementById('hideUnverified').checked;
+
+            filteredModels = allModels.filter(m => {
+                if (search && !m.model_id.toLowerCase().includes(search)) return false;
+                if (arch && m.architecture_id !== arch) return false;
+                if (hideUnverified && m.status === 0) return false;
+                return true;
+            });
+
+            sortFiltered();
+            currentPage = 1;
+            renderTable();
+            renderPagination();
+            updateCount();
+            syncUrl();
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('tableBody');
+            const start = (currentPage - 1) * PAGE_SIZE;
+            const pageModels = filteredModels.slice(start, start + PAGE_SIZE);
+
+            if (pageModels.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="' + COLS + '" class="empty-state">No models match your filters.</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = pageModels.map((m, i) => {
+                const rowNum = start + i + 1;
+                const hfLink = 'https://huggingface.co/' + m.model_id;
+                const org = escapeHtml(getPrefix(m.model_id));
+                const name = escapeHtml(getModelName(m.model_id));
+                const statusClass = 'status-' + m.status;
+                const statusText = STATUS_MAP[m.status] || 'Unknown';
+                return '<tr>' +
+                    '<td class="row-num">' + rowNum + '</td>' +
+                    '<td>' + org + '</td>' +
+                    '<td><a href="' + hfLink + '" target="_blank" rel="noopener">' + name + '</a></td>' +
+                    '<td>' + escapeHtml(m.architecture_id) + '</td>' +
+                    '<td><span class="status-badge ' + statusClass + '">' + statusText + '</span></td>' +
+                    '<td>' + (m.phase4_score != null ? '<span class="score' + scoreClass(m.phase4_score) + '">' + m.phase4_score.toFixed(1) + '</span>' : '<span class="muted">&mdash;</span>') + '</td>' +
+                    '<td>' + (m.note ? escapeHtml(m.note) : '<span class="muted">&mdash;</span>') + '</td>' +
+                    '</tr>';
+            }).join('');
+        }
+
+        function renderPagination() {
+            const totalPages = Math.max(1, Math.ceil(filteredModels.length / PAGE_SIZE));
+            const container = document.getElementById('pagination');
+
+            if (totalPages <= 1) {
+                container.innerHTML = '';
+                return;
+            }
+
+            let html = '';
+            html += '<button id="prevBtn" ' + (currentPage === 1 ? 'disabled' : '') + '>Previous</button>';
+            html += '<div class="page-numbers">';
+            html += getPageButtons(currentPage, totalPages);
+            html += '</div>';
+            html += '<button id="nextBtn" ' + (currentPage === totalPages ? 'disabled' : '') + '>Next</button>';
+            html += '<span class="page-info">Page ' + currentPage + ' of ' + totalPages + '</span>';
+
+            container.innerHTML = html;
+
+            document.getElementById('prevBtn').addEventListener('click', () => goToPage(currentPage - 1));
+            document.getElementById('nextBtn').addEventListener('click', () => goToPage(currentPage + 1));
+            container.querySelectorAll('.page-btn').forEach(btn => {
+                btn.addEventListener('click', () => goToPage(parseInt(btn.dataset.page)));
+            });
+        }
+
+        function getPageButtons(current, total) {
+            const pages = [];
+            const addPage = (p) => { if (!pages.includes(p)) pages.push(p); };
+
+            addPage(1);
+            if (total > 1) addPage(total);
+            for (let i = Math.max(2, current - 1); i <= Math.min(total - 1, current + 1); i++) {
+                addPage(i);
+            }
+            pages.sort((a, b) => a - b);
+
+            let html = '';
+            let last = 0;
+            pages.forEach(p => {
+                if (last && p - last > 1) {
+                    html += '<span class="page-ellipsis">...</span>';
+                }
+                const active = p === current ? ' active' : '';
+                html += '<button class="page-btn' + active + '" data-page="' + p + '">' + p + '</button>';
+                last = p;
+            });
+            return html;
+        }
+
+        function goToPage(page) {
+            const totalPages = Math.ceil(filteredModels.length / PAGE_SIZE);
+            if (page < 1 || page > totalPages) return;
+            currentPage = page;
+            renderTable();
+            renderPagination();
+            updateCount();
+        }
+
+        function updateCount() {
+            const el = document.getElementById('modelCount');
+            el.textContent = 'Showing ' + filteredModels.length + ' of ' + allModels.length + ' models';
+        }
+
+        // Event listeners
+        document.getElementById('searchInput').addEventListener('input', () => {
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(applyFilters, 200);
+        });
+        document.getElementById('archFilter').addEventListener('change', applyFilters);
+        document.getElementById('hideUnverified').addEventListener('change', applyFilters);
+        document.querySelectorAll('th[data-sort]').forEach(th => {
+            th.addEventListener('click', () => {
+                const key = th.dataset.sort;
+                if (sortCol === key) { sortDir = sortDir === 'asc' ? 'desc' : 'asc'; }
+                else { sortCol = key; sortDir = 'asc'; }
+                updateSortHeaders(); sortFiltered();
+                currentPage = 1; renderTable(); renderPagination(); updateCount(); syncUrl();
+            });
+        });
+
+        init();
+    </script>
+</body>
+</html>
