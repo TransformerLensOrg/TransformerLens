@@ -29,6 +29,7 @@ from transformer_lens.components import (
     BertNSPHead,
     BertPooler,
     Unembed,
+    ClassifierHead,
 )
 from transformer_lens.components.mlps.gated_mlp import GatedMLP
 from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
