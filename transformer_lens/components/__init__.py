@@ -15,6 +15,7 @@ from .rms_norm_pre import RMSNormPre
 from .token_typed_embed import TokenTypeEmbed
 from .unembed import Unembed
 from .classifier_head import ClassifierHead
+from .prenorm_block import PreNormBlock
 
 
 # Only dependent on independent modules
