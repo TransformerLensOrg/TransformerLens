@@ -1,5 +1,5 @@
 # TransformerLens 3.0
-**[Release Date]**
+**April 17, 2026**
 
 I am very excited to announce that TransformerLens 3.0 is here! This is the biggest release the project has ever shipped. 3.0 is a substantive architectural shift - one that we have been working toward for more than a year. The headline change is **TransformerBridge**, a new way of loading and instrumenting models that replaces the role `HookedTransformer.from_pretrained` used to play. This new system supports **48 architectures** and **9,000 models** out-of-the-box. Existing code continues to run through a compatibility layer, but new work should target the bridge, and over the next several minor releases we expect that to be the default path for all users.
 
