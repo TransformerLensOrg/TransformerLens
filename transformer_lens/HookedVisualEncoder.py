@@ -109,7 +109,7 @@ class HookedVisualEncoder(HookedRootModule):
         return resid
 
     def _expected_hw(self) -> tuple[int, int]:
-        image_size = self.config.image_size
+        image_size = self.cfg.image_size
         if isinstance(image_size, int):
             return image_size, image_size
         if len(image_size) == 2:
