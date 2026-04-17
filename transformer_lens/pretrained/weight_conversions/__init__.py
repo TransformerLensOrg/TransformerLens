@@ -26,3 +26,4 @@ from .t5 import convert_t5_weights
 from .hubert import convert_hubert_weights
 from .apertus import convert_apertus_weights
 from .openai import convert_gpt_oss_weights
+from .vit import convert_vit_weights
