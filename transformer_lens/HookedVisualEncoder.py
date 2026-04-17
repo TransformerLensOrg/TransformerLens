@@ -236,15 +236,15 @@ class HookedVisualEncoder(HookedRootModule):
         move_to_device: bool = True,
         dtype: torch.dtype = torch.float32,
         **from_pretrained_kwargs: Any,
-    ) -> HookedEncoder:
-        """Loads in the pretrained weights from huggingface. Currently supports loading weight from HuggingFace BertForMaskedLM. Unlike HookedTransformer, this does not yet do any preprocessing on the model."""
+    ) -> HookedVisualEncoder:
+        """Loads in the pretrained weights from huggingface. Currently supports loading weight from HuggingFace ViTForImageClassification. Unlike HookedTransformer, this does not yet do any preprocessing on the model."""
         logging.warning(
-            "Support for BERT in TransformerLens is currently experimental, until such a time when it has feature "
+            "Support for ViT in TransformerLens is currently experimental, until such a time when it has feature "
             "parity with HookedTransformer and has been tested on real research tasks. Until then, backward "
             "compatibility is not guaranteed. Please see the docs for information on the limitations of the current "
             "implementation."
             "\n"
-            "If using BERT for interpretability research, keep in mind that BERT has some significant architectural "
+            "If using ViT for interpretability research, keep in mind that BERT has some significant architectural "
             "differences to GPT. For example, LayerNorms are applied *after* the attention and MLP components, meaning "
             "that the last LayerNorm in a block cannot be folded."
         )
