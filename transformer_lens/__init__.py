@@ -39,6 +39,8 @@ __all__ = [
     "HookedTransformer",
     "SVDInterpreter",
     "HookedEncoder",
+    "HookedAudioEncoder",
+    "HookedVisualEncoder",
     "HookedEncoderDecoder",
     "TransformerLensKeyValueCache",
     "TransformerLensKeyValueCacheEntry",
