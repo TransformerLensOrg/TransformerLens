@@ -78,7 +78,6 @@ class HookedVisualEncoder(HookedRootModule):
         
 
         self.blocks = nn.ModuleList([BertBlock(self.cfg) for _ in range(self.cfg.n_layers)])
-        self.hook_full_embed = HookPoint()
 
         if move_to_device:
             if self.cfg.device is None:
