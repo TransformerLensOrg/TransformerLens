@@ -54,6 +54,7 @@ from transformer_lens.pretrained.weight_conversions import (
     convert_qwen3_weights,
     convert_qwen_weights,
     convert_t5_weights,
+    convert_vit_weights,
 )
 from transformer_lens.supported_models import MODEL_ALIASES, OFFICIAL_MODEL_NAMES
 from transformer_lens.utilities.hf_utils import get_rotary_pct_from_config
@@ -2165,6 +2166,8 @@ def get_pretrained_state_dict(
             state_dict = convert_gemma_weights(hf_model, cfg)
         elif cfg.original_architecture == "Gemma2ForCausalLM":
             state_dict = convert_gemma_weights(hf_model, cfg)
+        elif cfg.original_architecture == "ViTForImageClassification":
+            state_dict = convert_vit_weights(hf_model, cfg)
         elif cfg.original_architecture == "ApertusForCausalLM":
             state_dict = convert_apertus_weights(hf_model, cfg)
         elif cfg.original_architecture == "Gemma3ForCausalLM":
