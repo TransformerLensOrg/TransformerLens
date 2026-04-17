@@ -26,6 +26,7 @@ from transformer_lens.components import (
     MLP,
     TransformerBlock,
     ClassifierHead,
+    LayerNorm,
 )
 from transformer_lens.components.mlps.gated_mlp import GatedMLP
 from transformer_lens.config.HookedTransformerConfig import HookedTransformerConfig
@@ -75,6 +76,7 @@ class HookedVisualEncoder(HookedRootModule):
         
 
         self.blocks = nn.ModuleList([TransformerBlock(self.cfg) for _ in range(self.cfg.n_layers)])
+        self.layernorm = LayerNorm(self.cfg)
         self.classifier = ClassifierHead(self.cfg)
 
         if move_to_device:
