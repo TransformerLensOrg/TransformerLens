@@ -16,6 +16,7 @@ import numpy as np
 from PIL import Image
 from einops import repeat
 from jaxtyping import Float, Int
+from transformers import ViTFeatureExtractor, ViTForImageClassification
 from transformers.models.auto.tokenization_auto import AutoTokenizer
 from typing_extensions import Literal
 
@@ -232,7 +233,6 @@ class HookedVisualEncoder(HookedRootModule):
         checkpoint_value: Optional[int] = None,
         hf_model: Optional[Any] = None,
         device: Optional[str] = None,
-        tokenizer: Optional[Any] = None,
         move_to_device: bool = True,
         dtype: torch.dtype = torch.float32,
         **from_pretrained_kwargs: Any,
@@ -244,9 +244,6 @@ class HookedVisualEncoder(HookedRootModule):
             "compatibility is not guaranteed. Please see the docs for information on the limitations of the current "
             "implementation."
             "\n"
-            "If using ViT for interpretability research, keep in mind that BERT has some significant architectural "
-            "differences to GPT. For example, LayerNorms are applied *after* the attention and MLP components, meaning "
-            "that the last LayerNorm in a block cannot be folded."
         )
 
         assert not (
@@ -278,11 +275,19 @@ class HookedVisualEncoder(HookedRootModule):
 
         model.load_state_dict(state_dict, strict=False)
 
+        model.feature_extractor = ViTFeatureExtractor.from_pretrained(official_model_name)
+
+        vit_model = ViTForImageClassification.from_pretrained(official_model_name)
+
+        vit_model.eval()
+        model.embeddings = vit_model.vit.embeddings
+        del vit_model
+
         if move_to_device:
             if cfg.device is not None:
                 model.to(cfg.device)
 
-        print(f"Loaded pretrained model {model_name} into HookedEncoder")
+        print(f"Loaded pretrained model {model_name} into HookedVisualEncoder")
 
         return model
 
