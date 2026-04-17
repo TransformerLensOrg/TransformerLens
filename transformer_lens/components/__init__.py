@@ -29,7 +29,6 @@ from .mlps.mlp import MLP
 
 # Interdependent modules
 from .bert_block import BertBlock
-from .prenorm_block import PreNormBlock
 from .bert_embed import BertEmbed
 from .mlps.moe import MoE
 from .transformer_block import TransformerBlock
