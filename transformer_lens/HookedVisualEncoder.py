@@ -23,7 +23,7 @@ import transformer_lens.loading_from_pretrained as loading
 from transformer_lens.ActivationCache import ActivationCache
 from transformer_lens.components import (
     MLP,
-    BertBlock,
+    PreNormBlock,
     ClassifierHead,
 )
 from transformer_lens.components.mlps.gated_mlp import GatedMLP
@@ -48,11 +48,11 @@ class HookedVisualEncoder(HookedRootModule):
         - There is no preprocessing (e.g. LayerNorm folding) when loading a pretrained model
     """
 
-    blocks: nn.ModuleList[BertBlock]  # type: ignore[type-arg]
+    blocks: nn.ModuleList[PreNormBlock]  # type: ignore[type-arg]
 
-    def _get_blocks(self) -> list[BertBlock]:
+    def _get_blocks(self) -> list[PreNormBlock]:
         """Helper to get blocks with proper typing."""
-        return [cast(BertBlock, block) for block in self.blocks]
+        return [cast(PreNormBlock, block) for block in self.blocks]
 
     def __init__(
         self,
@@ -73,7 +73,7 @@ class HookedVisualEncoder(HookedRootModule):
         assert self.cfg.n_devices == 1, "Multiple devices not supported for HookedVisualEncoder"
         
 
-        self.blocks = nn.ModuleList([BertBlock(self.cfg) for _ in range(self.cfg.n_layers)])
+        self.blocks = nn.ModuleList([PreNormBlock(self.cfg) for _ in range(self.cfg.n_layers)])
         self.classifier = ClassifierHead(self.cfg)
 
         if move_to_device:
