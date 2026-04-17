@@ -114,7 +114,7 @@ class HookedVisualEncoder(HookedRootModule):
             return image_size, image_size
         if len(image_size) == 2:
             return int(image_size[0]), int(image_size[1])
-        raise ValueError(f"Unsupported config.image_size={image_size!r}")
+        raise ValueError(f"Unsupported config.image_size={image_size}")
 
     def forward(
         self,
