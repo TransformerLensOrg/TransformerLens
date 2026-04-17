@@ -89,50 +89,24 @@ class HookedVisualEncoder(HookedRootModule):
 
     def encoder_output(
         self,
-        tokens: Int[torch.Tensor, "batch pos"],
-        token_type_ids: Optional[Int[torch.Tensor, "batch pos"]] = None,
-        one_zero_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
-    ) -> Float[torch.Tensor, "batch pos d_vocab"]:
-        """Processes input through the encoder layers and returns the resulting residual stream.
-
-        Args:
-            input: Input tokens as integers with shape (batch, position)
-            token_type_ids: Optional binary ids indicating segment membership.
-                Shape (batch_size, sequence_length). For example, with input
-                "[CLS] Sentence A [SEP] Sentence B [SEP]", token_type_ids would be
-                [0, 0, ..., 0, 1, ..., 1, 1] where 0 marks tokens from sentence A
-                and 1 marks tokens from sentence B.
-            one_zero_attention_mask: Optional binary mask of shape (batch_size, sequence_length)
-                where 1 indicates tokens to attend to and 0 indicates tokens to ignore.
-                Used primarily for handling padding in batched inputs.
-
-        Returns:
-            resid: Final residual stream tensor of shape (batch, position, d_model)
-
-        Raises:
-            AssertionError: If using string input without a tokenizer
+        resid: torch.Tensor,  # (B, seq_len, d_model) = embedding_output
+    ):
         """
-
-        if tokens.device.type != self.cfg.device:
-            tokens = tokens.to(self.cfg.device)
-            if one_zero_attention_mask is not None:
-                one_zero_attention_mask = one_zero_attention_mask.to(self.cfg.device)
-
-        resid = self.hook_full_embed(self.embed(tokens, token_type_ids))
-
-        large_negative_number = -torch.inf
-        mask = (
-            repeat(1 - one_zero_attention_mask, "batch pos -> batch 1 1 pos")
-            if one_zero_attention_mask is not None
-            else None
-        )
-        additive_attention_mask = (
-            torch.where(mask == 1, large_negative_number, 0) if mask is not None else None
-        )
-
+        ViT encoder: stack of transformer blocks.
+        Args:
+            resid: embedding output (patch + CLS + pos embedding)
+        Returns:
+            resid: (B, seq_len, d_model)
+        """
+    
+        # device safety (TL style)
+        if resid.device.type != self.cfg.device:
+            resid = resid.to(self.cfg.device)
+    
+        # No attention mask in standard ViT
         for block in self.blocks:
-            resid = block(resid, additive_attention_mask)
-
+            resid = block(resid)
+    
         return resid
 
     def _expected_hw(self) -> tuple[int, int]:
