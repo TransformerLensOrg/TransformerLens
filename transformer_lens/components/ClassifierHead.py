@@ -8,7 +8,7 @@ from transformer_lens.config.HookedTransformerConfig import HookedTransformerCon
 from transformer_lens.hook_points import HookPoint
 
 
-class ViTClassifierHead(nn.Module):
+class ClassifierHead(nn.Module):
     def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
         super().__init__()
         self.cfg = HookedTransformerConfig.unwrap(cfg)
