@@ -419,7 +419,7 @@ class HookedAudioEncoder(HookedRootModule):
             hubert_model.to(torch.device(device))  # type: ignore[arg-type]
             model.to(device)
 
-        print(f"Loaded pretrained model {model_name} into HookedEncoder")
+        print(f"Loaded pretrained model {model_name} into HookedAudioEncoder")
 
         return model
 
