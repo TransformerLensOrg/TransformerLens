@@ -14,6 +14,8 @@ from .rms_norm import RMSNorm
 from .rms_norm_pre import RMSNormPre
 from .token_typed_embed import TokenTypeEmbed
 from .unembed import Unembed
+from .classifier_head import ClassifierHead
+
 
 # Only dependent on independent modules
 from .attention import Attention
