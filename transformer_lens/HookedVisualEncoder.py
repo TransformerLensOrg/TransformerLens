@@ -39,7 +39,7 @@ T = TypeVar("T", bound="HookedEncoder")
 
 class HookedVisualEncoder(HookedRootModule):
     """
-    This class implements a BERT-style encoder using the components in ./components.py, with HookPoints on every interesting activation. It inherits from HookedRootModule.
+    This class implements a ViT-style encoder using the components in ./components.py, with HookPoints on every interesting activation. It inherits from HookedRootModule.
 
     Limitations:
     - The model does not include dropouts, which may lead to inconsistent results from training or fine-tuning.
@@ -66,36 +66,14 @@ class HookedVisualEncoder(HookedRootModule):
             cfg = HookedTransformerConfig(**cfg)
         elif isinstance(cfg, str):
             raise ValueError(
-                "Please pass in a config dictionary or HookedTransformerConfig object. If you want to load a pretrained model, use HookedEncoder.from_pretrained() instead."
+                "Please pass in a config dictionary or HookedTransformerConfig object. If you want to load a pretrained model, use HookedVisualEncoder.from_pretrained() instead."
             )
         self.cfg = cfg
 
-        assert self.cfg.n_devices == 1, "Multiple devices not supported for HookedEncoder"
-        if tokenizer is not None:
-            self.tokenizer = tokenizer
-        elif self.cfg.tokenizer_name is not None:
-            huggingface_token = os.environ.get("HF_TOKEN", "")
-            self.tokenizer = AutoTokenizer.from_pretrained(
-                self.cfg.tokenizer_name,
-                token=huggingface_token if len(huggingface_token) > 0 else None,
-            )
-        else:
-            self.tokenizer = None
+        assert self.cfg.n_devices == 1, "Multiple devices not supported for HookedVisualEncoder"
+        
 
-        if self.cfg.d_vocab == -1:
-            # If we have a tokenizer, vocab size can be inferred from it.
-            assert self.tokenizer is not None, "Must provide a tokenizer if d_vocab is not provided"
-            self.cfg.d_vocab = max(self.tokenizer.vocab.values()) + 1
-        if self.cfg.d_vocab_out == -1:
-            self.cfg.d_vocab_out = self.cfg.d_vocab
-
-        self.embed = BertEmbed(self.cfg)
         self.blocks = nn.ModuleList([BertBlock(self.cfg) for _ in range(self.cfg.n_layers)])
-        self.mlm_head = BertMLMHead(self.cfg)
-        self.unembed = Unembed(self.cfg)
-        self.nsp_head = BertNSPHead(self.cfg)
-        self.pooler = BertPooler(self.cfg)
-
         self.hook_full_embed = HookPoint()
 
         if move_to_device:
