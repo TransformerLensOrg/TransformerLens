@@ -24,11 +24,6 @@ from transformer_lens.ActivationCache import ActivationCache
 from transformer_lens.components import (
     MLP,
     BertBlock,
-    BertEmbed,
-    BertMLMHead,
-    BertNSPHead,
-    BertPooler,
-    Unembed,
     ClassifierHead,
 )
 from transformer_lens.components.mlps.gated_mlp import GatedMLP
