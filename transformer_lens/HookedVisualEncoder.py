@@ -162,7 +162,7 @@ class HookedVisualEncoder(HookedRootModule):
             interpolate_pos_encoding=interpolate_pos_encoding,
         )
         encoder_outputs = self.encoder_output(embedding_output)
-        sequence_output = self.layernorm(encoder_outputs.last_hidden_state)
+        sequence_output = self.layernorm(encoder_outputs)
         cls_token = sequence_output[:, 0, :]
         logits = self.classifier(cls_token)
 
