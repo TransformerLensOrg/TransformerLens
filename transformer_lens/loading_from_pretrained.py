@@ -22,6 +22,7 @@ from transformers import (
     HubertModel,
     T5ForConditionalGeneration,
     Wav2Vec2Model,
+    ViTForImageClassification,
 )
 
 import transformer_lens.utils as utils
