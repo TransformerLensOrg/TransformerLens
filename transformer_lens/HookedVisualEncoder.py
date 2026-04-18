@@ -59,7 +59,6 @@ class HookedVisualEncoder(HookedRootModule):
     def __init__(
         self,
         cfg: Union[HookedTransformerConfig, Dict],
-        tokenizer: Optional[Any] = None,
         move_to_device: bool = True,
         **kwargs: Any,
     ):
@@ -273,7 +272,7 @@ class HookedVisualEncoder(HookedRootModule):
             official_model_name, cfg, hf_model, dtype=dtype, **from_pretrained_kwargs
         )
 
-        model = cls(cfg, tokenizer, move_to_device=False)
+        model = cls(cfg, move_to_device=False)
 
         model.load_state_dict(state_dict, strict=False)
 
