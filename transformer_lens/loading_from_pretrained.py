@@ -1511,6 +1511,7 @@ def convert_hf_model_config(model_name: str, **kwargs: Any) -> dict[str, Any]:
             "eps": hf_config.layer_norm_eps,
             "act_fn": hf_config.hidden_act,
             "attention_dir": "bidirectional",
+            "n_ctx": (hf_config.image_size // hf_config.patch_size) ** 2 + 1,
     
             "d_vocab": -1,
         }
